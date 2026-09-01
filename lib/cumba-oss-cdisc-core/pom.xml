@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>cumba-oss-cdisc-core</artifactId>
+    <packaging>jar</packaging>
+    <parent>
+        <groupId>net.cumba</groupId>
+        <artifactId>cumba-oss-corej-parent</artifactId>
+        <version>${revision}</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <inceptionYear>2026</inceptionYear>
+    <!--
+        REQUIRED by Maven Central, and it must be declared HERE: <name> is one
+        of the few POM elements Maven does NOT inherit from a parent, so a
+        module without its own name publishes a nameless artifact and the whole
+        Central bundle is rejected with "Project name is missing". This is the
+        defect that cost cumba-oss-commons v0.0.1.
+    -->
+    <name>Cumba OSS coreJ :: CORE Engine</name>
+    <!--
+        Declared explicitly rather than inherited: the parent carries
+        child.project.url.inherit.append.path="false", which was measured to fix
+        the <scm> URLs but NOT the project <url> under Maven 3.9.16 — the
+        effective pom still read .../lib/<module>, a 404.
+    -->
+    <url>https://github.com/cumba-oss/cumba-oss-corej</url>
+    <description>
+        CDISC validation rule engine: rule-package loader, check evaluator,
+        report assembler and the pluggable report-writer SPI. Ships NO report
+        writer of its own - json/json-2 and xlsx live in cumba-oss-cdisc-report-json
+        and cumba-oss-cdisc-report-xlsx - so the engine carries no Excel dependency.
+    </description>
+    <organization>
+        <name>P300</name>
+    </organization>
+
+    <properties>
+        <mockito.agent>-javaagent:${org.mockito:mockito-core:jar}</mockito.agent>
+        <pitest.excludedTestClasses>net.cumba.cdisc.core.exec.JoinCacheConcurrencyTest</pitest.excludedTestClasses>
+    </properties>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-datatable</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-datatable-impl</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-cdisc-library</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-web-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+
+        <!-- JSpecify nullability annotations (NullAway). -->
+        <dependency>
+            <groupId>org.jspecify</groupId>
+            <artifactId>jspecify</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <!-- Define-XML object model + parser. Lightweight (model + jackson-xml); does not depend on
+             cumba-oss-cdisc-core, so no cycle. Lets the engine read define_* operands straight from the
+             parsed Define-XML (OdmDefineXMLProvider), bypassing the lossy Define-XML to
+             IMetadataLibrary (datatable) conversion. See
+             plans/PLAN-define-item-metadata-parity-929-1081.md. -->
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-cdisc-define</artifactId>
+        </dependency>
+
+        <!-- TEST ONLY: the Define-XML -> IMetadataLibrary adapter (DefineMetadataLibrary). In
+             production this module never constructs one - StudyValidationService obtains it from
+             the datatable manager and wraps it with MetadataLibraryProvider.forDefine. The test
+             scope exists so DefineSplitDatasetContractTest can compose the define provider EXACTLY
+             as production does (ODM-direct over the datatable-backed fallback) against a real
+             Define-XML, rather than guarding a composition nobody runs. Acyclic: this module is not
+             a dependency of cumba-oss-datatable-provider-define. -->
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-datatable-provider-define</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Reads the Python engine's pickle metadata cache (offline library metadata). -->
+        <dependency>
+            <groupId>net.razorvine</groupId>
+            <artifactId>pickle</artifactId>
+        </dependency>
+
+        <!-- TarArchiveInputStream: streams the pickle cache out of a repository source archive
+             (HttpArchivePickleSource). Declared explicitly - it used to also arrive transitively
+             via poi-ooxml, which left this module in Fix #224 together with the XLSX report
+             writer, so this declaration is now the only thing keeping the seeder compiling. -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-compress</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-params</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <!-- Publish the test helpers (MockTable, SyntheticStringTable, spec harness
+                     doubles) as a test-jar so cumba-oss-cdisc-rules (and the parity module) can
+                     reuse them test-scope instead of duplicating them. -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>${plugin.maven-jar-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>test-jar</id>
+                        <goals>
+                            <goal>test-jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!--
+                        Override the project-wide target/test-cwd setting back to the module
+                        basedir: the curated fixture corpus (src/test/resources/fixtures/rules)
+                        and documentation/expression-language-reference.md resolve via
+                        module-relative paths (the dataviewer convention these tests
+                        originated under).
+                    -->
+                    <workingDirectory>${project.basedir}</workingDirectory>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+
+    <reporting>
+    </reporting>
+
+</project>

@@ -1,0 +1,463 @@
+{
+  "standards": [
+    {
+      "id": "sdtmig/3-2",
+      "role": "primary"
+    }
+  ],
+  "rules": {
+    "CDISC-CG0001": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "Version": "3.4",
+              "References": [
+                {
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0001",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ]
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.3",
+              "References": [
+                {
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0001",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ]
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.2",
+              "References": [
+                {
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0001",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-CG0001",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when the DOMAIN value of a non-custom domain is not a Domain Code published by CDISC in the \"SDTM Domain Abbreviations\" controlled terminology codelist.",
+      "Sensitivity": "Dataset",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Domains": {
+          "Include": [
+            "ALL"
+          ]
+        }
+      },
+      "Requirements": {
+        "Library": true,
+        "Define": true
+      },
+      "Variable_Universe": "Define",
+      "Operations": [
+        {
+          "id": "$domain_is_custom",
+          "expression": "domain_is_custom()"
+        },
+        {
+          "id": "$domain_lib_ccode",
+          "expression": "codelist_terms(codelists=[DOMAIN], level=\"term\", returntype=\"code\")"
+        }
+      ],
+      "Check": {
+        "expression": "$domain_is_custom == false and var_ccode(\"DEFINE\") == \"C66734\" and var_codelist_coded_codes(\"DEFINE\") not in $domain_lib_ccode"
+      },
+      "Outcome": {
+        "Message": "DOMAIN is not a valid Domain Code published by CDISC in the SDTM Domain Abbreviations controlled terminology.",
+        "Output_Variables": [
+          "$domain_is_custom",
+          "define_variable_ccode",
+          "define_variable_codelist_coded_codes",
+          "$domain_lib_ccode"
+        ]
+      }
+    },
+    "CDISC-CG0006": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "Version": "3.4",
+              "References": [
+                {
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0006",
+                    "Version": "2"
+                  },
+                  "Version": "2.0"
+                }
+              ]
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.3",
+              "References": [
+                {
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0006",
+                    "Version": "2"
+                  },
+                  "Version": "2.0"
+                }
+              ]
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.2",
+              "References": [
+                {
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0006",
+                    "Version": "2"
+                  },
+                  "Version": "2.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-CG0006",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when the collection Study Day (--DY) is populated and both the date portion of --DTC and the date portion of RFSTDTC are complete dates, but --DY does not equal the value computed by the SDTM study day algorithm (a non-zero integer).",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Domains": {
+          "Include": [
+            "ALL"
+          ]
+        }
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "--DTC",
+            "--DY"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Keys": [
+            "USUBJID"
+          ],
+          "Name": "DM"
+        }
+      ],
+      "Operations": [
+        {
+          "id": "$value_dy_algorithm",
+          "expression": "dy(--DTC)"
+        }
+      ],
+      "Check": {
+        "expression": "not empty(--DY) and is_complete_date_part(--DTC) and is_complete_date_part(DM.RFSTDTC) and --DY != $value_dy_algorithm"
+      },
+      "Outcome": {
+        "Message": "--DY does not equal the value derived by the SDTM study day algorithm even though the date portions of --DTC and RFSTDTC are complete dates and --DY is populated.",
+        "Output_Variables": [
+          "$value_dy_algorithm",
+          "--DTC",
+          "--DY",
+          "DM.RFSTDTC"
+        ]
+      }
+    },
+    "CDISC-CG0007": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "Version": "3.4",
+              "References": [
+                {
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0007",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ]
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.3",
+              "References": [
+                {
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0007",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ]
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.2",
+              "References": [
+                {
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0007",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-CG0007",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when Collection Study Day (--DY) is populated but the date portion of Collection Study Date/Time (--DTC) or Subject Reference Start Date/Time (RFSTDTC) is not a complete date, i.e. empty, invalid, or only partially specified.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Domains": {
+          "Include": [
+            "ALL"
+          ]
+        }
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "--DY"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Keys": [
+            "USUBJID"
+          ],
+          "Name": "DM"
+        }
+      ],
+      "Check": {
+        "expression": "(var_exists(\"--DTC\") and not is_complete_date_part(--DTC) or not is_complete_date_part(DM.RFSTDTC)) and not empty(--DY)"
+      },
+      "Outcome": {
+        "Message": "--DY is populated when the date portion of --DTC or RFSTDTC is incomplete.",
+        "Output_Variables": [
+          "--DTC",
+          "--DY",
+          "DM.RFSTDTC"
+        ]
+      }
+    },
+    "CDISC-CG0008": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "Version": "3.4",
+              "References": [
+                {
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0008",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ]
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.3",
+              "References": [
+                {
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0008",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ]
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.2",
+              "References": [
+                {
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0008",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-CG0008",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when the planned elapsed time (--ELTM) is populated but its fixed reference point (--TPTREF) is empty; --ELTM must be empty when --TPTREF is empty.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Domains": {
+          "Include": [
+            "ALL"
+          ]
+        }
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "--ELTM"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "empty(--TPTREF) and not empty(--ELTM)"
+      },
+      "Outcome": {
+        "Message": "--ELTM is populated but --TPTREF is empty.",
+        "Output_Variables": [
+          "--ELTM",
+          "--TPTREF"
+        ]
+      }
+    },
+    "CDISC-CG0009": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "Version": "3.4",
+              "References": [
+                {
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0009",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ]
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.3",
+              "References": [
+                {
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0009",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ]
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.2",
+              "References": [
+                {
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0009",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-CG0009",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when EPOCH is populated but does not match any EPOCH value in the TA dataset.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Domains": {
+          "Include": [
+            "ALL"
+          ]
+        }
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "EPOCH"
+          ]
+        }
+      },
+      "Operations": [
+        {
+          "id": "$ta_epoch",
+          "expression": "distinct(EPOCH, domain=\"TA\")"
+        }
+      ],
+      "Check": {
+        "expression": "EPOCH not in $ta_epoch and not empty(EPOCH)"
+      },
+      "Outcome": {
+        "Message": "EPOCH value does not match any EPOCH value in the TA dataset.",
+        "Output_Variables": [
+          "EPOCH",
+          "$ta_epoch"
+        ]
+      }
+    }
+  }
+}

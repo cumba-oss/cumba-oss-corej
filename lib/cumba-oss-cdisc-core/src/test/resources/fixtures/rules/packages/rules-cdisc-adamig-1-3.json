@@ -1,0 +1,2609 @@
+{
+  "standards": [
+    {
+      "id": "adam/adamig-1-3",
+      "role": "primary"
+    },
+    {
+      "id": "sdtmig/3-4",
+      "role": "companion"
+    }
+  ],
+  "rules": {
+    "CDISC-AD0044": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR44",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR44",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR44",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR44",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0044",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when a variable with a suffix of TM and a variable with a suffix of DTM with the same root name are both populated and the time portion of the DTM value does not equal the TM value",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Domains": {
+          "Include": [
+            "ALL"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "not empty(*TM) and not empty(*DTM) and time_part(*DTM) != *TM"
+      },
+      "Outcome": {
+        "Message": "The time portion of the value of the DTM-suffixed variable does not equal the value of the TM-suffixed variable with the same root name",
+        "Output_Variables": [
+          "*TM",
+          "*DTM"
+        ]
+      }
+    },
+    "CDISC-AD0045": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR45",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR45",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR45",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR45",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0045",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when a variable with a suffix of DT and a variable with a suffix of DTM with the same root name are both populated and the date portion of the DTM value does not equal the DT value",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Domains": {
+          "Include": [
+            "ALL"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "not empty(*DT) and not empty(*DTM) and date_part(*DTM) != *DT"
+      },
+      "Outcome": {
+        "Message": "The date portion of the value of the DTM-suffixed variable does not equal the value of the DT-suffixed variable with the same root name",
+        "Output_Variables": [
+          "*DT",
+          "*DTM"
+        ]
+      }
+    },
+    "CDISC-AD0048": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR48",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR48",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR48",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR48",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0048",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when ADSL contains no variable with a name ending in FL",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "SUBJECT LEVEL ANALYSIS DATASET"
+          ]
+        }
+      },
+      "Operations": [
+        {
+          "id": "$fl_count",
+          "expression": "variable_count(name_pattern=\"^.+FL$\")"
+        }
+      ],
+      "Check": {
+        "expression": "$fl_count == 0"
+      },
+      "Outcome": {
+        "Message": "No variable in ADSL has a name ending in FL",
+        "Output_Variables": [
+          "$fl_count"
+        ]
+      }
+    },
+    "CDISC-AD0053": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR53",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR53",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR53",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR53",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0053",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when a record's USUBJID does not have a matching record in SDTM.DM",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Domains": {
+          "Include": [
+            "ALL"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "DM",
+          "Keys": [
+            "USUBJID"
+          ],
+          "Join_Type": "left"
+        }
+      ],
+      "Check": {
+        "expression": "var_exists(DM.USUBJID) and empty(DM.USUBJID)"
+      },
+      "Outcome": {
+        "Message": "This record's USUBJID value was not found in SDTM.DM",
+        "Output_Variables": [
+          "DM.USUBJID"
+        ]
+      }
+    },
+    "CDISC-AD0078": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR78",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR78",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR78",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR78",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0078",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when TRTxxP is present but the corresponding TRxxSDT is not present, where xx is an integer [01-99, zero-padded] and is greater than 01",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "SUBJECT LEVEL ANALYSIS DATASET"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "var_exists(\"TRTxxP\") and not var_exists(\"TRxxSDT\")"
+      },
+      "Outcome": {
+        "Message": "TRTxxP is present but the corresponding TRxxSDT is not present",
+        "Output_Variables": [
+          "TRTxxP"
+        ]
+      },
+      "wildcards": {
+        "xx": {
+          "min": 2
+        }
+      }
+    },
+    "CDISC-AD0079": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR79",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR79",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR79",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR79",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0079",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when TRTxxP is present but the corresponding TRxxEDT is not present, where xx is an integer [01-99, zero-padded] and is greater than 01",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "SUBJECT LEVEL ANALYSIS DATASET"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "var_exists(\"TRTxxP\") and not var_exists(\"TRxxEDT\")"
+      },
+      "Outcome": {
+        "Message": "TRTxxP is present but the corresponding TRxxEDT is not present",
+        "Output_Variables": [
+          "TRTxxP"
+        ]
+      },
+      "wildcards": {
+        "xx": {
+          "min": 2
+        }
+      }
+    },
+    "CDISC-AD0102": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR102",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR102",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR102",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR102",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0102",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when APERIOD is populated but the corresponding TRTxxP variable (xx = zero-padded APERIOD value) is not present in ADSL.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "BASIC DATA STRUCTURE",
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        }
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "APERIOD"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "ADSL",
+          "Keys": [
+            "USUBJID"
+          ]
+        }
+      ],
+      "Check": {
+        "expression": "not empty(APERIOD) and not var_exists(ADSL.TRT${APERIOD:%02d}P)"
+      },
+      "Outcome": {
+        "Message": "The value of APERIOD has no corresponding TRTxxP variable present in ADSL.",
+        "Output_Variables": [
+          "APERIOD"
+        ]
+      }
+    },
+    "CDISC-AD0103": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR103",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR103",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR103",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR103",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0103",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when APERIOD is greater than 1 but the corresponding TRxxSDT variable (xx = zero-padded APERIOD value) is not present in ADSL.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "BASIC DATA STRUCTURE",
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        }
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "APERIOD"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "ADSL",
+          "Keys": [
+            "USUBJID"
+          ]
+        }
+      ],
+      "Check": {
+        "expression": "APERIOD > 1 and not var_exists(ADSL.TR${APERIOD:%02d}SDT)"
+      },
+      "Outcome": {
+        "Message": "The value of APERIOD (greater than 1) has no corresponding TRxxSDT variable present in ADSL.",
+        "Output_Variables": [
+          "APERIOD"
+        ]
+      }
+    },
+    "CDISC-AD0104": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR104",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR104",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR104",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR104",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0104",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when APERIOD is greater than 1 but the corresponding TRxxEDT variable (xx = zero-padded APERIOD value) is not present in ADSL.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "BASIC DATA STRUCTURE",
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        }
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "APERIOD"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "ADSL",
+          "Keys": [
+            "USUBJID"
+          ]
+        }
+      ],
+      "Check": {
+        "expression": "APERIOD > 1 and not var_exists(ADSL.TR${APERIOD:%02d}EDT)"
+      },
+      "Outcome": {
+        "Message": "The value of APERIOD (greater than 1) has no corresponding TRxxEDT variable present in ADSL.",
+        "Output_Variables": [
+          "APERIOD"
+        ]
+      }
+    },
+    "CDISC-AD0204": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR204",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR204",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR204",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR204",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0204",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when, for a subject, DM has a value for AGE and ADSL.AGE does not equal that value",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "SUBJECT LEVEL ANALYSIS DATASET"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "DM",
+          "Keys": [
+            "USUBJID"
+          ]
+        }
+      ],
+      "Check": {
+        "expression": "var_exists(DM.AGE) and AGE != DM.AGE"
+      },
+      "Outcome": {
+        "Message": "For this subject, ADSL.AGE does not equal DM.AGE",
+        "Output_Variables": [
+          "AGE",
+          "DM.AGE"
+        ]
+      }
+    },
+    "CDISC-AD0210": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR210",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR210",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR210",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR210",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0210",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when, for a subject, DM has a value for ARM and ADSL.ARM does not equal that value",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "SUBJECT LEVEL ANALYSIS DATASET"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "DM",
+          "Keys": [
+            "USUBJID"
+          ]
+        }
+      ],
+      "Check": {
+        "expression": "var_exists(DM.ARM) and ARM != DM.ARM"
+      },
+      "Outcome": {
+        "Message": "For this subject, ADSL.ARM does not equal DM.ARM",
+        "Output_Variables": [
+          "ARM",
+          "DM.ARM"
+        ]
+      }
+    },
+    "CDISC-AD0367": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR367",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR367",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR367",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0367",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when DM.ACTARM is present and ACTARM does not equal DM.ACTARM for the same subject",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "SUBJECT LEVEL ANALYSIS DATASET"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "DM",
+          "Keys": [
+            "USUBJID"
+          ]
+        }
+      ],
+      "Check": {
+        "expression": "var_exists(DM.ACTARM) and ACTARM != DM.ACTARM"
+      },
+      "Outcome": {
+        "Message": "ACTARM does not equal DM.ACTARM for this subject.",
+        "Output_Variables": [
+          "ACTARM",
+          "DM.ACTARM"
+        ]
+      }
+    },
+    "CDISC-AD0498": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR498",
+                    "Version": "2"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR498",
+                    "Version": "2"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0498",
+        "Status": "Published",
+        "Version": "2"
+      },
+      "Description": "Raise an error when a BDS or OCCDS record has populated APERIOD and ASPER values but the ADSL dataset does not contain a variable PxxSw for that combination (xx=APERIOD, w=ASPER).",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "BASIC DATA STRUCTURE",
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "ADSL",
+          "Keys": [
+            "USUBJID"
+          ]
+        }
+      ],
+      "Check": {
+        "expression": "not empty(APERIOD) and not empty(ASPER) and not var_exists(ADSL.P${APERIOD:%02d}S${ASPER:%d})"
+      },
+      "Outcome": {
+        "Message": "The values of APERIOD and ASPER have no corresponding PxxSw variable present in ADSL.",
+        "Output_Variables": [
+          "APERIOD",
+          "ASPER"
+        ]
+      }
+    },
+    "CDISC-AD0500": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR500",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR500",
+                    "Version": "2"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0500",
+        "Status": "Published",
+        "Version": "2"
+      },
+      "Description": "Raise an error when APHASE is populated and its value does not match any of the subject's APHASEw values in ADSL.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "BASIC DATA STRUCTURE",
+            "OCCURRENCE DATA STRUCTURE",
+            "MEDICAL DEVICE OCCURRENCE DATA STRUCTURE"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "ADSL",
+          "Keys": [
+            "USUBJID"
+          ]
+        }
+      ],
+      "Check": {
+        "expression": "not empty(APHASE) and APHASE not in ADSL.APHASE${*}"
+      },
+      "Outcome": {
+        "Message": "The value of APHASE does not match any APHASEw value in ADSL for this subject.",
+        "Output_Variables": [
+          "APHASE"
+        ]
+      }
+    },
+    "CDISC-AD0591": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR591",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR591",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0591",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when, for the same subject, a variable's value does not match the value of the identically named variable in ADSL, considering only records where both values are populated.",
+      "Executability": "Fully Executable",
+      "ExecutabilityHint": {
+        "Category": "fully executable",
+        "Detail": "Declared-token template. The Expansion block binds &VAR to every variable this dataset shares by name with ADSL, and the engine emits one concrete rule per shared variable, each comparing that variable against ADSL's after an inner join on STUDYID / USUBJID — the CDISC-CG0218 / PMDA-AD0208 shape. The join keys are not expanded over: compared against themselves after merging on them they are equal by construction. When ADSL is not among the loaded datasets, or the resolver cannot enumerate other datasets, the rule is skipped with a stated reason rather than expanded to nothing. NARROWING, stated so it is not invisible: the two non_empty guards are carried over verbatim from the pre-expansion rule. The ADSL-side guard suppresses rows whose ADSL value is genuinely empty; a subject absent from ADSL is dropped by the inner join and is reported by CDISC-AD0256, the ADSL-membership rule (D-TA-2). The dataset-side guard means a value present in ADSL but missing here is NOT reported, which ADaMIG 2.3.1 arguably does require; logged as SHEET-ISSUES entry 35 for the sheet author rather than changed here."
+      },
+      "Scope": {
+        "Domains": {
+          "Include": [
+            "ALL"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "ADSL",
+          "Keys": [
+            "STUDYID",
+            "USUBJID"
+          ]
+        }
+      ],
+      "Check": {
+        "expression": "not empty(`&VAR`) and not empty(`ADSL.&VAR`) and var_exists(`&VAR`) and var_exists(`ADSL.&VAR`) and `&VAR` != `ADSL.&VAR`"
+      },
+      "Outcome": {
+        "Message": "For this subject, this variable's value does not match the value of the identically named variable in ADSL.",
+        "Output_Variables": [
+          "&VAR",
+          "ADSL.&VAR"
+        ]
+      },
+      "Expansion": [
+        {
+          "token": "&VAR",
+          "over": "shared_variables",
+          "with": "ADSL"
+        }
+      ]
+    },
+    "CDISC-AD0592": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR592",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR592",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0592",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when, on a BDS or OCCDS record, APERSDT does not equal the ADSL variable APxxSDT for the same USUBJID (where xx equals the record's APERIOD value).",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "BASIC DATA STRUCTURE",
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "ADSL",
+          "Keys": [
+            "USUBJID"
+          ]
+        }
+      ],
+      "Check": {
+        "expression": "not empty(APERSDT) and not empty(ADSL.AP${APERIOD:%02d}SDT) and APERSDT != ADSL.AP${APERIOD:%02d}SDT"
+      },
+      "Outcome": {
+        "Message": "On a given record, the value of APERSDT is not equal to the value of variable APxxSDT where xx equals the value of APERIOD",
+        "Output_Variables": [
+          "APxxSDT",
+          "APERIOD",
+          "APERSDT"
+        ]
+      }
+    },
+    "CDISC-AD0598": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR598",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR598",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0598",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when, on a BDS or OCCDS record, ASPRSDT does not equal the ADSL variable PxxSwSDT for the same USUBJID (where xx equals the record's APERIOD value and w equals the record's ASPER value).",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "BASIC DATA STRUCTURE",
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "ADSL",
+          "Keys": [
+            "USUBJID"
+          ]
+        }
+      ],
+      "Check": {
+        "expression": "not empty(ASPRSDT) and not empty(ADSL.P${APERIOD:%02d}S${ASPER:%d}SDT) and ASPRSDT != ADSL.P${APERIOD:%02d}S${ASPER:%d}SDT"
+      },
+      "Outcome": {
+        "Message": "On a given record, the value of ASPRSDT is not equal to the value of variable PxxSwSDT where xx equals the value of APERIOD and w equals the value of ASPER",
+        "Output_Variables": [
+          "APERIOD",
+          "ASPER",
+          "ASPRSDT",
+          "ADSL.P${*}S${*}SDT"
+        ]
+      }
+    },
+    "CDISC-AD0604": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR604",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR604",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0604",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when, on a BDS or OCCDS record where APHASEN is not present, PHSDT does not equal any ADSL variable PHwSDT (for any w) for the same USUBJID.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "BASIC DATA STRUCTURE",
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "ADSL",
+          "Keys": [
+            "USUBJID"
+          ]
+        }
+      ],
+      "Check": {
+        "expression": "not var_exists(\"APHASEN\") and not empty(PHSDT) and PHSDT not in ADSL.PH${*}SDT"
+      },
+      "Outcome": {
+        "Message": "On a given record, APHASEN is not present and the value of PHSDT is not equal to the value of at least one PHwSDT variable",
+        "Output_Variables": [
+          "PHSDT"
+        ]
+      }
+    },
+    "CDISC-AD0605": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR605",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR605",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0605",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when, on a BDS or OCCDS record where APHASEN is populated, PHSDT does not equal the ADSL variable PHwSDT for the same USUBJID (where w equals the record's APHASEN value).",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "BASIC DATA STRUCTURE",
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "ADSL",
+          "Keys": [
+            "USUBJID"
+          ]
+        }
+      ],
+      "Check": {
+        "expression": "not empty(APHASEN) and not empty(PHSDT) and PHSDT != ADSL.PH${APHASEN:%d}SDT"
+      },
+      "Outcome": {
+        "Message": "On a given record, APHASEN is populated and the value of PHSDT is not equal to the value of variable PHwSDT where w equals the value of APHASEN",
+        "Output_Variables": [
+          "APHASEN",
+          "PHSDT",
+          "ADSL.PH${*}SDT"
+        ]
+      }
+    },
+    "CDISC-AD0640": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR640",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR640",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR640",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR640",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0640",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when SDTM SUPPAE contains a record whose QNAM equals AETRTEM for a subject but AETRTEM is not a column of the corresponding ADVERSE EVENT sub-class OCCDS (ADaM) dataset.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        },
+        "Subclasses": {
+          "Include": [
+            "ADVERSE EVENT"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "var_exists(AE.AETRTEM) and not var_exists(\"AETRTEM\")"
+      },
+      "Outcome": {
+        "Message": "AE.AETRTEM is present but AETRTEM is not present",
+        "Output_Variables": [
+          "AE.AETRTEM",
+          "AETRTEM"
+        ]
+      }
+    },
+    "CDISC-AD0641": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR641",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR641",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR641",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR641",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0641",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when the SDTM AE dataset contains the AESTDY column but AESTDY is not present in the ADAE dataset.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        },
+        "Subclasses": {
+          "Include": [
+            "ADVERSE EVENT"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "var_exists(AE.AESTDY) and not var_exists(\"AESTDY\")"
+      },
+      "Outcome": {
+        "Message": "AE.AESTDY is present but AESTDY is not present",
+        "Output_Variables": [
+          "AE.AESTDY",
+          "AESTDY"
+        ]
+      }
+    },
+    "CDISC-AD0642": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR642",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR642",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR642",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR642",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0642",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when the SDTM AE dataset contains the AEENDY column but AEENDY is not present in the ADAE dataset.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        },
+        "Subclasses": {
+          "Include": [
+            "ADVERSE EVENT"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "var_exists(AE.AEENDY) and not var_exists(\"AEENDY\")"
+      },
+      "Outcome": {
+        "Message": "AE.AEENDY is present but AEENDY is not present",
+        "Output_Variables": [
+          "AE.AEENDY",
+          "AEENDY"
+        ]
+      }
+    },
+    "CDISC-AD0643": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR643",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR643",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR643",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR643",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0643",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when the SDTM AE dataset contains the AEDUR column but AEDUR is not present in the ADAE dataset.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        },
+        "Subclasses": {
+          "Include": [
+            "ADVERSE EVENT"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "var_exists(AE.AEDUR) and not var_exists(\"AEDUR\")"
+      },
+      "Outcome": {
+        "Message": "AE.AEDUR is present but AEDUR is not present",
+        "Output_Variables": [
+          "AE.AEDUR",
+          "AEDUR"
+        ]
+      }
+    },
+    "CDISC-AD0644": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR644",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR644",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR644",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR644",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0644",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when the SDTM AE dataset contains the AESEV column but AESEV is not present in the ADAE dataset.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        },
+        "Subclasses": {
+          "Include": [
+            "ADVERSE EVENT"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "var_exists(AE.AESEV) and not var_exists(\"AESEV\")"
+      },
+      "Outcome": {
+        "Message": "AE.AESEV is present but AESEV is not present",
+        "Output_Variables": [
+          "AE.AESEV",
+          "AESEV"
+        ]
+      }
+    },
+    "CDISC-AD0645": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR645",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR645",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR645",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR645",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0645",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when the SDTM AE dataset contains the AETOXGR column but AETOXGR is not present in the ADAE dataset.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        },
+        "Subclasses": {
+          "Include": [
+            "ADVERSE EVENT"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "var_exists(AE.AETOXGR) and not var_exists(\"AETOXGR\")"
+      },
+      "Outcome": {
+        "Message": "AE.AETOXGR is present but AETOXGR is not present",
+        "Output_Variables": [
+          "AE.AETOXGR",
+          "AETOXGR"
+        ]
+      }
+    },
+    "CDISC-AD0646": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR646",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR646",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR646",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR646",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0646",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when AEACN is populated on at least one SDTM AE record but AEACN is not present in the ADAE dataset.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        },
+        "Subclasses": {
+          "Include": [
+            "ADVERSE EVENT"
+          ]
+        }
+      },
+      "Operations": [
+        {
+          "id": "$ae_aeacn_pop",
+          "expression": "record_count(AEACN, domain=\"AE\", filter=filter(AEACN=\"&\"))"
+        }
+      ],
+      "Check": {
+        "expression": "$ae_aeacn_pop > 0 and not var_exists(\"AEACN\")"
+      },
+      "Outcome": {
+        "Message": "AE.AEACN is present and populated on at least one record but AEACN is not present",
+        "Output_Variables": [
+          "$ae_aeacn_pop",
+          "AEACN"
+        ]
+      }
+    },
+    "CDISC-AD0706": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR706",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR706",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0706",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when a BDS or OCCDS record has a populated APERIOD value but the ADSL dataset contains no PxxSw variable for that xx=APERIOD value (for any w).",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "BASIC DATA STRUCTURE",
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "ADSL",
+          "Keys": [
+            "USUBJID"
+          ]
+        }
+      ],
+      "Check": {
+        "expression": "not empty(APERIOD) and not empty(ASPER) and not var_exists(ADSL.P${APERIOD:%02d}S${*})"
+      },
+      "Outcome": {
+        "Message": "For every unique xx value of APERIOD in BDS or OCCDS datasets, there is not a variable PxxSw",
+        "Output_Variables": [
+          "APERIOD",
+          "ASPER"
+        ]
+      }
+    },
+    "CDISC-AD0707": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR707",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR707",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0707",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when a BDS or OCCDS record has a populated ASPER value but the ADSL dataset contains no PxxSw variable for that w=ASPER value (for any xx).",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "BASIC DATA STRUCTURE",
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "ADSL",
+          "Keys": [
+            "USUBJID"
+          ]
+        }
+      ],
+      "Check": {
+        "expression": "not empty(APERIOD) and not empty(ASPER) and not var_exists(ADSL.P${*}S${ASPER:%d})"
+      },
+      "Outcome": {
+        "Message": "For every unique w value of ASPER in BDS or OCCDS datasets, there is not a variable PxxSw",
+        "Output_Variables": [
+          "APERIOD",
+          "ASPER"
+        ]
+      }
+    },
+    "CDISC-AD0735": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR735",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0735",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when, within a given value of PARAMCD, considering only records on which BASE or BASEC is populated, BASETYPE is populated on at least one record and not populated on at least one other record",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "BASIC DATA STRUCTURE"
+          ]
+        }
+      },
+      "Grouping": {
+        "Variables": [
+          "PARAMCD"
+        ]
+      },
+      "Operations": [
+        {
+          "id": "$basetype_mixed",
+          "expression": "has_mixed_emptiness_within_group(BASETYPE, group=[PARAMCD], qualifying_any_populated=[BASE, BASEC])"
+        }
+      ],
+      "Check": {
+        "expression": "$basetype_mixed == true"
+      },
+      "Outcome": {
+        "Message": "Within this PARAMCD, BASETYPE is populated on some records and not populated on others, among records where BASE or BASEC is populated",
+        "Output_Variables": [
+          "PARAMCD",
+          "BASE",
+          "BASEC",
+          "BASETYPE"
+        ]
+      }
+    },
+    "CDISC-AD0897": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR897",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR897",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.3",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR897",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0897",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when TRTA is populated and does not match any of the character actual treatment variable values in ADSL defined in the IG",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "BASIC DATA STRUCTURE",
+            "OCCURRENCE DATA STRUCTURE"
+          ]
+        }
+      },
+      "Match_Datasets": [
+        {
+          "Name": "ADSL",
+          "Keys": [
+            "USUBJID"
+          ]
+        }
+      ],
+      "Check": {
+        "expression": "not empty(TRTA) and TRTA != ADSL.TRTA and TRTA not in ADSL.TRT${*}A and TRTA not in ADSL.TRTAG${*} and TRTA not in ADSL.TR${*}AG${*}"
+      },
+      "Outcome": {
+        "Message": "TRTA is populated, but does not match any of the character actual treatment variable values in ADSL",
+        "Output_Variables": [
+          "TRTA"
+        ]
+      }
+    }
+  }
+}

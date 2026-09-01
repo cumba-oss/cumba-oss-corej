@@ -1,0 +1,465 @@
+{
+  "standards": [
+    {
+      "id": "sdtmig/3-2",
+      "role": "primary"
+    }
+  ],
+  "rules": {
+    "DRAFT-110004": {
+      "Authorities": [
+        {
+          "Organization": "FDA",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "Version": "3.2",
+              "References": [
+                {
+                  "Origin": "FDA Validator Rules",
+                  "Rule_Identifier": {
+                    "Id": "SD1331",
+                    "Version": "1"
+                  },
+                  "Version": "1.6"
+                }
+              ]
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.3",
+              "References": [
+                {
+                  "Origin": "FDA Validator Rules",
+                  "Rule_Identifier": {
+                    "Id": "SD1331",
+                    "Version": "1"
+                  },
+                  "Version": "1.6"
+                }
+              ]
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.4",
+              "References": [
+                {
+                  "Origin": "FDA Validator Rules",
+                  "Rule_Identifier": {
+                    "Id": "SD1331",
+                    "Version": "1"
+                  },
+                  "Version": "1.6"
+                }
+              ]
+            },
+            {
+              "Name": "SENDIG",
+              "Version": "3.0",
+              "References": [
+                {
+                  "Origin": "FDA Validator Rules",
+                  "Rule_Identifier": {
+                    "Id": "SD1331",
+                    "Version": "1"
+                  },
+                  "Version": "1.6"
+                }
+              ]
+            },
+            {
+              "Name": "SENDIG",
+              "Version": "3.1",
+              "References": [
+                {
+                  "Origin": "FDA Validator Rules",
+                  "Rule_Identifier": {
+                    "Id": "SD1331",
+                    "Version": "1"
+                  },
+                  "Version": "1.6"
+                }
+              ]
+            },
+            {
+              "Name": "SENDIG",
+              "Version": "3.1.1",
+              "References": [
+                {
+                  "Origin": "FDA Validator Rules",
+                  "Rule_Identifier": {
+                    "Id": "SD1331",
+                    "Version": "1"
+                  },
+                  "Version": "1.6"
+                }
+              ]
+            },
+            {
+              "Name": "SENDIG-GENETOX",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "FDA Validator Rules",
+                  "Rule_Identifier": {
+                    "Id": "SD1331",
+                    "Version": "1"
+                  },
+                  "Version": "1.6"
+                }
+              ]
+            },
+            {
+              "Name": "SENDIG-DART",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "FDA Validator Rules",
+                  "Rule_Identifier": {
+                    "Id": "SD1331",
+                    "Version": "1"
+                  },
+                  "Version": "1.6"
+                }
+              ]
+            },
+            {
+              "Name": "SENDIG-DART",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "FDA Validator Rules",
+                  "Rule_Identifier": {
+                    "Id": "SD1331",
+                    "Version": "1"
+                  },
+                  "Version": "1.6"
+                }
+              ]
+            },
+            {
+              "Name": "SENDIG-AR",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "FDA Validator Rules",
+                  "Rule_Identifier": {
+                    "Id": "SD1331",
+                    "Version": "1"
+                  },
+                  "Version": "1.6"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "DRAFT-110004",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when the Study Day of Start of Observation (--STDY) is greater than the Study Day of Visit/Collection/Exam (--DY).",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Classes": {
+          "Include": [
+            "EVENTS",
+            "INTERVENTIONS"
+          ]
+        },
+        "Domains": {
+          "Exclude": [
+            "BE"
+          ]
+        }
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "--DY",
+            "--STDY"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "not empty(--STDY) and not empty(--DY) and --STDY > --DY"
+      },
+      "Outcome": {
+        "Message": "--STDY is greater than --DY.",
+        "Output_Variables": [
+          "--DY",
+          "--STDY"
+        ]
+      }
+    },
+    "DRAFT-900001": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "Version": "3.4",
+              "References": []
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.3",
+              "References": []
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.2",
+              "References": []
+            },
+            {
+              "Name": "SENDIG",
+              "Version": "3.1.1",
+              "References": []
+            },
+            {
+              "Name": "TIG",
+              "Substandard": "SDTM",
+              "Version": "1.0",
+              "References": []
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "DRAFT-900001",
+        "Status": "Draft",
+        "Version": "1"
+      },
+      "Description": "Raise an error when --SOC is not empty but --SOCCD is missing or not present in dataset.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Classes": {
+          "Include": [
+            "EVENTS"
+          ]
+        },
+        "Use_Case": "INDH"
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "--SOC"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "not empty(--SOC) and empty(--SOCCD)"
+      },
+      "Outcome": {
+        "Message": "--SOC is not empty but --SOCCD is missing or not present in dataset.",
+        "Output_Variables": [
+          "--SOC",
+          "--SOCCD"
+        ]
+      }
+    },
+    "DRAFT-900002": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "Version": "3.4",
+              "References": []
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.3",
+              "References": []
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.2",
+              "References": []
+            },
+            {
+              "Name": "SENDIG",
+              "Version": "3.1.1",
+              "References": []
+            },
+            {
+              "Name": "TIG",
+              "Substandard": "SDTM",
+              "Version": "1.0",
+              "References": []
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "DRAFT-900002",
+        "Status": "Draft",
+        "Version": "1"
+      },
+      "Description": "Raise an error when --LLT is not empty but --LLTCD is missing or not present in dataset.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Classes": {
+          "Include": [
+            "EVENTS"
+          ]
+        },
+        "Use_Case": "INDH"
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "--LLT"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "not empty(--LLT) and empty(--LLTCD)"
+      },
+      "Outcome": {
+        "Message": "--LLT is not empty but --LLTCD is missing or not present in dataset.",
+        "Output_Variables": [
+          "--LLT",
+          "--LLTCD"
+        ]
+      }
+    },
+    "DRAFT-900003": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "Version": "3.4",
+              "References": []
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.3",
+              "References": []
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.2",
+              "References": []
+            },
+            {
+              "Name": "SENDIG",
+              "Version": "3.1.1",
+              "References": []
+            },
+            {
+              "Name": "TIG",
+              "Substandard": "SDTM",
+              "Version": "1.0",
+              "References": []
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "DRAFT-900003",
+        "Status": "Draft",
+        "Version": "1"
+      },
+      "Description": "Raise an error when --HLT is not empty but --HLTCD is missing or not present in dataset.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Classes": {
+          "Include": [
+            "EVENTS"
+          ]
+        },
+        "Use_Case": "INDH"
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "--HLT"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "not empty(--HLT) and empty(--HLTCD)"
+      },
+      "Outcome": {
+        "Message": "--HLT is not empty but --HLTCD is missing or not present in dataset.",
+        "Output_Variables": [
+          "--HLT",
+          "--HLTCD"
+        ]
+      }
+    },
+    "DRAFT-900004": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "Version": "3.4",
+              "References": []
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.3",
+              "References": []
+            },
+            {
+              "Name": "SDTMIG",
+              "Version": "3.2",
+              "References": []
+            },
+            {
+              "Name": "SENDIG",
+              "Version": "3.1.1",
+              "References": []
+            },
+            {
+              "Name": "TIG",
+              "Substandard": "SDTM",
+              "Version": "1.0",
+              "References": []
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "DRAFT-900004",
+        "Status": "Draft",
+        "Version": "1"
+      },
+      "Description": "Raise an error when --HLGT is not empty but --HLGTCD is missing or not present in dataset.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Classes": {
+          "Include": [
+            "EVENTS"
+          ]
+        },
+        "Use_Case": "INDH"
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "--HLGT"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "not empty(--HLGT) and empty(--HLGTCD)"
+      },
+      "Outcome": {
+        "Message": "--HLGT is not empty but --HLGTCD is missing or not present in dataset.",
+        "Output_Variables": [
+          "--HLGT",
+          "--HLGTCD"
+        ]
+      }
+    }
+  }
+}

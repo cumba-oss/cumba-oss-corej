@@ -1,0 +1,38 @@
+Core:
+  Id: "PMDA-AD0283"
+  Status: "Published"
+  Version: "1"
+Description: "Raise an error when, considering only records on which ASEV is populated,\
+  \ the ASEV variable is not uniquely determined by ASEVN within the dataset: a single\
+  \ value of ASEVN maps to more than one value of ASEV."
+Executability: "Partially Executable"
+ExecutabilityHint:
+  Category: "partially executable"
+  Detail: "The sheet's 'inconsistent across studies' intent is reinterpreted as a\
+    \ within-dataset unique-relationship check between the char/numeric pair ASEV/ASEVN\
+    \ (has_multiple_values_for); the cross-study scope is not evaluated."
+Scope:
+  Data_Structures:
+    Include:
+    - "BASIC DATA STRUCTURE"
+    - "OCCURRENCE DATA STRUCTURE"
+Check:
+  expression: >-
+    not empty(ASEV) and has_multiple_values_for(ASEV, ASEVN)
+Outcome:
+  Message: "There is more than one value of ASEV for a given value of ASEVN (within\
+    \ the dataset)."
+  Output_Variables:
+  - "ASEV"
+  - "ASEVN"
+Standards:
+- Organization: "PMDA"
+  Standards:
+  - Name: "ADaMIG"
+    Version: "1.0"
+    References:
+    - Origin: "PMDA Validation Rules"
+      Rule_Identifier:
+        Id: "AD0283"
+        Version: "1"
+      Version: "6.0"

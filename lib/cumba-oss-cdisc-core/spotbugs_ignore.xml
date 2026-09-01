@@ -1,0 +1,548 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+
+    <!-- ================================================================ -->
+    <!-- 1. Generic project-wide FP categories                            -->
+    <!--    Every instance of these patterns is structurally an FP in     -->
+    <!--    this codebase by project convention. Only categories with     -->
+    <!--    at least one finding in this module are listed.               -->
+    <!-- ================================================================ -->
+
+    <Match>
+        <!-- PZLA_PREFER_ZERO_LENGTH_ARRAYS: codebase chose null sentinels
+             for "not found" vs empty result (style preference); changing
+             to zero-length arrays would destroy the documented signal. -->
+        <Bug pattern="PZLA_PREFER_ZERO_LENGTH_ARRAYS" />
+    </Match>
+
+    <Match>
+        <!-- REC_CATCH_EXCEPTION: library-boundary normalisation is
+             intentional; catch (Exception) wraps unknown JDK / library
+             failures into project-typed exceptions or fallback values. -->
+        <Bug pattern="REC_CATCH_EXCEPTION" />
+    </Match>
+
+    <Match>
+        <!-- THROWS_METHOD_THROWS_RUNTIMEEXCEPTION: established project
+             pattern (LazyValue.get, parser-style rethrows); declaring
+             the unchecked throws makes the contract visible to callers. -->
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+    </Match>
+
+    <Match>
+        <!-- UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR: Jackson
+             @Data @NoArgsConstructor DTOs and Lombok builder beans
+             populate fields post-construction rather than in the
+             constructor; project-wide convention. -->
+        <Bug pattern="UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR" />
+    </Match>
+
+    <!-- ================================================================ -->
+    <!-- 2. Targeted suppressions                                         -->
+    <!--    One <Match> per unique (class, method-or-field, bug pattern)  -->
+    <!--    tuple. Multiple findings sharing the same tuple collapse into -->
+    <!--    one Match (filter has no line-level scope).                   -->
+    <!-- ================================================================ -->
+
+    <!-- J5 IDVARVAL coercion: an exact integral test (d == Math.floor(d))
+         is intentional and correct here — it canonicalises a numeric join
+         token to its long form only when the double is EXACTLY integral
+         (mirrors DataValueDouble.getValueAsString trimming "1.0"->"1"). An
+         epsilon compare would mis-canonicalise near-integral values; the
+         range guard (< 2^53) keeps the floor exact. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.ChildMatchIndex" />
+        <Method name="normalizeJoinToken" />
+        <Bug pattern="FE_FLOATING_POINT_EQUALITY" />
+    </Match>
+
+    <!-- CDISC rule engine: case folding is applied to standard names
+         ("sdtmig","adamig"), domain codes (SDTM 2-letter), variable names
+         (SAS-style, <=32 ASCII chars), CT package types, JSON CheckOperator
+         tokens, and Pascal_Case rule-model keys. All are ASCII per
+         CDISC SDTMIG / ADaMIG / CT spec; locale-insensitive folding is
+         intentional. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.CheckConditionOptimizer" />
+        <Method name="evaluateLeafAgainstMetadata" />
+        <Bug pattern="DM_CONVERT_CASE" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.OperationExecutor" />
+        <Method name="applicableCtPackageTypes" />
+        <Bug pattern="DM_CONVERT_CASE" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.gen.RuleGenerator" />
+        <Method name="isAdamStandard" />
+        <Bug pattern="DM_CONVERT_CASE" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.gen.RuleGenerator" />
+        <Method name="mapComparator" />
+        <Bug pattern="DM_CONVERT_CASE" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.gen.RuleGenerator" />
+        <Method name="mapSimpleDatatype" />
+        <Bug pattern="DM_CONVERT_CASE" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.gen.RuleGenerator" />
+        <Method name="parseStructureKeys" />
+        <Bug pattern="DM_CONVERT_CASE" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportAssembler" />
+        <Method name="buildConformanceDetails" />
+        <Bug pattern="DM_CONVERT_CASE" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportAssembler" />
+        <Method name="buildIssueDetails" />
+        <Bug pattern="DM_CONVERT_CASE" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ValidationReportBuilder" />
+        <Method name="accumulatorFor" />
+        <Bug pattern="DM_CONVERT_CASE" />
+    </Match>
+
+    <!-- SharedJoinedIndex / GroupedResult / immutable rule records: the
+         engine intentionally shares internal arrays / collections between
+         records to keep the hot rule path allocation-free; consumers
+         treat them as read-only. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.DatasetLookup$SharedJoinedIndex" />
+        <Field name="joinedKeyColIds" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.DatasetLookup$SharedJoinedIndex" />
+        <Field name="lookup" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.GroupedResult" />
+        <Field name="groupColumns" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.GroupedResult" />
+        <Field name="results" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <!-- Violation$Unit$Group: the compact constructor stores an unmodifiable
+         null-tolerant copy of the grouping-key tuple, so the record accessor
+         returns an immutable list — same shape as VlmMatch below. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.Violation$Unit$Group" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+
+    <!-- VlmResolver: structuralWarnings is List.copyOf (immutable); VlmMatch copies its list
+         components in the compact constructor, so the record accessors return immutable lists. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.metadata.VlmResolver" />
+        <Field name="structuralWarnings" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.metadata.VlmResolver$VlmMatch" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.OperandSubstitutor$Scalar" />
+        <Field name="segments" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.OperandSubstitutor$Wildcard" />
+        <Field name="fragments" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.gen.GeneratedRulePackage" />
+        <Field name="report" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.gen.RuleGenerationReport" />
+        <Field name="generatedRules" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.gen.RuleGenerationReport" />
+        <Field name="skippedRules" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.gen.SkippedSourceRule" />
+        <Field name="rule" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.gen.WildcardExpander$ExpansionResult$Expanded" />
+        <Field name="rules" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportAssembler$IssueDetail" />
+        <Field name="values" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportAssembler$IssueDetail" />
+        <Field name="variables" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+
+    <!-- ReportSections: an internal read-only DTO carrying every report section
+         shared by the JSON and XLSX writers (the five Python sheets, the Java-only
+         Skipped_Rules, and the v2-only combinedFindings). Consumers
+         (XlsxReportWriter, JsonReportWriter, ReportStore) only read; same
+         convention as the sibling IssueDetail record above. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportSections" />
+        <Field name="conformanceDetails" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportSections" />
+        <Field name="datasetDetails" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportSections" />
+        <Field name="issueSummary" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportSections" />
+        <Field name="issueDetails" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportSections" />
+        <Field name="rulesReport" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportSections" />
+        <Field name="skippedRules" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportSections" />
+        <Field name="combinedFindings" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+
+    <!-- EI_EXPOSE_REP2 mirrors of the EI_EXPOSE_REP suppressions above:
+         same records, constructors store caller-supplied collections by
+         reference for the same allocation-free reason. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.DatasetLookup$SharedJoinedIndex" />
+        <Field name="joinedKeyColIds" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.DatasetLookup$SharedJoinedIndex" />
+        <Field name="lookup" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.GroupedResult" />
+        <Field name="groupColumns" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.GroupedResult" />
+        <Field name="results" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.OperandSubstitutor$Scalar" />
+        <Field name="segments" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.OperandSubstitutor$Wildcard" />
+        <Field name="fragments" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.gen.GeneratedRulePackage" />
+        <Field name="report" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.gen.RuleGenerator" />
+        <Field name="existingRuleIds" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.gen.SkippedSourceRule" />
+        <Field name="rule" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.gen.WildcardExpander$ExpansionResult$Expanded" />
+        <Field name="rules" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportAssembler$IssueDetail" />
+        <Field name="values" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportAssembler$IssueDetail" />
+        <Field name="variables" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportSections" />
+        <Field name="conformanceDetails" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportSections" />
+        <Field name="datasetDetails" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportSections" />
+        <Field name="issueSummary" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportSections" />
+        <Field name="issueDetails" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportSections" />
+        <Field name="rulesReport" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportSections" />
+        <Field name="skippedRules" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportSections" />
+        <Field name="combinedFindings" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+
+    <!-- FE_FLOATING_POINT_EQUALITY: zero / NaN sentinel checks and exact
+         round-trip comparisons against well-defined integral / sentinel
+         doubles; epsilon comparison would produce wrong answers here. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.LibraryRuleMapper" />
+        <Method name="mapLeafValue" />
+        <Bug pattern="FE_FLOATING_POINT_EQUALITY" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.OperandSubstitutor" />
+        <Method name="rawString" />
+        <Bug pattern="FE_FLOATING_POINT_EQUALITY" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.OperatorRegistry" />
+        <Method name="isIntegerValue" />
+        <Bug pattern="FE_FLOATING_POINT_EQUALITY" />
+    </Match>
+    <!-- ScalarSemantics holds the shared scalar parity helpers extracted from
+         OperatorRegistry; the exact equality / integral round-trip checks are
+         the same documented intentional comparisons as the OperatorRegistry
+         entries above. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.ScalarSemantics" />
+        <Method name="valueEquals" />
+        <Bug pattern="FE_FLOATING_POINT_EQUALITY" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.ScalarSemantics" />
+        <Method name="isIntegerString" />
+        <Bug pattern="FE_FLOATING_POINT_EQUALITY" />
+    </Match>
+    <!-- equalsNumericAware: numeric-mode equality (Phase 8) compares the two
+         parsed doubles for EXACT equality — the correct contract for == / !=
+         (an epsilon would wrongly equate distinct values); same intentional
+         comparison as valueEquals above. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.ScalarSemantics" />
+        <Method name="equalsNumericAware" />
+        <Bug pattern="FE_FLOATING_POINT_EQUALITY" />
+    </Match>
+
+    <!-- usubjId vs usubjid / filename vs fileName: unrelated nested
+         record accessors in different files; both follow their local
+         naming convention (CDISC variable name in lower case for the
+         RelrecLink record; CamelCase for the LibraryValidator record). -->
+    <Match>
+        <!-- Regex fallback: RelrecLookup$1RelrecLink is a local class
+             whose javac-synthesised name carries a numeric prefix. -->
+        <Class name="~net\.cumba\.cdisc\.core\.exec\.RelrecLookup\$[0-9]+RelrecLink" />
+        <Method name="usubjId" />
+        <Bug pattern="NM_CONFUSING" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.report.ReportAssembler$DatasetInfo" />
+        <Method name="filename" />
+        <Bug pattern="NM_CONFUSING" />
+    </Match>
+    <Match>
+        <!-- The OTHER half of the same filename/fileName pair. SpotBugs reports
+             NM_CONFUSING once per pair and attributes it to whichever of the two
+             classes it visits first, so suppressing one side is not enough:
+             renaming DatasetInfo's owner from JsonReportWriter to ReportAssembler
+             flipped the attribution here and the single suppression above stopped
+             matching. Both sides are listed so the pair stays suppressed however
+             SpotBugs orders them. -->
+        <Class name="net.cumba.cdisc.core.report.LibraryValidator$CohortRunCtx" />
+        <Method name="fileName" />
+        <Bug pattern="NM_CONFUSING" />
+    </Match>
+
+    <!-- Documented tri-state Boolean: null = "leaf cannot be evaluated
+         at this level". Refactor to Optional<Boolean> would ripple
+         through hot rule paths. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.CheckConditionOptimizer" />
+        <Method name="evaluateDatasetLeaf" />
+        <Bug pattern="NP_BOOLEAN_RETURN_NULL" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.CheckConditionOptimizer" />
+        <Method name="tryFoldOnMissingColumn" />
+        <Bug pattern="NP_BOOLEAN_RETURN_NULL" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.OperatorRegistry" />
+        <Method name="dottedExists" />
+        <Bug pattern="NP_BOOLEAN_RETURN_NULL" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.OperatorRegistry" />
+        <Method name="existsCommon" />
+        <Bug pattern="NP_BOOLEAN_RETURN_NULL" />
+    </Match>
+
+    <Match>
+        <!-- String.format is used purely to probe whether the format
+             string is valid; the return value is intentionally discarded. -->
+        <Class name="net.cumba.cdisc.core.exec.OperandSubstitutor" />
+        <Method name="validateFormatSpec" />
+        <Bug pattern="RV_RETURN_VALUE_IGNORED" />
+    </Match>
+
+    <!-- Java 21 arrow-form pattern switches never fall through; SpotBugs
+         doesn't understand the syntax. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.RulePackageLoader" />
+        <Method name="walkCheck" />
+        <Bug pattern="SF_SWITCH_FALLTHROUGH" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.exec.RuleRunner" />
+        <Method name="resolveDatasetPresence" />
+        <Bug pattern="SF_SWITCH_FALLTHROUGH" />
+    </Match>
+    <Match>
+        <Class name="net.cumba.cdisc.core.gen.WildcardExpander" />
+        <Method name="collectWildcardNamesRecursive" />
+        <Bug pattern="SF_SWITCH_FALLTHROUGH" />
+    </Match>
+
+    <!-- StudyValidationParams: the IDataTableManager is a shared service
+         collaborator, not a copyable value — the validation-params object
+         intentionally holds it and exposes it by reference (it is an
+         interface; there is nothing meaningful to defensively copy). -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.run.StudyValidationParams" />
+        <Method name="manager" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+
+    <Match>
+        <Class name="net.cumba.cdisc.core.run.StudyValidationParams$Builder" />
+        <Field name="manager" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+
+    <!-- Rule.effectiveOutputVariablesOrAuthored (EC-37): the effective list is installed by
+         RulePackageLoader.deriveOutputVariables as List.copyOf(...) — already immutable — and
+         the authored fallback exposes Outcome's own list exactly as the Lombok getter the
+         execution path read before EC-37. A defensive copy on this per-rule-execution hot
+         path would be pure allocation churn. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.model.Rule" />
+        <Method name="effectiveOutputVariablesOrAuthored" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+    <!-- Fix #354: the sibling exclusion set. Same contract — installed once by
+         RulePackageLoader.deriveOutputVariables as OutputVariableDeriver.excludedOf's
+         unmodifiable set, read by RuleRunner's fallbacks on every execution. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.model.Rule" />
+        <Method name="excludedOutputVariablesOrAuthored" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+
+    <!-- Rule.effectiveGroupingVariables (Grouping: block): the exact shape of the EC-37
+         sibling suppressed immediately above — a resolver that returns either the block's
+         list or the flat Grouping_Variables field, on the per-rule-execution path
+         (RuleRunner, RuleCohortGrouper, RuleClassifier). All 15 call sites read only:
+         they iterate it, addAll it, or pass it through Objects.requireNonNull; none
+         mutates. A defensive copy would be pure allocation churn on a hot path.
+         NOTE: unlike the EC-37 list, this one is NOT List.copyOf — it is Jackson's own
+         list — so the contract here is read-only-by-convention, not immutability. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.model.Rule" />
+        <Method name="effectiveGroupingVariables" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+
+    <!-- Plan C phase 4 — Rule.effectiveCheckLevels: the same hot-path accessor shape as the
+         EC-37 entries above, and here the collection is genuinely immutable, not merely
+         read-only by convention. setCheckLevels stores
+         Collections.unmodifiableSequencedMap(new LinkedHashMap<>(levels)) — a defensive copy on
+         the cold load/clone path — so the map this returns cannot be mutated through the
+         reference. SpotBugs cannot see through unmodifiableSequencedMap (it DOES see through
+         List.copyOf, which is why the sibling CheckLevelPlan.outputVariables finding
+         disappeared once that record copied). A defensive copy here would be pure allocation
+         churn on the per-rule-execution path. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.model.Rule" />
+        <Method name="effectiveCheckLevels" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+
+    <!-- Plan C phase 4 — RuleCheck.levels: identical contract one layer down. The record's
+         compact constructor wraps the deserialiser's mutable map in
+         Collections.unmodifiableSequencedMap(new LinkedHashMap<>(...)), so the accessor returns
+         an immutable view; only SpotBugs' inability to recognise that wrapper keeps the
+         finding alive. Mirrors the VlmResolver$VlmMatch entry above. -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.model.RuleCheck" />
+        <Method name="levels" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+
+    <!-- Documented tri-state Boolean, same convention as the four entries above:
+         null = "the rule is silent on keep_missings" and is a DIFFERENT state from both
+         TRUE and FALSE — silence resolves to the engine default, whereas an authored
+         false is an explicit author decision that the grouping policy records. Collapsing
+         null into false would erase exactly the distinction the Grouping: block exists to
+         express. Pinned by KeepMissingsDeclarationTest (assertNull on both silent shapes). -->
+    <Match>
+        <Class name="net.cumba.cdisc.core.model.Rule" />
+        <Method name="groupingKeepMissings" />
+        <Bug pattern="NP_BOOLEAN_RETURN_NULL" />
+    </Match>
+
+</FindBugsFilter>

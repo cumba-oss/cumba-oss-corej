@@ -1,0 +1,70 @@
+{
+  "standards": [
+    {
+      "id": "adam/adamig-1-1",
+      "role": "primary"
+    },
+    {
+      "id": "sdtmig/3-2",
+      "role": "companion"
+    }
+  ],
+  "rules": {
+    "CDISC-AD0734": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.1",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR734",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0734",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when, within a dataset, BASETYPE is populated for at least one record and not populated for at least one other record",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "BASIC DATA STRUCTURE"
+          ]
+        }
+      },
+      "Operations": [
+        {
+          "id": "$bt_pop",
+          "expression": "record_count(filter=filter(BASETYPE=\"&\"))"
+        },
+        {
+          "id": "$bt_total",
+          "expression": "record_count()"
+        }
+      ],
+      "Check": {
+        "expression": "$bt_pop > 0 and $bt_pop < $bt_total"
+      },
+      "Outcome": {
+        "Message": "BASETYPE is populated on some records and not populated on others within this dataset",
+        "Output_Variables": [
+          "BASETYPE"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ODM xmlns:def="http://www.cdisc.org/ns/def/v2.0" ODMVersion="1.3.2" FileType="Snapshot"
+     FileOID="DEF.EXT.ENUM" CreationDateTime="2026-01-01T00:00:00">
+  <Study OID="S1">
+    <MetaDataVersion OID="MDV.1" Name="Extended EnumeratedItem" DefineVersion="2.0.0"
+                     StandardName="SDTM-IG" StandardVersion="3.4">
+      <ItemGroupDef OID="IG.VS" Name="VS" Domain="VS" Repeating="Yes" Purpose="Tabulation"
+                    SASDatasetName="VS">
+        <ItemRef ItemOID="IT.VS.VSPOS" OrderNumber="1" Mandatory="No" Role="Qualifier"/>
+      </ItemGroupDef>
+      <ItemDef OID="IT.VS.VSPOS" Name="VSPOS" DataType="text" Length="20">
+        <Description><TranslatedText xml:lang="en">Position of Subject</TranslatedText></Description>
+        <CodeListRef CodeListOID="CL.POSITION"/>
+      </ItemDef>
+      <CodeList OID="CL.POSITION" Name="Position" DataType="text">
+        <EnumeratedItem CodedValue="SUPINE"/>
+        <EnumeratedItem CodedValue="HEADSTAND" def:ExtendedValue="Yes"/>
+        <Alias Context="nci:ExtCodeID" Name="C71148"/>
+      </CodeList>
+    </MetaDataVersion>
+  </Study>
+</ODM>

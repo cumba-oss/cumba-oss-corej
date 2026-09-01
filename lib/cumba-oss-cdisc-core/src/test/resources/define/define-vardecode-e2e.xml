@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ODM ODMVersion="1.3.2" FileType="Snapshot" FileOID="DEF.VARDECODE"
+     CreationDateTime="2026-01-01T00:00:00">
+  <Study OID="S1">
+    <MetaDataVersion OID="MDV.1" Name="Define Variable Decode Pairing" DefineVersion="2.0.0"
+                     StandardName="SDTM-IG" StandardVersion="3.4">
+      <!-- Fix #123 fixture. Every resolver path of define_variable_decode_matches:
+             PARAMCD/PARAM  - "CD" suffix, partner codelisted        -> confirmed
+             AVISITN/AVISIT - "N"  suffix, partner NOT codelisted     -> confirmed by observed values
+             ETCD/ELEMENT   - no shared stem                          -> confirmed by unique fallback
+             SHIFTN/SHIFT   - "N"  suffix, partner disagrees          -> confirmation FAILS
+             AGE            - no decode-carrying codelist             -> never evaluated       -->
+      <ItemGroupDef OID="IG.XX" Name="XX" Domain="XX" Repeating="Yes" Purpose="Tabulation"
+                    SASDatasetName="XX">
+        <ItemRef ItemOID="IT.XX.PARAMCD" OrderNumber="1" Mandatory="No" Role="Topic"/>
+        <ItemRef ItemOID="IT.XX.PARAM"   OrderNumber="2" Mandatory="No" Role="Synonym Qualifier"/>
+        <ItemRef ItemOID="IT.XX.AVISITN" OrderNumber="3" Mandatory="No" Role="Timing"/>
+        <ItemRef ItemOID="IT.XX.AVISIT"  OrderNumber="4" Mandatory="No" Role="Timing"/>
+        <ItemRef ItemOID="IT.XX.ETCD"    OrderNumber="5" Mandatory="No" Role="Topic"/>
+        <ItemRef ItemOID="IT.XX.ELEMENT" OrderNumber="6" Mandatory="No" Role="Synonym Qualifier"/>
+        <ItemRef ItemOID="IT.XX.SHIFTN"  OrderNumber="7" Mandatory="No" Role="Qualifier"/>
+        <ItemRef ItemOID="IT.XX.SHIFT"   OrderNumber="8" Mandatory="No" Role="Qualifier"/>
+        <ItemRef ItemOID="IT.XX.AGE"     OrderNumber="9" Mandatory="No" Role="Qualifier"/>
+      </ItemGroupDef>
+
+      <!-- "CD" suffix: both sides codelisted, coded values of PARAM == decodes of PARAMCD. -->
+      <ItemDef OID="IT.XX.PARAMCD" Name="PARAMCD" DataType="text" Length="8">
+        <CodeListRef CodeListOID="CL.PARAMCD"/>
+      </ItemDef>
+      <ItemDef OID="IT.XX.PARAM" Name="PARAM" DataType="text" Length="40">
+        <CodeListRef CodeListOID="CL.PARAM"/>
+      </ItemDef>
+
+      <!-- "N" suffix: AVISIT binds NO codelist, so confirmation falls back to observed values. -->
+      <ItemDef OID="IT.XX.AVISITN" Name="AVISITN" DataType="integer" Length="8">
+        <CodeListRef CodeListOID="CL.AVISITN"/>
+      </ItemDef>
+      <ItemDef OID="IT.XX.AVISIT" Name="AVISIT" DataType="text" Length="40"/>
+
+      <!-- No shared stem: stripping "CD" gives "ET", which is not a variable. -->
+      <ItemDef OID="IT.XX.ETCD" Name="ETCD" DataType="text" Length="8">
+        <CodeListRef CodeListOID="CL.ETCD"/>
+      </ItemDef>
+      <ItemDef OID="IT.XX.ELEMENT" Name="ELEMENT" DataType="text" Length="40">
+        <CodeListRef CodeListOID="CL.ELEMENT"/>
+      </ItemDef>
+
+      <!-- "N" suffix candidate whose codelist does NOT match the decodes -> not confirmed. -->
+      <ItemDef OID="IT.XX.SHIFTN" Name="SHIFTN" DataType="integer" Length="8">
+        <CodeListRef CodeListOID="CL.SHIFTN"/>
+      </ItemDef>
+      <ItemDef OID="IT.XX.SHIFT" Name="SHIFT" DataType="text" Length="40">
+        <CodeListRef CodeListOID="CL.SHIFT"/>
+      </ItemDef>
+
+      <!-- No codelist at all -> codelist_code_decode is "{}" -> never evaluated. -->
+      <ItemDef OID="IT.XX.AGE" Name="AGE" DataType="integer" Length="8"/>
+
+      <CodeList OID="CL.PARAMCD" Name="Parameter Code" DataType="text">
+        <CodeListItem CodedValue="ALB">
+          <Decode><TranslatedText xml:lang="en">Albumin</TranslatedText></Decode>
+        </CodeListItem>
+        <CodeListItem CodedValue="BILI">
+          <Decode><TranslatedText xml:lang="en">Bilirubin</TranslatedText></Decode>
+        </CodeListItem>
+      </CodeList>
+      <CodeList OID="CL.PARAM" Name="Parameter" DataType="text">
+        <EnumeratedItem CodedValue="Albumin"/>
+        <EnumeratedItem CodedValue="Bilirubin"/>
+      </CodeList>
+
+      <CodeList OID="CL.AVISITN" Name="Analysis Visit (N)" DataType="integer">
+        <CodeListItem CodedValue="0">
+          <Decode><TranslatedText xml:lang="en">Baseline</TranslatedText></Decode>
+        </CodeListItem>
+        <CodeListItem CodedValue="8">
+          <Decode><TranslatedText xml:lang="en">Week 8</TranslatedText></Decode>
+        </CodeListItem>
+      </CodeList>
+
+      <CodeList OID="CL.ETCD" Name="Element Code" DataType="text">
+        <CodeListItem CodedValue="SCRN">
+          <Decode><TranslatedText xml:lang="en">Screen</TranslatedText></Decode>
+        </CodeListItem>
+        <CodeListItem CodedValue="PBO">
+          <Decode><TranslatedText xml:lang="en">Placebo</TranslatedText></Decode>
+        </CodeListItem>
+      </CodeList>
+      <CodeList OID="CL.ELEMENT" Name="Element" DataType="text">
+        <EnumeratedItem CodedValue="Screen"/>
+        <EnumeratedItem CodedValue="Placebo"/>
+      </CodeList>
+
+      <CodeList OID="CL.SHIFTN" Name="Shift (N)" DataType="integer">
+        <CodeListItem CodedValue="1">
+          <Decode><TranslatedText xml:lang="en">Normal to High</TranslatedText></Decode>
+        </CodeListItem>
+      </CodeList>
+      <!-- Deliberately unrelated to CL.SHIFTN's decodes: confirmation must reject this pair. -->
+      <CodeList OID="CL.SHIFT" Name="Shift" DataType="text">
+        <EnumeratedItem CodedValue="SOMETHING ELSE"/>
+      </CodeList>
+    </MetaDataVersion>
+  </Study>
+</ODM>

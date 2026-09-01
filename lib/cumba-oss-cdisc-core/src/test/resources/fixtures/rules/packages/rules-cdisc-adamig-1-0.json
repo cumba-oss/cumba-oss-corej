@@ -1,0 +1,193 @@
+{
+  "standards": [
+    {
+      "id": "adam/adamig-1-0",
+      "role": "primary"
+    },
+    {
+      "id": "sdtmig/3-1-2",
+      "role": "companion"
+    }
+  ],
+  "rules": {
+    "CDISC-AD0059": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR59",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0059",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when a variable with a name ending in TM is not a numeric variable",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Domains": {
+          "Include": [
+            "ALL"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "ends_with(varname(), \"TM\") and var_type(\"DATA\") != \"Num\""
+      },
+      "Outcome": {
+        "Message": "This variable's name ends in TM, but it is not a numeric variable",
+        "Output_Variables": [
+          "variable_name",
+          "variable_data_type"
+        ]
+      }
+    },
+    "CDISC-AD0131": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR131",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            },
+            {
+              "Name": "ADaMIG",
+              "Version": "1.2",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR131",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0131",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when, within a given value of PARAMCD, BASETYPE is populated for at least one record and is not populated for at least one record.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "BASIC DATA STRUCTURE"
+          ]
+        }
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "BASETYPE"
+          ]
+        }
+      },
+      "Grouping": {
+        "Variables": [
+          "PARAMCD"
+        ]
+      },
+      "Operations": [
+        {
+          "id": "$basetype_mixed",
+          "expression": "has_mixed_emptiness_within_group(BASETYPE, group=[PARAMCD])"
+        }
+      ],
+      "Check": {
+        "expression": "$basetype_mixed == true"
+      },
+      "Outcome": {
+        "Message": "BASETYPE is populated for some records and not populated for others within this PARAMCD.",
+        "Output_Variables": [
+          "PARAMCD",
+          "BASETYPE"
+        ]
+      }
+    },
+    "CDISC-AD0148": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "ADaMIG",
+              "Version": "1.0",
+              "References": [
+                {
+                  "Origin": "ADaM Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CR148",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-AD0148",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when PARAMN is populated and is not an integer.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Data_Structures": {
+          "Include": [
+            "BASIC DATA STRUCTURE"
+          ]
+        }
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "PARAMN"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "not empty(PARAMN) and not is_integer(PARAMN)"
+      },
+      "Outcome": {
+        "Message": "PARAMN is populated but is not an integer value.",
+        "Output_Variables": [
+          "PARAMN"
+        ]
+      }
+    }
+  }
+}

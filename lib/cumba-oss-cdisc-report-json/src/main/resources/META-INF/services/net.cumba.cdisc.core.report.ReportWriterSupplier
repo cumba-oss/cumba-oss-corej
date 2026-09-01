@@ -1,0 +1,5 @@
+# Report-writer registration for the corej report SPI (GenericServiceFactory, not
+# java.util.ServiceLoader — the resource format is identical).
+# Two formats, one module: v1 and v2 serialise the same assembled sections.
+net.cumba.cdisc.core.report.json.JsonReportWriterSupplier
+net.cumba.cdisc.core.report.json.JsonReportV2WriterSupplier
