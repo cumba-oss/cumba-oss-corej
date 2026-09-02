@@ -136,8 +136,8 @@ public final class AbsentDatasetSkip
      *
      * <p>
      * ⚠ This is a <b>pinned id set, deliberately not a re-derived predicate</b>. {@code Fix #207}
-     * (step 1) ships the derivation as {@code IntentAbsenceOptOut} in {@code corej-cdisc-rules}'s
-     * test sources, with its population landed at
+     * (step 1) ships the derivation as {@code IntentAbsenceOptOut} in
+     * {@code cumba-oss-cdisc-rules}'s test sources, with its population landed at
      * {@code documentation/derivation/intent-absence-opt-out.tsv} and asserted by
      * {@code IntentAbsenceOptOutLintTest} on every build. That predicate is <b>structural over the
      * AUTHORED view and is not implementable here</b>: the shipped corpus lowers {@code Check} to

@@ -103,7 +103,7 @@ public class RuleTestScenario
     /**
      * Value of the {@code #dictionaries} directive, or {@code null} when the scenario does not use
      * external dictionaries. The only accepted value today is {@code "dummy"} — the checked-in
-     * dummy dictionary bundle ({@code lib/corej-cdisc-core/dictionaries}); the scenario runner
+     * dummy dictionary bundle ({@code lib/cumba-oss-cdisc-core/dictionaries}); the scenario runner
      * resolves it to a {@code RuntimeDictionaryProvider} and hands it to the engine. Without the
      * directive no provider is supplied, so a dictionary-dependent rule SKIPs — for the declared
      * ({@code $}-ref) form every shipped rule uses, via {@code RuleRunner}'s eager dictionary arm
@@ -127,7 +127,7 @@ public class RuleTestScenario
     net.cumba.datatable.report.@Nullable Severity runLevel;
 
     /**
-     * The dataset whose name equals {@link #getDomain()} (case-insensitive).
+     * The dataset whose name equals {@code getDomain()} (case-insensitive).
      *
      * @return the primary table, or {@code null} if the domain does not match any declared dataset
      *         (the parser should already reject that case at load time).
@@ -151,7 +151,7 @@ public class RuleTestScenario
 
 
     /**
-     * Resolver built from {@link #getDatasets()}, keyed by dataset name (uppercase). Unrelated
+     * Resolver built from {@code getDatasets()}, keyed by dataset name (uppercase). Unrelated
      * domain references resolve to {@code null}; the inventory reports exactly the declared dataset
      * names.
      */

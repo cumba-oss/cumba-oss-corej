@@ -23,7 +23,7 @@ import net.cumba.datatable.io.Property;
  *
  * <p>
  * One supplier declares exactly one format. A module serving two formats — as
- * {@code corej-cdisc-report-json} does with {@code json} and {@code json-2} — registers two
+ * {@code cumba-oss-cdisc-report-json} does with {@code json} and {@code json-2} — registers two
  * suppliers, because {@link ReportManager} routes by {@link ReportFormat#name()} and a supplier
  * with two names could not be looked up.
  * </p>

@@ -172,8 +172,8 @@ public final class ExprCompiler
      *
      * <p>
      * Public because the expression-syntax documentation gate
-     * ({@code net.cumba.cdisc.core.doc.ExpressionCheckSpecDriftTest} in {@code corej-cdisc-rules})
-     * asserts every name here is documented in
+     * ({@code net.cumba.cdisc.core.doc.ExpressionCheckSpecDriftTest} in
+     * {@code cumba-oss-cdisc-rules}) asserts every name here is documented in
      * {@code documentation/CORE-EXPRESSION-CHECK-SPECIFICATION.md} — the same single-sourcing
      * stance as {@link net.cumba.cdisc.core.expr.eval.BroadcastFold#WHOLE_COLUMN_VERDICT_OPERATORS}
      * (see {@code plans/done/PLAN-expression-docs-restructure.md} §4).

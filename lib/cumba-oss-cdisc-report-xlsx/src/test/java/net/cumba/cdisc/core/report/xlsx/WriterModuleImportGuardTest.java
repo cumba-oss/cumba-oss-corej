@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
  * <p>
  * The report SPI lives <em>inside</em> the engine (owner ruling, 2026-08-12), so the build cannot
  * prove that a writer module touches only SPI surface: this module compiles against the whole of
- * {@code corej-cdisc-core} and javac will not object if a writer reaches into {@code exec/} or
+ * {@code cumba-oss-cdisc-core} and javac will not object if a writer reaches into {@code exec/} or
  * {@code model/}. The boundary is therefore a convention — and this project's own record is that an
  * unenforced convention rots (the "a guard must sit in the top-level {@code all}" rule stood five
  * days with nothing checking it, and wave-35 lane D then found five shipped violations).

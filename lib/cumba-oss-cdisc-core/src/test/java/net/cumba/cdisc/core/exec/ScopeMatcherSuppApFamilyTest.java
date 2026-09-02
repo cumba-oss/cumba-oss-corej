@@ -33,8 +33,8 @@ import org.junit.jupiter.api.Test;
  * <em>cannot</em> prove on their own is the step before the matcher: every call below hands
  * {@code unsplitName} in as a <b>string literal</b>, so nothing here shows that a real
  * {@code SUPPLBHM} dataset actually yields {@code SUPPLB} from its own columns. That link is made
- * by {@code ApSqDomainScopeFromDataTest} in {@code corej-cdisc-core-ruletest}, which derives the
- * base with {@link OperationExecutor#unsplitNameFromData} from ten committed {@code AP*} /
+ * by {@code ApSqDomainScopeFromDataTest} in {@code cumba-oss-cdisc-core-ruletest}, which derives
+ * the base with {@link OperationExecutor#unsplitNameFromData} from ten committed {@code AP*} /
  * {@code SQ*} / {@code SUPP*} dataset fixtures and also drives the selection end-to-end through
  * {@code RuleGenerator}. Keep the two in step.
  * </p>

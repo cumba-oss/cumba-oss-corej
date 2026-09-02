@@ -75,8 +75,8 @@ public class Rule
      * so ~3 473 of the 3 804 shipped rules carry no {@code Severity} key at all and
      * {@code Severity: "Error"} is not a legal shipped spelling — {@code RuleCanonicalizer} strips
      * it. That mirrors {@code ConformanceRule.effectiveSeverity()} in
-     * {@code corej-define-conformance}, which has shipped the same absent-means-ERROR convention on
-     * a sibling corpus.
+     * {@code cumba-oss-cdisc-define-conformance}, which has shipped the same absent-means-ERROR
+     * convention on a sibling corpus.
      * </p>
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
@@ -163,7 +163,7 @@ public class Rule
      *
      * <p>
      * &#9888;&#9888; <b>Every walker that validates or collects over a rule's Check must read this,
-     * not {@link #getCheck()}.</b> {@code getCheck()} is the strictest level alone; a gate that
+     * not {@code getCheck()}.</b> {@code getCheck()} is the strictest level alone; a gate that
      * reads it sees nothing of a weaker level, so a malformed operand, an undeclared provider
      * dependency or an unresolved wildcard sitting in an {@code INFO} level would load clean and
      * misbehave at runtime. Structural readers that genuinely want the rule's strongest statement
@@ -193,7 +193,7 @@ public class Rule
      *
      * <p>
      * Shorthand for {@code effectiveCheckLevels().values()} mapped to conditions; a one-element
-     * list holding exactly {@link #getCheck()} for every rule that authors a plain {@code Check:},
+     * list holding exactly {@code getCheck()} for every rule that authors a plain {@code Check:},
      * so widening a walker to it cannot change what that walker does on the shipped corpus.
      * </p>
      *
@@ -392,7 +392,7 @@ public class Rule
      * the block existed.
      *
      * <p>
-     * ⚠ Read this, not {@link #getGroupingVariables()}. The Lombok getter returns only the flat
+     * ⚠ Read this, not {@code getGroupingVariables()}. The Lombok getter returns only the flat
      * field and is now a partial view of the rule; it is retained because the generators and the
      * Python-facing legacy converter deliberately work in the flat shape.
      * </p>
@@ -673,8 +673,8 @@ public class Rule
      * the main Check is never evaluated.
      * <p>
      * Engine extension beyond the upstream rule format — specified in
-     * {@code corej-cdisc-rules/documentation/CORE-RULES-SPECIFICATION.md}. When absent (all
-     * currently-shipped rules), behaviour is unchanged.
+     * {@code the CORE rules specification}. When absent (all currently-shipped rules), behaviour is
+     * unchanged.
      * </p>
      */
     @JsonProperty("Precondition")
@@ -692,8 +692,7 @@ public class Rule
      * </p>
      * <p>
      * Engine extension beyond the upstream rule format; specified in
-     * {@code corej-cdisc-rules/documentation/CORE-RULES-SPECIFICATION.md}, Engine Fields &#167;
-     * {@code Expansion}.
+     * {@code the CORE rules specification}, Engine Fields &#167; {@code Expansion}.
      * </p>
      */
     @JsonProperty("Expansion")
@@ -717,8 +716,8 @@ public class Rule
      * </p>
      * <p>
      * Engine extension beyond the upstream rule format; specified in
-     * {@code corej-cdisc-rules/documentation/CORE-RULES-SPECIFICATION.md}, Engine Fields &#167;
-     * {@code wildcards}. Used by CDISC-AD0078 / CDISC-AD0079 ({@code "xx > 01"}).
+     * {@code the CORE rules specification}, Engine Fields &#167; {@code wildcards}. Used by
+     * CDISC-AD0078 / CDISC-AD0079 ({@code "xx > 01"}).
      * </p>
      */
     @JsonProperty("wildcards")
@@ -734,8 +733,7 @@ public class Rule
      * ADaM sheet's verbatim "Exceptions:" lists (e.g. AD0376 / AD1011).
      * <p>
      * Engine extension beyond the upstream rule format; specified in
-     * {@code corej-cdisc-rules/documentation/CORE-RULES-SPECIFICATION.md}, Engine Fields &#167;
-     * {@code wildcardExclude}.
+     * {@code the CORE rules specification}, Engine Fields &#167; {@code wildcardExclude}.
      * </p>
      */
     @JsonProperty("wildcardExclude")
@@ -749,8 +747,7 @@ public class Rule
      * requirement to look "explicitly at variable pairs defined in the CDISC standard documents".
      * <p>
      * Engine extension beyond the upstream rule format; specified in
-     * {@code corej-cdisc-rules/documentation/CORE-RULES-SPECIFICATION.md}, Engine Fields &#167;
-     * {@code wildcardPairCatalogue}.
+     * {@code the CORE rules specification}, Engine Fields &#167; {@code wildcardPairCatalogue}.
      * </p>
      */
     @JsonProperty("wildcardPairCatalogue")
@@ -1010,7 +1007,7 @@ public class Rule
      * {@code Core.Id} — while generated ({@link net.cumba.cdisc.core.gen.RuleGenerator}) and
      * CDISC-Library-sourced rules carry a synthetic {@code id} and may carry no {@code Core}.
      * Neither field alone identifies every rule, so callers that need "which rule is this, across
-     * datasets" must use this method and never {@link #getId()} directly.
+     * datasets" must use this method and never {@code getId()} directly.
      * </p>
      *
      * @return the rule's stable identity, or {@code null} when it carries neither a {@code Core.Id}

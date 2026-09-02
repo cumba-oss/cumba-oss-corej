@@ -12,6 +12,9 @@
     </parent>
 
     <artifactId>cumba-oss-cdisc-report-xlsx</artifactId>
+
+    <name>Cumba OSS coreJ :: XLSX Report Writer</name>
+    <url>https://github.com/cumba-oss/cumba-oss-corej</url>
     <packaging>jar</packaging>
 
     <inceptionYear>2026</inceptionYear>
@@ -38,7 +41,7 @@
         </dependency>
 
         <!-- Apache POI (full XSSF) - writes the template-driven XLSX validation report. Moved here
-             from corej-cdisc-core: the whole point of the module split is that the engine no longer
+             from cumba-oss-cdisc-core: the whole point of the module split is that the engine no longer
              carries an Excel writer. -->
         <dependency>
             <groupId>org.apache.poi</groupId>

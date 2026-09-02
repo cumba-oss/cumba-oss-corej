@@ -16,9 +16,9 @@ class VersionInfoTest
     @Test
     void forArtifact_loadsThisModulesFilteredVersion()
     {
-        VersionInfo info = VersionInfo.forArtifact("corej-cdisc-core");
+        VersionInfo info = VersionInfo.forArtifact("cumba-oss-cdisc-core");
 
-        assertEquals("corej-cdisc-core", info.artifactId());
+        assertEquals("cumba-oss-cdisc-core", info.artifactId());
         // version is filtered from ${project.version} (always resolved); never blank or a
         // placeholder
         assertFalse(info.version().isBlank(), "version should be filtered");

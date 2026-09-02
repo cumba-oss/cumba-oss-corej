@@ -877,7 +877,7 @@ class StudyValidationServiceTest
 
     // ------------------------------------------------------------------
     // Pickle-cache id helpers (pure logic; the pickle-cache-gated provider tests live in
-    // corej-cdisc-rules/StudyValidationServicePickleTest — PLAN-engine-rules-decoupling Q4)
+    // cumba-oss-cdisc-rules/StudyValidationServicePickleTest — PLAN-engine-rules-decoupling Q4)
     // ------------------------------------------------------------------
 
 

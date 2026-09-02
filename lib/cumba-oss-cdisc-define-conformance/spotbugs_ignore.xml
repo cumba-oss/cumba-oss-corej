@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-    Module-specific SpotBugs suppressions for corej-define-conformance.
+    Module-specific SpotBugs suppressions for cumba-oss-cdisc-define-conformance.
     Auto-wired by the parent pom's `spotbugs-module-ignore` profile, which
     activates on the existence of this file.
 -->

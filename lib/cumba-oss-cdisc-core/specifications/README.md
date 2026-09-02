@@ -73,24 +73,24 @@ controlled terminology extractions.
 
 ### Core Rules Engine
 
-> ⚠ **The rule documentation set does not live in this module.** It is
-> [`../../corej-cdisc-rules/documentation/`](../../corej-cdisc-rules/documentation/), and it has
+> ⚠ **The rule documentation set does not live in this module.** It is maintained with the
+> rule corpus and is not redistributed with this repository. It has
 > two layers plus a citing layer:
 >
-> * **structure** — [`CORE-RULES-SPECIFICATION.md`](../../corej-cdisc-rules/documentation/CORE-RULES-SPECIFICATION.md)
+> * **structure** — `CORE-RULES-SPECIFICATION.md`
 >   (which fields a rule has, the load and execution pipeline);
-> * **syntax** — [`CORE-EXPRESSION-CHECK-SPECIFICATION.md`](../../corej-cdisc-rules/documentation/CORE-EXPRESSION-CHECK-SPECIFICATION.md)
+> * **syntax** — `CORE-EXPRESSION-CHECK-SPECIFICATION.md`
 >   (every operator, function, accessor and operand form of a `Check`, registry-gated);
 > * **semantics / typing** — `operator-examples.md`, `function-examples.md`,
 >   `operand-type-examples.md`;
-> * **citing layer** — [`CORE-RULES-AUTHORING-GUIDELINES.md`](../../corej-cdisc-rules/documentation/CORE-RULES-AUTHORING-GUIDELINES.md)
->   (the `R-x.y` conventions), [`rule-review-manual.md`](../../corej-cdisc-rules/documentation/rule-review-manual.md),
->   [`rule-step-by-step.md`](../../corej-cdisc-rules/documentation/rule-step-by-step.md) and
->   [`CORE-RULES-GUARD-MATRIX.md`](../../corej-cdisc-rules/documentation/CORE-RULES-GUARD-MATRIX.md);
-> * plus [`DEFINE-XML-SPECIFICATION.md`](../../corej-cdisc-rules/documentation/DEFINE-XML-SPECIFICATION.md).
+> * **citing layer** — `CORE-RULES-AUTHORING-GUIDELINES.md`
+>   (the `R-x.y` conventions), `rule-review-manual.md`,
+>   `rule-step-by-step.md` and
+>   `CORE-RULES-GUARD-MATRIX.md`;
+> * plus `DEFINE-XML-SPECIFICATION.md`.
 >
 > **Two documents were deleted after absorption** and are indexed entry-by-entry in
-> [`expression-docs-disposition.md`](../../corej-cdisc-rules/documentation/expression-docs-disposition.md):
+> `expression-docs-disposition.md`:
 > `CORE-RULES-JAVA-EXTENSIONS.md` (dissolved into the two specifications) and **this module's own**
 > `documentation/expression-language-reference.md` (folded into the check-spec; its registry gate
 > `ExpressionDocCoverageTest` retired in the same change, superseded by

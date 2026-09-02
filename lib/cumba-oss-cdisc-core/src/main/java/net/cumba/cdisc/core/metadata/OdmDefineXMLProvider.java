@@ -292,8 +292,8 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
      * attribute as fallback. Empty when neither is declared (E2).
      *
      * <p>
-     * The {@code corej-cdisc-define} parser's {@code OriginDisambiguationModule} now separates the
-     * {@code ItemDef/@Origin} attribute from the {@code <def:Origin Type="…"/>} element, so
+     * The {@code cumba-oss-cdisc-define} parser's {@code OriginDisambiguationModule} now separates
+     * the {@code ItemDef/@Origin} attribute from the {@code <def:Origin Type="…"/>} element, so
      * {@link ItemDef#getOriginElement()} is populated for the element form and its {@code @Type} is
      * read below; the attribute form still resolves via {@link ItemDef#getOrigin()}.
      * </p>

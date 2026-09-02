@@ -19,8 +19,8 @@ import org.junit.jupiter.api.Test;
  * fixture tree under {@code src/test/resources/fixtures/rules/} must stay in lockstep with its
  * generated {@code manifest.json} — no orphan fixture files, no manifest id without a fixture, and
  * every trimmed package entry backed by a real file whose rules are declared. The fixtures are
- * (re)built from the corpus by {@code corej-cdisc-rules/scripts/build-core-fixtures.py}; byte-level
- * sync with the corpus is asserted on the corpus side ({@code RulesFixtureSyncTest}).
+ * (re)built from the corpus by {@code cumba-oss-cdisc-rules/scripts/build-core-fixtures.py};
+ * byte-level sync with the corpus is asserted on the corpus side ({@code RulesFixtureSyncTest}).
  */
 class FixtureCorpusIntegrityTest
 {
@@ -48,7 +48,7 @@ class FixtureCorpusIntegrityTest
         }
         assertEquals(declared, present,
                 "fixtures/rules/checks must hold exactly the manifest's b1_ids — rebuild via"
-                        + " corej-cdisc-rules/scripts/build-core-fixtures.py");
+                        + " cumba-oss-cdisc-rules/scripts/build-core-fixtures.py");
     }
 
 

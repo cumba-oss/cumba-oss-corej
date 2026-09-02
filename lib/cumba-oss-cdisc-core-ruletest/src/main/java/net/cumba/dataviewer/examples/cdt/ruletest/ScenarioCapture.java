@@ -52,14 +52,13 @@ import org.jspecify.annotations.Nullable;
  * {@code workingDirectory} it resolved beneath {@code target/test-cwd/}. Captured scenarios
  * therefore landed somewhere nothing reads, silently &mdash; the regenerate-with
  * {@code -Dgenerate.scenarios=true} procedure that ~23 suite javadocs describe was writing into the
- * void. The identical pair of bugs was fixed in the sibling {@link ScenarioTrimmer} by
- * {@code plans/done/PLAN-corej-restructure.md} §1, which left this one.
+ * void. The identical pair of bugs was fixed in the sibling {@code ScenarioTrimmer} during the
+ * coreJ restructure, which left this one.
  * </p>
  *
  * <p>
- * Plan reference: see §6 (Generator to migrate existing Java tests) of
- * {@code cdt-test-file-plan.md}. This implements Option A (runtime capture) — the simpler of the
- * two approaches the plan lays out.
+ * This implements runtime capture — the simpler of the two approaches considered, the other being
+ * static generation from the existing Java tests.
  * </p>
  */
 // Test fixture / helper exposing LinkedHashMap/LinkedHashSet for ordered iteration.
@@ -75,7 +74,7 @@ public final class ScenarioCapture
      * Path.of(null, ...) throws — which in a static initialiser would be an
      * ExceptionInInitializerError for every suite that merely calls isEnabled(), i.e. all of them.
      * The property names the MODULE being built, which for a capture run is always the module
-     * holding the suites (corej-cdisc-rules), so this lands in that module's own corpus.
+     * holding the suites (cumba-oss-cdisc-rules), so this lands in that module's own corpus.
      */
     private static Path resourceRoot()
     {
@@ -84,8 +83,8 @@ public final class ScenarioCapture
         {
             throw new IllegalStateException("The 'projectBasedir' system property is not set. "
                     + "Scenario capture writes into the running module's own test resources; "
-                    + "surefire sets this property, a bare IDE run does not. Run capture with: "
-                    + "mvn -P main -pl lib/corej-cdisc-rules test -Dgenerate.scenarios=true");
+                    + "surefire sets this property, a bare IDE run does not. Run capture under "
+                    + "surefire, or set -DprojectBasedir=<module dir> explicitly.");
         }
         return Path.of(base, "src/test/resources/net/cumba/cdisc/core/ruletestsuites");
     }

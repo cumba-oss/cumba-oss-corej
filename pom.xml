@@ -89,7 +89,7 @@
         <dependency.junit.jupiter.version>6.1.3</dependency.junit.jupiter.version>
         <dependency.mockito.version>5.23.0</dependency.mockito.version>
         <dependency.lombock.version>1.18.46</dependency.lombock.version>
-        <dependency.cumba-oss-commons.version>0.1.0</dependency.cumba-oss-commons.version>
+        <dependency.cumba-oss-commons.version>0.2.0</dependency.cumba-oss-commons.version>
         <dependency.cumba-oss-datatable.version>0.2.0</dependency.cumba-oss-datatable.version>
         <dependency.jackson.version>2.22.2</dependency.jackson.version>
         <dependency.pyrolite.version>1.5</dependency.pyrolite.version>
@@ -1231,6 +1231,11 @@
             <dependency><groupId>net.cumba</groupId><artifactId>cumba-oss-datatable-impl</artifactId><version>${dependency.cumba-oss-datatable.version}</version></dependency>
             <dependency><groupId>net.cumba</groupId><artifactId>cumba-oss-cdisc-define</artifactId><version>${dependency.cumba-oss-datatable.version}</version></dependency>
             <dependency><groupId>net.cumba</groupId><artifactId>cumba-oss-datatable-provider-define</artifactId><version>${dependency.cumba-oss-datatable.version}</version></dependency>
+            <dependency><groupId>net.cumba</groupId><artifactId>cumba-oss-datatable-provider-cdt</artifactId><version>${dependency.cumba-oss-datatable.version}</version></dependency>
+            <!-- Test helpers extracted from the engine 2026-09-01, published from the
+                 datatable repo since 0.2.0. cumba-oss-cdisc-core takes it at test scope;
+                 255 of its test files use MockTable or TestMetadataFixtures. -->
+            <dependency><groupId>net.cumba</groupId><artifactId>cumba-oss-datatable-testkit</artifactId><version>${dependency.cumba-oss-datatable.version}</version></dependency>
 
             <!-- === Third-party === -->
 
@@ -1370,6 +1375,20 @@
 
         <pluginManagement>
             <plugins>
+
+                <!-- Managed unconditionally, not only inside deploy-central:
+                     cumba-oss-cdisc-core declares a maven-javadoc-plugin block in
+                     <build><plugins> to carry its sourceFileExcludes (ExprLowering.java,
+                     a Lombok-generated signature javadoc cannot resolve). Without a
+                     managed version that block binds to whatever version the running
+                     Maven defaults to on the non-release path, while the release path
+                     uses 3.12.0 - two different javadoc engines against the same
+                     exclusion. Mirrors the internal corej parent. -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>${plugin.maven-javadoc-plugin.version}</version>
+                </plugin>
                 <plugin>
                     <artifactId>maven-resources-plugin</artifactId>
                     <version>${plugin.maven-resources-plugin.version}</version>
@@ -1755,6 +1774,38 @@
         </pluginManagement>
 
         <plugins>
+            <!--
+                Javadoc as a BUILD gate, not only a release step.
+                Added 2026-09-02 after three CI failures in one day that were invisible to
+                compile, tests, spotless, PMD and SpotBugs, and surfaced only at publish
+                time, after a tag was spent. Each was the same defect: a link to a
+                Lombok-generated member, which javadoc cannot resolve because it parses
+                source, not post-processor output.
+
+                javadoc-no-fork so it does not re-run the earlier lifecycle; bound to
+                package so the CI ladder's `mvn install` pass exercises it.
+                failOnError=true is the whole point: a run that only warns catches nothing.
+                doclint all,-missing keeps missing-@return quiet while still failing on
+                broken references.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>${plugin.maven-javadoc-plugin.version}</version>
+                <configuration>
+                    <failOnError>true</failOnError>
+                    <doclint>all,-missing</doclint>
+                    <quiet>true</quiet>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>javadoc-gate</id>
+                        <phase>package</phase>
+                        <goals><goal>javadoc-no-fork</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+
 
             <plugin>
                 <inherited>true</inherited>
@@ -1866,6 +1917,7 @@
 
     <reporting>
         <plugins>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-project-info-reports-plugin</artifactId>

@@ -47,7 +47,7 @@ public final class RuleEvaluator
     private static final String NCI_EXT_CODE_ID = "nci:ExtCodeID";
 
     // ConcurrentHashMap: a single RuleEvaluator may be reused across concurrent
-    // validate() calls (review-terminal-b N5); custom-check instances are stateless.
+    // validate() calls; custom-check instances are stateless.
     private final Map<String, CustomCheck> customChecks = new ConcurrentHashMap<>();
 
     public RuleResult evaluate(ConformanceRule aRule, DocumentContext aContext)

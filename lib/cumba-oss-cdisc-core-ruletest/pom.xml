@@ -30,13 +30,13 @@
         <!--
             This module is a test-harness framework (the RuleTestCdt loader,
             MapBackedLibraryMetadataProvider, the scenario resolvers) consumed by downstream test
-            modules. Some of its main sources are exercised by callers in corej-cdisc-rules
+            modules. Some of its main sources are exercised by callers in the rules module
             rather than by tests in this module itself, so the bundle-level coverage reads lower
             standalone than the work the code actually gets.
 
-            Ratcheted 0.40 -> 0.75 on 2026-09-01 (plans/done/PLAN-corej-restructure.md section 3).
+            Ratcheted 0.40 -> 0.75 on 2026-09-01 during the coreJ restructure.
             The old 0.40 was set when ScenarioTrimmer's 1 539 never-executed lines sat in this
-            module's main tree; they moved to corej-cdisc-rules' TEST tree, taking 1 708 of
+            module's main tree; they moved to the rules module's TEST tree, taking 1 708 of
             6 981 main lines (24%) with them. Measured immediately after the move: line coverage
             0.8012 (1 334 / 1 665), and 0.8000 (1 332 / 1 665) after section 1 additionally
             deleted RuleTestFactoryTest, which contributed 2 lines and 0 branches. The gate is
@@ -102,14 +102,14 @@
 
         <!-- Test scope only. This module's MAIN sources carry no JUnit at all: the
              @ExtendWith helpers (CdtResource / CdtResourceExtension) and the ScenarioTrimmer
-             developer tool moved to corej-cdisc-rules' test tree on 2026-09-01
-             (plans/done/PLAN-corej-restructure.md, sections 1-3). Its own tests still need the
+             developer tool moved to the rules module's test tree on 2026-09-01
+             during the coreJ restructure. Its own tests still need the
              Jupiter API for plain @Test. (An earlier draft said "for @TestFactory"; the one
              @TestFactory in this module, RuleTestFactoryTest, was itself deleted by section 1,
              the dependency is still required, just not for that reason.) Consumers get the
              three plain classes they actually
              import (RuleTestScenario / RuleTestCdt / CdtLoader) without JUnit on their
-             classpath; clients/corej-cdisc-rule-editor-rest was shipping JUnit to production
+             classpath; a downstream REST service was shipping JUnit to production
              for exactly that. -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>

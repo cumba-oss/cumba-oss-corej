@@ -57,12 +57,12 @@ public enum OperationType
      * {@code UNK}, a structurally-invalid date) makes the extreme undeterminable and the operation
      * emits no value for that group. That is EC-46 and it is <em>not</em> declarable — a value the
      * engine cannot place on a calendar can never be shown to win;</li>
-     * <li>a <b>missing</b> (empty) cell is skipped by default, and
-     * {@link Operation#getMissingValues missing_values} {@code : "indeterminate"} routes it into
-     * the same no-value outcome instead (EC-51 Half B). ⚠ Declaring it only reports through a
-     * <em>negative</em> consuming leaf: a {@code date_greater_than} / {@code date_less_than} /
-     * {@code equal_to} consumer reads "no value" as "no violation", so the declaration would
-     * silence the very check it is meant to sharpen. That combination is rejected at load.</li>
+     * <li>a <b>missing</b> (empty) cell is skipped by default, and {@code missing_values}
+     * {@code : "indeterminate"} routes it into the same no-value outcome instead (EC-51 Half B). ⚠
+     * Declaring it only reports through a <em>negative</em> consuming leaf: a
+     * {@code date_greater_than} / {@code date_less_than} / {@code equal_to} consumer reads "no
+     * value" as "no violation", so the declaration would silence the very check it is meant to
+     * sharpen. That combination is rejected at load.</li>
      * </ul>
      */
     MAX_DATE("max_date", EmptyResult.MISSING),
@@ -444,10 +444,10 @@ public enum OperationType
      * {@code group} key, sourced from the foreign {@code domain} dataset, joined back to each
      * record by the {@code group} key. The {@code reference_extreme} param selects which extreme:
      * the <em>earliest</em> ({@code "min"}, the default) or the <em>latest</em> ({@code "max"})
-     * value, and {@link Operation#getMissingValues missing_values} governs whether a missing
-     * candidate in that foreign column is skipped (the default) or makes the group's subtrahend
-     * undeterminable (EC-51 Half B) — Mode 2 only, since Mode 1's subtrahend is a same-record read
-     * and a missing one already yields no value for that row. The value is
+     * value, and {@code missing_values} governs whether a missing candidate in that foreign column
+     * is skipped (the default) or makes the group's subtrahend undeterminable (EC-51 Half B) — Mode
+     * 2 only, since Mode 1's subtrahend is a same-record read and a missing one already yields no
+     * value for that row. The value is
      * {@code DAYS.between(extreme(domain[reference]) over group, record[name]) +
      * offset}.</li>
      * </ul>

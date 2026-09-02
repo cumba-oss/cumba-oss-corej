@@ -34,9 +34,9 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * Engine extension beyond the upstream rule format; specified in
- * {@code corej-cdisc-rules/documentation/CORE-RULES-SPECIFICATION.md}, Engine Fields &#167;
- * {@code Expansion}. The Python reference engine ignores the block and therefore reads the template
- * literally — an accepted, filed divergence, not an accident.
+ * {@code the CORE rules specification}, Engine Fields &#167; {@code Expansion}. The Python
+ * reference engine ignores the block and therefore reads the template literally — an accepted,
+ * filed divergence, not an accident.
  * </p>
  */
 @Data

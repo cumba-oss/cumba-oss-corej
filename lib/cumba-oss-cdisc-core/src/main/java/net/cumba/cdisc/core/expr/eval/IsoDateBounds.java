@@ -609,6 +609,9 @@ public final class IsoDateBounds
      * directly instead of inferring it from the public result.
      * </p>
      */
+    // PMD false positive: AvoidUsingHardCodedIP matches the ISO clock literals ":59:59" /
+    // ":00:00" below against its IPv6 pattern. They are time-of-day suffixes, not addresses.
+    @SuppressWarnings("PMD.AvoidUsingHardCodedIP")
     static @Nullable String truncatedBound(String core, boolean high)
     {
         if (!CalendarDates.isValidDate(core))

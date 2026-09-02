@@ -12,6 +12,9 @@
     </parent>
 
     <artifactId>cumba-oss-cdisc-report-json</artifactId>
+
+    <name>Cumba OSS coreJ :: JSON Report Writer</name>
+    <url>https://github.com/cumba-oss/cumba-oss-corej</url>
     <packaging>jar</packaging>
 
     <inceptionYear>2026</inceptionYear>

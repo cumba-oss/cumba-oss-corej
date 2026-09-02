@@ -153,7 +153,7 @@ public final class CheckConditionTransformer
      * </p>
      * <p>
      * <b>It is unreachable from the shipped corpus, and deliberately left unguarded.</b> Every
-     * {@code Check} in {@code lib/corej-cdisc-rules/rules/} is in native expression form (measured
+     * {@code Check} in {@code the shipped rule corpus} is in native expression form (measured
      * 2026-08-08: 14039 of 14039), and {@link #transform} returns a
      * {@code CheckConditionExpression} untouched — so no shipped rule ever reaches this method, and
      * the expression pipeline does its own wildcard expansion over the {@code within=} keyword

@@ -517,9 +517,9 @@ class SeederEngineKeyAgreementTest
      * whole declared surface, pinned by
      * {@link #theRecordedEngineSurfaceCoversEveryCoreLibraryAccessMethod()}) and
      * {@code CdiscLibraryProviderBuilder}'s two non-degenerate branches. The CLI's
-     * {@code CdiscLibraryBackedLibraryProvider} lives downstream in {@code corej-cdisc-cli} and is
-     * out of reach here; its two call sites are {@code getSdtmVersion(.., true)} (the same shape
-     * covered below) and {@code getProducts()} (unseedable, as above).
+     * {@code CdiscLibraryBackedLibraryProvider} lives downstream in the CLI and is out of reach
+     * here; its two call sites are {@code getSdtmVersion(.., true)} (the same shape covered below)
+     * and {@code getProducts()} (unseedable, as above).
      * </p>
      */
     @Test

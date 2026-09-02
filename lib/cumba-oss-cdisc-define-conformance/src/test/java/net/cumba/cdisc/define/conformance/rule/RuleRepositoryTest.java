@@ -22,9 +22,9 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>
  * Every case here builds its own corpus in a {@code @TempDir}. It used to borrow the real shipped
  * corpus as a convenient non-empty directory, which made assertions depend on the corpus's size and
- * coupled this module's loader tests to a corpus that has since moved to {@code corej-cdisc-rules}
- * (PLAN-rules-module-consolidation D12). Synthetic corpora are both the necessary and the better
- * answer: the expected counts are now exact rather than relative.
+ * coupled this module's loader tests to a corpus that has since moved to
+ * {@code cumba-oss-cdisc-rules} (PLAN-rules-module-consolidation D12). Synthetic corpora are both
+ * the necessary and the better answer: the expected counts are now exact rather than relative.
  * </p>
  */
 class RuleRepositoryTest
@@ -266,7 +266,7 @@ class RuleRepositoryTest
 
     /*
      * everyCustomRuleClassResolvesFromTheExternalCorpus lived here until 2026-09-01. The corpus
-     * it read moved to corej-cdisc-rules (PLAN-rules-module-consolidation D12), and the assertion
+     * it read moved to cumba-oss-cdisc-rules (PLAN-rules-module-consolidation D12), and the assertion
      * moved with it as DefineRulePackageEquivalenceTest.everyCustomCheckClassInThePackagedCorpus-
      * Resolves — which is strictly stronger: it reads the SHIPPED packages rather than the
      * authored YAML, and it INSTANTIATES each class rather than only resolving it, so a class

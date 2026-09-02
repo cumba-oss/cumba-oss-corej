@@ -112,7 +112,7 @@ public final class ScalarSemantics
      * <p>
      * The predicate itself now lives on the datatable layer as
      * {@link IDataValue#isEmptyOrMissing()} (so {@code DataValueSupport} and the column
-     * implementations can reach it, which they cannot do for a {@code corej-cdisc-core} class);
+     * implementations can reach it, which they cannot do for a {@code cumba-oss-cdisc-core} class);
      * this method is the null-safe wrapper its callers already depend on.
      * </p>
      * <p>
@@ -792,10 +792,10 @@ public final class ScalarSemantics
      * <em>middle</em> unknown, so a legitimately partial {@code --DTC} was reported as an invalid
      * date. {@code plans/done/PLAN-partial-date-extreme-selection.md} (and the retired
      * {@code CORE-RULES-JAVA-EXTENSIONS.md} &#167;21, indexed in
-     * {@code corej-cdisc-rules/documentation/expression-docs-disposition.md} &#167;A) state that
-     * {@code --DTC} variables <b>legally</b> carry masked components, so that rejection was a false
-     * positive. &#9888; The name is now the contract: <em>this answers "is {@code s} a partial
-     * date", not "is {@code s} a truncation prefix"</em>. When you need the narrower question, ask
+     * {@code the expression-docs disposition note} &#167;A) state that {@code --DTC} variables
+     * <b>legally</b> carry masked components, so that rejection was a false positive. &#9888; The
+     * name is now the contract: <em>this answers "is {@code s} a partial date", not "is {@code s} a
+     * truncation prefix"</em>. When you need the narrower question, ask
      * {@link #isoComponents(String)} whether the layout it returns has an <em>interior</em>
      * {@link IsoDateComponents#ABSENT}, or ask {@link #isMaskedDate(String)} directly.
      * </p>

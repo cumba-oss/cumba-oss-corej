@@ -114,7 +114,7 @@ class ServiceReportManagerTest
     void theEngineAloneRegistersNoWriters()
     {
         assertTrue(new ServiceReportManager().getSupportedReportFormats().isEmpty(),
-                "corej-cdisc-core must ship no report writer of its own — a non-empty registry "
+                "cumba-oss-cdisc-core must ship no report writer of its own — a non-empty registry "
                         + "here means a writer module leaked onto the engine's own classpath");
     }
 
@@ -136,7 +136,7 @@ class ServiceReportManagerTest
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> manager.getReportWriter(xlsx, Map.of()));
         assertTrue(e.getMessage().contains("'xlsx'"), e.getMessage());
-        assertTrue(e.getMessage().contains("corej-cdisc-report-xlsx"), e.getMessage());
+        assertTrue(e.getMessage().contains("cumba-oss-cdisc-report-xlsx"), e.getMessage());
         assertTrue(e.getMessage().contains("Registered formats: none"), e.getMessage());
     }
 

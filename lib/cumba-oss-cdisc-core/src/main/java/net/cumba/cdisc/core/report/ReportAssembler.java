@@ -955,10 +955,11 @@ public final class ReportAssembler
      * This is the oracle for the {@code cdisc_rule_id} / {@code fda_rule_id} columns of the xlsx
      * Rules Report, of the JSON report's {@code Rules_Report}, and of {@code GET
      * /api/checks/{id}/rules}. It is <b>public rather than private</b> so
-     * {@code ReleasedRuleIdColumnsTest} (in {@code corej-cdisc-rules}, which owns the corpus) can
-     * assert that a released package and its authored source produce identical columns — the whole
-     * justification for the §10 strip of {@code plans/PLAN-rules-corpus-build-integration.md}.
-     * Computing the columns a second way in the test would have guarded the copy, not the code.
+     * {@code ReleasedRuleIdColumnsTest} (in {@code cumba-oss-cdisc-rules}, which owns the corpus)
+     * can assert that a released package and its authored source produce identical columns — the
+     * whole justification for the §10 strip of
+     * {@code plans/PLAN-rules-corpus-build-integration.md}. Computing the columns a second way in
+     * the test would have guarded the copy, not the code.
      * </p>
      *
      * @param rule
@@ -1391,7 +1392,7 @@ public final class ReportAssembler
          *
          * ⚠ This is an availability-for-visibility swap, not a pure NPE removal. Downstream
          * consumers were checked and all are null-tolerant, but one of them CHANGES BEHAVIOUR:
-         * DatasetGroupAssembler (corej-cdisc-rest) does `if (filename == null) continue;`, so a
+         * DatasetGroupAssembler (a downstream REST service) does `if (filename == null) continue;`, so a
          * non-file-backed dataset is now silently OMITTED from the REST grouped view where it
          * previously crashed report assembly outright. That is the better failure mode, but it
          * is a behaviour change and should not surprise anyone reading this later.

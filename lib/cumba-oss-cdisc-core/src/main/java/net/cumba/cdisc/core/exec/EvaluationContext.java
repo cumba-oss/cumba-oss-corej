@@ -233,7 +233,7 @@ public class EvaluationContext
      * Resolves a single variable by id, transparently unwrapping {@link LazyValue} wrappers.
      * Operation results live in the variables map as {@code LazyValue<Object>} instances (Fix #36)
      * so a never-read Operation never runs. Use this method for single-key reads; enumeration loops
-     * should keep using {@link #getVariables()} directly and unwrap per entry only when the entry's
+     * should keep using {@code getVariables()} directly and unwrap per entry only when the entry's
      * type is actually examined, otherwise iterating the map forces every Operation prematurely.
      */
     public @Nullable Object resolveVariable(@Nullable String id)

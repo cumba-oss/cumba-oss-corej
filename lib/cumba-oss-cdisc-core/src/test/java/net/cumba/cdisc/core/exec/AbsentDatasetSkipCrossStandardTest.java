@@ -45,8 +45,8 @@ import org.junit.jupiter.api.Test;
  * <li>every case is paired with a <b>control</b> that differs only in the cross-standard set, so a
  * test that would still pass with the mechanism removed is visible immediately;</li>
  * <li>the rule bodies are the <b>shipped</b> expression shapes, measured from
- * {@code lib/corej-cdisc-rules/rules/} on 2026-08-11 — note {@code var_exists}, not {@code exists}:
- * the authored {@code exists} operator lowers to {@code var_exists} in the shipped corpus.</li>
+ * {@code the shipped rule corpus} on 2026-08-11 — note {@code var_exists}, not {@code exists}: the
+ * authored {@code exists} operator lowers to {@code var_exists} in the shipped corpus.</li>
  * </ul>
  */
 class AbsentDatasetSkipCrossStandardTest

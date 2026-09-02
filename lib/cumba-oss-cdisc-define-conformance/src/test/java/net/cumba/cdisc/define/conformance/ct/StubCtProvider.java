@@ -2,9 +2,9 @@ package net.cumba.cdisc.define.conformance.ct;
 
 /*
  * ⚑ DUPLICATED, deliberately — see the copy in
- * lib/corej-cdisc-rules/src/test/.../ct/StubCtProvider.java, which serves the corpus-driven tests
- * that moved there with the corpus (PLAN-rules-module-consolidation D12). This copy stays because
- * ct/CtKindsTest, an engine unit test, still needs it here.
+ * lib/cumba-oss-cdisc-rules/src/test/.../ct/StubCtProvider.java, which serves the corpus-driven
+ * tests that moved there with the corpus (PLAN-rules-module-consolidation D12). This copy stays
+ * because ct/CtKindsTest, an engine unit test, still needs it here.
  */
 
 import java.util.Map;

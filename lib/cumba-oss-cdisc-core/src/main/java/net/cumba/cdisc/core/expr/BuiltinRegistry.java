@@ -112,7 +112,7 @@ public final class BuiltinRegistry
             // Fix #123: the variable-level Define-XML paired code/decode match (DRAFT-900025).
             // Mapped to a varname()-anchored call of the same name by MetadataOperandMapping;
             // Engine extension; see
-            // corej-cdisc-rules/documentation/CORE-EXPRESSION-CHECK-SPECIFICATION.md §9.
+            // the CORE expression-check specification §9.
             "define_variable_decode_matches");
 
     private BuiltinRegistry()

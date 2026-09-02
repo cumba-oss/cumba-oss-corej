@@ -108,7 +108,7 @@ class XlsxReportSpiTest
         ReportFormat json = new ReportFormat("json", "JSON", "json", ".json");
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> manager.getReportWriter(json, Map.of()));
-        assertTrue(e.getMessage().contains("corej-cdisc-report-json"), e.getMessage());
+        assertTrue(e.getMessage().contains("cumba-oss-cdisc-report-json"), e.getMessage());
     }
 
 

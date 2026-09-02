@@ -191,8 +191,8 @@ public final class ServiceReportManager implements ReportManager
     {
         String registered = suppliers.isEmpty() ? "none" : String.join(", ", suppliers.keySet());
         return "No report writer registered for format '" + aName
-                + "' — add a report-writer module to the classpath (corej-cdisc-report-json "
-                + "provides 'json' and 'json-2', corej-cdisc-report-xlsx provides 'xlsx'). "
+                + "' — add a report-writer module to the classpath (cumba-oss-cdisc-report-json "
+                + "provides 'json' and 'json-2', cumba-oss-cdisc-report-xlsx provides 'xlsx'). "
                 + "Registered formats: " + registered + ".";
     }
 

@@ -43,7 +43,7 @@ import org.junit.jupiter.params.provider.CsvSource;
  * strict. It shipped materially unexercised: {@code /data/testdata} carries <b>zero</b> {@code AP*}
  * and <b>zero</b> {@code SQ*} datasets (control: 24 {@code SUPP*}, including the split forms
  * {@code supplbch}/{@code supplbhe}/{@code supplbur}), and the existing unit coverage —
- * {@code ScopeMatcherSuppApFamilyTest} in {@code corej-cdisc-core} — hands
+ * {@code ScopeMatcherSuppApFamilyTest} in {@code cumba-oss-cdisc-core} — hands
  * {@link ScopeMatcher#describeDomainMismatch(Rule, String, String)} its {@code unsplitName}
  * argument as a <em>string literal</em>. That pins the matcher but proves nothing about the step
  * before it: that a real {@code SUPPLBHM} dataset actually <em>yields</em> {@code SUPPLB} from its

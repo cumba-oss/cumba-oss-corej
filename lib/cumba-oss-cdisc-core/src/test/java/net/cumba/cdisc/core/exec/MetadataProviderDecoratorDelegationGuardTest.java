@@ -56,7 +56,7 @@ import org.junit.jupiter.api.Test;
  * capability method, assert the delegate saw the same call with the same arguments — is strictly
  * harder to fool than any text scan, and it was the first thing tried. It cannot be written
  * <em>here</em>: two of the four decorators live in modules that depend on this one
- * ({@code CompositeMetadataProvider} in {@code corej-cdisc-rules}' test sources,
+ * ({@code CompositeMetadataProvider} in {@code cumba-oss-cdisc-rules}' test sources,
  * {@code ScenarioDeclaredScopeProvider}, likewise there), so they are not on this module's test
  * classpath and cannot be. Loading them out of a sibling module's {@code target/test-classes} would
  * make the guard pass vacuously whenever that module happened not to be built — the exact failure
@@ -104,14 +104,16 @@ class MetadataProviderDecoratorDelegationGuardTest
     private static final Path REPO_ROOT = findRepoRoot();
 
     /**
-     * The source trees scanned. Both module roots that hold Java: {@code lib} for the engine and
-     * its harnesses, {@code clients} for the CLI / REST / rule-editor front ends. ⚠ Test sources
+     * The source trees scanned. {@code lib} is the only module root that holds Java in this
+     * repository — the CLI / REST / rule-editor front ends under {@code clients} are not part of
+     * this open-source distribution, and {@link #providerSources()} asserts each root exists, so
+     * naming a root that is absent here would fail the guard rather than widen it. ⚠ Test sources
      * are scanned too (only {@code *Test.java} is skipped, see {@link #providerSources()}) —
      * {@code CompositeMetadataProvider} and {@code ScenarioDeclaredScopeProvider} are both
      * production-shaped harness components living under {@code src/test/java}, they are handed to
      * the engine on every spec / .cdt run, and they are the two that actually drifted.
      */
-    private static final List<String> SCAN_ROOTS = List.of("lib", "clients");
+    private static final List<String> SCAN_ROOTS = List.of("lib");
 
     private static Path findRepoRoot()
     {
@@ -119,7 +121,7 @@ class MetadataProviderDecoratorDelegationGuardTest
         while (dir != null)
         {
             if (Files.isDirectory(dir.resolve("lib")) && Files.isRegularFile(dir.resolve("pom.xml"))
-                    && Files.isDirectory(dir.resolve("lib").resolve("corej-cdisc-core")))
+                    && Files.isDirectory(dir.resolve("lib").resolve("cumba-oss-cdisc-core")))
             {
                 return dir;
             }
@@ -165,16 +167,28 @@ class MetadataProviderDecoratorDelegationGuardTest
             "MetadataLibraryProvider.java", Role.LEAF, //
             // the .cdt harness
             "MapBackedLibraryMetadataProvider.java", Role.LEAF, //
-            "ScenarioDeclaredScopeProvider.java", Role.DECORATOR, //
-            // the rulespec harness / test doubles
-            "CompositeMetadataProvider.java", Role.DECORATOR, //
-            "StubMetadataProvider.java", Role.LEAF, //
-            "MockLibraryProvider.java", Role.LEAF);
+            // test doubles
+            "StubMetadataProvider.java", Role.LEAF);
 
-    /** Floors, so a refactor that empties the population reds instead of passing vacuously. */
-    private static final int MIN_IMPLEMENTATIONS = 8;
+    /**
+     * Floors, so a refactor that empties the population reds instead of passing vacuously.
+     *
+     * <p>
+     * ⚠ These are <b>5 / 2</b> here and <b>8 / 4</b> in the internal monorepo, and the difference
+     * is population, not a lowered bar. This repository is a filtered extraction: it ships
+     * {@code lib} only, so the three implementations the internal pin also lists —
+     * {@code ScenarioDeclaredScopeProvider} and {@code CompositeMetadataProvider} (the .cdt and
+     * rulespec harnesses, which live with the rule corpus) and {@code MockLibraryProvider} — have
+     * no source here for the scan to find. The scan itself is unchanged and still sees every
+     * implementation this repository contains; {@link #PINNED} above lists exactly those five. ⛔ Do
+     * not raise these to match internal without first adding the missing sources, and do not lower
+     * them to silence a scan that has gone blind — that is what the message on the assertion warns
+     * about.
+     * </p>
+     */
+    private static final int MIN_IMPLEMENTATIONS = 5;
 
-    private static final int MIN_DECORATORS = 4;
+    private static final int MIN_DECORATORS = 2;
 
     /** The two-arg primary: {@code getXForStructure(String token, List<String> subclasses)}. */
     private static final String TWO_ARG = "(?<![\\w.])%s\\s*\\(\\s*String\\s+(\\w+)\\s*,"
@@ -793,9 +807,9 @@ class MetadataProviderDecoratorDelegationGuardTest
     /** {@code MetadataProvider.java} — the source the required set has to be derived from. */
     private static Path metadataProviderSource()
     {
-        Path p = REPO_ROOT.resolve("lib").resolve("corej-cdisc-core").resolve("src").resolve("main")
-                .resolve("java").resolve("net").resolve("cumba").resolve("cdisc").resolve("core")
-                .resolve("exec").resolve("MetadataProvider.java");
+        Path p = REPO_ROOT.resolve("lib").resolve("cumba-oss-cdisc-core").resolve("src")
+                .resolve("main").resolve("java").resolve("net").resolve("cumba").resolve("cdisc")
+                .resolve("core").resolve("exec").resolve("MetadataProvider.java");
         assertTrue(Files.isRegularFile(p),
                 p + " not found — the derivation would pass vacuously. If the interface moved, "
                         + "point this method at its new home.");

@@ -1457,9 +1457,9 @@ public class RulePackageLoader
      * {@code checkExpr} a loader-loaded rule would): raise the rule's Check to {@code Expr},
      * canonicalize its metadata operands (Epic B4 — uniformly, for every rule, since phase 4 of
      * {@code PLAN-leaf-scope-domain-inference.md}), install the expression when the native backend
-     * supports it, flag fold-equivalent broadcast verdicts (P3a) and cache the inferred
-     * {@linkplain Rule#getEvaluationDomain() evaluation domain} the runner dispatches on. No-op for
-     * a rule that already carries a {@code checkExpr}, has a {@code loadError} or has no Check.
+     * supports it, flag fold-equivalent broadcast verdicts (P3a) and cache the inferred evaluation
+     * domain ({@code Rule.getEvaluationDomain()}) the runner dispatches on. No-op for a rule that
+     * already carries a {@code checkExpr}, has a {@code loadError} or has no Check.
      */
     public static void installNativeExpr(@Nullable Rule rule)
     {
@@ -1692,8 +1692,8 @@ public class RulePackageLoader
     /**
      * Installs an <b>engine-internal</b> {@code Precondition} on an already-loaded rule, leaving it
      * in exactly the state {@code finishLoad} would have produced: the tree on
-     * {@link Rule#getPrecondition()} and, when it is a fold-equivalent broadcast verdict, its
-     * native form on {@link Rule#getPreconditionExpr()}.
+     * {@code Rule.getPrecondition()} and, when it is a fold-equivalent broadcast verdict, its
+     * native form on {@code Rule.getPreconditionExpr()}.
      *
      * <p>
      * ⭐ <b>This is the supported way to put a term on the {@code Precondition} tier, and since gate

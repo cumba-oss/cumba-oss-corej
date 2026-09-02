@@ -140,7 +140,7 @@ class Phase1PrepKindsTest
     @Test
     void existsGuardTreatsBlankAttributeAsMissing()
     {
-        // review-batch-b N3: a present-but-blank attribute must count as missing in
+        // A present-but-blank attribute must count as missing in
         // exists-guards, mirroring the check kinds' presence semantics.
         ConformanceRule rule = RuleRepository.parse("""
                 Rule_Id: "X-BLANK-GUARD"

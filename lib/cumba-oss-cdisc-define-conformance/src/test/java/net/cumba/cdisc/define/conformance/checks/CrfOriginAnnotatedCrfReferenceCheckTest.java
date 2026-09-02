@@ -87,7 +87,7 @@ class CrfOriginAnnotatedCrfReferenceCheckTest
         assertFalse(check.satisfied(originOf(ctx, "IT.WRONG"), ctx),
                 "a reference outside the AnnotatedCRF set fires");
         assertFalse(check.satisfied(originOf(ctx, "IT.NONE"), ctx),
-                "a qualifying Origin without any DocumentRef fires (review-pmda-p3 W1 shape)");
+                "a qualifying Origin without any DocumentRef fires");
         assertTrue(check.satisfied(originOf(ctx, "IT.BLANK"), ctx),
                 "a blank leafID is ignored (XSD presence defect, the pre-pass's beat)");
     }

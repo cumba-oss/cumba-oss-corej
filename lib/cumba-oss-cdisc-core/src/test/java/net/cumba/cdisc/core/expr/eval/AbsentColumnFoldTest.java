@@ -293,7 +293,7 @@ class AbsentColumnFoldTest
     //
     // ⚠ EVERY test in this block is SYNTHETIC and was NEUTER-VERIFIED (the change reverted to the
     // hard-coded `false`, each test watched go red, then restored). It has to be: `num(` has ZERO
-    // occurrences in the shipped lib/corej-cdisc-rules/rules/ corpus (measured against the same
+    // occurrences in the shipped the shipped rule corpus corpus (measured against the same
     // grep that finds `prefix(` 77×, `suffix(` 52× and `date(` 1292×), so the corpus cannot reach
     // any of this and a green suite on its own would prove nothing.
 

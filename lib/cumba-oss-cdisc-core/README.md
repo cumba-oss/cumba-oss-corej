@@ -1,4 +1,4 @@
-# corej-cdisc-core
+# cumba-oss-cdisc-core
 
 The CDISC validation rule engine: rule-package loader, check evaluator,
 operation executor, JSON report writer. The heart of the project.
@@ -7,9 +7,9 @@ operation executor, JSON report writer. The heart of the project.
 
 ```xml
 <dependency>
-    <groupId>net.cumba.corej</groupId>
-    <artifactId>corej-cdisc-core</artifactId>
-    <version>${corej.version}</version>
+    <groupId>net.cumba</groupId>
+    <artifactId>cumba-oss-cdisc-core</artifactId>
+    <version>0.2.0</version>
 </dependency>
 ```
 
@@ -20,12 +20,13 @@ operation executor, JSON report writer. The heart of the project.
 
 ## Dependencies
 
-| Module | Scope | Why |
+| Artifact | Scope | Why |
 |---|---|---|
-| `corej-datatable` | compile | the table / SPI contract the engine evaluates against |
-| `corej-datatable-impl` | compile | concrete table / buffer / view / index impls |
-| `corej-cdisc-library` | compile | rule-package loading (REST + DTO model) |
-| `corej-web-api` | compile | transitively needed by `corej-cdisc-library` |
+| `net.cumba:cumba-oss-datatable` | compile | the table / SPI contract the engine evaluates against |
+| `net.cumba:cumba-oss-datatable-impl` | compile | concrete table / buffer / view / index impls |
+| `net.cumba:cumba-oss-cdisc-library` | compile | rule-package loading (REST + DTO model) |
+| `net.cumba:cumba-oss-web-api` | compile | transitively needed by `cumba-oss-cdisc-library` |
+| `net.cumba:cumba-oss-cdisc-define` | compile | Define-XML object model used by the define-level checks |
 
 ## Notes
 
@@ -57,11 +58,10 @@ operation executor, JSON report writer. The heart of the project.
 
 ## Layout of test-only artifacts
 
-⚠ These live in the **`lib/corej-cdisc-rules`** module, not here — the spec
-harness moved out of `corej-cdisc-core`, and on 2026-09-01 the module that
-held it (`corej-cdisc-core-rulespec`, itself named `corej-cdisc-parity` until
-the wave-41 rename) was folded into `corej-cdisc-rules`, alongside the rule
-corpus its specs resolve against.
+⚠ These live with the **rule corpus**, which is distributed separately from
+this repository — not here. The spec harness moved out of the engine, and on
+2026-09-01 the module that held it was folded into the rules module, alongside
+the rule corpus its specs resolve against.
 
 - `rulespec/specs/` — 1048 YAML rule-execution specs
 - ⛔ `cdisc-rules-engine/` — the vendored Python fork, **removed** in

@@ -67,8 +67,8 @@ import org.junit.jupiter.api.Test;
  * reject the same input on this path — {@code RuleRunner} SKIPs a {@code define_*} rule outright
  * when no Define provider is present, and all six shipped rules of the family additionally guard on
  * {@code non_empty(define_dataset_*)}. A fixture that gets either wrong yields a green that pins
- * nothing. The artefact used here is the <b>CDISC MSG v2.0 Define-XML v2.1 sample</b>
- * ({@code lib/corej-cdisc-define/src/test/resources/convert/define-v21-sdtm.xml},
+ * nothing. The artefact used here is the <b>CDISC MSG v2.0 Define-XML v2.1 sample</b> (vendored
+ * into this module at {@code src/test/resources/convert/define-v21-sdtm.xml},
  * {@code Originator="CDISC MSG Team"}), which declares the {@code QS} domain as two submitted files
  * — {@code IG.QSPH} / {@code IG.QSSL}, both {@code Domain="QS"}, each with its own
  * {@code def:leaf href} and, decisively for this test, its <b>own label</b>. The provider is
@@ -140,8 +140,10 @@ class DefineSplitDatasetContractTest
     @BeforeAll
     static void parseTheRealDefineXml() throws IOException
     {
-        Path xml = Path.of(System.getProperty("projectBasedir"), "..", "corej-cdisc-define", "src",
-                "test", "resources", "convert", "define-v21-sdtm.xml").normalize();
+        // Module-local copy: the Define-XML model lives in a separate repository here, so this
+        // fixture is vendored into this module rather than reached for across the reactor.
+        Path xml = Path.of(System.getProperty("projectBasedir"), "src", "test", "resources",
+                "convert", "define-v21-sdtm.xml").normalize();
         assertTrue(Files.isRegularFile(xml), "MSG Define-XML 2.1 sample not found at " + xml
                 + " — this guard is worthless without the real artefact");
         try (InputStream in = Files.newInputStream(xml))

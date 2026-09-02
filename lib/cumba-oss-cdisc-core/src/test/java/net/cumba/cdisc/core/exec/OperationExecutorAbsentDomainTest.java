@@ -247,8 +247,8 @@ class OperationExecutorAbsentDomainTest
      * {@code LIBRARY_NOT_AVAILABLE} sentinel is about an unavailable <em>provider</em>, a different
      * cause from an absent dataset, and the two must not be collapsed. No shipped rule declares a
      * {@code domain:} on one of those operators (measured over {@code rules-src}, the generated
-     * {@code rules/} corpus and {@code corej-define-conformance}), so this arm documents a contract
-     * with an empty population rather than a behaviour anything relies on.
+     * {@code rules/} corpus and {@code cumba-oss-cdisc-define-conformance}), so this arm documents
+     * a contract with an empty population rather than a behaviour anything relies on.
      * </p>
      */
     @Test

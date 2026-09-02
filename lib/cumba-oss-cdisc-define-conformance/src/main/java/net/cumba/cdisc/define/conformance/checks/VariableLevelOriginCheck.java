@@ -10,11 +10,10 @@ import net.cumba.cdisc.define.conformance.tree.ElementNode;
  *
  * <p>
  * The rule's YAML guard already restricts the scope to Submission-context {@code ItemDef}s without
- * a {@code def:ValueListRef}. This check adds the spec's either-level placement exemption (p. 59;
- * review-batch-d WARN 2): an Origin-less ItemDef is conforming when it is a <b>value-level
- * member</b> — referenced by some {@code def:ValueListDef}'s {@code ItemRef} — because its Origin
- * obligation then lives at the value level (enforced by DEFINE-XML-0155/0155-B), not here. Custom
- * budget 2/15 (plan §11 Q4).
+ * a {@code def:ValueListRef}. This check adds the spec's either-level placement exemption (p. 59):
+ * an Origin-less ItemDef is conforming when it is a <b>value-level member</b> — referenced by some
+ * {@code def:ValueListDef}'s {@code ItemRef} — because its Origin obligation then lives at the
+ * value level (enforced by DEFINE-XML-0155/0155-B), not here. Custom budget 2/15 (plan §11 Q4).
  * </p>
  */
 public final class VariableLevelOriginCheck implements CustomCheck

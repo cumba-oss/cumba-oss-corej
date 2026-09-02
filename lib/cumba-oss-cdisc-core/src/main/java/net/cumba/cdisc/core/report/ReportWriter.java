@@ -9,8 +9,8 @@ import java.io.OutputStream;
  * <p>
  * A writer is obtained from {@link ReportManager}, never constructed by a consumer, so a format can
  * be added to a deployment by putting a module on the classpath. Implementations live in their own
- * modules ({@code corej-cdisc-report-json}, {@code corej-cdisc-report-xlsx}) and see nothing of the
- * engine beyond this package plus {@code net.cumba.datatable.io.Property}.
+ * modules ({@code cumba-oss-cdisc-report-json}, {@code cumba-oss-cdisc-report-xlsx}) and see
+ * nothing of the engine beyond this package plus {@code net.cumba.datatable.io.Property}.
  * </p>
  *
  * <p>

@@ -15,7 +15,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * T1 — an external medical-dictionary modelled as a simple <b>value-map</b>, loaded from the house
- * JSON format under {@code lib/corej-cdisc-core/dictionaries/}<i>type</i>{@code .json}. A
+ * JSON format under {@code lib/cumba-oss-cdisc-core/dictionaries/}<i>type</i>{@code .json}. A
  * dictionary reduces every dictionary conformance check to a lookup:
  *
  * <ul>
@@ -29,16 +29,17 @@ import org.jspecify.annotations.Nullable;
  * </ul>
  *
  * <p>
- * Small dummy maps are checked into the repository under {@code lib/corej-cdisc-core/dictionaries/}
- * so the dictionary conformance rules execute and the {@code .cdt} scenarios discriminate without
- * any licensed dictionary data present; real dictionary data is installed by the operator behind
- * the same file format ({@code plans/PLAN-dictionary-seeder.md}).
+ * Small dummy maps are checked into the repository under
+ * {@code lib/cumba-oss-cdisc-core/dictionaries/} so the dictionary conformance rules execute and
+ * the {@code .cdt} scenarios discriminate without any licensed dictionary data present; real
+ * dictionary data is installed by the operator behind the same file format
+ * ({@code plans/PLAN-dictionary-seeder.md}).
  * </p>
  *
  * <p>
  * <b>Readers of this format.</b> There are exactly two, both in this module: this class, and
  * {@code DictionaryValidationTest.caseContractViolations}, which walks the same four sections
- * independently to audit the preferred-case contract. Nothing outside {@code corej-cdisc-core}
+ * independently to audit the preferred-case contract. Nothing outside {@code cumba-oss-cdisc-core}
  * reads it. (Before {@code 987ab2ba1} this javadoc claimed the files were also read by a Python
  * reference engine's {@code ValueMapValidator} shim; that module was renamed away and no such
  * reader exists — the claim wrongly implied a cross-engine constraint on the format.)

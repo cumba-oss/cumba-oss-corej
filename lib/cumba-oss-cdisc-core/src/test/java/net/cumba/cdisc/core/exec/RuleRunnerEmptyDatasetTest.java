@@ -20,8 +20,7 @@ import org.junit.jupiter.api.Test;
 /**
  * Regression tests for rule execution against a 0-row dataset — the unit-level pin of the zero-row
  * policy ({@code PLAN-zero-row-routing-rekey.md}, owner rulings Q1 / Q5 / 6c-1, shipped as
- * {@code Fix #349} / {@code EC-89}; the policy text is
- * {@code lib/corej-cdisc-rules/documentation/zero-row-policy.md}).
+ * {@code Fix #349} / {@code EC-89}; the policy text is {@code the zero-row policy note}).
  *
  * <p>
  * The policy in one line: a zero-row dataset is an error case reported <b>once</b>, by the

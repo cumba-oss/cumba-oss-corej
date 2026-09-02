@@ -10,7 +10,7 @@ import org.jspecify.annotations.Nullable;
  * One expected violation <em>location</em>, parsed from a single {@code #expectViolationAt}
  * directive line. A scenario may carry several of these; together with an optional
  * {@code #expectViolationCount} they pin <em>where</em> a rule fires, not merely whether it fires
- * (see {@link RuleTestScenario#getExpectedViolations()}).
+ * (see {@code RuleTestScenario.getExpectedViolations()}).
  *
  * <p>
  * Addressing is deliberately twofold so one directive shape covers every rule class:

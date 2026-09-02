@@ -12,14 +12,17 @@
     </parent>
 
     <artifactId>cumba-oss-cdisc-core</artifactId>
+
+    <name>Cumba OSS coreJ :: CORE Engine</name>
+    <url>https://github.com/cumba-oss/cumba-oss-corej</url>
     <packaging>jar</packaging>
 
     <inceptionYear>2026</inceptionYear>
     <description>
         CDISC validation rule engine: rule-package loader, check evaluator,
         report assembler and the pluggable report-writer SPI. Ships NO report
-        writer of its own - json/json-2 and xlsx live in corej-cdisc-report-json
-        and corej-cdisc-report-xlsx - so the engine carries no Excel dependency.
+        writer of its own - json/json-2 and xlsx live in cumba-oss-cdisc-report-json
+        and cumba-oss-cdisc-report-xlsx - so the engine carries no Excel dependency.
         Ships the dataviewer's net.cumba.cdisc.core.* source verbatim.
     </description>
 
@@ -92,7 +95,7 @@
         </dependency>
 
         <!-- Define-XML object model + parser. Lightweight (model + jackson-xml); does not depend on
-             corej-cdisc-core, so no cycle. Lets the engine read define_* operands straight from the
+             cumba-oss-cdisc-core, so no cycle. Lets the engine read define_* operands straight from the
              parsed Define-XML (OdmDefineXMLProvider), bypassing the lossy Define-XML to
              IMetadataLibrary (datatable) conversion. See
              plans/PLAN-define-item-metadata-parity-929-1081.md. -->
@@ -107,7 +110,7 @@
              scope exists so DefineSplitDatasetContractTest can compose the define provider EXACTLY
              as production does (ODM-direct over the datatable-backed fallback) against a real
              Define-XML, rather than guarding a composition nobody runs. Acyclic: this module is not
-             a dependency of corej-datatable-provider-define. -->
+             a dependency of cumba-oss-datatable-provider-define. -->
         <dependency>
             <groupId>net.cumba</groupId>
             <artifactId>cumba-oss-datatable-provider-define</artifactId>
@@ -162,8 +165,8 @@
         </dependency>
         <!--
             MockTable / TestMetadataFixtures. Both were classes in THIS module's test tree until
-            2026-09-01, when plans/done/PLAN-corej-restructure.md section 4 moved them to
-            corej-datatable-testkit's MAIN tree, repackaged to net.cumba.datatable.testkit.
+            2026-09-01, when the coreJ restructure moved them to
+            cumba-oss-datatable-testkit's MAIN tree, repackaged to net.cumba.datatable.testkit.
             255 test files here use one or both.
         -->
         <dependency>
@@ -180,14 +183,14 @@
                      Publish this module's test helpers as a test-jar.
 
                      ⚠ As of 2026-09-01 this test-jar has ZERO consumers anywhere in the repo.
-                     corej-cdisc-rules was the only one and dropped it
-                     (plans/done/PLAN-corej-restructure.md section 4): MockTable and
-                     TestMetadataFixtures left for corej-datatable-testkit, StubMetadataProvider
-                     and SyntheticStringTable were copied into corej-cdisc-rules' own test tree.
+                     cumba-oss-cdisc-rules was the only one and dropped it
+                     (the coreJ restructure): MockTable and
+                     TestMetadataFixtures left for cumba-oss-datatable-testkit, StubMetadataProvider
+                     and SyntheticStringTable were copied into cumba-oss-cdisc-rules' own test tree.
                      A repo-wide sweep of every tracked pom finds no remaining
                      type=test-jar dependency other than the dependencyManagement entry.
 
-                     It is NOT kept for lib/corej-cdisc-parity, as an earlier draft of this
+                     It is NOT kept for the former parity module, as an earlier draft of this
                      comment claimed: that directory has zero git-tracked files and no pom.xml,
                      so it is untracked local scratch, not a Maven module.
 

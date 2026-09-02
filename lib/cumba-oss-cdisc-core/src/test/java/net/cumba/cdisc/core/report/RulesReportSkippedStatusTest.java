@@ -208,7 +208,7 @@ class RulesReportSkippedStatusTest
     }
 
     // ------------------------------------------------------------------
-    // C2 — the XLSX side of this behaviour is pinned in the corej-cdisc-report-xlsx module
+    // C2 — the XLSX side of this behaviour is pinned in the cumba-oss-cdisc-report-xlsx module
     // (RulesReportSkippedStatusXlsxTest): the writer left the engine in Fix #224, and an
     // engine test cannot reach it without recreating the POI dependency the split removed.
     // What stays here is the status derivation itself, asserted on the shared sections above.

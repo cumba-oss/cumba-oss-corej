@@ -67,6 +67,8 @@ class MetadataLibraryProviderMultiProductTest
 
 
     @SafeVarargs
+
+    @SuppressWarnings("varargs") // passes its own varargs array to List.of
     private static AdamProduct product(String name, Map<String, Object>... structures)
     {
         Map<String, Object> product = new LinkedHashMap<>();

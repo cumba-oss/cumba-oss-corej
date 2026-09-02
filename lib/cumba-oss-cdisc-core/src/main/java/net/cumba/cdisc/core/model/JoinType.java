@@ -6,7 +6,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The join types a {@code Match_Datasets} entry may declare — the closed vocabulary behind
- * {@link MatchDataset#getJoinType()} ({@code Fix #236}).
+ * {@code MatchDataset.getJoinType()} ({@code Fix #236}).
  *
  * <h2>Why an enum exists but the field stays a {@code String}</h2> {@code Join_Type} is authored as
  * free text and, until {@code Fix #236}, <b>nothing validated it</b>: the engine's only value

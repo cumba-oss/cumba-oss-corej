@@ -348,7 +348,7 @@ class XlsxReportWriterTest
     }
 
     // ------------------------------------------------------------------
-    // Relocated with the writer (Fix #224): these lived in corej-cdisc-core, where they can no
+    // Relocated with the writer (Fix #224): these lived in cumba-oss-cdisc-core, where they can no
     // longer reach the XLSX writer at all.
     // ------------------------------------------------------------------
 

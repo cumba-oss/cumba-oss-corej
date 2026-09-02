@@ -171,7 +171,7 @@ class StudyPseudoDomainReportTest
         assertTrue(json.contains("STUDY"), "the STUDY label is present");
     }
 
-    // The XLSX rendering of the same rows is pinned in the corej-cdisc-report-xlsx module
+    // The XLSX rendering of the same rows is pinned in the cumba-oss-cdisc-report-xlsx module
     // (XlsxReportWriterTest.rendersASyntheticStudyDomainRow): the writer left the engine in
     // Fix #224 and an engine test cannot reach it without recreating the POI dependency.
 
