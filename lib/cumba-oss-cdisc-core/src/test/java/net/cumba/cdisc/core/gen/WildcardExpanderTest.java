@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.node.IntNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import java.util.List;
 import java.util.Set;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.gen.WildcardExpander.WildcardPattern;
 import net.cumba.cdisc.core.model.CheckConditionAll;
 import net.cumba.cdisc.core.model.CheckConditionAny;
@@ -16,6 +15,7 @@ import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RuleCore;
 import net.cumba.cdisc.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 class WildcardExpanderTest

@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import java.nio.file.Path;
 import net.cumba.cdisc.core.RulePackageLoader;
 import net.cumba.cdisc.core.exec.DatasetResolver;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.exec.RuleExecutionResult;
 import net.cumba.cdisc.core.exec.RuleRunner;
 import net.cumba.cdisc.core.exec.ScopeMatcher;
@@ -17,6 +16,7 @@ import net.cumba.cdisc.core.metadata.AdamSubclassDetector;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -29,6 +29,7 @@ import org.junit.jupiter.params.provider.CsvSource;
  * synthetic copy.
  * <p>
  * Each rule has the same shape:
+ * </p>
  *
  * <pre>
  *   all:
@@ -36,6 +37,7 @@ import org.junit.jupiter.params.provider.CsvSource;
  *     - name: &lt;col&gt;,              operator: not_exists
  * </pre>
  *
+ * <p>
  * Sensitivity = Dataset → at most one violation per dataset.
  * </p>
  */

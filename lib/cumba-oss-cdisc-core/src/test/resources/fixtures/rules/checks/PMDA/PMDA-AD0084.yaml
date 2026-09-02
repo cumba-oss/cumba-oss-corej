@@ -23,6 +23,13 @@ Outcome:
   Output_Variables:
   - "TRTEDT"
   - "$trxx_max"
+Source:
+  Message: "TRTEDT != Maximum TRxxEDT on this record"
+  Description: "Date of Last Exposure to Treatment (TRTEDT) for this patient record\
+    \ should be equal to the max Last Treatment Date (TRxxEDT) among all Periods 01\
+    \ thru xx."
+  Domains: "ADSL, ADDL"
+  Severity: "Warning"
 Standards:
 - Organization: "PMDA"
   Standards:

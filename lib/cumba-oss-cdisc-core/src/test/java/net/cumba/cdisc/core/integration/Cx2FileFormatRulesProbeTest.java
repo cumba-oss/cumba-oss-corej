@@ -7,11 +7,11 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import net.cumba.cdisc.core.RulePackageLoader;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.exec.RuleExecutionResult;
 import net.cumba.cdisc.core.exec.RuleRunner;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

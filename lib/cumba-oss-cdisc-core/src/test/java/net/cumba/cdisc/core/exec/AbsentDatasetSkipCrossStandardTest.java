@@ -13,7 +13,6 @@ import java.util.Set;
 import net.cumba.cdisc.core.RulePackageLoader;
 import net.cumba.cdisc.core.metadata.MetadataKeys;
 import net.cumba.cdisc.core.metadata.MetadataLibraryProvider;
-import net.cumba.cdisc.core.metadata.TestMetadataFixtures;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.cdisc.core.report.LibraryValidator;
@@ -21,6 +20,8 @@ import net.cumba.cdisc.core.report.ReportAssembler;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.IMetadataLibrary;
 import net.cumba.datatable.report.ValidationReport;
+import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.testkit.TestMetadataFixtures;
 import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.Test;
 

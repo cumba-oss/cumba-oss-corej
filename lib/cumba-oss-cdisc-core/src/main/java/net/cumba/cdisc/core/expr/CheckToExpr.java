@@ -852,7 +852,7 @@ public final class CheckToExpr
      * unified-callable-surface): a plain column / dataset name (optionally {@code --}-prefixed)
      * becomes a STRING literal — the engine and {@code ExprLowering} accept both spellings — while
      * anything carrying structure (dots, {@code ${...}} substitution, wildcards, filters) keeps the
-     * bare-reference form whose {@link net.cumba.cdisc.core.expr.ast.OperandKind} classification
+     * bare-reference form whose {@link net.cumba.cdisc.core.expr.OperandKind} classification
      * encodes that structure.
      */
     private static Expr nameOperand(String name)

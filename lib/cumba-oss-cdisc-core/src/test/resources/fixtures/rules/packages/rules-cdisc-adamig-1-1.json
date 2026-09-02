@@ -14,21 +14,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR734",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR734"
           ]
         }
       ],

@@ -24,11 +24,9 @@ import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.metadata.AdamDataStructureDetector;
 import net.cumba.cdisc.core.metadata.AdamSubclassDetector;
 import net.cumba.cdisc.core.metadata.MetadataKeys;
-import net.cumba.cdisc.core.metadata.TestMetadataFixtures;
 import net.cumba.cdisc.core.report.LibraryValidator;
 import net.cumba.cdisc.core.report.ValidationReportBuilder;
 import net.cumba.cdisc.core.run.StudyValidationParams.RuleSelectionMode;
@@ -41,6 +39,8 @@ import net.cumba.datatable.metadata.IMetadataLibrary;
 import net.cumba.datatable.report.Severity;
 import net.cumba.datatable.report.ValidationFinding;
 import net.cumba.datatable.report.ValidationReportMember;
+import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.testkit.TestMetadataFixtures;
 import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -877,7 +877,7 @@ class StudyValidationServiceTest
 
     // ------------------------------------------------------------------
     // Pickle-cache id helpers (pure logic; the pickle-cache-gated provider tests live in
-    // corej-cdisc-core-rulespec/StudyValidationServicePickleTest — PLAN-engine-rules-decoupling Q4)
+    // corej-cdisc-rules/StudyValidationServicePickleTest — PLAN-engine-rules-decoupling Q4)
     // ------------------------------------------------------------------
 
 

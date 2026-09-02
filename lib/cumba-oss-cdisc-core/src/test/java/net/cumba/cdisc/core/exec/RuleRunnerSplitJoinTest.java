@@ -24,7 +24,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * End-to-end tests for the {@code Match_Datasets} split-domain union (Fix #358,
- * {@code plans/PLAN-match-datasets-split-union.md}), measured through {@link RuleRunner#execute}:
+ * {@code plans/done/PLAN-match-datasets-split-union.md}), measured through
+ * {@link RuleRunner#execute}:
  *
  * <ul>
  * <li>the CDISC-AD0898 mechanism — a key join naming a split {@code LB} reaches rows of

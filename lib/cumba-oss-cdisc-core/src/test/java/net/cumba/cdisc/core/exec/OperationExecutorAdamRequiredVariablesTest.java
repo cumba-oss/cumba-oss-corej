@@ -11,6 +11,7 @@ import net.cumba.cdisc.core.metadata.AdamDataStructureDetector;
 import net.cumba.cdisc.core.metadata.AdamSubclassDetector;
 import net.cumba.cdisc.core.model.Operation;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 

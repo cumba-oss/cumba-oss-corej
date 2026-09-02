@@ -20,6 +20,18 @@ Outcome:
   Output_Variables:
   - "variable_name"
   - "variable_value"
+Source:
+  Message: "SMQzzSCN value != 1, 2 or null"
+  Description: "Standardized MedDRA Query Scope Numeric (SMQzzSCN) variable value\
+    \ must be 1 (BROAD), 2 (NARROW), or NULL. The search strategy for SMQs can be\
+    \ narrow or broad. The preferred terms that are narrow in scope have high specificity\
+    \ for identifying events of interest while the broad terms have high sensitivity.\
+    \ By definition, all narrow terms are also considered within the broad score.\
+    \ Therefore, to summarize all broad terms, terms with either narrow OR broad would\
+    \ be considered. Will be null for terms that do not meet the criteria. Conditional\
+    \ on whether SMQ analysis is done."
+  Domains: "OCCDS, ADAE, MDOCCDS"
+  Severity: "Error"
 Standards:
 - Organization: "PMDA"
   Standards:

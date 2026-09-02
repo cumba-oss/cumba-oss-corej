@@ -7,8 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.concurrent.atomic.AtomicInteger;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.IDataValue;
 import org.junit.jupiter.api.Test;

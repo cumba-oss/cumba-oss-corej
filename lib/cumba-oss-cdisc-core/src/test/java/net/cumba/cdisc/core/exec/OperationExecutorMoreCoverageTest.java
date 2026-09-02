@@ -18,6 +18,7 @@ import java.util.Set;
 import net.cumba.cdisc.core.model.Operation;
 import net.cumba.cdisc.core.model.OperationType;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;

@@ -43,7 +43,7 @@ public enum MetadataAttribute
     VAR_CODELIST("var_codelist", Scope.VARIABLE, "codelist", Normalization.RAW, DEFINE, LIBRARY),
     VAR_ORDINAL("var_ordinal", Scope.VARIABLE, "ordinal", Normalization.NUMERIC, DATA, DEFINE, LIBRARY),
     /**
-     * Tier-B codelist C-code (R-P3, {@code plans/PLAN-native-engine-residuals.md}): the define
+     * Tier-B codelist C-code (R-P3, {@code plans/done/PLAN-native-engine-residuals.md}): the define
      * provider's {@code ccode} key — the same map entry the legacy cascade injects as
      * {@code define_variable_ccode} (CORE-000929). At {@code LIBRARY} the bound codelist's NCI
      * C-code ({@code MetadataKeys.CODELIST_CONCEPT_ID}), materialised by the library provider to
@@ -81,7 +81,8 @@ public enum MetadataAttribute
     /**
      * DEFINE-only Origin Type of the variable (Define-XML {@code Origin/@Type}, with the v2.0
      * {@code ItemDef/@Origin} attribute as fallback). Backs {@code define_variable_origin_type};
-     * empty when the variable declares no Origin (E2, {@code plans/PLAN-group-b-followups.md}).
+     * empty when the variable declares no Origin (E2,
+     * {@code plans/done/PLAN-group-b-followups.md}).
      */
     VAR_ORIGIN_TYPE("var_origin_type", Scope.VARIABLE, "origin_type", Normalization.RAW, DEFINE),
     /**

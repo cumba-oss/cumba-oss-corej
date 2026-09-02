@@ -21,9 +21,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Unit tests for {@link ExpressionResultCache} (Phase 2 of
- * {@code plans/PLAN-dataset-expression-cache.md}): compute-once semantics, the null-result no-cache
- * rule, concurrency under the parallel rule fan-out, and the {@link EvaluationContext} field
- * wiring.
+ * {@code plans/done/PLAN-dataset-expression-cache.md}): compute-once semantics, the null-result
+ * no-cache rule, concurrency under the parallel rule fan-out, and the {@link EvaluationContext}
+ * field wiring.
  */
 class ExpressionResultCacheTest
 {

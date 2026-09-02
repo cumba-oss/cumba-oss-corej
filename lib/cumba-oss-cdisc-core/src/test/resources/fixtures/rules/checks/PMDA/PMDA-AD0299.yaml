@@ -21,6 +21,14 @@ Outcome:
   Message: "Illegal variable name: zz is not in [01-99] for SMQzz(NAM/CD/SC/SCN)."
   Output_Variables:
   - "variable_name"
+Source:
+  Message: "Illegal variable name: zz is not in [01-99] for SMQzz(NAM, CD, SC, SCN)"
+  Description: "For Standardized MedDRA Query Variables of Name, Code and Scope(N),\
+    \ zz must be the ordered SMQ of interest (01 to 99). This ordering can be based\
+    \ on importance or some other sponsor-defined criteria. It is recommended that\
+    \ the ordering be consistent across studies within a development program."
+  Domains: "OCCDS, ADAE, MDOCCDS"
+  Severity: "Error"
 Standards:
 - Organization: "PMDA"
   Standards:

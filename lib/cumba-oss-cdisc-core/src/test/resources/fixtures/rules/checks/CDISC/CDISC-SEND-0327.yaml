@@ -42,6 +42,16 @@ Outcome:
   - "PCDTC"
   - "PCELTM"
   - "PCRFTDTC"
+Source:
+  Class: "FND"
+  Domain: "PC"
+  Variable: "PCELTM"
+  Plain_Text_Explanation: "Specimen concentrations (e.g., plasma) used to calculate\
+    \ a time concentration profile with a predose sample should have PCELTM populated\
+    \ with \"PT0H\"."
+  Condition: "Predose specimen concentration is collected AND specimen concentration\
+    \ (e.g., plasma) was used to calculate a time concentration profile"
+  Rule: "PCELTM = \"PT0H\""
 Standards:
 - Organization: "CDISC"
   Standards:

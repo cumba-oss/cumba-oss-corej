@@ -6,11 +6,11 @@ import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 import net.cumba.cdisc.core.exec.EvaluationContext;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.expr.OperandKind;
 import net.cumba.cdisc.core.expr.ast.Expr;
 import net.cumba.cdisc.core.expr.ast.Expr.BinOp;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

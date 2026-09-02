@@ -9,9 +9,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
-import net.cumba.cdisc.core.exec.MockTable;
+import java.util.Objects;
+import net.cumba.cdisc.core.model.CheckConditionLeaf;
+import net.cumba.cdisc.core.model.Outcome;
 import net.cumba.cdisc.core.model.Rule;
+import net.cumba.cdisc.core.model.RuleCore;
+import net.cumba.cdisc.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -1134,6 +1139,615 @@ class RuleGeneratorTest
     // carries a family gate — there is nothing left for either pin to hold.
     // ⚑ noBuiltInRuleIsMergedIntoTheExecutedSet (above) is what replaces them: it asserts the
     // generator adds no id the caller did not hand it.
+
+    // ---- SMQzz indexed-variable family ----
+    //
+    // This family had no coverage at all: the word "SMQ" did not appear in this file, and
+    // mutation testing reported all 8 mutants of generateSmqZzRules surviving. Every branch
+    // below could have been deleted, or its guard inverted, without a red test. The negative
+    // cases carry as much weight as the positive ones — the NAM branch is conditional on the
+    // sibling CD column existing, and a lone CD column must generate nothing at all.
+
+
+    private List<Rule> smqRules(IDataTable table)
+    {
+        return gen(table, "AE", "EVENTS").getRules().stream()
+                .filter(r -> r.getCore().getId().contains("SMQ")).toList();
+    }
+
+
+    private static IDataTable aeWith(String... cols)
+    {
+        MockTable t = MockTable.of().name("AE").col("STUDYID", "S001");
+        for (String c : cols)
+        {
+            t = t.col(c, "X");
+        }
+        return t.build();
+    }
+
+
+    private static List<String> ruleIds(List<Rule> rules)
+    {
+        return rules.stream().map(r -> r.getCore().getId()).toList();
+    }
+
+
+    private static boolean anySmqId(List<Rule> rules, String fragment)
+    {
+        return rules.stream().anyMatch(r -> r.getCore().getId().contains(fragment));
+    }
+
+
+    @Test
+    void testSmqZz_namWithSiblingCdGeneratesThePopulationPairingRule()
+    {
+        List<Rule> rules = smqRules(aeWith("SMQ01NAM", "SMQ01CD"));
+
+        assertTrue(anySmqId(rules, "SMQPAIR"), "expected the NAM->CD pairing rule");
+        assertTrue(
+                rules.stream()
+                        .anyMatch(r -> "When SMQ01NAM is populated, SMQ01CD must be populated."
+                                .equals(r.getDescription())),
+                "pairing rule must name both variables");
+    }
+
+
+    @Test
+    void testSmqZz_namWithoutASiblingCdGeneratesNoPairingRule()
+    {
+        // Guards `allCols.contains(cdVar)`: without it a lone NAM emits a rule referencing a
+        // column the dataset does not have.
+        assertFalse(anySmqId(smqRules(aeWith("SMQ01NAM")), "SMQPAIR"));
+    }
+
+
+    @Test
+    void testSmqZz_scGeneratesTheBroadOrNarrowValueRule()
+    {
+        List<Rule> rules = smqRules(aeWith("SMQ01SC"));
+
+        assertTrue(anySmqId(rules, "SMQSCVAL"));
+        assertTrue(rules.stream()
+                .anyMatch(r -> "SMQ01SC must be BROAD or NARROW.".equals(r.getDescription())));
+    }
+
+
+    @Test
+    void testSmqZz_scnGeneratesTheOneOrTwoValueRule()
+    {
+        List<Rule> rules = smqRules(aeWith("SMQ01SCN"));
+
+        assertTrue(anySmqId(rules, "SMQSCNVAL"));
+        assertTrue(rules.stream()
+                .anyMatch(r -> "SMQ01SCN must be 1 or 2.".equals(r.getDescription())));
+    }
+
+
+    @Test
+    void testSmqZz_scAlongsideScnAlsoGeneratesTheOneToOnePairing()
+    {
+        List<Rule> rules = smqRules(aeWith("SMQ01SC", "SMQ01SCN"));
+
+        assertTrue(anySmqId(rules, "SMQSCVAL"));
+        assertTrue(anySmqId(rules, "SMQSCNVAL"));
+        assertTrue(anySmqId(rules, "SMQzz121"), "expected the SC<->SCN 1:1 rule");
+    }
+
+
+    @Test
+    void testSmqZz_aCdColumnOnItsOwnGeneratesNothing()
+    {
+        // CD matches the SMQzz pattern but drives none of the three branches.
+        assertEquals(List.of(), ruleIds(smqRules(aeWith("SMQ01CD"))));
+    }
+
+
+    @Test
+    void testSmqZz_aMalformedIndexIsNotAnSmqVariable()
+    {
+        // The index is exactly two digits — SMQ1SC and SMQ001SC are not SMQzz variables.
+        assertEquals(List.of(), ruleIds(smqRules(aeWith("SMQ1SC", "SMQ001SC"))));
+    }
+
+    // ---- CRITy indexed-variable family ----
+    //
+    // Only the "CRIT1FL present, CRIT1 missing" arm was pinned (testIndexedVar_critPairing);
+    // the CRITy->FL arm, the FN->FL arm and the FL<->FN 1:1 pairing were not, and each of the
+    // three `allCols.contains(...)` guards could be inverted without a red test.
+
+
+    private List<Rule> critRules(IDataTable table)
+    {
+        return gen(table, "ADVS", "BASIC DATA STRUCTURE").getRules().stream()
+                .filter(r -> r.getCore().getId().contains("CRIT")).toList();
+    }
+
+
+    private static IDataTable advsWith(String... cols)
+    {
+        MockTable t = MockTable.of().name("ADVS").col("STUDYID", "S001");
+        for (String c : cols)
+        {
+            t = t.col(c, "Y");
+        }
+        return t.build();
+    }
+
+
+    @Test
+    void testCritY_critWithoutItsFlagDemandsTheFlag()
+    {
+        List<Rule> rules = critRules(advsWith("CRIT1"));
+
+        assertTrue(rules.stream().anyMatch(r -> r.getCore().getId().contains("CRITPAIR")));
+        assertTrue(rules.stream().anyMatch(
+                r -> "CRIT1 is present but CRIT1FL is missing.".equals(r.getDescription())));
+    }
+
+
+    @Test
+    void testCritY_critWithItsFlagPresentDemandsNothing()
+    {
+        // Guards `!allCols.contains(flVar)` on the suffix==null arm.
+        assertFalse(critRules(advsWith("CRIT1", "CRIT1FL")).stream()
+                .anyMatch(r -> r.getCore().getId().contains("CRITPAIR")));
+    }
+
+
+    @Test
+    void testCritY_flagWithoutItsCriterionDemandsTheCriterion()
+    {
+        assertTrue(critRules(advsWith("CRIT1FL")).stream().anyMatch(
+                r -> "CRIT1FL is present but CRIT1 is missing.".equals(r.getDescription())));
+    }
+
+
+    @Test
+    void testCritY_flagAndNumericFlagFormAOneToOnePair()
+    {
+        List<Rule> rules = critRules(advsWith("CRIT1", "CRIT1FL", "CRIT1FN"));
+
+        assertTrue(rules.stream().anyMatch(r -> r.getCore().getId().contains("CRITy121")),
+                "expected the CRIT1FL <-> CRIT1FN 1:1 rule");
+    }
+
+
+    @Test
+    void testCritY_numericFlagWithoutTheCharacterFlagDemandsIt()
+    {
+        // The FN arm fires only when CRITyFL is absent.
+        List<Rule> rules = critRules(advsWith("CRIT1", "CRIT1FN"));
+
+        assertTrue(rules.stream().anyMatch(r -> r.getCore().getId().contains("CRITFNPAIR")));
+        assertTrue(rules.stream().anyMatch(
+                r -> "CRIT1FN is present but CRIT1FL is missing.".equals(r.getDescription())));
+    }
+
+    // ---- TRxx treatment-period date family ----
+    //
+    // generateTrXxDateRules had 3 mutants, all surviving: the start/end suffix mapping and the
+    // sibling-column guard were entirely unpinned.
+
+
+    private List<Rule> trDateRules(IDataTable table)
+    {
+        return gen(table, "ADSL", "SUBJECT LEVEL ANALYSIS DATASET").getRules().stream()
+                .filter(r -> r.getCore().getId().contains("TRDT")).toList();
+    }
+
+
+    private static IDataTable adslWith(String... cols)
+    {
+        MockTable t = MockTable.of().name("ADSL").col("STUDYID", "S001");
+        for (String c : cols)
+        {
+            t = t.col(c, "2024-01-01");
+        }
+        return t.build();
+    }
+
+
+    @Test
+    void testTrXxDate_startDateIsOrderedAgainstItsEndDate()
+    {
+        List<Rule> rules = trDateRules(adslWith("TR01SDT", "TR01EDT"));
+
+        assertEquals(1, rules.size());
+        assertEquals("TR01SDT must not be greater than TR01EDT.",
+                rules.getFirst().getDescription());
+    }
+
+
+    @Test
+    void testTrXxDate_theDatetimeAndTimeVariantsMapToTheirOwnEndVariable()
+    {
+        assertEquals("TR01SDTM must not be greater than TR01EDTM.",
+                trDateRules(adslWith("TR01SDTM", "TR01EDTM")).getFirst().getDescription());
+        assertEquals("TR01STM must not be greater than TR01ETM.",
+                trDateRules(adslWith("TR01STM", "TR01ETM")).getFirst().getDescription());
+    }
+
+
+    @Test
+    void testTrXxDate_aStartDateWithoutItsEndDateIsNotOrdered()
+    {
+        // Guards `allCols.contains(endVar)`.
+        assertEquals(List.of(), trDateRules(adslWith("TR01SDT")));
+    }
+
+
+    @Test
+    void testTrXxDate_anEndDateAloneGeneratesNothing()
+    {
+        // EDT/EDTM/ETM match the pattern but map to a null end suffix.
+        assertEquals(List.of(), trDateRules(adslWith("TR01EDT", "TR01ETM")));
+    }
+
+    // ---- MedDRA / WHO Drug: which PAIR, not merely "a rule was made" ----
+    //
+    // testMedDRA_withDictionary and testWHODrug_withDictionary assert only that *some* rule
+    // carries "MED"/"WHO" in its id. That holds however many pairs fire and whichever columns
+    // they name, which is why 13/19 (MedDRA) and 12/17 (WHO Drug) mutants survived. These pin
+    // the per-pair guards: a pair fires only when BOTH its code and term columns exist.
+
+
+    private List<String> dictDescriptions(IDataTable table, String domain, String className,
+            String idFragment)
+    {
+        RuleGenerator gen = new RuleGenerator(new ExtendedMockLibrary(),
+                new MockDictionaryProvider(), "sdtmct-2025-09-26");
+        return gen(gen, table, domain, className).getRules().stream()
+                .filter(r -> r.getCore().getId().contains(idFragment)).map(Rule::getDescription)
+                .toList();
+    }
+
+
+    private static IDataTable domainTable(String name, String... cols)
+    {
+        MockTable t = MockTable.of().name(name).col("STUDYID", "S001");
+        for (String c : cols)
+        {
+            t = t.col(c, "V");
+        }
+        return t.build();
+    }
+
+
+    @Test
+    void testMedDRA_eachCodeTermPairYieldsItsOwnLevelledRule()
+    {
+        List<String> descs = dictDescriptions(
+                domainTable("AE", "AEPTCD", "AEDECOD", "AELLTCD", "AELLT"), "AE", "EVENTS", "MED");
+
+        assertEquals(2, descs.size(), descs.toString());
+        assertTrue(
+                descs.contains(
+                        "AEPTCD and AEDECOD must be consistent per MedDRA Preferred " + "Term."),
+                descs.toString());
+        assertTrue(
+                descs.contains(
+                        "AELLTCD and AELLT must be consistent per MedDRA Lowest Level " + "Term."),
+                descs.toString());
+    }
+
+
+    @Test
+    void testMedDRA_aTermWithoutItsCodeYieldsNoRule()
+    {
+        // Guards `codeVar >= 0 && termVar >= 0` — a lone term must not produce a pairing rule.
+        assertEquals(List.of(),
+                dictDescriptions(domainTable("AE", "AEDECOD"), "AE", "EVENTS", "MED"));
+        assertEquals(List.of(),
+                dictDescriptions(domainTable("AE", "AEPTCD"), "AE", "EVENTS", "MED"));
+    }
+
+
+    @Test
+    void testMedDRA_appliesToMhAndCeNotOnlyAe()
+    {
+        assertEquals(List.of("MHPTCD and MHDECOD must be consistent per MedDRA Preferred Term."),
+                dictDescriptions(domainTable("MH", "MHPTCD", "MHDECOD"), "MH", "EVENTS", "MED"));
+        assertEquals(List.of("CEPTCD and CEDECOD must be consistent per MedDRA Preferred Term."),
+                dictDescriptions(domainTable("CE", "CEPTCD", "CEDECOD"), "CE", "EVENTS", "MED"));
+    }
+
+
+    @Test
+    void testWHODrug_theTwoConsistencyRulesAreIndependentlyGuarded()
+    {
+        List<String> both = dictDescriptions(domainTable("CM", "CMDECOD", "CMCLASCD", "CMCLAS"),
+                "CM", "INTERVENTIONS", "WHO");
+        assertEquals(2, both.size(), both.toString());
+        assertTrue(
+                both.contains("CMDECOD and CMCLASCD must be consistent per WHO Drug dictionary."),
+                both.toString());
+        assertTrue(both.contains("CMCLASCD and CMCLAS must be consistent per WHO Drug dictionary."),
+                both.toString());
+    }
+
+
+    @Test
+    void testWHODrug_eachRuleNeedsItsOwnColumnPair()
+    {
+        assertEquals(List.of("CMDECOD and CMCLASCD must be consistent per WHO Drug dictionary."),
+                dictDescriptions(domainTable("CM", "CMDECOD", "CMCLASCD"), "CM", "INTERVENTIONS",
+                        "WHO"));
+        assertEquals(List.of("CMCLASCD and CMCLAS must be consistent per WHO Drug dictionary."),
+                dictDescriptions(domainTable("CM", "CMCLASCD", "CMCLAS"), "CM", "INTERVENTIONS",
+                        "WHO"));
+        assertEquals(List.of(),
+                dictDescriptions(domainTable("CM", "CMDECOD"), "CM", "INTERVENTIONS", "WHO"));
+    }
+
+    // ---- the generation REPORT, not only the rules ----
+    //
+    // Every generator pairs `rules.add(rule)` with `report.addGenerated(...)`, and the report is a
+    // real output (it drives the markdown summary), not bookkeeping. Because the tests above assert
+    // only `pkg.getRules()`, deleting the paired `report.addGenerated` call survived in ~20
+    // generators. These pin the pairing for the families this file covers: a rule that is
+    // generated must also be reported, with its category and its variable.
+
+
+    private List<GeneratedRuleInfo> generatedFor(IDataTable table, String domain, String className,
+            String idFragment)
+    {
+        RuleGenerator gen = new RuleGenerator(new ExtendedMockLibrary(),
+                new MockDictionaryProvider(), "sdtmct-2025-09-26");
+        return gen(gen, table, domain, className).getReport().getGeneratedRules().stream()
+                .filter(g -> g.ruleId() != null && g.ruleId().contains(idFragment)).toList();
+    }
+
+
+    /** Same, but through the plain generator the non-dictionary family tests above use. */
+    private List<GeneratedRuleInfo> generatedForPlain(IDataTable table, String domain,
+            String className, String idFragment)
+    {
+        return gen(table, domain, className).getReport().getGeneratedRules().stream()
+                .filter(g -> g.ruleId() != null && g.ruleId().contains(idFragment)).toList();
+    }
+
+
+    @Test
+    void testReport_smqRulesAreRecordedAsIndexedVariableRules()
+    {
+        List<GeneratedRuleInfo> gens = generatedForPlain(aeWith("SMQ01SC", "SMQ01SCN"), "AE",
+                "EVENTS", "IDX-SMQ");
+
+        assertFalse(gens.isEmpty(), "the SMQ rules must appear in the report");
+        assertTrue(
+                gens.stream().allMatch(g -> g.category() == RuleCategory.INDEXED_VARIABLE_RULES));
+        assertTrue(gens.stream().anyMatch(g -> "SMQ01SC".equals(g.variable())));
+        assertTrue(gens.stream().anyMatch(g -> "SMQ01SCN".equals(g.variable())));
+    }
+
+
+    @Test
+    void testReport_critRulesAreRecordedAsIndexedVariableRules()
+    {
+        List<GeneratedRuleInfo> gens = generatedForPlain(advsWith("CRIT1"), "ADVS",
+                "BASIC DATA STRUCTURE", "IDX-CRIT");
+
+        assertFalse(gens.isEmpty());
+        assertTrue(
+                gens.stream().allMatch(g -> g.category() == RuleCategory.INDEXED_VARIABLE_RULES));
+        assertTrue(gens.stream().anyMatch(g -> "CRIT1".equals(g.variable())));
+    }
+
+
+    @Test
+    void testReport_treatmentDateRuleIsRecorded()
+    {
+        List<GeneratedRuleInfo> gens = generatedForPlain(adslWith("TR01SDT", "TR01EDT"), "ADSL",
+                "SUBJECT LEVEL ANALYSIS DATASET", "TRDT");
+
+        assertEquals(1, gens.size());
+        assertEquals(RuleCategory.INDEXED_VARIABLE_RULES, gens.getFirst().category());
+        assertEquals("TR01SDT", gens.getFirst().variable());
+    }
+
+
+    @Test
+    void testReport_whoDrugRulesAreRecordedWithTheirDictionarySource()
+    {
+        List<GeneratedRuleInfo> gens = generatedFor(
+                domainTable("CM", "CMDECOD", "CMCLASCD", "CMCLAS"), "CM", "INTERVENTIONS", "WHO");
+
+        assertEquals(2, gens.size());
+        assertTrue(gens.stream().allMatch(g -> g.category() == RuleCategory.WHODD_VALIDATION));
+        // The librarySource names the dictionary the rule was derived from.
+        assertTrue(gens.stream().allMatch(
+                g -> g.librarySource() != null && g.librarySource().startsWith("WHO Drug ")),
+                gens.toString());
+    }
+
+
+    @Test
+    void testReport_medDraRulesAreRecordedWithTheirDictionarySource()
+    {
+        List<GeneratedRuleInfo> gens = generatedFor(domainTable("AE", "AEPTCD", "AEDECOD"), "AE",
+                "EVENTS", "MED");
+
+        assertEquals(1, gens.size());
+        assertEquals(RuleCategory.MEDDRA_VALIDATION, gens.getFirst().category());
+        assertEquals("AEPTCD", gens.getFirst().variable());
+        assertTrue(Objects.requireNonNull(gens.getFirst().librarySource()).startsWith("MedDRA "),
+                gens.toString());
+    }
+
+
+    @Test
+    void testReport_theOneToOnePairingRuleIsRecorded()
+    {
+        // generatePairingRule is shared by the SMQ and CRIT families and reports separately.
+        List<GeneratedRuleInfo> gens = generatedForPlain(advsWith("CRIT1", "CRIT1FL", "CRIT1FN"),
+                "ADVS", "BASIC DATA STRUCTURE", "CRITy121");
+
+        assertEquals(1, gens.size());
+        assertEquals("CRIT1FL", gens.getFirst().variable());
+    }
+
+    // ---- dictionary families: the column-index boundary ----
+    //
+    // Both generators probe columns with `meta.getColumnIndex(x) >= 0` (and one `< 0`). Every
+    // fixture above puts STUDYID first, so the probed column is always at index >= 1 and the
+    // `>= 0` / `> 0` boundary is unobservable — which is why six ConditionalsBoundary mutants
+    // survived across the two methods. These put the probed column AT INDEX 0, where the
+    // boundary decides the answer.
+
+
+    /** Like domainTable but with no leading STUDYID, so the first named column is index 0. */
+    private static IDataTable tableHeadedBy(String name, String... cols)
+    {
+        MockTable t = MockTable.of().name(name);
+        for (String c : cols)
+        {
+            t = t.col(c, "V");
+        }
+        return t.build();
+    }
+
+
+    private RuleGenerationReport reportWithoutDictionary(IDataTable table, String domain,
+            String className)
+    {
+        return gen(new RuleGenerator(new ExtendedMockLibrary(), "sdtmct-2025-09-26"), table, domain,
+                className).getReport();
+    }
+
+
+    @Test
+    void testMedDRA_noDictionary_skipIsRecordedForAVariableAtColumnZero()
+    {
+        RuleGenerationReport report = reportWithoutDictionary(tableHeadedBy("AE", "AEDECOD"), "AE",
+                "EVENTS");
+
+        assertTrue(
+                report.getSkippedRules().stream()
+                        .anyMatch(sk -> sk.category() == RuleCategory.MEDDRA_VALIDATION
+                                && "AEDECOD".equals(sk.variable())),
+                report.getSkippedRules().toString());
+    }
+
+
+    @Test
+    void testMedDRA_noDictionary_noSkipWhenTheDomainCarriesNoMedDraVariable()
+    {
+        assertTrue(reportWithoutDictionary(tableHeadedBy("AE", "AESEQ"), "AE", "EVENTS")
+                .getSkippedRules().stream()
+                .noneMatch(sk -> sk.category() == RuleCategory.MEDDRA_VALIDATION));
+    }
+
+
+    @Test
+    void testMedDRA_aPairHeadingTheDatasetStillGeneratesItsRule()
+    {
+        // AEPTCD is column 0 here; `getColumnIndex(codeVar) >= 0` must still admit it.
+        assertEquals(List.of("AEPTCD and AEDECOD must be consistent per MedDRA Preferred Term."),
+                dictDescriptions(tableHeadedBy("AE", "AEPTCD", "AEDECOD"), "AE", "EVENTS", "MED"));
+    }
+
+
+    @Test
+    void testWHODrug_noDictionary_skipIsRecordedForAVariableAtColumnZero()
+    {
+        RuleGenerationReport report = reportWithoutDictionary(tableHeadedBy("CM", "CMDECOD"), "CM",
+                "INTERVENTIONS");
+
+        assertTrue(
+                report.getSkippedRules().stream()
+                        .anyMatch(sk -> sk.category() == RuleCategory.WHODD_VALIDATION
+                                && "CMDECOD".equals(sk.variable())),
+                report.getSkippedRules().toString());
+    }
+
+
+    @Test
+    void testWHODrug_noDictionary_aNonCmDomainRecordsNoSkipEvenCarryingCmColumns()
+    {
+        // The skip loop is gated on the CM domain, not on the columns.
+        assertTrue(reportWithoutDictionary(tableHeadedBy("AE", "CMDECOD"), "AE", "EVENTS")
+                .getSkippedRules().stream()
+                .noneMatch(sk -> sk.category() == RuleCategory.WHODD_VALIDATION));
+    }
+
+
+    @Test
+    void testWHODrug_aPairHeadingTheDatasetStillGeneratesItsRule()
+    {
+        assertEquals(List.of("CMDECOD and CMCLASCD must be consistent per WHO Drug dictionary."),
+                dictDescriptions(tableHeadedBy("CM", "CMDECOD", "CMCLASCD"), "CM", "INTERVENTIONS",
+                        "WHO"));
+        assertEquals(List.of("CMCLASCD and CMCLAS must be consistent per WHO Drug dictionary."),
+                dictDescriptions(tableHeadedBy("CM", "CMCLASCD", "CMCLAS"), "CM", "INTERVENTIONS",
+                        "WHO"));
+    }
+
+    // ---- applyTemplatePostFilters: which expansions survive ----
+    //
+    // 19 mutants survived in applyTemplatePostFilters. It is the filter that decides which
+    // wildcard expansions are KEPT, and its central rule is subtle: on a two-character SDTM
+    // domain, the expansion whose column is exactly `<domain><wildcard suffix>` is dropped,
+    // because the `--` prefix expansion already produces that rule. Nothing pinned it, so the
+    // filter could have dropped everything, or nothing, unnoticed.
+
+
+    private static Rule wildcardTemplate(String coreId, String wildcardName)
+    {
+        Rule tpl = new Rule();
+        RuleCore core = new RuleCore();
+        core.setId(coreId);
+        tpl.setCore(core);
+        tpl.setDescription(wildcardName + " must not be empty");
+        tpl.setSensitivity(Sensitivity.RECORD);
+        tpl.setCheck(CheckConditionLeaf.builder().name(wildcardName).operator("empty").build());
+        Outcome outcome = new Outcome();
+        outcome.setMessage("m");
+        outcome.setOutputVariables(List.of("USUBJID"));
+        tpl.setOutcome(outcome);
+        return tpl;
+    }
+
+
+    private List<String> expansionIdsFor(String wildcardName, String domain, IDataTable table)
+    {
+        generator.setStaticRules(List.of(wildcardTemplate("CORE-900001", wildcardName)));
+        return gen(table, domain, "EVENTS").getRules().stream().map(r -> r.getCore().getId())
+                .filter(id -> id != null && id.startsWith("CORE-900001")).sorted().toList();
+    }
+
+
+    @Test
+    void testTemplatePostFilters_theDomainOwnSuffixColumnIsDroppedButItsSiblingsSurvive()
+    {
+        // AE + wildcard suffix DTC == AEDTC, which the `--DTC` prefix expansion already covers,
+        // so AEDTC is filtered out; AESTDTC and AEENDTC are not the domain's own suffix column
+        // and must survive.
+        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("AEDTC", "")
+                .col("AESTDTC", "").col("AEENDTC", "").build();
+
+        List<String> ids = expansionIdsFor("*DTC", "AE", ae);
+
+        assertFalse(ids.contains("CORE-900001-AEDTC"),
+                "the domain's own suffix column must be dropped: " + ids);
+        assertTrue(ids.contains("CORE-900001-AESTDTC"), ids.toString());
+        assertTrue(ids.contains("CORE-900001-AEENDTC"), ids.toString());
+    }
+
+
+    @Test
+    void testTemplatePostFilters_aNonSdtmDomainKeepsEvenItsOwnSuffixColumn()
+    {
+        // The drop is gated on a two-character upper-case SDTM domain. ADSL is four characters,
+        // so nothing is filtered.
+        IDataTable adsl = MockTable.of().name("ADSL").col("USUBJID", "S1").col("ADSLDTC", "")
+                .col("TRTSDTC", "").build();
+
+        List<String> ids = expansionIdsFor("*DTC", "ADSL", adsl);
+
+        assertTrue(ids.contains("CORE-900001-ADSLDTC"),
+                "a non-SDTM domain must not trigger the prefix drop: " + ids);
+    }
 
     // ---- Mock Library Provider ----
 

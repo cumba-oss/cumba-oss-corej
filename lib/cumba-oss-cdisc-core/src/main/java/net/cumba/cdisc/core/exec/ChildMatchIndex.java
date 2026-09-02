@@ -59,7 +59,7 @@ final class ChildMatchIndex
      * rows with any {@code null} key slot are not indexed (but are still scanned by
      * {@link #scanFallback}).
      */
-    final String[][] keyStr;
+    final @Nullable String[][] keyStr;
 
     /** Pre-stringified IDVAR-named column on the parent — missing cell becomes {@code null}. */
     final @Nullable String[] joinValueStr;
@@ -74,7 +74,7 @@ final class ChildMatchIndex
      */
     final boolean parentIdvarNumeric;
 
-    private ChildMatchIndex(HashLookup aLookup, String[][] aKeyStr,
+    private ChildMatchIndex(HashLookup aLookup, @Nullable String[][] aKeyStr,
             @Nullable String[] aJoinValueStr, IDataTable aParent, boolean aParentIdvarNumeric)
     {
         lookup = aLookup;
@@ -127,7 +127,8 @@ final class ChildMatchIndex
         int rowCount = Math.toIntExact(aParent.getRowCount());
         HashLookup lookup = new HashLookup(Math.max(1, rowCount), 0.75f);
 
-        String[][] keyStr = new String[nKeys][rowCount];
+        @Nullable
+        String[][] keyStr = newKeyGrid(nKeys, rowCount);
         @Nullable
         String[] joinValueStr = new String[rowCount];
         IDataTableColumn idvarColumn = aParent.getColumn(idvarIdx);
@@ -138,7 +139,7 @@ final class ChildMatchIndex
         {
             for (int k = 0; k < nKeys; k++)
             {
-                keyStr[k][r] = stringOrNull(keyCols[k], r);
+                putKeyCell(keyStr, k, r, stringOrNull(keyCols[k], r));
             }
             joinValueStr[r] = normalizeJoinToken(stringOrNull(idvarColumn, r), parentIdvarNumeric);
         }
@@ -188,7 +189,7 @@ final class ChildMatchIndex
      *            stringified primary {@code IDVARVAL} (non-null; callers skip IDVARVAL-missing
      *            rows)
      */
-    int scanFallback(String[] aPrimaryKeyVals, String aPrimaryIdvarval)
+    int scanFallback(@Nullable String[] aPrimaryKeyVals, String aPrimaryIdvarval)
     {
         int rowCount = joinValueStr.length;
         for (int r = 0; r < rowCount; r++)
@@ -221,7 +222,41 @@ final class ChildMatchIndex
     }
 
 
-    private static boolean anyKeyNull(String[][] keyStr, int row)
+    /**
+     * Allocates a key grid whose cells may be {@code null}, and writes one such cell.
+     *
+     * <p>
+     * NullAway 0.14 cannot fully model a multi-dimensional array with nullable elements. Two things
+     * it rejects, whichever of the four legal type-use annotation positions is chosen (measured
+     * against 0.14.1):
+     * </p>
+     * <ul>
+     * <li>the allocation — {@code new @Nullable String[k][r]} is typed one dimension short, so it
+     * needs the suppression below;</li>
+     * <li>a write through a <em>local</em> of grid type — which is why the write is routed through
+     * {@link #putKeyCell}, whose grid is a <em>parameter</em>: NullAway trusts a declared parameter
+     * type and checks that write normally, so no suppression is needed there.</li>
+     * </ul>
+     * <p>
+     * Everything else about a key grid — reads, parameters, returns, row extraction — is fully
+     * checked. Drop the remaining suppression once NullAway models nested array element types.
+     * </p>
+     */
+    @SuppressWarnings("NullAway")
+    static @Nullable String[][] newKeyGrid(int aKeys, int aRows)
+    {
+        return new @Nullable String[aKeys][aRows];
+    }
+
+
+    /** Writes one possibly-null cell into a key grid; see {@link #newKeyGrid(int, int)}. */
+    static void putKeyCell(@Nullable String[][] aGrid, int aKey, int aRow, @Nullable String aValue)
+    {
+        aGrid[aKey][aRow] = aValue;
+    }
+
+
+    private static boolean anyKeyNull(@Nullable String[][] keyStr, int row)
     {
         for (String[] slot : keyStr)
         {
@@ -234,9 +269,10 @@ final class ChildMatchIndex
     }
 
 
-    private static String[] slotsAt(String[][] keyStr, int row)
+    private static @Nullable String[] slotsAt(@Nullable String[][] keyStr, int row)
     {
-        String[] out = new String[keyStr.length];
+        @Nullable
+        String[] out = new @Nullable String[keyStr.length];
         for (int k = 0; k < keyStr.length; k++)
         {
             out[k] = keyStr[k][row];
@@ -250,12 +286,18 @@ final class ChildMatchIndex
      * value, using Java's standard {@code 31 * h + slot} accumulation. Every argument is non-null
      * at call time (callers filter null slots/join values).
      */
-    static int childMatchHash(String[] aKeySlots, String aJoinValueStr)
+    static int childMatchHash(@Nullable String[] aKeySlots, String aJoinValueStr)
     {
         int h = 0;
-        for (String slot : aKeySlots)
+        for (@Nullable
+        String slot : aKeySlots)
         {
-            h = 31 * h + slot.hashCode();
+            // Every caller has already rejected rows with a missing key cell — anyKeyNull() in
+            // buildIndex(), allPresent() in ChildMatchPreMerger — but that is a boolean guard on
+            // a separate method, which NullAway cannot relate to the array's contents. The
+            // requireNonNull states the precondition and costs nothing: hashCode() would null-check
+            // the same reference anyway.
+            h = 31 * h + Objects.requireNonNull(slot).hashCode();
         }
         h = 31 * h + aJoinValueStr.hashCode();
         return h != 0 ? h : 1;
@@ -321,11 +363,11 @@ final class ChildMatchIndex
     static final class SelfMatcher implements HashLookup.BiRowMatcher
     {
 
-        private final String[][] keyStr;
+        private final @Nullable String[][] keyStr;
 
         private final @Nullable String[] joinValueStr;
 
-        SelfMatcher(String[][] aKeyStr, @Nullable String[] aJoinValueStr)
+        SelfMatcher(@Nullable String[][] aKeyStr, @Nullable String[] aJoinValueStr)
         {
             keyStr = aKeyStr;
             joinValueStr = aJoinValueStr;
@@ -362,16 +404,16 @@ final class ChildMatchIndex
     static final class ProbeMatcher implements HashLookup.BiRowMatcher
     {
 
-        private final String[][] parentKeyStr;
+        private final @Nullable String[][] parentKeyStr;
 
         private final @Nullable String[] parentJoinValueStr;
 
-        private final String[][] primaryKeyStr;
+        private final @Nullable String[][] primaryKeyStr;
 
         private final @Nullable String[] primaryIdvarvalStr;
 
-        ProbeMatcher(String[][] aParentKeyStr, @Nullable String[] aParentJoinValueStr,
-                String[][] aPrimaryKeyStr, @Nullable String[] aPrimaryIdvarvalStr)
+        ProbeMatcher(@Nullable String[][] aParentKeyStr, @Nullable String[] aParentJoinValueStr,
+                @Nullable String[][] aPrimaryKeyStr, @Nullable String[] aPrimaryIdvarvalStr)
         {
             parentKeyStr = aParentKeyStr;
             parentJoinValueStr = aParentJoinValueStr;

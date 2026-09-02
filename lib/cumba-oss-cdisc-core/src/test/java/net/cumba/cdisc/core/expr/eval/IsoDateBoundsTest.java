@@ -336,7 +336,7 @@ class IsoDateBoundsTest
          * &#9888; Measured 2026-08-11: <b>78</b> distinct determined inputs after {@code Fix #226},
          * 93 before it. The assertion is a floor rather than the exact count, so that widening
          * {@code isoComponents} (which can only admit more) does not red this test; the exact
-         * before/after pair is recorded in {@code plans/PLAN-isdetermined-guard-parity.md}.
+         * before/after pair is recorded in {@code plans/done/PLAN-isdetermined-guard-parity.md}.
          */
         @Test
         void theCorpusContainsDeterminedInputsSoThePropertyIsNotVacuous()

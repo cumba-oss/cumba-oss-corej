@@ -95,7 +95,7 @@ public final class CohortRunner
      * As
      * {@link #executeCohort(List, IDataTable, DatasetResolver, String, MetadataProvider, JoinCache, int)}
      * with the per-dataset {@link ExpressionResultCache}
-     * ({@code plans/PLAN-dataset-expression-cache.md}), threaded onto the shared cohort
+     * ({@code plans/done/PLAN-dataset-expression-cache.md}), threaded onto the shared cohort
      * {@link EvaluationContext}. {@code null} disables caching.
      */
     public static List<RuleExecutionResult> executeCohort(List<Rule> cohortRules, IDataTable table,

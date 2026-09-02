@@ -65,7 +65,7 @@ public enum RuleCategory
      * {@code SUFFIX_LABEL} / {@code SUFFIX_TYPE} family gate in
      * {@code RuleGenerator.applyTemplatePostFilters}, deleted with the built-in templates. Enabling
      * it — as every {@code EnumSet.allOf} test does — produces nothing. Kept only until the
-     * generator-code deletion of {@code plans/PLAN-retire-engine-generated-rules.md} §10 is
+     * generator-code deletion of {@code plans/done/PLAN-retire-engine-generated-rules.md} §10 is
      * reviewed.
      *
      * <p>
@@ -143,7 +143,7 @@ public enum RuleCategory
      * <p>
      * Everything else mints rules in Java at run time with no {@code Standards} block, so it
      * belongs to no package and fires regardless of what the user selected — the defect
-     * {@code plans/PLAN-retire-engine-generated-rules.md} closes (Fix #366).
+     * {@code plans/done/PLAN-retire-engine-generated-rules.md} closes (Fix #366).
      * </p>
      *
      * <p>

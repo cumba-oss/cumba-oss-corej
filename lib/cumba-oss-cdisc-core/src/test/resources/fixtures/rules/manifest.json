@@ -14,6 +14,7 @@
     "CDISC-SEND-0324",
     "CDISC-SEND-0326",
     "CDISC-SEND-0327",
+    "CORE-000712",
     "FDA-SD0062",
     "FDA-SE2280",
     "FDA-SE2280-A",
@@ -71,6 +72,9 @@
   ],
   "b2_by_tuple": {
     "sdtmig-3-4": [
+      "CORE-000699",
+      "CORE-000929",
+      "CORE-001081",
       "FDA-SD0054",
       "FDA-SD0059",
       "FDA-SD0060",

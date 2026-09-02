@@ -21,6 +21,13 @@ Outcome:
   Output_Variables:
   - "AGEU"
   - "DM.AGEU"
+Source:
+  Class: "SUBJECT LEVEL ANALYSIS DATASET"
+  Variable_or_Item: "AGEU"
+  Natural_Language_Rule_Failure_Criteria: "The value of ADSL.USUBJID is equal to the\
+    \ value of DM.USUBJID and ADSL.AGEU is not equal to DM.AGEU"
+  Rule_Failure_Criteria: "ADSL.AGEU is not equal to DM.AGEU"
+  Condition_Failure: "The value of ADSL.USUBJID is equal to the value of DM.USUBJID"
 Standards:
 - Organization: "CDISC"
   Standards:

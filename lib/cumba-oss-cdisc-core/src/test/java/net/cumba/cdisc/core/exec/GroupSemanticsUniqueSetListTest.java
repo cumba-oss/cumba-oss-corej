@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.BitSet;
 import java.util.List;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

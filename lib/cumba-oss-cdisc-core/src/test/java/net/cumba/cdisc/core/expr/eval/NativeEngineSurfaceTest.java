@@ -11,7 +11,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.cumba.cdisc.core.RulePackageLoader;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.exec.NativeExecutionRecorder;
 import net.cumba.cdisc.core.exec.RuleRunner;
 import net.cumba.cdisc.core.expr.CheckToExpr;
@@ -23,11 +22,12 @@ import net.cumba.cdisc.core.model.CheckOperator;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * P6a/P6c of {@code plans/PLAN-native-engine-full-coverage.md} — the ENGINE-surface completeness
- * gate (decision 6: the target is the engine, not the shipped rules).
+ * P6a/P6c of {@code plans/done/PLAN-native-engine-full-coverage.md} — the ENGINE-surface
+ * completeness gate (decision 6: the target is the engine, not the shipped rules).
  *
  * <p>
  * <b>6a — operator matrix:</b> every {@link CheckOperator} the legacy engine implements must raise

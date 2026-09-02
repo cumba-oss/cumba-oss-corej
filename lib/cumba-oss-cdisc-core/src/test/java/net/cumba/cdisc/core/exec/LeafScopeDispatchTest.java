@@ -12,6 +12,7 @@ import net.cumba.cdisc.core.expr.eval.Domain;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.VariableUniverse;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

@@ -25,6 +25,13 @@ Outcome:
   - "APHASEN"
   - "PHEDT"
   - "ADSL.PH${*}EDT"
+Source:
+  Message: "APHASEN w has a PHEDT != ADSL.PHwEDT"
+  Description: "When analysis Phase (APHASE) is defined, the Phase End Date (PHEDT)\
+    \ variable value must equal ADSL Phase w End Date (PHwEDT) variable value for\
+    \ that phase defined by the value in Phase (N) (APHASEN) variable. APHASEN = w."
+  Domains: "BDS, ADNCA, MDBDS, OCCDS, ADAE, MDOCCDS, ADAMOTHER"
+  Severity: "Error"
 Standards:
 - Organization: "PMDA"
   Standards:

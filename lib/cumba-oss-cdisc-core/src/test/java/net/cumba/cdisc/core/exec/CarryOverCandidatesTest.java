@@ -140,7 +140,7 @@ class CarryOverCandidatesTest
     /**
      * ⛔⛔ <b>The not-applicable row.</b> An ADaM-native name is published nowhere in SDTM, so NO
      * operand is emitted at all and the rule cannot fire. Measured: {@code PARAMCD}, {@code AVAL},
-     * {@code TRTP}, {@code AVISIT} &c all have zero candidates, and only 10 of 332
+     * {@code TRTP}, {@code AVISIT} &amp;c all have zero candidates, and only 10 of 332
      * {@code adamig-1-3} variables have any. Emitting an empty list instead would let a rule
      * compare against "no candidates" and report a violation.
      */

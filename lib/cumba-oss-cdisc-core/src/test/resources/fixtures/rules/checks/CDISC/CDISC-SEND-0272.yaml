@@ -29,6 +29,12 @@ Outcome:
     \ (XPORT)."
   Output_Variables:
   - "$file_format"
+Source:
+  Class: "ALL"
+  Domain: "ALL"
+  Variable: "ALL"
+  Plain_Text_Explanation: "All .xpt files are in SAS V5  Transport format."
+  Rule: "All .xpt files are in SAS V5  Transport format."
 Standards:
 - Organization: "CDISC"
   Standards:

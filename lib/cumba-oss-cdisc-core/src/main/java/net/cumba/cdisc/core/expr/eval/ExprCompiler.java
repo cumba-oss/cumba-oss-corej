@@ -176,7 +176,7 @@ public final class ExprCompiler
      * asserts every name here is documented in
      * {@code documentation/CORE-EXPRESSION-CHECK-SPECIFICATION.md} — the same single-sourcing
      * stance as {@link net.cumba.cdisc.core.expr.eval.BroadcastFold#WHOLE_COLUMN_VERDICT_OPERATORS}
-     * (see {@code plans/PLAN-expression-docs-restructure.md} §4).
+     * (see {@code plans/done/PLAN-expression-docs-restructure.md} §4).
      * </p>
      */
     public static final Set<String> HARDCODED_BOOLEAN_CALLS = Set.of("ds_exists", "ds_not_exists",
@@ -215,8 +215,8 @@ public final class ExprCompiler
      * Compiles a boolean {@code Expr}, wrapping the result in the per-dataset cache decorator when
      * {@code e} is the <b>maximal</b> pure subtree on its path — pure and not nested inside an
      * already-pure (hence already-wrapped) ancestor (coarse, boolean-only v1; §3.5 / §3.6 of
-     * {@code plans/PLAN-dataset-expression-cache.md}). {@code parentPure} carries the "an ancestor
-     * will wrap me" signal down the boolean tree so only the topmost pure node is keyed.
+     * {@code plans/done/PLAN-dataset-expression-cache.md}). {@code parentPure} carries the "an
+     * ancestor will wrap me" signal down the boolean tree so only the topmost pure node is keyed.
      */
     private static ExprProgram.BoolPlan compileBool(Expr e, boolean parentPure)
     {
@@ -434,11 +434,11 @@ public final class ExprCompiler
      * ⚑ {@code variable_exists} is admitted here only as a consequence of being boolean-valued; it
      * is <b>not</b> the intended way to test column existence. Existence is a check function
      * ({@code var_exists(X)} / {@code var_exists("D.X")}, see
-     * {@code plans/PLAN-variable-exists-cross-dataset.md}) and the operation exists to carry the
-     * answer into {@code Output_Variables} ({@code plans/PLAN-retired-operators-as-operations.md}).
-     * The two agree by construction — {@code OperationExecutor.evalVariableExists} reads the same
-     * facts — so an inline use here cannot disagree with the function; it is merely a longer way to
-     * say the same thing.
+     * {@code plans/done/PLAN-variable-exists-cross-dataset.md}) and the operation exists to carry
+     * the answer into {@code Output_Variables}
+     * ({@code plans/PLAN-retired-operators-as-operations.md}). The two agree by construction —
+     * {@code OperationExecutor.evalVariableExists} reads the same facts — so an inline use here
+     * cannot disagree with the function; it is merely a longer way to say the same thing.
      * </p>
      */
     private static boolean isUnifiableBooleanOperation(@Nullable OperationType type)
@@ -3366,9 +3366,9 @@ public final class ExprCompiler
     /**
      * Fix #123 — candidate suffixes for the decode partner, <b>longest first</b> so
      * {@code VISITNUM} strips to {@code VISIT} and never to {@code VISITNU}. Derived empirically
-     * from the shipped defines (see plans/PLAN-define-variable-decode-pairing.md §2.5): {@code N}
-     * dominates (AVISITN/AVISIT, RACEN/RACE, TRTPN/TRTP), then {@code NUM} (VISITNUM/VISIT), then
-     * {@code CD} (PARAMCD/PARAM).
+     * from the shipped defines (see plans/done/PLAN-define-variable-decode-pairing.md §2.5):
+     * {@code N} dominates (AVISITN/AVISIT, RACEN/RACE, TRTPN/TRTP), then {@code NUM}
+     * (VISITNUM/VISIT), then {@code CD} (PARAMCD/PARAM).
      */
     private static final List<String> DECODE_PARTNER_SUFFIXES = List.of("NUM", "CD", "N");
 
@@ -3879,8 +3879,9 @@ public final class ExprCompiler
      * <p>
      * Returns {@code null} when the name is carried by no join, so the enclosing predicate yields
      * an empty {@link BitSet} (the missing-column contract). The probe uses each join's schema (via
-     * the {@link DatasetResolver}) to decide whether the name is carried, matching the previous
-     * behaviour and avoiding a needless {@code lookupAll} pass on joins that cannot contain it.
+     * the {@link net.cumba.cdisc.core.exec.DatasetResolver}) to decide whether the name is carried,
+     * matching the previous behaviour and avoiding a needless {@code lookupAll} pass on joins that
+     * cannot contain it.
      */
     private static @Nullable Vector joinedColumnVector(EvaluationContext ctx, int rowCount,
             String name)
@@ -4107,12 +4108,12 @@ public final class ExprCompiler
     /**
      * The prior-{@code $}-variable map to feed {@link OperationExecutor#executeOne} for an inline
      * operation. {@code OperationExecutor.expandGroupRefs} reads {@code group} entries that name a
-     * {@code $}-variable straight out of this map and would see an unforced {@link LazyValue}
-     * wrapper (neither a String nor a Collection) and silently drop the reference. So when the
-     * operation's {@code group} names any {@code $}-variable, return a small map with exactly those
-     * entries forced via {@link EvaluationContext#resolveVariable} (which unwraps
-     * {@code LazyValue}); other variables stay lazy. With no {@code $}-group reference the live map
-     * is passed through unchanged.
+     * {@code $}-variable straight out of this map and would see an unforced
+     * {@link net.cumba.cdisc.core.exec.LazyValue} wrapper (neither a String nor a Collection) and
+     * silently drop the reference. So when the operation's {@code group} names any
+     * {@code $}-variable, return a small map with exactly those entries forced via
+     * {@link EvaluationContext#resolveVariable} (which unwraps {@code LazyValue}); other variables
+     * stay lazy. With no {@code $}-group reference the live map is passed through unchanged.
      */
     private static Map<String, Object> forcedPriors(Operation op, EvaluationContext ctx)
     {
@@ -4673,6 +4674,22 @@ public final class ExprCompiler
             {
                 meta = libraryDomainFallback(provider, ctx.getTable(), dataset);
             }
+            // ⛔⛔ Fix #376 — `Fix #370` correction 3 ("never hand back a TEMPLATE as though it
+            // were a value") was enforced inside tier 3 only, so it did not hold for the one shape
+            // that reaches the Library's templated `SUPPQUAL` label WITHOUT going through tier 3:
+            // a sponsor's COMBINED supplemental file, literally named `SUPPQUAL`, which tier 1
+            // resolves by name. It answered ds_label("LIBRARY") with the literal
+            // "Supplemental Qualifiers for [domain name]" — and tier 3's substitution is not the
+            // remedy either, because a combined file has MANY parents and row 0's RDOMAIN would
+            // name exactly one of them ("…for AE" on a file holding AE + DM + LB qualifiers), a
+            // wrong-dataset answer of the kind correction 2 already refused for `SUPP--`.
+            // ⇒ the ruling is level-wide, so enforce it level-wide: drop the templated key and let
+            // the accessor keep its documented "null = could not resolve". The non-templated keys
+            // (className, datasetStructure) still answer, exactly as in tier 3.
+            if (level == MetadataLevel.LIBRARY)
+            {
+                meta = withoutTemplates(meta);
+            }
         }
         else
         {
@@ -4871,6 +4888,58 @@ public final class ExprCompiler
     private static boolean unknownDataset(@Nullable Map<String, String> meta)
     {
         return meta == null || meta.isEmpty();
+    }
+
+
+    /**
+     * <b>Fix #376</b> — the metadata map with every <b>templated</b> value dropped, applied to
+     * every LIBRARY-level DATASET answer regardless of which tier produced it.
+     *
+     * <p>
+     * {@code Fix #370} correction 3 ruled that a bracketed token is a template and must never be
+     * returned as if it were a value, but enforced it inside {@link #suppQualMetadata} (tier 3)
+     * alone. A combined {@code SUPPQUAL} file resolves at <b>tier 1</b>, by name, and so bypassed
+     * it. The ruling is about what the accessor may return, not about how it got there.
+     * </p>
+     *
+     * <p>
+     * ⚑ Tier 3 keeps its own {@code removeIf} — it strips <em>after</em> substituting, so it must
+     * run there; this pass is then idempotent for tier 3 and is the only guard for tiers 1 and 2. ⚑
+     * The map is copied only when something is actually templated, which is the rare case:
+     * {@code SUPPQUAL} is the only templated dataset label the Library is <b>known</b> to publish
+     * ({@code Fix #370} measured its two spellings across 7 products). ⚠ That is not an exhaustive
+     * placeholder census, and this guard deliberately does not need one — it drops whatever carries
+     * a bracketed token, whichever dataset it came from.
+     * </p>
+     *
+     * @param meta
+     *            the tier's answer; {@code null} and empty are both "no answer"
+     * @return {@code meta} itself when nothing is templated, otherwise an unmodifiable copy without
+     *         the templated keys — possibly empty, which {@link #unknownDataset} and the caller's
+     *         {@code meta.get(...)} both already read as "no answer"
+     */
+    private static Map<String, String> withoutTemplates(@Nullable Map<String, String> meta)
+    {
+        if (meta == null || meta.isEmpty())
+        {
+            return Map.of();
+        }
+        boolean templated = false;
+        for (String value : meta.values())
+        {
+            if (value != null && BRACKETED_TOKEN.matcher(value).find())
+            {
+                templated = true;
+                break;
+            }
+        }
+        if (!templated)
+        {
+            return meta;
+        }
+        Map<String, String> out = new LinkedHashMap<>(meta);
+        out.values().removeIf(v -> v == null || BRACKETED_TOKEN.matcher(v).find());
+        return Collections.unmodifiableMap(out);
     }
 
 

@@ -790,7 +790,7 @@ public final class ScalarSemantics
      * <i>widen in place</i>). Before it, this predicate modelled ISO-8601 <b>truncation</b> only —
      * dropping <em>trailing</em> components — and rejected a hyphen placeholder for a
      * <em>middle</em> unknown, so a legitimately partial {@code --DTC} was reported as an invalid
-     * date. {@code plans/PLAN-partial-date-extreme-selection.md} (and the retired
+     * date. {@code plans/done/PLAN-partial-date-extreme-selection.md} (and the retired
      * {@code CORE-RULES-JAVA-EXTENSIONS.md} &#167;21, indexed in
      * {@code corej-cdisc-rules/documentation/expression-docs-disposition.md} &#167;A) state that
      * {@code --DTC} variables <b>legally</b> carry masked components, so that rejection was a false
@@ -1048,8 +1048,9 @@ public final class ScalarSemantics
      * asks — but do not read the implication as unconditional. What this one still answers alone is
      * <em>which</em> of the two conventions a value uses — the question {@code IsoDateBounds.bound}
      * dispatches on, because a masked value's hull is a non-contiguous set rather than a right-open
-     * interval. {@code plans/PLAN-partial-date-extreme-selection.md} records that {@code --DTC}
-     * variables <b>legally</b> carry masked components, which is why widening was the right call.
+     * interval. {@code plans/done/PLAN-partial-date-extreme-selection.md} records that
+     * {@code --DTC} variables <b>legally</b> carry masked components, which is why widening was the
+     * right call.
      * </p>
      * <p>
      * &#9888; A hyphen is legal only as a <b>whole</b> component: {@code 2012---15} yes,

@@ -14,63 +14,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR44",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR44",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR44",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR44",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR44"
           ]
         }
       ],
@@ -103,63 +48,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR45",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR45",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR45",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR45",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR45"
           ]
         }
       ],
@@ -192,63 +82,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR48",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR48",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR48",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR48",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR48"
           ]
         }
       ],
@@ -286,63 +121,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR53",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR53",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR53",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR53",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR53"
           ]
         }
       ],
@@ -383,63 +163,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR78",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR78",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR78",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR78",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR78"
           ]
         }
       ],
@@ -476,63 +201,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR79",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR79",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR79",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR79",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR79"
           ]
         }
       ],
@@ -569,63 +239,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR102",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR102",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR102",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR102",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR102"
           ]
         }
       ],
@@ -673,63 +288,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR103",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR103",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR103",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR103",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR103"
           ]
         }
       ],
@@ -777,63 +337,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR104",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR104",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR104",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR104",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR104"
           ]
         }
       ],
@@ -881,63 +386,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR204",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR204",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR204",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR204",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR204"
           ]
         }
       ],
@@ -978,63 +428,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR210",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR210",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR210",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR210",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR210"
           ]
         }
       ],
@@ -1075,49 +470,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR367",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR367",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR367",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR367"
           ]
         }
       ],
@@ -1158,35 +512,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR498",
-                    "Version": "2"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR498",
-                    "Version": "2"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR498"
           ]
         }
       ],
@@ -1228,35 +555,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR500",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR500",
-                    "Version": "2"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR500"
           ]
         }
       ],
@@ -1298,35 +598,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR591",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR591",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR591"
           ]
         }
       ],
@@ -1339,7 +612,7 @@
       "Executability": "Fully Executable",
       "ExecutabilityHint": {
         "Category": "fully executable",
-        "Detail": "Declared-token template. The Expansion block binds &VAR to every variable this dataset shares by name with ADSL, and the engine emits one concrete rule per shared variable, each comparing that variable against ADSL's after an inner join on STUDYID / USUBJID — the CDISC-CG0218 / PMDA-AD0208 shape. The join keys are not expanded over: compared against themselves after merging on them they are equal by construction. When ADSL is not among the loaded datasets, or the resolver cannot enumerate other datasets, the rule is skipped with a stated reason rather than expanded to nothing. NARROWING, stated so it is not invisible: the two non_empty guards are carried over verbatim from the pre-expansion rule. The ADSL-side guard suppresses rows whose ADSL value is genuinely empty; a subject absent from ADSL is dropped by the inner join and is reported by CDISC-AD0256, the ADSL-membership rule (D-TA-2). The dataset-side guard means a value present in ADSL but missing here is NOT reported, which ADaMIG 2.3.1 arguably does require; logged as SHEET-ISSUES entry 35 for the sheet author rather than changed here."
+        "Detail": "Declared-token template. The Expansion block binds &VAR to every variable this dataset shares by name with ADSL, and the engine emits one concrete rule per shared variable, each comparing that variable against ADSL's after an inner join on STUDYID / USUBJID \u2014 the CDISC-CG0218 / PMDA-AD0208 shape. The join keys are not expanded over: compared against themselves after merging on them they are equal by construction. When ADSL is not among the loaded datasets, or the resolver cannot enumerate other datasets, the rule is skipped with a stated reason rather than expanded to nothing. NARROWING, stated so it is not invisible: the two non_empty guards are carried over verbatim from the pre-expansion rule. The ADSL-side guard suppresses rows whose ADSL value is genuinely empty; a subject absent from ADSL is dropped by the inner join and is reported by CDISC-AD0256, the ADSL-membership rule (D-TA-2). The dataset-side guard means a value present in ADSL but missing here is NOT reported, which ADaMIG 2.3.1 arguably does require; logged as SHEET-ISSUES entry 35 for the sheet author rather than changed here."
       },
       "Scope": {
         "Domains": {
@@ -1379,35 +652,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR592",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR592",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR592"
           ]
         }
       ],
@@ -1450,35 +696,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR598",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR598",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR598"
           ]
         }
       ],
@@ -1522,35 +741,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR604",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR604",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR604"
           ]
         }
       ],
@@ -1591,35 +783,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR605",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR605",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR605"
           ]
         }
       ],
@@ -1662,63 +827,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR640",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR640",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR640",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR640",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR640"
           ]
         }
       ],
@@ -1756,63 +866,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR641",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR641",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR641",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR641",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR641"
           ]
         }
       ],
@@ -1850,63 +905,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR642",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR642",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR642",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR642",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR642"
           ]
         }
       ],
@@ -1944,63 +944,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR643",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR643",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR643",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR643",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR643"
           ]
         }
       ],
@@ -2038,63 +983,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR644",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR644",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR644",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR644",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR644"
           ]
         }
       ],
@@ -2132,63 +1022,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR645",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR645",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR645",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR645",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR645"
           ]
         }
       ],
@@ -2226,63 +1061,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR646",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR646",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR646",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR646",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR646"
           ]
         }
       ],
@@ -2326,35 +1106,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR706",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR706",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR706"
           ]
         }
       ],
@@ -2396,35 +1149,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR707",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR707",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR707"
           ]
         }
       ],
@@ -2466,21 +1192,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR735",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR735"
           ]
         }
       ],
@@ -2526,49 +1239,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.1",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR897",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR897",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.3",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR897",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR897"
           ]
         }
       ],

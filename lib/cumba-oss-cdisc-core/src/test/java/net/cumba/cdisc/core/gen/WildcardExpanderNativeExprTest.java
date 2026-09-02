@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.UUID;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.expr.CheckExpressionParser;
 import net.cumba.cdisc.core.expr.ExpressionPrinter;
 import net.cumba.cdisc.core.expr.OperandKind;
@@ -18,6 +17,7 @@ import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RuleCore;
 import net.cumba.cdisc.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

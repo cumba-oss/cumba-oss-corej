@@ -37,6 +37,16 @@ Outcome:
   Output_Variables:
   - "AESEQ"
   - "AE.AESEQ"
+Source:
+  Message: "Record key from ADaM ADAE is not traceable to SDTM.AE (extra ADAE recs)"
+  Description: "Adverse Events specified in ADAE dataset must be traceable to the\
+    \ SDTM AE domain based on Study Identifier (STUDYID), Unique Subject Identifier\
+    \ (USUBJID) and Sequence Number (AESEQ) variables. ADaM ADAE dataset should be\
+    \ validated with SDTM AE domain to facility this check. There must be traceability\
+    \ between ADaM and SDTM study data. This usually refers to mapping issues since\
+    \ an ADaM ADAE records must have been born from SDTM AE domain."
+  Domains: "ADAE"
+  Severity: "Error"
 Standards:
 - Organization: "PMDA"
   Standards:

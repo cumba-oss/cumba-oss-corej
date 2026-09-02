@@ -1,0 +1,70 @@
+# AP (Associated Persons) study data for the strict `AP--` and `APFA--` tokens.
+#
+# ⚠⚠ /data/testdata contains ZERO AP* datasets. Before this file the `AP--` and `APFA--`
+# tokens had no dataset-backed coverage: the only AP fixtures in the tree are .cdt scenarios
+# pinned to individual shipped rules, none of which exercises the data-derived split base.
+#
+# ⚠ Unlike SUPP/SQ, an AP dataset carries a DOMAIN column, so
+# OperationExecutor.unsplitNameFromData takes its FIRST branch and reads the DOMAIN cell. The
+# AP DOMAIN value is the 4-character AP form (APMH, not MH) — see the shipped
+# CDISC-CG0309-valid-APMH.cdt scenario and CORE-000181, which assert exactly that length.
+
+dataset APMH label="Associated Persons Medical History"
+col STUDYID type=Char label="Study Identifier"
+col DOMAIN  type=Char label="Domain Abbreviation"
+col APID    type=Char label="Associated Persons Identifier"
+col MHSEQ   type=Num  label="Sequence Number"
+col MHTERM  type=Char label="Reported Term for the Medical History"
+---
+CDISCPILOT01 | APMH | AP-701-1015 | 1 | ASTHMA
+CDISCPILOT01 | APMH | AP-701-1023 | 2 | ECZEMA
+---
+
+# Digit split: DOMAIN=APMH gives the 4-character base APMH, which strict `AP--` matches.
+# This is the only AP shape the name-only heuristic also gets right, so it is the case that
+# distinguishes "the data path works" from "the data path is never consulted".
+dataset APMH1 label="Associated Persons Medical History (Split 1)"
+col STUDYID type=Char label="Study Identifier"
+col DOMAIN  type=Char label="Domain Abbreviation"
+col APID    type=Char label="Associated Persons Identifier"
+col MHSEQ   type=Num  label="Sequence Number"
+col MHTERM  type=Char label="Reported Term for the Medical History"
+---
+CDISCPILOT01 | APMH | AP-701-1015 | 3 | MIGRAINE
+---
+
+# ⚑ The non-obvious case, and the reason `APFA--` is a token at all. The NAME APFAMH is 6
+# characters, so `APFA--` matches it directly; the data-derived base is the 4-character APFA,
+# so `AP--` matches it via the split re-test. One dataset, two different tokens, two different
+# mechanisms — and neither of them is a startsWith test.
+dataset APFAMH label="Associated Persons Findings About Medical History"
+col STUDYID  type=Char label="Study Identifier"
+col DOMAIN   type=Char label="Domain Abbreviation"
+col APID     type=Char label="Associated Persons Identifier"
+col FASEQ    type=Num  label="Sequence Number"
+col FAOBJ    type=Char label="Object of the Observation"
+col FATESTCD type=Char label="Findings About Test Short Name"
+col FATEST   type=Char label="Findings About Test Name"
+---
+CDISCPILOT01 | APFA | AP-701-1015 | 1 | ASTHMA | SEV | Severity
+---
+
+# ⚠⚠ APRELSUB is a REAL, conformant 8-character AP dataset (CDISC CT C147175,
+# /mdr/sdtmig/ap-1-0/datasets/APRELSUB) that strict `AP--` cannot reach — it is the sole
+# structural exception, because "RELSUB" is a 6-character "domain". Measured against the
+# Library metadata, the only AP-prefixed datasets are APDM (4) and APRELSUB (8).
+# The corpus answer is the LITERAL token `APRELSUB` in Scope.Domains, never an `AP*` glob
+# (wave-10 decision W2). This dataset exists so that the literal's effect is measurable and so
+# that anyone who "fixes" the gap by restoring the family wildcard is caught by the
+# cross-family assertions instead.
+dataset APRELSUB label="Associated Persons Related Subjects"
+col STUDYID type=Char label="Study Identifier"
+col DOMAIN  type=Char label="Domain Abbreviation"
+col APID    type=Char label="Associated Persons Identifier"
+col RSUBJID type=Char label="Related Subject or Pool Identifier"
+col RDEVID  type=Char label="Related Device Identifier"
+col SREL    type=Char label="Subject Relationship"
+---
+CDISCPILOT01 | APRELSUB | AP-701-1015 | 01-701-1015 |  | FRIEND
+CDISCPILOT01 | APRELSUB | AP-701-1023 |  | DEV-01 | OPERATOR
+---

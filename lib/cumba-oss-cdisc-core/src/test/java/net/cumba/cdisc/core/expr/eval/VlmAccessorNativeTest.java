@@ -8,7 +8,6 @@ import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 import net.cumba.cdisc.core.exec.EvaluationContext;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.expr.CheckExpressionParser;
 import net.cumba.cdisc.core.expr.ast.Expr;
 import net.cumba.cdisc.core.metadata.VlmResolver;
@@ -27,6 +26,7 @@ import net.cumba.cdisc.define.ValueListRef;
 import net.cumba.cdisc.define.WhereClauseDef;
 import net.cumba.cdisc.define.WhereClauseRef;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

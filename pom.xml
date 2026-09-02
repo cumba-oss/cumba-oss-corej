@@ -90,7 +90,7 @@
         <dependency.mockito.version>5.23.0</dependency.mockito.version>
         <dependency.lombock.version>1.18.46</dependency.lombock.version>
         <dependency.cumba-oss-commons.version>0.1.0</dependency.cumba-oss-commons.version>
-        <dependency.cumba-oss-datatable.version>0.1.0</dependency.cumba-oss-datatable.version>
+        <dependency.cumba-oss-datatable.version>0.2.0</dependency.cumba-oss-datatable.version>
         <dependency.jackson.version>2.22.2</dependency.jackson.version>
         <dependency.pyrolite.version>1.5</dependency.pyrolite.version>
         <dependency.commons-compress.version>1.28.0</dependency.commons-compress.version>
@@ -130,32 +130,28 @@
         <plugin.maven-site-plugin.version>3.22.0</plugin.maven-site-plugin.version>
         <plugin.maven-surefire-plugin.version>3.5.6</plugin.maven-surefire-plugin.version>
         <!--
-            ⚠ HELD BACK AT 4.9.8.3 ON PURPOSE - do not bump without reading this.
+            SpotBugs 4.10.4.0 - aligned with commons / formats / datatable.
 
-            The sibling repos (commons / formats / datatable) are on 4.10.4.0.
-            corej is not, and the difference is deliberate.
+            HISTORY, kept because the hold lasted three releases and the reason
+            matters if it ever recurs: this repo was pinned at 4.9.8.3 while the
+            newer detectors reported 186 findings in cumba-oss-cdisc-core - 180 of
+            them NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE across 165 sites in 28
+            files. They were REAL, not false positives: model DTOs carry @Nullable
+            fields that Lombok copies onto the generated getters, and the codebase
+            used `x.getY() != null && x.getY()...` as an idiom, so the guard
+            protected nothing on the second call.
 
-            4.10.4.0 adds detectors that report 186 findings in
-            cumba-oss-cdisc-core - 180 of them NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE
-            across 165 distinct sites in 28 files. They are REAL, not false
-            positives: the model DTOs carry @Nullable fields (Jackson-deserialised
-            rule JSON), Lombok copies the annotation onto the generated getters,
-            and the codebase uses `x.getY() != null && x.getY()...` as an idiom -
-            so the null check guards one call and a second call is dereferenced.
-            NullAway does not catch it; it runs with AnnotatedPackages=net.cumba
-            and passes.
+            The fixes were made in the internal corej repository, as planned, and
+            arrived here with the engine re-sync on 2026-09-02 - which is why the
+            bump lands in the same commit. Do not separate them: bumping without
+            the synced sources reproduces all 186 findings.
 
-            The fix ("read it once into a local") is not safely mechanisable: many
-            sites sit inside a guard on the RECEIVER
+            An automated "read once into a local" rewrite was attempted internally
+            and broke the build three separate ways; many sites guard the RECEIVER
             (`engine == null || engine.getRules() == null`), where hoisting above
-            the check would dereference null. An attempted automated rewrite broke
-            the build three separate ways.
-
-            The cleanup is being done in the internal corej repository first and
-            will arrive here on the next extraction. Bump this to 4.10.4.0 at the
-            same time - not before, or CI goes red with 186 findings.
+            the check dereferences null. Fix by hand if this recurs.
         -->
-        <plugin.spotbugs-maven-plugin.version>4.9.8.3</plugin.spotbugs-maven-plugin.version>
+        <plugin.spotbugs-maven-plugin.version>4.10.4.0</plugin.spotbugs-maven-plugin.version>
         <plugin.spotless-maven-plugin.version>3.10.1</plugin.spotless-maven-plugin.version>
         <plugin.jacoco-maven-plugin.version>0.8.15</plugin.jacoco-maven-plugin.version>
         <plugin.maven-enforcer-plugin.version>3.6.3</plugin.maven-enforcer-plugin.version>
@@ -304,6 +300,8 @@
         <module>lib/cumba-oss-cdisc-core</module>
         <module>lib/cumba-oss-cdisc-report-json</module>
         <module>lib/cumba-oss-cdisc-report-xlsx</module>
+        <module>lib/cumba-oss-cdisc-core-ruletest</module>
+        <module>lib/cumba-oss-cdisc-define-conformance</module>
 
         <module>coverage</module>
     </modules>
@@ -1321,7 +1319,17 @@
                 <scope>provided</scope>
             </dependency>
 
-        </dependencies>
+                    <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>cumba-oss-cdisc-core-ruletest</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>cumba-oss-cdisc-define-conformance</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+</dependencies>
     </dependencyManagement>
 
     <!-- Project-wide dependencies inherited by every module. JSpecify is here

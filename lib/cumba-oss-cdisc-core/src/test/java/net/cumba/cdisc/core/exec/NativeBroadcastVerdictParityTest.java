@@ -12,12 +12,13 @@ import net.cumba.cdisc.core.RulePackageLoader;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * P3 of {@code plans/PLAN-native-engine-full-coverage.md} — bit-for-bit parity between the NATIVE
- * dataset-broadcast verdict path (generalised from Epic B5 to every eligible rule type) plus the
- * relaxed non-row-based native dispatch, and the legacy engine:
+ * P3 of {@code plans/done/PLAN-native-engine-full-coverage.md} — bit-for-bit parity between the
+ * NATIVE dataset-broadcast verdict path (generalised from Epic B5 to every eligible rule type) plus
+ * the relaxed non-row-based native dispatch, and the legacy engine:
  *
  * <ul>
  * <li><b>3a</b> — metadata-family presence verdicts ({@code exists}/{@code not_exists} on column

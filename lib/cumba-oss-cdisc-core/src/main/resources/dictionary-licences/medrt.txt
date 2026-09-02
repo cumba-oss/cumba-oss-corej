@@ -1,0 +1,23 @@
+MED-RT (Medication Reference Terminology)
+
+Producer: the US Department of Veterans Affairs, Veterans Health
+Administration (VHA). NCI Enterprise Vocabulary Services (EVS,
+https://evs.nci.nih.gov/ftp1/MED-RT/) only hosts the distribution; it is
+not the licensor.
+
+Terms: no licence or terms-of-use document is published for MED-RT, and
+none exists in any of the distribution files. Use of this copy rests on
+absence of restriction — as a work of the United States Government it is
+not subject to US copyright (17 U.S.C. § 105), and the NLM UMLS source
+documentation lists MED-RT at source-restriction level 0 — not on any
+affirmative grant. In particular, this copy is
+NOT distributed under a Creative Commons licence: the NCI statement
+adopting CC BY 4.0 names only "The NCI Thesaurus™", which MED-RT is not.
+
+Trademarks: MED-RT™ and NDF-RT™ are trademarks of the US Department of
+Veterans Affairs. Their use here implies no endorsement by the VA, the
+VHA, or NCI.
+
+The sibling medrt.json[.gz] is a converted extract produced by the coreJ
+dictionary installer, not the authoritative MED-RT release. The
+authoritative release is at the source recorded in SOURCES.md.

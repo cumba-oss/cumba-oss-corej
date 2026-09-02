@@ -1,8 +1,8 @@
 package net.cumba.cdisc.core.expr.eval;
 
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.column;
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.lib;
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.table;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.column;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.lib;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.table;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -13,11 +13,11 @@ import java.util.BitSet;
 import java.util.Map;
 import net.cumba.cdisc.core.exec.EvaluationContext;
 import net.cumba.cdisc.core.exec.MetadataProvider;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.expr.CheckExpressionParser;
 import net.cumba.cdisc.core.metadata.MetadataLibraryProvider;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.IMetadataLibrary;
+import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

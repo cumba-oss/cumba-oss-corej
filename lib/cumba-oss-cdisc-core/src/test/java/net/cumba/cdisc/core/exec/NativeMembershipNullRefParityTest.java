@@ -12,6 +12,7 @@ import net.cumba.cdisc.core.expr.eval.NativeExprEvaluator;
 import net.cumba.cdisc.core.model.CheckConditionLeaf;
 import net.cumba.cdisc.core.model.Operation;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

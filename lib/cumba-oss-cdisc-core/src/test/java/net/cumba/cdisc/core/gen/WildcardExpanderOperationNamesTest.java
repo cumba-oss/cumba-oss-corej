@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.model.CheckConditionAll;
 import net.cumba.cdisc.core.model.CheckConditionLeaf;
 import net.cumba.cdisc.core.model.Operation;
@@ -18,6 +17,7 @@ import net.cumba.cdisc.core.model.Outcome;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RuleCore;
 import net.cumba.datatable.DataTableMeta;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

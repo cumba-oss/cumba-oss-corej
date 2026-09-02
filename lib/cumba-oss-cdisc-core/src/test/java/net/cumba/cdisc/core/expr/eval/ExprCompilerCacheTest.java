@@ -9,15 +9,15 @@ import java.util.Map;
 import net.cumba.cdisc.core.exec.EvaluationContext;
 import net.cumba.cdisc.core.exec.ExpressionResultCache;
 import net.cumba.cdisc.core.exec.JoinLookup;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.expr.OperandKind;
 import net.cumba.cdisc.core.expr.ast.Expr;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Phase 3 of {@code plans/PLAN-dataset-expression-cache.md}: the {@link ExprCompiler} caching
+ * Phase 3 of {@code plans/done/PLAN-dataset-expression-cache.md}: the {@link ExprCompiler} caching
  * decorator. Verifies that a pure boolean leaf is cached, that the stored {@link BitSet} is cloned
  * on read (so an enclosing in-place flip cannot corrupt it), that the §3.6 gate and the
  * {@code null}-cache fast path disable caching, and — the correctness gate — that a cached run and

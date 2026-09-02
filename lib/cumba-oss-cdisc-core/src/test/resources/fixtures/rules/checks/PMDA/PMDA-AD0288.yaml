@@ -27,6 +27,13 @@ Outcome:
   Output_Variables:
   - "AEREL"
   - "AERELN"
+Source:
+  Message: "Inconsistent value for AERELN"
+  Description: "Across studies, all Causality (N) (AERELN) variable values must be\
+    \ the same for each unique value of Causality (AEREL) variable when the primary\
+    \ variable AEREL is populated."
+  Domains: "ADAE"
+  Severity: "Error"
 Standards:
 - Organization: "PMDA"
   Standards:

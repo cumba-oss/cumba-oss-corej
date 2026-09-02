@@ -94,7 +94,7 @@ public final class LibraryValidator
 
     /**
      * Kill-switch for the per-dataset expression-result cache
-     * ({@code plans/PLAN-dataset-expression-cache.md}). When
+     * ({@code plans/done/PLAN-dataset-expression-cache.md}). When
      * {@code -Dcorej.exprCache.disabled=true} the per-dataset cache is not created ({@code null} is
      * threaded through, which is behaviour-identical to the pre-cache engine) — a production safety
      * valve and the A/B toggle for the Phase-3 benchmark.
@@ -204,8 +204,9 @@ public final class LibraryValidator
 
     /**
      * Per-record Define-XML value-level metadata resolver (VLM), or {@code null} when no Define-XML
-     * value-level metadata is present. Carried onto the {@link EvaluationContext} for the
-     * {@code vlm_*} accessors ({@code Value Check against Define XML VLM} rule type).
+     * value-level metadata is present. Carried onto the
+     * {@link net.cumba.cdisc.core.exec.EvaluationContext} for the {@code vlm_*} accessors
+     * ({@code Value Check against Define XML VLM} rule type).
      */
     private final @Nullable VlmResolver vlmResolver;
 

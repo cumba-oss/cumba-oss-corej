@@ -10,9 +10,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import net.cumba.cdisc.core.exec.EvaluationContext;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.expr.CheckExpressionParser;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -121,10 +121,10 @@ class AbsentColumnContractTest
      *
      * <p>
      * ⚑ <b>That disagreement was a standing-policy violation, and the ruling removed it as a side
-     * effect.</b> {@code WORK-STATUS.md} §1, 2026-08-03: <i>"an absent column is handled exactly as
-     * a present column whose values are all missing."</i> This surface did not honour that; it does
-     * now, and it needed no carve-out of its own to get there. ⇒ <b>one fewer self-handling
-     * surface, not one more.</b>
+     * effect.</b> {@code STANDING-RULINGS.md} §1, 2026-08-03: <i>"an absent column is handled
+     * exactly as a present column whose values are all missing."</i> This surface did not honour
+     * that; it does now, and it needed no carve-out of its own to get there. ⇒ <b>one fewer
+     * self-handling surface, not one more.</b>
      * </p>
      *
      * <p>

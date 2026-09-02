@@ -4,9 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.BitSet;
 import net.cumba.cdisc.core.exec.EvaluationContext;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.expr.eval.NativeExprEvaluator;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

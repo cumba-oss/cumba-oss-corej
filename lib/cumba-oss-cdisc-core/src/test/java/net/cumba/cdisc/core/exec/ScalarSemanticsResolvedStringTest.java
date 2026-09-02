@@ -10,6 +10,7 @@ import net.cumba.cdisc.core.expr.eval.ColumnVector;
 import net.cumba.cdisc.core.expr.eval.Primitives;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.CachedDataTableColumn;
+import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;

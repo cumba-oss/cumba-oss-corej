@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>net.cumba</groupId>
+        <artifactId>cumba-oss-corej-parent</artifactId>
+        <version>${revision}</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>cumba-oss-cdisc-core-ruletest</artifactId>
+
+    <name>Cumba OSS coreJ :: CDISC Core Ruletest</name>
+    <url>https://github.com/cumba-oss/cumba-oss-corej</url>
+    <packaging>jar</packaging>
+
+    <inceptionYear>2026</inceptionYear>
+    <description>
+        Rule-test harness: load .cdt fixtures, evaluate a single rule
+        against them, compare against expected findings. The base
+        building block for the rule-suite tests. Ships the dataviewer's
+        net.cumba.cdisc.core.ruletest sources verbatim.
+    </description>
+
+    <properties>
+        <mockito.agent>-javaagent:${org.mockito:mockito-core:jar}</mockito.agent>
+        <!--
+            This module is a test-harness framework (the RuleTestCdt loader,
+            MapBackedLibraryMetadataProvider, the scenario resolvers) consumed by downstream test
+            modules. Some of its main sources are exercised by callers in corej-cdisc-rules
+            rather than by tests in this module itself, so the bundle-level coverage reads lower
+            standalone than the work the code actually gets.
+
+            Ratcheted 0.40 -> 0.75 on 2026-09-01 (plans/done/PLAN-corej-restructure.md section 3).
+            The old 0.40 was set when ScenarioTrimmer's 1 539 never-executed lines sat in this
+            module's main tree; they moved to corej-cdisc-rules' TEST tree, taking 1 708 of
+            6 981 main lines (24%) with them. Measured immediately after the move: line coverage
+            0.8012 (1 334 / 1 665), and 0.8000 (1 332 / 1 665) after section 1 additionally
+            deleted RuleTestFactoryTest, which contributed 2 lines and 0 branches. The gate is
+            deliberately NOT set to the 0.80 parent default: the module clears it by
+            0.00 percentage points, which is one refactor away from a red build for no signal.
+            0.75 locks in the 35-point gain with real headroom.
+        -->
+        <jacoco.line.coverage>0.75</jacoco.line.coverage>
+        <!--
+            The pitest gates are NOT re-tuned here, deliberately. Pitest is opt-in in this repo
+            and mutation analysis is left to CI, so this session had no local number to raise
+            them against, and raising a mutation gate on a guess reddens CI two steps
+            downstream. The 40 / 35 pins below are therefore still the PRE-move figures, and are
+            understated by the same 24% of dead main lines the JaCoCo gate above was.
+            Owed: re-measure both in CI and ratchet them the same way.
+        -->
+        <pitest.coverage.target>40</pitest.coverage.target>
+        <pitest.mutation.target>35</pitest.mutation.target>
+    </properties>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-datatable</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-datatable-impl</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-datatable-provider-cdt</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-cdisc-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+
+        <!-- JSpecify nullability annotations (NullAway). -->
+        <dependency>
+            <groupId>org.jspecify</groupId>
+            <artifactId>jspecify</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <!-- Reads the optional YAML sidecar referenced by a #library-include directive. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+
+        <!-- Test scope only. This module's MAIN sources carry no JUnit at all: the
+             @ExtendWith helpers (CdtResource / CdtResourceExtension) and the ScenarioTrimmer
+             developer tool moved to corej-cdisc-rules' test tree on 2026-09-01
+             (plans/done/PLAN-corej-restructure.md, sections 1-3). Its own tests still need the
+             Jupiter API for plain @Test. (An earlier draft said "for @TestFactory"; the one
+             @TestFactory in this module, RuleTestFactoryTest, was itself deleted by section 1,
+             the dependency is still required, just not for that reason.) Consumers get the
+             three plain classes they actually
+             import (RuleTestScenario / RuleTestCdt / CdtLoader) without JUnit on their
+             classpath; clients/corej-cdisc-rule-editor-rest was shipping JUnit to production
+             for exactly that. -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-params</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+
+</project>

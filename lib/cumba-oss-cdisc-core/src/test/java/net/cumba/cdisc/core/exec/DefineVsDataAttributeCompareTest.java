@@ -15,6 +15,7 @@ import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.cdisc.define.DefineXmlParser;
 import net.cumba.cdisc.define.ODM;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 

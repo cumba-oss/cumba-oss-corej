@@ -1,0 +1,20 @@
+SNOMED CT
+
+Producer: SNOMED International (https://www.snomed.org). The free tier is
+the Global Patient Set (GPS), registration required; full editions need a
+SNOMED International Affiliate licence or, in Member territories, an NLM
+UMLS account.
+
+Terms: the terms under which you obtained your SNOMED CT package govern
+this converted copy. The GPS is published under CC BY-ND 4.0 since around
+March 2026 (earlier GPS releases were published under CC BY 4.0,
+irrevocably, so the release version you supplied decides which applies);
+full editions are governed by the SNOMED CT Affiliate Licence. coreJ
+neither supplies nor redistributes SNOMED CT data; this file was
+converted locally from the package you supplied.
+
+Trademarks: SNOMED® and SNOMED CT® are registered trademarks of SNOMED
+International.
+
+The sibling snomed.json[.gz] is a converted extract produced by the coreJ
+dictionary installer, not an authoritative SNOMED CT release.

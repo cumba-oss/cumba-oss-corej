@@ -12,11 +12,12 @@ import net.cumba.cdisc.core.RulePackageLoader;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 /**
- * R-P4 ({@code plans/PLAN-native-engine-residuals.md}) — the re-authored ADaM additions
+ * R-P4 ({@code plans/done/PLAN-native-engine-residuals.md}) — the re-authored ADaM additions
  * {@code ADAM-ADD-100025}/{@code 100026}: {@code $dataset_variables not_contains_all
  * $required_variables} (/{@code $expected_variables}), the fully-native CORE-000355 shape replacing
  * the degenerate {@code variable_name not_contains_all ["$-ref"]} form (whose {@code $}-ref sat

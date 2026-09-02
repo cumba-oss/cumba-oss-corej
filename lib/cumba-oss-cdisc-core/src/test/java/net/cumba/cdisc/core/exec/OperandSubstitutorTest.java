@@ -18,6 +18,7 @@ import net.cumba.cdisc.core.exec.OperandSubstitutor.Scalar;
 import net.cumba.cdisc.core.exec.OperandSubstitutor.SubstitutionException;
 import net.cumba.cdisc.core.exec.OperandSubstitutor.Wildcard;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

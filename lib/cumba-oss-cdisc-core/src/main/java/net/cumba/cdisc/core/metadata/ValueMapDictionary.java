@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.zip.GZIPInputStream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -28,10 +29,19 @@ import org.jspecify.annotations.Nullable;
  * </ul>
  *
  * <p>
- * Small dummy maps are checked into the repository so the dictionary conformance rules execute and
- * parity-test now without any licensed dictionary data; real dictionary data drops in behind the
- * same file format later. The identical files are read by the Python reference engine's
- * {@code ValueMapValidator} shim so both engines validate against the same data.
+ * Small dummy maps are checked into the repository under {@code lib/corej-cdisc-core/dictionaries/}
+ * so the dictionary conformance rules execute and the {@code .cdt} scenarios discriminate without
+ * any licensed dictionary data present; real dictionary data is installed by the operator behind
+ * the same file format ({@code plans/PLAN-dictionary-seeder.md}).
+ * </p>
+ *
+ * <p>
+ * <b>Readers of this format.</b> There are exactly two, both in this module: this class, and
+ * {@code DictionaryValidationTest.caseContractViolations}, which walks the same four sections
+ * independently to audit the preferred-case contract. Nothing outside {@code corej-cdisc-core}
+ * reads it. (Before {@code 987ab2ba1} this javadoc claimed the files were also read by a Python
+ * reference engine's {@code ValueMapValidator} shim; that module was renamed away and no such
+ * reader exists — the claim wrongly implied a cross-engine constraint on the format.)
  * </p>
  *
  * <p>
@@ -49,7 +59,37 @@ public final class ValueMapDictionary
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /**
+     * Where a dictionary came from and which release it is — written by the dictionary installer,
+     * read back for the report's {@code *_Version} conformance fields.
+     *
+     * <p>
+     * All three components are {@code null} for a file that declares none (every hand-authored
+     * fixture, and every file predating the installer). Provenance is <b>reported, never
+     * checked</b>: no conformance finding compares a declared define.xml
+     * {@code ExternalCodeList/@Version} against it.
+     * </p>
+     *
+     * @param version
+     *            the vendor's own release identifier, verbatim ({@code "27.0"},
+     *            {@code "2026.07.06"}, {@code "SEP_2020"}, {@code "4Aug2026"}) — never parsed,
+     *            ordered or normalised, only compared for equality
+     * @param source
+     *            the URL or local path the installer read
+     * @param retrieved
+     *            the ISO-8601 date the installer fetched it
+     */
+    public record Provenance(@Nullable String version, @Nullable String source,
+            @Nullable String retrieved)
+    {
+
+        /** The provenance of a file that declares none. */
+        public static final Provenance NONE = new Provenance(null, null, null);
+    }
+
     private final String type;
+
+    private final Provenance provenance;
 
     private final Map<String, Map<String, String>> levels;
 
@@ -71,11 +111,12 @@ public final class ValueMapDictionary
     /** Attribute maps with the term/code keys upper-cased (values verbatim). */
     private final Map<String, Map<String, String>> attributesFolded;
 
-    private ValueMapDictionary(String type, Map<String, Map<String, String>> levels,
-            Map<String, List<String>> hierarchy, Map<String, Map<String, String>> pairs,
-            Map<String, Map<String, String>> attributes)
+    private ValueMapDictionary(String type, Provenance provenance,
+            Map<String, Map<String, String>> levels, Map<String, List<String>> hierarchy,
+            Map<String, Map<String, String>> pairs, Map<String, Map<String, String>> attributes)
     {
         this.type = type;
+        this.provenance = provenance;
         this.levels = levels;
         this.hierarchy = hierarchy;
         this.hierarchyFolded = foldHierarchy(hierarchy);
@@ -93,12 +134,86 @@ public final class ValueMapDictionary
     }
 
 
-    /** Loads a dictionary from a house-format JSON file on disk. */
+    /** The dictionary's recorded provenance, or {@link Provenance#NONE} when it declares none. */
+    public Provenance getProvenance()
+    {
+        return provenance;
+    }
+
+
+    /** The vendor release identifier this dictionary was built from, or {@code null}. */
+    public @Nullable String getVersion()
+    {
+        return provenance.version();
+    }
+
+
+    /**
+     * Whether this dictionary carries any usable content at all — at least one term, ancestor list,
+     * pair or attribute.
+     *
+     * <p>
+     * <b>Why this exists.</b> Every reader below degrades a missing, {@code null}, array-shaped or
+     * misspelled section to an empty map <em>silently</em>, so a truncated download, a partly
+     * written file or a converter bug parses cleanly and answers nothing. Such a file would
+     * otherwise still make {@link RuntimeDictionaryProvider#isAvailable} return {@code true},
+     * bypassing the engine's eager SKIP arm entirely: the membership rules would then find every
+     * term invalid and fire on <em>every row</em>, while the pair and decode rules would report
+     * {@code noViolation} vacuously. {@link RuntimeDictionaryProvider#loadDirectory} therefore
+     * treats a dictionary that fails this test as <b>not loaded</b>, so the established
+     * "unavailable ⇒ SKIP, never false-pass" contract catches it whatever its provenance.
+     * </p>
+     */
+    public boolean hasContent()
+    {
+        // The hierarchy check mirrors anyEntry: a key mapping to an empty ancestor list answers
+        // no hierarchy probe, so {"hierarchy":{"X":[]}} is no more content than {"levels":{"X":{}}}
+        // — counting it would register the dictionary as available and bypass the SKIP arm.
+        return anyEntry(levels) || hierarchy.values().stream().anyMatch(l -> !l.isEmpty())
+                || anyEntry(pairs) || anyEntry(attributes);
+    }
+
+
+    /** Whether a nested section holds at least one inner entry (an empty inner map is not one). */
+    private static boolean anyEntry(Map<String, Map<String, String>> section)
+    {
+        return section.values().stream().anyMatch(inner -> !inner.isEmpty());
+    }
+
+
+    /**
+     * Loads a dictionary from a house-format JSON file on disk. A file whose name ends {@code .gz}
+     * is decompressed on the way in, so a large bundle can ship as {@code <type>.json.gz} without a
+     * separate unpack step.
+     */
     public static ValueMapDictionary load(Path file) throws IOException
     {
-        try (InputStream in = Files.newInputStream(file))
+        try (InputStream in = open(file))
         {
             return parse(MAPPER.readTree(in));
+        }
+    }
+
+
+    /** Opens {@code file}, wrapping it in a GZIP stream when its name ends {@code .gz}. */
+    private static InputStream open(Path file) throws IOException
+    {
+        Path name = file.getFileName();
+        InputStream raw = Files.newInputStream(file);
+        if (name == null || !name.toString().endsWith(".gz"))
+        {
+            return raw;
+        }
+        try
+        {
+            return new GZIPInputStream(raw);
+        }
+        catch (IOException e)
+        {
+            // The wrapper never took ownership, so this stream would otherwise leak on a file
+            // named .gz that is not gzip.
+            raw.close();
+            throw e;
         }
     }
 
@@ -107,9 +222,32 @@ public final class ValueMapDictionary
     public static ValueMapDictionary parse(JsonNode root)
     {
         String t = root.hasNonNull("type") ? root.get("type").asText() : "";
-        return new ValueMapDictionary(t, readLevels(root.get("levels")),
+        return new ValueMapDictionary(t, readProvenance(root), readLevels(root.get("levels")),
                 readNestedStringList(root.get("hierarchy")), readNestedStringMap(root.get("pairs")),
                 readNestedStringMap(root.get("attributes")));
+    }
+
+
+    /** Reads the optional {@code version} / {@code source} / {@code retrieved} keys. */
+    private static Provenance readProvenance(JsonNode root)
+    {
+        String version = text(root, "version");
+        String source = text(root, "source");
+        String retrieved = text(root, "retrieved");
+        return version == null && source == null && retrieved == null ? Provenance.NONE
+                : new Provenance(version, source, retrieved);
+    }
+
+
+    /** A non-blank string field, or {@code null}. */
+    private static @Nullable String text(JsonNode root, String field)
+    {
+        if (!root.hasNonNull(field))
+        {
+            return null;
+        }
+        String value = root.get(field).asText();
+        return value.isBlank() ? null : value;
     }
 
 

@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.cumba.cdisc.core.exec.DatasetResolver;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.exec.RuleExecutionResult;
 import net.cumba.cdisc.core.exec.RuleRunner;
 import net.cumba.cdisc.core.model.CheckConditionAll;
@@ -17,6 +16,7 @@ import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RuleCore;
 import net.cumba.cdisc.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>
  * Synthetic rule:
+ * </p>
  *
  * <pre>
  *   all:
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.Test;
  * </pre>
  *
  * paired with {@code Match_Datasets: [ADSL/USUBJID]}. The first leaf is the non-empty guard so
+ * <p>
  * missing PHSDT rows don't fire.
  * </p>
  *

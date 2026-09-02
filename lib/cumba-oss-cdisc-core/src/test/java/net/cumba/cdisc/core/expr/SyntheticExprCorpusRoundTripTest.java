@@ -16,7 +16,7 @@ import net.cumba.cdisc.core.expr.ast.Expr;
 import org.junit.jupiter.api.Test;
 
 /**
- * <b>G0c</b> of {@code plans/PLAN-rules-src-expression-flip.md} §4 — the systematic synthetic
+ * <b>G0c</b> of {@code plans/done/PLAN-rules-src-expression-flip.md} §4 — the systematic synthetic
  * {@code Expr} corpus. The corpus-driven gates ({@code ExpressionTextIdempotenceTest} in the rules
  * module, P4a/P4b) prove idempotence only for the shapes the <em>authored corpus happens to
  * contain</em>; this test constructs every node kind, operator and literal kind directly and

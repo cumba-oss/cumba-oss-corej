@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Set;
 import net.cumba.cdisc.core.exec.GroupKeyPolicy.Blankness;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.values.IDataValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -22,7 +23,7 @@ import org.junit.jupiter.params.provider.EnumSource;
  * one {@link GroupKeyPolicy} and one predicate.
  *
  * <p>
- * ⚠⚠ <b>The original heading said "and <b>nothing changes behaviour</b>". That was true of the
+ * ⚠⚠ <b>The original heading said "and <em>nothing changes behaviour</em>". That was true of the
  * unification and is no longer true of this class</b>: {@code W32-E3} (owner, 2026-08-12) retired
  * {@code Blankness.MISSING_ONLY}, so {@code ""} is now blank wherever a {@code MissingValue} is.
  * Two assertions here were <b>inverted or re-pointed</b> rather than deleted — each says so at its
@@ -365,9 +366,14 @@ class GroupKeyPolicyUnificationTest
     @Test
     void groupedResultLookupKeyAgreesWithTheBlockKeyOnABlankKey()
     {
-        // ⚠⚠ colSasMissing, NOT colLong. A colLong missing cell renders "" — which is also what a
-        // FOLD produces — so a folding and a non-folding implementation are indistinguishable
-        // through it and this assertion would be vacuous. Measured: with colLong this test stayed
+        // ⚑ HISTORICAL, corrected 2026-09-01. This used to read "colSasMissing, NOT colLong",
+        // because a colLong missing cell rendered "" — which is also what a FOLD produces — so a
+        // folding and a non-folding implementation were indistinguishable through it and this
+        // assertion was vacuous. That hazard is GONE: MockTable.colLong / colDouble now answer
+        // MissingValue.MIS and render "." like a real numeric buffer, so either column kind is
+        // safe for fold detection. colSasMissing is kept here because it is what the assertion
+        // was written against, not because colLong would still be unsafe. Measured: with colLong
+        // this test stayed
         // GREEN against a GroupedResult.buildKey deliberately broken to skip the fold entirely.
         // A real DataValueMissing renders "." (MissingValue.MIS), so the fold is observable.
         IDataTable t = MockTable.of().colSasMissing("K", "1", null, "1", "2")

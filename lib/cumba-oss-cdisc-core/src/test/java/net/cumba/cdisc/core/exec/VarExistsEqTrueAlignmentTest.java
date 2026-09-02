@@ -11,12 +11,14 @@ import net.cumba.cdisc.core.RulePackageLoader;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Phase 2 of {@code plans/PLAN-variable-exists-cross-dataset.md} — {@code var_exists(X) == true}
- * must behave identically to the bare {@code var_exists(X)} broadcast verdict (and {@code == false}
- * / {@code != true} as its negation), so the two authoring spellings are interchangeable.
+ * Phase 2 of {@code plans/done/PLAN-variable-exists-cross-dataset.md} —
+ * {@code var_exists(X) == true} must behave identically to the bare {@code var_exists(X)} broadcast
+ * verdict (and {@code == false} / {@code != true} as its negation), so the two authoring spellings
+ * are interchangeable.
  *
  * <p>
  * Exercises the load-time broadcast-verdict recogniser

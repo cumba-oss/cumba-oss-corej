@@ -1,0 +1,16 @@
+[
+  {
+    "codelist": "AGEU",
+    "description": "Age Unit",
+    "variables": [
+      "AGEDSTU"
+    ]
+  },
+  {
+    "codelist": "NY",
+    "description": "No Yes Response",
+    "variables": [
+      "DEVAFL"
+    ]
+  }
+]

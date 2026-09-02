@@ -6,13 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.model.CheckConditionLeaf;
 import net.cumba.cdisc.core.model.Requirements;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RuleCore;
 import net.cumba.cdisc.core.model.VariableRequirement;
 import net.cumba.datatable.DataTableMeta;
+import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 

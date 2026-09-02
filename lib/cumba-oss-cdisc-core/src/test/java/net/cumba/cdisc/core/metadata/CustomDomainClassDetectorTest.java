@@ -1,7 +1,7 @@
 package net.cumba.cdisc.core.metadata;
 
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.column;
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.table;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.column;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.table;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 

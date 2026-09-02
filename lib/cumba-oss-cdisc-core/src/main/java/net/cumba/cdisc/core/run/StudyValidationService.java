@@ -323,9 +323,19 @@ public final class StudyValidationService
                     crossStandard.size());
         }
 
+        // Hoisted so the SAME provider instance feeds the run and the report (§2.5): the
+        // Conformance dictionary-version fields and the Dictionary_Basis line below must describe
+        // exactly what the rules could consult, never a re-resolved directory.
+        // Phase 6b (D6): version selection, per type — CLI option > define.xml
+        // ExternalCodeList/@Version > the store's selected-versions.json manifest > skip.
+        // The first two merge here; the manifest fallback lives inside DictionaryStore.load.
+        net.cumba.cdisc.core.metadata.RuntimeDictionaryProvider dictionaryProvider = buildDictionaryProvider(
+                params.dictionariesDir(),
+                requestedDictionaryVersions(params.dictionaryVersions(), directDefine));
+
         LibraryValidator.Builder vb = LibraryValidator.builder().provider(provider)
                 .defineProvider(defineProvider).vlmResolver(vlmResolver)
-                .dictionaryProvider(buildDictionaryProvider()).rules(rules)
+                .dictionaryProvider(dictionaryProvider).rules(rules)
                 .libraryUri(dataLibrary.getUri()).sequential(true).ruleThreads(params.ruleThreads())
                 .maxErrorsPerRule(params.maxErrorsPerRule())
                 .severityThreshold(params.severityThreshold()).runtimeListener(listener)
@@ -381,11 +391,34 @@ public final class StudyValidationService
                     libraryMetadataBasis);
         }
 
+        // §2.5 / D6 — the dictionary-version fields, from the provider the run actually consulted.
+        // versionOf() is null for an unloaded type (and for a loaded dictionary that declares no
+        // version), so a healthy report only names what really answered; the XLSX shows its
+        // template default ("not configured") for the rest.
+        // D13 item 1 — the run-level Dictionary_Basis line. Null (and so absent from
+        // Conformance_Details) whenever every dictionary rule in this run could be answered;
+        // under D12 the degraded state is the DEFAULT, so when non-null it must reach every
+        // surface someone could read as "clean" — the JUL log here, the JSON report, the XLSX
+        // Conformance Details sheet, the REST projection, and (Phase 6b) the CLI's stderr line
+        // via ReportAssembler.Conformance#dictionaryBasis().
+        String dictionaryBasis = dictionaryBasis(dictionaryProvider, rules);
+        if (dictionaryBasis != null)
+        {
+            LOGGER.log(System.Logger.Level.WARNING, "Dictionary basis: {0}", dictionaryBasis);
+        }
+
         ReportAssembler.Conformance conformance = ReportAssembler.Conformance.builder()
                 .standard(runStandard.standard()).version(runStandard.version())
                 .subStandard(CompanionSdtmDefaults.tigLeg(effectiveProducts))
                 .tigUseCase(params.useCase()).ctVersion(ctVersion)
                 .defineXmlVersion(defineXmlVersion).libraryMetadataBasis(libraryMetadataBasis)
+                .dictionaryBasis(dictionaryBasis).uniiVersion(versionOf(dictionaryProvider, "unii"))
+                .medRtVersion(versionOf(dictionaryProvider, "medrt"))
+                .meddraVersion(versionOf(dictionaryProvider, "meddra"))
+                .whodrugVersion(versionOf(dictionaryProvider, "whodrug"))
+                .snomedVersion(versionOf(dictionaryProvider, "snomed"))
+                .loincVersion(versionOf(dictionaryProvider, "loinc"))
+                .neoplasmVersion(versionOf(dictionaryProvider, "neoplasm"))
                 .totalRuntimeSeconds(elapsedSeconds).coreEngineVersion(coreEngineVersion).build();
 
         int findingCount = countFindings(report);
@@ -804,29 +837,230 @@ public final class StudyValidationService
 
 
     /**
-     * T1 — builds the runtime external-dictionary provider from the checked-in dummy value-map
-     * dictionaries. The directory is resolved from the {@code corej.dictionariesDir} system
-     * property (default {@code "dictionaries"}, relative to the working directory / module
-     * basedir). A missing directory or any read error yields an empty provider — every
-     * dictionary-dependent rule then SKIPs — a declared ({@code $}-ref) operation through
-     * {@code RuleRunner}'s eager dictionary arm ({@code Fix #268}), an inlined one through its
-     * injected {@code dictionary_available(<type>)} precondition — never false-passing.
+     * T1 — builds the runtime external-dictionary provider from the installed dictionary store.
+     *
+     * <p>
+     * The directory is resolved by {@code DictionaryDirectoryResolver}: the caller's explicit
+     * directory ({@link StudyValidationParams#dictionariesDir()}, the CLI's
+     * {@code --dictionaries-dir}, carried per-run exactly like {@code dictionaryVersions}) &gt;
+     * {@code COREJ_DICTIONARIES_DIR} &gt; the {@code corej.dictionariesDir} system property &gt;
+     * the conventional {@code ./dictionaries}. The explicit directory MUST travel as the resolver's
+     * first argument — handing it over as the system property instead would rank it <em>below</em>
+     * the environment variable, which every Docker image sets, so the flag would silently lose to
+     * the container default while install mode honoured it. A <em>configured</em> directory that
+     * does not exist is a hard error, rethrown as {@link StudyValidationException} so every caller
+     * surfaces it as the operational error it is (the CLI's {@code Error:} line and exit 2) rather
+     * than a raw stack trace; the conventional default is presence-gated.
+     * </p>
+     *
+     * <p>
+     * No directory, an unreadable one, or a store in which no version is selected all yield a
+     * provider without that dictionary — every dependent rule then SKIPs, a declared
+     * ({@code $}-ref) operation through {@code RuleRunner}'s eager dictionary arm
+     * ({@code Fix #268}) and an inlined one through its injected
+     * {@code dictionary_available(<type>)} precondition — never false-passing.
+     * </p>
      */
-    private static net.cumba.cdisc.core.metadata.@Nullable RuntimeDictionaryProvider buildDictionaryProvider()
+    static net.cumba.cdisc.core.metadata.@Nullable RuntimeDictionaryProvider buildDictionaryProvider(
+            @Nullable String explicitDir, Map<String, String> requestedVersions)
     {
-        String dir = System.getProperty("corej.dictionariesDir", "dictionaries");
+        Optional<Path> dir;
         try
         {
-            return net.cumba.cdisc.core.metadata.RuntimeDictionaryProvider
-                    .loadDirectory(java.nio.file.Paths.get(dir));
+            dir = net.cumba.cdisc.core.metadata.dictionary.DictionaryDirectoryResolver
+                    .resolve(explicitDir);
+        }
+        catch (IllegalStateException e)
+        {
+            // D4's hard error stays hard — a typo'd configured store must kill the run, not
+            // degrade to a clean-looking report — but it must reach the user as the CLI's
+            // usage-style "Error: ..." line, not as an uncaught stack trace.
+            throw new StudyValidationException(
+                    java.util.Objects.requireNonNullElse(e.getMessage(), e.toString()), e);
+        }
+        if (dir.isEmpty())
+        {
+            LOGGER.log(System.Logger.Level.INFO,
+                    "No dictionary directory configured or present — dictionary rules will SKIP. "
+                            + "Install dictionaries and point at them with --dictionaries-dir, "
+                            + "COREJ_DICTIONARIES_DIR or -Dcorej.dictionariesDir.");
+            return null;
+        }
+        try
+        {
+            return net.cumba.cdisc.core.metadata.dictionary.DictionaryStore.load(dir.get(),
+                    requestedVersions);
         }
         catch (IOException e)
         {
             LOGGER.log(System.Logger.Level.WARNING,
                     "Could not load external dictionaries from {0}: {1} — dictionary rules will SKIP",
-                    dir, e.getMessage());
+                    dir.get(), e.getMessage());
             return null;
         }
+    }
+
+
+    /**
+     * D6 — merges the two caller-side version-selection sources, CLI over define.xml, into the
+     * {@code requested} map {@code DictionaryStore.load} binds with (the manifest sits below both,
+     * inside the store). A define.xml states how the study was actually coded, so it outranks the
+     * install-time manifest; the CLI option stays the escape hatch for a define believed wrong.
+     *
+     * @param cliVersions
+     *            versions the caller named explicitly (lower-cased type &rarr; version)
+     * @param directDefine
+     *            the run's parsed Define-XML provider, or {@code null} when none was supplied
+     */
+    static Map<String, String> requestedDictionaryVersions(Map<String, String> cliVersions,
+            net.cumba.cdisc.core.gen.@Nullable DefineXMLProvider directDefine)
+    {
+        Map<String, String> merged = new java.util.LinkedHashMap<>();
+        if (directDefine != null)
+        {
+            merged.putAll(directDefine.externalDictionaryVersions());
+        }
+        for (Map.Entry<String, String> e : cliVersions.entrySet())
+        {
+            if (!e.getValue().isBlank())
+            {
+                merged.put(e.getKey().toLowerCase(Locale.ROOT), e.getValue());
+            }
+        }
+        return merged;
+    }
+
+
+    /** The loaded release of {@code type}, or {@code null} — null-provider tolerant. */
+    private static @Nullable String versionOf(
+            net.cumba.cdisc.core.metadata.@Nullable RuntimeDictionaryProvider dict, String type)
+    {
+        return dict == null ? null : dict.versionOf(type);
+    }
+
+
+    /**
+     * D13 item 1 / D6 — the run-level {@code Dictionary_Basis} line: which dictionary types loaded
+     * (with versions), which required ones did not and <em>why</em> (the same operator-actionable
+     * diagnosis the per-rule SKIP reasons carry), and how many of this run's dictionary rules could
+     * actually be answered.
+     *
+     * <p>
+     * Null — and therefore absent from {@code Conformance_Details}, following the
+     * {@code Library_Metadata_Basis} precedent ({@code Fix #369}) — when every dictionary rule in
+     * the run is answerable, including the trivial case of a run selecting no dictionary rules. A
+     * dictionary rule here is one declaring a {@code valid_external_dictionary_*} /
+     * {@code dictionary_has_decode} operation; the {@code dictionary_available} gate is not
+     * counted, because a rule gated by it is <em>designed</em> to answer either way. Operations
+     * authored inline are not walked: no shipped rule inlines one, a typeless one is a load error
+     * ({@code RulePackageLoader.validateDictionaryOperationTypes}), and a typed inline one is
+     * self-gating — its rule answers either way, like the gate itself.
+     * </p>
+     *
+     * @param dict
+     *            the provider the run consulted, may be {@code null} (no directory configured)
+     * @param rules
+     *            the rules selected for this run (post-filter)
+     */
+    static @Nullable String dictionaryBasis(
+            net.cumba.cdisc.core.metadata.@Nullable RuntimeDictionaryProvider dict,
+            List<Rule> rules)
+    {
+        int dictionaryRules = 0;
+        int answerable = 0;
+        Set<String> unavailableNeeded = new java.util.TreeSet<>();
+        for (Rule rule : rules)
+        {
+            Set<String> needed = requiredDictionaryTypes(rule);
+            if (needed.isEmpty())
+            {
+                continue;
+            }
+            dictionaryRules++;
+            boolean ok = true;
+            for (String type : needed)
+            {
+                if (dict == null || !dict.isAvailable(type))
+                {
+                    ok = false;
+                    unavailableNeeded.add(type);
+                }
+            }
+            if (ok)
+            {
+                answerable++;
+            }
+        }
+        if (dictionaryRules == 0 || answerable == dictionaryRules)
+        {
+            return null;
+        }
+        StringBuilder basis = new StringBuilder("external dictionaries degraded: ")
+                .append(answerable).append(" of ").append(dictionaryRules)
+                .append(" dictionary rules in this run were answerable, the rest SKIPPED.")
+                .append(" Loaded: ");
+        if (dict == null || dict.loadedTypes().isEmpty())
+        {
+            basis.append("none");
+        }
+        else
+        {
+            boolean first = true;
+            for (String type : dict.loadedTypes())
+            {
+                basis.append(first ? "" : ", ").append(type);
+                first = false;
+                String version = dict.versionOf(type);
+                if (version != null && !version.isBlank())
+                {
+                    basis.append(' ').append(version);
+                }
+            }
+        }
+        basis.append(". Not loaded: ");
+        boolean first = true;
+        for (String type : unavailableNeeded)
+        {
+            basis.append(first ? "" : "; ").append("external dictionary ").append(type).append(' ')
+                    .append(dict == null
+                            ? net.cumba.cdisc.core.metadata.RuntimeDictionaryProvider
+                                    .notInstalledDetail()
+                            : dict.unavailabilityDetail(type));
+            first = false;
+        }
+        return basis.toString();
+    }
+
+
+    /**
+     * The external-dictionary types this rule's declared operations require — empty for a
+     * non-dictionary rule. Typeless dictionary operations contribute nothing (they are a load
+     * error, and such a rule reports ERROR, not SKIP); {@code dictionary_available} is the gate,
+     * not a requirement.
+     */
+    private static Set<String> requiredDictionaryTypes(Rule rule)
+    {
+        List<net.cumba.cdisc.core.model.Operation> ops = rule.getOperations();
+        if (ops == null || ops.isEmpty())
+        {
+            return Set.of();
+        }
+        Set<String> needed = new LinkedHashSet<>();
+        for (net.cumba.cdisc.core.model.Operation op : ops)
+        {
+            net.cumba.cdisc.core.model.OperationType type = op.getOperationType();
+            if (type == net.cumba.cdisc.core.model.OperationType.DICTIONARY_AVAILABLE
+                    || !net.cumba.cdisc.core.exec.OperationExecutor.isDictionaryDependent(type))
+            {
+                continue;
+            }
+            String dictionaryType = op.getExternalDictionaryType();
+            if (dictionaryType != null && !dictionaryType.isBlank())
+            {
+                needed.add(dictionaryType.toLowerCase(Locale.ROOT));
+            }
+        }
+        return needed;
     }
 
     // ------------------------------------------------------------------

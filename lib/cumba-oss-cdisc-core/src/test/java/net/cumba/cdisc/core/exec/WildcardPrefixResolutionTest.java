@@ -12,6 +12,7 @@ import net.cumba.cdisc.core.model.CheckConditionAll;
 import net.cumba.cdisc.core.model.CheckConditionLeaf;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;

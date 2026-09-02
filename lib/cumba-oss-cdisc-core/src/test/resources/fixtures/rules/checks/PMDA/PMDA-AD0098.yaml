@@ -18,6 +18,12 @@ Outcome:
   Output_Variables:
   - "*SDY"
   - "*EDY"
+Source:
+  Message: "*SDY is greater than *EDY"
+  Description: "Any variable ending in SDY (Start day) must have a value less than\
+    \ or equal to its corresponding EDY (end day) value."
+  Domains: "BDS, ADNCA, MDBDS, OCCDS, ADAE, MDOCCDS, ADAMOTHER"
+  Severity: "Error"
 Standards:
 - Organization: "PMDA"
   Standards:

@@ -16,6 +16,12 @@
     }
   },
   "hierarchy": {},
-  "pairs": {},
+  "pairs": {
+    "whodrug": {
+      "ASPIRIN TABLETS": "Aspirin",
+      "PANADOL EXTRA": "Paracetamol",
+      "Paracetamol": "Paracetamol"
+    }
+  },
   "attributes": {}
 }

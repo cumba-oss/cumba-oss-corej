@@ -36,6 +36,15 @@ Outcome:
   - "PCORRES"
   - "PCLLOQ"
   - "PCULOQ"
+Source:
+  Class: "FND"
+  Domain: "PC"
+  Variable: "PCSTRESC"
+  Plain_Text_Explanation: "For results outside the Limit of Quantitation PCSTRESC\
+    \ should be populated with \"BLQ\" for results below the limit or PCSTRESC should\
+    \ be populated with \"ALQ\" for results above the limit."
+  Condition: "Result is outside the Limit of Quantification"
+  Rule: "PCSTRESC = \"BLQ\" or PCSTRESC = \"ALQ\""
 Standards:
 - Organization: "CDISC"
   Standards:

@@ -8,10 +8,10 @@ import java.util.BitSet;
 import java.util.Map;
 import java.util.Set;
 import net.cumba.cdisc.core.exec.EvaluationContext;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.expr.CheckExpressionParser;
 import net.cumba.cdisc.core.expr.ast.Expr;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

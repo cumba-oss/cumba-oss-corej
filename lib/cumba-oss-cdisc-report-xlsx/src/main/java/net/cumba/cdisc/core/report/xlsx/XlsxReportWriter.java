@@ -408,6 +408,13 @@ public final class XlsxReportWriter implements ReportWriter
         m.put("WHODRUG_Version", 18);
         m.put("SNOMED_Version", 19);
         m.put("LOINC_Version", 20);
+        // D13 item 1 — the run-level dictionary degradation line. Its Fix #369 precedent
+        // (Library_Metadata_Basis) reached the JSON and nothing else; both now have a template
+        // row here so the XLSX — the artefact anyone actually reads — carries them too. On a
+        // healthy run both are absent and the template's blank B cells survive untouched.
+        m.put("Dictionary_Basis", 21);
+        m.put("Neoplasm_Version", 22);
+        m.put("Library_Metadata_Basis", 23);
         return Map.copyOf(m);
     }
 }

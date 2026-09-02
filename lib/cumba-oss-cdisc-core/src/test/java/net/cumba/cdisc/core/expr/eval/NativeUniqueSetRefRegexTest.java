@@ -7,10 +7,10 @@ import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 import net.cumba.cdisc.core.exec.EvaluationContext;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.expr.CheckToExpr;
 import net.cumba.cdisc.core.model.CheckConditionLeaf;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -27,8 +27,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * </ul>
  *
  * <p>
- * Both the native ({@link NativeExprEvaluator}) and legacy ({@link CheckEvaluator}) folds are
- * asserted equal, since the {@code $}-splice was applied to both paths.
+ * Both the native ({@link net.cumba.cdisc.core.expr.eval.NativeExprEvaluator}) and legacy
+ * ({@code CheckEvaluator}) folds are asserted equal, since the {@code $}-splice was applied to both
+ * paths.
  * </p>
  */
 @ExtendWith(MockitoExtension.class)

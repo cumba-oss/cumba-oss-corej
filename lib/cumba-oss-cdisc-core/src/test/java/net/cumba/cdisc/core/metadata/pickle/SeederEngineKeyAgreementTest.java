@@ -1,8 +1,8 @@
 package net.cumba.cdisc.core.metadata.pickle;
 
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.lib;
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.table;
 import static net.cumba.cdisc.core.metadata.pickle.PickleCacheKeysTest.writePickle;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.lib;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.table;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -485,7 +485,7 @@ class SeederEngineKeyAgreementTest
      * engine's requests are the input, so an unseeded call site fails by construction.
      * </p>
      *
-     * <h2>Why the "known-unseedable" carve-out is not a list</h2>
+     * <h4>Why the "known-unseedable" carve-out is not a list</h4>
      *
      * <p>
      * {@code /mdr/products} and {@code /mdr/rules/**} have no pickle representation, so the seeder

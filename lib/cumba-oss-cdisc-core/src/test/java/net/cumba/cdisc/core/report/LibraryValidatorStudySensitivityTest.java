@@ -7,9 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.databind.node.TextNode;
 import java.util.List;
 import net.cumba.cdisc.core.exec.MetadataProvider;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.metadata.MetadataLibraryProvider;
-import net.cumba.cdisc.core.metadata.TestMetadataFixtures;
 import net.cumba.cdisc.core.model.CheckConditionAll;
 import net.cumba.cdisc.core.model.CheckConditionLeaf;
 import net.cumba.cdisc.core.model.Operation;
@@ -23,6 +21,8 @@ import net.cumba.datatable.metadata.IMetadataLibrary;
 import net.cumba.datatable.report.SkippedRuleEntry;
 import net.cumba.datatable.report.ValidationReport;
 import net.cumba.datatable.report.ValidationReportMember;
+import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.testkit.TestMetadataFixtures;
 import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.Test;
 

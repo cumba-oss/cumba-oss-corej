@@ -23,7 +23,8 @@
     },
     "HLT": {
       "HEADACHES NEC": "Headaches NEC",
-      "NAUSEA AND VOMITING SYMPTOMS": "Nausea and vomiting symptoms"
+      "NAUSEA AND VOMITING SYMPTOMS": "Nausea and vomiting symptoms",
+      "CENTRAL NERVOUS SYSTEM HAEMORRHAGES AND CEREBROVASCULAR ACCIDENTS": "Central nervous system haemorrhages and cerebrovascular accidents"
     },
     "HLTCD": {
       "10019231": "10019231",
@@ -31,7 +32,8 @@
     },
     "HLGT": {
       "HEADACHES": "Headaches",
-      "GASTROINTESTINAL SIGNS AND SYMPTOMS": "Gastrointestinal signs and symptoms"
+      "GASTROINTESTINAL SIGNS AND SYMPTOMS": "Gastrointestinal signs and symptoms",
+      "CENTRAL NERVOUS SYSTEM VASCULAR DISORDERS": "Central nervous system vascular disorders"
     },
     "HLGTCD": {
       "10019233": "10019233",
@@ -39,11 +41,13 @@
     },
     "SOC": {
       "NERVOUS SYSTEM DISORDERS": "Nervous system disorders",
-      "GASTROINTESTINAL DISORDERS": "Gastrointestinal disorders"
+      "GASTROINTESTINAL DISORDERS": "Gastrointestinal disorders",
+      "VASCULAR DISORDERS": "Vascular disorders"
     },
     "SOCCD": {
       "10029205": "10029205",
-      "10017947": "10017947"
+      "10017947": "10017947",
+      "10047065": "10047065"
     }
   },
   "hierarchy": {
@@ -53,7 +57,9 @@
     "Headaches NEC": ["Headaches", "Nervous system disorders"],
     "Headaches": ["Nervous system disorders"],
     "Nausea and vomiting symptoms": ["Gastrointestinal signs and symptoms", "Gastrointestinal disorders"],
-    "Gastrointestinal signs and symptoms": ["Gastrointestinal disorders"]
+    "Gastrointestinal signs and symptoms": ["Gastrointestinal disorders"],
+    "Central nervous system haemorrhages and cerebrovascular accidents": ["Central nervous system vascular disorders", "Nervous system disorders"],
+    "Central nervous system vascular disorders": ["Nervous system disorders"]
   },
   "pairs": {},
   "attributes": {}

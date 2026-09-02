@@ -1,0 +1,15 @@
+MedDRA (Medical Dictionary for Regulatory Activities)
+
+Producer: the MedDRA Maintenance and Support Services Organization (MSSO,
+https://www.meddra.org). MedDRA is developed under the auspices of the
+International Council for Harmonisation (ICH).
+
+Terms: MedDRA is available under a commercial subscription. The MedDRA
+licence agreement between your organisation and the MSSO governs this
+converted copy; coreJ neither supplies nor redistributes MedDRA data.
+This file was converted locally from the distribution you supplied.
+
+Trademarks: MedDRA® is a registered trademark of ICH.
+
+The sibling meddra.json[.gz] is a converted extract produced by the coreJ
+dictionary installer, not an authoritative MedDRA release.

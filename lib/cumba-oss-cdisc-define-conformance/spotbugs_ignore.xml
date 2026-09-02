@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Module-specific SpotBugs suppressions for corej-define-conformance.
+    Auto-wired by the parent pom's `spotbugs-module-ignore` profile, which
+    activates on the existence of this file.
+-->
+<FindBugsFilter>
+
+    <Match>
+        <!--
+            DefineRulePackage.rules() returns a map that IS unmodifiable: the compact constructor
+            wraps its defensive copy in Collections.unmodifiableSequencedMap. SpotBugs 4.9 does
+            not recognise that Java 21 wrapper as an immutability barrier the way it recognises
+            List.copyOf / Collections.unmodifiableMap, so it reports the exposure anyway.
+
+            The obvious alternative — Map.copyOf, which SpotBugs does recognise — is NOT usable
+            here: it returns an UNORDERED map, and this one must stay insertion-ordered. The
+            generator inserts rules in ascending Rule_Id order and the serialized package is
+            pinned byte-for-byte by DefineRuleCorpusRoundTripTest, so losing the order would
+            change every shipped file and break the round trip.
+
+            Suppressed rather than worked around: the runtime guarantee is real, only the
+            analyser's view of it is incomplete.
+        -->
+        <Class name="net.cumba.cdisc.define.conformance.rule.DefineRulePackage" />
+        <Field name="rules" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+
+</FindBugsFilter>

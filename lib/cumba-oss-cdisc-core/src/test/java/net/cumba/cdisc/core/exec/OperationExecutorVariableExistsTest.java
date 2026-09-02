@@ -8,6 +8,7 @@ import java.util.Map;
 import net.cumba.cdisc.core.model.Operation;
 import net.cumba.cdisc.core.model.OperationType;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -143,7 +144,7 @@ class OperationExecutorVariableExistsTest
      * Fix #39's lazy SUPP pivot: a qualifier delivered as {@code SUPPEX.QNAM == EXVAMTU} counts as
      * existing, exactly as the dotted function reads it. This is the deliberate broadening the
      * {@code var_exists} migration introduced (see {@code
-     * plans/PLAN-variable-exists-cross-dataset.md}); the operation inherits it rather than
+     * plans/done/PLAN-variable-exists-cross-dataset.md}); the operation inherits it rather than
      * re-deciding, by calling {@link OperatorRegistry#existsInSuppQnam}.
      */
     @Test

@@ -1,8 +1,8 @@
 package net.cumba.cdisc.core.exec;
 
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.column;
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.lib;
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.table;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.column;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.lib;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.table;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -17,6 +17,7 @@ import net.cumba.cdisc.core.metadata.MetadataLibraryProvider;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.IMetadataLibrary;
+import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;

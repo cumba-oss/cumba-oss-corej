@@ -22,6 +22,7 @@ import net.cumba.cdisc.core.model.RuleCore;
 import net.cumba.cdisc.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
+import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.values.DataValueDouble;
 import net.cumba.datatable.values.DataValueMissing;
 import net.cumba.datatable.values.DataValueString;

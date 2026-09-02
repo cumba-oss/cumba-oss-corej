@@ -540,8 +540,9 @@ class IsoDateBoundsDispatchTest
          * &#9888; <b>The explicit moved set — measured over {@code IsoDateCorpus} at
          * {@code 43531d6bf}, immediately before the hoist.</b> All <b>30</b> are solidus-free
          * <i>stacked</i>-decoration inputs, and all 30 now answer {@code null} on both bounds. If
-         * this list needs editing, say why in {@code plans/PLAN-truncated-bound-double-strip.md}
-         * &sect; Results — a silent edit here is how a behaviour change stops being reviewable.
+         * this list needs editing, say why in
+         * {@code plans/done/PLAN-truncated-bound-double-strip.md} &sect; Results — a silent edit
+         * here is how a behaviour change stops being reviewable.
          *
          * <p>
          * &#9873;&#9873; <b>Two failure modes, and the second is invisible to the census the plan

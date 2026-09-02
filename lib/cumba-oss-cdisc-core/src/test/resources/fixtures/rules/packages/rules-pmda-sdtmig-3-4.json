@@ -10,21 +10,8 @@
       "Authorities": [
         {
           "Organization": "PMDA",
-          "Standards": [
-            {
-              "Name": "SDTMIG",
-              "Version": "3.4",
-              "References": [
-                {
-                  "Origin": "PMDA Validation Rules",
-                  "Rule_Identifier": {
-                    "Id": "SD1152",
-                    "Version": "1"
-                  },
-                  "Version": "6.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "SD1152"
           ]
         }
       ],
@@ -60,12 +47,6 @@
           "STUDYID",
           "$define_key_variables"
         ]
-      },
-      "Source": {
-        "Message": "Duplicate records per Key Variables in Define.xml",
-        "Description": "The structure of study data should be one record per unique combination of values in Key Variables provided in Define.xml file by KeySequence attribute for each domain or dataset. Note that Key Variables should represent physical structure of collected data. Utilization of artificial surrogate keys like --SEQ variable should be avoided. Current implementation of the rule is limited to the domain and does not use additional non-standard variables stored in SUPPQUAL datasets.",
-        "Domains": "ALL",
-        "Severity": "Error"
       }
     }
   }

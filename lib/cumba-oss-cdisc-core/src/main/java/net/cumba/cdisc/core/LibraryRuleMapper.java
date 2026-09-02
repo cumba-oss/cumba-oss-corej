@@ -145,6 +145,11 @@ final class LibraryRuleMapper
         // `id` directly — there is no `expression` to normalise), so every defined id is already
         // visible here.
         RulePackageLoader.validateOperationReferences(target);
+        // D13 item 3 — same loadError contract for a dictionary operation naming no
+        // external_dictionary_type: unanswerable by any install, so an authoring defect. The type
+        // is bound by mapOperation (RuleOperation.externalDictionaryType), so a typed
+        // library-sourced dictionary rule passes this untouched.
+        RulePackageLoader.validateDictionaryOperationTypes(target);
         // EC-37: same completion contract — a library-sourced rule gets the effective
         // Output_Variables a loader-loaded rule would carry (legacy-tree fallback here, since
         // this mapper installs no native checkExpr).
@@ -312,6 +317,9 @@ final class LibraryRuleMapper
         target.setCtPackageTypes(src.ctPackageTypes());
         target.setRegex(src.regex().orElse(null));
         target.setValueIsReference(src.valueIsReference().orElse(null));
+        // D13 item 3 — without this binding every library-sourced dictionary operation looked
+        // typeless, which validateDictionaryOperationTypes below now treats as a load error.
+        target.setExternalDictionaryType(src.externalDictionaryType().orElse(null));
         return target;
     }
 

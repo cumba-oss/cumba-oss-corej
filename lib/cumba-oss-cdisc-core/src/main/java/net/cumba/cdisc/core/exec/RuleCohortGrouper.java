@@ -138,7 +138,7 @@ public final class RuleCohortGrouper
      * {@code CDISC-AD0204}–{@code AD0210} share an identical Check shape, so they cohort. A caller
      * that does not widen its predicate would let them keep reporting PASS. The
      * {@link CohortRunner} evaluates a cohort with a shared row pass that reads
-     * {@code Rule.getCheckExpr()} directly, so it cannot see the dependency-scoped suppression
+     * {@link Rule#getCheckExpr()} directly, so it cannot see the dependency-scoped suppression
      * {@link AbsentDatasetSkip} applies per (rule, dataset). Demoting a suppressed rule routes it
      * back through {@code RuleRunner.execute}, which owns that decision — and cohort-eligible
      * shapes (a single foreign-dataset equality leaf) always collapse to {@code SKIPPED} anyway, so

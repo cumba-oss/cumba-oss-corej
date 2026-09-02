@@ -1,0 +1,21 @@
+Neoplasm codelist (CDISC SEND Controlled Terminology, codelist C88025)
+
+Producer: CDISC Controlled Terminology, published by NCI Enterprise
+Vocabulary Services (EVS) at https://evs.nci.nih.gov/ftp1/CDISC/SEND/.
+
+Terms: published free of charge with no licence terms attached to the
+distribution. CDISC asserts "Copyright (c) 2014, CDISC All rights
+reserved." and publishes no redistribution grant, so this data is free of
+charge, not free of restriction. This copy is
+NOT distributed under a Creative Commons licence: the NCI statement
+adopting CC BY 4.0 names only "The NCI Thesaurus™", which CDISC
+Controlled Terminology is not.
+
+Scope: this extract carries only the "Neoplasm Type" codelist (C88025),
+as submission values with their BENIGN/MALIGNANT classes — a codelist
+verified to carry no third-party instrument copyright notice on the
+codelist or any of its terms.
+
+The sibling neoplasm.json is a converted extract produced by the coreJ
+dictionary installer, not the authoritative CDISC CT release. The
+authoritative release is at the source recorded in SOURCES.md.

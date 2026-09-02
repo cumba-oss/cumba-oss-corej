@@ -1,0 +1,25 @@
+[
+  {
+    "codelist": "DATEFL",
+    "description": "Date Imputation Flag",
+    "variables": [
+      "AENDTF",
+      "ASTDTF"
+    ]
+  },
+  {
+    "codelist": "NY",
+    "description": "No Yes Response",
+    "variables": [
+      "AETRTEM"
+    ]
+  },
+  {
+    "codelist": "TIMEFL",
+    "description": "Time Imputation Flag",
+    "variables": [
+      "AENTMF",
+      "ASTTMF"
+    ]
+  }
+]

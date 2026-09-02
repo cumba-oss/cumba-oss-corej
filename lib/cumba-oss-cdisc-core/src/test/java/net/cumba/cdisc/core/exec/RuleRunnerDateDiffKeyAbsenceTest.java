@@ -19,6 +19,7 @@ import net.cumba.cdisc.core.model.RuleCore;
 import net.cumba.cdisc.core.model.Scope;
 import net.cumba.cdisc.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 

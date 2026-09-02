@@ -12,8 +12,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The vector of an <b>unqualified foreign reference</b> — a name absent from the primary table but
- * carried by a {@code Match_Datasets} join (B2 of {@code plans/PLAN-native-engine-residuals.md}).
- * It exposes the SAME two views the legacy engine has:
+ * carried by a {@code Match_Datasets} join (B2 of
+ * {@code plans/done/PLAN-native-engine-residuals.md}). It exposes the SAME two views the legacy
+ * engine has:
  *
  * <ul>
  * <li><b>Scalar view</b> ({@link #dataValue}/{@link #resolvedObject}) — the first non-null value

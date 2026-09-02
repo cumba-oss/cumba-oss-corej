@@ -34,6 +34,13 @@ wildcards:
   zz:
     min: 1
     max: 99
+Source:
+  Message: "Inconsistent value for SMQzzSCN"
+  Description: "Across studies, all SMQ Scope (N) (SMQzzSCN) variable values must\
+    \ be the same for each unique value of SMQ Scope (SMQzzSC ) variable when both\
+    \ variables are populated. The usual mapping is BROAD=1, NARROW=2."
+  Domains: "OCCDS, ADAE, MDOCCDS"
+  Severity: "Error"
 Standards:
 - Organization: "PMDA"
   Standards:

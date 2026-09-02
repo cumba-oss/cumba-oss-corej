@@ -4,8 +4,6 @@
     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>cumba-oss-cdisc-report-xlsx</artifactId>
-    <packaging>jar</packaging>
     <parent>
         <groupId>net.cumba</groupId>
         <artifactId>cumba-oss-corej-parent</artifactId>
@@ -13,32 +11,17 @@
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
+    <artifactId>cumba-oss-cdisc-report-xlsx</artifactId>
+    <packaging>jar</packaging>
+
     <inceptionYear>2026</inceptionYear>
-    <!--
-        REQUIRED by Maven Central, and it must be declared HERE: <name> is one
-        of the few POM elements Maven does NOT inherit from a parent, so a
-        module without its own name publishes a nameless artifact and the whole
-        Central bundle is rejected with "Project name is missing". This is the
-        defect that cost cumba-oss-commons v0.0.1.
-    -->
-    <name>Cumba OSS coreJ :: XLSX Report Writer</name>
-    <!--
-        Declared explicitly rather than inherited: the parent carries
-        child.project.url.inherit.append.path="false", which was measured to fix
-        the <scm> URLs but NOT the project <url> under Maven 3.9.16 — the
-        effective pom still read .../lib/<module>, a 404.
-    -->
-    <url>https://github.com/cumba-oss/cumba-oss-corej</url>
     <description>
-        Pluggable XLSX report writer for the Cumba OSS validation report. Registers
+        Pluggable XLSX report writer for the corej validation report. Registers
         the "xlsx" format with the engine's ReportWriterSupplier SPI and ships
         the report template; this is the only module in the reactor that puts
         Apache POI's writer path on the engine's classpath, so an engine
         without it validates normally and simply offers no Excel output.
     </description>
-    <organization>
-        <name>P300</name>
-    </organization>
 
     <properties>
         <mockito.agent>-javaagent:${org.mockito:mockito-core:jar}</mockito.agent>
@@ -47,7 +30,7 @@
     <dependencies>
 
         <!-- The report SPI (ReportWriter / ReportWriterSupplier / ReportFormat) plus the neutral
-             ReportSections model. This is the ONLY Cumba OSS dependency a writer module may need; the
+             ReportSections model. This is the ONLY corej dependency a writer module may need; the
              import guard in WriterModuleImportGuardTest pins that. -->
         <dependency>
             <groupId>net.cumba</groupId>
@@ -55,7 +38,7 @@
         </dependency>
 
         <!-- Apache POI (full XSSF) - writes the template-driven XLSX validation report. Moved here
-             from cumba-oss-cdisc-core: the whole point of the module split is that the engine no longer
+             from corej-cdisc-core: the whole point of the module split is that the engine no longer
              carries an Excel writer. -->
         <dependency>
             <groupId>org.apache.poi</groupId>
@@ -102,8 +85,5 @@
 
     </dependencies>
 
-
-    <reporting>
-    </reporting>
 
 </project>

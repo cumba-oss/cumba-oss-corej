@@ -1,0 +1,8 @@
+#!RuleTest
+#test CORE-1 expect=violation domain=AE
+#library-include include-sample-library.yaml
+dataset AE
+col A type=Char
+---
+x
+---

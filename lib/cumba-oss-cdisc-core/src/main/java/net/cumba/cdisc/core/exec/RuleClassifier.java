@@ -22,7 +22,7 @@ import org.jspecify.annotations.Nullable;
  * Derives a rule's {@code Rule_Type} and {@code Sensitivity} from the rest of the rule body.
  *
  * <p>
- * See {@code plans/PLAN-derive-rule-type-sensitivity.md} — &sect;4.3 for the {@code Rule_Type}
+ * See {@code plans/done/PLAN-derive-rule-type-sensitivity.md} — &sect;4.3 for the {@code Rule_Type}
  * cascade, &sect;4.4 for {@code Sensitivity}, &sect;4.9 for the {@code $}-only operation table —
  * and {@code plans/PLAN-classifier-redesign.md} for the grounding: the classifier reads the native
  * {@link Expr} every corpus form raises to ({@link #toExprOrNull}), plus an <b>id-free
@@ -186,9 +186,9 @@ public final class RuleClassifier
      *
      * <p>
      * <b>Single source</b> with the {@link Expr}-level consumers (the runtime fold and the
-     * mixed-granularity lint of {@code plans/PLAN-split-mixed-granularity-rules.md} &sect;4.4): the
-     * membership list lives in {@link BroadcastFold#WHOLE_COLUMN_VERDICT_OPERATORS} so the
-     * operator-leaf view here and the raised-expression view there cannot drift apart.
+     * mixed-granularity lint of {@code plans/done/PLAN-split-mixed-granularity-rules.md}
+     * &sect;4.4): the membership list lives in {@link BroadcastFold#WHOLE_COLUMN_VERDICT_OPERATORS}
+     * so the operator-leaf view here and the raised-expression view there cannot drift apart.
      * </p>
      */
     private static final Set<String> BROADCAST_OPERATORS = BroadcastFold.WHOLE_COLUMN_VERDICT_OPERATORS;

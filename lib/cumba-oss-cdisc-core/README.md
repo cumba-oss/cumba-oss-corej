@@ -57,9 +57,11 @@ operation executor, JSON report writer. The heart of the project.
 
 ## Layout of test-only artifacts
 
-⚠ These live in the **`lib/corej-cdisc-core-rulespec`** module (named
-`lib/corej-cdisc-parity` until the wave-41 rename), not here — the
-spec harness moved out of `corej-cdisc-core`.
+⚠ These live in the **`lib/corej-cdisc-rules`** module, not here — the spec
+harness moved out of `corej-cdisc-core`, and on 2026-09-01 the module that
+held it (`corej-cdisc-core-rulespec`, itself named `corej-cdisc-parity` until
+the wave-41 rename) was folded into `corej-cdisc-rules`, alongside the rule
+corpus its specs resolve against.
 
 - `rulespec/specs/` — 1048 YAML rule-execution specs
 - ⛔ `cdisc-rules-engine/` — the vendored Python fork, **removed** in

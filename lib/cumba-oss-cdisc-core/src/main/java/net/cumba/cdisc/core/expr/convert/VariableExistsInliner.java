@@ -18,7 +18,7 @@ import org.jspecify.annotations.Nullable;
  * The two engines implement variable-existence on opposite sides of the operation/operator line:
  * Python keeps a {@code variable_exists} operation (consumed as {@code $X == true}), while Java
  * retired that operation in favour of the {@code var_exists(X)} check function (see
- * {@code plans/PLAN-variable-exists-cross-dataset.md}). So the shipped {@code rules/} corpus
+ * {@code plans/done/PLAN-variable-exists-cross-dataset.md}). So the shipped {@code rules/} corpus
  * (production Java) and the parity Java lane's native fixture-compile path must rewrite the
  * operation form into the function form that Java already runs correctly. This class is that one
  * mapping, invoked from both:
@@ -134,7 +134,7 @@ public final class VariableExistsInliner
      * ⚠⚠ This is the whole of the {@code Fix #181} reporting warrant applied to this operator, and
      * it is deliberately <em>not</em> "stop lowering". The verdict stays on the proven
      * {@code var_exists} function — nothing about
-     * {@code plans/PLAN-variable-exists-cross-dataset.md}'s retirement of the operation as an
+     * {@code plans/done/PLAN-variable-exists-cross-dataset.md}'s retirement of the operation as an
      * evaluation surface is reversed — while the operation survives purely so
      * {@link net.cumba.cdisc.core.exec.RuleRunner} materialises its {@code $}-result and the
      * declared output variable has a value to report. An id the rule does not report is still

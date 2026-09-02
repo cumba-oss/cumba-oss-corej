@@ -1,0 +1,21 @@
+standard: sdtmig
+version: "3-4"
+published-ct-packages: [ sdtmct-2023-12-13 ]
+custom-domains: [ ZZ ]
+domains:
+  AE:
+    required-variables: [ STUDYID, USUBJID ]
+    expected-variables: [ AESEV ]
+    column-order: [ STUDYID, USUBJID, AETERM ]
+    dataset-class: EVENTS
+    dataset-metadata: { structure: "One record per event" }
+    variables:
+      - name: AETERM
+        role: Topic
+    variable-metadata:
+      AETERM: { label: "Reported Term", simpleDatatype: Char, core: Req }
+codelists:
+  NY:
+    terms: [ Y, N ]
+    extensible: false
+    term-mappings: { Y: "Yes", N: "No" }

@@ -22,6 +22,13 @@ Outcome:
   Message: "TRxxEDT is not present in ADSL for this record's APERIOD value."
   Output_Variables:
   - "APERIOD"
+Source:
+  Message: "There is no TRxxEDT variable in ADSL for every unique xx value of APERIOD"
+  Description: "The Analysis Period (APERIOD) values will be a number like 01. There\
+    \ must be a corresponding Date of Last Exposure in Period xx variable for this\
+    \ period (like TR01EDT) in ADSL dataset."
+  Domains: "BDS, ADNCA, MDBDS, OCCDS, ADAE, MDOCCDS, ADAMOTHER"
+  Severity: "Warning"
 Standards:
 - Organization: "PMDA"
   Standards:

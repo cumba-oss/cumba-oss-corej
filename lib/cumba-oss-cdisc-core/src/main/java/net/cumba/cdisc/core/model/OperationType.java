@@ -57,12 +57,12 @@ public enum OperationType
      * {@code UNK}, a structurally-invalid date) makes the extreme undeterminable and the operation
      * emits no value for that group. That is EC-46 and it is <em>not</em> declarable — a value the
      * engine cannot place on a calendar can never be shown to win;</li>
-     * <li>a <b>missing</b> (empty) cell is skipped by default, and {@code missing_values}
-     * {@code : "indeterminate"} routes it into the same no-value outcome instead (EC-51 Half B). ⚠
-     * Declaring it only reports through a <em>negative</em> consuming leaf: a
-     * {@code date_greater_than} / {@code date_less_than} / {@code equal_to} consumer reads "no
-     * value" as "no violation", so the declaration would silence the very check it is meant to
-     * sharpen. That combination is rejected at load.</li>
+     * <li>a <b>missing</b> (empty) cell is skipped by default, and
+     * {@link Operation#getMissingValues missing_values} {@code : "indeterminate"} routes it into
+     * the same no-value outcome instead (EC-51 Half B). ⚠ Declaring it only reports through a
+     * <em>negative</em> consuming leaf: a {@code date_greater_than} / {@code date_less_than} /
+     * {@code equal_to} consumer reads "no value" as "no violation", so the declaration would
+     * silence the very check it is meant to sharpen. That combination is rejected at load.</li>
      * </ul>
      */
     MAX_DATE("max_date", EmptyResult.MISSING),
@@ -83,15 +83,15 @@ public enum OperationType
      * <p>
      * ⚠⚠ <b>This operation is the reporting carriage of the {@code var_exists(X)} check function,
      * not a second verdict surface.</b> An earlier {@code VARIABLE_EXISTS} operation was retired in
-     * favour of that function (see {@code plans/PLAN-variable-exists-cross-dataset.md}) because its
-     * evaluator did a literal {@code getOptionalColumn} with a skip-on-missing negation bug and had
-     * neither the dotted cross-dataset surface nor {@code ${…}} per-row resolution. Nothing about
-     * that judgement is reversed here: the Check keeps saying {@code var_exists(X)}, and this
-     * operation exists so a rule that wants to <em>report</em> the answer can declare {@code $X} in
-     * {@code Outcome.Output_Variables} and have a value materialise there. Its evaluator is written
-     * to agree with {@code OperatorRegistry.existsAsVariable} / {@code existsAsDottedDatasetColumn}
-     * — the same facts the function reads — so the reported value can never contradict the verdict
-     * that was reported alongside it.
+     * favour of that function (see {@code plans/done/PLAN-variable-exists-cross-dataset.md})
+     * because its evaluator did a literal {@code getOptionalColumn} with a skip-on-missing negation
+     * bug and had neither the dotted cross-dataset surface nor {@code ${…}} per-row resolution.
+     * Nothing about that judgement is reversed here: the Check keeps saying {@code var_exists(X)},
+     * and this operation exists so a rule that wants to <em>report</em> the answer can declare
+     * {@code $X} in {@code Outcome.Output_Variables} and have a value materialise there. Its
+     * evaluator is written to agree with {@code OperatorRegistry.existsAsVariable} /
+     * {@code existsAsDottedDatasetColumn} — the same facts the function reads — so the reported
+     * value can never contradict the verdict that was reported alongside it.
      * </p>
      *
      * <p>
@@ -249,9 +249,10 @@ public enum OperationType
      * explicitly by the consuming rule). Resolved through the same class-aware standard-variable
      * source as {@link #GET_DATASET_FILTERED_VARIABLES} (IG-base + Model-merge, with the legacy
      * {@code getDomainVariables} fallback and {@code --}-prefix resolution). Returns a
-     * {@code List<String>}. Library-dependent (see {@code OperationExecutor.isLibraryDependent}):
-     * the rule SKIPs when no CDISC Library provider is configured. Used to build a per-domain
-     * uniqueness key for Findings duplicate detection —
+     * {@code List<String>}. Library-dependent (see
+     * {@link net.cumba.cdisc.core.exec.OperationExecutor#isLibraryDependent}): the rule SKIPs when
+     * no CDISC Library provider is configured. Used to build a per-domain uniqueness key for
+     * Findings duplicate detection —
      * {@code is_not_unique_set(USUBJID, value=["--TESTCD", "$natural_key"])} — to back FDA SD1117 /
      * PMDA SD1117. Stays a {@code $}-ref Operation (never inlined into a function), like
      * {@link #GET_DATASET_FILTERED_VARIABLES} / {@link #DEFINE_VARIABLE_NAMES}.
@@ -263,10 +264,11 @@ public enum OperationType
      * domain (the domain's {@code ItemGroupDef} {@code ItemRef}s resolved to their {@code ItemDef}
      * names). Read from the Define provider ({@code MetadataProvider.getColumnOrder(domain)} over
      * the {@code DefineXmlMetadataProvider} / {@code OdmDefineXMLProvider}). Returns a
-     * {@code List<String>}. Define-dependent (see {@code OperationExecutor.isDefineDependent}): the
-     * rule SKIPs (never PASS/FAIL) when no Define-XML is supplied. Diffed against the data variable
-     * set ({@code get_column_order_from_dataset}) via {@code not_contains_all} to back FDA SD0054
-     * (a variable declared in the Define but absent from the data).
+     * {@code List<String>}. Define-dependent (see
+     * {@link net.cumba.cdisc.core.exec.OperationExecutor#isDefineDependent}): the rule SKIPs (never
+     * PASS/FAIL) when no Define-XML is supplied. Diffed against the data variable set
+     * ({@code get_column_order_from_dataset}) via {@code not_contains_all} to back FDA SD0054 (a
+     * variable declared in the Define but absent from the data).
      */
     DEFINE_VARIABLE_NAMES("define_variable_names", EmptyResult.SET),
 
@@ -276,10 +278,11 @@ public enum OperationType
      * ({@code MetadataProvider.getDatasetNames()} over the {@code DefineXmlMetadataProvider} /
      * {@code OdmDefineXMLProvider}). Returns a {@code List<String>}. Unlike
      * {@link #DEFINE_VARIABLE_NAMES}, it is <em>not</em> domain-scoped — it returns every dataset
-     * the Define declares. Define-dependent (see {@code OperationExecutor.isDefineDependent}): the
-     * rule SKIPs (never PASS/FAIL) when no Define-XML is supplied. Stays a {@code $}-ref Operation
-     * (never inlined into a function), like {@link #DEFINE_VARIABLE_NAMES}. Mirrors the Python
-     * reference engine's {@code define_dataset_names} operation.
+     * the Define declares. Define-dependent (see
+     * {@link net.cumba.cdisc.core.exec.OperationExecutor#isDefineDependent}): the rule SKIPs (never
+     * PASS/FAIL) when no Define-XML is supplied. Stays a {@code $}-ref Operation (never inlined
+     * into a function), like {@link #DEFINE_VARIABLE_NAMES}. Mirrors the Python reference engine's
+     * {@code define_dataset_names} operation.
      */
     DEFINE_DATASET_NAMES("define_dataset_names", EmptyResult.SET),
 
@@ -288,9 +291,10 @@ public enum OperationType
      * the {@code ItemRef} {@code KeySequence} attribute. Read from the Define provider
      * ({@code MetadataProvider.getKeyVariables(domain)} over the {@code DefineXmlMetadataProvider}
      * / {@code OdmDefineXMLProvider}). Returns a {@code List<String>}. Define-dependent (see
-     * {@code OperationExecutor.isDefineDependent}): the rule SKIPs when no Define-XML is supplied.
-     * Consumed as a {@code $}-ref key member of {@code is_not_unique_set} (the proven CDISC-CG0562
-     * ref-key pattern) to back PMDA SD1152 (records not unique on the Define key set).
+     * {@link net.cumba.cdisc.core.exec.OperationExecutor#isDefineDependent}): the rule SKIPs when
+     * no Define-XML is supplied. Consumed as a {@code $}-ref key member of
+     * {@code is_not_unique_set} (the proven CDISC-CG0562 ref-key pattern) to back PMDA SD1152
+     * (records not unique on the Define key set).
      */
     DEFINE_KEY_VARIABLES("define_key_variables", EmptyResult.SET),
 
@@ -300,10 +304,10 @@ public enum OperationType
      * {@code variables_metadata.pkl}). Resolved by walking the loaded SDTM IG product
      * ({@code SdtmClass.datasets() → SdtmDataset.datasetVariables() → name()}) into an
      * order-preserving union. Returns a {@code List<String>}. Library-dependent (see
-     * {@code OperationExecutor.isLibraryDependent}): the rule SKIPs when no CDISC Library provider
-     * is configured, and an empty/absent enumeration maps to the {@code LIBRARY_NOT_AVAILABLE}
-     * sentinel (never an empty list — a {@code $}-ref membership against an empty set would
-     * misfire). Consumed as a membership right-hand side
+     * {@link net.cumba.cdisc.core.exec.OperationExecutor#isLibraryDependent}): the rule SKIPs when
+     * no CDISC Library provider is configured, and an empty/absent enumeration maps to the
+     * {@code LIBRARY_NOT_AVAILABLE} sentinel (never an empty list — a {@code $}-ref membership
+     * against an empty set would misfire). Consumed as a membership right-hand side
      * ({@code QNAM is_contained_by $variable_names}) and stays a {@code $}-ref Operation — never
      * inlined into a function (not in {@code OperationInliner.isListReturningOperation}), matching
      * {@link #GET_PARENT_MODEL_COLUMN_ORDER}. Backs SEND-0274-1 (a SUPP-- QNAM that collides with a
@@ -315,11 +319,12 @@ public enum OperationType
      * EC-14 layer (i) — the canonical union of standard dataset (domain) NAMES: the IG standard's
      * datasets unioned with the SDTM Model product's datasets. Java mirror of the Python reference
      * engine's {@code standard_domains} operation ({@code standard ∪ model dataset_names}). Returns
-     * a {@code List<String>}. Library-dependent (see {@code OperationExecutor.isLibraryDependent}):
-     * the rule SKIPs when no CDISC Library provider is configured, and an empty/absent enumeration
-     * maps to the {@code LIBRARY_NOT_AVAILABLE} sentinel — the empty-enumeration guard is critical,
-     * else {@code SRCDOM is_not_contained_by $sdtm_domains} would fire on every populated SRCDOM in
-     * a degraded run. Consumed as a membership right-hand side and stays a {@code $}-ref Operation
+     * a {@code List<String>}. Library-dependent (see
+     * {@link net.cumba.cdisc.core.exec.OperationExecutor#isLibraryDependent}): the rule SKIPs when
+     * no CDISC Library provider is configured, and an empty/absent enumeration maps to the
+     * {@code LIBRARY_NOT_AVAILABLE} sentinel — the empty-enumeration guard is critical, else
+     * {@code SRCDOM is_not_contained_by $sdtm_domains} would fire on every populated SRCDOM in a
+     * degraded run. Consumed as a membership right-hand side and stays a {@code $}-ref Operation
      * (never inlined). On an ADaM run it returns {@code []} (⇒ SKIP) until the P5b
      * companion-SDTM-version run parameter (EC-14 layer (ii)) lands. Backs AD0180 (a SRCDOM that is
      * not a standard SDTM domain).
@@ -336,9 +341,9 @@ public enum OperationType
      * resolved class string ({@code ""} when the Library cannot classify the referenced domain).
      * Unlike {@link #DATASET_CLASS_FROM_LIBRARY} (which resolves only the <em>current</em> table's
      * class), this classifies a domain named in the data. Library-dependent (see
-     * {@code OperationExecutor.isLibraryDependent}): the rule SKIPs when no CDISC Library provider
-     * is configured. Backs FDA-SD0095 / PMDA-SD0095 (a SUPPQUAL {@code RDOMAIN} must reference a
-     * general-observation-class domain).
+     * {@link net.cumba.cdisc.core.exec.OperationExecutor#isLibraryDependent}): the rule SKIPs when
+     * no CDISC Library provider is configured. Backs FDA-SD0095 / PMDA-SD0095 (a SUPPQUAL
+     * {@code RDOMAIN} must reference a general-observation-class domain).
      */
     REFERENCED_DOMAIN_CLASS("referenced_domain_class", EmptyResult.EMPTY_TEXT),
 
@@ -365,8 +370,8 @@ public enum OperationType
      * {@link #VALID_EXTERNAL_DICTIONARY_CODE_TERM_PAIR} minus the decode match). A blank value ⇒
      * {@code false} (no fire). Result shape: {@link net.cumba.cdisc.core.exec.GroupedResult} keyed
      * by the {@code name} column. Dictionary-dependent (see
-     * {@code OperationExecutor.isDictionaryDependent}): an <b>inlined</b> use gets a
-     * {@code dictionary_available(<type>)} precondition from the native converter, a
+     * {@link net.cumba.cdisc.core.exec.OperationExecutor#isDictionaryDependent}): an <b>inlined</b>
+     * use gets a {@code dictionary_available(<type>)} precondition from the native converter, a
      * <b>declared</b> ({@code $}-ref) use is caught by {@code RuleRunner}'s eager dictionary arm
      * ({@code Fix #268}) — either way the rule SKIPs when no dictionary of that type is loaded.
      * Backs CDISC-CG0096 (the precondition "CMTRT has a decode value in WHODrug").
@@ -376,11 +381,11 @@ public enum OperationType
     /**
      * E10 — split-family declared-length divergence. Groups the current table's split family (every
      * available dataset whose data-driven unsplit name —
-     * {@code OperationExecutor.unsplitNameFromData} — equals the current table's) and returns the
-     * list of variable NAMES whose declared column length ({@code DataTableColumnMeta.getLength()})
-     * differs across the split-family members (a variable present in ≥2 members with ≥2 distinct
-     * lengths). Returns an empty list when the dataset is not split or every shared variable has a
-     * uniform length. Library-INDEPENDENT: needs only a
+     * {@link net.cumba.cdisc.core.exec.OperationExecutor#unsplitNameFromData} — equals the current
+     * table's) and returns the list of variable NAMES whose declared column length
+     * ({@code DataTableColumnMeta.getLength()}) differs across the split-family members (a variable
+     * present in ≥2 members with ≥2 distinct lengths). Returns an empty list when the dataset is
+     * not split or every shared variable has a uniform length. Library-INDEPENDENT: needs only a
      * {@link net.cumba.cdisc.core.exec.DatasetResolver.WithInventory} to enumerate the family.
      * Returns a {@code List<String>}, consumed as a membership right-hand side
      * ({@code variable_name is_contained_by $result}).
@@ -439,10 +444,10 @@ public enum OperationType
      * {@code group} key, sourced from the foreign {@code domain} dataset, joined back to each
      * record by the {@code group} key. The {@code reference_extreme} param selects which extreme:
      * the <em>earliest</em> ({@code "min"}, the default) or the <em>latest</em> ({@code "max"})
-     * value, and {@code missing_values} governs whether a missing candidate in that foreign column
-     * is skipped (the default) or makes the group's subtrahend undeterminable (EC-51 Half B) — Mode
-     * 2 only, since Mode 1's subtrahend is a same-record read and a missing one already yields no
-     * value for that row. The value is
+     * value, and {@link Operation#getMissingValues missing_values} governs whether a missing
+     * candidate in that foreign column is skipped (the default) or makes the group's subtrahend
+     * undeterminable (EC-51 Half B) — Mode 2 only, since Mode 1's subtrahend is a same-record read
+     * and a missing one already yields no value for that row. The value is
      * {@code DAYS.between(extreme(domain[reference]) over group, record[name]) +
      * offset}.</li>
      * </ul>

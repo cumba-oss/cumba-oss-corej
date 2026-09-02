@@ -1,0 +1,22 @@
+LOINC
+
+Producer: Regenstrief Institute, Inc. and the Logical Observation
+Identifiers Names and Codes (LOINC) Committee (https://loinc.org).
+Available at no cost under the licence at https://loinc.org/license; a
+free LOINC account is required to download the release.
+
+Terms: the LOINC licence you accepted when downloading the release
+governs this converted copy. Extracted identifiers must stay associated
+with their LOINC display names (licence §10.c), which is why loinc.json
+carries pairs.loinc mapping each code to its LONG_COMMON_NAME. The
+required attribution notice ships verbatim as the sibling
+LOINC_short_license.txt; if you make this data available through any
+online resource, API or UI, that notice must also appear on the page it
+is available from and in that resource's terms of use.
+
+Trademarks: LOINC® is a registered United States trademark of
+Regenstrief Institute, Inc.
+
+The sibling loinc.json[.gz] is a converted extract produced by the coreJ
+dictionary installer, not the authoritative LOINC release. The
+authoritative release is at https://loinc.org.

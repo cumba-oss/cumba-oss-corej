@@ -1,0 +1,13 @@
+WHODrug Global
+
+Producer: the Uppsala Monitoring Centre (UMC, https://who-umc.org).
+
+Terms: WHODrug is available under a commercial subscription. The WHODrug
+licence agreement between your organisation and UMC governs this
+converted copy; coreJ neither supplies nor redistributes WHODrug data.
+This file was converted locally from the distribution you supplied.
+
+Trademarks: WHODrug is a trademark of the Uppsala Monitoring Centre.
+
+The sibling whodrug.json[.gz] is a converted extract produced by the
+coreJ dictionary installer, not an authoritative WHODrug release.

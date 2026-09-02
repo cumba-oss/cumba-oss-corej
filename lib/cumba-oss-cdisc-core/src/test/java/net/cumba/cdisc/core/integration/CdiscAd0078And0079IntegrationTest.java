@@ -10,7 +10,6 @@ import java.util.EnumSet;
 import net.cumba.cdisc.core.RulePackageLoader;
 import net.cumba.cdisc.core.exec.DatasetResolver;
 import net.cumba.cdisc.core.exec.MetadataProvider;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.exec.RuleExecutionResult;
 import net.cumba.cdisc.core.exec.RuleRunner;
 import net.cumba.cdisc.core.exec.StubMetadataProvider;
@@ -20,6 +19,7 @@ import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.cdisc.core.model.WildcardFilter;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 

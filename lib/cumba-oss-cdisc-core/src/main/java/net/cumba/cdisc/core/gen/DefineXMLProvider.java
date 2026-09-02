@@ -169,4 +169,27 @@ public interface DefineXMLProvider
         return null;
     }
 
+
+    /**
+     * {@code PLAN-dictionary-seeder} Phase 6b (D6) — the external-dictionary versions this
+     * Define-XML declares via {@code CodeList/ExternalCodeList}, as a version-<em>selection</em>
+     * source for the installed dictionary store. Never a version check: no conformance finding
+     * compares a declared version against a loaded one.
+     *
+     * <p>
+     * Keys are house dictionary types ({@code meddra}, {@code whodrug}, {@code loinc},
+     * {@code medrt}, {@code unii}, {@code snomed}, {@code neoplasm}); the {@code Dictionary}
+     * attribute is matched case-insensitively, ignoring non-alphanumeric characters (so
+     * {@code MedDRA}, {@code MED-RT} and {@code WHO Drug} all resolve). A dictionary the store does
+     * not model, or an {@code ExternalCodeList} without both attributes, contributes nothing.
+     * </p>
+     *
+     * @return declared type &rarr; version, empty when this provider is not ODM-backed or the
+     *         define declares none
+     */
+    default Map<String, String> externalDictionaryVersions()
+    {
+        return Map.of();
+    }
+
 }

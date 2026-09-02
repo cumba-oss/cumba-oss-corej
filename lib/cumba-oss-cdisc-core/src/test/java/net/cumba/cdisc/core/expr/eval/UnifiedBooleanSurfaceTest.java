@@ -9,9 +9,9 @@ import static org.mockito.Mockito.mock;
 import java.util.BitSet;
 import net.cumba.cdisc.core.exec.EvaluationContext;
 import net.cumba.cdisc.core.exec.MetadataProvider;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.expr.CheckExpressionParser;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

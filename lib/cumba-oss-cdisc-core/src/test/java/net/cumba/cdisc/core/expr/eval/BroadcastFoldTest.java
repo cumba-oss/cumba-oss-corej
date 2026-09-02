@@ -16,7 +16,7 @@ import net.cumba.cdisc.core.expr.eval.BroadcastFold.Verdict;
 import org.junit.jupiter.api.Test;
 
 /**
- * Guard-residual D1/D1b ({@code plans/PLAN-native-runtime-guard-residual.md}) — the tri-state
+ * Guard-residual D1/D1b ({@code plans/done/PLAN-native-runtime-guard-residual.md}) — the tri-state
  * {@link BroadcastFold}: the Kleene truth table (mirroring the legacy {@code simplify} collapse
  * rules), the dataset-constant leaf classes, the missing-column fold mirror (Fix #40), and the
  * runtime {@code $}-operand helpers.

@@ -7,9 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.Map;
 import net.cumba.cdisc.core.exec.MetadataProvider;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -301,6 +301,120 @@ class DefineXMLRuleGeneratorTest
         {
             assertEquals(pkg1.getRules().get(i).getId(), pkg2.getRules().get(i).getId());
         }
+    }
+
+    // ---- rule/report pairing across the whole Define-XML family ----
+    //
+    // testReport_includesDefineXMLCategories asserts an `||` chain over the report markdown, so it
+    // stays green while any ONE category is still emitted. That is why deleting an individual
+    // `report.addGenerated(...)` survived in nine separate Define generators. The invariant below
+    // is the one that actually binds them: every GEN-DX rule the generator produces must also be
+    // recorded in the report, under its own category.
+
+
+    /** A DM fixture that lights up presence / extra / label / type / length / codelist / key. */
+    private IDataTable richDm()
+    {
+        defineXML.addVariable("DM", Map.of("name", "SEX", "label", "Sex", "dataType", "Char",
+                "length", "2", "codelist", "CL.SEX", "codelistName", "SEX"));
+        // AGE is declared in Define-XML but deliberately absent from the dataset, so the
+        // variable-PRESENCE family fires too; CUSTOM1 is the mirror case for NO_EXTRA_VARIABLES.
+        defineXML.addVariable("DM",
+                Map.of("name", "AGE", "label", "Age", "dataType", "Num", "length", "3"));
+        return MockTable.of().name("DM").col("STUDYID", "S001", "S001")
+                .col("USUBJID", "SUBJ01", "SUBJ02").col("SEX", "M", "F").col("CUSTOM1", "X", "Y")
+                .build();
+    }
+
+
+    @Test
+    void everyGeneratedDefineRuleIsAlsoRecordedInTheReport()
+    {
+        GeneratedRulePackage pkg = gen(richDm(), "DM", "SPECIAL PURPOSE");
+
+        List<String> ruleIds = pkg.getRules().stream().map(r -> r.getCore().getId())
+                .filter(id -> id != null && id.startsWith("GEN-DX")).sorted().toList();
+        List<String> reportedIds = pkg.getReport().getGeneratedRules().stream()
+                .map(GeneratedRuleInfo::ruleId).filter(id -> id != null && id.startsWith("GEN-DX"))
+                .sorted().toList();
+
+        assertFalse(ruleIds.isEmpty(), "the fixture must produce Define-XML rules");
+        assertTrue(reportedIds.containsAll(ruleIds),
+                "every generated Define rule must be reported; missing="
+                        + ruleIds.stream().filter(id -> !reportedIds.contains(id)).toList());
+    }
+
+
+    @Test
+    void eachDefineFamilyIsReportedUnderItsOwnCategory()
+    {
+        Map<String, RuleCategory> expected = Map.of("GEN-DXPRES-",
+                RuleCategory.DEFINE_VARIABLE_PRESENCE, "GEN-DXEXTRA-",
+                RuleCategory.DEFINE_NO_EXTRA_VARIABLES, "GEN-DXLBL-",
+                RuleCategory.DEFINE_VARIABLE_LABEL, "GEN-DXTYP-", RuleCategory.DEFINE_VARIABLE_TYPE,
+                "GEN-DXLEN-", RuleCategory.DEFINE_VARIABLE_LENGTH, "GEN-DXCL-",
+                RuleCategory.DEFINE_CODELIST_VALUES, "GEN-DXKEY-",
+                RuleCategory.DEFINE_KEY_UNIQUENESS, "GEN-DXSTRUCT-",
+                RuleCategory.DEFINE_DATASET_STRUCTURE);
+
+        List<GeneratedRuleInfo> gens = gen(richDm(), "DM", "SPECIAL PURPOSE").getReport()
+                .getGeneratedRules();
+
+        for (Map.Entry<String, RuleCategory> e : expected.entrySet())
+        {
+            List<GeneratedRuleInfo> family = gens.stream()
+                    .filter(g -> g.ruleId() != null && g.ruleId().startsWith(e.getKey())).toList();
+            assertFalse(family.isEmpty(), e.getKey() + " produced no report entry");
+            assertTrue(family.stream().allMatch(g -> g.category() == e.getValue()),
+                    e.getKey() + " must be reported as " + e.getValue() + ", got " + family);
+        }
+    }
+
+    // ---- Category 22: Dataset Structure (previously untested) ----
+
+
+    @Test
+    void testDefineDatasetStructure_structureTokenBecomesAKeyUniquenessRule()
+    {
+        // DM's Define-XML structure is "One record per subject"; the `subject` token maps to
+        // USUBJID, which the dataset has.
+        List<Rule> structRules = gen(richDm(), "DM", "SPECIAL PURPOSE").getRules().stream()
+                .filter(r -> r.getCore().getId().startsWith("GEN-DXSTRUCT-")).toList();
+
+        assertEquals(1, structRules.size());
+        assertEquals("GEN-DXSTRUCT-DM", structRules.getFirst().getCore().getId());
+    }
+
+
+    @Test
+    void testDefineDatasetStructure_aStructureWhoseKeyColumnIsAbsentIsReportedAsSkipped()
+    {
+        // "One record per subject" still parses, but USUBJID is not in this dataset, so no key
+        // survives and the generator must SAY so rather than silently emit nothing.
+        IDataTable noKey = MockTable.of().name("DM").col("STUDYID", "S001").build();
+
+        GeneratedRulePackage pkg = gen(noKey, "DM", "SPECIAL PURPOSE");
+
+        assertTrue(pkg.getRules().stream()
+                .noneMatch(r -> r.getCore().getId().startsWith("GEN-DXSTRUCT-")));
+        assertTrue(
+                pkg.getReport().getSkippedRules().stream()
+                        .anyMatch(sk -> sk.category() == RuleCategory.DEFINE_DATASET_STRUCTURE
+                                && sk.reason().contains("Could not parse structure")),
+                pkg.getReport().getSkippedRules().toString());
+    }
+
+
+    @Test
+    void testDefineDatasetStructure_theKeyColumnIsFoundEvenAtColumnZero()
+    {
+        // parseStructureKeys probes with `meta.getColumnIndex(var) >= 0`; with USUBJID leading the
+        // dataset the index is 0, which is where `>= 0` and `> 0` disagree.
+        IDataTable usubjidFirst = MockTable.of().name("DM").col("USUBJID", "SUBJ01", "SUBJ02")
+                .col("STUDYID", "S001", "S001").build();
+
+        assertTrue(gen(usubjidFirst, "DM", "SPECIAL PURPOSE").getRules().stream()
+                .anyMatch(r -> r.getCore().getId().startsWith("GEN-DXSTRUCT-")));
     }
 
     // ---- Mock providers ----

@@ -21,6 +21,13 @@ Outcome:
   Output_Variables:
   - "SEX"
   - "DM.SEX"
+Source:
+  Class: "SUBJECT LEVEL ANALYSIS DATASET"
+  Variable_or_Item: "SEX"
+  Natural_Language_Rule_Failure_Criteria: "The value of ADSL.USUBJID is equal to the\
+    \ value of DM.USUBJID and ADSL.SEX is not equal to DM.SEX"
+  Rule_Failure_Criteria: "ADSL.SEX is not equal to DM.SEX"
+  Condition_Failure: "The value of ADSL.USUBJID is equal to the value of DM.USUBJID"
 Standards:
 - Organization: "CDISC"
   Standards:

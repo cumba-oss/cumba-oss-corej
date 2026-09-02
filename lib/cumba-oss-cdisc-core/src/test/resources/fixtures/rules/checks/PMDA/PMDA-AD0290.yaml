@@ -25,6 +25,13 @@ Outcome:
   Output_Variables:
   - "AREL"
   - "ARELN"
+Source:
+  Message: "Inconsistent value for ARELN"
+  Description: "Across studies, all Analysis Causality (N) (ARELN) variable values\
+    \ must be the same for each unique value of Analysis Causality (AREL) variable\
+    \ when the primary variable AREL is populated."
+  Domains: "ADAE, ADAMOTHER"
+  Severity: "Error"
 Standards:
 - Organization: "PMDA"
   Standards:

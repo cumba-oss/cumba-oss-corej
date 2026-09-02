@@ -30,6 +30,13 @@ Outcome:
   Output_Variables:
   - "AETOXGR"
   - "AETOXGRN"
+Source:
+  Message: "Inconsistent value for AETOXGR"
+  Description: "Across studies, all Standard Toxicity Grade (AETOXGR) variable values\
+    \ must be the same for each unique value of Standard Toxicity Grade (N) (AETOXGRN)\
+    \ variable when the primary variable AETOXGR is populated."
+  Domains: "ADAE"
+  Severity: "Error"
 Standards:
 - Organization: "PMDA"
   Standards:

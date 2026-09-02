@@ -9,12 +9,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.exec.RuleExecutionResult;
 import net.cumba.cdisc.core.exec.RuleRunner;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

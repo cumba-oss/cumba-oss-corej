@@ -1,0 +1,42 @@
+[
+  {
+    "codelist": "FREQ",
+    "description": "Frequency",
+    "variables": [
+      "DOSEFRQ"
+    ]
+  },
+  {
+    "codelist": "PKUNIT",
+    "description": "PK Unit",
+    "variables": [
+      "FRLTU",
+      "RRLTU"
+    ]
+  },
+  {
+    "codelist": "ROUTE",
+    "description": "Route of Administration",
+    "variables": [
+      "ROUTE"
+    ]
+  },
+  {
+    "codelist": "SPECTYPE",
+    "description": "Specimen Type",
+    "variables": [
+      "PCSPEC"
+    ]
+  },
+  {
+    "codelist": "UNIT",
+    "description": "Unit",
+    "variables": [
+      "DOSEU",
+      "PCSTRESU",
+      "SPWEIGHU",
+      "TRTRINTU",
+      "VOLUMEU"
+    ]
+  }
+]

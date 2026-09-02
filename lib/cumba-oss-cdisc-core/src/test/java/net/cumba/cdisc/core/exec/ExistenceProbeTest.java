@@ -10,6 +10,7 @@ import java.util.BitSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

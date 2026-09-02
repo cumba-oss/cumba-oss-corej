@@ -11,16 +11,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import net.cumba.cdisc.core.exec.EvaluationContext;
 import net.cumba.cdisc.core.exec.ExpressionResultCache;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.expr.OperandKind;
 import net.cumba.cdisc.core.expr.ast.Expr;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Phase 3 of {@code plans/PLAN-unified-callable-surface.md} — the two features carried into the
- * unified callable ABI: §3.1 kwargs reach the function (raw {@link Expr} nodes, dropped before for
- * functions), and §3.2 pure VALUE subtrees memoise once per dataset run through
+ * Phase 3 of {@code plans/done/PLAN-unified-callable-surface.md} — the two features carried into
+ * the unified callable ABI: §3.1 kwargs reach the function (raw {@link Expr} nodes, dropped before
+ * for functions), and §3.2 pure VALUE subtrees memoise once per dataset run through
  * {@link net.cumba.cdisc.core.exec.ExpressionResultCache} (the {@code LazyValue} single-execution
  * replacement), shared across rules over the same table.
  */

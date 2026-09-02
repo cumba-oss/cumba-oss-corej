@@ -195,6 +195,7 @@ public final class ChildMatchPreMerger
         // Pre-stringify primary standard-key columns + IDVARVAL once per call. The same coercions
         // as
         // ChildMatchIndex.build are applied so build- and probe-side keys agree (E16, E17).
+        @Nullable
         String[][] primaryKeyStr = buildPrimaryKeyStr(primaryTable, standardKeys, rowCount);
         @Nullable
         String[] primaryIdvarvalStr = buildPrimaryNullableStr(primaryTable, idvarvalIdx, rowCount);
@@ -256,6 +257,7 @@ public final class ChildMatchPreMerger
             // (reference-holding) ProbeMatcher.
             primaryIdvarvalStr[r] = ChildMatchIndex.normalizeJoinToken(primaryIdvarvalStr[r],
                     idx.parentIdvarNumeric);
+            @Nullable
             String[] primaryKeySlots = slotsAtRow(primaryKeyStr, r);
             int parentRow;
             if (allPresent(primaryKeySlots))
@@ -573,11 +575,12 @@ public final class ChildMatchPreMerger
      * missing cell or absent column becomes {@code null} (the key is then dropped for that row by
      * the per-key-null fallback, mirroring Python's {@code pd.notna(child_value)} guard).
      */
-    private static String[][] buildPrimaryKeyStr(IDataTable primaryTable, List<String> standardKeys,
-            int rowCount)
+    private static @Nullable String[][] buildPrimaryKeyStr(IDataTable primaryTable,
+            List<String> standardKeys, int rowCount)
     {
         DataTableMeta meta = primaryTable.getMetaData();
-        String[][] out = new String[standardKeys.size()][rowCount];
+        @Nullable
+        String[][] out = ChildMatchIndex.newKeyGrid(standardKeys.size(), rowCount);
         for (int k = 0; k < standardKeys.size(); k++)
         {
             int ci = meta.getColumnIndex(standardKeys.get(k));
@@ -589,16 +592,18 @@ public final class ChildMatchPreMerger
             for (int r = 0; r < rowCount; r++)
             {
                 IDataValue dv = col.getDataValue(r);
-                out[k][r] = dv.isMissingOrInvalid() ? null : dv.getValueAsString();
+                ChildMatchIndex.putKeyCell(out, k, r,
+                        dv.isMissingOrInvalid() ? null : dv.getValueAsString());
             }
         }
         return out;
     }
 
 
-    private static String[] slotsAtRow(String[][] keyStr, int row)
+    private static @Nullable String[] slotsAtRow(@Nullable String[][] keyStr, int row)
     {
-        String[] out = new String[keyStr.length];
+        @Nullable
+        String[] out = new @Nullable String[keyStr.length];
         for (int k = 0; k < keyStr.length; k++)
         {
             out[k] = keyStr[k][row];
@@ -607,7 +612,7 @@ public final class ChildMatchPreMerger
     }
 
 
-    private static boolean allPresent(String[] slots)
+    private static boolean allPresent(@Nullable String[] slots)
     {
         for (String s : slots)
         {
@@ -621,7 +626,7 @@ public final class ChildMatchPreMerger
 
 
     private static Map<ParentIndexKey, ChildMatchIndex.ProbeMatcher> buildProbeMatchers(
-            Map<ParentIndexKey, ChildMatchIndex> indexes, String[][] primaryKeyStr,
+            Map<ParentIndexKey, ChildMatchIndex> indexes, @Nullable String[][] primaryKeyStr,
             @Nullable String[] primaryIdvarvalStr)
     {
         Map<ParentIndexKey, ChildMatchIndex.ProbeMatcher> out = new LinkedHashMap<>();

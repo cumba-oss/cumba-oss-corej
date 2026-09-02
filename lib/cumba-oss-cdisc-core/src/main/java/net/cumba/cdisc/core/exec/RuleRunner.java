@@ -205,9 +205,10 @@ public final class RuleRunner
      * As
      * {@link #execute(Rule, IDataTable, DatasetResolver, String, MetadataProvider, JoinCache, MetadataProvider, int)}
      * with the per-dataset {@link ExpressionResultCache}
-     * ({@code plans/PLAN-dataset-expression-cache.md}), threaded onto the {@link EvaluationContext}
-     * so pure expression leaves can be reused across the dataset's rules. {@code null} disables
-     * caching (every lookup falls through to compute) and is behaviour-identical to the prior path.
+     * ({@code plans/done/PLAN-dataset-expression-cache.md}), threaded onto the
+     * {@link EvaluationContext} so pure expression leaves can be reused across the dataset's rules.
+     * {@code null} disables caching (every lookup falls through to compute) and is
+     * behaviour-identical to the prior path.
      *
      * @param exprCache
      *            the per-dataset expression-result cache, or {@code null} to disable caching
@@ -890,9 +891,18 @@ public final class RuleRunner
             // • DICTIONARY_AVAILABLE is excluded: that operation IS the gate. Its executor arm is
             // total (it yields Boolean.FALSE, never null, with no provider), so eager-skipping on
             // it would destroy the very reporting it exists for.
-            // An operation with no (or blank) external_dictionary_type can never be available
-            // either (RuntimeDictionaryProvider.isAvailable(null) is false by construction), so it
-            // is unanswerable too and SKIPs rather than false-passing.
+            // An operation with no (or blank) external_dictionary_type is not this arm's case: no
+            // install could ever satisfy it, so it is an authoring defect, tagged as a loadError
+            // by RulePackageLoader.validateDictionaryOperationTypes — such a rule reports ERROR
+            // through the loadError sentinel above and never reaches this arm (D13 item 3).
+            //
+            // D13 item 2 — the SKIP names the state, not just the type: "not installed",
+            // "installed but unusable" and "no/absent version selected" demand three different
+            // operator actions, and one catch-all message actively misleads the operator who DID
+            // install the dictionary. The provider carries the diagnosis recorded by whoever
+            // declined to load the type (RuntimeDictionaryProvider.loadDirectory's content guard,
+            // DictionaryStore's version binding); with no provider at all, every type is simply
+            // not installed.
             Set<String> unavailableDictionaryTypes = new LinkedHashSet<>();
             for (net.cumba.cdisc.core.model.Operation op : resolvedOps)
             {
@@ -905,22 +915,31 @@ public final class RuleRunner
                 String dictionaryType = op.getExternalDictionaryType();
                 if (dictionaryType == null || dictionaryType.isBlank())
                 {
-                    unavailableDictionaryTypes.add("<unspecified>");
+                    continue; // loadError at load time — unreachable via any loader path
                 }
-                else if (dictionaryProvider == null
-                        || !dictionaryProvider.isAvailable(dictionaryType))
+                if (dictionaryProvider == null || !dictionaryProvider.isAvailable(dictionaryType))
                 {
                     unavailableDictionaryTypes.add(dictionaryType);
                 }
             }
             if (!unavailableDictionaryTypes.isEmpty())
             {
+                StringBuilder skipReason = new StringBuilder("Rule skipped — ");
+                for (String type : unavailableDictionaryTypes)
+                {
+                    if (skipReason.length() > "Rule skipped — ".length())
+                    {
+                        skipReason.append("; ");
+                    }
+                    skipReason.append("external dictionary ").append(type).append(' ')
+                            .append(dictionaryProvider == null
+                                    ? RuntimeDictionaryProvider.notInstalledDetail()
+                                    : dictionaryProvider.unavailabilityDetail(type));
+                }
+                skipReason.append(" (rule requires valid_external_dictionary_* operations)");
                 return RuleExecutionResult.builder().ruleId(ruleId).message(message)
                         .violations(List.of()).totalRows(evalTable.getRowCount())
-                        .status(RuleExecutionStatus.SKIPPED)
-                        .statusMessage("Rule skipped — no external dictionary loaded for "
-                                + String.join(", ", unavailableDictionaryTypes)
-                                + " (rule requires valid_external_dictionary_* operations)")
+                        .status(RuleExecutionStatus.SKIPPED).statusMessage(skipReason.toString())
                         .build();
             }
             // Build the lazy variables map. The supplier closes over the variables map itself so
@@ -2222,9 +2241,10 @@ public final class RuleRunner
 
     /**
      * The study variable's data type ({@code Char} / {@code Num}) from the column's post-load
-     * {@link DataValueType} — the authoritative type, never inferred from {@code nativeType} (a
-     * passive source-format record). The Python parity harness mirrors this by giving each study
-     * variable the same loaded type, so {@code variable_data_type} agrees across engines.
+     * {@link net.cumba.datatable.values.DataValueType} — the authoritative type, never inferred
+     * from {@code nativeType} (a passive source-format record). The Python parity harness mirrors
+     * this by giving each study variable the same loaded type, so {@code variable_data_type} agrees
+     * across engines.
      */
     private static @Nullable String declaredDataType(DataTableColumnMeta colMeta)
     {

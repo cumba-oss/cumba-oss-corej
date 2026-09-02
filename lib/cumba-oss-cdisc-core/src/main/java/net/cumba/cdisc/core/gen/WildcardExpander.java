@@ -924,9 +924,15 @@ public final class WildcardExpander
     /**
      * Parsed wildcard pattern: the original name, a compiled regex, and the ordered list of capture
      * group names (*, xx, zz, y, w).
+     *
+     * <p>
+     * A fourth {@code literals} component used to track the literal segments between the capture
+     * groups. Nothing ever read it — the accessor had no caller anywhere in the reactor — so it was
+     * removed along with the bookkeeping that maintained it; the compiled {@code regex} is the only
+     * product of that walk.
+     * </p>
      */
-    record WildcardPattern(String original, Pattern regex, List<String> groupNames,
-            List<String> literals)
+    record WildcardPattern(String original, Pattern regex, List<String> groupNames)
     {
 
         /**
@@ -939,14 +945,12 @@ public final class WildcardExpander
         {
             StringBuilder regex = new StringBuilder("^");
             List<String> groups = new ArrayList<>();
-            List<String> literals = new ArrayList<>();
             int i = 0;
 
             if (name.startsWith("*"))
             {
                 regex.append("(.+)");
                 groups.add("*");
-                literals.add("*");
                 i = 1;
             }
 
@@ -968,55 +972,33 @@ public final class WildcardExpander
                     {
                         regex.append("(\\d{2})");
                         groups.add(marker);
-                        literals.add(marker);
                     }
                     case "y" ->
                     {
                         regex.append("(\\d+)");
                         groups.add("y");
-                        literals.add("y");
                     }
                     case "w" ->
                     {
                         regex.append("(\\d)");
                         groups.add("w");
-                        literals.add("w");
                     }
                     default ->
                     {
                         // Unknown lowercase sequence — treat as literal
                         // (should not happen with well-formed ADaM wildcards)
                         regex.append(Pattern.quote(marker));
-                        literals.add(marker);
                     }
                     }
                 }
                 else
                 {
                     regex.append(Pattern.quote(String.valueOf(c)));
-                    // Append to literals tracking
-                    if (literals.isEmpty() || groups.size() == literals.size())
-                    {
-                        literals.add(String.valueOf(c));
-                    }
-                    else
-                    {
-                        // Append to the last literal segment
-                        int lastIdx = literals.size() - 1;
-                        if (!groups.isEmpty() && groups.size() < literals.size())
-                        {
-                            literals.set(lastIdx, literals.get(lastIdx) + c);
-                        }
-                        else
-                        {
-                            literals.add(String.valueOf(c));
-                        }
-                    }
                     i++;
                 }
             }
             regex.append("$");
-            return new WildcardPattern(name, Pattern.compile(regex.toString()), groups, literals);
+            return new WildcardPattern(name, Pattern.compile(regex.toString()), groups);
         }
 
 
@@ -1422,9 +1404,10 @@ public final class WildcardExpander
      * <p>
      * Returns the template block as-is when there is nothing to substitute, so a requirement with
      * no variable facet keeps the shared reference. ⚠ <b>Two-branch hazard:</b> every field
-     * survives the identity return BY IDENTITY, so a field added to {@link Requirements} without a
-     * copy line below is dropped only on the OTHER branch — a test that drives one branch passes
-     * while the bug ships. {@code WildcardExpanderScopeCompletenessTest} drives both.
+     * survives the identity return BY IDENTITY, so a field added to
+     * {@link net.cumba.cdisc.core.model.Requirements} without a copy line below is dropped only on
+     * the OTHER branch — a test that drives one branch passes while the bug ships.
+     * {@code WildcardExpanderScopeCompletenessTest} drives both.
      * </p>
      */
     private static net.cumba.cdisc.core.model.@Nullable Requirements expandRequirements(
@@ -1706,11 +1689,17 @@ public final class WildcardExpander
                 // ⚠ The grouping-key disposition must survive the rebuild, or a rule declaring
                 // keep_missings silently loses it the moment its name needs resolving — the exact
                 // silent-loss failure mode the parameter's validation exists to prevent.
-                // ⚠⚠ NOTE: `includeEmpty` is NOT copied here and never has been. That is a
-                // PRE-EXISTING gap with the same shape (Fix #121's include_empty is dropped by this
-                // rebuild), left untouched deliberately because it is outside this change's scope —
-                // it is reported, not silently fixed.
                 .keepMissings(leaf.getKeepMissings())
+                // Fix #121's include_empty has exactly that shape and was dropped here until now:
+                // an authored `include_empty` was silently lost the moment the leaf's name needed
+                // resolving, so the expanded rule judged blanks differently from the rule its
+                // author reviewed — invisible downstream, because the rule still ran and still
+                // reported.
+                .includeEmpty(leaf.getIncludeEmpty())
+                // The composite tuple-membership target (T3) is the same shape again. A `names`
+                // leaf carries a null `name`, so it only reaches this rebuild when its VALUE holds
+                // a wildcard — and dropping `names` would leave the leaf with no target at all.
+                .names(leaf.getNames())
                 // EC-87: the next-record comparison relation has the same silent-loss shape.
                 .relation(leaf.getRelation()).build();
     }

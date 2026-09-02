@@ -1,0 +1,618 @@
+[
+  {
+    "codelist": "ACN",
+    "variables": [
+      "AEACN"
+    ]
+  },
+  {
+    "codelist": "AESEV",
+    "variables": [
+      "AESEV"
+    ]
+  },
+  {
+    "codelist": "AGEU",
+    "variables": [
+      "AGEU"
+    ]
+  },
+  {
+    "codelist": "ARMNULRS",
+    "variables": [
+      "ARMNRS"
+    ]
+  },
+  {
+    "codelist": "COLSTYP",
+    "variables": [
+      "CPCOLSRT",
+      "LBCOLSRT"
+    ]
+  },
+  {
+    "codelist": "DIR",
+    "variables": [
+      "CVDIR",
+      "ECDIR",
+      "EXDIR",
+      "MBDIR",
+      "MIDIR",
+      "MKDIR",
+      "MSDIR",
+      "NVDIR",
+      "OEDIR",
+      "PRDIR",
+      "REDIR",
+      "TUDIR",
+      "URDIR"
+    ]
+  },
+  {
+    "codelist": "DOMAIN",
+    "variables": [
+      "RDOMAIN"
+    ]
+  },
+  {
+    "codelist": "DSCAT",
+    "variables": [
+      "DSCAT"
+    ]
+  },
+  {
+    "codelist": "EPOCH",
+    "variables": [
+      "EPOCH"
+    ]
+  },
+  {
+    "codelist": "ETHNIC",
+    "variables": [
+      "ETHNIC"
+    ]
+  },
+  {
+    "codelist": "EVAL",
+    "variables": [
+      "COEVAL",
+      "CVEVAL",
+      "DDEVAL",
+      "EGEVAL",
+      "FAEVAL",
+      "MIEVAL",
+      "MKEVAL",
+      "MSEVAL",
+      "NVEVAL",
+      "OEEVAL",
+      "PEEVAL",
+      "QEVAL",
+      "REEVAL",
+      "RSEVAL",
+      "SREVAL",
+      "SSEVAL",
+      "TREVAL",
+      "TUEVAL",
+      "UREVAL"
+    ]
+  },
+  {
+    "codelist": "FREQ",
+    "variables": [
+      "AGDOSFRQ",
+      "CMDOSFRQ",
+      "ECDOSFRQ",
+      "EXDOSFRQ",
+      "PRDOSFRQ",
+      "SUDOSFRQ"
+    ]
+  },
+  {
+    "codelist": "FRM",
+    "variables": [
+      "AGDOSFRM",
+      "CMDOSFRM",
+      "ECDOSFRM",
+      "EXDOSFRM",
+      "MLDOSFRM",
+      "PRDOSFRM",
+      "SUDOSFRM"
+    ]
+  },
+  {
+    "codelist": "IECAT",
+    "variables": [
+      "IECAT"
+    ]
+  },
+  {
+    "codelist": "LAT",
+    "variables": [
+      "CVLAT",
+      "ECLAT",
+      "EXLAT",
+      "FALAT",
+      "MBLAT",
+      "MILAT",
+      "MKLAT",
+      "MSLAT",
+      "NVLAT",
+      "OELAT",
+      "PELAT",
+      "PRLAT",
+      "RELAT",
+      "SRLAT",
+      "TULAT",
+      "URLAT",
+      "VSLAT"
+    ]
+  },
+  {
+    "codelist": "LOC",
+    "variables": [
+      "AELOC",
+      "BELOC",
+      "CVLOC",
+      "ECLOC",
+      "EXLOC",
+      "FALOC",
+      "MBLOC",
+      "MILOC",
+      "MKLOC",
+      "MSLOC",
+      "NVLOC",
+      "OELOC",
+      "PELOC",
+      "PRLOC",
+      "RELOC",
+      "SRLOC",
+      "TULOC",
+      "URLOC",
+      "VSLOC"
+    ]
+  },
+  {
+    "codelist": "MEDEVAL",
+    "variables": [
+      "COEVALID",
+      "CVEVALID",
+      "EGEVALID",
+      "MKEVALID",
+      "MSEVALID",
+      "NVEVALID",
+      "OEEVALID",
+      "REEVALID",
+      "RSEVALID",
+      "TREVALID",
+      "TUEVALID",
+      "UREVALID"
+    ]
+  },
+  {
+    "codelist": "METHOD",
+    "variables": [
+      "BSMETHOD",
+      "CPMETHOD",
+      "CVMETHOD",
+      "GFMETHOD",
+      "ISMETHOD",
+      "LBMETHOD",
+      "MBMETHOD",
+      "MIMETHOD",
+      "MKMETHOD",
+      "MSMETHOD",
+      "NVMETHOD",
+      "OEMETHOD",
+      "PCMETHOD",
+      "PEMETHOD",
+      "REMETHOD",
+      "SRMETHOD",
+      "TRMETHOD",
+      "TUMETHOD",
+      "URMETHOD"
+    ]
+  },
+  {
+    "codelist": "NCOMPLT",
+    "variables": [
+      "DSDECOD"
+    ]
+  },
+  {
+    "codelist": "ND",
+    "variables": [
+      "AGSTAT",
+      "BSSTAT",
+      "CESTAT",
+      "CMSTAT",
+      "CPSTAT",
+      "CVSTAT",
+      "DASTAT",
+      "EGSTAT",
+      "FASTAT",
+      "FTSTAT",
+      "GFSTAT",
+      "HOSTAT",
+      "ISSTAT",
+      "LBSTAT",
+      "MBSTAT",
+      "MHSTAT",
+      "MISTAT",
+      "MKSTAT",
+      "MLSTAT",
+      "MSSTAT",
+      "NVSTAT",
+      "OESTAT",
+      "PCSTAT",
+      "PESTAT",
+      "PPSTAT",
+      "QSSTAT",
+      "RESTAT",
+      "RPSTAT",
+      "RSSTAT",
+      "SCSTAT",
+      "SRSTAT",
+      "SSSTAT",
+      "SUSTAT",
+      "TRSTAT",
+      "URSTAT",
+      "VSSTAT"
+    ]
+  },
+  {
+    "codelist": "NORMABNM",
+    "variables": [
+      "EGSTRESC"
+    ]
+  },
+  {
+    "codelist": "NRIND",
+    "variables": [
+      "CPNRIND",
+      "ISNRIND",
+      "LBNRIND",
+      "MSNRIND",
+      "OENRIND"
+    ]
+  },
+  {
+    "codelist": "NY",
+    "variables": [
+      "AECONTRT",
+      "AEPRESP",
+      "AESCAN",
+      "AESCONG",
+      "AESDISAB",
+      "AESDTH",
+      "AESER",
+      "AESHOSP",
+      "AESINTV",
+      "AESLIFE",
+      "AESMIE",
+      "AESOD",
+      "AEUNANT",
+      "AGOCCUR",
+      "AGPRESP",
+      "BSBLFL",
+      "CEOCCUR",
+      "CEPRESP",
+      "CMOCCUR",
+      "CMPRESP",
+      "CPBLFL",
+      "CPCLSIG",
+      "CPDRVFL",
+      "CPLOBXFL",
+      "CVBLFL",
+      "CVDRVFL",
+      "CVLOBXFL",
+      "DTHFL",
+      "ECFAST",
+      "ECOCCUR",
+      "ECPRESP",
+      "EGBLFL",
+      "EGCLSIG",
+      "EGDRVFL",
+      "EGLOBXFL",
+      "EXFAST",
+      "FABLFL",
+      "FALOBXFL",
+      "FTBLFL",
+      "FTDRVFL",
+      "FTLOBXFL",
+      "GFBLFL",
+      "GFDRVFL",
+      "HOOCCUR",
+      "HOPRESP",
+      "IEORRES",
+      "IESTRESC",
+      "ISBLFL",
+      "ISDRVFL",
+      "ISLOBXFL",
+      "ISSPCUFL",
+      "LBBLFL",
+      "LBCLSIG",
+      "LBDRVFL",
+      "LBFAST",
+      "LBLOBXFL",
+      "LBPTFL",
+      "LBSPCUFL",
+      "MBBLFL",
+      "MBDRVFL",
+      "MBFAST",
+      "MBLOBXFL",
+      "MHOCCUR",
+      "MHPRESP",
+      "MIBLFL",
+      "MILOBXFL",
+      "MKBLFL",
+      "MKDRVFL",
+      "MKLOBXFL",
+      "MLOCCUR",
+      "MLPRESP",
+      "MSACPTFL",
+      "MSBLFL",
+      "MSDRVFL",
+      "MSFAST",
+      "MSLOBXFL",
+      "NVBLFL",
+      "NVDRVFL",
+      "NVLOBXFL",
+      "OEACPTFL",
+      "OEBLFL",
+      "OEDRVFL",
+      "OELOBXFL",
+      "PCDRVFL",
+      "PCFAST",
+      "PEBLFL",
+      "PELOBXFL",
+      "PROCCUR",
+      "PRPRESP",
+      "QSBLFL",
+      "QSDRVFL",
+      "QSLOBXFL",
+      "REBLFL",
+      "REDRVFL",
+      "RELOBXFL",
+      "RPBLFL",
+      "RPDRVFL",
+      "RPLOBXFL",
+      "RSACPTFL",
+      "RSBLFL",
+      "RSDRVFL",
+      "RSLOBXFL",
+      "SRBLFL",
+      "SRLOBXFL",
+      "SUOCCUR",
+      "SUPRESP",
+      "SVEPCHGI",
+      "SVOCCUR",
+      "SVPRESP",
+      "TMRPT",
+      "TRACPTFL",
+      "TRBLFL",
+      "TRLOBXFL",
+      "TUACPTFL",
+      "TUBLFL",
+      "TULOBXFL",
+      "URBLFL",
+      "URDRVFL",
+      "URLOBXFL",
+      "VSBLFL",
+      "VSCLSIG",
+      "VSDRVFL",
+      "VSLOBXFL"
+    ]
+  },
+  {
+    "codelist": "ONCRSR",
+    "variables": [
+      "RSSTRESC"
+    ]
+  },
+  {
+    "codelist": "OTHEVENT",
+    "variables": [
+      "DSDECOD"
+    ]
+  },
+  {
+    "codelist": "OUT",
+    "variables": [
+      "AEOUT"
+    ]
+  },
+  {
+    "codelist": "PORTOT",
+    "variables": [
+      "ECPORTOT",
+      "OEPORTOT",
+      "PRPORTOT",
+      "TUPORTOT"
+    ]
+  },
+  {
+    "codelist": "POSITION",
+    "variables": [
+      "CVPOS",
+      "EGPOS",
+      "FTPOS",
+      "MKPOS",
+      "REPOS",
+      "VSPOS"
+    ]
+  },
+  {
+    "codelist": "PROTMLST",
+    "variables": [
+      "DSDECOD"
+    ]
+  },
+  {
+    "codelist": "RACE",
+    "variables": [
+      "RACE",
+      "RACE01",
+      "RACE02",
+      "RACE03",
+      "RACE04",
+      "RACE05",
+      "RACE06",
+      "RACE07"
+    ]
+  },
+  {
+    "codelist": "RELTYPE",
+    "variables": [
+      "RELTYPE"
+    ]
+  },
+  {
+    "codelist": "RESTYPRS",
+    "variables": [
+      "CPRESTYP",
+      "LBRESTYP"
+    ]
+  },
+  {
+    "codelist": "ROUTE",
+    "variables": [
+      "AGROUTE",
+      "CMROUTE",
+      "ECROUTE",
+      "EXROUTE",
+      "PRROUTE",
+      "SUROUTE"
+    ]
+  },
+  {
+    "codelist": "RSLSCLRS",
+    "variables": [
+      "CPRESSCL",
+      "LBRESSCL"
+    ]
+  },
+  {
+    "codelist": "SEVRS",
+    "variables": [
+      "CESEV"
+    ]
+  },
+  {
+    "codelist": "SEX",
+    "variables": [
+      "SEX"
+    ]
+  },
+  {
+    "codelist": "SSTATRS",
+    "variables": [
+      "SSSTRESC"
+    ]
+  },
+  {
+    "codelist": "STENRF",
+    "variables": [
+      "AEENRF",
+      "AEENRTPT",
+      "AGENRF",
+      "AGENRTPT",
+      "AGSTRF",
+      "AGSTRTPT",
+      "CEENRF",
+      "CEENRTPT",
+      "CESTRF",
+      "CESTRTPT",
+      "CMENRF",
+      "CMENRTPT",
+      "CMSTRF",
+      "CMSTRTPT",
+      "HOENRTPT",
+      "HOSTRTPT",
+      "MHENRF",
+      "MHENRTPT",
+      "PRENRTPT",
+      "PRSTRTPT",
+      "RSENRTPT",
+      "RSSTRTPT",
+      "SUENRF",
+      "SUENRTPT",
+      "SUSTRF",
+      "SUSTRTPT"
+    ]
+  },
+  {
+    "codelist": "TSPARM",
+    "variables": [
+      "TSPARM"
+    ]
+  },
+  {
+    "codelist": "TSPARMCD",
+    "variables": [
+      "TSPARMCD"
+    ]
+  },
+  {
+    "codelist": "UNIT",
+    "variables": [
+      "AGDOSU",
+      "BSORRESU",
+      "BSSTRESU",
+      "CMDOSU",
+      "CPORRESU",
+      "CPSTRESU",
+      "CVORRESU",
+      "CVSTRESU",
+      "DAORRESU",
+      "DASTRESU",
+      "ECDOSU",
+      "ECPSTRGU",
+      "EGORRESU",
+      "EGSTRESU",
+      "EXDOSU",
+      "FAORRESU",
+      "FASTRESU",
+      "FTORRESU",
+      "FTSTRESU",
+      "GFORRESU",
+      "GFSTRESU",
+      "ISORRESU",
+      "ISSTRESU",
+      "LBORRESU",
+      "LBSTRESU",
+      "MBORRESU",
+      "MBSTRESU",
+      "MIORRESU",
+      "MISTRESU",
+      "MKORRESU",
+      "MKSTRESU",
+      "MLDOSU",
+      "MSCONCU",
+      "MSORRESU",
+      "MSSTRESU",
+      "NVORRESU",
+      "NVSTRESU",
+      "OEORRESU",
+      "OESTRESU",
+      "PEORRESU",
+      "PRDOSU",
+      "QSORRESU",
+      "QSSTRESU",
+      "REORRESU",
+      "RESTRESU",
+      "RPORRESU",
+      "RPSTRESU",
+      "RSORRESU",
+      "RSSTRESU",
+      "SCORRESU",
+      "SCSTRESU",
+      "SRORRESU",
+      "SRSTRESU",
+      "SUDOSU",
+      "TRORRESU",
+      "TRSTRESU",
+      "URORRESU",
+      "URSTRESU"
+    ]
+  }
+]

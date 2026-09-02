@@ -667,7 +667,8 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
         @Override
         public List<IColumnMetadata> getColumns()
         {
-            return columns;
+            // Unmodifiable: same reason as getEntries below (SpotBugs EI_EXPOSE_REP).
+            return Collections.unmodifiableList(columns);
         }
 
 
@@ -846,7 +847,9 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
         @Override
         public List<ICodelistEntry> getEntries()
         {
-            return entries;
+            // Unmodifiable: the record is handed a plain ArrayList, so returning it directly let
+            // a caller mutate the library's codelist (SpotBugs EI_EXPOSE_REP).
+            return Collections.unmodifiableList(entries);
         }
 
 

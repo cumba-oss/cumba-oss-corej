@@ -27,6 +27,13 @@ Outcome:
   Output_Variables:
   - "AESEV"
   - "AESEVN"
+Source:
+  Message: "Inconsistent value for AESEV"
+  Description: "Across studies, all Severity/Intensity (AESEV) variable values must\
+    \ be the same for each unique value of Severity/Intensity (N) (AESEVN) variable\
+    \ when the primary variable AESEV is populated."
+  Domains: "ADAE"
+  Severity: "Error"
 Standards:
 - Organization: "PMDA"
   Standards:

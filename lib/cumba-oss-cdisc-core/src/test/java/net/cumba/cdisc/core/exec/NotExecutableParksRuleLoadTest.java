@@ -18,10 +18,11 @@ import net.cumba.cdisc.core.RulePackageLoader;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code plans/PLAN-not-executable-parks-a-rule.md} — {@code Fix #159}.
+ * {@code plans/done/PLAN-not-executable-parks-a-rule.md} — {@code Fix #159}.
  *
  * <p>
  * {@code Executability: "Not Executable"} used to be a load-guard <b>severity switch</b> and

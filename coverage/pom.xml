@@ -48,6 +48,16 @@
             <groupId>${project.groupId}</groupId>
             <artifactId>cumba-oss-cdisc-report-xlsx</artifactId>
         </dependency>
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-cdisc-core-ruletest</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-cdisc-define-conformance</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 
     <build>

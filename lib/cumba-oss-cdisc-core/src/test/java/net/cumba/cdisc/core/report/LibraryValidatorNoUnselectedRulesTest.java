@@ -10,13 +10,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.cumba.cdisc.core.exec.MetadataProvider;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.gen.GeneratedRulePackage;
 import net.cumba.cdisc.core.gen.RuleCategory;
 import net.cumba.cdisc.core.gen.RuleGenerator;
 import net.cumba.cdisc.core.metadata.MetadataKeys;
 import net.cumba.cdisc.core.metadata.MetadataLibraryProvider;
-import net.cumba.cdisc.core.metadata.TestMetadataFixtures;
 import net.cumba.cdisc.core.model.CheckConditionLeaf;
 import net.cumba.cdisc.core.model.Outcome;
 import net.cumba.cdisc.core.model.Rule;
@@ -25,12 +23,15 @@ import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.cdisc.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.IMetadataLibrary;
+import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.testkit.TestMetadataFixtures;
 import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.Test;
 
 /**
- * ⭐ The acceptance of {@code plans/PLAN-retire-engine-generated-rules.md} phase 2, asserted against
- * the <b>shipped</b> wiring: <i>no rule may fire unless it is in a package the user selected.</i>
+ * ⭐ The acceptance of {@code plans/done/PLAN-retire-engine-generated-rules.md} phase 2, asserted
+ * against the <b>shipped</b> wiring: <i>no rule may fire unless it is in a package the user
+ * selected.</i>
  *
  * <p>
  * The engine used to mint rules in Java at run time — {@code GEN-*} identities carrying no

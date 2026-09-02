@@ -23,7 +23,7 @@ import org.jspecify.annotations.Nullable;
  * plain vector tests its scalar cell, while an unqualified foreign reference
  * ({@link JoinedCandidatesVector}) votes with ANY-MATCH over all of the row's joined candidate
  * values — the legacy {@code forEachJoinedValue} contract (B2,
- * {@code plans/PLAN-native-engine-residuals.md}). These primitives evaluate the full range;
+ * {@code plans/done/PLAN-native-engine-residuals.md}). These primitives evaluate the full range;
  * candidate-mask short-circuiting and chunked ranges are layered on by the evaluator (Phase 3), not
  * here.
  * </p>

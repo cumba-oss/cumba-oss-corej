@@ -28,6 +28,11 @@ Outcome:
     \ (XPORT) or text-delimited (CSV)."
   Output_Variables:
   - "$file_format"
+Source:
+  FDA_Validator_Rule_Message: "Incompatible data source"
+  FDA_Validator_Rule_Description: "Domain table must have a valid format (e.g., SAS\
+    \ transport (XPORT) v.5 or text-delimited)."
+  Domains: "ALL"
 Standards:
 - Organization: "FDA"
   Standards:

@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 /**
- * P1b of {@code plans/PLAN-native-engine-full-coverage.md} — a rule using an operator that NO
+ * P1b of {@code plans/done/PLAN-native-engine-full-coverage.md} — a rule using an operator that NO
  * engine implements must surface as a <b>load error</b> instead of silently passing at runtime
  * (user decision: option (b), 2026-06-11). The remaining non-executable operators are the
  * affix-compare variants ({@code prefix_is_contained_by}, {@code suffix_equal_to}, …) and the

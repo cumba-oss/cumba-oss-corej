@@ -1,0 +1,22 @@
+UNII (Unique Ingredient Identifier)
+
+Producer: the US Food and Drug Administration (FDA), Global Substance
+Registration System (GSRS); distributed via precisionFDA
+(https://precision.fda.gov/uniisearch/archive).
+
+Terms: no UNII-specific licence or terms-of-use document exists; the site
+footer's "All Rights Reserved" is boilerplate, not a terms document. Use
+of this copy rests on absence of restriction — as a work of the United
+States Government it is not subject to US copyright (17 U.S.C. § 105) —
+together with FDA's general open-data posture (openFDA's CC0 statement
+governs a different service and is cited as an inference, not as a
+grant), not on any affirmative grant.
+
+Scope: the conversion takes 2 of the 25 published columns (UNII and
+DISPLAY_NAME), deliberately dropping every third-party identifier column
+(NCIT, RXCUI, INN_ID, Kew MPNS, …) and the WHO disclaimer attached to
+INN_ID.
+
+The sibling unii.json[.gz] is a converted extract produced by the coreJ
+dictionary installer, not the authoritative FDA release. The
+authoritative release is at the source recorded in SOURCES.md.

@@ -8,12 +8,13 @@ import net.cumba.cdisc.core.RulePackageLoader;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * P6b of {@code plans/PLAN-native-engine-full-coverage.md} — the {@code Precondition} skip decision
- * evaluates natively. The loader raises a fold-equivalent (broadcast-verdict) Precondition to
- * {@code Rule.preconditionExpr}; {@code RuleRunner} phase 2e decides skip-on-false via
+ * P6b of {@code plans/done/PLAN-native-engine-full-coverage.md} — the {@code Precondition} skip
+ * decision evaluates natively. The loader raises a fold-equivalent (broadcast-verdict) Precondition
+ * to {@code Rule.preconditionExpr}; {@code RuleRunner} phase 2e decides skip-on-false via
  * {@code NativeExprEvaluator.evaluateBroadcast} — bit-identical to the legacy
  * {@code partialEvaluateDataset} fold. A non-broadcast precondition keeps {@code preconditionExpr
  * == null} and CONTINUES with the main Check on both engines (the legacy "not fully resolvable"

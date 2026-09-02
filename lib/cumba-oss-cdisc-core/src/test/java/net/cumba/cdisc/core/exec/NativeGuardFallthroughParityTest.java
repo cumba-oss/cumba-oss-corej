@@ -11,10 +11,11 @@ import net.cumba.cdisc.core.RulePackageLoader;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Guard-residual D2/D2b parity ({@code plans/PLAN-native-runtime-guard-residual.md}) — the
+ * Guard-residual D2/D2b parity ({@code plans/done/PLAN-native-runtime-guard-residual.md}) — the
  * scenarios that previously fell through the runtime broadcast-safety guard (or the Step-1
  * fold-to-constant return) into legacy verdict production now decide natively via the tri-state
  * {@code BroadcastFold}, with verdicts byte-identical to the legacy engine and the recorder

@@ -41,7 +41,7 @@ class OperationTypeTest
     /**
      * ⚠⚠ This case used to assert the opposite — {@code variable_exists} was pinned as NOT
      * resolving, recording its retirement in favour of the {@code var_exists} function
-     * ({@code plans/PLAN-variable-exists-cross-dataset.md}).
+     * ({@code plans/done/PLAN-variable-exists-cross-dataset.md}).
      *
      * <p>
      * <b>That retirement is not reversed, and the pin flipped for a narrower reason.</b> The

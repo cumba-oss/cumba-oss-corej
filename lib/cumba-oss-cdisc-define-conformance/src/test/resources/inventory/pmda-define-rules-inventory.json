@@ -1,0 +1,2949 @@
+[
+  {
+    "id": "DD0001",
+    "ruleId": "PMDA-DD0001",
+    "message": "XML schema validation issue within Define.xml",
+    "description": "There is an XML schema validation issue with either Define.xml structure or content that is not covered by one of the other rules. It is most likely an issue with element declarations.",
+    "severity": "Reject",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": null,
+    "capabilityCategory": "xsd-overlap",
+    "proposedKind": "xsd",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0002",
+    "ruleId": "PMDA-DD0002",
+    "message": "Missing or invalid <namespace> namespace reference",
+    "description": "Define.xml must reference the following namespaces: 1) CDISC ODM xmlns=\"http://www.cdisc.org/ns/odm/v1.3\" for Define-XML v2.0 and v2.1 or xmlns=\"http://www.cdisc.org/ns/odm/v1.2\" for Define-XML v1.0; 2) CDISC Define xmlns:def=\"http://www.cdisc.org/ns/def/v2.1\" for Define-XML v2.1, xmlns:def=\"http://www.cdisc.org/ns/def/v2.0\" for Define-XML v2.0 or xmlns:def=\"http://www.cdisc.org/ns/def/v1.0\" for Define-XML v1.0; 3) XML Schema Instance xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"; and 4) XLink xmlns:xlink=\"http://www.w3.org/1999/xlink\". The XML Schema Instance namespace is only required when a local schema is provided, while the XLink namespace is only required when external documents are provided.",
+    "severity": "Reject",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ODM",
+    "targetAttribute": null,
+    "capabilityCategory": "xsd-overlap",
+    "proposedKind": "xsd",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0003",
+    "ruleId": "PMDA-DD0003",
+    "message": "Missing required <attribute> value for <object>",
+    "description": "Required attributes must be included in Define.xml and cannot be empty.",
+    "severity": "Reject",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": null,
+    "capabilityCategory": "xsd-overlap",
+    "proposedKind": "xsd",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0004",
+    "ruleId": "PMDA-DD0004",
+    "message": "Attribute <attribute> is not allowed to appear in element <element>",
+    "description": "Define.xml must only contain attributes that are defined in either ODM or Define-XML specification.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": null,
+    "capabilityCategory": "xsd-overlap",
+    "proposedKind": "xsd",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0006",
+    "ruleId": "PMDA-DD0006",
+    "message": "Missing required <element> value",
+    "description": "Required elements must be included in Define.xml and cannot be empty.",
+    "severity": "Reject",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": null,
+    "capabilityCategory": "xsd-overlap",
+    "proposedKind": "xsd",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0007",
+    "ruleId": "PMDA-DD0007",
+    "message": "Invalid content was found starting with element <element>",
+    "description": "Define.xml must only contain elements that are defined in either ODM or Define-XML specifications. The elements must also follow the cardinality and order specified in the specifications.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": null,
+    "capabilityCategory": "xsd-overlap",
+    "proposedKind": "xsd",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0008",
+    "ruleId": "PMDA-DD0008",
+    "message": "Element in wrong position within Define.xml",
+    "description": "An element was found in the wrong position within Define.xml.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": null,
+    "capabilityCategory": "xsd-overlap",
+    "proposedKind": "xsd",
+    "cdiscTwinCandidates": [
+      1
+    ]
+  },
+  {
+    "id": "DD0009",
+    "ruleId": "PMDA-DD0009",
+    "message": "Element occurs more than once",
+    "description": "Element occurs in Define.xml more than once, but it is limited to only one occurrence by the specification.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": null,
+    "capabilityCategory": "xsd-overlap",
+    "proposedKind": "xsd",
+    "cdiscTwinCandidates": [
+      3,
+      11,
+      15,
+      19,
+      21,
+      23,
+      25,
+      32,
+      38,
+      51,
+      129,
+      135,
+      162,
+      169,
+      198,
+      205,
+      215,
+      219,
+      235,
+      250
+    ]
+  },
+  {
+    "id": "DD0010",
+    "ruleId": "PMDA-DD0010",
+    "message": "ODM attribute <attribute> should not be included in Define.xml",
+    "description": "ODM attributes that are not explicitly specified in Define.xml standard should generally not be included.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": null,
+    "capabilityCategory": "xsd-overlap",
+    "proposedKind": "xsd",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0011",
+    "ruleId": "PMDA-DD0011",
+    "message": "ODM element <element> should not be included in Define.xml",
+    "description": "ODM elements that are not explicitly specified in Define.xml standard should generally not be included.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": null,
+    "capabilityCategory": "xsd-overlap",
+    "proposedKind": "xsd",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0012",
+    "ruleId": "PMDA-DD0012",
+    "message": "Duplicate Document ID",
+    "description": "The ID attribute for Document must be unique within Define.xml. Define-XML specification represents Documents as def:leaf elements within MetaDataVersion element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "leaf",
+    "targetAttribute": "ID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_in_document",
+    "cdiscTwinCandidates": [
+      216
+    ]
+  },
+  {
+    "id": "DD0013",
+    "ruleId": "PMDA-DD0013",
+    "message": "Duplicate Method OID",
+    "description": "The OID attribute for Method (the Method ID) must be unique within Define.xml. Define-XML specification represents Methods as MethodDef elements within MetaDataVersion element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "MethodDef",
+    "targetAttribute": "OID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_in_document",
+    "cdiscTwinCandidates": [
+      230
+    ]
+  },
+  {
+    "id": "DD0014",
+    "ruleId": "PMDA-DD0014",
+    "message": "Duplicate ValueListDef OID",
+    "description": "The OID attribute for def:ValueListDef element must be unique within a single MetaDataVersion.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ValueListDef",
+    "targetAttribute": "OID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_among_siblings",
+    "cdiscTwinCandidates": [
+      230
+    ]
+  },
+  {
+    "id": "DD0015",
+    "ruleId": "PMDA-DD0015",
+    "message": "Referenced Document is missing",
+    "description": "Referenced Document must first be defined on Documents tab. Define-XML specification represents Documents as def:leaf elements within MetaDataVersion element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "DocumentRef",
+    "targetAttribute": "leafID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "references",
+    "cdiscTwinCandidates": [
+      43
+    ]
+  },
+  {
+    "id": "DD0016",
+    "ruleId": "PMDA-DD0016",
+    "message": "Referenced Method is missing",
+    "description": "Referenced Method must first be defined on Methods tab. Define-XML specification represents Methods as MethodDef elements within MetaDataVersion element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemRef",
+    "targetAttribute": "MethodOID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "references",
+    "cdiscTwinCandidates": [
+      74
+    ]
+  },
+  {
+    "id": "DD0017",
+    "ruleId": "PMDA-DD0017",
+    "message": "Referenced Value Level metadata is missing",
+    "description": "Referenced ValueListOID value must match OID attribute of def:ValueListDef element within MetaDataVersion element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ValueListRef",
+    "targetAttribute": "ValueListOID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "references",
+    "cdiscTwinCandidates": [
+      163
+    ]
+  },
+  {
+    "id": "DD0018",
+    "ruleId": "PMDA-DD0018",
+    "message": "def:ArchiveLocationID/def:leaf mismatch",
+    "description": "The ItemGroupDef def:ArchiveLocationID should match the ID of the child def:leaf.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "ArchiveLocationID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "references",
+    "cdiscTwinCandidates": [
+      120
+    ]
+  },
+  {
+    "id": "DD0019",
+    "ruleId": "PMDA-DD0019",
+    "message": "Invalid FileType value",
+    "description": "The FileType must have a value of 'Snapshot'.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ODM",
+    "targetAttribute": "FileType",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      8
+    ]
+  },
+  {
+    "id": "DD0020B",
+    "ruleId": "PMDA-DD0020B",
+    "message": "Invalid def:DefineVersion value",
+    "description": "The def:DefineVersion should have a value of '2.0.0' for Define-XML v2.0 or '2.1.n' for Define-XML v2.1. The n in '2.1.n' reflects updates to the schema.",
+    "severity": "Reject",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": "PMDA does accept the define.xml version 2.0.0 and 2.1.n only under this validation rule.",
+    "targetElement": "MetaDataVersion",
+    "targetAttribute": "DefineVersion",
+    "capabilityCategory": "declarative",
+    "proposedKind": "matches_regex",
+    "cdiscTwinCandidates": [
+      28
+    ]
+  },
+  {
+    "id": "DD0021",
+    "ruleId": "PMDA-DD0021",
+    "message": "Invalid Standard Name value <value>",
+    "description": "Allowable values of Standard Name are: Values from the STDNAM Codelist in Define-CT for Define-XML v2.1, 'SDTM-IG', 'SEND-IG', 'SEND-IG-AR', 'SEND-IG-DART', 'SEND-IG-GENETOX', 'ADaM-IG', or 'BIMO' for Define-XML v2.0, or 'CDISC SDTM', 'CDISC SEND', or 'CDISC ADaM' for Define-XML v1.0. Values must conform to this list of values. Note: Refer to the data standards catalog by the relevant Regulatory Agency for acceptance of standards and their versions.",
+    "severity": "Reject",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Standard",
+    "targetAttribute": "Name",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0022",
+    "ruleId": "PMDA-DD0022",
+    "message": "Invalid Standard Version value <value> for <standard>",
+    "description": "Standard Version must have a valid value for the given Standard Name. Allowed values are '3.1.2', '3.1.3', '3.2', '3.3', or '3.4' for SDTM-IG, '3.0', '3.1', or '3.1.1' for SEND-IG, '1.0' for SEND-IG-AR, '1.1' for SEND-IG-DART, '1.0' for SEND-IG-GENETOX, '1.0', '1.1', '1.2', or '1.3' for ADaM-IG, and '1.0' for BIMO. Define-XML specification represents Standard Version as def:StandardVersion attribute on MetaDataVersion element. Note: Refer to the data standards catalog by the relevant Regulatory Agency for acceptance of standards and their versions.",
+    "severity": "Reject",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Standard",
+    "targetAttribute": "Version",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      263
+    ]
+  },
+  {
+    "id": "DD0024",
+    "ruleId": "PMDA-DD0024",
+    "message": "Invalid Term in codelist <codelist> for variable <variable>",
+    "description": "If the allowed values for a variable are restricted by a non-extensible CDISC controlled terminology, the Codelist referenced in Define.xml must not contain Terms that are not part of CDISC controlled terminology. Define-XML specification represents Term as CodedValue attribute on either EnumeratedItem or CodeListItem elements within CodeList element.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "EnumeratedItem",
+    "targetAttribute": "CodedValue",
+    "capabilityCategory": "ct",
+    "proposedKind": "term_in_ct_codelist",
+    "cdiscTwinCandidates": [
+      179,
+      192
+    ]
+  },
+  {
+    "id": "DD0025",
+    "ruleId": "PMDA-DD0025",
+    "message": "Invalid MedDRA Version <version>",
+    "description": "MedDRA version must be set to decimal value ending with 0 or 1, for example '9.0' or '14.1'. Define-XML specification represents MedDRA version as Version attribute on ExternalCodeList element within CodeList element.",
+    "severity": "Reject",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ExternalCodeList",
+    "targetAttribute": "Version",
+    "capabilityCategory": "meddra-structural",
+    "proposedKind": "matches_regex",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0028",
+    "ruleId": "PMDA-DD0028",
+    "message": "Term/NCI Code mismatch in Codelist <codelist>",
+    "description": "Codelist Term must match the value in CDISC Controlled Terminology for corresponding NCI Code. Define-XML specification represents Term as CodedValue attribute on either EnumeratedItem or CodeListItem elements within CodeList element. NCI Code is represented as Name attribute on Alias element when Context attribute is \"nci:ExtCodeID\".",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "EnumeratedItem",
+    "targetAttribute": "CodedValue",
+    "capabilityCategory": "ct",
+    "proposedKind": "term_matches_nci_code",
+    "cdiscTwinCandidates": [
+      179,
+      192
+    ]
+  },
+  {
+    "id": "DD0029",
+    "ruleId": "PMDA-DD0029",
+    "message": "Required attribute def:ExtendedValue is missing or empty",
+    "description": "The def:ExtendedValue attribute is required when the CodedValue is an extended value.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "EnumeratedItem",
+    "targetAttribute": "ExtendedValue",
+    "capabilityCategory": "ct",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      186,
+      201
+    ]
+  },
+  {
+    "id": "DD0030",
+    "ruleId": "PMDA-DD0030",
+    "message": "Invalid def:ExtendedValue value",
+    "description": "The def:ExtendedValue attribute must have a value of 'Yes'.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "EnumeratedItem",
+    "targetAttribute": "ExtendedValue",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      178,
+      197
+    ]
+  },
+  {
+    "id": "DD0031",
+    "ruleId": "PMDA-DD0031",
+    "message": "Missing NCI Code for Codelist <codelist>",
+    "description": "NCI Code is required for each Codelist that is defined in CDISC Controlled Terminology. Define-XML specification represents NCI Code as Name attribute on Alias element when Context attribute is \"nci:ExtCodeID\".",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0"
+    ],
+    "notes": null,
+    "targetElement": "Alias",
+    "targetAttribute": "Name",
+    "capabilityCategory": "ct",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      97,
+      249
+    ]
+  },
+  {
+    "id": "DD0032",
+    "ruleId": "PMDA-DD0032",
+    "message": "Missing NCI Code for Term in Codelist <codelist>",
+    "description": "NCI Code is required for each Codelist Term that is defined in CDISC Controlled Terminology. Define-XML specification represents Term as CodedValue attribute on either EnumeratedItem or CodeListItem elements within CodeList element. NCI Code is represented as Name attribute on Alias element when Context attribute is \"nci:ExtCodeID\".",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Alias",
+    "targetAttribute": "Name",
+    "capabilityCategory": "ct",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      98,
+      99
+    ]
+  },
+  {
+    "id": "DD0033",
+    "ruleId": "PMDA-DD0033",
+    "message": "Unknown NCI Code value for Codelist <codelist>",
+    "description": "NCI Code for Codelist must exist in CDISC Controlled Terminology. Define-XML specification represents NCI Code as Name attribute on Alias element when Context attribute is \"nci:ExtCodeID\".",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Alias",
+    "targetAttribute": "Name",
+    "capabilityCategory": "ct",
+    "proposedKind": "nci_code_known",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0034",
+    "ruleId": "PMDA-DD0034",
+    "message": "Unknown NCI Code value for Term in Codelist <codelist>",
+    "description": "NCI Code for Codelist Term must exist in CDISC Controlled Terminology. Define-XML specification represents Term as CodedValue attribute on either EnumeratedItem or CodeListItem elements within CodeList element. NCI Code is represented as Name attribute on Alias element when Context attribute is \"nci:ExtCodeID\".",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Alias",
+    "targetAttribute": "Name",
+    "capabilityCategory": "ct",
+    "proposedKind": "nci_code_known",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0035",
+    "ruleId": "PMDA-DD0035",
+    "message": "Missing Pages value",
+    "description": "For Define-XML v2.0, the Pages field is required when Origin Type is 'CRF'. For Define-XML v2.1, the Pages field is required when Origin Type is 'Collected' and Source is 'Investigator' or 'Subject'. Define-XML specification represents Pages as def:PDFPageRef elements within def:DocumentRef element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "PDFPageRef",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      44
+    ]
+  },
+  {
+    "id": "DD0037",
+    "ruleId": "PMDA-DD0037",
+    "message": "Missing or invalid page range",
+    "description": "FirstPage and LastPage are required when PageRefs is not provided.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "PDFPageRef",
+    "targetAttribute": "FirstPage",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      48,
+      50
+    ]
+  },
+  {
+    "id": "DD0038",
+    "ruleId": "PMDA-DD0038",
+    "message": "Missing Value Level metadata for QVAL in Dataset <dataset>",
+    "description": "Value Level metadata must be defined for QVAL variable in each SUPPQUAL dataset. Define-XML specification represents Value Level metadata as def:ValueListDef element, which is referenced from ItemDef/def:ValueListRef element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ValueListRef",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      55
+    ]
+  },
+  {
+    "id": "DD0040",
+    "ruleId": "PMDA-DD0040",
+    "message": "Missing Key Variables value",
+    "description": "Key Variables must be defined for each dataset. Define-XML specification represents Key Variables as KeySequence attribute on ItemRef element. The KeySequence attribute must be provided for at least one ItemRef within each ItemGroupDef.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemRef",
+    "targetAttribute": "KeySequence",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      70
+    ]
+  },
+  {
+    "id": "DD0041",
+    "ruleId": "PMDA-DD0041",
+    "message": "Duplicate KeySequence",
+    "description": "The KeySequence attribute for ItemRef element must be unique within a single ItemGroupDef.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemRef",
+    "targetAttribute": "KeySequence",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_among_siblings",
+    "cdiscTwinCandidates": [
+      71
+    ]
+  },
+  {
+    "id": "DD0042",
+    "ruleId": "PMDA-DD0042",
+    "message": "Missing Method reference",
+    "description": "The Method field is required when Origin is Derived. Define-XML specification represents Methods as MethodDef elements, which are referenced by MethodOID attribute within ItemRef element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemRef",
+    "targetAttribute": "MethodOID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      73
+    ]
+  },
+  {
+    "id": "DD0044",
+    "ruleId": "PMDA-DD0044",
+    "message": "Invalid SoftHard value",
+    "description": "The SoftHard attribute must have a value of 'Soft' or 'Hard'.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "RangeCheck",
+    "targetAttribute": "SoftHard",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      88
+    ]
+  },
+  {
+    "id": "DD0045",
+    "ruleId": "PMDA-DD0045",
+    "message": "Missing Domain value",
+    "description": "For SDTM and SEND submission data (where def:StandardName is 'SDTM-IG' or 'SEND-IG'), Domain attribute is required and must be included in Define.xml and cannot be empty. Note: Refer to the data standards catalog by the relevant Regulatory Agency for acceptance of standards and their versions.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "Domain",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      105
+    ]
+  },
+  {
+    "id": "DD0046",
+    "ruleId": "PMDA-DD0046",
+    "message": "Invalid use of Domain attribute",
+    "description": "For ADaM submission data (where def:StandardName is 'ADaM-IG'), Domain attribute is not applicable and must not be included in Define.xml.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "Domain",
+    "capabilityCategory": "declarative",
+    "proposedKind": "not_exists",
+    "cdiscTwinCandidates": [
+      106
+    ]
+  },
+  {
+    "id": "DD0047",
+    "ruleId": "PMDA-DD0047",
+    "message": "Missing SASDatasetName value",
+    "description": "For regulatory submission data, SASDatasetName attribute is required and must be included in Define.xml and cannot be empty.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "SASDatasetName",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      108
+    ]
+  },
+  {
+    "id": "DD0048",
+    "ruleId": "PMDA-DD0048",
+    "message": "Invalid SASDatasetName value",
+    "description": "The SASDatasetName value does not conform to SAS Transport file naming rules. Allowed string pattern for SASDatasetName is '[A-Za-z_][A-Za-z0-9_]*'.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "SASDatasetName",
+    "capabilityCategory": "declarative",
+    "proposedKind": "matches_regex",
+    "cdiscTwinCandidates": [
+      109
+    ]
+  },
+  {
+    "id": "DD0049",
+    "ruleId": "PMDA-DD0049",
+    "message": "Name/Domain/SASDatasetName mismatch",
+    "description": "For SDTM and SEND submission data and for datasets that are not SUPPQUAL and not split (where def:StandardName is 'SDTM-IG' or 'SEND-IG' and only one ItemGroupDef exists for the Domain), Name, Domain, and SASDatasetName attributes must have the same value. Note: Refer to the data standards catalog by the relevant Regulatory Agency for acceptance of standards and their versions.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "SASDatasetName",
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": [
+      110
+    ]
+  },
+  {
+    "id": "DD0050",
+    "ruleId": "PMDA-DD0050",
+    "message": "Domain/SASDatasetName mismatch for split dataset",
+    "description": "For split datasets (where more than one ItemGroupDef exists for the same Domain), the 2-letter prefix in SASDatasetName attribute and Domain attribute must have the same value.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "SASDatasetName",
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0051",
+    "ruleId": "PMDA-DD0051",
+    "message": "Duplicate SASDatasetName",
+    "description": "The SASDatasetName attribute for ItemGroupDef element must be unique within a single MetaDataVersion.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "SASDatasetName",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_among_siblings",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0052",
+    "ruleId": "PMDA-DD0052",
+    "message": "SASDatasetName/def:ArchiveLocationID mismatch",
+    "description": "SASDatasetName attribute and filename (without extension) identified by def:ArchiveLocationID (def:leaf/xlink:href attribute) must have the same value.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "SASDatasetName",
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": [
+      112
+    ]
+  },
+  {
+    "id": "DD0053",
+    "ruleId": "PMDA-DD0053",
+    "message": "Invalid Purpose value",
+    "description": "The Purpose attribute must have a value of 'Tabulation' for SDTM and SEND data and 'Analysis' for ADaM data. Note: Refer to the data standards catalog by the relevant Regulatory Agency for acceptance of standards and their versions.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "Purpose",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      116,
+      251,
+      252
+    ]
+  },
+  {
+    "id": "DD0054",
+    "ruleId": "PMDA-DD0054",
+    "message": "Missing Class value",
+    "description": "For regulatory submission data, Class field is required and must be included in Define.xml and cannot be empty. Define-XML v2.0 specification represents Class as def:Class attribute on ItemGroupDef element. Define-XML v2.1 specification represents Class as a def:Class child element under the ItemGroupDef element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Class",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      131
+    ]
+  },
+  {
+    "id": "DD0055",
+    "ruleId": "PMDA-DD0055",
+    "message": "Invalid Class value",
+    "description": "For Define-XML 2.0, the Class attribute must have a value of 'SPECIAL PURPOSE', 'FINDINGS', 'FINDINGS ABOUT', 'EVENTS', 'INTERVENTIONS', 'TRIAL DESIGN', or 'RELATIONSHIP' for SDTM and SEND data and 'SUBJECT LEVEL ANALYSIS DATASET', 'BASIC DATA STRUCTURE', 'OCCURRENCE DATA STRUCTURE' (IG v1.1 and above), or 'ADAM OTHER' for ADaM data. For Define-XML 2.1, the Class attribute must have a value that is found in the GNRLOBSC (C103329) codelist in Define-CT. Note: Refer to the data standards catalog by the relevant Regulatory Agency for acceptance of standards and their versions.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Class",
+    "targetAttribute": "Name",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      132
+    ]
+  },
+  {
+    "id": "DD0056",
+    "ruleId": "PMDA-DD0056",
+    "message": "Missing def:ArchiveLocationID value",
+    "description": "For regulatory submission data, def:ArchiveLocationID attribute is required and must be included in Define.xml and cannot be empty.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "ArchiveLocationID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      119
+    ]
+  },
+  {
+    "id": "DD0057",
+    "ruleId": "PMDA-DD0057",
+    "message": "Missing Description value",
+    "description": "For regulatory submission data, Description field is required for each Dataset, Method, and Comment and must be included in Define.xml and cannot be empty. Define-XML specification represents Description as Description/TranslatedText element within ItemGroupDef, MethodDef, or def:CommentDef element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Description",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      128,
+      210,
+      214
+    ]
+  },
+  {
+    "id": "DD0058",
+    "ruleId": "PMDA-DD0058",
+    "message": "Missing Label value",
+    "description": "Label field is required for each Variable and must be included in Define.xml and cannot be empty. However, Label field is optional for Value Level metadata. Define-XML specification represents Label as Description/TranslatedText element within ItemDef element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Description",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      168
+    ]
+  },
+  {
+    "id": "DD0061",
+    "ruleId": "PMDA-DD0061",
+    "message": "Missing Predecessor value",
+    "description": "The Predecessor field is required when Origin is Predecessor. Define-XML specification represents Predecessors as Description/TranslatedText elements within def:Origin element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Origin",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0062",
+    "ruleId": "PMDA-DD0062",
+    "message": "Duplicate xml:lang",
+    "description": "The xml:lang attribute for TranslatedText element must be unique within a single parent element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "TranslatedText",
+    "targetAttribute": "lang",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_among_siblings",
+    "cdiscTwinCandidates": [
+      63
+    ]
+  },
+  {
+    "id": "DD0063",
+    "ruleId": "PMDA-DD0063",
+    "message": "Missing Alias",
+    "description": "Alias is required for each split dataset (where more than one ItemGroupDef exists for the same Domain) to provide a description for the full dataset.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Alias",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      95
+    ]
+  },
+  {
+    "id": "DD0064",
+    "ruleId": "PMDA-DD0064",
+    "message": "Invalid Alias Context value",
+    "description": "The Alias Context attribute must have a value of 'DomainDescription' for split datasets (when child of ItemGroupDef) and 'nci:ExtCodeID' for CodeList, CodeListItem or EnumeratedItem elements.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Alias",
+    "targetAttribute": "Context",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0067",
+    "ruleId": "PMDA-DD0067",
+    "message": "Variable <variable> is not referenced",
+    "description": "Only Variables that are referenced from a Dataset or Value Level metadata should be included in Define.xml. Define-XML specification represents variables as ItemDef elements and variable references as ItemRef elements within an ItemGroupDef or def:ValueListDef.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemDef",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0068",
+    "ruleId": "PMDA-DD0068",
+    "message": "Invalid use of Length",
+    "description": "The Length attribute must be empty when DataType is not integer, float, or text.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemDef",
+    "targetAttribute": "Length",
+    "capabilityCategory": "declarative",
+    "proposedKind": "not_exists",
+    "cdiscTwinCandidates": [
+      143
+    ]
+  },
+  {
+    "id": "DD0069",
+    "ruleId": "PMDA-DD0069",
+    "message": "Invalid use of Significant Digits",
+    "description": "The Significant Digits attribute must be empty when DataType is not float.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemDef",
+    "targetAttribute": "SignificantDigits",
+    "capabilityCategory": "declarative",
+    "proposedKind": "not_exists",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0070",
+    "ruleId": "PMDA-DD0070",
+    "message": "Missing SASFieldName value",
+    "description": "For regulatory submission data, SASFieldName attribute is required and must be included in Define.xml and cannot be empty.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemDef",
+    "targetAttribute": "SASFieldName",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      147
+    ]
+  },
+  {
+    "id": "DD0071",
+    "ruleId": "PMDA-DD0071",
+    "message": "Referenced Comment is missing",
+    "description": "Referenced Comment must first be defined on Comments tab. Define-XML specification represents Comments as def:CommentDef elements within MetaDataVersion element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": "CommentOID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "references",
+    "cdiscTwinCandidates": [
+      30,
+      83,
+      127,
+      148,
+      177,
+      256
+    ]
+  },
+  {
+    "id": "DD0072",
+    "ruleId": "PMDA-DD0072",
+    "message": "Missing Origin",
+    "description": "For regulatory submission data, Origin is required for all SDTM, ADaM, and SEND variables. It is at the sponsors discretion whether to provide Origin at the Variable or Value Level. When Origin is provided for each Value Level item, then providing Origin on the Variable is optional. Define-XML specification represents variable Origin as def:Origin element under ItemDef element. Note: Refer to the data standards catalog by the relevant Regulatory Agency for acceptance of standards and their versions.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Origin",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      154,
+      155
+    ]
+  },
+  {
+    "id": "DD0073",
+    "ruleId": "PMDA-DD0073",
+    "message": "Invalid Origin Type value",
+    "description": "For Define-XML v2.0, the Origin Type attribute must have a value of 'CRF', 'Derived', 'Assigned', 'Protocol', 'eDT', or 'Predecessor' for SDTM and ADaM data and 'COLLECTED', 'DERIVED', 'OTHER', or 'NOT AVAILABLE' for SEND data. For Define-XML v2.1, the Origin Type attribute must have a value of 'Collected', 'Derived', 'Assigned', 'Protocol', or 'Predecessor' for SDTM, 'Collected', 'Derived', 'Assigned', 'Protocol', 'Other', 'Predecessor', or 'Not Available' for SEND, and 'Derived', 'Assigned', or 'Predecessor' for ADaM.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Origin",
+    "targetAttribute": "Type",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      160
+    ]
+  },
+  {
+    "id": "DD0074",
+    "ruleId": "PMDA-DD0074",
+    "message": "Variable/Value Level Origin Type mismatch",
+    "description": "When Origin is provided at both the Variable and Value Level, then Origin Type values must match.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Origin",
+    "targetAttribute": "Type",
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0075",
+    "ruleId": "PMDA-DD0075",
+    "message": "CRF Origin is not referencing AnnotatedCRF",
+    "description": "For Define-XML v2.0, when def:Origin/@Type is 'CRF', then def:DocumentRef must match the def:DocumentRef in def:AnnotatedCRF element. For Define-XML v2.1, when def:Origin/@Type is 'Collected' and def:Origin/@Source is 'Investigator' or 'Subject', then def:DocumentRef must match the def:DocumentRef in def:AnnotatedCRF element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "DocumentRef",
+    "targetAttribute": "leafID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": [
+      159
+    ]
+  },
+  {
+    "id": "DD0076",
+    "ruleId": "PMDA-DD0076",
+    "message": "Missing Rank value",
+    "description": "If Rank value is provided for any Codelist item (EnumeratedItem or CodeListItem) within a Codelist, it must be provided for all other items as well.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "EnumeratedItem",
+    "targetAttribute": "Rank",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      183,
+      194
+    ]
+  },
+  {
+    "id": "DD0077",
+    "ruleId": "PMDA-DD0077",
+    "message": "Missing Order number",
+    "description": "If Order number is provided for any Codelist item (EnumeratedItem or CodeListItem) within a Codelist, it must be provided for all other items as well.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "EnumeratedItem",
+    "targetAttribute": "OrderNumber",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      185,
+      196
+    ]
+  },
+  {
+    "id": "DD0078",
+    "ruleId": "PMDA-DD0078",
+    "message": "Document <document> is not referenced",
+    "description": "Only Documents that are referenced from a Method or Comment should be included in Define.xml. Define-XML specification represents Documents as def:leaf elements within MetaDataVersion element.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "leaf",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0079",
+    "ruleId": "PMDA-DD0079",
+    "message": "Comment <comment> is not referenced",
+    "description": "Only Comments that are referenced from Standards/Terminologies, Dataset, Variable, Value Level metadata, or Codelists should be included in Define.xml. Define-XML specification represents Comments as def:CommentDef elements within MetaDataVersion element.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "CommentDef",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0080",
+    "ruleId": "PMDA-DD0080",
+    "message": "Method <method> is not referenced",
+    "description": "Only Methods that are referenced from a Variable or Value Level metadata should be included in Define.xml. Define-XML specification represents Methods as MethodDef elements within MetaDataVersion element.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "MethodDef",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0081",
+    "ruleId": "PMDA-DD0081",
+    "message": "Value Level metadata <value level> is not referenced",
+    "description": "Only Value Level metadata that are referenced from a Variable should be included in Define.xml. Define-XML specification represents Value Level metadata as def:ValueListDef elements within MetaDataVersion element.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ValueListDef",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0082",
+    "ruleId": "PMDA-DD0082",
+    "message": "Codelist <codelist> is not referenced",
+    "description": "Only Codelists that are referenced from a Variable or Value Level metadata should be included in Define.xml. Define-XML specification represents Codelists as CodeList elements within MetaDataVersion element.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "CodeList",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0083",
+    "ruleId": "PMDA-DD0083",
+    "message": "Duplicate Comment OID",
+    "description": "The OID attribute for Comment (the Comment ID) must be unique within Define.xml. Define-XML specification represents Comments as def:CommentDef elements within MetaDataVersion element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "CommentDef",
+    "targetAttribute": "OID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_in_document",
+    "cdiscTwinCandidates": [
+      213,
+      230
+    ]
+  },
+  {
+    "id": "DD0084",
+    "ruleId": "PMDA-DD0084",
+    "message": "Referenced File is missing",
+    "description": "Referenced File must exist. Define-XML specification represents File references as xlink:href attributes within def:leaf element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "leaf",
+    "targetAttribute": "href",
+    "capabilityCategory": "folder",
+    "proposedKind": "referenced_file_exists",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0085",
+    "ruleId": "PMDA-DD0085",
+    "message": "Missing Define XSL",
+    "description": "Stylesheet (\".xsl\") file referenced in Define.xml must exist.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": null,
+    "capabilityCategory": "folder",
+    "proposedKind": "referenced_file_exists",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0087",
+    "ruleId": "PMDA-DD0087",
+    "message": "ARM metadata included in non ADaM define.xml",
+    "description": "Analysis Results Metadata was developed specifically for ADaM and therefore should not be included with SDTM or SEND defines. Analysis Results Metadata inclusion is indicated by the presence of the arm:AnalysisResultDisplays element. Note: Refer to the data standards catalog by the relevant Regulatory Agency for acceptance of standards and their versions.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "AnalysisResultDisplays",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "not_exists",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0088",
+    "ruleId": "PMDA-DD0088",
+    "message": "Duplicate arm:ResultDisplay OID",
+    "description": "The OID for an arm:ResultDisplay element must be unique within the arm:AnalysisResultDisplays element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ResultDisplay",
+    "targetAttribute": "OID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_among_siblings",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0089",
+    "ruleId": "PMDA-DD0089",
+    "message": "Duplicate arm:ResultDisplay Names",
+    "description": "The name of an arm:ResultDisplay should uniquely identify the display in the report (e.g. Table or Figure number).",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ResultDisplay",
+    "targetAttribute": "Name",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_among_siblings",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0090",
+    "ruleId": "PMDA-DD0090",
+    "message": "Missing Required Description Element",
+    "description": "A Description element must be included in each arm:ResultDisplay.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ResultDisplay",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0091",
+    "ruleId": "PMDA-DD0091",
+    "message": "Duplicate arm:AnalysisResult OID",
+    "description": "The OID for an arm:AnalysisResult must be unique within a arm:ResultDisplay.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "AnalysisResult",
+    "targetAttribute": "OID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_among_siblings",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0092",
+    "ruleId": "PMDA-DD0092",
+    "message": "Missing required ParameterOID",
+    "description": "ParameterOID is required when the analysis result is based on specific parameter(s) from a BDS structured dataset.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "AnalysisResult",
+    "targetAttribute": "ParameterOID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0093",
+    "ruleId": "PMDA-DD0093",
+    "message": "Improper use of ParameterOID",
+    "description": "When ParameterOID is included in a arm:AnalysisResult, then at least one of the children arm:AnalysisDataset elements must be a BDS and the ParamerterOID must reference a PARAMCD variable for that Dataset.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "AnalysisResult",
+    "targetAttribute": "ParameterOID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0094",
+    "ruleId": "PMDA-DD0094",
+    "message": "Missing required def:CommentOID",
+    "description": "def:CommentOID is required if there is more than one analysis dataset needed to create the respective result.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "AnalysisDatasets",
+    "targetAttribute": "CommentOID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0095",
+    "ruleId": "PMDA-DD0095",
+    "message": "Invalid ItemGroupOID reference",
+    "description": "ItemGroupOID attribute on arm:AnalysisDataset must reference a valid ItemGroupDef",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "AnalysisDataset",
+    "targetAttribute": "ItemGroupOID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "references",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0096",
+    "ruleId": "PMDA-DD0096",
+    "message": "Missing required arm:AnalysisVariable element",
+    "description": "At least one analysis variable element must be available for any given analysis result. If there are more than one analysis dataset specified for a specific result, the analysis variable element may be available for one of the respective datasets only.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "AnalysisVariable",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0097",
+    "ruleId": "PMDA-DD0097",
+    "message": "Invalid ItemOID reference",
+    "description": "ItemOID attribute on arm:AnalysisVariable must reference a valid ItemDef.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "AnalysisVariable",
+    "targetAttribute": "ItemOID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "references",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0098",
+    "ruleId": "PMDA-DD0098",
+    "message": "Missing Context value",
+    "description": "When any arm:Code elements are provided the language or software used for them should be provided in the Context attribute (e.g. SQL or SAS 9.2).",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Code",
+    "targetAttribute": "Context",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0099",
+    "ruleId": "PMDA-DD0099",
+    "message": "Extended value for AnalysisReason",
+    "description": "Values for the AnalysisReason attribute are controlled by the Analysis Reason extensible codelist in ADaM CT or Define CT.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "AnalysisResult",
+    "targetAttribute": "AnalysisReason",
+    "capabilityCategory": "ct",
+    "proposedKind": "term_in_ct_codelist",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0100",
+    "ruleId": "PMDA-DD0100",
+    "message": "Extended value for AnalysisPurpose",
+    "description": "Values for the AnalysisPurpose attribute are controlled by the Analysis Purpose extensible codelist in ADaM CT or Define CT.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "AnalysisResult",
+    "targetAttribute": "AnalysisPurpose",
+    "capabilityCategory": "ct",
+    "proposedKind": "term_in_ct_codelist",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0101",
+    "ruleId": "PMDA-DD0101",
+    "message": "Missing define.xml file",
+    "description": "Guidance provided by regulatory agencies states that eCTD submissions must include a define.xml file for each study in Module 4 (nonclinical) and Module 5 (clinical). Note: Refer to the data standards catalog by the relevant Regulatory Agency for acceptance of standards and their versions.",
+    "severity": "Reject",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": null,
+    "capabilityCategory": "folder",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0102",
+    "ruleId": "PMDA-DD0102",
+    "message": "Invalid Annotated CRF document name",
+    "description": "Guidance provided by regulatory agencies states that the Annotated CRF should be provided as a PDF with the file name 'acrf.pdf'.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "leaf",
+    "targetAttribute": "href",
+    "capabilityCategory": "folder",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0103",
+    "ruleId": "PMDA-DD0103",
+    "message": "Missing referenced CRF document",
+    "description": "A variable in Define.xml has the origin of CRF and references specific pages, however Define.xml does not contain an Annotated CRF. The Annotated CRF is represented by the def:AnnotatedCRF element within MetaDataVersion element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "AnnotatedCRF",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      159
+    ]
+  },
+  {
+    "id": "DD0104",
+    "ruleId": "PMDA-DD0104",
+    "message": "Invalid Type value for Method",
+    "description": "The Type attribute for Method must have a value of 'Computation' or 'Imputation'.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "MethodDef",
+    "targetAttribute": "Type",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      209
+    ]
+  },
+  {
+    "id": "DD0105",
+    "ruleId": "PMDA-DD0105",
+    "message": "Origin for Study Day variable <define variable> is not set to Derived",
+    "description": "In SDTM, all --DY, --STDY, and --ENDY variables must have Origin set to 'Derived'.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Origin",
+    "targetAttribute": "Type",
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0106",
+    "ruleId": "PMDA-DD0106",
+    "message": "Origin for DOMAIN variable is not set to Assigned",
+    "description": "Domain Abbreviation (DOMAIN) variable should have Origin set to 'Assigned'.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Origin",
+    "targetAttribute": "Type",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0107",
+    "ruleId": "PMDA-DD0107",
+    "message": "Origin for RDOMAIN variable is not set to Assigned",
+    "description": "Related Domain Abbreviation (RDOMAIN) variable should have Origin set to 'Assigned'.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Origin",
+    "targetAttribute": "Type",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0108",
+    "ruleId": "PMDA-DD0108",
+    "message": "Origin for STUDYID variable is not set to Protocol",
+    "description": "Study Identifier (STUDYID) variable should have Origin set to 'Protocol'.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Origin",
+    "targetAttribute": "Type",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0109",
+    "ruleId": "PMDA-DD0109",
+    "message": "Inconsistent Origin for USUBJID",
+    "description": "The Origin for Unique Subject Identifier (USUBJID) variable should be consistent across all datasets.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Origin",
+    "targetAttribute": "Type",
+    "capabilityCategory": "consistency",
+    "proposedKind": "consistent_across_document",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0110",
+    "ruleId": "PMDA-DD0110",
+    "message": "Inconsistent Origin for VISITNUM",
+    "description": "The Origin for Visit Number (VISITNUM) variable should be consistent across all datasets.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Origin",
+    "targetAttribute": "Type",
+    "capabilityCategory": "consistency",
+    "proposedKind": "consistent_across_document",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0111",
+    "ruleId": "PMDA-DD0111",
+    "message": "Invalid use of Pages",
+    "description": "For Define-XML v2.0, the Pages field must be empty when Origin Type is not 'CRF'. For Define-XML v2.1, the Pages field is required when Origin Type is 'Collected' and Source is 'Investigator' or 'Subject'. Define-XML specification represents Pages as def:PDFPageRef elements within def:DocumentRef element.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "PDFPageRef",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "not_exists",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0112",
+    "ruleId": "PMDA-DD0112",
+    "message": "Missing MedDRA definition",
+    "description": "MedDRA dictionary and version must be specified in Define.xml for regulatory submissions. Define-XML specification represents MedDRA as Dictionary and Version attributes on ExternalCodeList element within CodeList element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ExternalCodeList",
+    "targetAttribute": "Dictionary",
+    "capabilityCategory": "meddra-structural",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      203,
+      204
+    ]
+  },
+  {
+    "id": "DD0113",
+    "ruleId": "PMDA-DD0113",
+    "message": "Missing MedDRA reference on <define variable> variable",
+    "description": "Variables --LLT, --LLTCD, --DECOD, --PTCD, --HLT, --HLTCD, --HLGT, --HLGTCD, --BODSYS, --BDSYCD, --SOC, and --SOCCD must reference MedDRA dictionary for regulatory submissions.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemDef",
+    "targetAttribute": null,
+    "capabilityCategory": "meddra-structural",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0114",
+    "ruleId": "PMDA-DD0114",
+    "message": "Invalid usage of split datasets for non-general-observation-class datasets",
+    "description": "Split datasets can only be used for general-observation-class datasets (Events, Findings, Findings About, Interventions).",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0115",
+    "ruleId": "PMDA-DD0115",
+    "message": "Split and unsplit datasets are both listed",
+    "description": "Split and unsplit datasets cannot both be listed in Define.xml. For FDA submissions, Define.xml should only list unsplit datasets with split datasets placed in a separate sub-directory labeled 'split'.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0116",
+    "ruleId": "PMDA-DD0116",
+    "message": "FATESTCD/FATEST mismatch in Codelist <codelist>",
+    "description": "When SDTM Event or Intervention qualifier variable is used as FATESTCD, then FATEST should be the corresponding qualifier variable label.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "CodeList",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0117",
+    "ruleId": "PMDA-DD0117",
+    "message": "Incomplete Documentation for Analysis Results Metadata",
+    "description": "When an Analysis Results Metadata references an External Document, a description for that document is required. The Document Description is represented as a Description element inside the arm:Documentation element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Documentation",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0118",
+    "ruleId": "PMDA-DD0118",
+    "message": "NCI Code <define codelist code> for Codelist <define codelist> on Variable <define variable> does not match NCI Code <standard codelist code> for Standard Codelist <standard codelist> for Variable <standard variable>",
+    "description": "When using a standard codelist in define.xml, the NCI code should match.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Alias",
+    "targetAttribute": "Name",
+    "capabilityCategory": "ct",
+    "proposedKind": "term_matches_nci_code",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0119",
+    "ruleId": "PMDA-DD0119",
+    "message": "Missing PublishingSet value",
+    "description": "The PublishingSet attribute is required when Type is 'CT'.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Standard",
+    "targetAttribute": "PublishingSet",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      35
+    ]
+  },
+  {
+    "id": "DD0120",
+    "ruleId": "PMDA-DD0120",
+    "message": "Invalid use of IsNonStandard for Dataset",
+    "description": "The IsNonStandard attribute must not be populated when the dataset is standard.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "IsNonStandard",
+    "capabilityCategory": "declarative",
+    "proposedKind": "not_exists",
+    "cdiscTwinCandidates": [
+      121
+    ]
+  },
+  {
+    "id": "DD0121",
+    "ruleId": "PMDA-DD0121",
+    "message": "Missing IsNonStandard attribute for Dataset",
+    "description": "The IsNonStandard attribute must be populated when the dataset is not standard (i.e., does not have a def:StandardOID attribute).",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "IsNonStandard",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      122
+    ]
+  },
+  {
+    "id": "DD0122",
+    "ruleId": "PMDA-DD0122",
+    "message": "Referenced CDISC Standard is missing",
+    "description": "The referenced CDISC standard must be defined in a def:Standard element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "StandardOID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "references",
+    "cdiscTwinCandidates": [
+      124
+    ]
+  },
+  {
+    "id": "DD0123",
+    "ruleId": "PMDA-DD0123",
+    "message": "Variable/Value Level Length mismatch",
+    "description": "The length of a value level slice must be less than or equal to the length of the parent variable.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemDef",
+    "targetAttribute": "Length",
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": [
+      142
+    ]
+  },
+  {
+    "id": "DD0124",
+    "ruleId": "PMDA-DD0124",
+    "message": "Expected Codelist is missing",
+    "description": "Variables defined in a Standard with a Controlled Terminology requirement must have a codelist. Define-XML defines codelists using the CodeList element and references to those using CodeListRef elements.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "CodeListRef",
+    "targetAttribute": null,
+    "capabilityCategory": "ct",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      149
+    ]
+  },
+  {
+    "id": "DD0125",
+    "ruleId": "PMDA-DD0125",
+    "message": "Referenced CT Standard is missing",
+    "description": "The referenced CT standard must be defined in a def:Standard element with Type='CT'.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "CodeList",
+    "targetAttribute": "StandardOID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "references",
+    "cdiscTwinCandidates": [
+      152
+    ]
+  },
+  {
+    "id": "DD0126",
+    "ruleId": "PMDA-DD0126",
+    "message": "Invalid use of IsNonStandard for Codelist",
+    "description": "The IsNonStandard attribute must not be populated when the codelist is standard.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "CodeList",
+    "targetAttribute": "IsNonStandard",
+    "capabilityCategory": "declarative",
+    "proposedKind": "not_exists",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0127",
+    "ruleId": "PMDA-DD0127",
+    "message": "Invalid use of NCI Code for Codelist",
+    "description": "An NCI Code must not be provided when a codelist is non-standard (i.e., codelist does not have a Terminology version defined).",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Alias",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "not_exists",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0128",
+    "ruleId": "PMDA-DD0128",
+    "message": "Missing IsNonStandard attribute for Codelist",
+    "description": "The IsNonStandard attribute must be populated when the codelist is not standard (i.e., does not have a def:StandardOID attribute).",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "CodeList",
+    "targetAttribute": "IsNonStandard",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      153
+    ]
+  },
+  {
+    "id": "DD0129",
+    "ruleId": "PMDA-DD0129",
+    "message": "Missing required Alias",
+    "description": "An NCI code must be provided if the def:StandardOID attribute is set on the CodeList in order to verify that CodeList exists in the terminology.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Alias",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      97,
+      249
+    ]
+  },
+  {
+    "id": "DD0130",
+    "ruleId": "PMDA-DD0130",
+    "message": "Invalid def:IsNonStandard value",
+    "description": "The def:IsNonStandard attribute must have a value of 'Yes'.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": "IsNonStandard",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      75,
+      123,
+      167
+    ]
+  },
+  {
+    "id": "DD0131",
+    "ruleId": "PMDA-DD0131",
+    "message": "Duplicate Codelist Name",
+    "description": "The Name attribute for CodeList (the CodeList Name) must be unique within Define.xml. Define-XML specification represents Codelists as CodeList elements within MetaDataVersion element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "CodeList",
+    "targetAttribute": "Name",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_in_document",
+    "cdiscTwinCandidates": [
+      172
+    ]
+  },
+  {
+    "id": "DD0132",
+    "ruleId": "PMDA-DD0132",
+    "message": "Invalid use of def:ExtendedValue attribute",
+    "description": "For codelists that are non-extensible, the def:ExtendedValue attribute is not applicable and must not be included.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "EnumeratedItem",
+    "targetAttribute": "ExtendedValue",
+    "capabilityCategory": "ct",
+    "proposedKind": "not_exists",
+    "cdiscTwinCandidates": [
+      187,
+      202
+    ]
+  },
+  {
+    "id": "DD0133",
+    "ruleId": "PMDA-DD0133",
+    "message": "Missing required def:CommentOID for Dataset",
+    "description": "The def:CommentOID attribute is required when the value of the ItemGroupDef def:HasNoData attribute is 'Yes'. A comment must be included to explain why no data are present for datasets that were planned for use in the study.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "CommentOID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      240
+    ]
+  },
+  {
+    "id": "DD0134",
+    "ruleId": "PMDA-DD0134",
+    "message": "Missing required def:CommentOID for Variable",
+    "description": "The def:CommentOID attribute is required for an ItemDef when its ItemOID is referenced in an ItemRef that has the def:HasNoData attribute value 'Yes'. A comment must be included to explain why no data is present for the dataset's variables that were planned for use in the study.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemDef",
+    "targetAttribute": "CommentOID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      242
+    ]
+  },
+  {
+    "id": "DD0135",
+    "ruleId": "PMDA-DD0135",
+    "message": "Repeating/IsReferenceData mismatch",
+    "description": "The value of the Repeating attribute must be 'No' when IsReferenceData='Yes'.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "Repeating",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      260
+    ]
+  },
+  {
+    "id": "DD0136",
+    "ruleId": "PMDA-DD0136",
+    "message": "Invalid dataset label value",
+    "description": "The value of the English dataset's description must match the one specified in the CDISC standard for an ItemGroupDef element that represents a dataset defined as following an SDTMIG or SENDIG standard.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Description",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": [
+      265
+    ]
+  },
+  {
+    "id": "DD0137",
+    "ruleId": "PMDA-DD0137",
+    "message": "Invalid variable label value",
+    "description": "The value of an English variable's description must match the one specified in the CDISC standard for an ItemDef element that represents a dataset's variable defined as following an SDTMIG or SENDIG standard.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Description",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": [
+      266
+    ]
+  },
+  {
+    "id": "DD0138",
+    "ruleId": "PMDA-DD0138",
+    "message": "Referenced Standard is missing",
+    "description": "The referenced standard (name and version), is not valid or could not be found.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Standard",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0139",
+    "ruleId": "PMDA-DD0139",
+    "message": "Standard '%standard%' is not referenced",
+    "description": "Only Standards that are referenced from a Dataset or Codelist should be included in Define.xml. Define-XML specification represents Standards as def:Standard elements within the def:Standards element.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Standard",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0140",
+    "ruleId": "PMDA-DD0140",
+    "message": "Invalid use of Subclass for Class",
+    "description": "The value of the Name attribute in the def:SubClass element must be one of the values from the CDISC/NCI subclass codelists.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "SubClass",
+    "targetAttribute": "Name",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      261
+    ]
+  },
+  {
+    "id": "DD0141",
+    "ruleId": "PMDA-DD0141",
+    "message": "Invalid Status value",
+    "description": "The value of the Status attribute must be one of the values from the CDISC/NCI standard Status codelist included in the Define-XML Controlled Terminology (C172332).",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Standard",
+    "targetAttribute": "Status",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      264
+    ]
+  },
+  {
+    "id": "DD0148",
+    "ruleId": "PMDA-DD0148",
+    "message": "Invalid syntax for Predecessor",
+    "description": "Define-XML defines Predecessor as a value that is copied from a variable in another dataset. The Description child element identifies the dataset and variable that is copied. To enable other validation rules, the structure of this column needs to be in the form of DATASET.VARIABLE.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Origin",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "matches_regex",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "DD0150",
+    "ruleId": "PMDA-DD0150",
+    "message": "Missing expected Standard",
+    "description": "Invalid combination of def:Standard elements found in a v2.1 define.xml file. For SEND, at least two Standards must be defined: (1) where Type='IG' and Name begins with 'SENDIG' and (2) where Type='CT' and PublishingSet='SEND'. For SDTM, at least two Standards must be defined: (1) where Type='IG' and Name='SDTMIG' and (2) where Type='CT' and PublishingSet='SDTM'. For ADaM, at least two Standards must be defined: (1) where Type='IG' and Name='ADaMIG', and (2) where Type='CT' and PublishingSet='SDTM' or where Type='CT' and PublishingSet='ADaM'.",
+    "severity": "Reject",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Standards",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "OD0001",
+    "ruleId": "PMDA-OD0001",
+    "message": "XML is not well-formed",
+    "description": "Define.xml must contain well-formed XML.",
+    "severity": "Reject",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": null,
+    "capabilityCategory": "xsd-overlap",
+    "proposedKind": "xsd",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "OD0010",
+    "ruleId": "PMDA-OD0010",
+    "message": "Missing XML declaration",
+    "description": "Define.xml must start with an XML declaration.",
+    "severity": "Reject",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": null,
+    "capabilityCategory": "xsd-overlap",
+    "proposedKind": "xsd",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "OD0011",
+    "ruleId": "PMDA-OD0011",
+    "message": "Invalid XML encoding",
+    "description": "Define.xml must use UTF-8, UTF-16, or ISO-8859-1 encoding.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": null,
+    "capabilityCategory": "xsd-overlap",
+    "proposedKind": "xsd",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "OD0012",
+    "ruleId": "PMDA-OD0012",
+    "message": "Invalid root element",
+    "description": "Define.xml must contain a root element called ODM.",
+    "severity": "Reject",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ODM",
+    "targetAttribute": null,
+    "capabilityCategory": "xsd-overlap",
+    "proposedKind": "xsd",
+    "cdiscTwinCandidates": [
+      2
+    ]
+  },
+  {
+    "id": "OD0013",
+    "ruleId": "PMDA-OD0013",
+    "message": "Invalid integer value for <attribute>",
+    "description": "Attribute is defined as an integer, but value does not match the integer format. Allowed string pattern for an integer is '-?digit+'.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": null,
+    "capabilityCategory": "xsd-overlap",
+    "proposedKind": "xsd",
+    "cdiscTwinCandidates": [
+      47,
+      49,
+      66,
+      72,
+      144,
+      146,
+      182,
+      184,
+      193,
+      195
+    ]
+  },
+  {
+    "id": "OD0017",
+    "ruleId": "PMDA-OD0017",
+    "message": "Invalid datetime value for <attribute>",
+    "description": "Attribute is defined as a datetime, but value does not match the datetime format. Allowed string pattern for a datetime is 'YYYY-MM-DD T hh:mm:ss(.n+)? ((+|-)hh:mm)?'.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": null,
+    "capabilityCategory": "xsd-overlap",
+    "proposedKind": "xsd",
+    "cdiscTwinCandidates": [
+      4,
+      5
+    ]
+  },
+  {
+    "id": "OD0019",
+    "ruleId": "PMDA-OD0019",
+    "message": "Invalid SASFormatName value",
+    "description": "Attribute is defined as a sasFormat, but value does not match the SAS Format naming conventions. Allowed string pattern for a sasFormat is '(letter|_|$)(letter|digit|_|.)*'.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "CodeList",
+    "targetAttribute": "SASFormatName",
+    "capabilityCategory": "declarative",
+    "proposedKind": "matches_regex",
+    "cdiscTwinCandidates": [
+      175
+    ]
+  },
+  {
+    "id": "OD0021",
+    "ruleId": "PMDA-OD0021",
+    "message": "Invalid Language value",
+    "description": "Attribute is defined as a language tag, but value does not match the language tag format. Allowed values are specified in IETF RFC 3066: Tags for the Identification of Languages.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "TranslatedText",
+    "targetAttribute": "lang",
+    "capabilityCategory": "declarative",
+    "proposedKind": "matches_regex",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "OD0022",
+    "ruleId": "PMDA-OD0022",
+    "message": "Duplicate Study OID",
+    "description": "The OID attribute for Study element must be unique within a related series of ODM documents.",
+    "severity": "Reject",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "Study",
+    "targetAttribute": "OID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_in_document",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "OD0027",
+    "ruleId": "PMDA-OD0027",
+    "message": "Duplicate MetaDataVersion OID",
+    "description": "The OID attribute for MetaDataVersion element must be unique within a single study.",
+    "severity": "Reject",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "MetaDataVersion",
+    "targetAttribute": "OID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_among_siblings",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "OD0030",
+    "ruleId": "PMDA-OD0030",
+    "message": "Duplicate ItemGroupDef OID",
+    "description": "The OID attribute for ItemGroupDef element must be unique within a single MetaDataVersion.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "OID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_among_siblings",
+    "cdiscTwinCandidates": [
+      230
+    ]
+  },
+  {
+    "id": "OD0031",
+    "ruleId": "PMDA-OD0031",
+    "message": "Duplicate ItemDef OID",
+    "description": "The OID attribute for ItemDef element must be unique within a single MetaDataVersion.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemDef",
+    "targetAttribute": "OID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_among_siblings",
+    "cdiscTwinCandidates": [
+      230
+    ]
+  },
+  {
+    "id": "OD0032",
+    "ruleId": "PMDA-OD0032",
+    "message": "Duplicate Codelist OID",
+    "description": "The OID attribute for CodeList (the CodeList ID) must be unique within Define.xml. Define-XML specification represents Codelists as CodeList elements within MetaDataVersion element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "CodeList",
+    "targetAttribute": "OID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_in_document",
+    "cdiscTwinCandidates": [
+      230
+    ]
+  },
+  {
+    "id": "OD0041",
+    "ruleId": "PMDA-OD0041",
+    "message": "Duplicate ItemRef ItemOID",
+    "description": "The ItemOID attribute for ItemRef element must be unique within a single ItemGroupDef.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemRef",
+    "targetAttribute": "ItemOID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_among_siblings",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "OD0042",
+    "ruleId": "PMDA-OD0042",
+    "message": "Duplicate Order number",
+    "description": "The Order number attribute must be unique.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": null,
+    "targetAttribute": "OrderNumber",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_among_siblings",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "OD0046",
+    "ruleId": "PMDA-OD0046",
+    "message": "Referenced ItemDef is missing",
+    "description": "The value of ItemOID attribute references a non-existent ItemDef element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemRef",
+    "targetAttribute": "ItemOID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "references",
+    "cdiscTwinCandidates": [
+      65
+    ]
+  },
+  {
+    "id": "OD0048",
+    "ruleId": "PMDA-OD0048",
+    "message": "Referenced Codelist is missing",
+    "description": "Referenced Codelist must first be defined on Codelists tab. Define-XML specification represents Codelists as CodeList elements within MetaDataVersion element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "CodeListRef",
+    "targetAttribute": "CodeListOID",
+    "capabilityCategory": "declarative",
+    "proposedKind": "references",
+    "cdiscTwinCandidates": [
+      151
+    ]
+  },
+  {
+    "id": "OD0070",
+    "ruleId": "PMDA-OD0070",
+    "message": "Missing Length value",
+    "description": "The Length attribute is required when DataType is integer, float, or text.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemDef",
+    "targetAttribute": "Length",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      141
+    ]
+  },
+  {
+    "id": "OD0071",
+    "ruleId": "PMDA-OD0071",
+    "message": "Missing Significant Digits value",
+    "description": "The Significant Digits attribute is required when DataType is float.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemDef",
+    "targetAttribute": "SignificantDigits",
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      145
+    ]
+  },
+  {
+    "id": "OD0072",
+    "ruleId": "PMDA-OD0072",
+    "message": "Invalid Repeating value",
+    "description": "The Repeating attribute for Dataset must have a value of 'Yes' or 'No'. Define-XML specification represents Datasets as ItemGroupDef elements within MetaDataVersion element.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "Repeating",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      114
+    ]
+  },
+  {
+    "id": "OD0073",
+    "ruleId": "PMDA-OD0073",
+    "message": "Invalid Reference Data value",
+    "description": "The IsReferenceData attribute for Dataset must have a value of 'Yes' or 'No'. Define-XML specification represents Datasets as ItemGroupDef elements within MetaDataVersion element.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemGroupDef",
+    "targetAttribute": "IsReferenceData",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      115
+    ]
+  },
+  {
+    "id": "OD0074",
+    "ruleId": "PMDA-OD0074",
+    "message": "Invalid Mandatory value",
+    "description": "The Mandatory attribute must have a value of 'Yes' or 'No'.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemRef",
+    "targetAttribute": "Mandatory",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      68
+    ]
+  },
+  {
+    "id": "OD0075",
+    "ruleId": "PMDA-OD0075",
+    "message": "Invalid Data Type value for variable",
+    "description": "The Data Type attribute for Variable must have a value of 'text', 'integer', 'float', 'datetime', 'date', or 'time' for Define-XML v1.0, and 'text', 'integer', 'float', 'datetime', 'date', 'time', 'partialDate', 'partialTime', 'partialDatetime', 'incompleteDatetime', or 'durationDatetime' for Define-XML v2.0 and v2.1.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemDef",
+    "targetAttribute": "DataType",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      140
+    ]
+  },
+  {
+    "id": "OD0076",
+    "ruleId": "PMDA-OD0076",
+    "message": "Invalid Data Type value for codelist",
+    "description": "The Data Type attribute for Codelist must have a value of 'text, 'integer', or 'float'.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "CodeList",
+    "targetAttribute": "DataType",
+    "capabilityCategory": "declarative",
+    "proposedKind": "one_of",
+    "cdiscTwinCandidates": [
+      174
+    ]
+  },
+  {
+    "id": "OD0077",
+    "ruleId": "PMDA-OD0077",
+    "message": "Codelist/Term Data Type mismatch",
+    "description": "Codelist Term must match the Data Type of the containing CodeList. Define-XML specification represents Term as CodedValue attribute on either EnumeratedItem or CodeListItem elements within CodeList element.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "EnumeratedItem",
+    "targetAttribute": "CodedValue",
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "OD0078",
+    "ruleId": "PMDA-OD0078",
+    "message": "Invalid SASFormatName value for text Codelist",
+    "description": "When CodeList DataType is 'text' the SASFormatName should start with a '$'.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "CodeList",
+    "targetAttribute": "SASFormatName",
+    "capabilityCategory": "declarative",
+    "proposedKind": "matches_regex",
+    "cdiscTwinCandidates": [
+      175
+    ]
+  },
+  {
+    "id": "OD0079",
+    "ruleId": "PMDA-OD0079",
+    "message": "Duplicate Term in Codelist <codelist>",
+    "description": "The Term must be unique within a Codelist. Define-XML specification represents Term as CodedValue attribute on either EnumeratedItem or CodeListItem elements within CodeList element.",
+    "severity": "Error",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "EnumeratedItem",
+    "targetAttribute": "CodedValue",
+    "capabilityCategory": "declarative",
+    "proposedKind": "unique_among_siblings",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "OD0080",
+    "ruleId": "PMDA-OD0080",
+    "message": "Codelist/Variable Data Type mismatch",
+    "description": "Variable Data Type must match the Data Type of the referenced Codelist. Define-XML specification represents Variable as ItemDef.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "ItemDef",
+    "targetAttribute": "DataType",
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": []
+  },
+  {
+    "id": "OD0081",
+    "ruleId": "PMDA-OD0081",
+    "message": "Codelist <codelist> is empty",
+    "description": "Codelist must have at least one item. Define-XML specification allows Codelists to contain 3 types of items: 1) list of Terms (EnumeratedItem); 2) list of Terms and Decoded Values (CodeListItem); 3) or a reference to external dictionary (ExternalCodeList).",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "CodeList",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "exists",
+    "cdiscTwinCandidates": [
+      165
+    ]
+  },
+  {
+    "id": "OD0082",
+    "ruleId": "PMDA-OD0082",
+    "message": "Codelist <codelist> is missing Decoded Values",
+    "description": "When Codelist contains at least one item with Term and Decoded Value (CodeListItem), then all other items must be of the same type.",
+    "severity": "Warning",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "notes": null,
+    "targetElement": "CodeList",
+    "targetAttribute": null,
+    "capabilityCategory": "declarative",
+    "proposedKind": "custom",
+    "cdiscTwinCandidates": [
+      165
+    ]
+  }
+]

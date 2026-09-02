@@ -11,8 +11,8 @@ import net.cumba.cdisc.core.model.RulePackage;
 import org.junit.jupiter.api.Test;
 
 /**
- * Phase-2 wiring of {@code plans/PLAN-auto-output-variables.md} (EC-37): the loader installs the
- * effective Output_Variables after {@code retainNativeExpr}, records the delta in the
+ * Phase-2 wiring of {@code plans/done/PLAN-auto-output-variables.md} (EC-37): the loader installs
+ * the effective Output_Variables after {@code retainNativeExpr}, records the delta in the
  * {@code derivationRationale}, and honours the {@code corej.autoOutputVariables} kill-switch.
  */
 class RulePackageLoaderDeriveOutputVariablesTest

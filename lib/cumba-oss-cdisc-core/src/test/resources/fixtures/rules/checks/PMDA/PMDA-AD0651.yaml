@@ -21,6 +21,12 @@ wildcards:
   xx:
     min: 1
     max: 99
+Source:
+  Message: "ONTRxxFL is present but ONTRTFL is not present"
+  Description: "If ONTRxxFL is included, then ONTRTFL must be included and is defined\
+    \ as the overall on treatment flag."
+  Domains: "OCCDS, ADAE, MDOCCDS"
+  Severity: "Error"
 Standards:
 - Organization: "PMDA"
   Standards:

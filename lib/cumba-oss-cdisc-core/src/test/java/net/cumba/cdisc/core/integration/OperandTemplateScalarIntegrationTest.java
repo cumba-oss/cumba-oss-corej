@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.cumba.cdisc.core.exec.DatasetResolver;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.exec.RuleExecutionResult;
 import net.cumba.cdisc.core.exec.RuleRunner;
 import net.cumba.cdisc.core.model.CheckConditionLeaf;
@@ -15,6 +14,7 @@ import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RuleCore;
 import net.cumba.cdisc.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>
  * Synthetic rule:
+ * </p>
  *
  * <pre>
  * {name: "AP${APERIOD:%02d}SDT", operator: "var_exists"}
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.Test;
  *
  * paired with {@code Match_Datasets: [ADSL/USUBJID]}. ADSL has columns AP01SDT and AP02SDT but not
  * AP03SDT. The primary table has rows with APERIOD = 1, 2, 3. Expected: row 1 → no fire (column
+ * <p>
  * exists); row 2 → no fire; row 3 → fire (column missing).
  * </p>
  *

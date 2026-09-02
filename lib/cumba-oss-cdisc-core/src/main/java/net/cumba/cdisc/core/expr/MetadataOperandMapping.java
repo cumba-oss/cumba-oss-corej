@@ -31,7 +31,7 @@ import org.jspecify.annotations.Nullable;
  * left as operands ({@link #forwardOperand} returns {@code null}). The former Tier-B exclusions
  * {@code define_variable_ccode} / {@code define_variable_codelist_coded_codes} map to
  * {@code var_ccode} / {@code var_codelist_coded_codes} since R-P3
- * ({@code plans/PLAN-native-engine-residuals.md}).
+ * ({@code plans/done/PLAN-native-engine-residuals.md}).
  * </p>
  */
 public final class MetadataOperandMapping
@@ -260,7 +260,7 @@ public final class MetadataOperandMapping
 
 
     /**
-     * R-P2 ({@code plans/PLAN-native-engine-residuals.md}): the <b>dataset-facts-only</b>
+     * R-P2 ({@code plans/done/PLAN-native-engine-residuals.md}): the <b>dataset-facts-only</b>
      * canonicalization for the NON-metadata rule types (Record Data, Domain Presence, …). Only the
      * dataset-level facts the legacy Step-1 fold reads — {@code dataset_*} /
      * {@code library_dataset_*} / {@code define_dataset_*} (→ their {@code ds_*} accessor) and

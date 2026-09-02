@@ -240,10 +240,10 @@ public final class IsoDateBounds
      * Found by the {@code Fix #226} review and left open on purpose, because unlike
      * {@link #isDetermined} (shielded by {@code DateExtreme.add}'s {@code null}-bound return) that
      * one <b>does</b> move leaf verdicts and so needed its own authorisation. It has it:
-     * {@code plans/PLAN-isodatecomparison-readable-core.md}. Measured differentially over the whole
-     * {@code IsoDateCorpus} <b>pair</b> space, the close moves <b>2 565</b> ordered pairs / <b>7
-     * 695</b> verdicts, <b>every one of them {@code true} &rarr; {@code false}</b> and every one of
-     * them with at least one operand {@link CalendarDates#isValidDate} already rejects.
+     * {@code plans/done/PLAN-isodatecomparison-readable-core.md}. Measured differentially over the
+     * whole {@code IsoDateCorpus} <b>pair</b> space, the close moves <b>2 565</b> ordered pairs /
+     * <b>7 695</b> verdicts, <b>every one of them {@code true} &rarr; {@code false}</b> and every
+     * one of them with at least one operand {@link CalendarDates#isValidDate} already rejects.
      * {@code IsoDateComparisonReadableCoreTest} asserts the invariant that keeps it closed.
      * </p>
      *
@@ -609,9 +609,6 @@ public final class IsoDateBounds
      * directly instead of inferring it from the public result.
      * </p>
      */
-    // PMD false positive: AvoidUsingHardCodedIP matches the ISO clock literals ":59:59" /
-    // ":00:00" below against its IPv6 pattern. They are time-of-day suffixes, not addresses.
-    @SuppressWarnings("PMD.AvoidUsingHardCodedIP")
     static @Nullable String truncatedBound(String core, boolean high)
     {
         if (!CalendarDates.isValidDate(core))

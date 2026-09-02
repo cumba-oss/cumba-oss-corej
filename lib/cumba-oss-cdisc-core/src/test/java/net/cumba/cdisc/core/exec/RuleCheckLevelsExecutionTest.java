@@ -20,6 +20,7 @@ import net.cumba.cdisc.core.report.ValidationReportBuilder;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.report.Severity;
 import net.cumba.datatable.report.ValidationFinding;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

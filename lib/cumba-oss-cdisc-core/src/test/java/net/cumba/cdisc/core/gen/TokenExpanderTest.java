@@ -12,7 +12,6 @@ import java.util.Map;
 import java.util.Set;
 import net.cumba.cdisc.core.exec.DatasetResolver;
 import net.cumba.cdisc.core.exec.MetadataProvider;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.exec.ScopeVariableSource;
 import net.cumba.cdisc.core.model.CheckCondition;
 import net.cumba.cdisc.core.model.CheckConditionAll;
@@ -24,6 +23,7 @@ import net.cumba.cdisc.core.model.Outcome;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RuleCore;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 

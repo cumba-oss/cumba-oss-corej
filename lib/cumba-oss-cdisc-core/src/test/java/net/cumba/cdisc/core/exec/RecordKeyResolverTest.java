@@ -15,6 +15,7 @@ import java.util.Map;
 import net.cumba.cdisc.core.exec.RecordKeyResolver.KeySource;
 import net.cumba.cdisc.core.exec.RecordKeyResolver.RowKeySpec;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

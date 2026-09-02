@@ -1,8 +1,8 @@
 package net.cumba.cdisc.core.metadata;
 
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.column;
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.lib;
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.table;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.column;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.lib;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.table;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -447,7 +447,7 @@ class MetadataLibraryProviderProductsTest
         // PMDA workbook's DOMAINS cell for AD0252 does not name ADAMOTHER (AD0252A-D have no
         // sheet row at all), so it was coreJ-authored rather than sheet-faithful. The three that
         // remain are the ones whose sheet row does name it. See
-        // plans/PLAN-adam-other-scope-b-g2.md.
+        // plans/done/PLAN-adam-other-scope-b-g2.md.
         //
         // This assertion does not depend on the count — it pins the detector, not the corpus — so
         // the number above is context, not a ratchet. Do not turn it into one.

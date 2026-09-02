@@ -1,0 +1,77 @@
+# SUPPQUAL study data for the strict `SUPP--` token (Fix #160).
+#
+# These are the CONTROL half of the AP/SQ fixture set: SUPP datasets already exist in
+# /data/testdata (24 of them, including the split forms supplbch/supplbhe/supplbur), so a
+# behaviour that holds here and not for AP/SQ is a family-specific defect rather than a
+# broken fixture.
+#
+# ⚠ A SUPPQUAL dataset carries RDOMAIN and NOT a DOMAIN column. That is what makes
+# OperationExecutor.unsplitNameFromData take its second branch ("SUPP" + RDOMAIN) instead of
+# reading a DOMAIN cell — so the column set here is load-bearing, not decoration. Column names
+# and order follow SDTMIG v3.4 §8.4 and the shipped /data/testdata/test_20/SUPPLB.json.
+
+dataset SUPPLB label="Supplemental Qualifiers for LB"
+col STUDYID  type=Char label="Study Identifier"
+col RDOMAIN  type=Char label="Related Domain Abbreviation"
+col USUBJID  type=Char label="Unique Subject Identifier"
+col IDVAR    type=Char label="Identifying Variable"
+col IDVARVAL type=Char label="Identifying Variable Value"
+col QNAM     type=Char label="Qualifier Variable Name"
+col QLABEL   type=Char label="Qualifier Variable Label"
+col QVAL     type=Char label="Data Value"
+col QORIG    type=Char label="Origin"
+col QEVAL    type=Char label="Evaluator"
+---
+CDISCPILOT01 | LB | 01-701-1015 | LBSEQ | 1 | LBTMSHI | Lab Result/Upper Limit of Normal | 0.8 | DERIVED | CLINICAL STUDY SPONSOR
+CDISCPILOT01 | LB | 01-701-1023 | LBSEQ | 2 | LBTMSHI | Lab Result/Upper Limit of Normal | 1.1 | DERIVED | CLINICAL STUDY SPONSOR
+---
+
+# The javadoc's headline split case: an 8-character NAME whose data-derived base is the
+# 6-character SUPPLB, which strict `SUPP--` matches. The name-only heuristic strips one letter
+# and yields SUPPLBH (7), which `SUPP--` misses — so this dataset is what separates the
+# production data path from the table-less fallback.
+dataset SUPPLBHM label="Supplemental Qualifiers for LB (Hematology)"
+col STUDYID  type=Char label="Study Identifier"
+col RDOMAIN  type=Char label="Related Domain Abbreviation"
+col USUBJID  type=Char label="Unique Subject Identifier"
+col IDVAR    type=Char label="Identifying Variable"
+col IDVARVAL type=Char label="Identifying Variable Value"
+col QNAM     type=Char label="Qualifier Variable Name"
+col QLABEL   type=Char label="Qualifier Variable Label"
+col QVAL     type=Char label="Data Value"
+col QORIG    type=Char label="Origin"
+col QEVAL    type=Char label="Evaluator"
+---
+CDISCPILOT01 | LB | 01-701-1015 | LBSEQ | 3 | LBFAST | Fasting Status | Y | CRF | INVESTIGATOR
+CDISCPILOT01 | LB | 01-701-1023 | LBSEQ | 4 | LBFAST | Fasting Status | N | CRF | INVESTIGATOR
+---
+
+# ⚠ The ONE shape strict `SUPP--` deliberately cannot express: RDOMAIN=APFA gives the
+# 8-character base SUPPAPFA, and the name itself is 10 characters, so neither the name leg
+# (SUPP + exactly 2) nor the split-base leg reaches it. SDTMIG v3.4 §8.4.2 requires exactly
+# this dataset to be renamed SQAPFAMH (see sq-family.cdt), which is why the inexpressibility of
+# `SUPP--` here is by design and must NOT be "fixed" by reintroducing the deleted SUPP/AP
+# family wildcard.
+#
+# ⚑ RESOLVED 2026-08-07 (decision W4; authored by wave-13 lane A, edit set E). The shape is
+# expressible without any matcher change: `SUPPAPFA--` is prefix.length()+2 = 10 and matches
+# this dataset on the NAME leg. `firstMatchingDomainEntry` computes that for ANY prefix — there
+# is no closed list — so this was a MISSING TOKEN, never a missing mechanism. The four rules
+# whose Check is `dataset_name longer_than 8` (CDISC-CG0018, CORE-000357, CDISC-CG0205,
+# CORE-000293) now carry `SUPPAPFA--`, which restores the canonical target their own cited
+# guidance names and which Fix #170 had unmasked as unreachable. ⚠ Note this is NOT the family
+# wildcard returning: `SUPPAPFA--` matches ONLY 10-character names beginning SUPPAPFA.
+dataset SUPPAPFAMH label="Supplemental Qualifiers for APFA (Medical History)"
+col STUDYID  type=Char label="Study Identifier"
+col RDOMAIN  type=Char label="Related Domain Abbreviation"
+col USUBJID  type=Char label="Unique Subject Identifier"
+col IDVAR    type=Char label="Identifying Variable"
+col IDVARVAL type=Char label="Identifying Variable Value"
+col QNAM     type=Char label="Qualifier Variable Name"
+col QLABEL   type=Char label="Qualifier Variable Label"
+col QVAL     type=Char label="Data Value"
+col QORIG    type=Char label="Origin"
+col QEVAL    type=Char label="Evaluator"
+---
+CDISCPILOT01 | APFA | 01-701-1015 | FASEQ | 1 | FAEVLINT | Evaluation Interval | -P1D | DERIVED | CLINICAL STUDY SPONSOR
+---

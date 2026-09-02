@@ -23,6 +23,14 @@ Outcome:
     \ HLTORGy, LLTORGy, LLTNORGy) has a single-digit 'y' index outside [1-9]."
   Output_Variables:
   - "variable_name"
+Source:
+  Message: "Illegal variable name: y is not in [1-9] for original or prior MedDRA\
+    \ coding variables of form *ORGy"
+  Description: "Original or Prior MedDRA Coding (DECDORGy, BDSYORGy, HLGTORGy, HLTORGy,\
+    \ LLTORGy, LLTNORGy) variables should have the suffix 'y' which represents an\
+    \ integer [1-9] corresponding to a previous version."
+  Domains: "ADAE"
+  Severity: "Error"
 Standards:
 - Organization: "PMDA"
   Standards:

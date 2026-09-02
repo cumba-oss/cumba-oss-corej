@@ -10,6 +10,7 @@ import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RuleCore;
 import net.cumba.cdisc.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -20,7 +21,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>
  * The value set is the truth table confirmed for {@code PMDA-SD2247A} in
- * {@code plans/PLAN-incomplete-date-rule-review.md} §3b. The second test is the point of the
+ * {@code plans/done/PLAN-incomplete-date-rule-review.md} §3b. The second test is the point of the
  * effort: it runs the SAME eight values through today's {@code is_incomplete_date} and shows
  * exactly which rows move — the empty and malformed values it silently passes, and the
  * date-complete/time-truncated value it wrongly reports.

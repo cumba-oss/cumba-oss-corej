@@ -23,9 +23,9 @@ import org.junit.jupiter.api.Test;
  * Tests for the EC-40 record key and the D5/D17 location fix in {@link ValidationReportBuilder}.
  *
  * <p>
- * The worked cases mirror §9 of {@code plans/PLAN-finding-record-keys.md}: an ordinary record rule
- * (A), a rule that genuinely declares {@code USUBJID} (B), a SUPP dataset with a resolved key (C),
- * and a rule whose {@code Output_Variables} all failed to resolve (D).
+ * The worked cases mirror §9 of {@code plans/done/PLAN-finding-record-keys.md}: an ordinary record
+ * rule (A), a rule that genuinely declares {@code USUBJID} (B), a SUPP dataset with a resolved key
+ * (C), and a rule whose {@code Output_Variables} all failed to resolve (D).
  * </p>
  */
 class ValidationReportBuilderRecordKeyTest

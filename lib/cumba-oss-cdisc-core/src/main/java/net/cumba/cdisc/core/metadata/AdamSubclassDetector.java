@@ -358,9 +358,10 @@ public final class AdamSubclassDetector
      * it already works. Adding a runtime ambiguity WARNING was considered and rejected:
      * {@code resolve} is called once per <em>rule</em> per dataset ({@code RuleRunner}), so an
      * un-deduplicated warning would fire up to 78 times for a single dataset, and the shape it
-     * would report has never been observed. See {@code plans/PLAN-adam-subclass-ambiguity.md} for
-     * the full adjudication, and its open question on whether a branch that can only ever return an
-     * unscoped token should exist at all — that is a corpus/authoring question, not an engine one.
+     * would report has never been observed. See {@code plans/done/PLAN-adam-subclass-ambiguity.md}
+     * for the full adjudication, and its open question on whether a branch that can only ever
+     * return an unscoped token should exist at all — that is a corpus/authoring question, not an
+     * engine one.
      * </p>
      *
      * @param detectedStructures

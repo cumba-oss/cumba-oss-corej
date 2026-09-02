@@ -16,11 +16,12 @@ import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RuleCore;
 import net.cumba.cdisc.core.model.VariableRequirement;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Wave-22 lane C ({@code plans/PLAN-scope-variables-qualified-combination.md}): pins <b>how a
+ * Wave-22 lane C ({@code plans/done/PLAN-scope-variables-qualified-combination.md}): pins <b>how a
  * qualified {@code Requirements.Variables} entry combines with the rest of its list</b>, measured
  * end to end through {@link RuleRunner#execute} rather than through {@link ScopeMatcher} in
  * isolation.

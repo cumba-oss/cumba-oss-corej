@@ -96,8 +96,8 @@ import org.jspecify.annotations.Nullable;
  * <h2>⚠⚠ What the collapse gate does and does <b>not</b> guarantee ({@code W34-C1})</h2> An earlier
  * wording of the bullet above concluded <i>"therefore this arm changes no findings"</i>. ⛔ <b>That
  * is false, and it was refuted by run</b> (wave-34 lane C,
- * {@code plans/PLAN-fix218-behavioural-verification.md}): <b>19 findings are removed</b>, all in
- * {@code rules-core-tig-1-0.json}, none in an adamig package. The collapse gate is real, but it
+ * {@code plans/done/PLAN-fix218-behavioural-verification.md}): <b>19 findings are removed</b>, all
+ * in {@code rules-core-tig-1-0.json}, none in an adamig package. The collapse gate is real, but it
  * bounds the <em>kind</em> of finding removed, not the count.
  *
  * <p>
@@ -599,6 +599,10 @@ public final class AbsentDatasetSkip
      *            the upper-cased absent-and-reported dataset names
      * @return the rewritten expression; {@code Lit(BOOL,false)} when the whole Check collapsed
      */
+    // RefactorSwitch (new in Error Prone 2.50.0) suggests reshaping this pattern-matching
+    // switch for readability. It is a style-only suggestion over load-bearing rewrite logic,
+    // and the arm-per-Expr-kind shape is deliberate and mirrored by its siblings.
+    @SuppressWarnings("RefactorSwitch")
     static Expr suppress(Expr expr, Rule rule, Set<String> datasets)
     {
         switch (expr)

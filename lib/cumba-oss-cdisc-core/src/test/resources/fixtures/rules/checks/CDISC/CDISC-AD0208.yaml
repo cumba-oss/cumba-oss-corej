@@ -21,6 +21,13 @@ Outcome:
   Output_Variables:
   - "SUBJID"
   - "DM.SUBJID"
+Source:
+  Class: "SUBJECT LEVEL ANALYSIS DATASET"
+  Variable_or_Item: "SUBJID"
+  Natural_Language_Rule_Failure_Criteria: "The value of ADSL.USUBJID is equal to the\
+    \ value of DM.USUBJID and ADSL.SUBJID is not equal to DM.SUBJID"
+  Rule_Failure_Criteria: "ADSL.SUBJID is not equal to DM.SUBJID"
+  Condition_Failure: "The value of ADSL.USUBJID is equal to the value of DM.USUBJID"
 Standards:
 - Organization: "CDISC"
   Standards:

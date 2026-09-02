@@ -34,6 +34,21 @@ Outcome:
     \ the AUC."
   Output_Variables:
   - "PCELTM"
+Source_Proposed:
+  FDA_Validator_Rule_Message: "PCELTM is a negative elapsed time (planned pre-reference);\
+    \ a pre-dose PK profile sample must be anchored at 'PT0H' — a negative elapsed\
+    \ time corrupts the AUC."
+  FDA_Validator_Rule_Description: "Planned Elapsed Time from Time Point Reference\
+    \ (PCELTM) is populated with a negative ISO 8601 duration on a Pharmacokinetic\
+    \ Concentrations (PC) record."
+  Domains: "PC"
+Source:
+  FDA_Validator_Rule_Message: "PCELTM is not 'PT0H' for pre-dose sampling"
+  FDA_Validator_Rule_Description: "Specimen concentrations (e.g., plasma) used to\
+    \ calculate a time concentration profile with a pre-dose sample should have Planned\
+    \ Elapsed Time from Time Point Ref (PCELTM) populated with 'PT0H'. A negative\
+    \ elapsed time would lead to an incorrect area under the curve."
+  Domains: "PC"
 Standards:
 - Organization: "FDA"
   Standards:

@@ -2,8 +2,10 @@ package net.cumba.cdisc.core.run;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
@@ -115,6 +117,10 @@ public final class StudyValidationParams
 
     private final @Nullable String pickleCacheDir;
 
+    private final @Nullable String dictionariesDir;
+
+    private final Map<String, String> dictionaryVersions;
+
     private final LibraryValidator.@Nullable RuntimeListener runtimeListener;
 
     private final @Nullable ProgressListener progressListener;
@@ -152,6 +158,8 @@ public final class StudyValidationParams
         severityThreshold = b.severityThreshold;
         cacheDir = b.cacheDir;
         pickleCacheDir = b.pickleCacheDir;
+        dictionariesDir = b.dictionariesDir;
+        dictionaryVersions = Collections.unmodifiableMap(new LinkedHashMap<>(b.dictionaryVersions));
         runtimeListener = b.runtimeListener;
         progressListener = b.progressListener;
         cancellation = b.cancellation;
@@ -367,6 +375,36 @@ public final class StudyValidationParams
 
 
     /**
+     * {@code PLAN-dictionary-seeder} — the caller's explicit installed-dictionary store root (the
+     * CLI's {@code --dictionaries-dir}), or {@code null} when the caller named none. Carried
+     * per-run, exactly like {@link #dictionaryVersions()}, because it is the <b>top</b> tier of
+     * {@code DictionaryDirectoryResolver}'s precedence (explicit &gt; {@code
+     * COREJ_DICTIONARIES_DIR} &gt; {@code -Dcorej.dictionariesDir} &gt; {@code ./dictionaries}) —
+     * smuggling it through the system property instead would rank it BELOW the environment
+     * variable, and every Docker image sets that variable: the flag would then silently lose to the
+     * container default while install mode honoured it, so install and validate would read
+     * different stores.
+     */
+    public @Nullable String dictionariesDir()
+    {
+        return dictionariesDir;
+    }
+
+
+    /**
+     * {@code PLAN-dictionary-seeder} Phase 6b (D6) — caller-requested external-dictionary versions,
+     * keyed by lower-cased type ({@code meddra}, {@code unii}, …). The highest-precedence
+     * version-selection source: it outranks a define.xml {@code ExternalCodeList/@Version}, which
+     * outranks the store's {@code selected-versions.json} manifest. Empty means "nothing requested
+     * here" — never "no dictionaries".
+     */
+    public Map<String, String> dictionaryVersions()
+    {
+        return dictionaryVersions;
+    }
+
+
+    /**
      * Optional per-rule runtime listener wired straight onto the validator (the CLI uses this to
      * write its runtime CSV). {@code null} for none.
      */
@@ -468,6 +506,10 @@ public final class StudyValidationParams
         private @Nullable String cacheDir;
 
         private @Nullable String pickleCacheDir;
+
+        private @Nullable String dictionariesDir;
+
+        private Map<String, String> dictionaryVersions = new LinkedHashMap<>();
 
         private LibraryValidator.@Nullable RuntimeListener runtimeListener;
 
@@ -702,6 +744,32 @@ public final class StudyValidationParams
         public Builder pickleCacheDir(@Nullable String aPickleCacheDir)
         {
             pickleCacheDir = aPickleCacheDir;
+            return this;
+        }
+
+
+        /**
+         * The caller's explicit installed-dictionary store root ({@code --dictionaries-dir}) — the
+         * top tier of the directory resolution (see
+         * {@link StudyValidationParams#dictionariesDir()}). {@code null} (the default) resolves
+         * from the environment.
+         */
+        public Builder dictionariesDir(@Nullable String aDictionariesDir)
+        {
+            dictionariesDir = aDictionariesDir;
+            return this;
+        }
+
+
+        /**
+         * Caller-requested external-dictionary versions, keyed by lower-cased type — the
+         * highest-precedence selection source (see
+         * {@link StudyValidationParams#dictionaryVersions()}). {@code null} clears to empty.
+         */
+        public Builder dictionaryVersions(@Nullable Map<String, String> aDictionaryVersions)
+        {
+            dictionaryVersions = aDictionaryVersions == null ? new LinkedHashMap<>()
+                    : new LinkedHashMap<>(aDictionaryVersions);
             return this;
         }
 

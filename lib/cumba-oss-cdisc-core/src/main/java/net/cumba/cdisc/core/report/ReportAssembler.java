@@ -11,7 +11,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import net.cumba.cdisc.core.model.Authority;
 import net.cumba.cdisc.core.model.AuthorityStandard;
@@ -311,6 +310,12 @@ public final class ReportAssembler
         // — said nothing at all. With the Define-XML opt-in engaged it is also the record that the
         // basis was the sponsor's declaration rather than the standard's.
         putIfNotNull(m, "Library_Metadata_Basis", c.libraryMetadataBasis);
+        // D13 item 1 — same contract as Library_Metadata_Basis, one input over: present ONLY on
+        // a run in which some dictionary rule could not be answered, naming what loaded, what did
+        // not and why, and the answerable count. Unlike its precedent it also reaches the XLSX
+        // (Conformance Details row 21) and the REST projection — the report is the artefact
+        // anyone actually reads, and under D12 the degraded state is the default.
+        putIfNotNull(m, "Dictionary_Basis", c.dictionaryBasis);
 
         putIfNotNull(m, "UNII_Version", c.uniiVersion);
         putIfNotNull(m, "Med_RT_Version", c.medRtVersion);
@@ -318,6 +323,8 @@ public final class ReportAssembler
         putIfNotNull(m, "WHODRUG_Version", c.whodrugVersion);
         putIfNotNull(m, "SNOMED_Version", c.snomedVersion);
         putIfNotNull(m, "LOINC_Version", c.loincVersion);
+        // Seven dictionary types, seven fields — neoplasm had none (§2.5).
+        putIfNotNull(m, "Neoplasm_Version", c.neoplasmVersion);
 
         return m;
     }
@@ -941,10 +948,26 @@ public final class ReportAssembler
 
 
     /**
-     * Joins Rule_Identifier IDs across all references for the given organization, sorted and
-     * comma-separated. Mirrors {@code RuleValidationResult._get_rule_ids}.
+     * Joins the published rule ids for the given organization, sorted and comma-separated. Mirrors
+     * {@code RuleValidationResult._get_rule_ids}.
+     *
+     * <p>
+     * This is the oracle for the {@code cdisc_rule_id} / {@code fda_rule_id} columns of the xlsx
+     * Rules Report, of the JSON report's {@code Rules_Report}, and of {@code GET
+     * /api/checks/{id}/rules}. It is <b>public rather than private</b> so
+     * {@code ReleasedRuleIdColumnsTest} (in {@code corej-cdisc-rules}, which owns the corpus) can
+     * assert that a released package and its authored source produce identical columns — the whole
+     * justification for the §10 strip of {@code plans/PLAN-rules-corpus-build-integration.md}.
+     * Computing the columns a second way in the test would have guarded the copy, not the code.
+     * </p>
+     *
+     * @param rule
+     *            the rule, or {@code null}
+     * @param organization
+     *            the publishing organization, e.g. {@code "CDISC"} or {@code "FDA"}
+     * @return the ids, comma-separated and sorted; empty when there are none
      */
-    private static String collectRuleIds(@Nullable Rule rule, String organization)
+    public static String collectRuleIds(@Nullable Rule rule, String organization)
     {
         if (rule == null)
         {
@@ -968,8 +991,29 @@ public final class ReportAssembler
     }
 
 
+    /**
+     * ⛔⛔ <b>Both authority shapes, and neither may be assumed absent.</b> A released package
+     * carries the flat {@code Rule_Ids} and no {@code Standards} at all
+     * ({@code ReleaseShapeTrimmer}); the authored source, the CDISC-Library ingestion path
+     * ({@code LibraryRuleMapper}) and the rule editor carry the nested tree and no
+     * {@code Rule_Ids}. This method used to {@code return} on a null {@code Standards}, which
+     * silently blanked both report columns for every released rule — no exception, no log, because
+     * an unbound {@code Rule_Ids} key is swallowed by {@code Rule}'s {@code @JsonAnySetter} and
+     * {@code FAIL_ON_UNKNOWN_PROPERTIES} is off.
+     */
     private static void collectRuleIdsFromAuthority(Authority authority, Set<String> ids)
     {
+        List<String> flat = authority.getRuleIds();
+        if (flat != null)
+        {
+            for (String id : flat)
+            {
+                if (id != null)
+                {
+                    ids.add(id);
+                }
+            }
+        }
         if (authority.getStandards() == null)
         {
             return;
@@ -1062,6 +1106,10 @@ public final class ReportAssembler
 
         private final @Nullable String loincVersion;
 
+        private final @Nullable String neoplasmVersion;
+
+        private final @Nullable String dictionaryBasis;
+
         private Conformance(Builder b)
         {
             reportGeneration = b.reportGeneration;
@@ -1082,6 +1130,19 @@ public final class ReportAssembler
             whodrugVersion = b.whodrugVersion;
             snomedVersion = b.snomedVersion;
             loincVersion = b.loincVersion;
+            neoplasmVersion = b.neoplasmVersion;
+            dictionaryBasis = b.dictionaryBasis;
+        }
+
+
+        /**
+         * D13 item 1 — the run-level dictionary degradation line, or {@code null} on a run whose
+         * every dictionary rule could be answered. Exposed so the CLI (Phase 6b) can print the same
+         * line to stderr that the report carries as {@code Dictionary_Basis}.
+         */
+        public @Nullable String dictionaryBasis()
+        {
+            return dictionaryBasis;
         }
 
 
@@ -1128,6 +1189,10 @@ public final class ReportAssembler
             private @Nullable String snomedVersion;
 
             private @Nullable String loincVersion;
+
+            private @Nullable String neoplasmVersion;
+
+            private @Nullable String dictionaryBasis;
 
             public Builder reportGeneration(@Nullable String s)
             {
@@ -1259,6 +1324,20 @@ public final class ReportAssembler
             }
 
 
+            public Builder neoplasmVersion(@Nullable String s)
+            {
+                neoplasmVersion = s;
+                return this;
+            }
+
+
+            public Builder dictionaryBasis(@Nullable String s)
+            {
+                dictionaryBasis = s;
+                return this;
+            }
+
+
             public Conformance build()
             {
                 return new Conformance(this);
@@ -1293,10 +1372,30 @@ public final class ReportAssembler
             String domain, Integer columns)
     {
 
-        public DatasetInfo
-        {
-            Objects.requireNonNull(filename, "filename");
-        }
+        /*
+         * The requireNonNull that used to live here contradicted the component's own @Nullable
+         * declaration, and SpotBugs 4.10 caught it (NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_
+         * NULLABLE). It was not merely a documentation mismatch: the only production caller is
+         * StudyValidationService.buildDatasetInfos, which passes DatasetEntry.fileName() -- itself
+         * @Nullable, and genuinely null for a dataset with no URI or an empty URI path
+         * (fileNameOf returns null there), i.e. any table not backed by a file. So the guard
+         * turned a non-file-backed study into a NullPointerException at report assembly.
+         *
+         * Removed rather than pushed onto the caller: this is a Jackson DTO whose filename is
+         * serialised into the report document and dereferenced by nobody, and every sibling
+         * component is already @Nullable for the same "unknown" reason.
+         *
+         * NullAway cannot see this class of defect -- passing a @Nullable value to a @Nullable
+         * parameter is legal, and requireNonNull on a nullable value is legal defensive code.
+         * It took the SpotBugs bump to surface it.
+         *
+         * ⚠ This is an availability-for-visibility swap, not a pure NPE removal. Downstream
+         * consumers were checked and all are null-tolerant, but one of them CHANGES BEHAVIOUR:
+         * DatasetGroupAssembler (corej-cdisc-rest) does `if (filename == null) continue;`, so a
+         * non-file-backed dataset is now silently OMITTED from the REST grouped view where it
+         * previously crashed report assembly outright. That is the better failure mode, but it
+         * is a behaviour change and should not surprise anyone reading this later.
+         */
     }
 
 

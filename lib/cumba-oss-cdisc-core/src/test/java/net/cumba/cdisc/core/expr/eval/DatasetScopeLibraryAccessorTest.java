@@ -1,7 +1,7 @@
 package net.cumba.cdisc.core.expr.eval;
 
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.lib;
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.table;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.lib;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.table;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -23,7 +23,6 @@ import java.util.logging.Logger;
 import net.cumba.cdisc.core.RulePackageLoader;
 import net.cumba.cdisc.core.exec.EvaluationContext;
 import net.cumba.cdisc.core.exec.MetadataProvider;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.exec.RuleExecutionResult;
 import net.cumba.cdisc.core.exec.RuleExecutionStatus;
 import net.cumba.cdisc.core.exec.RuleRunner;
@@ -32,6 +31,7 @@ import net.cumba.cdisc.core.metadata.MetadataLibraryProvider;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.IMetadataLibrary;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -327,8 +327,120 @@ class DatasetScopeLibraryAccessorTest
         // (tier 1, even) and this test stays green while ruling 4's intent quietly changes.
         // Ruling 4 forbids SYNTHESIS, not publication — so a declared AP product answering APDM
         // from what CDISC actually published is consistent with it, and `APAE`, which CDISC does
-        // not publish, must still be null. Whoever implements the product list should re-read this
-        // and add the case for a DECLARED ap-1-0.
+        // not publish, must still be null. ✅ That case now EXISTS — see
+        // #declaredApProduct_publishesApdmButNeverSynthesises directly below, added 2026-08-31
+        // once `Fix #374` made `standards/sdtmig/ap-1-0` declarable.
+    }
+
+
+    /**
+     * A CDISC Library as a run that <b>declared</b> {@code standards/sdtmig/ap-1-0} sees it. The AP
+     * product publishes exactly two datasets and nothing else — no {@code APAE}, no {@code APMH},
+     * no label template.
+     *
+     * <p>
+     * ⚑ Modelled as one library because that is what the run gets: the library layer follows the
+     * <b>first</b> declared SDTM-family product ({@code CdiscLibraryProviderBuilder} §7-0 →
+     * {@code MetadataProductKeys.firstSdtmLoader}), and {@code standards/sdtmig/ap-1-0} is a
+     * legitimate key for it — the version segment is deliberately unparsed, so {@code ap-1-0} loads
+     * exactly as {@code 3-4} does.
+     * </p>
+     */
+    private static MetadataProvider declaredApLibrary()
+    {
+        return new MetadataLibraryProvider(lib("sdtmig")
+                .table(table("APDM").label("Associated Persons Demographics").build())
+                .table(table("APRELSUB").label("Associated Persons Related Subjects").build())
+                .build());
+    }
+
+
+    @Test
+    @DisplayName("⭐ a DECLARED ap-1-0 resolves APDM/APRELSUB, and STILL never synthesises APAE")
+    void declaredApProduct_publishesApdmButNeverSynthesises()
+    {
+        // ⭐⭐ THE OTHER HALF OF RULING 4, and the reason this test exists.
+        //
+        // #apDataset_staysNullPermanently pins "AP stays null" — but until `Fix #374` it held for
+        // an accidental reason: the AP product was UNREACHABLE, so no tier could have answered
+        // even if it were allowed to. `--metadata-products` removed that precondition; a run can
+        // now declare `standards/sdtmig/ap-1-0`. Ruling 4 forbids SYNTHESIS, not PUBLICATION, so
+        // the two halves must be pinned separately or the guard silently changes meaning:
+        // * PUBLISHED → resolve it. Refusing would discard metadata CDISC actually ships.
+        // * UNPUBLISHED → still null. No "Associated Persons " + parent-label invention, ever.
+        IDataTable apdm = MockTable.of().name("APDM").col("APID", "A-1").build();
+        IDataTable aprelsub = MockTable.of().name("APRELSUB").col("APID", "A-1").build();
+
+        assertTrue(
+                holds("ds_label(\"LIBRARY\") == \"Associated Persons Demographics\"", apdm,
+                        declaredApLibrary()),
+                "a DECLARED ap-1-0 publishes APDM — resolve it (tier 1)");
+        assertTrue(holds("ds_label(\"LIBRARY\") == \"Associated Persons Related Subjects\"",
+                aprelsub, declaredApLibrary()), "APRELSUB is published too");
+
+        // ⛔ The refusal half — unchanged by the declaration. CDISC publishes no APAE / APMH /
+        // APFACM in ap-1-0 or anywhere else, and there is no label template to substitute (unlike
+        // SUPPQUAL, which is why tier 3 exists for SUPP-- and must NOT be copied for AP--).
+        for (IDataTable ap : List.of(
+                MockTable.of().name("APAE").col("DOMAIN", "APAE").col("APID", "A-1").build(),
+                MockTable.of().name("APFACM").col("APID", "A-1").build(),
+                MockTable.of().name("APMH1").col("APID", "A-1").build()))
+        {
+            assertFalse(holds("non_empty(ds_label(\"LIBRARY\"))", ap, declaredApLibrary()),
+                    ap.getMetaData().getName() + " is published by NO product — synthesis refused");
+            assertNull(
+                    ExprCompiler.datasetScopeOperandValue(ctx(ap, null, declaredApLibrary()),
+                            "library_dataset_label"),
+                    ap.getMetaData().getName() + " — the Output_Variables twin agrees");
+        }
+    }
+
+
+    @Test
+    @DisplayName("⭐ Fix #376 — a COMBINED SUPPQUAL file never returns the raw template (tier 1)")
+    void combinedSuppqualFile_neverReturnsTheTemplate()
+    {
+        // ⛔⛔ The hole `Fix #370` correction 3 left open. Correction 3 ruled that a bracketed token
+        // is a TEMPLATE and must never be returned as a value — but it was enforced inside tier 3,
+        // and a sponsor's COMBINED supplemental file is literally named SUPPQUAL, so tier 1
+        // resolves it BY NAME and never reaches tier 3. It answered with the literal
+        // "Supplemental Qualifiers for [domain name]".
+        //
+        // ⚠ Substituting is NOT the remedy here: a combined file has many parents, so row 0's
+        // RDOMAIN would name exactly one of them — the wrong-dataset answer correction 2 already
+        // refused for SUPP--. Dropping the key is the only honest answer.
+        IDataTable combined = MockTable.of().name("SUPPQUAL").col("RDOMAIN", "AE").build();
+
+        assertFalse(holds("non_empty(ds_label(\"LIBRARY\"))", combined, library()),
+                "a template is not a label — the key is dropped, so the read is null");
+        assertNull(
+                ExprCompiler.datasetScopeOperandValue(ctx(combined, null, library()),
+                        "library_dataset_label"),
+                "the Output_Variables twin must agree, or a rule reports a value it did not compare");
+
+        // ⚑ And the guard is SURGICAL — only the templated key goes. The rest of the Library's
+        // answer for SUPPQUAL is real metadata and must survive, exactly as it does in tier 3.
+        assertTrue(holds("ds_class(\"LIBRARY\") == \"Relationship\"", combined, library()),
+                "className carries no placeholder and must still answer");
+        assertTrue(holds("ds_name(\"LIBRARY\") == \"SUPPQUAL\"", combined, library()),
+                "the dataset name carries no placeholder either");
+    }
+
+
+    @Test
+    @DisplayName("Fix #376 — the template guard is level-wide, so tier 2 cannot smuggle one back")
+    void templateGuard_appliesToTier2Too()
+    {
+        // A sponsor file whose own name misses but whose DOMAIN cell resolves to SUPPQUAL reaches
+        // the Library through tier 2, not tier 3 — a second door to the same templated label.
+        // Enforcing correction 3 at the tier that produced the answer would have left it open;
+        // enforcing it on the ANSWER closes both by construction.
+        IDataTable viaDomainCell = MockTable.of().name("XX").col("DOMAIN", "SUPPQUAL").build();
+
+        assertFalse(holds("non_empty(ds_label(\"LIBRARY\"))", viaDomainCell, library()),
+                "tier 2 must not return the raw template either");
+        assertTrue(holds("ds_class(\"LIBRARY\") == \"Relationship\"", viaDomainCell, library()),
+                "…while the non-templated keys still resolve through tier 2");
     }
 
     // ------------------------------------------------------------------

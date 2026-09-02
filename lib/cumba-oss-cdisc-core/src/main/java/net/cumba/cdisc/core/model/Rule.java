@@ -163,7 +163,7 @@ public class Rule
      *
      * <p>
      * &#9888;&#9888; <b>Every walker that validates or collects over a rule's Check must read this,
-     * not {@code getCheck()}.</b> {@code getCheck()} is the strictest level alone; a gate that
+     * not {@link #getCheck()}.</b> {@code getCheck()} is the strictest level alone; a gate that
      * reads it sees nothing of a weaker level, so a malformed operand, an undeclared provider
      * dependency or an unresolved wildcard sitting in an {@code INFO} level would load clean and
      * misbehave at runtime. Structural readers that genuinely want the rule's strongest statement
@@ -193,7 +193,7 @@ public class Rule
      *
      * <p>
      * Shorthand for {@code effectiveCheckLevels().values()} mapped to conditions; a one-element
-     * list holding exactly {@code getCheck()} for every rule that authors a plain {@code Check:},
+     * list holding exactly {@link #getCheck()} for every rule that authors a plain {@code Check:},
      * so widening a walker to it cannot change what that walker does on the shipped corpus.
      * </p>
      *
@@ -392,7 +392,7 @@ public class Rule
      * the block existed.
      *
      * <p>
-     * ⚠ Read this, not {@code getGroupingVariables()}. The Lombok getter returns only the flat
+     * ⚠ Read this, not {@link #getGroupingVariables()}. The Lombok getter returns only the flat
      * field and is now a partial view of the rule; it is retained because the generators and the
      * Python-facing legacy converter deliberately work in the flat shape.
      * </p>
@@ -934,7 +934,7 @@ public class Rule
 
     /**
      * Whether {@link #checkExpr} is a fold-equivalent dataset-broadcast verdict (P3a of
-     * {@code plans/PLAN-native-engine-full-coverage.md}): exists/not_exists facts and
+     * {@code plans/done/PLAN-native-engine-full-coverage.md}): exists/not_exists facts and
      * {@code $}-operation comparisons only — the exact class the legacy
      * {@code partialEvaluateDataset} folds to a constant (one dataset-level violation at row 0).
      * Set by the loader alongside {@code checkExpr}; when {@code true} (and native is on)
@@ -991,7 +991,7 @@ public class Rule
 
     /**
      * Native form of {@link #precondition} (P6b of
-     * {@code plans/PLAN-native-engine-full-coverage.md}), raised by the loader when the
+     * {@code plans/done/PLAN-native-engine-full-coverage.md}), raised by the loader when the
      * precondition is a fold-equivalent broadcast verdict (exists/not_exists facts and
      * {@code $}-operation comparisons — the exact class the legacy {@code partialEvaluateDataset}
      * fold can decide). When non-null and native is on, {@code RuleRunner} makes the skip-on-false
@@ -1010,7 +1010,7 @@ public class Rule
      * {@code Core.Id} — while generated ({@link net.cumba.cdisc.core.gen.RuleGenerator}) and
      * CDISC-Library-sourced rules carry a synthetic {@code id} and may carry no {@code Core}.
      * Neither field alone identifies every rule, so callers that need "which rule is this, across
-     * datasets" must use this method and never {@code getId()} directly.
+     * datasets" must use this method and never {@link #getId()} directly.
      * </p>
      *
      * @return the rule's stable identity, or {@code null} when it carries neither a {@code Core.Id}

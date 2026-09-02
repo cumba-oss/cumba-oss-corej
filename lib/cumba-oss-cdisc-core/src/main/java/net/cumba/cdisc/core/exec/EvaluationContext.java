@@ -94,7 +94,7 @@ public class EvaluationContext
 
     /**
      * Optional per-dataset cross-rule expression-result cache
-     * ({@code plans/PLAN-dataset-expression-cache.md}). Created once per dataset and shared
+     * ({@code plans/done/PLAN-dataset-expression-cache.md}). Created once per dataset and shared
      * (thread-safe) across the dataset's rule executions; {@code null} disables caching (tests /
      * embedding / partial-evaluation probes). Mirrors {@link #libraryProvider}: a plain
      * {@code @Nullable} field, no {@code @Builder.Default}.
@@ -233,7 +233,7 @@ public class EvaluationContext
      * Resolves a single variable by id, transparently unwrapping {@link LazyValue} wrappers.
      * Operation results live in the variables map as {@code LazyValue<Object>} instances (Fix #36)
      * so a never-read Operation never runs. Use this method for single-key reads; enumeration loops
-     * should keep using {@code getVariables()} directly and unwrap per entry only when the entry's
+     * should keep using {@link #getVariables()} directly and unwrap per entry only when the entry's
      * type is actually examined, otherwise iterating the map forces every Operation prematurely.
      */
     public @Nullable Object resolveVariable(@Nullable String id)

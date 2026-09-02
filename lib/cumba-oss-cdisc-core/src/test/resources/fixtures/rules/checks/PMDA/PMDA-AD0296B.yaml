@@ -28,6 +28,13 @@ Outcome:
   Output_Variables:
   - "ATOXGR"
   - "ATOXGRN"
+Source:
+  Message: "Inconsistent value for ATOXGRN"
+  Description: "Across studies, all Analysis Toxicity Grade (N) (ATOXGRN) variable\
+    \ values must be the same for each unique value of Analysis Toxicity Grade (ATOXGR)\
+    \ variable when both variables are populated."
+  Domains: "OCCDS, ADAE, MDOCCDS, ADAMOTHER"
+  Severity: "Error"
 Standards:
 - Organization: "PMDA"
   Standards:

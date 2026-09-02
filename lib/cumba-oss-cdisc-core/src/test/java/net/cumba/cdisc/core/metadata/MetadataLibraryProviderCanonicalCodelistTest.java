@@ -1,9 +1,9 @@
 package net.cumba.cdisc.core.metadata;
 
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.codelist;
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.column;
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.lib;
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.table;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.codelist;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.column;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.lib;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.table;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
  * <h2>Measured before the fix (product-backed sdtmig 3-4 + sdtmct-2024-09-27)</h2>
  *
  * <table>
+ * <caption>Measured before the fix</caption>
  * <tr>
  * <td>{@code AE.AESEV}</td>
  * <td>11 keys, codelist {@code AESEV}</td>

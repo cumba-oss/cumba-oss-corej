@@ -11,6 +11,7 @@ import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.Scope;
 import net.cumba.cdisc.core.model.VariableRequirement;
 import net.cumba.datatable.DataTableMeta;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

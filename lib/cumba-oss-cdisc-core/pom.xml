@@ -4,8 +4,6 @@
     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>cumba-oss-cdisc-core</artifactId>
-    <packaging>jar</packaging>
     <parent>
         <groupId>net.cumba</groupId>
         <artifactId>cumba-oss-corej-parent</artifactId>
@@ -13,35 +11,46 @@
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
+    <artifactId>cumba-oss-cdisc-core</artifactId>
+    <packaging>jar</packaging>
+
     <inceptionYear>2026</inceptionYear>
-    <!--
-        REQUIRED by Maven Central, and it must be declared HERE: <name> is one
-        of the few POM elements Maven does NOT inherit from a parent, so a
-        module without its own name publishes a nameless artifact and the whole
-        Central bundle is rejected with "Project name is missing". This is the
-        defect that cost cumba-oss-commons v0.0.1.
-    -->
-    <name>Cumba OSS coreJ :: CORE Engine</name>
-    <!--
-        Declared explicitly rather than inherited: the parent carries
-        child.project.url.inherit.append.path="false", which was measured to fix
-        the <scm> URLs but NOT the project <url> under Maven 3.9.16 — the
-        effective pom still read .../lib/<module>, a 404.
-    -->
-    <url>https://github.com/cumba-oss/cumba-oss-corej</url>
     <description>
         CDISC validation rule engine: rule-package loader, check evaluator,
         report assembler and the pluggable report-writer SPI. Ships NO report
-        writer of its own - json/json-2 and xlsx live in cumba-oss-cdisc-report-json
-        and cumba-oss-cdisc-report-xlsx - so the engine carries no Excel dependency.
+        writer of its own - json/json-2 and xlsx live in corej-cdisc-report-json
+        and corej-cdisc-report-xlsx - so the engine carries no Excel dependency.
+        Ships the dataviewer's net.cumba.cdisc.core.* source verbatim.
     </description>
-    <organization>
-        <name>P300</name>
-    </organization>
 
     <properties>
         <mockito.agent>-javaagent:${org.mockito:mockito-core:jar}</mockito.agent>
         <pitest.excludedTestClasses>net.cumba.cdisc.core.exec.JoinCacheConcurrencyTest</pitest.excludedTestClasses>
+        <!--
+            Mutation ratchet. The parent's defaults (55 / 80) left ~24 points of
+            slack over this module's actual score, so coverage added here could
+            erode again unnoticed.
+
+            Measured 2026-08-30 on a COLD full-module run (pitest history removed,
+            machine otherwise idle): 12 018 / 14 378 mutants killed = 83.6%, line
+            coverage (mutated classes only) 21 348 / 23 413 = 91%. A cold run is
+            the honest baseline - a warm/incremental run reuses prior verdicts and
+            measures slightly higher. The targets below sit a few points under
+            each, so ordinary churn does not trip the gate but a real regression
+            does. Raise them again as coverage improves - in THIS file, never via
+            a command-line -D, which would clobber every module's override at once.
+
+            ⚠⚠ This baseline is only reachable with
+            CompiledProgramCacheIsolationExtension active (see its javadoc in the
+            test sources). Without it, NativeExprEvaluator's static program cache
+            makes pitest attribute each ExprCompiler line to the FIRST test that
+            compiled that expression, and the identical measurement reads 82% -
+            223 phantom survivors on ExprCompiler alone. If this gate starts
+            failing after a test-infrastructure change, check that the extension
+            still loads before touching the numbers below.
+        -->
+        <pitest.mutation.target>80</pitest.mutation.target>
+        <pitest.coverage.target>87</pitest.coverage.target>
     </properties>
 
     <dependencies>
@@ -83,7 +92,7 @@
         </dependency>
 
         <!-- Define-XML object model + parser. Lightweight (model + jackson-xml); does not depend on
-             cumba-oss-cdisc-core, so no cycle. Lets the engine read define_* operands straight from the
+             corej-cdisc-core, so no cycle. Lets the engine read define_* operands straight from the
              parsed Define-XML (OdmDefineXMLProvider), bypassing the lossy Define-XML to
              IMetadataLibrary (datatable) conversion. See
              plans/PLAN-define-item-metadata-parity-929-1081.md. -->
@@ -98,7 +107,7 @@
              scope exists so DefineSplitDatasetContractTest can compose the define provider EXACTLY
              as production does (ODM-direct over the datatable-backed fallback) against a real
              Define-XML, rather than guarding a composition nobody runs. Acyclic: this module is not
-             a dependency of cumba-oss-datatable-provider-define. -->
+             a dependency of corej-datatable-provider-define. -->
         <dependency>
             <groupId>net.cumba</groupId>
             <artifactId>cumba-oss-datatable-provider-define</artifactId>
@@ -151,14 +160,42 @@
             <artifactId>mockito-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+            MockTable / TestMetadataFixtures. Both were classes in THIS module's test tree until
+            2026-09-01, when plans/done/PLAN-corej-restructure.md section 4 moved them to
+            corej-datatable-testkit's MAIN tree, repackaged to net.cumba.datatable.testkit.
+            255 test files here use one or both.
+        -->
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-datatable-testkit</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
             <plugin>
-                <!-- Publish the test helpers (MockTable, SyntheticStringTable, spec harness
-                     doubles) as a test-jar so cumba-oss-cdisc-rules (and the parity module) can
-                     reuse them test-scope instead of duplicating them. -->
+                <!--
+                     Publish this module's test helpers as a test-jar.
+
+                     ⚠ As of 2026-09-01 this test-jar has ZERO consumers anywhere in the repo.
+                     corej-cdisc-rules was the only one and dropped it
+                     (plans/done/PLAN-corej-restructure.md section 4): MockTable and
+                     TestMetadataFixtures left for corej-datatable-testkit, StubMetadataProvider
+                     and SyntheticStringTable were copied into corej-cdisc-rules' own test tree.
+                     A repo-wide sweep of every tracked pom finds no remaining
+                     type=test-jar dependency other than the dependencyManagement entry.
+
+                     It is NOT kept for lib/corej-cdisc-parity, as an earlier draft of this
+                     comment claimed: that directory has zero git-tracked files and no pom.xml,
+                     so it is untracked local scratch, not a Maven module.
+
+                     So this execution now builds and installs an artifact nothing consumes.
+                     Left in place rather than deleted because removing a published artifact is
+                     the owner's call, not a side effect of a restructure — but the reasoning
+                     that argued for cutting the consumer argues equally for deleting this.
+                -->
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
                 <version>${plugin.maven-jar-plugin.version}</version>
@@ -171,6 +208,35 @@
                     </execution>
                 </executions>
             </plugin>
+            <!--
+                javadoc cannot see Lombok-generated types. ExprLowering has one
+                private method whose signature names CheckConditionLeaf's
+                @Builder-generated nested class:
+
+                    applyValue(CheckConditionLeaf.CheckConditionLeafBuilder b, Expr value)
+
+                javadoc reads CheckConditionLeaf from source, where that nested
+                class does not exist, so the signature is an unresolvable
+                "cannot find symbol". That single error makes javadoc exit 1
+                *before writing any HTML*, and the module then ships an empty
+                318-byte -javadoc.jar — no documentation for any of its 245
+                source files.
+
+                Excluding this one file costs ExprLowering's javadoc page and
+                buys back the other 244. It is the only such signature in the
+                module (verified by grep, 2026-08-31). Drop this exclusion if
+                the javadoc build is ever moved onto delombok-ed sources.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <sourceFileExcludes>
+                        <sourceFileExclude>net/cumba/cdisc/core/expr/ExprLowering.java</sourceFileExclude>
+                    </sourceFileExcludes>
+                </configuration>
+            </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
@@ -188,8 +254,5 @@
         </plugins>
     </build>
 
-
-    <reporting>
-    </reporting>
 
 </project>

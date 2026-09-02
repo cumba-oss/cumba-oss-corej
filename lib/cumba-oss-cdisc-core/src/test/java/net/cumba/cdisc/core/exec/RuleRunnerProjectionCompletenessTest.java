@@ -11,13 +11,14 @@ import net.cumba.cdisc.core.RulePackageLoader;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Phase 3 of {@code plans/PLAN-auto-output-variables.md} (EC-37): the finding projection resolves
- * dataset-scope virtual variables from the evaluation context, the row identity falls back to the
- * ADaM {@code ASEQ} (D5b), and a <em>derived</em> effective entry that resolves to nothing is
- * omitted rather than inserted as a null-valued key (authored entries keep the historical null).
+ * Phase 3 of {@code plans/done/PLAN-auto-output-variables.md} (EC-37): the finding projection
+ * resolves dataset-scope virtual variables from the evaluation context, the row identity falls back
+ * to the ADaM {@code ASEQ} (D5b), and a <em>derived</em> effective entry that resolves to nothing
+ * is omitted rather than inserted as a null-valued key (authored entries keep the historical null).
  */
 class RuleRunnerProjectionCompletenessTest
 {

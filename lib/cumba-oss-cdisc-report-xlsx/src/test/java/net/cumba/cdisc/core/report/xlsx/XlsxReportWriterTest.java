@@ -127,6 +127,53 @@ class XlsxReportWriterTest
         }
     }
 
+
+    /**
+     * PLAN-dictionary-seeder Phase 6a — the run-level {@code Dictionary_Basis} line reaches the
+     * XLSX (template row 21), alongside {@code Neoplasm_Version} (row 22 — seven types, seven
+     * fields now) and {@code Library_Metadata_Basis} (row 23 — the {@code Fix #369} field that
+     * previously reached the JSON and nothing else).
+     */
+    @Test
+    void dictionaryBasisNeoplasmVersionAndLibraryBasisLandAtRows21To23() throws Exception
+    {
+        ReportSections degraded = new ReportAssembler()
+                .report(ValidationReport.builder().members(List.of()).build())
+                .conformance(ReportAssembler.Conformance.builder().standard("sdtmig")
+                        .dictionaryBasis("external dictionaries degraded: 0 of 98 …")
+                        .neoplasmVersion("2026-03-27")
+                        .libraryMetadataBasis("unavailable — the CDISC Library …").build())
+                .sections();
+        try (XSSFWorkbook wb = render(degraded, 10_000))
+        {
+            Sheet c = wb.getSheet("Conformance Details");
+            assertEquals("Dictionary Basis", string(c, 20, 0));
+            assertEquals("external dictionaries degraded: 0 of 98 …", string(c, 20, 1));
+            assertEquals("Neoplasm Version", string(c, 21, 0));
+            assertEquals("2026-03-27", string(c, 21, 1));
+            assertEquals("Library Metadata Basis", string(c, 22, 0));
+            assertEquals("unavailable — the CDISC Library …", string(c, 22, 1));
+        }
+    }
+
+
+    /**
+     * On a healthy run the two basis keys are absent by design, and their template cells are
+     * deliberately blank — "not configured" would misread absence (= healthy) as a problem — while
+     * {@code Neoplasm Version} defaults like its six version siblings.
+     */
+    @Test
+    void healthyRunLeavesTheBasisRowsBlank() throws Exception
+    {
+        try (XSSFWorkbook wb = render(sampleSections(), 10_000))
+        {
+            Sheet c = wb.getSheet("Conformance Details");
+            assertNull(string(c, 20, 1), "Dictionary Basis stays blank on a healthy run");
+            assertEquals("not configured", string(c, 21, 1)); // Neoplasm Version default
+            assertNull(string(c, 22, 1), "Library Metadata Basis stays blank on a healthy run");
+        }
+    }
+
     // ------------------------------------------------------------------
     // Dataset Details — numeric cells
     // ------------------------------------------------------------------

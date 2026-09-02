@@ -9,7 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.util.List;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.exec.RuleExecutionResult;
 import net.cumba.cdisc.core.exec.RuleExecutionStatus;
 import net.cumba.cdisc.core.exec.RuleRunner;
@@ -17,14 +16,15 @@ import net.cumba.cdisc.core.model.JoinType;
 import net.cumba.cdisc.core.model.MatchDataset;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code Fix #236} / {@code plans/PLAN-join-type-validation.md} — {@code Join_Type} was a free-form
- * string that <b>nothing</b> validated, and the engine's only value comparison is a negation
- * ({@code KeyMatchRowExpander}: {@code !"inner".equalsIgnoreCase(…)}), so every unrecognised value
- * was silently executed as a <b>left</b> join and reported nothing.
+ * {@code Fix #236} / {@code plans/done/PLAN-join-type-validation.md} — {@code Join_Type} was a
+ * free-form string that <b>nothing</b> validated, and the engine's only value comparison is a
+ * negation ({@code KeyMatchRowExpander}: {@code !"inner".equalsIgnoreCase(…)}), so every
+ * unrecognised value was silently executed as a <b>left</b> join and reported nothing.
  *
  * <p>
  * ⚠⚠ The hazard this class also has to pin is the <em>opposite</em> one: validation must <b>not</b>

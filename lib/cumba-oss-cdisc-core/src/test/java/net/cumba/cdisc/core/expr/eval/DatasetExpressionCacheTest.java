@@ -21,9 +21,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Unit tests for {@link DatasetExpressionCache} (Phase 1 of
- * {@code plans/PLAN-dataset-expression-cache.md}): the §3.4 purity classifier and the §3.2 cache
- * key. The classifier is the correctness-critical gate — every excluded kind / cursor / metadata
- * function is asserted impure, every allow-list name is asserted pure, and the key's
+ * {@code plans/done/PLAN-dataset-expression-cache.md}): the §3.4 purity classifier and the §3.2
+ * cache key. The classifier is the correctness-critical gate — every excluded kind / cursor /
+ * metadata function is asserted impure, every allow-list name is asserted pure, and the key's
  * instance-identity / canonical-text / domain-prefix components are exercised.
  */
 class DatasetExpressionCacheTest

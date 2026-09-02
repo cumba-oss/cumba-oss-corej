@@ -11,21 +11,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.exec.RuleExecutionResult;
 import net.cumba.cdisc.core.exec.RuleExecutionStatus;
 import net.cumba.cdisc.core.exec.RuleRunner;
 import net.cumba.cdisc.core.metadata.RuntimeDictionaryProvider;
 import net.cumba.cdisc.core.metadata.ValueMapDictionary;
+import net.cumba.cdisc.core.metadata.dictionary.HouseFormatValidator;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -588,114 +586,16 @@ class DictionaryValidationTest
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private static String upper(String s)
-    {
-        return s.toUpperCase(Locale.ROOT);
-    }
-
-
-    private static Iterable<Map.Entry<String, JsonNode>> fields(JsonNode node)
-    {
-        return node.isObject() ? node.properties()
-                : Collections.<String, JsonNode> emptyMap().entrySet();
-    }
-
-
     /**
-     * The preferred-case contract every house-format dictionary file must satisfy, expressed as a
-     * pure audit over the <b>as-authored</b> JSON (not the loaded model, whose {@code levels} keys
-     * are already folded). Under the D-TA-3 sensitive default the {@code hierarchy}, {@code pairs}
-     * and {@code attributes} maps are compared verbatim against submitted data, while {@code
-     * levels} keeps its folded membership index plus a preferred-case value — so a term written one
-     * way in {@code levels} and another way in {@code hierarchy}/{@code pairs}/{@code
-     * attributes} makes the two flag-less rules that read them mutually unsatisfiable (review
-     * finding C1; owner ruling 2026-08-19 = repair the data).
-     *
-     * <ol>
-     * <li>{@code levels}: each key is the case-fold of its own preferred-case value, and a term
-     * carried by several levels has ONE preferred form;</li>
-     * <li>{@code hierarchy}: every key and every ancestor resolves to a level term <em>and</em> is
-     * written in that term's preferred form;</li>
-     * <li>{@code pairs} / {@code attributes}: any code, decode, key or value that <em>is</em> a
-     * level term is written in its preferred form (a decode that is not a term of this dictionary —
-     * e.g. the NEOPLASM {@code BENIGN}/{@code MALIGNANT} classes or a LOINC long name — is
-     * unconstrained).</li>
-     * </ol>
-     *
-     * @return one message per deviation; empty when the file is consistent.
+     * Delegates to the production validator. The contract used to live here as a private copy; the
+     * installer must hold its own output to exactly this standard, so the implementation moved to
+     * {@link HouseFormatValidator} and this test now exercises the same code the installer runs.
+     * Two copies could have drifted, and the shipped fixtures would have been audited by the one
+     * nothing else used.
      */
     private static List<String> caseContractViolations(String dict, JsonNode root)
     {
-        List<String> out = new ArrayList<>();
-        Map<String, String> preferred = new LinkedHashMap<>();
-        for (Map.Entry<String, JsonNode> level : fields(root.path("levels")))
-        {
-            for (Map.Entry<String, JsonNode> e : fields(level.getValue()))
-            {
-                String key = e.getKey();
-                String pref = e.getValue().asText();
-                if (!key.equals(upper(pref)))
-                {
-                    out.add(dict + ": levels[" + level.getKey() + "] key '" + key
-                            + "' is not the case-fold of its preferred form '" + pref + "'");
-                }
-                String prior = preferred.putIfAbsent(upper(pref), pref);
-                if (prior != null && !prior.equals(pref))
-                {
-                    out.add(dict + ": term '" + upper(pref) + "' has two preferred forms across "
-                            + "levels: '" + prior + "' and '" + pref + "'");
-                }
-            }
-        }
-        for (Map.Entry<String, JsonNode> e : fields(root.path("hierarchy")))
-        {
-            checkTerm(out, dict, "hierarchy key", preferred, e.getKey(), true);
-            for (JsonNode ancestor : e.getValue())
-            {
-                checkTerm(out, dict, "hierarchy ancestor of '" + e.getKey() + "'", preferred,
-                        ancestor.asText(), true);
-            }
-        }
-        for (String section : new String[]
-        {
-                "pairs", "attributes"
-        })
-        {
-            for (Map.Entry<String, JsonNode> map : fields(root.path(section)))
-            {
-                for (Map.Entry<String, JsonNode> e : fields(map.getValue()))
-                {
-                    String where = section + "[" + map.getKey() + "] ";
-                    checkTerm(out, dict, where + "key", preferred, e.getKey(), false);
-                    checkTerm(out, dict, where + "value", preferred, e.getValue().asText(), false);
-                }
-            }
-        }
-        return out;
-    }
-
-
-    private static void checkTerm(List<String> out, String dict, String where,
-            Map<String, String> preferred, String text, boolean mustResolve)
-    {
-        if (text.isEmpty())
-        {
-            return;
-        }
-        String pref = preferred.get(upper(text));
-        if (pref == null)
-        {
-            if (mustResolve)
-            {
-                out.add(dict + ": " + where + " '" + text + "' is not a term in any level");
-            }
-            return;
-        }
-        if (!pref.equals(text))
-        {
-            out.add(dict + ": " + where + " '" + text + "' is not written in the levels' preferred "
-                    + "form '" + pref + "'");
-        }
+        return HouseFormatValidator.caseContractViolations(dict, root);
     }
 
 

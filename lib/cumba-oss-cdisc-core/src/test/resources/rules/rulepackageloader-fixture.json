@@ -1,0 +1,1521 @@
+{
+  "rules": {
+    "0066ab1c-982c-42e6-96f8-e7cbec162a91": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Identifier used to uniquely identify a subject across all studies for all applications or submissions involving the product.",
+                      "Document": "IG v3.4",
+                      "Item": "Specification",
+                      "Section": "5.2"
+                    }
+                  ],
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0151",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ],
+              "Version": "3.4"
+            },
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Identifier used to uniquely identify a subject across all studies",
+                      "Document": "IG v3.2",
+                      "Item": "Specification",
+                      "Section": "5"
+                    }
+                  ],
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0151",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ],
+              "Version": "3.2"
+            },
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Identifier used to uniquely identify a subject across all studies",
+                      "Document": "IG v3.3",
+                      "Item": "Specification",
+                      "Section": "5.2"
+                    }
+                  ],
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0151",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ],
+              "Version": "3.3"
+            },
+            {
+              "Name": "TIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Identifier used to uniquely identify a subject across all studies for all applications or submissions involving the product.",
+                      "Document": "TIG 1.0",
+                      "Item": "Specification",
+                      "Section": "2.8.10.4"
+                    }
+                  ],
+                  "Origin": "TIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "TIG0392",
+                    "Version": "1"
+                  },
+                  "Version": "1.0"
+                }
+              ],
+              "Substandard": "SDTM",
+              "Version": "1.0"
+            },
+            {
+              "Name": "SENDIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "No more than one animal may have the same USUBJID within a submission.",
+                      "Document": "SENDIG v3.0",
+                      "Item": "Text",
+                      "Section": "4.2.3"
+                    }
+                  ],
+                  "Origin": "SEND Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "SEND37",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ],
+              "Version": "3.0"
+            },
+            {
+              "Name": "SENDIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "No more than one animal may have the same USUBJID within a submission.",
+                      "Document": "SENDIG v3.1",
+                      "Item": "Text",
+                      "Section": "4.2.3"
+                    }
+                  ],
+                  "Origin": "SEND Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "SEND37",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ],
+              "Version": "3.1"
+            },
+            {
+              "Name": "SENDIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "No more than one animal may have the same USUBJID within a submission.",
+                      "Document": "SENDIG v3.1.1",
+                      "Item": "Text",
+                      "Section": "4.2.3"
+                    }
+                  ],
+                  "Origin": "SEND Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "SEND37",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ],
+              "Version": "3.1.1"
+            },
+            {
+              "Name": "SENDIG-DART",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "No more than one animal may have the same USUBJID within a submission.",
+                      "Document": "SENDIG v3.1",
+                      "Item": "Text",
+                      "Section": "4.2.3"
+                    }
+                  ],
+                  "Origin": "SEND Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "SEND37",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ],
+              "Version": "1.1"
+            },
+            {
+              "Name": "SENDIG-DART",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "No more than one animal may have the same USUBJID within a submission.",
+                      "Document": "SENDIG v3.1.1",
+                      "Item": "Text",
+                      "Section": "4.2.3"
+                    }
+                  ],
+                  "Origin": "SEND Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "SEND37",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ],
+              "Version": "1.2"
+            },
+            {
+              "Name": "SENDIG-GENETOX",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "No more than one animal may have the same USUBJID within a submission.",
+                      "Document": "SENDIG v3.1.1",
+                      "Item": "Text",
+                      "Section": "4.2.3"
+                    }
+                  ],
+                  "Origin": "SEND Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "SEND37",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ],
+              "Version": "1.0"
+            },
+            {
+              "Name": "TIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "A sequence of characters used to uniquely identify a subject across all studies for all applications or submissions involving the product.",
+                      "Document": "TIG v1.0",
+                      "Item": "Text",
+                      "Section": "SDTM v2.1, Identifiers for All Classes, USUBJID"
+                    }
+                  ],
+                  "Origin": "TIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "TIG0255",
+                    "Version": "1"
+                  },
+                  "Version": "1.0"
+                }
+              ],
+              "Substandard": "SEND",
+              "Version": "1.0"
+            }
+          ]
+        }
+      ],
+      "Check": {
+        "all": [
+          {
+            "name": "USUBJID",
+            "operator": "is_not_unique_set",
+            "value": "DOMAIN"
+          }
+        ]
+      },
+      "Core": {
+        "Id": "CORE-000351",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "USUBJID must be unique across all studies",
+      "Executability": "Partially Executable",
+      "Outcome": {
+        "Message": "USUBJID is not unique within study",
+        "Output_Variables": [
+          "USUBJID"
+        ]
+      },
+      "Scope": {
+        "Classes": {
+          "Include": [
+            "SPECIAL PURPOSE"
+          ]
+        },
+        "Domains": {
+          "Include": [
+            "DM"
+          ]
+        },
+        "Use_Case": "NONCLIN, INDH"
+      },
+      "Sensitivity": "Record",
+      "id": "0066ab1c-982c-42e6-96f8-e7cbec162a91"
+    },
+    "062da4b3-0c48-4ed3-a97b-c1e92d7bcf95": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "--LNKGRP is a grouping identifier used to identify a group of records in one domain that is related to a record in another domain, often forming a many-to-one relationship.",
+                      "Document": "SDTMIG v3.4",
+                      "Item": "2.E.2",
+                      "Section": "4.2.6"
+                    }
+                  ],
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0022",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ],
+              "Version": "3.4"
+            },
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "--LNKGRP is a grouping identifier used to identify a group of records in one domain that is related to a record in another domain, often forming a many-to-one relationship.",
+                      "Document": "SDTMIG v3.3",
+                      "Item": "2.E.2",
+                      "Section": "4.2.6"
+                    }
+                  ],
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0022",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ],
+              "Version": "3.3"
+            },
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Identifier used to link related, grouped records across domains.",
+                      "Document": "SDTMIG v3.2",
+                      "Item": "Specification",
+                      "Section": "6.1."
+                    }
+                  ],
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0022",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ],
+              "Version": "3.2"
+            },
+            {
+              "Name": "TIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "A sequence of characters used to uniquely identify a group of records, for a subject, in one domain and link it to 1 or more records for that subject in another domain.",
+                      "Document": "SDTM v2.1",
+                      "Item": "--LNKGRP, Definition column",
+                      "Section": "SDTM- 3.1.4 Identifiers for All Classes"
+                    },
+                    {
+                      "Cited_Guidance": "Groups of records can be related by using grouping variables such as --LNKID or --LNKGRP in IDVAR.  Using --LNKID or --LNKGRP can be a more efficient method of representing relationships in RELREC when relating a single or group of records in one dataset to a group of records in another dataset.",
+                      "Document": "SDTM v2.1",
+                      "Item": "--LNKGRP, Definition column",
+                      "Section": "2.8.5.2"
+                    }
+                  ],
+                  "Origin": "TIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "TIG0306",
+                    "Version": "1"
+                  },
+                  "Version": "1.0"
+                }
+              ],
+              "Substandard": "SDTM",
+              "Version": "1.0"
+            }
+          ]
+        }
+      ],
+      "Check": {
+        "all": [
+          {
+            "name": "--LNKGRP",
+            "operator": "var_exists"
+          },
+          {
+            "name": "$VARIABLE_COUNT",
+            "operator": "less_than",
+            "value": 2
+          }
+        ]
+      },
+      "Core": {
+        "Id": "CORE-000358",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Verify that when --LNKGRP is present in one domain it is also present in another domain.",
+      "Executability": "Fully Executable",
+      "Operations": [
+        {
+          "id": "$VARIABLE_COUNT",
+          "name": "--LNKGRP",
+          "operator": "variable_count"
+        }
+      ],
+      "Outcome": {
+        "Message": "LNKGRP variable is not found in any of the other domains.",
+        "Output_Variables": [
+          "--LNKGRP",
+          "$VARIABLE_COUNT"
+        ]
+      },
+      "Scope": {
+        "Classes": {
+          "Include": [
+            "ALL"
+          ]
+        },
+        "Domains": {
+          "Include": [
+            "ALL"
+          ]
+        },
+        "Use_Case": "INDH, PROD"
+      },
+      "Sensitivity": "Dataset",
+      "id": "062da4b3-0c48-4ed3-a97b-c1e92d7bcf95"
+    },
+    "4162b46f-9e19-41ff-ab42-9a26ee5b37f9": {
+      "Authorities": [
+        {
+          "Organization": "FDA",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "For interventional studies all treated subjects should have exposure data.",
+                      "Document": "FDA",
+                      "Section": "FDAB023"
+                    }
+                  ],
+                  "Origin": "FDA Business Rules",
+                  "Rule_Identifier": {
+                    "Id": "FB2302",
+                    "Version": "1"
+                  },
+                  "Version": "1.5"
+                }
+              ],
+              "Version": "3.3"
+            },
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "For interventional studies all treated subjects should have exposure data.",
+                      "Document": "FDA",
+                      "Section": "FDAB023"
+                    }
+                  ],
+                  "Origin": "FDA Business Rules",
+                  "Rule_Identifier": {
+                    "Id": "FB2302",
+                    "Version": "1"
+                  },
+                  "Version": "1.5"
+                }
+              ],
+              "Version": "3.4"
+            }
+          ]
+        }
+      ],
+      "Check": {
+        "any": [
+          {
+            "all": [
+              {
+                "name": "ARMNRS",
+                "operator": "empty"
+              },
+              {
+                "name": "TSPARMCD",
+                "operator": "equal_to",
+                "value": "STYPE",
+                "value_is_literal": true
+              },
+              {
+                "name": "TSVAL",
+                "operator": "equal_to",
+                "value": "INTERVENTIONAL",
+                "value_is_literal": true
+              },
+              {
+                "name": "USUBJID",
+                "operator": "is_not_contained_by",
+                "value": "$usubjids_in_ex"
+              }
+            ]
+          },
+          {
+            "all": [
+              {
+                "name": "ARMNRS",
+                "operator": "equal_to",
+                "value": "UNPLANNED TREATMENT",
+                "value_is_literal": true
+              },
+              {
+                "name": "TSPARMCD",
+                "operator": "equal_to",
+                "value": "STYPE",
+                "value_is_literal": true
+              },
+              {
+                "name": "TSVAL",
+                "operator": "equal_to",
+                "value": "INTERVENTIONAL",
+                "value_is_literal": true
+              },
+              {
+                "name": "USUBJID",
+                "operator": "is_not_contained_by",
+                "value": "$usubjids_in_ex"
+              }
+            ]
+          }
+        ]
+      },
+      "Core": {
+        "Id": "CORE-000885",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "All subjects in the Demographics domain who are participating in a study that includes an interventional product must have at least one corresponding record in the Exposure domain, except for subjects who failed screening, were not fully assigned to an Arm, or did not receive study treatment.",
+      "Executability": "Fully Executable",
+      "Match_Datasets": [
+        {
+          "Keys": [
+            "STUDYID"
+          ],
+          "Name": "TS"
+        }
+      ],
+      "Operations": [
+        {
+          "domain": "EX",
+          "id": "$usubjids_in_ex",
+          "name": "USUBJID",
+          "operator": "distinct"
+        }
+      ],
+      "Outcome": {
+        "Message": "A subject has a record in DM but not in EX while participating in an interventional study",
+        "Output_Variables": [
+          "ARMNRS",
+          "TSPARMCD",
+          "TSVAL",
+          "USUBJID",
+          "$usubjids_in_ex"
+        ]
+      },
+      "Scope": {
+        "Classes": {
+          "Include": [
+            "SPECIAL PURPOSE"
+          ]
+        },
+        "Domains": {
+          "Include": [
+            "DM"
+          ]
+        }
+      },
+      "Sensitivity": "Record",
+      "id": "4162b46f-9e19-41ff-ab42-9a26ee5b37f9"
+    },
+    "029342ac-3023-43f2-8d13-444142f50383": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Indicates the subject died. Should be Y or null. Should be populated even when the death date is unknown.",
+                      "Document": "IG v3.4",
+                      "Item": "Specification",
+                      "Section": "5.2"
+                    }
+                  ],
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0136",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ],
+              "Version": "3.4"
+            },
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Indicates the subject died. Should be Y or null. Should be populated even when the death date is unknown.",
+                      "Document": "IG v3.2",
+                      "Item": "Specification",
+                      "Section": "5"
+                    }
+                  ],
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0136",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ],
+              "Version": "3.2"
+            },
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Indicates the subject died. Should be Y or null. Should be populated even when the death date is unknown.",
+                      "Document": "IG v3.3",
+                      "Item": "Specification",
+                      "Section": "5.2"
+                    }
+                  ],
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0136",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ],
+              "Version": "3.3"
+            },
+            {
+              "Name": "TIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Indicates the subject died. Should be \"Y\" or null. Should be populated even when the death date is unknown.",
+                      "Document": "TIG 1.0",
+                      "Item": "Specification",
+                      "Section": "2.8.10.4"
+                    }
+                  ],
+                  "Origin": "TIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "TIG0385",
+                    "Version": "1"
+                  },
+                  "Version": "1.0"
+                }
+              ],
+              "Substandard": "SDTM",
+              "Version": "1.0"
+            }
+          ]
+        },
+        {
+          "Organization": "FDA",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "All death information should be populated for subjects that died during the study including any post treatment follow-up.",
+                      "Document": "FDA",
+                      "Section": "FDAB006"
+                    }
+                  ],
+                  "Origin": "FDA Business Rules",
+                  "Rule_Identifier": {
+                    "Id": "FB0605",
+                    "Version": "1"
+                  },
+                  "Version": "1.5"
+                }
+              ],
+              "Version": "3.2"
+            },
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "All death information should be populated for subjects that died during the study including any post treatment follow-up.",
+                      "Document": "FDA",
+                      "Section": "FDAB006"
+                    }
+                  ],
+                  "Origin": "FDA Business Rules",
+                  "Rule_Identifier": {
+                    "Id": "FB0605",
+                    "Version": "1"
+                  },
+                  "Version": "1.5"
+                }
+              ],
+              "Version": "3.3"
+            },
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "All death information should be populated for subjects that died during the study including any post treatment follow-up.",
+                      "Document": "FDA",
+                      "Section": "FDAB006"
+                    }
+                  ],
+                  "Origin": "FDA Business Rules",
+                  "Rule_Identifier": {
+                    "Id": "FB0605",
+                    "Version": "1"
+                  },
+                  "Version": "1.5"
+                }
+              ],
+              "Version": "3.4"
+            }
+          ]
+        }
+      ],
+      "Check": {
+        "all": [
+          {
+            "name": "DSDECOD",
+            "operator": "equal_to",
+            "value": "DEATH",
+            "value_is_literal": true
+          },
+          {
+            "name": "DTHFL",
+            "operator": "not_equal_to",
+            "value": "Y",
+            "value_is_literal": true
+          }
+        ]
+      },
+      "Core": {
+        "Id": "CORE-000252",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "When a record is present in the DS dataset where DSDECOD = 'DEATH' then death flag (DTHFL) should be populated as 'Y' in the DM dataset for the corresponding subject.",
+      "Executability": "Fully Executable",
+      "Match_Datasets": [
+        {
+          "Keys": [
+            "USUBJID"
+          ],
+          "Name": "DS"
+        }
+      ],
+      "Outcome": {
+        "Message": "DSDECOD is 'DEATH' in DS dataset, but DTHFL in DM dataset is not \"Y\".",
+        "Output_Variables": [
+          "DSDECOD",
+          "DTHFL"
+        ]
+      },
+      "Scope": {
+        "Classes": {
+          "Include": [
+            "SPECIAL PURPOSE"
+          ]
+        },
+        "Domains": {
+          "Include": [
+            "DM"
+          ]
+        },
+        "Use_Case": "INDH"
+      },
+      "Sensitivity": "Record",
+      "id": "029342ac-3023-43f2-8d13-444142f50383"
+    },
+    "206f189a-42aa-4bce-b2cf-e9d3a6d6651f": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Value of identifying variable of the parent record(s).",
+                      "Document": "Model v2.0",
+                      "Item": "IDVARVAL",
+                      "Section": "Comments"
+                    },
+                    {
+                      "Cited_Guidance": "Value of identifying variable of the parent record(s).",
+                      "Document": "Model v2.0",
+                      "Item": "IDVARVAL",
+                      "Section": "Supplemental Qualifiers"
+                    },
+                    {
+                      "Cited_Guidance": "Value of identifying variable described in IDVAR.",
+                      "Document": "Model v2.0",
+                      "Item": "IDVARVAL",
+                      "Section": "Related Records"
+                    }
+                  ],
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0371",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ],
+              "Version": "3.4"
+            },
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Value of identifying variable of the parent record(s).",
+                      "Document": "Model v1.4",
+                      "Section": "2.2.7"
+                    }
+                  ],
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0371",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ],
+              "Version": "3.2"
+            },
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Value of identifying variable of the parent record(s).",
+                      "Document": "Model v1.7",
+                      "Section": "2.2.7"
+                    }
+                  ],
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0371",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ],
+              "Version": "3.3"
+            },
+            {
+              "Name": "TIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Identifying variable in the parent dataset that identifies the record(s) to which the comment applies.",
+                      "Document": "SDTM v2.1",
+                      "Item": "IDVARVAL",
+                      "Section": "3.2.2 Comments"
+                    },
+                    {
+                      "Cited_Guidance": "Name of the identifying variable in the general-observation-class dataset that identifies the related record(s).",
+                      "Document": "SDTM v2.1",
+                      "Item": "IDVARVAL",
+                      "Section": "6.2 Supplemental Qualifiers Datasets"
+                    },
+                    {
+                      "Cited_Guidance": "Name of the  identifying variable in the general-observation-class dataset that identifies the related record(s).",
+                      "Document": "SDTM v2.1",
+                      "Item": "IDVARVAL",
+                      "Section": "Section 6.1 Related Records Dataset"
+                    }
+                  ],
+                  "Origin": "TIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "TIG0535",
+                    "Version": "1"
+                  },
+                  "Version": "1.0"
+                }
+              ],
+              "Substandard": "SDTM",
+              "Version": "1.0"
+            },
+            {
+              "Name": "SENDIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "CDISC Notes for IDVAR and IDVARVAL: 'Identifiying variable of the parent record(s)to which the comment applies.' and 'Value of identifying variable of the parent record(s).', respectively.",
+                      "Document": "SENDIG v3.0",
+                      "Item": "Assumption 3.a",
+                      "Section": "5.2.1"
+                    }
+                  ],
+                  "Origin": "SEND Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "SEND121",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ],
+              "Version": "3.0"
+            },
+            {
+              "Name": "SENDIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Related to a specific parent record or group of parent records, in which case the value of the variable RDOMAIN is set to the DOMAIN code of the parent record(s), and the variables IDVAR and IDVARVAL are populated with the key variable name and value of the parent record(s). Assumptions for populating IDVAR and IDVARVAL are further described in Section 8.2.",
+                      "Document": "SENDIG v3.1",
+                      "Item": "Assumption 3.a",
+                      "Section": "5.2.1.1"
+                    }
+                  ],
+                  "Origin": "SEND Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "SEND121",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ],
+              "Version": "3.1"
+            },
+            {
+              "Name": "SENDIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Related to a specific parent record or group of parent records, in which case the value of the variable RDOMAIN is set to the DOMAIN code of the parent record(s), and the variables IDVAR and IDVARVAL are populated with the key variable name and value of the parent record(s). Assumptions for populating IDVAR and IDVARVAL are further described in Section 8.2.",
+                      "Document": "SENDIG v3.1.1",
+                      "Item": "Assumption 3.a",
+                      "Section": "5.2.1.1"
+                    }
+                  ],
+                  "Origin": "SEND Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "SEND121",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ],
+              "Version": "3.1.1"
+            },
+            {
+              "Name": "SENDIG-DART",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Related to a specific parent record or group of parent records, in which case the value of the variable RDOMAIN is set to the DOMAIN code of the parent record(s), and the variables IDVAR and IDVARVAL are populated with the key variable name and value of the parent record(s). Assumptions for populating IDVAR and IDVARVAL are further described in Section 8.2.",
+                      "Document": "SENDIG v3.1",
+                      "Item": "Assumption 3.a",
+                      "Section": "5.2.1.1"
+                    }
+                  ],
+                  "Origin": "SEND Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "SEND121",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ],
+              "Version": "1.1"
+            },
+            {
+              "Name": "SENDIG-DART",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Related to a specific parent record or group of parent records, in which case the value of the variable RDOMAIN is set to the DOMAIN code of the parent record(s), and the variables IDVAR and IDVARVAL are populated with the key variable name and value of the parent record(s). Assumptions for populating IDVAR and IDVARVAL are further described in Section 8.2.",
+                      "Document": "SENDIG v3.1.1",
+                      "Item": "Assumption 3.a",
+                      "Section": "5.2.1.1"
+                    }
+                  ],
+                  "Origin": "SEND Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "SEND121",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ],
+              "Version": "1.2"
+            },
+            {
+              "Name": "SENDIG-GENETOX",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Related to a specific parent record or group of parent records, in which case the value of the variable RDOMAIN is set to the DOMAIN code of the parent record(s), and the variables IDVAR and IDVARVAL are populated with the key variable name and value of the parent record(s). Assumptions for populating IDVAR and IDVARVAL are further described in Section 8.2.",
+                      "Document": "SENDIG v3.1.1",
+                      "Item": "Assumption 3.a",
+                      "Section": "5.2.1.1"
+                    }
+                  ],
+                  "Origin": "SEND Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "SEND121",
+                    "Version": "1"
+                  },
+                  "Version": "5.0"
+                }
+              ],
+              "Version": "1.0"
+            },
+            {
+              "Name": "TIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Related to a specific parent record or group of parent records, in which case the value of the variable RDOMAIN is set to the DOMAIN code of the parent record(s), and the variables IDVAR and IDVARVAL are populated with the key variable name and value of the parent record(s).",
+                      "Document": "TIG v1.0",
+                      "Item": "Assumption 3.a",
+                      "Section": "2.8.9.4 SEND Comments (CO)"
+                    }
+                  ],
+                  "Origin": "TIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "TIG0058",
+                    "Version": "1"
+                  },
+                  "Version": "1.0"
+                }
+              ],
+              "Substandard": "SEND",
+              "Version": "1.0"
+            }
+          ]
+        }
+      ],
+      "Check": {
+        "all": [
+          {
+            "name": "IDVAR",
+            "operator": "non_empty"
+          },
+          {
+            "name": "IDVARVAL",
+            "operator": "non_empty"
+          },
+          {
+            "name": "IDVARVAL",
+            "operator": "not_equal_to",
+            "type_insensitive": true,
+            "value": "IDVAR",
+            "value_is_reference": true
+          }
+        ]
+      },
+      "Core": {
+        "Id": "CORE-000206",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "When IDVAR is populated, IDVARVAL must equal a value of the variable referenced by IDVAR within the domain referenced by RDOMAIN",
+      "Executability": "Fully Executable",
+      "Match_Datasets": [
+        {
+          "Child": true,
+          "Keys": [
+            "USUBJID",
+            "IDVAR",
+            "IDVARVAL"
+          ],
+          "Name": "SUPP--"
+        },
+        {
+          "Child": true,
+          "Keys": [
+            "USUBJID",
+            "IDVAR",
+            "IDVARVAL"
+          ],
+          "Name": "CO"
+        },
+        {
+          "Child": true,
+          "Keys": [
+            "USUBJID",
+            "IDVAR",
+            "IDVARVAL"
+          ],
+          "Name": "RELREC"
+        }
+      ],
+      "Outcome": {
+        "Message": "IDVARVAL does not equal a value of the variable referenced by IDVAR in domain = RDOMAIN.",
+        "Output_Variables": [
+          "RDOMAIN",
+          "USUBJID",
+          "IDVAR",
+          "IDVARVAL"
+        ]
+      },
+      "Scope": {
+        "Classes": {
+          "Include": [
+            "SPECIAL PURPOSE",
+            "RELATIONSHIP"
+          ]
+        },
+        "Domains": {
+          "Include": [
+            "CO",
+            "SUPP--",
+            "RELREC"
+          ]
+        },
+        "Use_Case": "NONCLIN, INDH, PROD"
+      },
+      "Sensitivity": "Record",
+      "id": "206f189a-42aa-4bce-b2cf-e9d3a6d6651f"
+    },
+    "18eac328-00a4-419d-a128-764867659acf": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Within the context that defines uniqueness for a time point, which may include domain, visit, and reference time point, there must be a one-to-relationship between values of --TPT and --TPTNUM. in other words, if domain, visit, and reference time point uniquely identify subject data, then if two subjects have records with the same values of DOMAIN, VISITNUM, --TPTREF, and --TPTNUM, then these records may not have different time point descriptions in --TPT.",
+                      "Document": "IG v3.2",
+                      "Section": "4.1.4.10"
+                    }
+                  ],
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0573",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ],
+              "Version": "3.2"
+            },
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "Within the context that defines uniqueness for a time point, which may include domain, visit, and reference time point, there must be a one-to-relationship between values of --TPT and --TPTNUM. in other words, if domain, visit, and reference time point uniquely identify subject data, then if two subjects have records with the same values of DOMAIN, VISITNUM, --TPTREF, and --TPTNUM, then these records may not have different time point descriptions in --TPT.",
+                      "Document": "IG v3.3",
+                      "Section": "4.4.10"
+                    }
+                  ],
+                  "Origin": "SDTM and SDTMIG Conformance Rules",
+                  "Rule_Identifier": {
+                    "Id": "CG0573",
+                    "Version": "1"
+                  },
+                  "Version": "2.0"
+                }
+              ],
+              "Version": "3.3"
+            }
+          ]
+        },
+        {
+          "Organization": "FDA",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "All paired variables should have a one-to-one relationship. Examples include short name and name of test; parameter name and parameter code or number; variable name and variable label, etc.",
+                      "Document": "FDA",
+                      "Section": "FDAB009"
+                    }
+                  ],
+                  "Origin": "FDA Business Rules",
+                  "Rule_Identifier": {
+                    "Id": "FB0925",
+                    "Version": "1"
+                  },
+                  "Version": "1.5"
+                }
+              ],
+              "Version": "3.2"
+            },
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "All paired variables should have a one-to-one relationship. Examples include short name and name of test; parameter name and parameter code or number; variable name and variable label, etc.",
+                      "Document": "FDA",
+                      "Section": "FDAB009"
+                    }
+                  ],
+                  "Origin": "FDA Business Rules",
+                  "Rule_Identifier": {
+                    "Id": "FB0925",
+                    "Version": "1"
+                  },
+                  "Version": "1.5"
+                }
+              ],
+              "Version": "3.3"
+            },
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "All paired variables should have a one-to-one relationship. Examples include short name and name of test; parameter name and parameter code or number; variable name and variable label, etc.",
+                      "Document": "FDA",
+                      "Section": "FDAB009"
+                    }
+                  ],
+                  "Origin": "FDA Business Rules",
+                  "Rule_Identifier": {
+                    "Id": "FB0925",
+                    "Version": "1"
+                  },
+                  "Version": "1.5"
+                }
+              ],
+              "Version": "3.4"
+            }
+          ]
+        }
+      ],
+      "Check": {
+        "all": [
+          {
+            "name": "VISITNUM",
+            "operator": "var_exists"
+          },
+          {
+            "name": "--TPTREF",
+            "operator": "var_exists"
+          },
+          {
+            "any": [
+              {
+                "name": "--TPT",
+                "operator": "is_inconsistent_across_dataset",
+                "value": [
+                  "--TPTNUM",
+                  "VISITNUM",
+                  "--TPTREF"
+                ]
+              },
+              {
+                "name": "--TPTNUM",
+                "operator": "is_inconsistent_across_dataset",
+                "value": [
+                  "--TPT",
+                  "VISITNUM",
+                  "--TPTREF"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "Core": {
+        "Id": "CORE-000689",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "VISITNUM and --TPTREF are present then --TPT and --TPTNUM should have a one-to-one relationship per unique combination of VISITNUM and --TPTREF values.",
+      "Executability": "Fully Executable",
+      "Outcome": {
+        "Message": "--TPT and --TPTNUM do not have a one-to-one relationship per unique combination of VISITNUM and --TPTREF values.",
+        "Output_Variables": [
+          "VISITNUM",
+          "--TPTREF",
+          "--TPT",
+          "--TPTNUM"
+        ]
+      },
+      "Scope": {
+        "Classes": {
+          "Include": [
+            "ALL"
+          ]
+        },
+        "Domains": {
+          "Include": [
+            "ALL"
+          ]
+        }
+      },
+      "Sensitivity": "Record",
+      "id": "18eac328-00a4-419d-a128-764867659acf"
+    },
+    "72fc8a45-adcc-423b-b782-ffaabf9535e8": {
+      "Authorities": [
+        {
+          "Organization": "FDA",
+          "Standards": [
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "All death information should be populated for subjects that died during the study including any post treatment follow-up.",
+                      "Document": "FDA",
+                      "Section": "FDAB006"
+                    }
+                  ],
+                  "Origin": "FDA Business Rules",
+                  "Rule_Identifier": {
+                    "Id": "FB0609",
+                    "Version": "1"
+                  },
+                  "Version": "1.5"
+                }
+              ],
+              "Version": "3.2"
+            },
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "All death information should be populated for subjects that died during the study including any post treatment follow-up.",
+                      "Document": "FDA",
+                      "Section": "FDAB006"
+                    }
+                  ],
+                  "Origin": "FDA Business Rules",
+                  "Rule_Identifier": {
+                    "Id": "FB0609",
+                    "Version": "1"
+                  },
+                  "Version": "1.5"
+                }
+              ],
+              "Version": "3.3"
+            },
+            {
+              "Name": "SDTMIG",
+              "References": [
+                {
+                  "Citations": [
+                    {
+                      "Cited_Guidance": "All death information should be populated for subjects that died during the study including any post treatment follow-up.",
+                      "Document": "FDA",
+                      "Section": "FDAB006"
+                    }
+                  ],
+                  "Origin": "FDA Business Rules",
+                  "Rule_Identifier": {
+                    "Id": "FB0609",
+                    "Version": "1"
+                  },
+                  "Version": "1.5"
+                }
+              ],
+              "Version": "3.4"
+            }
+          ]
+        }
+      ],
+      "Check": {
+        "all": [
+          {
+            "name": "DM.DTHFL",
+            "operator": "equal_to",
+            "value": "Y",
+            "value_is_literal": true
+          },
+          {
+            "name": "$ae_aeout",
+            "operator": "does_not_contain",
+            "value": "FATAL",
+            "value_is_literal": true
+          },
+          {
+            "name": "$ae_aesdth",
+            "operator": "does_not_contain",
+            "value": "Y",
+            "value_is_literal": true
+          }
+        ]
+      },
+      "Core": {
+        "Id": "CORE-001078",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "When Death flag (DTHFL) in the DM dataset is populated as 'Y' then a record should be present in the AE dataset where AEOUT = 'FATAL' and AESDTH = 'Y' for the corresponding subject.",
+      "Executability": "Fully Executable",
+      "Grouping_Variables": [
+        "USUBJID"
+      ],
+      "Match_Datasets": [
+        {
+          "Keys": [
+            "USUBJID"
+          ],
+          "Name": "DM"
+        },
+        {
+          "Keys": [
+            "USUBJID"
+          ],
+          "Name": "AE"
+        }
+      ],
+      "Operations": [
+        {
+          "domain": "AE",
+          "group": [
+            "USUBJID"
+          ],
+          "id": "$ae_aeout",
+          "name": "AEOUT",
+          "operator": "distinct"
+        },
+        {
+          "domain": "AE",
+          "group": [
+            "USUBJID"
+          ],
+          "id": "$ae_aesdth",
+          "name": "AESDTH",
+          "operator": "distinct"
+        }
+      ],
+      "Outcome": {
+        "Message": "DTHFL in DM dataset is \"Y\" but a record is missing in AE dataset where AESDTH = \"Y\" and AEOUT = \"FATAL\".",
+        "Output_Variables": [
+          "$ae_aeout",
+          "$ae_aesdth",
+          "DM.DTHFL",
+          "USUBJID"
+        ]
+      },
+      "Scope": {
+        "Classes": {
+          "Include": [
+            "EVENTS"
+          ]
+        },
+        "Domains": {
+          "Include": [
+            "AE"
+          ]
+        }
+      },
+      "Sensitivity": "Group",
+      "id": "72fc8a45-adcc-423b-b782-ffaabf9535e8"
+    }
+  }
+}

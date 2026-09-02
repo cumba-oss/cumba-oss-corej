@@ -137,8 +137,8 @@ class IsoDateComparisonReadableCoreTest
      * </p>
      *
      * <p>
-     * If this list needs editing, say why in {@code plans/PLAN-isodatecomparison-readable-core.md}
-     * &sect; Results.
+     * If this list needs editing, say why in
+     * {@code plans/done/PLAN-isodatecomparison-readable-core.md} &sect; Results.
      * </p>
      */
     private static final List<String> UNREADABLE_FAST_PATH_OPERANDS = List.of(
@@ -335,7 +335,7 @@ class IsoDateComparisonReadableCoreTest
          * <p>
          * <b>Sampling rule.</b> The exhaustive form is 15 &times; 60 463 &times; 2 = 1 813 890
          * pairs and runs for ~53 s, too slow for the suite; it was run in full at the lane-D merge
-         * and its result is recorded in {@code plans/PLAN-isodatecomparison-readable-core.md}
+         * and its result is recorded in {@code plans/done/PLAN-isodatecomparison-readable-core.md}
          * &sect; Results (1 395 movers per direction, <b>all</b> with a fast-path-eligible
          * counterpart, none in the mixed class). What runs here is a <b>seeded uniform sample of 3
          * 000 distinct corpus values</b> ({@code Random(20260811)}, sampled without replacement by

@@ -1,0 +1,1051 @@
+{
+  "source": "CDISC ADaM Implementation Guide for Non-compartmental Analysis Input Data v1.0 (Final, 2021-11-29)",
+  "dataset_metadata": {
+    "data_structure_name": "ADNCA",
+    "data_structure_description": "Basic Data Structure Non-Compartmental Analysis",
+    "class": "BASIC DATA STRUCTURE",
+    "subclass": "NON-COMPARTMENTAL ANALYSIS",
+    "structure": "One record per subject per parameter per analysis visit per analysis timepoint",
+    "keys": ["STUDYID", "USUBJID", "PARAMCD", "AVISIT", "ATPT"],
+    "cdisc_notes": "Dataset designed to support NCA. Primarily sourced from SDTM PC and supplemented by information from the EX, EC, or other relevant domains."
+  },
+  "variables": [
+    {
+      "var_name": "NCAXFL",
+      "label": "PK NCA Exclusion Flag",
+      "type": "Char",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Flag for exclusion of a record into a PK NCA calculation (Y = exclusion, Null = inclusion). Codelist: Y."
+    },
+    {
+      "var_name": "NCAXFN",
+      "label": "PK NCA Exclusion Flag (N)",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Numeric flag for exclusion of a record into a PK NCA calculation (1 = exclusion, Null = inclusion). NCAXFN can only be included if NCAXFL is also included. Codelist: 1."
+    },
+    {
+      "var_name": "NCAwXRS",
+      "label": "Reason w for PK NCA Exclusion",
+      "type": "Char",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "This variable is used to explain why the record is not included in the PK NCA. The 'w' represents a sequence number (e.g., NCA1XRS, NCA2XRS, NCA3XRS)."
+    },
+    {
+      "var_name": "NCAwXRSN",
+      "label": "Reason for PK NCA Exclusion of w (N)",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Numeric version of reason why the record is not included in the PK NCA."
+    },
+    {
+      "var_name": "PKSUMXF",
+      "label": "PK Summary Exclusion Flag",
+      "type": "Char",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Flag for exclusion of a record from a PK summary (1 = exclusion, Null = inclusion). Codelist: Y."
+    },
+    {
+      "var_name": "PKSUMXFN",
+      "label": "PK Summary Exclusion Flag (N)",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Numeric flag for exclusion of a record from a PK summary (1 = exclusion, Null = inclusion). PKSUMXFN can only be included if PKSUMXFL is also included. Codelist: 1."
+    },
+    {
+      "var_name": "METABFL",
+      "label": "Metabolite Flag",
+      "type": "Char",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Flag to designate if observations within a subject are associated with a metabolite. Required if parent drug and metabolites are present in the dataset. Codelist: Y."
+    },
+    {
+      "var_name": "COHORT",
+      "label": "Subject Cohort",
+      "type": "Char",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Relevant to trials where cohorts are defined. This could be another grouping not necessarily associated with ARM."
+    },
+    {
+      "var_name": "COHORTN",
+      "label": "Subject Cohort (N)",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Numeric representation of the COHORT variable. There must be a one-to-one mapping between COHORT and COHORTN. When both present, on a given record either both must be populated or both must be null."
+    },
+    {
+      "var_name": "ROUTE",
+      "label": "Route",
+      "type": "Char",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Route of treatment delivery. Can be a copy of EX.EXROUTE or EC.ECROUTE. May instead be derived. Codelist: (ROUTE)."
+    },
+    {
+      "var_name": "TRTRINT",
+      "label": "Planned Treatment Interval",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Planned time between 2 consecutive treatments in multiple-dose studies (sometimes referred to as 'Tau')."
+    },
+    {
+      "var_name": "TRTRINTU",
+      "label": "Planned Treatment Interval Units",
+      "type": "Char",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Units associated with TRTRINT. Codelist: (UNIT)."
+    },
+    {
+      "var_name": "DOSPCTDF",
+      "label": "Percent Diff. Nominal vs. Actual Dose",
+      "type": "Num",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Derived variable using standard percent difference formula: (100*(DOSEA-DOSEP)/(DOSEP)). DOSPCTDF is required if both DOSEA and DOSEP are populated."
+    },
+    {
+      "var_name": "DOSEFRQ",
+      "label": "Dose Frequency",
+      "type": "Char",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Usually expressed as the number of repeated administrations of DOSE within a specific time period for multiple dose studies. Codelist: (FREQ)."
+    },
+    {
+      "var_name": "ACYCLE",
+      "label": "Analysis Cycle",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Record-level identifier that reflects cycle; important for oncology studies. One-to-one mapping with ACYCLEC required. When both present, either both populated or both null."
+    },
+    {
+      "var_name": "ACYCLEC",
+      "label": "Analysis Cycle (C)",
+      "type": "Char",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Character representation of ACYCLE. Text characterizing which analysis cycle the record belongs to. One-to-one mapping with ACYCLE required. When both present, either both populated or both null."
+    },
+    {
+      "var_name": "FANLDT",
+      "label": "First Date of Dose for Analyte",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Date of first exposure to treatment associated with PARAM and ANALYTE for a subject in a study where multiple doses have been given. May not match TRTSDT or TRxxSDT values."
+    },
+    {
+      "var_name": "FANLTM",
+      "label": "First Time of Dose for Analyte",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Time of first exposure to treatment associated with PARAM and ANALYTE. If treatment is given over a duration multiple times, reflects the start time of the first dose."
+    },
+    {
+      "var_name": "FANLDTM",
+      "label": "First Datetime of Dose for Analyte",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Date and time of first exposure to treatment associated with PARAM and ANALYTE. If treatment given over a duration multiple times, reflects start date and time of first dose."
+    },
+    {
+      "var_name": "FANLEDT",
+      "label": "First End Date of Dose for Analyte",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "End date of first exposure to treatment associated with PARAM and ANALYTE. May not match TRTEDT or TRxxEDT values."
+    },
+    {
+      "var_name": "FANLETM",
+      "label": "First End Time of Dose for Analyte",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "End time of first exposure to treatment associated with PARAM and ANALYTE. If treatment given over a duration multiple times, reflects end time of first dose."
+    },
+    {
+      "var_name": "FANLEDTM",
+      "label": "First End Datetime of Dose for Analyte",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "End date and time of first exposure to treatment associated with PARAM and ANALYTE. If treatment given over a duration multiple times, reflects end date and time of first dose."
+    },
+    {
+      "var_name": "PCRFTDT",
+      "label": "Reference Date of Dose for Analyte",
+      "type": "Num",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Date of reference exposure to treatment associated with PARAM and ANALYTE. Based on PC.PCRFTDTC and related to the analyzed profile. If treatment over time, typically the start of the dosing duration."
+    },
+    {
+      "var_name": "PCRFTTM",
+      "label": "Reference Time of Dose for Analyte",
+      "type": "Num",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Time of reference exposure to treatment associated with PARAM and ANALYTE. Based on PC.PCRFTDTC. If treatment over time, typically the start of the dosing duration."
+    },
+    {
+      "var_name": "PCRFTDTM",
+      "label": "Reference Datetime of Dose for Analyte",
+      "type": "Num",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Date and time of reference exposure to treatment associated with PARAM and ANALYTE. Based on PC.PCRFTDTC. If treatment over time, typically the start of the dosing duration."
+    },
+    {
+      "var_name": "PCRFEDT",
+      "label": "Reference End Date of Dose for Analyte",
+      "type": "Num",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "End date of reference exposure to treatment. Must be related to PC.PCRFTDTC. If dosing occurs over an interval, this should be populated. If populated, ADOSEDUR and DOSEDURU are required."
+    },
+    {
+      "var_name": "PCRFETM",
+      "label": "Reference End Time of Dose for Analyte",
+      "type": "Num",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "End time of reference exposure to treatment. Must be related to PC.PCRFTDTC. If dosing occurs over an interval, this should be populated. If populated, ADOSEDUR and DOSEDURU are required."
+    },
+    {
+      "var_name": "PCRFEDTM",
+      "label": "Ref. End Datetime of Dose for Analyte",
+      "type": "Num",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "End date and time of reference exposure to treatment. Must be related to PC.PCRFTDTC. If dosing occurs over an interval, this should be populated. If populated, ADOSEDUR and DOSEDURU are required."
+    },
+    {
+      "var_name": "NFRLT",
+      "label": "Nom. Rel. Time from Analyte First Dose",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Planned elapsed time (for sample point or start of sampling interval) from first exposure to treatment associated with PARAM and ANALYTE. For extended duration infusion, use define to document if from start or end."
+    },
+    {
+      "var_name": "AFRLT",
+      "label": "Act. Rel. Time from Analyte First Dose",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Actual elapsed time (for sample point or start of sampling interval) from first exposure to treatment associated with PARAM and ANALYTE. Refers to first dose available for a particular drug; useful in multiple-dosing."
+    },
+    {
+      "var_name": "NEFRLT",
+      "label": "Nom. Rel. End Time from First Dose",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Planned elapsed end time of sampling interval from first exposure to study treatment."
+    },
+    {
+      "var_name": "AEFRLT",
+      "label": "Act. Rel. End Time from First Dose",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Actual elapsed end time of sampling interval from first exposure to study treatment."
+    },
+    {
+      "var_name": "FRLTU",
+      "label": "Rel. Time from First Dose Unit",
+      "type": "Char",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Unit for all elapsed times from first dose. Codelist: (PKUNIT)."
+    },
+    {
+      "var_name": "NRRLT",
+      "label": "Nominal Rel. Time from Ref. Dose",
+      "type": "Num",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Planned elapsed time (for sample point or start of sampling interval) from reference exposure to study treatment."
+    },
+    {
+      "var_name": "ARRLT",
+      "label": "Actual Rel. Time from Ref. Dose",
+      "type": "Num",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Actual elapsed time (for sample point or start of sampling interval) from reference exposure to study treatment."
+    },
+    {
+      "var_name": "MRRLT",
+      "label": "Modified Rel. Time from Ref. Dose",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Could be used to modify ARRLT based on analysis needs (e.g., setting negative values to zero or having a mix of nominal and actual time based on TMPCTDF)."
+    },
+    {
+      "var_name": "NERRLT",
+      "label": "Nominal Rel. End Time from Ref. Dose",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Planned elapsed end time of sampling interval from reference exposure to study treatment."
+    },
+    {
+      "var_name": "AERRLT",
+      "label": "Actual Rel. End Time from Ref. Dose",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Actual elapsed end time of sampling interval from reference exposure to study treatment."
+    },
+    {
+      "var_name": "MERRLT",
+      "label": "Modified Rel. End Time from Ref. Dose",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Could be used to modify AERRLT based on analysis needs (e.g., setting negative values to zero or having a mix of nominal and actual time based on TMPCTDF)."
+    },
+    {
+      "var_name": "RRLTU",
+      "label": "Rel. Time from Ref. Dose Unit",
+      "type": "Char",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Unit for all elapsed times from reference dose. Codelist: (PKUNIT)."
+    },
+    {
+      "var_name": "TMPCTDF",
+      "label": "Percent Diff. Nominal vs. Actual Time",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Percent difference between nominal and actual time. Derived using standard percent difference formula: 100*(NRRLT - ARRLT)/(NRRLT)."
+    },
+    {
+      "var_name": "ADOSEDUR",
+      "label": "Actual Duration of Treatment Dose",
+      "type": "Num",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Total treatment duration in DOSEDURU units, derived from PCRFEDTM-PCRFDTM. Generally associated with infusion dose. Distinct from TRTDURD/TRTDURM/TRTDURY which reference entire study duration."
+    },
+    {
+      "var_name": "NDOSEDUR",
+      "label": "Nominal duration of Treatment Dose",
+      "type": "Num",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Nominal treatment duration as specified in protocol, in DOSEDURU units. Generally associated with infusion dose."
+    },
+    {
+      "var_name": "DOSEDURU",
+      "label": "Duration of Treatment Dose Units",
+      "type": "Char",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Units associated with ADOSEDUR and NDOSEDUR. When ADOSEDUR is present, NDOSEDUR and/or DOSEDURU must also be included. Codelist: (PKUNIT)."
+    },
+    {
+      "var_name": "AVALU",
+      "label": "Analysis Value Unit",
+      "type": "Char",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Unit for AVAL."
+    },
+    {
+      "var_name": "PCSPEC",
+      "label": "Specimen Material Type",
+      "type": "Char",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Defines the type of specimen used for a measurement (e.g., SERUM, PLASMA, URINE). Must be a direct copy of PC.PCSPEC. Codelist: (SPECTYPE)."
+    },
+    {
+      "var_name": "PCSTRESC",
+      "label": "Character Result/Finding in Std Format",
+      "type": "Char",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Character results/findings in standard format. Purpose is to capture which records are BLQ or LLOQ in the AVAL column. Must be a direct copy of PC.PCSTRESC."
+    },
+    {
+      "var_name": "PCSTRESU",
+      "label": "Standard Units",
+      "type": "Char",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Standardized unit associated with AVAL. Units associated with AVAL are needed for clear NCAs. Must be a direct copy of PC.PCSTRESU. Codelist: (UNIT)."
+    },
+    {
+      "var_name": "ALLOQ",
+      "label": "Analysis Lower Limit of Quantitation",
+      "type": "Num",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Indicates lower limit of quantitation for an assay. Use if PC.PCLLOQ does not support analysis needs."
+    },
+    {
+      "var_name": "PCLLOQ",
+      "label": "Lower Limit of Quantitation",
+      "type": "Num",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Indicates lower limit of quantitation for an assay. Must be a direct copy of PC.PCLLOQ."
+    },
+    {
+      "var_name": "VOLUME",
+      "label": "Volume Value",
+      "type": "Num",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "PC.PCSTRESN from a PC volume record. Volume related to AVAL. Conditionally required if sample is interval-based collection, such as urine."
+    },
+    {
+      "var_name": "VOLUMEU",
+      "label": "Volume Value Unit",
+      "type": "Char",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "PC.PCSTRESU from a PC volume record. Conditionally required if VOLUME is present. Codelist: (UNIT)."
+    },
+    {
+      "var_name": "SPWEIGHT",
+      "label": "Specimen Weight Value",
+      "type": "Num",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "PC.PCSTRESN from a PC specimen weight record, adjustment based on LLOQ rules possible. Conditionally required if sample is interval based collection such as a non-fluid matrix (e.g., feces)."
+    },
+    {
+      "var_name": "SPWEIGHU",
+      "label": "Specimen Weight Value Unit",
+      "type": "Char",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "PC.PCSTRESU from a PC weight record. Conditionally required if SPWEIGHT is present. Codelist: (UNIT)."
+    },
+    {
+      "var_name": "PCGRPID",
+      "label": "Group ID",
+      "type": "Char",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "Used to tie together a block of related records. Must be a direct copy of PC.PCGRPID."
+    },
+    {
+      "var_name": "PCSEQ",
+      "label": "Sequence Number",
+      "type": "Num",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Table 4.2.1 - New Standard Non-compartmental Analysis Variables",
+      "guidance": "PC.PCSEQ associated with AVAL."
+    },
+    {
+      "var_name": "DOSEA",
+      "label": "Actual Treatment Dose",
+      "type": "Num",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Table 4.2.2 - Standard BDS Variables with Stronger Core for NCA",
+      "guidance": "Represents the actual treatment dosage associated with the record. This is the actual numeric amount of the dose used for NCA analysis and may differ from EX.EXDOSE. Core strengthened from BDS Perm to NCA Req."
+    },
+    {
+      "var_name": "DOSEU",
+      "label": "Treatment Dose Units",
+      "type": "Char",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Table 4.2.2 - Standard BDS Variables with Stronger Core for NCA",
+      "guidance": "Units for DOSEP and DOSEA. Permissible to use suffixes such as 'P' and 'A' to record different units for DOSEP and DOSEA, with labels modified accordingly. Codelist: (UNIT). Core strengthened from BDS Perm to NCA Req."
+    },
+    {
+      "var_name": "AVISIT",
+      "label": "Analysis Visit",
+      "type": "Char",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Table 4.2.2 - Standard BDS Variables with Stronger Core for NCA",
+      "guidance": "Analysis visit description; required if analysis is done by nominal, assigned, or analysis visit. AVISIT is derived and does not have to map to SDTM VISIT. Should be unique for a given analysis visit window. Core strengthened from BDS Cond to NCA Req."
+    },
+    {
+      "var_name": "STUDYID",
+      "label": "Study Identifier",
+      "type": "Char",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM identifier variable from ADSL/BDS."
+    },
+    {
+      "var_name": "USUBJID",
+      "label": "Unique Subject Identifier",
+      "type": "Char",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM identifier variable from ADSL/BDS."
+    },
+    {
+      "var_name": "SUBJID",
+      "label": "Subject Identifier for the Study",
+      "type": "Char",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM identifier variable from ADSL/BDS."
+    },
+    {
+      "var_name": "SITEID",
+      "label": "Study Site Identifier",
+      "type": "Char",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM identifier variable from ADSL/BDS."
+    },
+    {
+      "var_name": "AGE",
+      "label": "Age",
+      "type": "Num",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM variable. AAGE may be used as alternative."
+    },
+    {
+      "var_name": "AGEU",
+      "label": "Age Units",
+      "type": "Char",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM variable, units for AGE/AAGE."
+    },
+    {
+      "var_name": "SEX",
+      "label": "Sex",
+      "type": "Char",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM variable from DM."
+    },
+    {
+      "var_name": "RACE",
+      "label": "Race",
+      "type": "Char",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM variable from DM."
+    },
+    {
+      "var_name": "TRTP",
+      "label": "Planned Treatment",
+      "type": "Char",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS treatment variable."
+    },
+    {
+      "var_name": "TRTPN",
+      "label": "Planned Treatment (N)",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS treatment variable, numeric version of TRTP."
+    },
+    {
+      "var_name": "TRTA",
+      "label": "Actual Treatment",
+      "type": "Char",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS treatment variable."
+    },
+    {
+      "var_name": "TRTAN",
+      "label": "Actual Treatment (N)",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS treatment variable, numeric version of TRTA."
+    },
+    {
+      "var_name": "DOSEP",
+      "label": "Planned Treatment Dose",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS dose variable. See note: DOSEA, DOSEU, and AVISIT have stronger core for NCA."
+    },
+    {
+      "var_name": "APERIOD",
+      "label": "Period",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS period variable."
+    },
+    {
+      "var_name": "APERIODC",
+      "label": "Period (C)",
+      "type": "Char",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS period variable, character representation of APERIOD."
+    },
+    {
+      "var_name": "AVISITN",
+      "label": "Analysis Visit (N)",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS variable, numeric representation of AVISIT."
+    },
+    {
+      "var_name": "ADT",
+      "label": "Analysis Date",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS date variable."
+    },
+    {
+      "var_name": "ATM",
+      "label": "Analysis Time",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS time variable."
+    },
+    {
+      "var_name": "ADTM",
+      "label": "Analysis Datetime",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS datetime variable."
+    },
+    {
+      "var_name": "ASTDT",
+      "label": "Analysis Start Date",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS start date variable."
+    },
+    {
+      "var_name": "ASTTM",
+      "label": "Analysis Start Time",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS start time variable."
+    },
+    {
+      "var_name": "ASTDTM",
+      "label": "Analysis Start Datetime",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS start datetime variable."
+    },
+    {
+      "var_name": "AENDT",
+      "label": "Analysis End Date",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS end date variable."
+    },
+    {
+      "var_name": "AENTM",
+      "label": "Analysis End Time",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS end time variable."
+    },
+    {
+      "var_name": "AENDTM",
+      "label": "Analysis End Datetime",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS end datetime variable."
+    },
+    {
+      "var_name": "ATPT",
+      "label": "Analysis Timepoint",
+      "type": "Char",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS timepoint variable. Listed as a key variable in define.xml metadata."
+    },
+    {
+      "var_name": "ATPTN",
+      "label": "Analysis Timepoint (N)",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS variable, numeric representation of ATPT."
+    },
+    {
+      "var_name": "PARAM",
+      "label": "Parameter",
+      "type": "Char",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS parameter variable. Should completely describe the value found in AVAL including units and specimen type if applicable."
+    },
+    {
+      "var_name": "PARAMCD",
+      "label": "Parameter Code",
+      "type": "Char",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS parameter code variable. Listed as a key variable in define.xml metadata."
+    },
+    {
+      "var_name": "PARAMN",
+      "label": "Parameter (N)",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS variable, numeric representation of PARAM."
+    },
+    {
+      "var_name": "AVAL",
+      "label": "Analysis Value",
+      "type": "Num",
+      "core": "Req",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS analysis value. Typically sourced from PC.PCSTRESN."
+    },
+    {
+      "var_name": "DTYP",
+      "label": "Derivation Type",
+      "type": "Char",
+      "core": "Cond",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Standard BDS/ADSL variables commonly used in NCA",
+      "guidance": "Standard ADaM BDS derivation type variable."
+    }
+  ],
+  "non_standard_baseline_variables": [
+    {
+      "var_name": "BMIBL",
+      "label": "Baseline BMI",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Baseline characteristics commonly needed in NCA",
+      "guidance": "Body mass index at baseline, associated with the time of reference dosing. NSV."
+    },
+    {
+      "var_name": "BMIBLU",
+      "label": "Baseline BMI Units",
+      "type": "Char",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Baseline characteristics commonly needed in NCA",
+      "guidance": "Units for BMIBL. Units stored in separate variable due to needs of NCA tools. NSV."
+    },
+    {
+      "var_name": "HTBL",
+      "label": "Baseline Height",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Baseline characteristics commonly needed in NCA",
+      "guidance": "Height at baseline, associated with the time of reference dosing. NSV."
+    },
+    {
+      "var_name": "HTBLU",
+      "label": "Baseline Height Units",
+      "type": "Char",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Baseline characteristics commonly needed in NCA",
+      "guidance": "Units for HTBL. NSV."
+    },
+    {
+      "var_name": "WTBL",
+      "label": "Baseline Weight",
+      "type": "Num",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Baseline characteristics commonly needed in NCA",
+      "guidance": "Weight at baseline, associated with the time of reference dosing. NSV."
+    },
+    {
+      "var_name": "WTBLU",
+      "label": "Baseline Weight Units",
+      "type": "Char",
+      "core": "Perm",
+      "scope": "ADNCA",
+      "section": "Section 4.2 - Baseline characteristics commonly needed in NCA",
+      "guidance": "Units for WTBL. NSV."
+    }
+  ],
+  "conformance_rules": [
+    {
+      "rule_id": "CR-01",
+      "description": "ADNCA follows the ADaM BDS (Basic Data Structure).",
+      "section": "Section 4"
+    },
+    {
+      "rule_id": "CR-02",
+      "description": "Dataset structure: One record per subject per parameter per analysis visit per analysis timepoint.",
+      "section": "Table 4.1.1"
+    },
+    {
+      "rule_id": "CR-03",
+      "description": "Class is BASIC DATA STRUCTURE, SubClass is NON-COMPARTMENTAL ANALYSIS.",
+      "section": "Table 4.1 / Table 4.1.1"
+    },
+    {
+      "rule_id": "CR-04",
+      "description": "NCAXFN can only be included if NCAXFL is also included.",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-05",
+      "description": "PKSUMXFN can only be included if PKSUMXFL is also included.",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-06",
+      "description": "METABFL is required if parent drug and metabolites are present in the dataset.",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-07",
+      "description": "There must be a one-to-one mapping between COHORT and COHORTN. When both present, on a given record, either both must be populated or both must be null.",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-08",
+      "description": "DOSPCTDF is required if both DOSEA and DOSEP are populated. Formula: 100*(DOSEA-DOSEP)/(DOSEP).",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-09",
+      "description": "There must be a one-to-one mapping between ACYCLE and ACYCLEC. When both present, on a given record, either both must be populated or both must be null.",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-10",
+      "description": "PCRFEDT, PCRFETM, PCRFEDTM: If dosing occurs over an interval, these should be populated. If populated, ADOSEDUR and DOSEDURU are required.",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-11",
+      "description": "TMPCTDF is derived using formula: 100*(NRRLT - ARRLT)/(NRRLT).",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-12",
+      "description": "ADOSEDUR is derived from PCRFEDTM - PCRFDTM.",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-13",
+      "description": "When ADOSEDUR is present, NDOSEDUR and/or DOSEDURU must also be included in the dataset.",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-14",
+      "description": "PCSPEC must be a direct copy of PC.PCSPEC.",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-15",
+      "description": "PCSTRESC must be a direct copy of PC.PCSTRESC.",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-16",
+      "description": "PCSTRESU must be a direct copy of PC.PCSTRESU.",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-17",
+      "description": "PCLLOQ must be a direct copy of PC.PCLLOQ.",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-18",
+      "description": "PCGRPID must be a direct copy of PC.PCGRPID.",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-19",
+      "description": "VOLUME is conditionally required if sample is interval-based collection (e.g., urine).",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-20",
+      "description": "VOLUMEU is conditionally required if VOLUME is present.",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-21",
+      "description": "SPWEIGHT is conditionally required if sample is interval-based collection from a non-fluid matrix (e.g., feces).",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-22",
+      "description": "SPWEIGHU is conditionally required if SPWEIGHT is present.",
+      "section": "Table 4.2.1"
+    },
+    {
+      "rule_id": "CR-23",
+      "description": "DOSEA, DOSEU, and AVISIT have stronger core (Req) for NCA than in general BDS use.",
+      "section": "Table 4.2.2"
+    },
+    {
+      "rule_id": "CR-24",
+      "description": "Select ADSL Permissible variables are Required in ADNCA because they are scientifically necessary to support PK analyses.",
+      "section": "Section 3 - Points to Consider"
+    },
+    {
+      "rule_id": "CR-25",
+      "description": "PARAM should completely describe the value in AVAL, including units and specimen type (if applicable).",
+      "section": "Section 5 - Example 2: Urine and Plasma"
+    },
+    {
+      "rule_id": "CR-26",
+      "description": "When a record is duplicated for analysis purposes (e.g., 24h post-dose doubles as next-period pre-dose), DTYPE must be populated (e.g., 'COPY') and PCSEQ is repeated.",
+      "section": "Section 5 - Duplicated Records Example"
+    },
+    {
+      "rule_id": "CR-27",
+      "description": "Baseline units for NCA characteristics (BMIBL, HTBL, WTBL) are stored in separate variables (BMIBLU, HTBLU, WTBLU) rather than in the label, due to NCA tool requirements.",
+      "section": "Section 4.2"
+    },
+    {
+      "rule_id": "CR-28",
+      "description": "Usage of start and end datetimes in nominal or actual relative time calculation needs to be described in the define.",
+      "section": "Section 4.2"
+    },
+    {
+      "rule_id": "CR-29",
+      "description": "AVISIT should be unique for a given analysis visit window. Values and derivation rules may differ for different parameters within the same dataset.",
+      "section": "Table 4.2.2"
+    },
+    {
+      "rule_id": "CR-30",
+      "description": "ADNCA datasets should be 'analysis-ready' containing all variables needed for performing NCA.",
+      "section": "Section 3 - Points to Consider"
+    },
+    {
+      "rule_id": "CR-31",
+      "description": "Excluded records should still be included in the dataset for traceability and consistent reporting, with NCAXFL set to 'Y' and appropriate NCAwXRS reason populated.",
+      "section": "Section 5 - Exclusion Flags Example 1"
+    },
+    {
+      "rule_id": "CR-32",
+      "description": "For extended duration infusions, use the define to document whether NFRLT is measured from start or end of infusion.",
+      "section": "Table 4.2.1"
+    }
+  ]
+}

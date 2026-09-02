@@ -21,6 +21,13 @@ Outcome:
   Output_Variables:
   - "ARM"
   - "DM.ARM"
+Source:
+  Class: "SUBJECT LEVEL ANALYSIS DATASET"
+  Variable_or_Item: "ARM"
+  Natural_Language_Rule_Failure_Criteria: "The value of ADSL.USUBJID is equal to the\
+    \ value of DM.USUBJID and ADSL.ARM is not equal to DM.ARM"
+  Rule_Failure_Criteria: "ADSL.ARM is not equal to DM.ARM"
+  Condition_Failure: "The value of ADSL.USUBJID is equal to the value of DM.USUBJID"
 Standards:
 - Organization: "CDISC"
   Standards:

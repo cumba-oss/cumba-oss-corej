@@ -1,8 +1,8 @@
 package net.cumba.cdisc.core.metadata;
 
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.column;
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.lib;
-import static net.cumba.cdisc.core.metadata.TestMetadataFixtures.table;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.column;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.lib;
+import static net.cumba.datatable.testkit.TestMetadataFixtures.table;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -98,8 +98,6 @@ class MetadataLibraryProviderSubclassGovernanceTest
 
 
     @SafeVarargs
-
-    @SuppressWarnings("varargs") // passes its own varargs array to List.of
     private static AdamProduct product(String name, Map<String, Object>... structures)
     {
         Map<String, Object> product = new LinkedHashMap<>();

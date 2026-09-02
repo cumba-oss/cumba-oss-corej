@@ -14,21 +14,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR59",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR59"
           ]
         }
       ],
@@ -61,35 +48,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR131",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            },
-            {
-              "Name": "ADaMIG",
-              "Version": "1.2",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR131",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR131"
           ]
         }
       ],
@@ -140,21 +100,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "ADaMIG",
-              "Version": "1.0",
-              "References": [
-                {
-                  "Origin": "ADaM Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CR148",
-                    "Version": "1"
-                  },
-                  "Version": "5.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CR148"
           ]
         }
       ],

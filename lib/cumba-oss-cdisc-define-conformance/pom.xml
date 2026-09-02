@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>net.cumba</groupId>
+        <artifactId>cumba-oss-corej-parent</artifactId>
+        <version>${revision}</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>cumba-oss-cdisc-define-conformance</artifactId>
+
+    <name>Cumba OSS coreJ :: Define-XML Conformance</name>
+    <url>https://github.com/cumba-oss/cumba-oss-corej</url>
+    <packaging>jar</packaging>
+
+    <inceptionYear>2026</inceptionYear>
+    <description>
+        Define-XML conformance validator implementing the CDISC Define-XML
+        v2.1 Conformance Rules and the PMDA Validation Rules v6.0 Define-XML
+        sheet against the corej-cdisc-define object model. Java only — no
+        Python parity.
+
+        LIBRARY ONLY: this module ships no CLI. The user-facing entry point is
+        `CdiscValidate -vx` in clients/corej-cdisc-cli. A minimal standalone
+        picocli CLI (DefineConformanceCli) lived here from the module's
+        creation until 2026-09-01, when it was deleted
+        (PLAN-rules-module-consolidation D14): it never bound a LibraryProvider,
+        so every `Requires: library` rule SKIPped in it, making it strictly
+        weaker than the -vx path it duplicated. Deleting it also removed
+        picocli from a lib/ module, matching corej-cdisc-core, which has never
+        shipped a CLI.
+    </description>
+
+    <properties>
+        <mockito.agent>-javaagent:${org.mockito:mockito-core:jar}</mockito.agent>
+        <!--
+            0.70, against a project default of 0.80.
+
+            ⚠⚠ THE HONEST NUMBERS, all from CLEAN runs (a non-clean run's jacoco.exec is
+            appended to, not replaced, so it merges coverage from earlier runs whose tests no
+            longer exist here — that is how an earlier reading of this value came out flattering
+            and wrong):
+
+              before PLAN-rules-module-consolidation : 0.946  (1678 covered / 1774 lines)
+              after                                  : 0.71
+
+            That is a 24-point drop, and it is not a measurement artefact. Two causes, both
+            structural:
+
+            1. D12 moved this module's 22 corpus-driven test classes to corej-cdisc-rules,
+               because they had to follow the corpus (leaving them needed a cross-module path
+               escape; a dependency the other way is a reactor cycle). They carried most of the
+               coverage of eval/, tree/, checks/, ct/ and library/ — the evaluation machinery.
+            2. Phase 6 added ~200 lines of new main code (the package format, its loader and
+               rule selection). DefineRulePackageTest and DefineConformanceSelectionTest cover
+               the behaviour that matters, but not every line.
+
+            ⭐ THE COVERAGE STILL EXISTS — it is measured somewhere else. Those 22 classes still
+            exercise this module's code, from corej-cdisc-rules. JaCoCo's per-module check cannot
+            see across a module boundary, which is why this module was added to coverage/main in
+            the same change: the aggregate is now the instrument that can see it, and the number
+            to look at.
+
+            ⚑ 0.65, not 0.70, by owner decision 2026-09-01. A one-point margin over the
+            measured 0.71 would have red the build on a single uncovered line and cost someone a
+            cycle for no safety gained — the per-module check is no longer the instrument that
+            protects this code, so tightening it here buys nuisance rather than confidence.
+
+            ⛔ So do NOT read 0.65 as "this module is 65% tested". Read it as "0.71 is what this
+            module's OWN suite reaches, and the per-module check is no longer the right
+            instrument for it". If the aggregate ever stops covering it, this number becomes a
+            lie and the tests need to come back.
+        -->
+        <jacoco.line.coverage>0.65</jacoco.line.coverage>
+
+        <!--
+            65, against a project default of 80. Owner decision 2026-09-02: the pitest
+            coverage gate was failing here.
+
+            SAME CAUSE AS THE JaCoCo NUMBER ABOVE, so read that comment first. D12 moved this
+            module's 22 corpus-driven test classes to corej-cdisc-rules because they had to
+            follow the corpus, and pitest — like JaCoCo's per-module check — cannot see across
+            a module boundary. Those tests still exercise this module's code; they are simply
+            measured somewhere pitest is not looking.
+
+            ⛔ So 65 does NOT mean "35% of this module is unreachable by tests". It means the
+            per-module mutation run is no longer the instrument that sees this code, and
+            holding it to a project-wide default reddens CI for a structural reason rather
+            than a quality one.
+
+            ⚠ Mutation target is deliberately NOT changed — it stays at the parent's 55.
+            Only the line-coverage half of the gate is affected by the move.
+
+            ⚠ This is inert unless the gate is armed: the pitest-fail-on-error profile
+            (-Dpitest.failOnError=true) is what promotes .target to the effective
+            coverageThreshold, and it must be combined with -P Pitest to run at all.
+            ⛔ Never pass -Dpitest.coverage.threshold on the command line — a CLI -D clobbers
+            every module's override at once.
+        -->
+        <pitest.coverage.target>65</pitest.coverage.target>
+    </properties>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-cdisc-define</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+
+        <!-- JSpecify nullability annotations (NullAway). -->
+        <dependency>
+            <groupId>org.jspecify</groupId>
+            <artifactId>jspecify</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-params</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+</project>

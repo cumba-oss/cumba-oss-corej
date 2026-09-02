@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic ordering fixture (plan §5): three deliberate sibling swaps, everything else in
+     canonical order. Expected defects (offender = the child appearing after a higher-ranked
+     sibling):
+       1. MetaDataVersion: ItemGroupDef written before def:ValueListDef -> offender ValueListDef
+       2. ItemDef IT.DM.STUDYID: CodeListRef written before Description -> offender Description
+       3. CodeListItem under CL.X: Alias written before Decode          -> offender Decode -->
+<ODM xmlns="http://www.cdisc.org/ns/odm/v1.3"
+     xmlns:def="http://www.cdisc.org/ns/def/v2.1"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     FileOID="ORD.V21" FileType="Snapshot" ODMVersion="1.3.2" CreationDateTime="2026-07-03T00:00:00"
+     def:Context="Submission">
+  <Study OID="ST.ORD">
+    <GlobalVariables>
+      <StudyName>Ordering Study</StudyName>
+      <StudyDescription>Synthetic element-ordering fixture</StudyDescription>
+      <ProtocolName>ORD-01</ProtocolName>
+    </GlobalVariables>
+    <MetaDataVersion OID="MDV.1" Name="Ordering MDV" def:DefineVersion="2.1.0">
+      <def:Standards>
+        <def:Standard OID="STD.1" Name="SDTMIG" Type="IG" Version="3.4" Status="Final"/>
+      </def:Standards>
+      <ItemGroupDef OID="IG.DM" Name="DM" Repeating="No" IsReferenceData="No" SASDatasetName="DM"
+                    Purpose="Tabulation" def:Structure="One record per subject">
+        <Description>
+          <TranslatedText xml:lang="en">Demographics</TranslatedText>
+        </Description>
+        <ItemRef ItemOID="IT.DM.STUDYID" Mandatory="Yes"/>
+      </ItemGroupDef>
+      <def:ValueListDef OID="VL.LB.LBORRES">
+        <ItemRef ItemOID="IT.LB.LBORRES.X" Mandatory="No"/>
+      </def:ValueListDef>
+      <ItemDef OID="IT.DM.STUDYID" Name="STUDYID" DataType="text" Length="12">
+        <CodeListRef CodeListOID="CL.X"/>
+        <Description>
+          <TranslatedText xml:lang="en">Study Identifier</TranslatedText>
+        </Description>
+        <def:Origin Type="Assigned"/>
+      </ItemDef>
+      <CodeList OID="CL.X" Name="X" DataType="text">
+        <CodeListItem CodedValue="A">
+          <Alias Context="nci:ExtCodeID" Name="C1"/>
+          <Decode>
+            <TranslatedText xml:lang="en">Alpha</TranslatedText>
+          </Decode>
+        </CodeListItem>
+      </CodeList>
+      <def:leaf ID="LF.DM" xlink:href="dm.xpt">
+        <def:title>dm.xpt</def:title>
+      </def:leaf>
+    </MetaDataVersion>
+  </Study>
+</ODM>

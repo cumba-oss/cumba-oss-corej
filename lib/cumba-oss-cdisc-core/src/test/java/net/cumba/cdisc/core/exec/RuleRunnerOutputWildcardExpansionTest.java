@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.Map;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.values.IDataValue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

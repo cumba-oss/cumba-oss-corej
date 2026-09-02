@@ -212,6 +212,14 @@ public class RulePackageLoader
         // and after retainNativeExpr is still pending, so the AUTHORED Check is what gets walked —
         // the same surface validateOperationReferences judges.
         validateUnresolvedOperationWildcards(pkg);
+        // D13 item 3 — a dictionary operation naming no external_dictionary_type is unanswerable
+        // by ANY install, so it is an authoring defect on the loadError channel, exactly like the
+        // dangling $ above. Deliberately BEFORE injectInlineOperationGates: the injector only
+        // gates a TYPED inline dictionary call, so a typeless one would otherwise evaluate with
+        // no gate and no provider and silently false-pass (the closed hole this guard exists
+        // for); running first also means the walk judges the authored Check only, though the
+        // guard's dictionary_available exclusion would make it injection-safe either way.
+        validateDictionaryOperationTypes(pkg);
         normalizeJoinTypes(pkg);
         injectInlineOperationGates(pkg);
         retainNativeExpr(pkg);
@@ -413,7 +421,7 @@ public class RulePackageLoader
      * compatibility with the findings the shipped corpus currently produces, not by parity. Whether
      * {@code inner} is the right default at all is an open behavioural question (triage finding S2,
      * {@code plans/PLAN-expired-justifications-triage.md}, and
-     * {@code plans/PLAN-outer-join-type.md}).
+     * {@code plans/done/PLAN-outer-join-type.md}).
      * </p>
      *
      * <p>
@@ -1450,8 +1458,8 @@ public class RulePackageLoader
      * canonicalize its metadata operands (Epic B4 — uniformly, for every rule, since phase 4 of
      * {@code PLAN-leaf-scope-domain-inference.md}), install the expression when the native backend
      * supports it, flag fold-equivalent broadcast verdicts (P3a) and cache the inferred
-     * {@code Rule.getEvaluationDomain()} evaluation domain the runner dispatches on. No-op for a
-     * rule that already carries a {@code checkExpr}, has a {@code loadError} or has no Check.
+     * {@linkplain Rule#getEvaluationDomain() evaluation domain} the runner dispatches on. No-op for
+     * a rule that already carries a {@code checkExpr}, has a {@code loadError} or has no Check.
      */
     public static void installNativeExpr(@Nullable Rule rule)
     {
@@ -1492,7 +1500,7 @@ public class RulePackageLoader
         // exactly as the shipped rules/ do. A no-op for production rules/ (already inlined).
         inlineSplitByOps(rule, levels);
         // ⚠ The two seams above stayed no-ops for production rules/ across
-        // plans/PLAN-operations-no-inline.md (D31, 2026-08-08), which stopped OperationInliner
+        // plans/done/PLAN-operations-no-inline.md (D31, 2026-08-08), which stopped OperationInliner
         // inlining OPERATIONS but deliberately kept it lowering these two RETIRED operators —
         // neither has an OperationType, so a rule still declaring one fails to load once the
         // corpus renders it in Form B ("unknown operation function"). Measured with the corpus
@@ -1684,8 +1692,8 @@ public class RulePackageLoader
     /**
      * Installs an <b>engine-internal</b> {@code Precondition} on an already-loaded rule, leaving it
      * in exactly the state {@code finishLoad} would have produced: the tree on
-     * {@code Rule.getPrecondition()} and, when it is a fold-equivalent broadcast verdict, its
-     * native form on {@code Rule.getPreconditionExpr()}.
+     * {@link Rule#getPrecondition()} and, when it is a fold-equivalent broadcast verdict, its
+     * native form on {@link Rule#getPreconditionExpr()}.
      *
      * <p>
      * ⭐ <b>This is the supported way to put a term on the {@code Precondition} tier, and since gate
@@ -2124,7 +2132,7 @@ public class RulePackageLoader
     /**
      * A broadcast-safe <b>dataset-fact</b> operand — everything the legacy
      * {@code CheckConditionOptimizer.evaluateDatasetLeaf} folds at dataset level (R-P2,
-     * {@code plans/PLAN-native-engine-residuals.md}). Single source:
+     * {@code plans/done/PLAN-native-engine-residuals.md}). Single source:
      * {@link net.cumba.cdisc.core.expr.eval.BroadcastFold#isDatasetFactOperand}, shared with the
      * runtime tri-state fold so the load-time flag and the fold can never drift.
      */
@@ -3340,6 +3348,178 @@ public class RulePackageLoader
         }
     }
 
+    // ---------------------------------------------------------------------
+    // PLAN-dictionary-seeder Phase 6a (D13 item 3) — a dictionary operation naming no type
+    // ---------------------------------------------------------------------
+
+    /**
+     * The load-finding fragment {@link #validateDictionaryOperationTypes(Rule)} emits; tests and
+     * any corpus ratchet grep for it.
+     */
+    private static final String TYPELESS_DICTIONARY_MARKER = "declares no external_dictionary_type";
+
+    /**
+     * Tags a rule that carries a dictionary-dependent operation
+     * ({@code valid_external_dictionary_*} / {@code dictionary_has_decode}) with a null or blank
+     * {@code external_dictionary_type}.
+     *
+     * <p>
+     * <b>Why load, why error</b> (owner-ruled, D13 item 3). Such an operation can never be
+     * satisfied by <em>any</em> install — there is no type to install — so it is an authoring
+     * defect, not a runtime input-availability condition. Reporting it as SKIPPED with "no external
+     * dictionary loaded" sends the operator to install something that cannot help;
+     * {@code loadError} sends the author to the rule, through the same {@code RuleRunner.execute}
+     * ERROR sentinel as {@link #validateOperationReferences(Rule)}'s dangling {@code $}.
+     * </p>
+     *
+     * <p>
+     * ⚠ <b>Both operation surfaces are walked, and the inline walk closes a real hole:</b>
+     * {@code gateTermsForCall} injects the {@code dictionary_available(type)} precondition gate for
+     * an inline dictionary operation <em>only when the type is non-null</em>, and the eager SKIP
+     * arm in {@code RuleRunner} only sees <em>declared</em> operations — so a typeless
+     * <b>inline</b> dictionary operation used to get no gate at all and evaluated with no provider:
+     * every executor arm answered {@code null}, the null broadcast, and the rule false-passed
+     * silently. With this guard it never loads cleanly in the first place.
+     * </p>
+     *
+     * <p>
+     * ⚠ <b>{@code dictionary_available} is deliberately excluded</b>, mirroring the eager SKIP arm:
+     * that operation <em>is</em> the availability gate, its executor arm is total
+     * ({@code isAvailable(null)} is plain {@code false}, never a silent null), and the gates this
+     * loader itself injects are calls of it — so it can neither false-pass nor be "unanswerable".
+     * </p>
+     *
+     * <p>
+     * The shipped corpus is untouched: all 98 {@code rules-src} dictionary rules (417 generated
+     * package operations) name a type. This guard protects site/custom rules, and the
+     * library-sourced path is wired through {@code LibraryRuleMapper} beside
+     * {@link #validateOperationReferences(RulePackage)}.
+     * </p>
+     *
+     * @param pkg
+     *            the package to judge in place, may be {@code null}
+     */
+    static void validateDictionaryOperationTypes(@Nullable RulePackage pkg)
+    {
+        if (pkg == null || pkg.getRules() == null)
+        {
+            return;
+        }
+        for (Rule rule : pkg.getRules().values())
+        {
+            validateDictionaryOperationTypes(rule);
+        }
+    }
+
+
+    /**
+     * Per-rule variant of {@link #validateDictionaryOperationTypes(RulePackage)}. Appends to a
+     * pre-existing {@code loadError} rather than clobbering it, so an earlier cause keeps its first
+     * diagnosis.
+     *
+     * @param rule
+     *            the rule to judge in place, may be {@code null}
+     */
+    static void validateDictionaryOperationTypes(@Nullable Rule rule)
+    {
+        if (rule == null)
+        {
+            return;
+        }
+        List<String> findings = new ArrayList<>();
+        List<Operation> ops = rule.getOperations();
+        if (ops != null)
+        {
+            for (Operation op : ops)
+            {
+                String id = op == null || op.getId() == null || op.getId().isEmpty() ? "<unnamed>"
+                        : op.getId();
+                collectTypelessDictionaryOperation(op, "operation " + id, findings);
+            }
+        }
+        // ⚑ Every declared level, plus the Precondition — the same surfaces the wildcard guard
+        // walks, for the same reason: an inline operation never reaches rule.getOperations().
+        for (CheckCondition level : rule.checkConditions())
+        {
+            collectInlineTypelessDictionaryOps(level, findings);
+        }
+        collectInlineTypelessDictionaryOps(rule.getPrecondition(), findings);
+        if (findings.isEmpty())
+        {
+            return;
+        }
+        String message = "[" + ruleId(rule) + "] " + String.join(", ", findings)
+                + ": no installed dictionary can ever satisfy an operation that names no type, so"
+                + " the rule is defective — fix the rule by declaring external_dictionary_type;"
+                + " installing dictionaries cannot help";
+        rule.setLoadError(
+                rule.getLoadError() == null ? message : rule.getLoadError() + "; " + message);
+    }
+
+
+    /**
+     * Appends a finding when {@code op} is a dictionary-dependent operation (other than the
+     * {@code dictionary_available} gate) whose {@code external_dictionary_type} is null or blank.
+     */
+    private static void collectTypelessDictionaryOperation(@Nullable Operation op, String where,
+            List<String> findings)
+    {
+        if (op == null)
+        {
+            return;
+        }
+        net.cumba.cdisc.core.model.OperationType type = op.getOperationType();
+        if (type == net.cumba.cdisc.core.model.OperationType.DICTIONARY_AVAILABLE
+                || !net.cumba.cdisc.core.exec.OperationExecutor.isDictionaryDependent(type))
+        {
+            return;
+        }
+        String dictionaryType = op.getExternalDictionaryType();
+        if (dictionaryType == null || dictionaryType.isBlank())
+        {
+            findings.add(where + " (" + type + ") " + TYPELESS_DICTIONARY_MARKER);
+        }
+    }
+
+
+    /** Walks a Check/Precondition tree for operations authored inline in a native expression. */
+    private static void collectInlineTypelessDictionaryOps(@Nullable CheckCondition condition,
+            List<String> findings)
+    {
+        if (condition == null)
+        {
+            return;
+        }
+        switch (condition)
+        {
+        case CheckConditionAll all -> all.getConditions()
+                .forEach(c -> collectInlineTypelessDictionaryOps(c, findings));
+        case CheckConditionAny any -> any.getConditions()
+                .forEach(c -> collectInlineTypelessDictionaryOps(c, findings));
+        case CheckConditionNot not -> collectInlineTypelessDictionaryOps(not.getCondition(),
+                findings);
+        case net.cumba.cdisc.core.model.CheckConditionExpression expression -> collectInlineTypelessDictionaryOps(
+                expression.expr(), findings);
+        case CheckConditionLeaf _,CheckConditionConstant _ ->
+        {
+            // A legacy leaf carries no inline operation.
+        }
+        }
+    }
+
+
+    private static void collectInlineTypelessDictionaryOps(net.cumba.cdisc.core.expr.ast.Expr expr,
+            List<String> findings)
+    {
+        if (expr instanceof net.cumba.cdisc.core.expr.ast.Expr.Call call
+                && net.cumba.cdisc.core.expr.eval.ExprCompiler.isInlineOperation(call))
+        {
+            collectTypelessDictionaryOperation(inlineOperationOrNull(call),
+                    "inline operation " + call.name() + "(…)", findings);
+        }
+        childrenOf(expr).forEach(child -> collectInlineTypelessDictionaryOps(child, findings));
+    }
+
 
     /**
      * Collects every {@code $}-prefixed operand reference in a Check tree, covering both authored
@@ -4115,10 +4295,11 @@ public class RulePackageLoader
      * Guard-residual disposition ({@code PLAN-native-runtime-guard-residual}, user decision
      * 2026-06-12, option c), re-grounded by phase 6 of {@code PLAN-leaf-scope-domain-inference.md}:
      * a {@code library_dataset_*} / {@code define_dataset_*} operand is resolvable only through the
-     * native {@code ds_*} accessor it canonicalises to ({@link MetadataOperandMapping}); the
-     * phase-2a2 injection that once served the bare name on one rule type is gone. An operand no
-     * accessor serves can never mean what its author intended — tag it with a load error, mirroring
-     * the P1b non-executable-operator precedent; the {@code ds_*} form carries the proper
+     * native {@code ds_*} accessor it canonicalises to
+     * ({@link net.cumba.cdisc.core.expr.MetadataOperandMapping}); the phase-2a2 injection that once
+     * served the bare name on one rule type is gone. An operand no accessor serves can never mean
+     * what its author intended — tag it with a load error, mirroring the P1b
+     * non-executable-operator precedent; the {@code ds_*} form carries the proper
      * SKIPPED-when-provider-absent contract on every rule. Checked on the NAME side of Check and
      * Precondition leaves; textual VALUE sides follow the universal var-or-literal resolution
      * contract and stay valid.
@@ -5023,10 +5204,10 @@ public class RulePackageLoader
 
     /**
      * Operand NAMES with no resolution on either engine (R-P4,
-     * {@code plans/PLAN-native-engine-residuals.md}): {@code dataset_metadata} is registered as a
-     * builtin token but is not a dataset-fold name, not variable-level, and has no provider mapping
-     * — a leaf naming it has never fired anywhere. Tagged at load like the non-executable operators
-     * above.
+     * {@code plans/done/PLAN-native-engine-residuals.md}): {@code dataset_metadata} is registered
+     * as a builtin token but is not a dataset-fold name, not variable-level, and has no provider
+     * mapping — a leaf naming it has never fired anywhere. Tagged at load like the non-executable
+     * operators above.
      */
     private static final java.util.Set<String> NON_EXECUTABLE_OPERANDS = java.util.Set
             .of("dataset_metadata");

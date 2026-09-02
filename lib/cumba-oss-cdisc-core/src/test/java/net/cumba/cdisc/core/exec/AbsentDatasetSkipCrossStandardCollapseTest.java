@@ -11,10 +11,11 @@ import net.cumba.cdisc.core.RulePackageLoader;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Wave 34, lane C — {@code plans/PLAN-fix218-behavioural-verification.md}. The
+ * Wave 34, lane C — {@code plans/done/PLAN-fix218-behavioural-verification.md}. The
  * <b>characterisation</b> of what {@code Fix #218}'s cross-standard arm actually does to findings,
  * established by <em>running</em> the corpus rather than by reading the rewrite.
  *

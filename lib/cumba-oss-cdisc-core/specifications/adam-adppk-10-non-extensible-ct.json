@@ -1,0 +1,30 @@
+[
+  {
+    "codelist": "FRM",
+    "description": "Pharmaceutical Dosage Form",
+    "variables": [
+      "FORM"
+    ]
+  },
+  {
+    "codelist": "RACE",
+    "description": "Race",
+    "variables": [
+      "RACE"
+    ]
+  },
+  {
+    "codelist": "ROUTE",
+    "description": "Route of Administration",
+    "variables": [
+      "ROUTE"
+    ]
+  },
+  {
+    "codelist": "SEX",
+    "description": "Sex",
+    "variables": [
+      "SEX"
+    ]
+  }
+]

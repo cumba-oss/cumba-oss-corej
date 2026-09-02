@@ -13,7 +13,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.model.CheckConditionLeaf;
 import net.cumba.cdisc.core.model.ClassScope;
 import net.cumba.cdisc.core.model.DataStructureScope;
@@ -26,6 +25,7 @@ import net.cumba.cdisc.core.model.Scope;
 import net.cumba.cdisc.core.model.SubclassScope;
 import net.cumba.cdisc.core.model.VariableRequirement;
 import net.cumba.datatable.DataTableMeta;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

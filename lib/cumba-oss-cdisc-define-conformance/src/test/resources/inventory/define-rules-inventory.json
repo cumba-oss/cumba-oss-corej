@@ -1,0 +1,3985 @@
+[
+  {
+    "id": 1,
+    "ruleId": "DEFINE-XML-0001",
+    "displayedLink": "https://wiki.cdisc.org/display/DEFXML2DOT1/Global+Element+Ordering",
+    "plainTextRule": "Elements must be ordered in accordance with the global element ordering rules in the Define-XML specification.",
+    "rule": "//<element OID> is not allowed under [parent element]/@OID.",
+    "ruleMessage": "Element [element]/@OID s not allowed under [parent element]/@OID.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": null,
+    "element": "ALL elements",
+    "attribute": null,
+    "elementSelector": "ALL elements",
+    "proposedKind": "ordering"
+  },
+  {
+    "id": 2,
+    "ruleId": "DEFINE-XML-0002",
+    "displayedLink": "https://wiki.cdisc.org/display/DEFXML2DOT1/ODM+Element",
+    "plainTextRule": "Element ODM must be provided in any Define-XML document.",
+    "rule": "/ODM must be provided.",
+    "ruleMessage": "Element ODM is missing in the Define-XML document.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM",
+    "element": "ODM",
+    "attribute": null,
+    "elementSelector": "ODM",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 3,
+    "ruleId": "DEFINE-XML-0003",
+    "displayedLink": "https://wiki.cdisc.org/display/DEFXML2DOT1/ODM+Element",
+    "plainTextRule": "No more than one ODM element may be provided in the Define-XML document.",
+    "rule": "No more than one ODM element may be provided.",
+    "ruleMessage": "Element ODM is provided more than once in the Define-XML document.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM",
+    "element": "ODM",
+    "attribute": null,
+    "elementSelector": "ODM",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 4,
+    "ruleId": "DEFINE-XML-0004",
+    "displayedLink": "https://wiki.cdisc.org/x/Z6OzAg",
+    "plainTextRule": "The value of attribute CreationDateTime must be in ISO 8601 datetime format.",
+    "rule": "The value of @CreationDateTime must be in ISO 8601 datetime format.",
+    "ruleMessage": "The value of CreationDateTime[@CreationDateTime] is not in ISO 8601 datetime format.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM",
+    "element": "ODM",
+    "attribute": "CreationDateTime",
+    "elementSelector": "ODM",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 5,
+    "ruleId": "DEFINE-XML-0005",
+    "displayedLink": "https://wiki.cdisc.org/x/Z6OzAg",
+    "plainTextRule": "The value of attribute AsOfDateTime must be in ISO 8601 datetime format.",
+    "rule": "The value of @AsOfDateTime must be in ISO 8601 datetime format.",
+    "ruleMessage": "The value of AsOfDateTime[@AsOfDateTime] is not in ISO 8601 datetime format.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM",
+    "element": "ODM",
+    "attribute": "AsOfDateTime",
+    "elementSelector": "ODM",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 6,
+    "ruleId": "DEFINE-XML-0006",
+    "displayedLink": "https://wiki.cdisc.org/x/Z6OzAg",
+    "plainTextRule": "Attribute ODMVersion must be provided for the ODM element.",
+    "rule": "@ODMVersion must be provided.",
+    "ruleMessage": "Attribute ODMVersion is missing for element ODM.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM",
+    "element": "ODM",
+    "attribute": "ODMVersion",
+    "elementSelector": "ODM",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 7,
+    "ruleId": "DEFINE-XML-0007",
+    "displayedLink": "https://wiki.cdisc.org/x/Z6OzAg",
+    "plainTextRule": "The value of the ODMVersion attribute must be \"1.3.2\"",
+    "rule": "The value of @ODMVersion must be \"1.3.2\".",
+    "ruleMessage": "The value of ODMVersion[@ODMVersion] is not \"1.3.2\" for the ODM element .",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM",
+    "element": "ODM",
+    "attribute": "ODMVersion",
+    "elementSelector": "ODM",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 8,
+    "ruleId": "DEFINE-XML-0008",
+    "displayedLink": "https://wiki.cdisc.org/x/Z6OzAg",
+    "plainTextRule": "The FileType attribute value must be \"Snapshot\"",
+    "rule": "@FileType must be \"Snapshot\".",
+    "ruleMessage": "The value of ODM/@FileType must be \"Snapshot\".",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM",
+    "element": "ODM",
+    "attribute": "FileType",
+    "elementSelector": "ODM",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 9,
+    "ruleId": "DEFINE-XML-0009",
+    "displayedLink": "https://wiki.cdisc.org/x/Z6OzAg",
+    "plainTextRule": "Attribute FileOID must be provided for the ODM element.",
+    "rule": "@FileOID must be provided.",
+    "ruleMessage": "Attribute FileOID is missing for element ODM.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM",
+    "element": "ODM",
+    "attribute": "FileOID",
+    "elementSelector": "ODM",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 10,
+    "ruleId": "DEFINE-XML-0010",
+    "displayedLink": "https://wiki.cdisc.org/x/aKOzAg",
+    "plainTextRule": "Child element Study must be provided for the ODM element.",
+    "rule": "/ODM/Study must be provided.",
+    "ruleMessage": "Child element Study is missing for element ODM.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study",
+    "element": "Study",
+    "attribute": null,
+    "elementSelector": "Study",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 11,
+    "ruleId": "DEFINE-XML-0011",
+    "displayedLink": "https://wiki.cdisc.org/x/aKOzAg",
+    "plainTextRule": "No more than one child element Study must be provided for the ODM element.",
+    "rule": "No more than one /ODM/Study must be provided.",
+    "ruleMessage": "Child element Study is provided more than once for element ODM.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study",
+    "element": "Study",
+    "attribute": null,
+    "elementSelector": "Study",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 12,
+    "ruleId": "DEFINE-XML-0012",
+    "displayedLink": "https://wiki.cdisc.org/x/aKOzAg",
+    "plainTextRule": "Attribute OID must be provided for the Study element.",
+    "rule": "@OID must be provided.",
+    "ruleMessage": "Attribute OID is missing for element Study.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study",
+    "element": "Study",
+    "attribute": "OID",
+    "elementSelector": "Study",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 13,
+    "ruleId": "DEFINE-XML-0013",
+    "displayedLink": "https://wiki.cdisc.org/x/Z6OzAg",
+    "plainTextRule": "Attribute CreationDateTime must be provided for the ODM element.",
+    "rule": "@CreationDateTime must be provided.",
+    "ruleMessage": "Attribute CreationDateTime is missing for element ODM.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM",
+    "element": "ODM",
+    "attribute": "CreationDateTime",
+    "elementSelector": "ODM",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 14,
+    "ruleId": "DEFINE-XML-0014",
+    "displayedLink": "https://wiki.cdisc.org/x/aaOzAg",
+    "plainTextRule": "Child element GlobalVariables must be provided for the Study element.",
+    "rule": "//Study/GlobalVariables must be provided.",
+    "ruleMessage": "Child element GlobalVariables is missing for element Study.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/GlobalVariables",
+    "element": "GlobalVariables",
+    "attribute": null,
+    "elementSelector": "GlobalVariables",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 15,
+    "ruleId": "DEFINE-XML-0015",
+    "displayedLink": "https://wiki.cdisc.org/x/aaOzAg",
+    "plainTextRule": "No more than one child element GlobalVariables must be provided for the Study element.",
+    "rule": "No more than one //Study/GlobalVariables must be provided.",
+    "ruleMessage": "Child element GlobalVariables is provided more than once for element Study.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/GlobalVariables",
+    "element": "GlobalVariables",
+    "attribute": null,
+    "elementSelector": "GlobalVariables",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 16,
+    "ruleId": "DEFINE-XML-0016",
+    "displayedLink": "https://wiki.cdisc.org/x/Z6OzAg",
+    "plainTextRule": "Attribute def:Context must be provided for the ODM element.",
+    "rule": "@def:Context must be provided.",
+    "ruleMessage": "Attribute def:Context is missing for element ODM.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM",
+    "element": "ODM",
+    "attribute": "def:Context",
+    "elementSelector": "ODM",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 17,
+    "ruleId": "DEFINE-XML-0017",
+    "displayedLink": "https://wiki.cdisc.org/x/Z6OzAg",
+    "plainTextRule": "The value of the def:Context attribute must be one of \"Submission\", \"Other\".",
+    "rule": "The value of @def:Context must be one of \"Submission\", \"Other\".",
+    "ruleMessage": "The value of def:Context[@def:Context] is not one of \"Submission\", \"Other\".",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM",
+    "element": "ODM",
+    "attribute": "def:Context",
+    "elementSelector": "ODM",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 18,
+    "ruleId": "DEFINE-XML-0018",
+    "displayedLink": "https://wiki.cdisc.org/x/aqOzAg",
+    "plainTextRule": "Child element StudyName must be provided for the GlobalVariables element.",
+    "rule": "//GlobalVariables/StudyName must be provided.",
+    "ruleMessage": "Child element StudyName is missing for element GlobalVariables.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/GlobalVariables/StudyName",
+    "element": "StudyName",
+    "attribute": null,
+    "elementSelector": "StudyName",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 19,
+    "ruleId": "DEFINE-XML-0019",
+    "displayedLink": "https://wiki.cdisc.org/x/aqOzAg",
+    "plainTextRule": "No more than one child element StudyName must be provided for the GlobalVariables element.",
+    "rule": "No more than one //GlobalVariables/StudyName must be provided.",
+    "ruleMessage": "Child element StudyName is provided more than once for element GlobalVariables.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/GlobalVariables/StudyName",
+    "element": "StudyName",
+    "attribute": null,
+    "elementSelector": "StudyName",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 20,
+    "ruleId": "DEFINE-XML-0020",
+    "displayedLink": "https://wiki.cdisc.org/x/a6OzAg",
+    "plainTextRule": "Child element StudyDescription must be provided for the GlobalVariables element.",
+    "rule": "//GlobalVariables/StudyDescription must be provided.",
+    "ruleMessage": "Child element StudyDescription is missing for element GlobalVariables.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/GlobalVariables/StudyDescription",
+    "element": "StudyDescription",
+    "attribute": null,
+    "elementSelector": "StudyDescription",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 21,
+    "ruleId": "DEFINE-XML-0021",
+    "displayedLink": "https://wiki.cdisc.org/x/a6OzAg",
+    "plainTextRule": "No more than one child element StudyDescription must be provided for the GlobalVariables element.",
+    "rule": "No more than one //GlobalVariables/StudyDescription must be provided.",
+    "ruleMessage": "Child element StudyDescription is provided more than once for element GlobalVariables.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/GlobalVariables/StudyDescription",
+    "element": "StudyDescription",
+    "attribute": null,
+    "elementSelector": "StudyDescription",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 22,
+    "ruleId": "DEFINE-XML-0022",
+    "displayedLink": "https://wiki.cdisc.org/x/bKOzAg",
+    "plainTextRule": "Child element ProtocolName must be provided for the GlobalVariables element.",
+    "rule": "//GlobalVariables/ProtocolName must be provided.",
+    "ruleMessage": "Child element ProtocolName is missing for element GlobalVariables.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/GlobalVariables/ProtocolName",
+    "element": "ProtocolName",
+    "attribute": null,
+    "elementSelector": "ProtocolName",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 23,
+    "ruleId": "DEFINE-XML-0023",
+    "displayedLink": "https://wiki.cdisc.org/x/bKOzAg",
+    "plainTextRule": "No more than one child element ProtocolName must be provided for the GlobalVariables element.",
+    "rule": "No more than one //GlobalVariables/ProtocolName must be provided.",
+    "ruleMessage": "Child element ProtocolName is provided more than once for element GlobalVariables.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/GlobalVariables/ProtocolName",
+    "element": "ProtocolName",
+    "attribute": null,
+    "elementSelector": "ProtocolName",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 24,
+    "ruleId": "DEFINE-XML-0024",
+    "displayedLink": "https://wiki.cdisc.org/x/baOzAg",
+    "plainTextRule": "Child element MetaDataVersion must be provided for the Study element.",
+    "rule": "//Study/MetaDataVersion must be provided.",
+    "ruleMessage": "Child element MetaDataVersion is missing for element Study.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion",
+    "element": "MetaDataVersion",
+    "attribute": null,
+    "elementSelector": "MetaDataVersion",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 25,
+    "ruleId": "DEFINE-XML-0025",
+    "displayedLink": "https://wiki.cdisc.org/x/baOzAg",
+    "plainTextRule": "No more than one child element MetaDataVersion must be provided for the Study element.",
+    "rule": "No more than one //Study/MetaDataVersion must be provided.",
+    "ruleMessage": "Child element MetaDataVersion is provided more than once for element Study.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion",
+    "element": "MetaDataVersion",
+    "attribute": null,
+    "elementSelector": "MetaDataVersion",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 26,
+    "ruleId": "DEFINE-XML-0026",
+    "displayedLink": "https://wiki.cdisc.org/x/aKOzAg",
+    "plainTextRule": "Attribute OID must be provided for the MetaDataVersion element.",
+    "rule": "@OID must be provided.",
+    "ruleMessage": "Attribute OID is missing for element MetaDataVersion.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion",
+    "element": "MetaDataVersion",
+    "attribute": "OID",
+    "elementSelector": "MetaDataVersion",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 27,
+    "ruleId": "DEFINE-XML-0027",
+    "displayedLink": "https://wiki.cdisc.org/x/aKOzAg",
+    "plainTextRule": "Attribute Name must be provided for the MetaDataVersion element.",
+    "rule": "@Name must be provided.",
+    "ruleMessage": "Attribute Name is missing for element MetaDataVersion.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion",
+    "element": "MetaDataVersion",
+    "attribute": "Name",
+    "elementSelector": "MetaDataVersion",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 28,
+    "ruleId": "DEFINE-XML-0028",
+    "displayedLink": "https://wiki.cdisc.org/x/aKOzAg",
+    "plainTextRule": "The value of the def:DefineVersion attribute must be \"2.0.0\" or match \"2.1.<n>\" (e.g., \"2.1.0\").",
+    "rule": "The value of @def:DefineVersion must be \"2.0.0\" or match \"2.1.<n>\".",
+    "ruleMessage": "The value of MetaDataVersion@def:DefineVersion] is neither \"2.0.0\" nor matches \"2.1.<n>\".",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion",
+    "element": "MetaDataVersion",
+    "attribute": "def:DefineVersion",
+    "elementSelector": "MetaDataVersion",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 29,
+    "ruleId": "DEFINE-XML-0029",
+    "displayedLink": "https://wiki.cdisc.org/x/aKOzAg",
+    "plainTextRule": "Attribute def:DefineVersion must be provided for the MetaDataVersion element.",
+    "rule": "@def:DefineVersion must be provided.",
+    "ruleMessage": "Attribute def:DefineVersion is missing for element MetaDataVersion.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion",
+    "element": "MetaDataVersion",
+    "attribute": "def:DefineVersion",
+    "elementSelector": "MetaDataVersion",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 30,
+    "ruleId": "DEFINE-XML-0030",
+    "displayedLink": "https://wiki.cdisc.org/x/gKOzAg",
+    "plainTextRule": "The def:CommentOID attribute on the MetaDataVersion element must reference an existing def:CommentDef element.",
+    "rule": "A def:CommentDef element must exist with def:CommentDef/@OID = //MetaDataVersion /@def:CommentOID.",
+    "ruleMessage": "There is no def:CommentDef with an OID attribute that matches MetaDataVersion [@Name]/def:CommentOID.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion",
+    "element": "MetaDataVersion",
+    "attribute": "def:CommentOID",
+    "elementSelector": "MetaDataVersion",
+    "proposedKind": "references"
+  },
+  {
+    "id": 31,
+    "ruleId": "DEFINE-XML-0031",
+    "displayedLink": "https://wiki.cdisc.org/x/IWM8Aw",
+    "plainTextRule": "Child element def:Standards must be provided for the MetaDataVersion element in the context of a submission.",
+    "rule": "//MetaDataVersion/def:Standards must be provided when ODM/@def:Context='Submission'.",
+    "ruleMessage": "Child element def:Standards is missing for element MetaDataVersion when @def:Context='Submission'.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:Standards",
+    "element": "def:Standards",
+    "attribute": null,
+    "elementSelector": "Standards",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 32,
+    "ruleId": "DEFINE-XML-0032",
+    "displayedLink": "https://wiki.cdisc.org/x/IWM8Aw",
+    "plainTextRule": "No more than one child element def:Standards must be provided for the MetaDataVersion element.",
+    "rule": "No more than one //MetaDataVersion/def:Standards must be provided.",
+    "ruleMessage": "Child element def:Standards is provided more than once for element MetaDataVersion.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:Standards",
+    "element": "def:Standards",
+    "attribute": null,
+    "elementSelector": "Standards",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 33,
+    "ruleId": "DEFINE-XML-0033",
+    "displayedLink": "https://wiki.cdisc.org/x/LWM8Aw",
+    "plainTextRule": "Attribute Name must be provided for the def:Standard element.",
+    "rule": "@Name must be provided.",
+    "ruleMessage": "Attribute Name is missing for element def:Standard[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:Standards/def:Standard",
+    "element": "def:Standard",
+    "attribute": "Name",
+    "elementSelector": "Standard",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 34,
+    "ruleId": "DEFINE-XML-0034",
+    "displayedLink": "https://wiki.cdisc.org/x/LWM8Aw",
+    "plainTextRule": "Attribute Type must be provided for the def:Standard element.",
+    "rule": "@Type must be provided.",
+    "ruleMessage": "Attribute Type is missing for def:Standard[@Name].",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:Standards/def:Standard",
+    "element": "def:Standard",
+    "attribute": "Type",
+    "elementSelector": "Standard",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 35,
+    "ruleId": "DEFINE-XML-0035",
+    "displayedLink": "https://wiki.cdisc.org/x/LWM8Aw",
+    "plainTextRule": "Attribute PublishingSet must be provided for the def:Standard element when Type is \"CT\".",
+    "rule": "@PublishingSet must be provided when @Type=\"CT\".",
+    "ruleMessage": "Attribute PublishingSet is missing for def:Standard[@Name] with @Type='CT'.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:Standards/def:Standard",
+    "element": "def:Standard",
+    "attribute": "PublishingSet",
+    "elementSelector": "Standard",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 36,
+    "ruleId": "DEFINE-XML-0036",
+    "displayedLink": "https://wiki.cdisc.org/x/LWM8Aw",
+    "plainTextRule": "Attribute Version must be provided for the def:Standard element.",
+    "rule": "@Version must be provided.",
+    "ruleMessage": "Attribute Version is missing for def:Standard[@Name].",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:Standards/def:Standard",
+    "element": "def:Standard",
+    "attribute": "Version",
+    "elementSelector": "Standard",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 38,
+    "ruleId": "DEFINE-XML-0038",
+    "displayedLink": "https://wiki.cdisc.org/x/bqOzAg",
+    "plainTextRule": "No more than one child element def:AnnotatedCRF must be provided for the MetaDataVersion element.",
+    "rule": "No more than one //MetaDataVersion/def:AnnotatedCRF must be provided.",
+    "ruleMessage": "Child element def:AnnotatedCRF is provided more than once for element MetaDataVersion.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:AnnotatedCRF",
+    "element": "def:AnnotatedCRF",
+    "attribute": null,
+    "elementSelector": "AnnotatedCRF",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 39,
+    "ruleId": "DEFINE-XML-0039",
+    "displayedLink": "https://wiki.cdisc.org/x/b6OzAg",
+    "plainTextRule": "Child element def:DocumentRef must be provided for the def:AnnotatedCRF element.",
+    "rule": "//def:AnnotatedCRF/def:DocumentRef must be provided.",
+    "ruleMessage": "Child element def:DocumentRef is missing for element def:AnnotatedCRF.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:AnnotatedCRF/def:DocumentRef",
+    "element": "def:AnnotatedCRF/def:DocumentRef",
+    "attribute": null,
+    "elementSelector": "AnnotatedCRF/DocumentRef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 42,
+    "ruleId": "DEFINE-XML-0042",
+    "displayedLink": "https://wiki.cdisc.org/x/b6OzAg",
+    "plainTextRule": "Attribute leafID must be provided for the def:DocumentRef element.",
+    "rule": "@leafID must be provided.",
+    "ruleMessage": "Attribute leafID is missing for element def:DocumentRef.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:SupplementalDoc/def:DocumentRef",
+    "element": "def:DocumentRef",
+    "attribute": "leafID",
+    "elementSelector": "DocumentRef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 43,
+    "ruleId": "DEFINE-XML-0043",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "The leafID attribute on the def:DocumentRef element must reference an existing def:leaf element within the Define-XML document.",
+    "rule": "Missing def:leaf[@ID=def:DocumentRef/@leafID].",
+    "ruleMessage": "def:leaf element corresponding to def:DocumentRef/@leafD  is missing.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "def:DocumentRef",
+    "attribute": "leafID",
+    "elementSelector": "DocumentRef",
+    "proposedKind": "references"
+  },
+  {
+    "id": 44,
+    "ruleId": "DEFINE-XML-0044",
+    "displayedLink": "https://wiki.cdisc.org/x/cKOzAg",
+    "plainTextRule": "The def:PDFPageRef element must be provided when the Origin Type is 'Collected' and the Source is 'Investigator' or 'Subject'.",
+    "rule": "def:PDFPageRef element must be provided when the //def:Origin/@Type='Collected' and //def:Origin/@Source in ('Investigator', 'Subject').",
+    "ruleMessage": "Element def:PDFPageRef is missing for //ItemDef[@OID]/def:Origin[@Type='Collected',@Source in 'Investigator','Source']/def:DocumentRef.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/def:Origin/def:DocumentRef/def:PDFPageRef",
+    "element": "def:PDFPageRef",
+    "attribute": null,
+    "elementSelector": "PDFPageRef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 45,
+    "ruleId": "DEFINE-XML-0045",
+    "displayedLink": "https://wiki.cdisc.org/x/cKOzAg",
+    "plainTextRule": "The value of the Type attribute must be one of \"PhysicalRef\", \"NamedDestination\".",
+    "rule": "The value of @Type must be one of \"PhysicalRef\", \"NamedDestination\".",
+    "ruleMessage": "The value of Type[@Type] is not one of \"PhysicalRef\", \"NamedDestination\" for def:DocumentRef[@leafID]/def:PDFPageRef.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/def:Origin/def:DocumentRef/def:PDFPageRef\n/ODM/Study/MetaDataVersion/MethodDef/def:DocumentRef/def:PDFPageRef\n/ODM/Study/MetaDataVersion/def:CommentDef/def:DocumentRef/def:PDFPageRef",
+    "element": "def:PDFPageRef",
+    "attribute": "Type",
+    "elementSelector": "PDFPageRef",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 46,
+    "ruleId": "DEFINE-XML-0046",
+    "displayedLink": "https://wiki.cdisc.org/x/cKOzAg",
+    "plainTextRule": "Attribute Type must be provided for the def:PDFPageRef element.",
+    "rule": "@Type must be provided.",
+    "ruleMessage": "Attribute Type is missing for element def:PDFPageRef.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/def:Origin/def:DocumentRef/def:PDFPageRef\n/ODM/Study/MetaDataVersion/MethodDef/def:DocumentRef/def:PDFPageRef\n/ODM/Study/MetaDataVersion/def:CommentDef/def:DocumentRef/def:PDFPageRef",
+    "element": "def:PDFPageRef",
+    "attribute": "Type",
+    "elementSelector": "PDFPageRef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 47,
+    "ruleId": "DEFINE-XML-0047",
+    "displayedLink": "https://wiki.cdisc.org/x/cKOzAg",
+    "plainTextRule": "The value of attribute FirstPage must be an integer number.",
+    "rule": "The value of @FirstPage must be an integer number.",
+    "ruleMessage": "The value of attribute FirstPage[@FirstPage] is not an integer number.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/def:Origin/def:DocumentRef/def:PDFPageRef\n/ODM/Study/MetaDataVersion/MethodDef/def:DocumentRef/def:PDFPageRef\n/ODM/Study/MetaDataVersion/def:CommentDef/def:DocumentRef/def:PDFPageRef",
+    "element": "def:PDFPageRef",
+    "attribute": "FirstPage",
+    "elementSelector": "PDFPageRef",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 48,
+    "ruleId": "DEFINE-XML-0048",
+    "displayedLink": "https://wiki.cdisc.org/x/cKOzAg",
+    "plainTextRule": "Attribute FirstPage must be provided for the def:PDFPageRef element when PageRefs is missing and Type is PhysicalRef.",
+    "rule": "@FirstPage must be provided when //def:PDFPageRef/@PageRefs is missing and //def:PDFPageRef/@Type=\"PhysicalRef\".",
+    "ruleMessage": "Attribute FirstPage is missing for element def:PDFPageRef, when attribute PageRefs is missing and Type is PhysicalRef.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/def:Origin/def:DocumentRef/def:PDFPageRef\n/ODM/Study/MetaDataVersion/MethodDef/def:DocumentRef/def:PDFPageRef\n/ODM/Study/MetaDataVersion/def:CommentDef/def:DocumentRef/def:PDFPageRef",
+    "element": "def:PDFPageRef",
+    "attribute": "FirstPage",
+    "elementSelector": "PDFPageRef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 49,
+    "ruleId": "DEFINE-XML-0049",
+    "displayedLink": "https://wiki.cdisc.org/x/cKOzAg",
+    "plainTextRule": "The value of attribute LastPage must be an integer number.",
+    "rule": "The value of @LastPage must be an integer number.",
+    "ruleMessage": "The value of attribute LastPage[@LastPage] is not an integer number.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/def:Origin/def:DocumentRef/def:PDFPageRef\n/ODM/Study/MetaDataVersion/MethodDef/def:DocumentRef/def:PDFPageRef\n/ODM/Study/MetaDataVersion/def:CommentDef/def:DocumentRef/def:PDFPageRef",
+    "element": "def:PDFPageRef",
+    "attribute": "LastPage",
+    "elementSelector": "PDFPageRef",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 50,
+    "ruleId": "DEFINE-XML-0050",
+    "displayedLink": "https://wiki.cdisc.org/x/cKOzAg",
+    "plainTextRule": "Attribute LastPage must be provided for the def:PDFPageRef element when PageRefs is missing and Type is PhysicalRef.",
+    "rule": "@LastPage must be provided when //def:PDFPageRef/@PageRefs is missing and //def:PDFPageRef/@Type=\"PhysicalRef\".",
+    "ruleMessage": "Attribute LastPage is missing for element def:PDFPageRef, when attribute PageRefs is missing and Type is PhysicalRef.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/def:Origin/def:DocumentRef/def:PDFPageRef\n/ODM/Study/MetaDataVersion/MethodDef/def:DocumentRef/def:PDFPageRef\n/ODM/Study/MetaDataVersion/def:CommentDef/def:DocumentRef/def:PDFPageRef",
+    "element": "def:PDFPageRef",
+    "attribute": "LastPage",
+    "elementSelector": "PDFPageRef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 51,
+    "ruleId": "DEFINE-XML-0051",
+    "displayedLink": "https://wiki.cdisc.org/x/caOzAg",
+    "plainTextRule": "No more than one child element def:SupplementalDoc must be provided for the MetaDataVersion element.",
+    "rule": "No more than one //MetaDataVersion/def:SupplementalDoc must be provided.",
+    "ruleMessage": "Child element def:SupplementalDoc is provided more than once for element MetaDataVersion.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:SupplementalDoc",
+    "element": "def:SupplementalDoc",
+    "attribute": null,
+    "elementSelector": "SupplementalDoc",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 54,
+    "ruleId": "DEFINE-XML-0054",
+    "displayedLink": "https://wiki.cdisc.org/x/b6OzAg",
+    "plainTextRule": "Child element def:DocumentRef must be provided for the def:SupplementalDoc element.",
+    "rule": "//def:SupplementalDoc/def:DocumentRef must be provided.",
+    "ruleMessage": "Child element def:DocumentRef is missing for element def:SupplementalDoc.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:AnnotatedCRF/def:DocumentRef",
+    "element": "def:SupplementalDoc/def:DocumentRef",
+    "attribute": null,
+    "elementSelector": "SupplementalDoc/DocumentRef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 55,
+    "ruleId": "DEFINE-XML-0055",
+    "displayedLink": "https://wiki.cdisc.org/x/cqOzAg",
+    "plainTextRule": "The QVAL variable in a Supplemental Qualifier dataset must have a def:ValueListRef element.",
+    "rule": "def:ValueListRef must be provided for //ItemDef[@OID, @Name=\"QVAL'].",
+    "ruleMessage": "def:ValueListRef is missing for //ItemDef[@OID, @Name=\"QVAL'].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:ValueListDef",
+    "element": "def:ValueListDef",
+    "attribute": null,
+    "elementSelector": "ValueListDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 56,
+    "ruleId": "DEFINE-XML-0056",
+    "displayedLink": "https://wiki.cdisc.org/x/eaOzAg",
+    "plainTextRule": "A description must be provided for each method.",
+    "rule": "The Description element must be provided for each MethodDef element.",
+    "ruleMessage": "A description is missing for MethodDef[@Name]",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/MethodDef/Description",
+    "element": "Description",
+    "attribute": null,
+    "elementSelector": "Description",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 57,
+    "ruleId": "DEFINE-XML-0057",
+    "displayedLink": "https://wiki.cdisc.org/x/eaOzAg",
+    "plainTextRule": "For non-standard domains or datasets, sponsors must provide a short ItemGroupDef description of the type of data contained within the dataset.",
+    "rule": "ItemGroupDef/Description must be provided when the @def:IsNonStandard attribute has the value 'Yes'.",
+    "ruleMessage": "Missing Description for nonstandard dataset ItemGroupDef[@Name].",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/Description",
+    "element": "Description",
+    "attribute": null,
+    "elementSelector": "Description",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 60,
+    "ruleId": "DEFINE-XML-0060",
+    "displayedLink": "https://wiki.cdisc.org/x/eqOzAg",
+    "plainTextRule": "Child element TranslatedText must be provided for the Description element.",
+    "rule": "//Description/TranslatedText must be provided.",
+    "ruleMessage": "Child element TranslatedText is missing for element $ParentElement[@OID]/Description.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:ValueListDef/Description/TranslatedText\n/ODM/Study/MetaDataVersion/ItemGroupDef/Description/TranslatedText\n/ODM/Study/MetaDataVersion/ItemDef/Description/TranslatedText\n/ODM/Study/MetaDataVersion/ItemDef/def:Origin/Description/TranslatedText\n/ODM/Study/MetaDataVersion/CodeList/Description/TranslatedText\n/ODM/Study/MetaDataVersion/CodeList/CodeListItem/Description/TranslatedText\n/ODM/Study/MetaDataVersion/CodeList/EnumeratedItem/Description/TranslatedText\n/ODM/Study/MetaDataVersion/MethodDef/Description/TranslatedText\n/ODM/Study/MetaDataVersion/def:CommentDef/Description/TranslatedText",
+    "element": "Description/TranslatedText",
+    "attribute": null,
+    "elementSelector": "Description/TranslatedText",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 61,
+    "ruleId": "DEFINE-XML-0061",
+    "displayedLink": "https://wiki.cdisc.org/x/eaOzAg",
+    "plainTextRule": "The Description element must have at least one TranslatedText child element",
+    "rule": "The Description element must have at least one TranslatedText child element.",
+    "ruleMessage": "XPATH/Description/TranslatedText not found.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:ValueListDef/Description/TranslatedText\n/ODM/Study/MetaDataVersion/ItemGroupDef/Description/TranslatedText\n/ODM/Study/MetaDataVersion/ItemDef/Description/TranslatedText\n/ODM/Study/MetaDataVersion/ItemDef/def:Origin/Description/TranslatedText\n/ODM/Study/MetaDataVersion/CodeList/CodeListItem/Decode/TranslatedText\n/ODM/Study/MetaDataVersion/CodeList/Description/TranslatedText\n\n/ODM/Study/MetaDataVersion/CodeList/CodeListItem/Description/TranslatedText\n/ODM/Study/MetaDataVersion/MethodDef/Description/TranslatedText\n/ODM/Study/MetaDataVersion/def:CommentDef/Description/TranslatedText",
+    "element": "TranslatedText",
+    "attribute": null,
+    "elementSelector": "TranslatedText",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 62,
+    "ruleId": "DEFINE-XML-0062",
+    "displayedLink": "https://wiki.cdisc.org/x/eaOzAg",
+    "plainTextRule": "Each Decode element must have at least one TranslatedText child element.",
+    "rule": "Each Decode element must have at least one TranslatedText child element.",
+    "ruleMessage": "Codelist/CodeListItem/Decode/TranslatedText not found.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/CodeListItem/Decode/TranslatedText",
+    "element": "TranslatedText",
+    "attribute": null,
+    "elementSelector": "TranslatedText",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 63,
+    "ruleId": "DEFINE-XML-0063",
+    "displayedLink": "https://wiki.cdisc.org/x/eqOzAg",
+    "plainTextRule": "The xml:lang attribute value must be unique within the TranslatedText element.",
+    "rule": "@xml:lang must be unique within the TranslatedText element.",
+    "ruleMessage": "//TranslatedText/@xml:lang is not unique.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "ODM/Study/MetaDataVersion/def:ValueListDef/Description/TranslatedText\n\n/ODM/Study/MetaDataVersion/ItemGroupDef/Description/TranslatedText\n/ODM/Study/MetaDataVersion/ItemDef/Description/TranslatedText\n/ODM/Study/MetaDataVersion/ItemDef/def:Origin/Description/TranslatedText\n/ODM/Study/MetaDataVersion/CodeList/CodeListItem/Decode/TranslatedText\n/ODM/Study/MetaDataVersion/CodeList/Description/TranslatedText\n\n/ODM/Study/MetaDataVersion/CodeList/CodeListItem/Description/TranslatedText\n\n/ODM/Study/MetaDataVersion/CodeList/EnumeratedItem/Description/TranslatedText\n\n/ODM/Study/MetaDataVersion/MethodDef/Description/TranslatedText\n/ODM/Study/MetaDataVersion/def:CommentDef/Description/TranslatedText",
+    "element": "TranslatedText",
+    "attribute": "xml:lang",
+    "elementSelector": "TranslatedText",
+    "proposedKind": "unique_among_siblings"
+  },
+  {
+    "id": 65,
+    "ruleId": "DEFINE-XML-0065",
+    "displayedLink": "https://wiki.cdisc.org/x/c6OzAg",
+    "plainTextRule": "The ItemOID attribute on the ItemRef element must reference an existing ItemDef element.",
+    "rule": "A ItemDef element must exist with ItemDef/@OID = //ItemRef/@ItemOID.",
+    "ruleMessage": "There is no ItemDef with an OID attribute that matches $ParentElement[@OID]/ItemRef/ItemOID.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/ItemRef\n/ODM/Study/MetaDataVersion/def:ValueListDef/ItemRef",
+    "element": "ItemRef",
+    "attribute": "ItemOID",
+    "elementSelector": "ItemRef",
+    "proposedKind": "references"
+  },
+  {
+    "id": 66,
+    "ruleId": "DEFINE-XML-0066",
+    "displayedLink": "https://wiki.cdisc.org/x/c6OzAg",
+    "plainTextRule": "The value of attribute OrderNumber must be an integer number.",
+    "rule": "The value of @OrderNumber must be an integer number.",
+    "ruleMessage": "The value of attribute OrderNumber[@OrderNumber] is not an integer number for $ParentItemGroupDef[@Name]/ItemRef[@ItemOID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/ItemRef\n/ODM/Study/MetaDataVersion/def:ValueListDef/ItemRef",
+    "element": "ItemRef",
+    "attribute": "OrderNumber",
+    "elementSelector": "ItemRef",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 67,
+    "ruleId": "DEFINE-XML-0067",
+    "displayedLink": "https://wiki.cdisc.org/x/c6OzAg",
+    "plainTextRule": "Mandatory attribute for the ItemRef corresponding to a SENDIG or SDTMIG variable with Core = \"Req\" must be \"Yes\".",
+    "rule": "@Mandatory must be 'Yes' when the parent ItemGroupDef references a def:Standard/@Name beginning with 'SDTM' or 'SEND' and the variable's Core attribute is 'Req'.",
+    "ruleMessage": "ItemGroupDef/ItemRef[@ItemOID] must have @Mandatory = \"Yes\" because ItemDef[@Name] has Core = \"Req\" in def:Standard[ItemDef[@def:StandardOID]/@Name - def:Standard[ItemDef[@def:StandardOID]/@Version.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/ItemRef\n/ODM/Study/MetaDataVersion/def:ValueListDef/ItemRef",
+    "element": "ItemRef",
+    "attribute": "Mandatory",
+    "elementSelector": "ItemRef",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 68,
+    "ruleId": "DEFINE-XML-0068",
+    "displayedLink": "https://wiki.cdisc.org/x/c6OzAg",
+    "plainTextRule": "The value of the Mandatory attribute must be one of \"Yes\", \"No\".",
+    "rule": "The value of @Mandatory must be one of \"Yes\", \"No\".",
+    "ruleMessage": "The value of Mandatory[@Mandatory] is not one of \"Yes\", \"No\" for ItemGroupDef[@Name]/ItemRef[@ItemOID] ( or def:ValueListDef[@OID]/ItemRef[@ItemOID]).",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/ItemRef\n/ODM/Study/MetaDataVersion/def:ValueListDef/ItemRef",
+    "element": "ItemRef",
+    "attribute": "Mandatory",
+    "elementSelector": "ItemRef",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 69,
+    "ruleId": "DEFINE-XML-0069",
+    "displayedLink": "https://wiki.cdisc.org/x/c6OzAg",
+    "plainTextRule": "Attribute Mandatory must be provided for the ItemRef element.",
+    "rule": "@Mandatory must be provided.",
+    "ruleMessage": "Attribute Mandatory is missing for element ItemRef[@ItemOID] in ItemGroupDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/ItemRef\n/ODM/Study/MetaDataVersion/def:ValueListDef/ItemRef",
+    "element": "ItemRef",
+    "attribute": "Mandatory",
+    "elementSelector": "ItemRef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 70,
+    "ruleId": "DEFINE-XML-0070",
+    "displayedLink": "https://wiki.cdisc.org/x/c6OzAg",
+    "plainTextRule": "There must be at least one KeySequence attribute value in ItemGroupDef/ItemRef in the context of a submission.",
+    "rule": "count(//ItemGroupDef[@OID]/ItemRef/@KeySequence) must be >= 1 when ODM/@def:Context='Submission'.",
+    "ruleMessage": "There must be at least one ItemRef with a KeySequence attribute in ItemGroupDef[@Name] when ODM/@def:Context='Submission'..",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/ItemRef",
+    "element": "ItemRef",
+    "attribute": "KeySequence",
+    "elementSelector": "ItemRef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 71,
+    "ruleId": "DEFINE-XML-0071",
+    "displayedLink": "https://wiki.cdisc.org/x/c6OzAg",
+    "plainTextRule": "KeySequence attribute values in ItemGroupDef must be unique.",
+    "rule": "@KeySequence values must be unique within ItemGroupDef[@Name].",
+    "ruleMessage": "KeySequence attribute has non-unique values  in ItemGroupDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/ItemRef",
+    "element": "ItemRef",
+    "attribute": "KeySequence",
+    "elementSelector": "ItemRef",
+    "proposedKind": "unique_among_siblings"
+  },
+  {
+    "id": 72,
+    "ruleId": "DEFINE-XML-0072",
+    "displayedLink": "https://wiki.cdisc.org/x/c6OzAg",
+    "plainTextRule": "The value of attribute KeySequence must be an integer number.",
+    "rule": "The value of @KeySequence must be an integer number.",
+    "ruleMessage": "The value of attribute KeySequence[@KeySequence] is not an integer number for $ParentItemGroupDef[@Name]/ItemRef[@ItemOID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/ItemRef",
+    "element": "ItemRef",
+    "attribute": "KeySequence",
+    "elementSelector": "ItemRef",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 73,
+    "ruleId": "DEFINE-XML-0073",
+    "displayedLink": "https://wiki.cdisc.org/x/c6OzAg",
+    "plainTextRule": "The MethodOID attribute must be provided on the  ItemRef element when the Origin Type attribute on the corresponding ItemDef element is \"Derived\".",
+    "rule": "@MethodOID must be provided when ItemDef[@OID]/def:Origin/@Type='Derived'.",
+    "ruleMessage": "ItemRef[@ItemOID] is missing the MethodOID when ItemDef[@OID]/@Name variable has def:Origin/@Type  = \"Derived\".",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/ItemRef\n/ODM/Study/MetaDataVersion/def:ValueListDef/ItemRef",
+    "element": "ItemRef",
+    "attribute": "MethodOID",
+    "elementSelector": "ItemRef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 74,
+    "ruleId": "DEFINE-XML-0074",
+    "displayedLink": "https://wiki.cdisc.org/x/c6OzAg",
+    "plainTextRule": "The MethodOID attribute on the ItemRef element must reference an existing MethodDef element.",
+    "rule": "A MethodDef element must exist with MethodDef/@OID = //ItemRef/@MethodOID.",
+    "ruleMessage": "There is no MethodDef with an OID attribute that matches ItemRef/@MethodOID.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/ItemRef\n/ODM/Study/MetaDataVersion/def:ValueListDef/ItemRef",
+    "element": "ItemRef",
+    "attribute": "MethodOID",
+    "elementSelector": "ItemRef",
+    "proposedKind": "references"
+  },
+  {
+    "id": 75,
+    "ruleId": "DEFINE-XML-0075",
+    "displayedLink": "https://wiki.cdisc.org/x/c6OzAg",
+    "plainTextRule": "The value of the def:IsNonStandard attribute must be \"Yes\".",
+    "rule": "The value of @def:IsNonStandard must be \"Yes\".",
+    "ruleMessage": "The value of def:IsNonStandard[@def:IsNonStandard] is not \"Yes\" for ItemGroupDef[@Name]/ItemRef[@ItemOID] ( or def:ValueListDef[@OID]/ItemRef[@ItemOID]).",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/ItemRef\n/ODM/Study/MetaDataVersion/def:ValueListDef/ItemRef",
+    "element": "ItemRef",
+    "attribute": "def:IsNonStandard",
+    "elementSelector": "ItemRef",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 76,
+    "ruleId": "DEFINE-XML-0076",
+    "displayedLink": "https://wiki.cdisc.org/x/c6OzAg",
+    "plainTextRule": "Attribute def:HasNoData must be provided for the ItemRef element when the dataset variable or value defined in the associated ItemDef has no data values",
+    "rule": "@def:HasNoData must be provided for the ItemRef element when the dataset variable or value defined in the associated //ItemDef[@OID=ItemRef/@ItemOID] has no data values",
+    "ruleMessage": "Attribute def:HasNoData is missing for element ItemRef when associated ItemDef[@Name] has no data values",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/ItemRef\n/ODM/Study/MetaDataVersion/def:ValueListDef/ItemRef",
+    "element": "ItemRef",
+    "attribute": "def:HasNoData",
+    "elementSelector": "ItemRef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 77,
+    "ruleId": "DEFINE-XML-0077",
+    "displayedLink": "https://wiki.cdisc.org/x/c6OzAg",
+    "plainTextRule": "The value of the def:HasNoData attribute must be \"Yes\".",
+    "rule": "The value of @def:HasNoData must be \"Yes\".",
+    "ruleMessage": "The value of def:HasNoData[@def:HasNoData] is not \"Yes\" for ItemGroupDef[@Name]/ItemRef[@ItemOID] ( or def:ValueListDef[@OID]/ItemRef[@ItemOID]).",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/ItemRef\n/ODM/Study/MetaDataVersion/def:ValueListDef/ItemRef",
+    "element": "ItemRef",
+    "attribute": "def:HasNoData",
+    "elementSelector": "ItemRef",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 79,
+    "ruleId": "DEFINE-XML-0079",
+    "displayedLink": "https://wiki.cdisc.org/x/dKOzAg",
+    "plainTextRule": "The def:WhereClauseDef child element for  ItemRef is permitted only for def:ValueListDef/[@OID]/ItemRef.",
+    "rule": "def:WhereClauseDef child element found for ItemGroupDef/ItemRef. It is permitted only for def:ValueListDef/ItemRef elements.",
+    "ruleMessage": "ItemGroupDef[@OID]/ItemRef[@ItemOID] has a def:WhereClauseDef child element.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/ItemRef",
+    "element": "ItemRef",
+    "attribute": null,
+    "elementSelector": "ItemRef",
+    "proposedKind": "not_exists"
+  },
+  {
+    "id": 80,
+    "ruleId": "DEFINE-XML-0080",
+    "displayedLink": "https://wiki.cdisc.org/x/dKOzAg",
+    "plainTextRule": "Attribute WhereClauseOID must be provided for the def:WhereClauseRef element.",
+    "rule": "@WhereClauseOID must be provided.",
+    "ruleMessage": "Attribute WhereClauseOID is missing for element def:WhereClauseRef in ItemGroupDef[@Name]/ItemRef[@ItemOID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:ValueListDef/ItemRef/def:WhereClauseRef",
+    "element": "def:WhereClauseRef",
+    "attribute": "WhereClauseOID",
+    "elementSelector": "WhereClauseRef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 81,
+    "ruleId": "DEFINE-XML-0081",
+    "displayedLink": "https://wiki.cdisc.org/x/dKOzAg",
+    "plainTextRule": "The WhereClauseOID attribute on the def:WhereClauseRef element must reference an existing def:WhereClauseDef element.",
+    "rule": "A def:WhereClauseDef element must exist with def:WhereClauseDef/@OID = //def:WhereClauseRef/@WhereClauseOID.",
+    "ruleMessage": "There is no def:WhereClauseDef with an OID attribute that matches def:WhereClauseRef/WhereClauseOID.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:ValueListDef/ItemRef/def:WhereClauseRef",
+    "element": "def:WhereClauseRef",
+    "attribute": "WhereClauseOID",
+    "elementSelector": "WhereClauseRef",
+    "proposedKind": "references"
+  },
+  {
+    "id": 82,
+    "ruleId": "DEFINE-XML-0082",
+    "displayedLink": "https://wiki.cdisc.org/x/daOzAg",
+    "plainTextRule": "Attribute OID must be provided for the def:WhereClauseDef element.",
+    "rule": "@OID must be provided.",
+    "ruleMessage": "Attribute OID is missing for element def:WhereClauseDef.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:WhereClauseDef",
+    "element": "def:WhereClauseDef",
+    "attribute": "OID",
+    "elementSelector": "WhereClauseDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 83,
+    "ruleId": "DEFINE-XML-0083",
+    "displayedLink": "https://wiki.cdisc.org/x/daOzAg",
+    "plainTextRule": "The def:CommentOID attribute on the def:WhereClauseDef element must reference an existing def:CommentDef element.",
+    "rule": "A def:CommentDef element must exist with def:CommentDef/@OID = //def:WhereClauseDef/@CommentOID.",
+    "ruleMessage": "There is no def:CommentDef with an OID attribute that matches def:WhereClauseDef/def:CommentOID.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:WhereClauseDef",
+    "element": "def:WhereClauseDef",
+    "attribute": "def:CommentOID",
+    "elementSelector": "WhereClauseDef",
+    "proposedKind": "references"
+  },
+  {
+    "id": 84,
+    "ruleId": "DEFINE-XML-0084",
+    "displayedLink": "https://wiki.cdisc.org/x/daOzAg",
+    "plainTextRule": "Comment must be provided for a where clause when two or more datasets are referenced in where clause conditions.",
+    "rule": "@def:CommentOID must be provided, when //def:WhereClauseDef/RangeCheck/@def:ItemOID references items from different ItemGroupDefs.",
+    "ruleMessage": "Comment is not provided for WhereClauseDef which references more than one dataset.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:WhereClauseDef",
+    "element": "def:WhereClauseDef",
+    "attribute": "def:CommentOID",
+    "elementSelector": "WhereClauseDef",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 85,
+    "ruleId": "DEFINE-XML-0085",
+    "displayedLink": "https://wiki.cdisc.org/x/dqOzAg",
+    "plainTextRule": "Child element RangeCheck must be provided for the def:WhereClauseDef element.",
+    "rule": "//def:WhereClauseDef/RangeCheck  must be provided.",
+    "ruleMessage": "Child element RangeCheck is missing for element def:WhereClauseDef[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:WhereClauseDef/RangeCheck",
+    "element": "RangeCheck",
+    "attribute": null,
+    "elementSelector": "RangeCheck",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 86,
+    "ruleId": "DEFINE-XML-0086",
+    "displayedLink": "https://wiki.cdisc.org/x/dqOzAg",
+    "plainTextRule": "The value of the Comparator attribute must be one of \"LT\",\"LE\",\"GT\",\"GE\",\"EQ\", \"NE\",\"IN\",\"NOTIN\".",
+    "rule": "The value of @Comparator must be one of \"LT\",\"LE\",\"GT\",\"GE\",\"EQ\", \"NE\",\"IN\",\"NOTIN\".",
+    "ruleMessage": "The value of Comparator[@Comparator] is not one of \"LT\",\"LE\",\"GT\",\"GE\",\"EQ\", \"NE\",\"IN\",\"NOTIN\" for VLM record ItemGroupDef[@Name].ItemDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:WhereClauseDef/RangeCheck",
+    "element": "RangeCheck",
+    "attribute": "Comparator",
+    "elementSelector": "RangeCheck",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 87,
+    "ruleId": "DEFINE-XML-0087",
+    "displayedLink": "https://wiki.cdisc.org/x/dqOzAg",
+    "plainTextRule": "Attribute Comparator must be provided for the RangeCheck element.",
+    "rule": "@Comparator must be provided.",
+    "ruleMessage": "Attribute Comparator is missing for def:WhereClauseDef[@OID]/RangeCheck.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:WhereClauseDef/RangeCheck",
+    "element": "RangeCheck",
+    "attribute": "Comparator",
+    "elementSelector": "RangeCheck",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 88,
+    "ruleId": "DEFINE-XML-0088",
+    "displayedLink": "https://wiki.cdisc.org/x/dqOzAg",
+    "plainTextRule": "The value of the SoftHard attribute must be one of \"Soft\", \"Hard\".",
+    "rule": "The value of @SoftHard must be one of \"Soft\", \"Hard\".",
+    "ruleMessage": "The value of SoftHard[@SoftHard] is not one of \"Soft\", \"Hard\" for def:WhereClauseDef[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:WhereClauseDef/RangeCheck",
+    "element": "RangeCheck",
+    "attribute": "SoftHard",
+    "elementSelector": "RangeCheck",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 89,
+    "ruleId": "DEFINE-XML-0089",
+    "displayedLink": "https://wiki.cdisc.org/x/dqOzAg",
+    "plainTextRule": "Attribute SoftHard must be provided for the RangeCheck element.",
+    "rule": "@SoftHard must be provided.",
+    "ruleMessage": "Attribute SoftHard is missing for def:WhereClauseDef[@OID]/RangeCheck.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:WhereClauseDef/RangeCheck",
+    "element": "RangeCheck",
+    "attribute": "SoftHard",
+    "elementSelector": "RangeCheck",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 90,
+    "ruleId": "DEFINE-XML-0090",
+    "displayedLink": "https://wiki.cdisc.org/x/dqOzAg",
+    "plainTextRule": "Attribute def:ItemOID must be provided for the RangeCheck element.",
+    "rule": "@def:ItemOID must be provided.",
+    "ruleMessage": "Attribute def:ItemOID is missing for def:WhereClauseDef[@OID]/RangeCheck.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:WhereClauseDef/RangeCheck",
+    "element": "RangeCheck",
+    "attribute": "def:ItemOID",
+    "elementSelector": "RangeCheck",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 91,
+    "ruleId": "DEFINE-XML-0091",
+    "displayedLink": "https://wiki.cdisc.org/x/dqOzAg",
+    "plainTextRule": "RangeCheck must reference an existing ItemDef element.",
+    "rule": "An ItemDef element must exist with ItemDef/@OID=RangeCheck/@def:ItemOID.",
+    "ruleMessage": "There is no ItemDef/@OID present that is referenced by RangeCheck within WhereClauseDef[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:WhereClauseDef/RangeCheck",
+    "element": "RangeCheck",
+    "attribute": "def:ItemOID",
+    "elementSelector": "RangeCheck",
+    "proposedKind": "references"
+  },
+  {
+    "id": 92,
+    "ruleId": "DEFINE-XML-0092",
+    "displayedLink": "https://wiki.cdisc.org/x/d6OzAg",
+    "plainTextRule": "Child element CheckValue must be provided for the RangeCheck element.",
+    "rule": "//RangeCheck/CheckValue must be provided.",
+    "ruleMessage": "Child element CheckValue is missing for element $ParentWhereClause[OID]/RangeCheck.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:WhereClauseDef/RangeCheck/CheckValue",
+    "element": "CheckValue",
+    "attribute": null,
+    "elementSelector": "CheckValue",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 93,
+    "ruleId": "DEFINE-XML-0093",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "Child element ItemGroupDef must be provided for the MetaDataVersion element in the context of a submission.",
+    "rule": "//MetaDataVersion/ItemGroupDef must be provided  when ODM/@def:Context='Submission'.",
+    "ruleMessage": "Child element ItemGroupDef is missing for element MetaDataVersion  when @def:Context='Submission'.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": null,
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 94,
+    "ruleId": "DEFINE-XML-0094",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "Attribute OID must be provided for the ItemGroupDef element.",
+    "rule": "@OID must be provided.",
+    "ruleMessage": "Attribute OID is missing for ItemGroupDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "OID",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 95,
+    "ruleId": "DEFINE-XML-0095",
+    "displayedLink": "https://wiki.cdisc.org/x/e6OzAg",
+    "plainTextRule": "The Alias element is required for each ItemGroupDef where the Domain attribute value is not the same as the Name attribute value.",
+    "rule": "Alias must be provided for each ItemGroupDef when @Name is different from @Domain and @Domain is present.",
+    "ruleMessage": "Domain attribute is not the same as the Name attribute but Alias is missing for ItemGroupDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/Alias",
+    "element": "Alias",
+    "attribute": null,
+    "elementSelector": "Alias",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 96,
+    "ruleId": "DEFINE-XML-0096",
+    "displayedLink": "https://wiki.cdisc.org/x/e6OzAg",
+    "plainTextRule": "Alias is Required for ItemGroupDef elements representing Supplemental Qualifier datasets in the context of a regulatory submission.",
+    "rule": "Alias must be provided for each ItemGroupDef where there are multiple ItemGroupDef elements with the same value for @Domain, ODM@Context= 'Submisson' and  the  @Name begins with 'SUPP' .",
+    "ruleMessage": "Alias is missing for ItemGroupDef[@Name] representing Supplemental Qualifier datasets in the context of a regulatory submission.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/Alias",
+    "element": "Alias",
+    "attribute": null,
+    "elementSelector": "Alias",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 97,
+    "ruleId": "DEFINE-XML-0097",
+    "displayedLink": "https://wiki.cdisc.org/x/e6OzAg",
+    "plainTextRule": "Missing Alias for Codelist referenced by a variable that requires CDISC Controlled Terminology according to the standard.",
+    "rule": "Missing the Alias element for the Codelist element referenced by the ItemDef element for a standard variable that requires CDISC Controlled Terminology.",
+    "ruleMessage": "Missing CodeList[@OID=&amp;lt;CodeListOID&amp;gt;]/Alias for ItemDef[@Name] where CDISC Controlled Terminology is required.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/Alias\n/ODM/Study/MetaDataVersion/CodeList/CodeListItem/Alias\n/ODM/Study/MetaDataVersion/CodeList/EnumeratedItem/Alias",
+    "element": "Alias",
+    "attribute": null,
+    "elementSelector": "Alias",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 98,
+    "ruleId": "DEFINE-XML-0098",
+    "displayedLink": "https://wiki.cdisc.org/x/e6OzAg",
+    "plainTextRule": "Missing Alias for Codelist EnumeratedItem element where the ExtendedValue attribute  is not present and the CodeList is referenced by a variable that requires CDISC Controlled Terminology according to the standard.",
+    "rule": "Missing the Alias element for //Codelist/EnumeratedItem  where EnumeratedItem/@defExtendedValue is not provided and CodeList/@OID is referenced by the ItemDef element for a standard variable that requires CDISC Controlled Terminology.",
+    "ruleMessage": "Missing CodeList[@OID=<CodeListOID>]/EnumeratedItem[@CodedValue]/Alias for ItemDef[@Name] where CDISC Controlled Terminology is required.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/EnumeratedItem/Alias",
+    "element": "Alias",
+    "attribute": null,
+    "elementSelector": "Alias",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 99,
+    "ruleId": "DEFINE-XML-0099",
+    "displayedLink": "https://wiki.cdisc.org/x/gqOzAg",
+    "plainTextRule": "Missing Alias for Codelist CodedItem element where the ExtendedValue attribute  is not present and the Codelist is referenced by a variable that requires CDISC Controlled Terminology according to the standard.",
+    "rule": "Missing the Alias element for //Codelist/CodeListItem  where CodeListItem/@def:ExtendedValue is not present and CodeList/@OID is referenced by the ItemDef element for a standard variable that requires CDISC Controlled Terminology.",
+    "ruleMessage": "Missing CodeList[@OID=<CodeListOID>]/CodeListItem[@CodedValue]/Alias for ItemDef[@Name] where CDISC Controlled Terminology is required.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/CodeListItem/Alias",
+    "element": "Alias",
+    "attribute": null,
+    "elementSelector": "Alias",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 100,
+    "ruleId": "DEFINE-XML-0100",
+    "displayedLink": "https://wiki.cdisc.org/x/e6OzAg",
+    "plainTextRule": "The Alias element must have a Context attribute.",
+    "rule": "@Context must be provided.",
+    "ruleMessage": "$ParentElementType[@OID] must have Context attribute for the Alias element provided.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/Alias\n/ODM/Study/MetaDataVersion/ItemDef/Alias\n/ODM/Study/MetaDataVersion/CodeList/Alias\n/ODM/Study/MetaDataVersion/CodeList/CodeListItem/Alias\n/ODM/Study/MetaDataVersion/CodeList/EnumeratedItem/Alias",
+    "element": "Alias",
+    "attribute": "Context",
+    "elementSelector": "Alias",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 101,
+    "ruleId": "DEFINE-XML-0101",
+    "displayedLink": "https://wiki.cdisc.org/x/e6OzAg",
+    "plainTextRule": "The Alias element must have a Name attribute.",
+    "rule": "@Name must be provided.",
+    "ruleMessage": "$ParentElementType[@OID] must have a Name attribute for the Alias element provided.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/Alias\n/ODM/Study/MetaDataVersion/ItemDef/Alias\n/ODM/Study/MetaDataVersion/CodeList/Alias\n/ODM/Study/MetaDataVersion/CodeList/CodeListItem/Alias\n/ODM/Study/MetaDataVersion/CodeList/EnumeratedItem/Alias",
+    "element": "Alias",
+    "attribute": "Name",
+    "elementSelector": "Alias",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 104,
+    "ruleId": "DEFINE-XML-0104",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "Attribute Name must be provided for the ItemGroupDef element.",
+    "rule": "@Name must be provided.",
+    "ruleMessage": "Attribute Name is missing for ItemGroupDef[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "Name",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 105,
+    "ruleId": "DEFINE-XML-0105",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "Attribute Domain must be provided for the ItemGroupDef element that references the SDTM or SEND implementation guides.",
+    "rule": "@Domain must be provided when ItemGroupDef/@def:StandardOID references def:Standard with def:Standard/@Name beginning with 'SDTM' or 'SEND'.",
+    "ruleMessage": "Attribute Domain is missing for ItemGroupDef[@Name] that references an SDTM or SEND implementation guide.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "Domain",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 106,
+    "ruleId": "DEFINE-XML-0106",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "Attribute Domain must be omitted for the ItemGroupDef element that reference the ADaM implementation guides.",
+    "rule": "@Domain must be omitted when ItemGroupDef/@def:StandardOID references def:Standard with def:Standard/@Name beginning with 'ADaM'.",
+    "ruleMessage": "Attribute Domain is provided for ItemGroupDef[@Name] that references the ADaM implementation guide.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "Domain",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "not_exists"
+  },
+  {
+    "id": 108,
+    "ruleId": "DEFINE-XML-0108",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "SASDatasetName must be provided in the context of a submission.",
+    "rule": "@SASDatasetName must be provided when ODM/@def:Context= 'Submission'.",
+    "ruleMessage": "ItemGroupDef[@Name] must have a SASDatasetName attribute when @Context is Submission.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "SASDatasetName",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 109,
+    "ruleId": "DEFINE-XML-0109",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "Non-conforming SAS dataset name.",
+    "rule": "Non-conforming SAS Dataset Name.",
+    "ruleMessage": "SAS Dataset Name does not conform to submission requirements.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "SASDatasetName",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 110,
+    "ruleId": "DEFINE-XML-0110",
+    "displayedLink": "https://wiki.cdisc.org/display/DEFXML2DOT1/ItemGroupDef+Element",
+    "plainTextRule": "Value of the SAS dataset name must match the ItemGroupDef name",
+    "rule": "The value of @SASDatasetName must match the value @Name.",
+    "ruleMessage": "The value of SASDatasetName[@SASDatasetName] is different from the value of Name[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "SASDatasetName",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 112,
+    "ruleId": "DEFINE-XML-0112",
+    "displayedLink": "https://wiki.cdisc.org/display/DEFXML2DOT1/ItemGroupDef+Element",
+    "plainTextRule": "SASDatasetName attribute value must match the filename identified by the file referenced by the ArchiveLocationID attribute.",
+    "rule": "@SASDatasetName value must match the filename component of  def:leaf[@ID=@def:ArchiveLocationID].",
+    "ruleMessage": "@SASDatasetName value does not match the filename for def:leaf[@ID=@def:ArchiveLocationID]/@href.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "SASDatasetName",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 113,
+    "ruleId": "DEFINE-XML-0113",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "Attribute Repeating must be provided for the ItemGroupDef element.",
+    "rule": "@Repeating must be provided.",
+    "ruleMessage": "Attribute Repeating is missing for element ItemGroupDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "Repeating",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 114,
+    "ruleId": "DEFINE-XML-0114",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "The value of the Repeating attribute must be one of \"Yes\", \"No\".",
+    "rule": "The value of @Repeating must be one of \"Yes\", \"No\".",
+    "ruleMessage": "The value of Repeating[@Repeating] is not one of \"Yes\", \"No\" for ItemGroupDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "Repeating",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 115,
+    "ruleId": "DEFINE-XML-0115",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "The value of the IsReferenceData attribute must be one of 'Yes', 'No'.",
+    "rule": "The value of @IsReferenceData must be one of 'Yes', 'No'.",
+    "ruleMessage": "The value of IsReferenceData[@IsReferenceData] is not one of 'Yes', 'No' for ItemGroupDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "IsReferenceData",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 116,
+    "ruleId": "DEFINE-XML-0116",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "The value of the Purpose attribute must be one of \"Tabulation\", \"Analysis\".",
+    "rule": "The value of @Purpose must be one of \"Tabulation\", \"Analysis\".",
+    "ruleMessage": "The value of Purpose [@Purpose] is not one of \"Tabulation\", \"Analysis\" for ItemGroupDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "Purpose",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 117,
+    "ruleId": "DEFINE-XML-0117",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "Attribute Purpose must be provided for the ItemGroupDef element.",
+    "rule": "@Purpose must be provided.",
+    "ruleMessage": "Attribute Purpose is missing for element ItemGroupDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "Purpose",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 118,
+    "ruleId": "DEFINE-XML-0118",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "Attribute def:Structure must be provided for the ItemGroupDef element.",
+    "rule": "@def:Structure must be provided.",
+    "ruleMessage": "Attribute def:Structure is missing for ItemGroupDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "def:Structure",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 119,
+    "ruleId": "DEFINE-XML-0119",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "def:ArchiveLocationID is required when ODM@def:Context='Submission' and def:HasNoData is not present.",
+    "rule": "When ODM/@def:Context ='Submission' either ItemGroupDef/@def:HasNoData is present with value 'Yes' or ItemGroupDef/@def:ArchiveLocationID must be provided.",
+    "ruleMessage": "def:ArchiveLocationID is missing for ItemGroupDef[@Name] when def:Context='Submission' and def:HasNoData is not present.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "def:ArchiveLocationID",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 120,
+    "ruleId": "DEFINE-XML-0120",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "The def:ArchiveLocationID attribute on the ItemGroupDef element must reference an existing def:leaf element within the same ItemGroupDef.",
+    "rule": "A def:leaf element must exist within the same ItemGroupDef element with def:leaf/@ID = //ItemGroupDef/@def:ArchiveLocationID.",
+    "ruleMessage": "There is no def:leaf within ItemGroupDef[@Name] with an ID attribute that matches ItemGroupDef[@Name]/def:ArchiveLocationID.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "def:ArchiveLocationID",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "references"
+  },
+  {
+    "id": 121,
+    "ruleId": "DEFINE-XML-0121",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "The IsNonStandard attribute must not be populated when the dataset is standard.",
+    "rule": "@def:IsNonStandard must not be present when @def:StandardOID is present.",
+    "ruleMessage": null,
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "def:IsNonStandard",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "not_exists"
+  },
+  {
+    "id": 122,
+    "ruleId": "DEFINE-XML-0122",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "The IsNonStandard attribute must be populated when the dataset is not standard.",
+    "rule": "@def:IsNonStandard must be present when @def:StandardOID is not present.",
+    "ruleMessage": "The IsNonStandard attribute is missing for ItemGroupDef[@Name] when the dataset is not standard.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "def:IsNonStandard",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 123,
+    "ruleId": "DEFINE-XML-0123",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "The value of the def:IsNonStandard attribute must be 'Yes'.",
+    "rule": "The value of @def:IsNonStandard must be 'Yes'.",
+    "ruleMessage": "The value of def:IsNonStandard[@def:IsNonStandard] is not 'Yes' for ItemGroupDef[@Name].",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "def:IsNonStandard",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 124,
+    "ruleId": "DEFINE-XML-0124",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "The def:StandardOID attribute on the ItemGroupDef element must reference an existing def:Standard element with Type=\"IG\".",
+    "rule": "A def:Standard element must exist with def:Standard/@OID = //ItemGroupDef/@def:StandardOID and with def:Standard/@Type=\"IG\".",
+    "ruleMessage": "There is no def:Standard of type 'IG' with an OID attribute that matches itemGroupDef[@Name]/def:StandardOID.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "def:StandardOID",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "references"
+  },
+  {
+    "id": 125,
+    "ruleId": "DEFINE-XML-0125",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "Attribute def:HasNoData must be provided when def:ArchiveLocationID is not provided in the context of a regulatory submission.",
+    "rule": "@def:HasNoData must be provided when ODM/@Context = \"Submission\" and @def:ArchiveLocationID is not provided.",
+    "ruleMessage": "Attribute def:HasNoData is missing for ItemGroupDef[@Name] when def:ArchiveLocationID is not provided in the context of a regulatory submission.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "def:HasNoData",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 126,
+    "ruleId": "DEFINE-XML-0126",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "The value of the def:HasNoData attribute must be \"Yes\".",
+    "rule": "@def:HasNoData must be \"Yes\".",
+    "ruleMessage": "The value of ItemGroupDef[@Name]/@def:HasNoData is not \"Yes\"",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "def:HasNoData",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 127,
+    "ruleId": "DEFINE-XML-0127",
+    "displayedLink": "https://wiki.cdisc.org/x/S6OzAg",
+    "plainTextRule": "The def:CommentOID attribute on the ItemGroupDef element must reference an existing def:CommentDef element.",
+    "rule": "A def:CommentDef element must exist with def:CommentDef/@OID = //ItemGroupDef/@def:CommentOID.",
+    "ruleMessage": "There is no def:CommentDef with an OID attribute that matches ItemGroupDef[@Name]/def:CommentOID.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "def:CommentOID",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "references"
+  },
+  {
+    "id": 128,
+    "ruleId": "DEFINE-XML-0128",
+    "displayedLink": "https://wiki.cdisc.org/x/eaOzAg",
+    "plainTextRule": "Child element Description must be provided for the ItemGroupDef element in the context of a submission.",
+    "rule": "//ItemGroupDef/Description must be provided when ODM/@def:Context='Submission'.",
+    "ruleMessage": "Child element Description is missing for element ItemGroupDef[@Name] when @def:Context='Submission'.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/Description",
+    "element": "ItemGroupDef/Description",
+    "attribute": null,
+    "elementSelector": "ItemGroupDef/Description",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 129,
+    "ruleId": "DEFINE-XML-0129",
+    "displayedLink": "https://wiki.cdisc.org/x/eaOzAg",
+    "plainTextRule": "No more than one child element Description must be provided for the ItemGroupDef element.",
+    "rule": "No more than one //ItemGroupDef/Description must be provided.",
+    "ruleMessage": "Child element Description is provided more than once for element ItemGroupDef[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/Description",
+    "element": "ItemGroupDef/Description",
+    "attribute": null,
+    "elementSelector": "ItemGroupDef/Description",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 131,
+    "ruleId": "DEFINE-XML-0131",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "The dataset class needs to be provided when the file is used for submission.",
+    "rule": "The def:Class element must be provided when ODM/@def:Context = 'Submission'.",
+    "ruleMessage": "$ItemGroupDef[@Name]/def:Class is missing.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/def:Class",
+    "element": "def:Class",
+    "attribute": null,
+    "elementSelector": "Class",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 132,
+    "ruleId": "DEFINE-XML-0132",
+    "displayedLink": "https://wiki.cdisc.org/x/UmM8Aw",
+    "plainTextRule": "The value of the Name attribute in the ItemGroupDef/def:Class element must be one of the values from the CDISC/NCI GNRLOBSC General Observation Class codelist included in the Define-XML Controlled Terminology.",
+    "rule": "The value of ItemGroupDef/def:Class/@Name must be in the CDISC/NCI GNRLOBSC General Observation Class codelist with C-Code C103329.",
+    "ruleMessage": "The value of the dataset's class name [ItemGroupDef/def:Class/@Name] is not in the CDISC/NCI GNRLOBSC General Observation Class codelist with C-Code C103329.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/def:Class",
+    "element": "def:Class",
+    "attribute": "Name",
+    "elementSelector": "Class",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 134,
+    "ruleId": "DEFINE-XML-0134",
+    "displayedLink": "https://wiki.cdisc.org/x/VmM8Aw",
+    "plainTextRule": "Attribute Name must be provided for the def:SubClass element.",
+    "rule": "@Name must be provided.",
+    "ruleMessage": "Attribute Name is missing for def:SubClass in ItemGroupDef[@Name]/def:Class[@Name].",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/def:Class/def:SubClass",
+    "element": "def:SubClass",
+    "attribute": "Name",
+    "elementSelector": "SubClass",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 135,
+    "ruleId": "DEFINE-XML-0135",
+    "displayedLink": "https://wiki.cdisc.org/x/faOzAg",
+    "plainTextRule": "No more than one child element CodeListRef must be provided for the ItemDef element.",
+    "rule": "No more than one //ItemDef/CodeListRef must be provided.",
+    "ruleMessage": "Child element CodeListRef is provided more than once for element ItemDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/CodeListRef",
+    "element": "CodeListRef",
+    "attribute": null,
+    "elementSelector": "CodeListRef",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 137,
+    "ruleId": "DEFINE-XML-0137",
+    "displayedLink": "https://wiki.cdisc.org/x/fKOzAg",
+    "plainTextRule": "The ItemDef element must have the OID attribute present.",
+    "rule": "@OID must be present.",
+    "ruleMessage": "OID attribute must be present for ItemDef[@Name] within $ParentElementType[@OID]",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef",
+    "element": "ItemDef",
+    "attribute": "OID",
+    "elementSelector": "ItemDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 138,
+    "ruleId": "DEFINE-XML-0138",
+    "displayedLink": "https://wiki.cdisc.org/x/fKOzAg",
+    "plainTextRule": "The ItemDef element must have the Name attribute present.",
+    "rule": "@Name must be present.",
+    "ruleMessage": "Name attribute must be present for ItemDef[@OID] within $ParentElementType[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef",
+    "element": "ItemDef",
+    "attribute": "Name",
+    "elementSelector": "ItemDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 139,
+    "ruleId": "DEFINE-XML-0139",
+    "displayedLink": "https://wiki.cdisc.org/x/fKOzAg",
+    "plainTextRule": "The ItemDef element must have the DataType attribute present.",
+    "rule": "@DataType must be present.",
+    "ruleMessage": "DataType attribute must be present for ItemDef[@OID] within $ParentElementType[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef",
+    "element": "ItemDef",
+    "attribute": "DataType",
+    "elementSelector": "ItemDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 140,
+    "ruleId": "DEFINE-XML-0140",
+    "displayedLink": "https://wiki.cdisc.org/x/fKOzAg",
+    "plainTextRule": "The value of the DataType attribute must be one of \"text\", \"integer\", \"float\", \"date\", \"datetime\", \"time\", \"partialDate\", \"partialTime\", \"partialDatetime\", \"incompleteDatetime\", \"durationDatetime\", \"intervalDatetime\".",
+    "rule": "The value of @DataType must be one of \"text\", \"integer\", \"float\", \"date\", \"datetime\", \"time\", \"partialDate\", \"partialTime\", \"partialDatetime\", \"incompleteDatetime\", \"durationDatetime\", \"intervalDatetime\".",
+    "ruleMessage": "The value of DataType[@DataType] is not one of \"text\", \"integer\", \"float\", \"date\", \"datetime\", \"time\", \"partialDate\", \"partialTime\", \"partialDatetime\", \"incompleteDatetime\", \"durationDatetime\", \"intervalDatetime\" for ItemDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef",
+    "element": "ItemDef",
+    "attribute": "DataType",
+    "elementSelector": "ItemDef",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 141,
+    "ruleId": "DEFINE-XML-0141",
+    "displayedLink": "https://wiki.cdisc.org/x/fKOzAg",
+    "plainTextRule": "The ItemDef element must have the Length attribute present when the DataType attribute has the value text, integer or float.",
+    "rule": "@Length must be present when the @DataType value in ('text', 'integer' or 'float').",
+    "ruleMessage": "Length attribute must be present for ItemDef[@OID] within $ParentElementType[@OID] when (ItemDef[@DataType]) is one of 'text', 'integer' or 'float'.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef",
+    "element": "ItemDef",
+    "attribute": "Length",
+    "elementSelector": "ItemDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 142,
+    "ruleId": "DEFINE-XML-0142",
+    "displayedLink": "https://wiki.cdisc.org/x/fKOzAg",
+    "plainTextRule": "For any ItemDef element referenced by a def:ValueListDef/ItemRef, the value of attribute Length must be less than or equal to the value of attribute Length in the ItemDef element that references the value list.",
+    "rule": "//ItemDef[def:ValueListDef[//ItemDef/def:ValueListRef/@ValueListOID]/ItemRef/@ItemOID]/@Length is greater than $Parent/def:ValueListRef/@ValueListOID/@Length.",
+    "ruleMessage": "Length for value definition in ItemDef element  ItemDef[ @OID='../def:ValueListRef[ValueListOID=def:ValueListDef/@OID]/ItemRef/@ItemOID']/@OID is greater than the Length for variable definition in ItemDef element $Parent/def:ValueListRef[@ValueListOID='def:ValueListDef/@OID']/@OID.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:ValueListDef/ItemRef",
+    "element": "ItemDef",
+    "attribute": "Length",
+    "elementSelector": "ItemDef",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 143,
+    "ruleId": "DEFINE-XML-0143",
+    "displayedLink": "https://wiki.cdisc.org/x/fKOzAg",
+    "plainTextRule": "Length attribute must not be present for ItemDef when DataType is not in ('integer','text', 'float').",
+    "rule": "ItemDef/@Length must not be present when ItemDef/@DataType not in ('integer','text', 'float').",
+    "ruleMessage": "ItemDef[@Name] has a Length attribute but the DataType is not one of ('integer','text', 'float').",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef",
+    "element": "ItemDef",
+    "attribute": "Length",
+    "elementSelector": "ItemDef",
+    "proposedKind": "not_exists"
+  },
+  {
+    "id": 144,
+    "ruleId": "DEFINE-XML-0144",
+    "displayedLink": "https://wiki.cdisc.org/x/fKOzAg",
+    "plainTextRule": "The value of attribute Length must be a positive integer number.",
+    "rule": "The value of @Length must be a positive integer number.",
+    "ruleMessage": "The value of attribute Length[@Length] is not a positive integer number for $ParentItemGroupDef[@Name]/ItemDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef",
+    "element": "ItemDef",
+    "attribute": "Length",
+    "elementSelector": "ItemDef",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 145,
+    "ruleId": "DEFINE-XML-0145",
+    "displayedLink": "https://wiki.cdisc.org/x/fKOzAg",
+    "plainTextRule": "An ItemDef with the DataType attribute float must include a SignificantDigits attribute.",
+    "rule": "/ItemDef/@SignificantDigits must be present when ItemDef/@DateType='float'.",
+    "ruleMessage": "ItemDef[@Name], with DataType 'float' must have the SignificantDigits attribute.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef",
+    "element": "ItemDef",
+    "attribute": "SignificantDigits",
+    "elementSelector": "ItemDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 146,
+    "ruleId": "DEFINE-XML-0146",
+    "displayedLink": "https://wiki.cdisc.org/x/fKOzAg",
+    "plainTextRule": "The value of attribute SignificantDigits must be a non-negative integer number.",
+    "rule": "The value of @SignificantDigits must be a non-negative integer number.",
+    "ruleMessage": "The value of attribute SignificantDigits[@SignificantDigits] is not a non-negative integer number for $ParentItemGroupDef[@Name]/ItemDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef",
+    "element": "ItemDef",
+    "attribute": "SignificantDigits",
+    "elementSelector": "ItemDef",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 147,
+    "ruleId": "DEFINE-XML-0147",
+    "displayedLink": "https://wiki.cdisc.org/x/fKOzAg",
+    "plainTextRule": "The SASFieldName attribute must be provided for the ItemDef element when the Context is 'Submission' and the associated dataset is provided as SAS v5 XPT.",
+    "rule": "/ItemDef/@SASFieldName must be provided when /ODM/@Context='Submission' and the parent ItemGroupDef/@def:ArchiveLocationID refers to a def:leaf element with a @xlink:href attribute that references a file with the 'xpt' extension.",
+    "ruleMessage": "The SASFieldName attribute for the ItemDef[@Name] must be provided when ODM/@Context is 'Submission'.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef",
+    "element": "ItemDef",
+    "attribute": "SASFieldName",
+    "elementSelector": "ItemDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 148,
+    "ruleId": "DEFINE-XML-0148",
+    "displayedLink": "https://wiki.cdisc.org/x/fKOzAg",
+    "plainTextRule": "The def:CommentOID attribute on the ItemDef element must reference an existing def:CommentDef element.",
+    "rule": "A def:CommentDef element must exist with def:CommentDef/@OID = //ItemDef/@def:CommentOID.",
+    "ruleMessage": "There is no def:CommentDef with an OID attribute that matches ItemDef[@Name]/def:CommentOID.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "ODM/Study/MetaDataVersion/ItemDef",
+    "element": "ItemDef",
+    "attribute": "def:CommentOID",
+    "elementSelector": "ItemDef",
+    "proposedKind": "references"
+  },
+  {
+    "id": 149,
+    "ruleId": "DEFINE-XML-0149",
+    "displayedLink": "https://wiki.cdisc.org/x/faOzAg",
+    "plainTextRule": "A variable defined in a standard with a Controlled Terminology requirement must have a CodeListRef element.",
+    "rule": "The ItemDef element representing a variable that is defined with a Controlled Terminology requirement in the def:Standard referenced in the ItemGroupDef must have a CodeListRef child element.",
+    "ruleMessage": "ItemDef[@Name] for Standard [def:Standard/@Name], Version [def:Standard/@Version] requires Controlled Terminology and is missing the CodeListRef child element.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/CodeListRef",
+    "element": "CodeListRef",
+    "attribute": null,
+    "elementSelector": "CodeListRef",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 151,
+    "ruleId": "DEFINE-XML-0151",
+    "displayedLink": "https://wiki.cdisc.org/x/faOzAg",
+    "plainTextRule": "The CodeListOID attribute on the CodeListRef element must reference an existing CodeList element.",
+    "rule": "A CodeList element must exist with CodeList/@OID = //CodeListRef/@CodeListOID.",
+    "ruleMessage": "There is no CodeList with an OID attribute that matches ItemDef[@Name]/CodeListRef@CodeListOID.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/CodeListRef",
+    "element": "CodeListRef",
+    "attribute": "CodeListOID",
+    "elementSelector": "CodeListRef",
+    "proposedKind": "references"
+  },
+  {
+    "id": 152,
+    "ruleId": "DEFINE-XML-0152",
+    "displayedLink": "https://wiki.cdisc.org/x/gKOzAg",
+    "plainTextRule": "The def:StandardOID attribute on the CodeList element must reference an existing def:Standard element with Type=\"CT\".",
+    "rule": "A def:Standard element must exist with def:Standard/@OID = //CodeList/@def:StandardOID and with def:Standard/@Type=\"CT\".",
+    "ruleMessage": "There is no def:Standard of type \"CT\" with an OID attribute that matches CodeList[@Name]/def:StandardOID.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList",
+    "element": "CodeList",
+    "attribute": "def:StandardOID",
+    "elementSelector": "CodeList",
+    "proposedKind": "references"
+  },
+  {
+    "id": 153,
+    "ruleId": "DEFINE-XML-0153",
+    "displayedLink": "https://wiki.cdisc.org/x/gKOzAg",
+    "plainTextRule": "Attribute def:IsNonStandard must be provided for a CodeList element where CDISC Controlled Terminology is required and there is no Alias provided.",
+    "rule": "@def:IsNonStandard must be provided when there is no CodeList/Alias[@Context=\"nci:ExtCodeID\"].",
+    "ruleMessage": "Attribute def:IsNonStandard is missing and Alias[@Context=\"nci:ExtCodeID\"] is not provided for a variable with required controlled terminology.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList",
+    "element": "CodeList",
+    "attribute": "def:IsNonStandard",
+    "elementSelector": "CodeList",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 154,
+    "ruleId": "DEFINE-XML-0154",
+    "displayedLink": "https://wiki.cdisc.org/x/f6OzAg",
+    "plainTextRule": "For regulatory submissions, def:Origin metadata must be provided for all SDTM, ADaM or SEND variables.",
+    "rule": "def:Origin must be provided when there is no //def:ItemDef/def:ValueListRef element and ODM/@def:Context=\"Submission\".",
+    "ruleMessage": "ItemDef[@Name]/def:Origin is not found.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/def:Origin",
+    "element": "def:Origin",
+    "attribute": null,
+    "elementSelector": "Origin",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 155,
+    "ruleId": "DEFINE-XML-0155",
+    "displayedLink": "https://wiki.cdisc.org/x/f6OzAg",
+    "plainTextRule": "All variable definitions must have a  def:Origin child element when there is no def:ValueListRef child element. When there is a def:ValueListRef either the variable definition must have a def:Origin or it must be provided for each ItemDef referenced in the def:ValueLIstDef.",
+    "rule": "For all ItemDef elements referenced in an ItemGroupDef, there must be either a def:Origin child element or, if there is no def:Origin and there is a def:ValueListRef, each ItemDef referenced in the corresponding def:ValueListDef must have a def:Origin.",
+    "ruleMessage": "There must be a  def:Origin defined at the variable or value level for ItemDef[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/def:Origin",
+    "element": "def:Origin",
+    "attribute": null,
+    "elementSelector": "Origin",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 158,
+    "ruleId": "DEFINE-XML-0158",
+    "displayedLink": "https://wiki.cdisc.org/x/f6OzAg",
+    "plainTextRule": "Attribute Type must be provided for the def:Origin element.",
+    "rule": "@Type must be provided.",
+    "ruleMessage": "Attribute Type is missing for element def:Origin for ItemDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/def:Origin",
+    "element": "def:Origin",
+    "attribute": "Type",
+    "elementSelector": "Origin",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 159,
+    "ruleId": "DEFINE-XML-0159",
+    "displayedLink": "https://wiki.cdisc.org/x/f6OzAg",
+    "plainTextRule": "ItemDef which has a def:Origin element with Type = 'Collected' must have a reference to a document which corresponds to AnnotatedCRF",
+    "rule": "When def:Origin/@Type=\"Collected\" and def:Origin/@Source is one of \"Investigator\" or \"Subject\", there must be a def:DocumentRef with def:DocumentRef/@leafID = def:AnnotatedCRF/def:DocumentRef/@leafID",
+    "ruleMessage": "ItemDef[@Name] with def:Origin/@Type = 'Collected' and def:Origin/@Source = [@Source] does not have to an annotated CRF document.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/def:Origin",
+    "element": "def:Origin",
+    "attribute": "Type",
+    "elementSelector": "Origin",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 160,
+    "ruleId": "DEFINE-XML-0160",
+    "displayedLink": "https://wiki.cdisc.org/x/f6OzAg",
+    "plainTextRule": "The value of the Type attribute must be one of the values from the CDISC/NCI standard Origin Type codelist included in the Define-XML Controlled Terminology.",
+    "rule": "The value of @Type must be in the CDISC/NCI Standard  Origin Type codelist with C-Code C170449.",
+    "ruleMessage": "The value of Type [@Type] is not in the CDISC/NCI Standard Origin Type codelist (C-Code C170449) for Define-XML.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/def:Origin",
+    "element": "def:Origin",
+    "attribute": "Type",
+    "elementSelector": "Origin",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 161,
+    "ruleId": "DEFINE-XML-0161",
+    "displayedLink": "https://wiki.cdisc.org/x/f6OzAg",
+    "plainTextRule": "The value of the Source attribute must be one of \"Investigator\", \"Sponsor\", \"Subject\", \"Vendor\".",
+    "rule": "The value of @Source must be one of \"Investigator\", \"Sponsor\", \"Subject\", \"Vendor\".",
+    "ruleMessage": "The value of Source[@Source] is not one of \"Investigator\", \"Sponsor\", \"Subject\", \"Vendor\" for ItemDef[@Name].",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/def:Origin",
+    "element": "def:Origin",
+    "attribute": "Source",
+    "elementSelector": "Origin",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 162,
+    "ruleId": "DEFINE-XML-0162",
+    "displayedLink": "https://wiki.cdisc.org/x/fqOzAg",
+    "plainTextRule": "No more than one child element def:ValueListRef must be provided for the ItemDef element.",
+    "rule": "No more than one //ItemDef/def:ValueListRef must be provided.",
+    "ruleMessage": "Child element def:ValueListRef is provided more than once for element ItemDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/def:ValueListRef",
+    "element": "def:ValueListRef",
+    "attribute": null,
+    "elementSelector": "ValueListRef",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 163,
+    "ruleId": "DEFINE-XML-0163",
+    "displayedLink": "https://wiki.cdisc.org/x/fqOzAg",
+    "plainTextRule": "The ValueListOID attribute on the def:ValueListRef element must reference an existing def:ValueListDef element.",
+    "rule": "A def:ValueListDef element must exist with def:ValueListDef/@OID = //def:ValueListRef/@ValueListOID.",
+    "ruleMessage": "There is no def:ValueListDef with an OID attribute that matches ItemDef[@Name]/def:ValueListRef/[@ValueListOID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/def:ValueListRef",
+    "element": "def:ValueListRef",
+    "attribute": "ValueListOID",
+    "elementSelector": "ValueListRef",
+    "proposedKind": "references"
+  },
+  {
+    "id": 164,
+    "ruleId": "DEFINE-XML-0164",
+    "displayedLink": "https://wiki.cdisc.org/x/fqOzAg",
+    "plainTextRule": "Attribute ValueListOID must be provided for the def:ValueListRef element.",
+    "rule": "@ValueListOID must be provided.",
+    "ruleMessage": "Attribute ValueListOID is missing for element def:ValueListRef in ItemDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/def:ValueListRef",
+    "element": "def:ValueListRef",
+    "attribute": "ValueListOID",
+    "elementSelector": "ValueListRef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 165,
+    "ruleId": "DEFINE-XML-0165",
+    "displayedLink": "https://wiki.cdisc.org/x/gaOzAg",
+    "plainTextRule": "CodeList element must contain either one or more EnumeratedItem elements, one or more CodeListItem elements or one ExternalCodelist element.",
+    "rule": "//CodeList/@Name must contain either one or more EnumeratedItem elements, one or more CodeListItem elements or one ExternalCodelist element.",
+    "ruleMessage": "CodeList[@Name] must contain either one or more EnumeratedItem elements, one or more CodeListItem elements or one ExternalCodelist element.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList",
+    "element": "CodeList",
+    "attribute": null,
+    "elementSelector": "CodeList",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 166,
+    "ruleId": "DEFINE-XML-0166",
+    "displayedLink": "https://wiki.cdisc.org/x/gKOzAg",
+    "plainTextRule": "Attribute OID must be provided for the CodeList element.",
+    "rule": "@OID must be provided.",
+    "ruleMessage": "Attribute OID is missing for element CodeList[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList",
+    "element": "CodeList",
+    "attribute": "OID",
+    "elementSelector": "CodeList",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 167,
+    "ruleId": "DEFINE-XML-0167",
+    "displayedLink": "https://wiki.cdisc.org/x/gKOzAg",
+    "plainTextRule": "The value of the def:IsNonStandard attribute must be \"Yes\".",
+    "rule": "The value of @def:IsNonStandard must be \"Yes\".",
+    "ruleMessage": "The value of def:IsNonStandard[@def:IsNonStandard] is not \"Yes\" for CodeList[@Name].",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList",
+    "element": "CodeList",
+    "attribute": "def:IsNonStandard",
+    "elementSelector": "CodeList",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 168,
+    "ruleId": "DEFINE-XML-0168",
+    "displayedLink": "https://wiki.cdisc.org/x/eaOzAg",
+    "plainTextRule": "Child element Description must be provided for the ItemDef element which represents a variable referenced in a dataset in the context of a submission.",
+    "rule": "//ItemDef/Description must be provided where ItemDef[@OID] is referenced from ItemGroupDef/ItemRef when ODM/@def:Context='Submission'.",
+    "ruleMessage": "Child element Description is missing for element ItemDef[@Name] referenced from ItemGroupDef[@Name] when @def:Context='Submission'.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/Description",
+    "element": "ItemDef/Description",
+    "attribute": null,
+    "elementSelector": "ItemDef/Description",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 169,
+    "ruleId": "DEFINE-XML-0169",
+    "displayedLink": "https://wiki.cdisc.org/x/eaOzAg",
+    "plainTextRule": "No more than one child element Description must be provided for the ItemDef element.",
+    "rule": "No more than one //ItemDef/Description must be provided.",
+    "ruleMessage": "Child element Description is provided more than once for element ItemDef[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/Description",
+    "element": "ItemDef/Description",
+    "attribute": null,
+    "elementSelector": "ItemDef/Description",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 171,
+    "ruleId": "DEFINE-XML-0171",
+    "displayedLink": "https://wiki.cdisc.org/x/gKOzAg",
+    "plainTextRule": "Attribute Name must be provided for the CodeList element.",
+    "rule": "@Name must be provided.",
+    "ruleMessage": "Attribute Name is missing for element CodeList[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList",
+    "element": "CodeList",
+    "attribute": "Name",
+    "elementSelector": "CodeList",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 172,
+    "ruleId": "DEFINE-XML-0172",
+    "displayedLink": "https://wiki.cdisc.org/x/gKOzAg",
+    "plainTextRule": "Name attribute value must be unique within the set of Codelist elements.",
+    "rule": "@Name must be unique within the set of CodeList elements.",
+    "ruleMessage": "There is more than one Codelist with Name [@Name].",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList",
+    "element": "CodeList",
+    "attribute": "Name",
+    "elementSelector": "CodeList",
+    "proposedKind": "unique_among_siblings"
+  },
+  {
+    "id": 173,
+    "ruleId": "DEFINE-XML-0173",
+    "displayedLink": "https://wiki.cdisc.org/x/gKOzAg",
+    "plainTextRule": "Attribute DataType must be provided for the CodeList element.",
+    "rule": "@DataType must be provided.",
+    "ruleMessage": "Attribute DataType is missing for element CodeList[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList",
+    "element": "CodeList",
+    "attribute": "DataType",
+    "elementSelector": "CodeList",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 174,
+    "ruleId": "DEFINE-XML-0174",
+    "displayedLink": "https://wiki.cdisc.org/x/gKOzAg",
+    "plainTextRule": "The value of the DataType attribute must be one of \"text\", \"float\", \"integer\".",
+    "rule": "The value of @DataType must be one of \"text\", \"float\", \"integer\".",
+    "ruleMessage": "The value of DataType[@DataType] is not one of \"text\", \"float\", \"integer\" for Codelist[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList",
+    "element": "CodeList",
+    "attribute": "DataType",
+    "elementSelector": "CodeList",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 175,
+    "ruleId": "DEFINE-XML-0175",
+    "displayedLink": "https://wiki.cdisc.org/x/gKOzAg",
+    "plainTextRule": "Codelist SASFormatName attribute must contain a valid SAS format name. It needs to start with a $ character in case the CodeList DataType is text.",
+    "rule": "The SASFormatName must be a valid SAS format name. The SASFormatName needs to start with a $ character in case the CodeList DataType is text.",
+    "ruleMessage": "ItemDef[@Name] has an invalid SASFormatName attribute value [@SASFormatName].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList",
+    "element": "CodeList",
+    "attribute": "SASFormatName",
+    "elementSelector": "CodeList",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 176,
+    "ruleId": "DEFINE-XML-0176",
+    "displayedLink": null,
+    "plainTextRule": "The def:StandardOID must be provided when the controlled terminology is drawn from a published CDISC standard.",
+    "rule": "@def:StandardOID must be provided when Alias/@Context = 'nci:ExtCodeID' and /ODM/@Context = \"Submission\"",
+    "ruleMessage": "Codelist[@Name] references a NCI codelist but does not include the def:StandardOID attribute.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList",
+    "element": "CodeList",
+    "attribute": "def:StandardOID",
+    "elementSelector": "CodeList",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 177,
+    "ruleId": "DEFINE-XML-0177",
+    "displayedLink": "https://wiki.cdisc.org/x/gKOzAg",
+    "plainTextRule": "The def:CommentOID attribute on the CodeList element must reference an existing def:CommentDef element.",
+    "rule": "A def:CommentDef element must exist with def:CommentDef/@OID = //CodeList/@def:CommentOID.",
+    "ruleMessage": "There is no def:CommentDef with an OID attribute that matches CodeList[@Name]/def:CommentOID.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList",
+    "element": "CodeList",
+    "attribute": "def:CommentOID",
+    "elementSelector": "CodeList",
+    "proposedKind": "references"
+  },
+  {
+    "id": 178,
+    "ruleId": "DEFINE-XML-0178",
+    "displayedLink": "https://wiki.cdisc.org/x/gaOzAg",
+    "plainTextRule": "The value of the def:ExtendedValue attribute must be \"Yes\".",
+    "rule": "The value of @def:ExtendedValue must be \"Yes\".",
+    "ruleMessage": "The value of def:ExtendedValue[@def:ExtendedValue] is not \"Yes\" for CodeList[@Name]/EnumeratedItem[@CodedValue].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/EnumeratedItem",
+    "element": "EnumeratedItem",
+    "attribute": "def:ExtendedValue",
+    "elementSelector": "EnumeratedItem",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 179,
+    "ruleId": "DEFINE-XML-0179",
+    "displayedLink": "https://wiki.cdisc.org/x/gaOzAg",
+    "plainTextRule": "For NCI/CDISC Controlled Terminology, the value of CodedValue must exactly match the CDISC Submission Value from the published Controlled Terminology.",
+    "rule": "CodeList/EnumeratedItem/@CodedValue must exactly match CDISC Submission value from the published Controlled Terminology referenced in the CodeList/@def:StandardOID.",
+    "ruleMessage": "CodeList[@Name]/EnumeratedItem[@CodedValue]/@CodedValue does not match CDISC Submission Value for CDISC Controlled Terminology with C-Code CodeList[@Name]/Alias[@Name].",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/EnumeratedItem",
+    "element": "EnumeratedItem",
+    "attribute": "CodedValue",
+    "elementSelector": "EnumeratedItem",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 180,
+    "ruleId": "DEFINE-XML-0180",
+    "displayedLink": "https://wiki.cdisc.org/x/gaOzAg",
+    "plainTextRule": "Attribute CodedValue must be provided for the EnumeratedItem element.",
+    "rule": "@CodedValue must be provided.",
+    "ruleMessage": "Attribute CodedValue is missing for element EnumeratedItem in CodeList[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/EnumeratedItem",
+    "element": "EnumeratedItem",
+    "attribute": "CodedValue",
+    "elementSelector": "EnumeratedItem",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 182,
+    "ruleId": "DEFINE-XML-0182",
+    "displayedLink": "https://wiki.cdisc.org/x/gaOzAg",
+    "plainTextRule": "The value of attribute Rank must be an integer number.",
+    "rule": "The value of @Rank must be an integer number.",
+    "ruleMessage": "The value of attribute Rank[@Rank] is not an integer number for EnumeratedItem[@CodedValue] in CodeList[@Name]",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/EnumeratedItem",
+    "element": "EnumeratedItem",
+    "attribute": "Rank",
+    "elementSelector": "EnumeratedItem",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 183,
+    "ruleId": "DEFINE-XML-0183",
+    "displayedLink": "https://wiki.cdisc.org/x/gaOzAg",
+    "plainTextRule": "Attribute Rank must be provided for the EnumeratedItem element when there is at least one Rank attribute value provided for the same CodeList.",
+    "rule": "@Rank must be provided when at least one $ParentCodeList/EnumeratedItem/@Rank is provided.",
+    "ruleMessage": "Attribute Rank is missing for element EnumeratedItem[@CodedValue] in CodeList[@Name] which has attribute Rank provided for another EnumeratedItem.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/EnumeratedItem",
+    "element": "EnumeratedItem",
+    "attribute": "Rank",
+    "elementSelector": "EnumeratedItem",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 184,
+    "ruleId": "DEFINE-XML-0184",
+    "displayedLink": "https://wiki.cdisc.org/x/gaOzAg",
+    "plainTextRule": "The value of attribute OrderNumber must be an integer number.",
+    "rule": "The value of @OrderNumber must be an integer number.",
+    "ruleMessage": "The value of attribute OrderNumber[@OrderNumber] is not an integer number for EnumeratedItem[@CodedValue] in CodeList[@Name]",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/EnumeratedItem",
+    "element": "EnumeratedItem",
+    "attribute": "OrderNumber",
+    "elementSelector": "EnumeratedItem",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 185,
+    "ruleId": "DEFINE-XML-0185",
+    "displayedLink": "https://wiki.cdisc.org/x/gaOzAg",
+    "plainTextRule": "Attribute OrderNumber must be provided for the EnumeratedItem element when there is at least one OrderNumber attribute value provided for the same CodeList.",
+    "rule": "@OrderNumber must be provided when at least one $ParentCodeList/EnumeratedItem/@OrderNumber is provided.",
+    "ruleMessage": "Attribute OrderNumber is missing for element EnumeratedItem[@CodedValue] in CodeList[@Name] which has attribute OrderNumber provided for another EnumeratedItem.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/EnumeratedItem",
+    "element": "EnumeratedItem",
+    "attribute": "OrderNumber",
+    "elementSelector": "EnumeratedItem",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 186,
+    "ruleId": "DEFINE-XML-0186",
+    "displayedLink": "https://wiki.cdisc.org/x/gaOzAg",
+    "plainTextRule": "Attribute def:ExtendedValue must be provided for the EnumeratedItem element when the CodedValue is an extended value.",
+    "rule": "@def:ExtendedValue  must be provided when [parent CodeList]/@def:StandardOID is provided and the [parent Codelist] is defined as extensible and CodeList[@Name]/EnumeratedItem/[@CodedValue] is not on the list of CDISC Submission Value values from the published Controlled Terminology referenced in the [parent CodeList]@def:StandardOID.",
+    "ruleMessage": "Attribute def:ExtendedValue is missing for element EnumeratedItem[@CodedValue] in CodeList[@Name].",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/EnumeratedItem",
+    "element": "EnumeratedItem",
+    "attribute": "def:ExtendedValue",
+    "elementSelector": "EnumeratedItem",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 187,
+    "ruleId": "DEFINE-XML-0187",
+    "displayedLink": "https://wiki.cdisc.org/x/gaOzAg",
+    "plainTextRule": "Attribute @def:ExtendedValue must not be present when a CodeList is non-extensible.",
+    "rule": "EnumeratedItem@def:ExtendedValue must not be present when [parent CodeList]/Alias[@Name] is non-extensible.",
+    "ruleMessage": "EnumeratedItem[@CodedValue] has a def:ExtendedValue attribute but the CodeList[@Name]/Alias[@Name] is non-extensible.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/EnumeratedItem",
+    "element": "EnumeratedItem",
+    "attribute": "def:ExtendedValue",
+    "elementSelector": "EnumeratedItem",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 191,
+    "ruleId": "DEFINE-XML-0191",
+    "displayedLink": "https://wiki.cdisc.org/x/gqOzAg",
+    "plainTextRule": "Attribute CodedValue must be provided for the CodeListItem element.",
+    "rule": "@CodedValue must be provided.",
+    "ruleMessage": "Attribute CodedValue is missing for element CodeListItem in CodeList[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/CodeListItem",
+    "element": "CodeListItem",
+    "attribute": "CodedValue",
+    "elementSelector": "CodeListItem",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 192,
+    "ruleId": "DEFINE-XML-0192",
+    "displayedLink": "https://wiki.cdisc.org/x/gqOzAg",
+    "plainTextRule": "For NCI/CDISC Controlled Terminology, CodedValue must exactly match the CDISC Submission Value from the published Controlled Terminology.",
+    "rule": "CodeList/CodeListItem/@CodedValue must exactly match CDISC Submission Value from the published Controlled Terminology referenced in the CodeList/@def:StandardOID.",
+    "ruleMessage": "CodeList[@Name]/CodeListItem[@CodedValue]/@CodedValue does not match CDISC Submission Value for CDISC Controlled Terminology with C-Code CodeList[@Name]/Alias[@Name].",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/CodeListItem",
+    "element": "CodeListItem",
+    "attribute": "CodedValue",
+    "elementSelector": "CodeListItem",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 193,
+    "ruleId": "DEFINE-XML-0193",
+    "displayedLink": "https://wiki.cdisc.org/x/gqOzAg",
+    "plainTextRule": "The value of attribute Rank must be an integer number.",
+    "rule": "The value of @Rank must be an integer number.",
+    "ruleMessage": "The value of attribute Rank[@Rank] is not an integer number for CodeListItem[@CodedValue] in CodeList[@Name]",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/CodeListItem",
+    "element": "CodeListItem",
+    "attribute": "Rank",
+    "elementSelector": "CodeListItem",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 194,
+    "ruleId": "DEFINE-XML-0194",
+    "displayedLink": "https://wiki.cdisc.org/x/gqOzAg",
+    "plainTextRule": "Attribute Rank must be provided for the CodeListItem element when there is at least one Rank attribute value provided for the same CodeList.",
+    "rule": "@Rank must be provided when at least one $ParentCodeList/CodeListItem/@Rank is provided.",
+    "ruleMessage": "Attribute Rank is missing for element CodeListItem[@CodedValue] in CodeList[@Name] which has attribute Rank provided for another CodeListItem.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/CodeListItem",
+    "element": "CodeListItem",
+    "attribute": "Rank",
+    "elementSelector": "CodeListItem",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 195,
+    "ruleId": "DEFINE-XML-0195",
+    "displayedLink": "https://wiki.cdisc.org/x/gqOzAg",
+    "plainTextRule": "The value of attribute OrderNumber must be an integer number.",
+    "rule": "The value of @OrderNumber must be an integer number.",
+    "ruleMessage": "The value of attribute OrderNumber[@OrderNumber] is not an integer number for CodeListItem[@CodedValue] in CodeList[@Name]",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/CodeListItem",
+    "element": "CodeListItem",
+    "attribute": "OrderNumber",
+    "elementSelector": "CodeListItem",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 196,
+    "ruleId": "DEFINE-XML-0196",
+    "displayedLink": "https://wiki.cdisc.org/x/gqOzAg",
+    "plainTextRule": "Attribute OrderNumber must be provided for the CodeListItem element when there is at least one OrderNumber attribute value provided for the same CodeList.",
+    "rule": "@OrderNumber must be provided when at least one $ParentCodeList/CodeListItem/@OrderNumber is provided.",
+    "ruleMessage": "Attribute OrderNumber is missing for element CodeListItem[@CodedValue] in CodeList[@Name] which has attribute OrderNumber provided for another CodeListItem.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/CodeListItem",
+    "element": "CodeListItem",
+    "attribute": "OrderNumber",
+    "elementSelector": "CodeListItem",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 197,
+    "ruleId": "DEFINE-XML-0197",
+    "displayedLink": "https://wiki.cdisc.org/x/gqOzAg",
+    "plainTextRule": "The value of the def:ExtendedValue attribute must be \"Yes\".",
+    "rule": "The value of @def:ExtendedValue must be \"Yes\".",
+    "ruleMessage": "The value of def:ExtendedValue[@def:ExtendedValue] is not \"Yes\" for CodeList[@Name]/CodeListItem[@CodedValue].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/CodeListItem",
+    "element": "CodeListItem",
+    "attribute": "def:ExtendedValue",
+    "elementSelector": "CodeListItem",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 198,
+    "ruleId": "DEFINE-XML-0198",
+    "displayedLink": "https://wiki.cdisc.org/x/g6OzAg",
+    "plainTextRule": "No more than one child element Decode may be provided for the CodeListItem element.",
+    "rule": "No more than one //CodeListItem/Decode may be provided.",
+    "ruleMessage": "Child element Decode is provided more than once for\nCodeList[@Name]/CodeListItem[@CodedValue].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/CodeListItem/Decode",
+    "element": "Decode",
+    "attribute": null,
+    "elementSelector": "Decode",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 199,
+    "ruleId": "DEFINE-XML-0199",
+    "displayedLink": "https://wiki.cdisc.org/x/g6OzAg",
+    "plainTextRule": "Child element Decode must be provided for the CodeListItem element.",
+    "rule": "//CodeListItem/Decode must be provided.",
+    "ruleMessage": "Child element Decode is missing for element CodeList[@Name]/CodeListItem[@CodedValue].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/CodeListItem/Decode",
+    "element": "Decode",
+    "attribute": null,
+    "elementSelector": "Decode",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 201,
+    "ruleId": "DEFINE-XML-0201",
+    "displayedLink": "https://wiki.cdisc.org/pages/viewinfo.action?pageId=45327234",
+    "plainTextRule": "Attribute def:ExtendedValue must be provided for the CodeLIstItem element when the CodedValue is an extended value.",
+    "rule": "@def:ExtendedValue must be provided when [parent CodeList]@def:StandardOID is provided and the [parent Codelist] is defined as extensible and CodeList[@Name]/CodeListItem[@CodedValue] is not on the list of CDISC Submission Value values from the published Controlled Terminology referenced in the [parent CodeList]@def:StandardOID.",
+    "ruleMessage": "Attribute def:ExtendedValue is missing for element CodeLIstItem[@CodedValue] in CodeList[@Name].",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/CodeListItem",
+    "element": "CodeListItem",
+    "attribute": "def:ExtendedValue",
+    "elementSelector": "CodeListItem",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 202,
+    "ruleId": "DEFINE-XML-0202",
+    "displayedLink": "https://wiki.cdisc.org/x/gqOzAg",
+    "plainTextRule": "Attribute @def:ExtendedValue must not be present when a CodeList is non-extensible.",
+    "rule": "CodeListItem/@def:ExtendedValue must not be present when [parent CodeList]/Alias[@Name] is non-extensible.",
+    "ruleMessage": "CodeListItem[@CodedValue] has a def:ExtendedValue attribute but the CodeList[@Name]/Alias[@Name] is non-extensible.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/CodeListItem",
+    "element": "CodeListItem",
+    "attribute": "def:ExtendedValue",
+    "elementSelector": "CodeListItem",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 203,
+    "ruleId": "DEFINE-XML-0203",
+    "displayedLink": "https://wiki.cdisc.org/x/hKOzAg",
+    "plainTextRule": "Each ExternalCodeList element must have a Dictionary attribute.",
+    "rule": "Each ExternalCodeList element must have a Dictionary attribute.",
+    "ruleMessage": "CodeList[@Name]/ExternalCodeList Dictionary attribute must be present.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/ExternalCodeList",
+    "element": "ExternalCodeList",
+    "attribute": "Dictionary",
+    "elementSelector": "ExternalCodeList",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 204,
+    "ruleId": "DEFINE-XML-0204",
+    "displayedLink": "https://wiki.cdisc.org/x/hKOzAg",
+    "plainTextRule": "Each ExternalCodeList element must have a Version attribute.",
+    "rule": "Each ExternalCodeList element must have a Version attribute.",
+    "ruleMessage": "CodeList[@Name]/ExternalCodeList Version attribute must be present.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/ExternalCodeList",
+    "element": "ExternalCodeList",
+    "attribute": "Version",
+    "elementSelector": "ExternalCodeList",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 205,
+    "ruleId": "DEFINE-XML-0205",
+    "displayedLink": "https://wiki.cdisc.org/x/haOzAg",
+    "plainTextRule": "No more than one child element Description may be provided for the MethodDef element.",
+    "rule": "No more than one //MethodDef/Description may be provided.",
+    "ruleMessage": "Child element Description is provided more than once for MethodDef[@Name] .",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/MethodDef/Description",
+    "element": "MethodDef/Description",
+    "attribute": null,
+    "elementSelector": "MethodDef/Description",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 206,
+    "ruleId": "DEFINE-XML-0206",
+    "displayedLink": "https://wiki.cdisc.org/x/haOzAg",
+    "plainTextRule": "Each MethodDef element must have an OID attribute.",
+    "rule": "Each MethodDef element must have an OID attribute.",
+    "ruleMessage": "MethodDef OID attribute must be present.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/MethodDef",
+    "element": "MethodDef",
+    "attribute": "OID",
+    "elementSelector": "MethodDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 207,
+    "ruleId": "DEFINE-XML-0207",
+    "displayedLink": "https://wiki.cdisc.org/x/haOzAg",
+    "plainTextRule": "Attribute Name must be provided.",
+    "rule": "@Name attribute must be provided",
+    "ruleMessage": "Attribute Name is missing for element MethodDef[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/MethodDef",
+    "element": "MethodDef",
+    "attribute": "Name",
+    "elementSelector": "MethodDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 208,
+    "ruleId": "DEFINE-XML-0208",
+    "displayedLink": "https://wiki.cdisc.org/x/haOzAg",
+    "plainTextRule": "Each MethodDef element must have a Type attribute.",
+    "rule": "@Type is Required for MethodDef.",
+    "ruleMessage": "@Type is Required for MethodDEF[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/MethodDef",
+    "element": "MethodDef",
+    "attribute": "Type",
+    "elementSelector": "MethodDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 209,
+    "ruleId": "DEFINE-XML-0209",
+    "displayedLink": "https://wiki.cdisc.org/x/haOzAg",
+    "plainTextRule": "The value of the Type attribute must be one of \"Computation\", \"Imputation\".",
+    "rule": "@Type must be one of \"Computation\", \"Imputation\".",
+    "ruleMessage": "The value of MethodDef[@Type] is not one of \"Computation\", \"Imputation\" for MethodDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/MethodDef",
+    "element": "MethodDef",
+    "attribute": "Type",
+    "elementSelector": "MethodDef",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 210,
+    "ruleId": "DEFINE-XML-0210",
+    "displayedLink": "https://wiki.cdisc.org/x/haOzAg",
+    "plainTextRule": "Child element Description must be provided for the MethodDef element.",
+    "rule": "//MethodDef/Description must be provided.",
+    "ruleMessage": "Child element Description is missing for element MethodDef[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/MethodDef/Description",
+    "element": "MethodDef/Description",
+    "attribute": null,
+    "elementSelector": "MethodDef/Description",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 212,
+    "ruleId": "DEFINE-XML-0212",
+    "displayedLink": "https://wiki.cdisc.org/x/h6OzAg",
+    "plainTextRule": "Attribute OID attribute must be provided for the def:CommentDef element.",
+    "rule": "@OID must be provided.",
+    "ruleMessage": "Attribute OID is missing for def:CommentDef.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:CommentDef",
+    "element": "def:CommentDef",
+    "attribute": "OID",
+    "elementSelector": "CommentDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 213,
+    "ruleId": "DEFINE-XML-0213",
+    "displayedLink": "https://wiki.cdisc.org/x/fKOzAg",
+    "plainTextRule": "There must be only one def:CommentDef element for a given OID attribute value.",
+    "rule": "//def:CommentDef/@OID must be unique within Study/MetaDataVersion.",
+    "ruleMessage": "There is more than one def:CommentDef element with the OID attribute = [def:CommentDef/@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "ODM/Study/MetaDataVersion/def:CommentDef",
+    "element": "def:CommentDef",
+    "attribute": "OID",
+    "elementSelector": "CommentDef",
+    "proposedKind": "unique_among_siblings"
+  },
+  {
+    "id": 214,
+    "ruleId": "DEFINE-XML-0214",
+    "displayedLink": "https://wiki.cdisc.org/x/eaOzAg",
+    "plainTextRule": "Child element Description must be provided for the def:CommentDef element.",
+    "rule": "//def:CommentDef/Description must be provided.",
+    "ruleMessage": "Child element Description is missing for element def:CommentDef[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:CommentDef/Description",
+    "element": "def:CommentDef/Description",
+    "attribute": null,
+    "elementSelector": "CommentDef/Description",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 215,
+    "ruleId": "DEFINE-XML-0215",
+    "displayedLink": "https://wiki.cdisc.org/x/eaOzAg",
+    "plainTextRule": "No more than one child element Description must be provided for the def:CommentDef element.",
+    "rule": "No more than one //def:CommentDef/Description must be provided.",
+    "ruleMessage": "Child element Description is provided more than once for element def:CommentDef[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:CommentDef/Description",
+    "element": "def:CommentDef/Description",
+    "attribute": null,
+    "elementSelector": "CommentDef/Description",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 216,
+    "ruleId": "DEFINE-XML-0216",
+    "displayedLink": "https://wiki.cdisc.org/x/iKOzAg",
+    "plainTextRule": "ID attribute value must be unique within the set of def:leaf elements.",
+    "rule": "@ID must be unique within the set of //def:leaf/@ID values.",
+    "ruleMessage": "[count(//def:leaf/[@ID]] def:leaf elements found with the same def:leaf[@ID] value.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:leaf\n/ODM/Study/MetaDataVersion/ItemGroupDef/def:leaf",
+    "element": "def:leaf",
+    "attribute": "ID",
+    "elementSelector": "leaf",
+    "proposedKind": "unique_in_document"
+  },
+  {
+    "id": 218,
+    "ruleId": "DEFINE-XML-0218",
+    "displayedLink": "https://wiki.cdisc.org/x/iaOzAg",
+    "plainTextRule": "Child element def:title must be provided for the def:leaf element.",
+    "rule": "//def:leaf/def:title must be provided.",
+    "ruleMessage": "Child element def:title is missing for element def:leaf[ID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:leaf/def:title\n/ODM/Study/MetaDataVersion/ItemGroupDef/def:leaf/def:title",
+    "element": "def:title",
+    "attribute": null,
+    "elementSelector": "title",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 219,
+    "ruleId": "DEFINE-XML-0219",
+    "displayedLink": "https://wiki.cdisc.org/x/iaOzAg",
+    "plainTextRule": "No more than one child element def:title maybe provided for the def:leaf element.",
+    "rule": "No more than one //def:leaf/def:title may be provided.",
+    "ruleMessage": "Child element def:title is provided more than once for element def:leaf[@ID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:leaf/def:title\n/ODM/Study/MetaDataVersion/ItemGroupDef/def:leaf/def:title",
+    "element": "def:title",
+    "attribute": null,
+    "elementSelector": "title",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 221,
+    "ruleId": "DEFINE-XML-0221",
+    "displayedLink": "https://wiki.cdisc.org/x/hqOzAg",
+    "plainTextRule": "Attribute Context must be provided for the FormalExpression element.",
+    "rule": "@Context must be provided.",
+    "ruleMessage": "Attribute Context is missing for MethodDef[@Name]/FormalExpression.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/MethodDef/FormalExpression",
+    "element": "FormalExpression",
+    "attribute": "Context",
+    "elementSelector": "FormalExpression",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 230,
+    "ruleId": "DEFINE-XML-0230",
+    "displayedLink": "https://wiki.cdisc.org/x/TqOzAg",
+    "plainTextRule": "The value of the OID attribute must be unique within the Define-XML document.",
+    "rule": "@OID must be unique within the Define-XML document.",
+    "ruleMessage": "There is more than one element with OID [@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study\n/ODM/Study/MetaDataVersion\n/ODM/Study/MetaDataVersion/Standard\n/ODM/Study/MetaDataVersion/def:ValueListDef\n/ODM/Study/MetaDataVersion/def:WhereClauseDef\n/ODM/Study/MetaDataVersion/ItemGroupDef\n/ODM/Study/MetaDataVersion/ItemDef\n/ODM/Study/MetaDataVersion/CodeList\n/ODM/Study/MetaDataVersion/MethodDef\n/ODM/Study/MetaDataVersion/def:CommentDef",
+    "element": "All",
+    "attribute": "OID",
+    "elementSelector": "All",
+    "proposedKind": "unique_in_document"
+  },
+  {
+    "id": 233,
+    "ruleId": "DEFINE-XML-0233",
+    "displayedLink": "https://wiki.cdisc.org/x/IWM8Aw",
+    "plainTextRule": "Child element def:Standard must be provided for the def:Standards element.",
+    "rule": "//def:Standards/def:Standard must be provided.",
+    "ruleMessage": "Element def:Standards must have at least one  def:Standard child element.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:Standards/def:Standard",
+    "element": "def:Standards",
+    "attribute": null,
+    "elementSelector": "Standards",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 235,
+    "ruleId": "DEFINE-XML-0235",
+    "displayedLink": "https://wiki.cdisc.org/x/cqOzAg",
+    "plainTextRule": "No more than one /def:ValueListDef/Description may be provided.",
+    "rule": "Child element Description is provided more than once for def:ValueListDef[@OID] .",
+    "ruleMessage": "Child element Description is provided more than once for def:ValueListDef[@OID].",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:ValueListDef/Description",
+    "element": "def:ValueListDef/Description",
+    "attribute": null,
+    "elementSelector": "ValueListDef/Description",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 236,
+    "ruleId": "DEFINE-XML-0236",
+    "displayedLink": "https://wiki.cdisc.org/x/cqOzAg",
+    "plainTextRule": "Attribute OID attribute must be provided for the def:ValueListDef element.",
+    "rule": "@OID must be provided.",
+    "ruleMessage": "Attribute OID is missing for element def:ValueListDef.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:ValueListDef",
+    "element": "def:ValueListDef",
+    "attribute": "OID",
+    "elementSelector": "ValueListDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 237,
+    "ruleId": "DEFINE-XML-0237",
+    "displayedLink": "https://wiki.cdisc.org/x/c6OzAg",
+    "plainTextRule": "Child element ItemRef must be provided for the def:ValueListDef element.",
+    "rule": "//def:ValueListDef/ItemRef must be provided.",
+    "ruleMessage": "Child element ItemRef is missing for element def:ValueListDef[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:ValueListDef",
+    "element": "def:ValueListDef ItemRef",
+    "attribute": null,
+    "elementSelector": "ValueListDef/ItemRef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 238,
+    "ruleId": "DEFINE-XML-0238",
+    "displayedLink": "https://wiki.cdisc.org/x/S6OzAg",
+    "plainTextRule": "Attribute OrderNumber must be provided for the ItemRef element when there is at least one OrderNumber attribute value provided for the same parent def:ValueListDef or def:ItemGroupDef.",
+    "rule": "@OrderNumber must be provided for $Parent/ItemRef[@ItemOID] when count($Parent/ItemRef/@OrderNumber) is > 1.",
+    "ruleMessage": "Attribute OrderNumber is missing for element ItemRef[@ItemOID] in $Parent[@OID]/ItemRef[@ItemOID]. The  OrderNumber attribute must be provided for all or none of the ItemRef elements in $Parent[@OID].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:ValueListDef/ItemRef",
+    "element": "ItemRef",
+    "attribute": "OrderNumber",
+    "elementSelector": "ItemRef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 239,
+    "ruleId": "DEFINE-XML-0239",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "The value of the IsReferenceData attribute must be \"Yes\" when the ItemGroupDef references a Trial Design dataset.",
+    "rule": "@IsReferenceData must be \"Yes\" when ItemGroupDef/def:Class/@Name is \"TRIAL DESIGN\".",
+    "ruleMessage": "The value of IsReferenceData[@IsReferenceData] is not \"Yes\" for ItemGroupDef[@Name]/ItemRef[@ItemOID] when ItemGroupDef/def:Class/@Name=\"TRIAL DESIGN\".",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "IsReferenceData",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 240,
+    "ruleId": "DEFINE-XML-0240",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "The def:CommentOID attribute must be provided when the value of the ItemGroupDef def:HasNoData attribute is \"Yes\".",
+    "rule": "@def:CommentOID must be provided when @def:HasNoData is \"Yes\".",
+    "ruleMessage": "Comment is not provided for ItemGroupDef[@Name] when def:HasNoData attribute value  is \"Yes\".",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "def:CommentOID",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 241,
+    "ruleId": "DEFINE-XML-0241",
+    "displayedLink": "https://wiki.cdisc.org/x/c6OzAg",
+    "plainTextRule": "Child element ItemRef must be provided for the ItemGroupDef element.",
+    "rule": "//ItemGroupDef/ItemRef must be provided.",
+    "ruleMessage": "Child element ItemRef is missing for element ItemGroupDef[@Name].",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef ItemRef",
+    "attribute": null,
+    "elementSelector": "ItemGroupDef/ItemRef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 242,
+    "ruleId": "DEFINE-XML-0242",
+    "displayedLink": "https://wiki.cdisc.org/x/fKOzAg",
+    "plainTextRule": "The def:CommentOID attribute must be provided for an ItemDef when its ItemOID is referenced in an ItemRef that has the def:HasNoData  attribute  value 'Yes'.",
+    "rule": "//ItemDef/@def:CommentOID must be provided when at least one //ItemRef[@ItemOID=ItemDef/@OID]/@def:HasNoData=\"Yes\".",
+    "ruleMessage": "ItemDef[@OID]/@def:CommentOID is not provided  when ItemGroupDef[@OID]/ItemRef[@ItemOID] has def:HasNoData attribute set to  'Yes'.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef\n/ODM/Study/MetaDataVersion/ItemRef",
+    "element": "ItemDef",
+    "attribute": "def:CommentOID",
+    "elementSelector": "ItemDef",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 243,
+    "ruleId": "DEFINE-XML-0243",
+    "displayedLink": "https://wiki.cdisc.org/x/f6OzAg",
+    "plainTextRule": "No more than one child element Description may be provided for the def:Origin element.",
+    "rule": "No more than one //def:OriginDef/Description may be provided.",
+    "ruleMessage": "ItemDef[@OID]/def:Origin[@Type] has count(def:Origin/Description)  Description child elements. Only 1 is permitted.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:OriginDef/Description",
+    "element": "def:Origin Description",
+    "attribute": null,
+    "elementSelector": "Origin/Description",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 244,
+    "ruleId": "DEFINE-XML-0244",
+    "displayedLink": "https://wiki.cdisc.org/x/gKOzAg",
+    "plainTextRule": "No more than one CodeList/Description may be provided.",
+    "rule": "CodeList[@OID]  has count(CodeList[@OID]/Description) Description child elements.",
+    "ruleMessage": "CodeList[@OID]  has count(CodeList[@OID]/Description) Description child elements. Only 1 is permitted.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/Description",
+    "element": "CodeList Description",
+    "attribute": null,
+    "elementSelector": "CodeList/Description",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 245,
+    "ruleId": "DEFINE-XML-0245",
+    "displayedLink": "https://wiki.cdisc.org/x/gaOzAg",
+    "plainTextRule": "No more than one Description child element may be provided for an EnumeratedItem element.",
+    "rule": "CodeList[@OID]/EnumeratedItem[@CodedValue] has count(CodeList[@OID]/EnumeratedItem[@CodedValue]/Description) child elements.",
+    "ruleMessage": "CodeList[@OID]/EnumeratedItem[@CodedValue] has count(CodeList[@OID]/EnumeratedItem[@CodedValue]/Description) child elements. Only 1 is permitted.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeListItem/EnumeratedItem/Description",
+    "element": "EnumeratedItem Description",
+    "attribute": null,
+    "elementSelector": "EnumeratedItem/Description",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 246,
+    "ruleId": "DEFINE-XML-0246",
+    "displayedLink": "https://wiki.cdisc.org/x/gqOzAg",
+    "plainTextRule": "No more than one //CodeListItem/Description may be provided.",
+    "rule": "count(CodeList[@OID]/CodeListItem[@CodedValue]/Description) > 1",
+    "ruleMessage": "CodeList[@OID/CodeListItem[@CodedValue] has count(CodeList[@OID]/CodeListItem[@CodedValue]/Description) Description child elements. Only 1 is permitted.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/CodelistItem/Description",
+    "element": "CodeListItem Description",
+    "attribute": null,
+    "elementSelector": "CodeListItem/Description",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 248,
+    "ruleId": "DEFINE-XML-0248",
+    "displayedLink": "https://wiki.cdisc.org/x/iKOzAg",
+    "plainTextRule": "Attribute xlink:href must be provided.",
+    "rule": "def:leaf[@ID]/@xlink:href is missing.",
+    "ruleMessage": "def:leaf[@ID] is missing the xlink:href attribute.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/MetaDataVersion/def:leaf\n/ODM/MetaDataVersion/ItemGroupDef/def:leaf",
+    "element": "def:leaf",
+    "attribute": "xlink:href",
+    "elementSelector": "leaf",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 249,
+    "ruleId": "DEFINE-XML-0249",
+    "displayedLink": "https://wiki.cdisc.org/x/e6OzAg",
+    "plainTextRule": "There must be an Alias element with the Context Attribute nci:ExtCodeID when the Codelist includes a reference to a CDISC Controlled Terminology Standard.",
+    "rule": "if Codelist/@def:StandardOID is non-null, count(Alias[@Context='nci:ExtCodeID'] = 1.",
+    "ruleMessage": "Missing Alias element with Context attribute 'nci:ExtCodeID' for CodeList[@OID] with def:Standard = //def:Standard[@OID=CodeList/@def:StandardOID]/@Name.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/Alias",
+    "element": "Alias",
+    "attribute": "Context",
+    "elementSelector": "Alias",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 250,
+    "ruleId": "DEFINE-XML-0250",
+    "displayedLink": "https://wiki.cdisc.org/x/hKOzAg",
+    "plainTextRule": "No more than one ExternalCodeList element may be provided for a CodeList element.",
+    "rule": "count(CodeList[@OID]/ExternalCodeList)>1.",
+    "ruleMessage": "CodeLists may have only one ExternalCodeList. CodeList[@OID]  has count(Codelist/ExternalCodeList) ExternalCodeList child elements.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/CodeList/ExternalCodeList",
+    "element": "CodeList ExternalCodeList",
+    "attribute": null,
+    "elementSelector": "CodeList/ExternalCodeList",
+    "proposedKind": "cardinality_at_most"
+  },
+  {
+    "id": 251,
+    "ruleId": "DEFINE-XML-0251",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "The value of the Purpose attribute must be \"Tabulation\" for an ItemGroupDef element that represents a dataset defined as following an SDTMIG or SENDIG standard.",
+    "rule": "//ItemGroupDef/@Purpose must be \"Tabulation\" where def:Standard/@Name begins with \"SDTM\" or \"SEND\" and   ItemGroupDef[@def:StandardOID = def:Standard/@OID].",
+    "ruleMessage": "The Purpose attribute for ItemGroupDef[@Name] is not \"Tabulation\" but the dataset follows the def:Standard[OID=ItemGroupDef/@def:StandardOID]/@Name.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "Purpose",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 252,
+    "ruleId": "DEFINE-XML-0252",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "The value of the Purpose attribute must be \"Analysis\" for an ItemGroupDef element that represents a dataset defined as following a ADaMIG standard.",
+    "rule": "//ItemGroupDef/@Purpose must be \"Analysis\" where def:Standard/@Name = \"ADaMIG\" and   ItemGroupDef[@def:StandardOID = def:Standard/@OID].",
+    "ruleMessage": "The Purpose attribute for ItemGroupDef[@Name] is not \"Analysis\" but the dataset follows the [def:Standard[OID=ItemGroupDef/@def:StandardOID]/@Name] standard.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "Purpose",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 254,
+    "ruleId": "DEFINE-XML-0254",
+    "displayedLink": "https://wiki.cdisc.org/x/Z6OzAg",
+    "plainTextRule": "A valid CreationDateTime attribute  must be provided for the ODM element.",
+    "rule": "ODM@CreationDateTime must be provided.",
+    "ruleMessage": "The ODM CreationDateTime attribue  is missing or invalid.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM",
+    "element": "ODM",
+    "attribute": "CreationDateTime",
+    "elementSelector": "ODM",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 255,
+    "ruleId": "DEFINE-XML-0255",
+    "displayedLink": "https://wiki.cdisc.org/x/Z6OzAg",
+    "plainTextRule": "Attribute FileType must be provided for the ODM element.",
+    "rule": "@FileType must be provided.",
+    "ruleMessage": "Attribute FileType is missing for element ODM.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM",
+    "element": "ODM",
+    "attribute": "FileType",
+    "elementSelector": "ODM",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 256,
+    "ruleId": "DEFINE-XML-0256",
+    "displayedLink": "https://wiki.cdisc.org/x/LWM8Aw",
+    "plainTextRule": "The def:CommentOID attribute on the def:Standard element must reference an existing def:CommentDef element.",
+    "rule": "A def:CommentDef element must exist with def:CommentDef/@OID = //def:Standard/@CommentOID.",
+    "ruleMessage": "There is no def:CommentDef with an OID attribute that matches def:Standard[@Name]/def:CommentOID.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:Standards/def:Standard",
+    "element": "def:Standard",
+    "attribute": "def:CommentOID",
+    "elementSelector": "Standard",
+    "proposedKind": "references"
+  },
+  {
+    "id": 257,
+    "ruleId": "DEFINE-XML-0257",
+    "displayedLink": "https://wiki.cdisc.org/x/LWM8Aw",
+    "plainTextRule": "Attribute OID must be provided for the def:Standard element.",
+    "rule": "@OID must be provided.",
+    "ruleMessage": "Attribute OID is missing for element def:Standard[@Name].",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:Standards/def:Standard",
+    "element": "def:Standard",
+    "attribute": "OID",
+    "elementSelector": "Standard",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 258,
+    "ruleId": "DEFINE-XML-0258",
+    "displayedLink": "https://wiki.cdisc.org/x/LWM8Aw",
+    "plainTextRule": "Child element def:Standard must be provided for the def:Standards element.",
+    "rule": "//def:Standards/def:Standard must be provided.",
+    "ruleMessage": "Child element def:Standard is missing for element def:Standards.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:Standards/def:Standard",
+    "element": "def:Standard",
+    "attribute": null,
+    "elementSelector": "Standard",
+    "proposedKind": "exists"
+  },
+  {
+    "id": 259,
+    "ruleId": "DEFINE-XML-0259",
+    "displayedLink": "https://wiki.cdisc.org/x/iKOzAg",
+    "plainTextRule": "The value of attribute ID must start with either a letter or underscore (_), and may contain only letters, digits, underscores, hyphens and periods.",
+    "rule": "The value of @ID must start with either a letter or underscore (_), and may contain only letters, digits, underscores, hyphens and periods.",
+    "ruleMessage": "The value of attribute ID[@ID] does not start with either a letter or underscore (_) or contains characters other than letters, digits, underscores, hyphens and periods.",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:leaf\n/ODM/Study/MetaDataVersion/ItemGroupDef/def:leaf",
+    "element": "def:leaf",
+    "attribute": "ID",
+    "elementSelector": "leaf",
+    "proposedKind": "matches_regex"
+  },
+  {
+    "id": 260,
+    "ruleId": "DEFINE-XML-0260",
+    "displayedLink": "https://wiki.cdisc.org/x/eKOzAg",
+    "plainTextRule": "The value of the Repeating attribute must be \"No\", when IsReferenceData=\"Yes\".",
+    "rule": "The value of the @Repeating attribute must be \"No\", when @IsReferenceData=\"Yes\".",
+    "ruleMessage": "The value of Repeating[@Repeating] must be \"No\" when IsReferenceData=\"Yes\".",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef",
+    "element": "ItemGroupDef",
+    "attribute": "Repeating",
+    "elementSelector": "ItemGroupDef",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 261,
+    "ruleId": "DEFINE-XML-0261",
+    "displayedLink": "https://wiki.cdisc.org/x/VmM8Aw",
+    "plainTextRule": "Value of the Name attribute in the def:SubClass must be one of the values from the CDISC/NCI subclass codelists.",
+    "rule": "Value of def:SubClass/@Name must be in the CDISC/NCI Subclass codelists, with C-Codes C165635, C165636, C176227, and any other subclass C-Code that is included in the applicable schema.",
+    "ruleMessage": "The value of SubClass Name [@Name] for dataset [$ParentItemGroupDef/@Name] is not in the CDISC/NCI subclass codelists.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/def:Class/def:SubClass",
+    "element": "def:SubClass",
+    "attribute": "Name",
+    "elementSelector": "SubClass",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 262,
+    "ruleId": "DEFINE-XML-0262",
+    "displayedLink": "https://wiki.cdisc.org/x/VmM8Aw",
+    "plainTextRule": "Value of the ParentClass attribute in the def:Class must be one of the values from the CDISC/NCI Class or Subclass codelists.",
+    "rule": "Value of def:SubClass/@ParentClass must be in the CDISC/NCI Class, with C-Code C103329, Subclass codelists, with C-Codes C165635, C165636, C176227 or any other subclass C-Code that is included in the applicable schema.",
+    "ruleMessage": "The value of SubClass ParentClass [@ParentClass] for dataset [$ParentItemGroupDef/@Name] is not in the CDISC/NCI class or subclass codelists.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/def:Class/def:SubClass",
+    "element": "def:SubClass",
+    "attribute": "ParentClass",
+    "elementSelector": "SubClass",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 263,
+    "ruleId": "DEFINE-XML-0263",
+    "displayedLink": "https://wiki.cdisc.org/x/LWM8Aw",
+    "plainTextRule": "The version identifier must match a version identifier used in the standard.",
+    "rule": "@Version must match a version identifier available for @Name.",
+    "ruleMessage": "The version identifier value is not a valid value for the standard def:Standard[@Name] .",
+    "applicableVersions": [
+      "2.0",
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:Standards/def:Standard",
+    "element": "def:Standard",
+    "attribute": "Version",
+    "elementSelector": "Standard",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 264,
+    "ruleId": "DEFINE-XML-0264",
+    "displayedLink": "https://wiki.cdisc.org/x/LWM8Aw",
+    "plainTextRule": "The value of the Status attribute must be one of the values from the CDISC/NCI standard Status codelist included in the Define-XML Controlled Terminology.",
+    "rule": "The value of @Status must be in the CDISC/NCI Standard Status codelist with C-Code C172332.",
+    "ruleMessage": "The value of Standard Status [@Status] is not in the CDISC/NCI Standard Status codelist (C-Code C172332) for Define-XML.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Schema",
+    "xpaths": "/ODM/Study/MetaDataVersion/def:Standards/def:Standard",
+    "element": "def:Standard",
+    "attribute": "Status",
+    "elementSelector": "Standard",
+    "proposedKind": "one_of"
+  },
+  {
+    "id": 265,
+    "ruleId": "DEFINE-XML-0265",
+    "displayedLink": "https://wiki.cdisc.org/x/eaOzAg",
+    "plainTextRule": "The value of the English dataset's description must match the one specified in the CDISC standard for an ItemGroupDef element that represents a dataset defined as following an SDTMIG or SENDIG standard.",
+    "rule": "//ItemGroupDef/Description/TranslatedText, when @xml:lang is not provided or @xml:lang=\"en\", must match the one specified in the CDISC standard referenced by def:Standard/@Name and def:Standard/@Version, where def:Standard/@Name begins with \"SDTM\" or \"SEND\" and ItemGroupDef[@def:StandardOID = def:Standard/@OID].",
+    "ruleMessage": "The English dataset's description for ItemGroupDef[@Name] does not follow the standard [def:Standard/[OID=ItemGroupDef/@def:StandardOID]/@Name] [def:Standard[OID=ItemGroupDef/@def:StandardOID]/@Version].",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemGroupDef/Description/TranslatedText",
+    "element": "Description",
+    "attribute": null,
+    "elementSelector": "Description",
+    "proposedKind": "custom"
+  },
+  {
+    "id": 266,
+    "ruleId": "DEFINE-XML-0266",
+    "displayedLink": "https://wiki.cdisc.org/x/eaOzAg",
+    "plainTextRule": "The value of an English variable's description must match the one specified in the CDISC standard for an ItemDef element that represents a dataset's variable defined as following an SDTMIG or SENDIG standard.",
+    "rule": "//ItemDef/Description/TranslatedText, when @xml:lang is not provided or @xml:lang=\"en\", must match the one specified in the CDISC standard referenced by def:Standard/@Name and def:Standard/@Version, where def:Standard/@Name begins with \"SDTM\" or \"SEND\" .",
+    "ruleMessage": "The English variable's description for ItemGroupDef[@Name], ItemDef[@Name] does not follow the def:Standard[OID=ItemGroupDef/@def:StandardOID]/@Name and def:Standard[OID=ItemGroupDef/@def:StandardOID]/@Version.",
+    "applicableVersions": [
+      "2.1"
+    ],
+    "sourceType": "Specification",
+    "xpaths": "/ODM/Study/MetaDataVersion/ItemDef/Description/TranslatedText",
+    "element": "Description",
+    "attribute": null,
+    "elementSelector": "Description",
+    "proposedKind": "custom"
+  }
+]

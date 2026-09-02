@@ -1,0 +1,17 @@
+#!RuleTest
+#test TEST-OV-EXCL expect=violation domain=AE
+#note "Fix #354 / plan A hazard 1: the rule EXCLUDES AEDECOD (Output_Variables: [!AEDECOD]) yet the AEDECOD=RASH pin still PASSES via the primary-table fallback"
+# A green pin is therefore not evidence the exclusion took; the Java driver
+# (ExcludedOutputVariablePinFallbackTest) asserts the absence on the projection explicitly.
+#expectViolationCount 1
+#expectViolationAt row=3 AETERM=Rash AEDECOD=RASH AESEV=SEVERE
+dataset AE
+col USUBJID type=Char
+col AESEQ   type=Num
+col AETERM  type=Char
+col AEDECOD type=Char
+col AESEV   type=Char
+---
+001 | 1 | Headache | HEADACHE | MILD
+001 | 2 | Cough    | COUGH    | MODERATE
+002 | 1 | Rash     | RASH     | SEVERE

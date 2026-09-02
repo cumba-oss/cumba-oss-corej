@@ -30,6 +30,14 @@ Outcome:
   - "BASE"
   - "BASEC"
   - "ABLFL"
+Source:
+  Message: "BASE or BASEC is populated for a unique USUBJID, PARAMCD, but no baseline\
+    \ record exists"
+  Description: "Within a given Subject's PARAMCD, a baseline value is populated (either\
+    \ BASE or BASEC) and there is not at least one record in that group marked as\
+    \ the baseline (ABLFL = Y)."
+  Domains: "BDS, ADNCA"
+  Severity: "Error"
 Standards:
 - Organization: "PMDA"
   Standards:

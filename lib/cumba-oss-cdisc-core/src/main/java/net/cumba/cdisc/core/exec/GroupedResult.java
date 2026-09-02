@@ -26,13 +26,13 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * <b>Since EC-45 the operation <em>declares</em> that value</b>, as
- * {@code OperationType.getEmptyResult()}, and {@code OperationExecutor.declaredGrouped} is what
- * passes it here — so a construction site can no longer pick a default by copying whichever
- * constructor sat next door. Read the classification (codomain ⇒ value) there, not from a list
- * here: it moves, and a duplicated list rots. In outline: a count declares {@code 0L}, a set
- * {@code List.of()}, a boolean predicate {@code false}, a closed-world scalar lookup {@code ""},
- * and an extremum or derived value {@code null} — the calculation was not possible, which the
- * comparison folds to {@code ""} and the check fires over.
+ * {@link net.cumba.cdisc.core.model.OperationType#getEmptyResult()}, and
+ * {@code OperationExecutor.declaredGrouped} is what passes it here — so a construction site can no
+ * longer pick a default by copying whichever constructor sat next door. Read the classification
+ * (codomain ⇒ value) there, not from a list here: it moves, and a duplicated list rots. In outline:
+ * a count declares {@code 0L}, a set {@code List.of()}, a boolean predicate {@code false}, a
+ * closed-world scalar lookup {@code ""}, and an extremum or derived value {@code null} — the
+ * calculation was not possible, which the comparison folds to {@code ""} and the check fires over.
  * </p>
  */
 public record GroupedResult(List<String> groupColumns, Map<String, Object> results,

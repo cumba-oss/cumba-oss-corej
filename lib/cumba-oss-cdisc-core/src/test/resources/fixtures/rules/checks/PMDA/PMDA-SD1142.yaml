@@ -20,6 +20,12 @@ Outcome:
   Message: "The submitted dataset is larger than 5 GB."
   Output_Variables:
   - "$dataset_size"
+Source:
+  Message: "Dataset is greater than 5 GB in size"
+  Description: "Applicant should consult the PMDA beforehand if the dataset exceeds\
+    \ the file size specified by PMDA."
+  Domains: "ALL"
+  Severity: "Warning"
 Standards:
 - Organization: "PMDA"
   Standards:

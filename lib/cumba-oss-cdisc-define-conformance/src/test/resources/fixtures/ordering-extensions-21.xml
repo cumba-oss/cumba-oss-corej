@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Extension-tolerance fixture (plan §5): every known element is in canonical order, but
+     unknown / extension elements (arm:AnalysisResultDisplays, vendor vx:*) are interleaved at
+     positions the base table does not know. They must be ignored as anchors -> ZERO findings. -->
+<ODM xmlns="http://www.cdisc.org/ns/odm/v1.3"
+     xmlns:def="http://www.cdisc.org/ns/def/v2.1"
+     xmlns:arm="http://www.cdisc.org/ns/arm/v1.0"
+     xmlns:vx="http://example.org/vendor-extension"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     FileOID="ORD.E21" FileType="Snapshot" ODMVersion="1.3.2" CreationDateTime="2026-07-03T00:00:00"
+     def:Context="Submission">
+  <Study OID="ST.EXT">
+    <GlobalVariables>
+      <StudyName>Extension Study</StudyName>
+      <vx:StudyNickname>ext</vx:StudyNickname>
+      <StudyDescription>Extension-tolerance fixture</StudyDescription>
+      <ProtocolName>ORD-02</ProtocolName>
+    </GlobalVariables>
+    <MetaDataVersion OID="MDV.1" Name="Extension MDV" def:DefineVersion="2.1.0">
+      <vx:Prologue/>
+      <def:Standards>
+        <def:Standard OID="STD.1" Name="SDTMIG" Type="IG" Version="3.4" Status="Final"/>
+      </def:Standards>
+      <arm:AnalysisResultDisplays/>
+      <ItemGroupDef OID="IG.DM" Name="DM" Repeating="No" IsReferenceData="No" SASDatasetName="DM"
+                    Purpose="Tabulation" def:Structure="One record per subject">
+        <Description>
+          <TranslatedText xml:lang="en">Demographics</TranslatedText>
+        </Description>
+        <vx:Note>vendor note between Description and ItemRef</vx:Note>
+        <ItemRef ItemOID="IT.DM.STUDYID" Mandatory="Yes"/>
+      </ItemGroupDef>
+      <vx:Custom/>
+      <ItemDef OID="IT.DM.STUDYID" Name="STUDYID" DataType="text" Length="12">
+        <Description>
+          <TranslatedText xml:lang="en">Study Identifier</TranslatedText>
+        </Description>
+        <def:Origin Type="Assigned"/>
+      </ItemDef>
+      <def:leaf ID="LF.DM" xlink:href="dm.xpt">
+        <def:title>dm.xpt</def:title>
+      </def:leaf>
+    </MetaDataVersion>
+  </Study>
+</ODM>

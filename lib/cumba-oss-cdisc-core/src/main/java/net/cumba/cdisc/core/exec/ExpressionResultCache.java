@@ -8,15 +8,15 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Per-dataset, cross-rule cache of pure-expression-leaf results
- * ({@code plans/PLAN-dataset-expression-cache.md}). Mirrors {@link JoinCache}'s lifecycle: created
- * once per dataset validation and shared (thread-safe) across every rule executed for that dataset,
- * which under {@code ruleThreads > 1} run on parallel worker threads against the <em>same</em>
- * {@link net.cumba.datatable.IDataTable} instance.
+ * ({@code plans/done/PLAN-dataset-expression-cache.md}). Mirrors {@link JoinCache}'s lifecycle:
+ * created once per dataset validation and shared (thread-safe) across every rule executed for that
+ * dataset, which under {@code ruleThreads > 1} run on parallel worker threads against the
+ * <em>same</em> {@link net.cumba.datatable.IDataTable} instance.
  *
  * <p>
- * Scope is <b>strictly per-dataset</b>: a {@code Key} is keyed on the table instance identity, so a
- * cache must never be shared across datasets (unlike {@code JoinCache}'s cross-dataset
- * {@code SharedIndexCache}, there is no such tier here). The stored value is a
+ * Scope is <b>strictly per-dataset</b>: a {@link DatasetExpressionCache.Key} is keyed on the table
+ * instance identity, so a cache must never be shared across datasets (unlike {@code JoinCache}'s
+ * cross-dataset {@code SharedIndexCache}, there is no such tier here). The stored value is a
  * {@code net.cumba.cdisc.core.expr.eval.Vector} or a {@link java.util.BitSet}; both are treated as
  * read-only — a {@code BitSet} consumer must clone before any in-place mutation (the {@code Not} /
  * {@code CheckEvaluator} flip paths). Wiring the cache into the compiler is a later phase; this

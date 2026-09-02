@@ -21,6 +21,13 @@ Outcome:
   Output_Variables:
   - "RACE"
   - "DM.RACE"
+Source:
+  Class: "SUBJECT LEVEL ANALYSIS DATASET"
+  Variable_or_Item: "RACE"
+  Natural_Language_Rule_Failure_Criteria: "The value of ADSL.USUBJID is equal to the\
+    \ value of DM.USUBJID and ADSL.RACE is not equal to DM.RACE"
+  Rule_Failure_Criteria: "ADSL.RACE is not equal to DM.RACE"
+  Condition_Failure: "The value of ADSL.USUBJID is equal to the value of DM.USUBJID"
 Standards:
 - Organization: "CDISC"
   Standards:

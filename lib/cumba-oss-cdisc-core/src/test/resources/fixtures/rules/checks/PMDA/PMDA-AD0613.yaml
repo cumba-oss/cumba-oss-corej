@@ -25,6 +25,14 @@ Outcome:
   - "APHASEN"
   - "PHETM"
   - "ADSL.PH${*}ETM"
+Source:
+  Message: "APHASEN w has a PHETM != ADSL.PHwETM"
+  Description: "When analysis Phase (APHASE) variable is defined, the Phase End Time\
+    \ (PHETM) variable value must equal ADSL Phase w End Time (PHwETM) variable value\
+    \ for that phase defined by the value in Phase (N) (APHASEN) variable. APHASEN\
+    \ = w."
+  Domains: "BDS, ADNCA, MDBDS, OCCDS, ADAE, MDOCCDS, ADAMOTHER"
+  Severity: "Error"
 Standards:
 - Organization: "PMDA"
   Standards:

@@ -3,6 +3,7 @@ package net.cumba.cdisc.core.report;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.util.List;
 import java.util.Map;
@@ -42,6 +43,33 @@ class ReportAssemblerCoverageTest
     }
 
 
+    @Test
+    void dictionaryBasis_absentOnAHealthyRun_presentWhenDegraded()
+    {
+        // D13 item 1 — same contract as Library_Metadata_Basis: no healthy report gains a key
+        // (the frozen v1 shape holds), and a degraded run's report says so itself rather than
+        // leaving the truth to the log.
+        Map<String, Object> healthy = conformanceDetails(Conformance.builder().standard("sdtmig"));
+        assertFalse(healthy.containsKey("Dictionary_Basis"),
+                "a run whose every dictionary rule was answerable must not gain the key");
+        assertFalse(healthy.containsKey("Neoplasm_Version"),
+                "an unloaded neoplasm dictionary emits no version key, like its six siblings");
+
+        Map<String, Object> degraded = conformanceDetails(Conformance.builder().standard("sdtmig")
+                .dictionaryBasis("external dictionaries degraded: 0 of 98 dictionary rules …"));
+        assertEquals("external dictionaries degraded: 0 of 98 dictionary rules …",
+                degraded.get("Dictionary_Basis"));
+
+        // The accessor is the CLI's (Phase 6b) stderr hook — pin that it returns the same line.
+        assertEquals("external dictionaries degraded: 0 of 98 dictionary rules …",
+                Conformance.builder()
+                        .dictionaryBasis(
+                                "external dictionaries degraded: 0 of 98 dictionary rules …")
+                        .build().dictionaryBasis());
+        assertNull(Conformance.builder().build().dictionaryBasis());
+    }
+
+
     private static Map<String, Object> conformanceDetails(Conformance.Builder builder)
     {
         Map<String, Object> export = new ReportAssembler()
@@ -64,6 +92,7 @@ class ReportAssemblerCoverageTest
                 .tigUseCase("INDH").ctVersion("2024-09-26").defineXmlVersion("2.0")
                 .uniiVersion("2024-01").medRtVersion("2024-02").meddraVersion("27.0")
                 .whodrugVersion("2024 MAR 1").snomedVersion("2024-01-31").loincVersion("2.78")
+                .neoplasmVersion("2026-03-27").dictionaryBasis("external dictionaries degraded: …")
                 .build();
         assertNotNull(c);
 
@@ -88,6 +117,9 @@ class ReportAssemblerCoverageTest
         assertEquals("2024 MAR 1", conformanceMap.get("WHODRUG_Version"));
         assertEquals("2024-01-31", conformanceMap.get("SNOMED_Version"));
         assertEquals("2.78", conformanceMap.get("LOINC_Version"));
+        // §2.5 — seven dictionary types, seven fields: neoplasm no longer lacks one.
+        assertEquals("2026-03-27", conformanceMap.get("Neoplasm_Version"));
+        assertEquals("external dictionaries degraded: …", conformanceMap.get("Dictionary_Basis"));
         assertEquals("0.5.0", conformanceMap.get("CORE_Engine_Version"));
         // totalRuntimeSeconds formats to "%.2f seconds"
         assertEquals("12.34 seconds", conformanceMap.get("Total_Runtime"));

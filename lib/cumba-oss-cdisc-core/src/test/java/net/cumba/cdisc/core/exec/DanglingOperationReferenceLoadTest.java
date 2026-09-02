@@ -12,10 +12,11 @@ import net.cumba.cdisc.core.model.CheckConditionExpression;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code plans/PLAN-dangling-operation-reference-load-check.md} — a {@code Check} (or
+ * {@code plans/done/PLAN-dangling-operation-reference-load-check.md} — a {@code Check} (or
  * {@code Precondition}) that references a {@code $}-operand no {@code Operations} entry defines is
  * tagged at load, because at runtime it is <em>silent</em>: the name never enters the evaluation
  * context, {@code ExprCompiler.nameRefPlan} yields {@code null ⇒ empty BitSet}, and the rule

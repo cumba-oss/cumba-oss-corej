@@ -25,6 +25,14 @@ Outcome:
   - "APHASEN"
   - "PHSTM"
   - "ADSL.PH${*}STM"
+Source:
+  Message: "APHASEN w has a PHSTM != ADSL.PHwSTM"
+  Description: "When analysis Phase (APHASE) variable is defined, the analysis Phase\
+    \ Start Time (PHSTM) variable value must equal ADSL Phase w Start Time (PHwSTM)\
+    \ variable value for that phase defined by the value in Phase (N) (APHASEN) variable.\
+    \ APHASEN = w."
+  Domains: "BDS, ADNCA, MDBDS, OCCDS, ADAE, MDOCCDS, ADAMOTHER"
+  Severity: "Error"
 Standards:
 - Organization: "PMDA"
   Standards:

@@ -18,6 +18,7 @@ import net.cumba.cdisc.core.model.Scope;
 import net.cumba.cdisc.core.model.VariableRequirement;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

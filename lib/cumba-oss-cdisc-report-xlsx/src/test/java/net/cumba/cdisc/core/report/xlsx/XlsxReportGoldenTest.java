@@ -23,9 +23,21 @@ import org.junit.jupiter.api.Test;
  * <b>R2 — byte-identity across the module split, for the workbook.</b>
  *
  * <p>
- * The golden workbook was produced by the <em>pre-split</em> engine
+ * The golden workbook was originally produced by the <em>pre-split</em> engine
  * ({@code net.cumba.cdisc.core.report.XlsxReportWriter} at commit {@code 6687442df}) from
  * {@code report-sections-fixture.json}.
+ * </p>
+ *
+ * <p>
+ * ⚠ <b>Regenerated once, deliberately, for {@code PLAN-dictionary-seeder} Phase 6a</b> (from the
+ * same fixture, by this module's writer): the report template intentionally gained Conformance rows
+ * 21-23 ({@code Dictionary Basis}, {@code Neoplasm Version}, {@code Library Metadata Basis}), so
+ * the sheet and shared-strings parts could no longer match the pre-Phase-6a bytes. The fixture sets
+ * none of the three, and the regenerated golden was verified cell-by-cell against the old one:
+ * exactly four resolved-value differences, all of them the new rows' template defaults. (At the XML
+ * level every sheet part changed, because the three added template strings shift the shared-string
+ * indices of every runtime-added string by three — the resolved content is what was compared.) The
+ * ratchet resumes from here.
  * </p>
  *
  * <p>

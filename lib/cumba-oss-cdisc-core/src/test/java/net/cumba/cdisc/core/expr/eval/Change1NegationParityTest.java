@@ -5,10 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.BitSet;
 import net.cumba.cdisc.core.exec.EvaluationContext;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.expr.CheckToExpr;
 import net.cumba.cdisc.core.model.CheckConditionLeaf;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
  * not <positive>(…)}. This verifies the rewrite is <em>semantically</em> faithful: the native
  * verdict of the converted {@code not <positive>(…)} must equal the legacy verdict of the original
  * negative operator-leaf <strong>row-for-row, including missing and empty cells</strong> (the place
- * a structural complement could diverge). Legacy reference = {@link CheckEvaluator}; native =
+ * a structural complement could diverge). Legacy reference = {@code CheckEvaluator}; native =
  * {@link NativeExprEvaluator} over {@link CheckToExpr#toExpr}.
  */
 class Change1NegationParityTest

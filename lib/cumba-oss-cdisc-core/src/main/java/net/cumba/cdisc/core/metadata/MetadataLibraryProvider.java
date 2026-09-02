@@ -640,7 +640,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * {@code aCorePredicate}, or {@code null} when no declared product has an <em>applicable</em>
      * structure for that token.
      *
-     * <h2>The precedence chain, first tier wins per name</h2>
+     * <h4>The precedence chain, first tier wins per name</h4>
      *
      * <ol>
      * <li>the structures whose {@link AdamDataStructure#subClass()} equals a detected subclass

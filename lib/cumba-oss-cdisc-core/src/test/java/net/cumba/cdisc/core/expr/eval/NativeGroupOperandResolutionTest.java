@@ -8,26 +8,26 @@ import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 import net.cumba.cdisc.core.exec.EvaluationContext;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.expr.CheckToExpr;
 import net.cumba.cdisc.core.expr.ast.Expr;
 import net.cumba.cdisc.core.model.CheckCondition;
 import net.cumba.cdisc.core.model.CheckConditionLeaf;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * P2 of {@code plans/PLAN-native-engine-full-coverage.md} — group-operator operands beyond plain
- * columns: {@code --}-prefix domain wildcards (resolved per run against
+ * P2 of {@code plans/done/PLAN-native-engine-full-coverage.md} — group-operator operands beyond
+ * plain columns: {@code --}-prefix domain wildcards (resolved per run against
  * {@code ctx.getDomainPrefix()}, inside the compiled closure, so the per-{@code Expr} program cache
  * stays dataset-agnostic) and {@code $}-operation lists for {@code not_contains_all}.
  *
  * <p>
  * The legacy reference for the {@code --} cases applies {@code
  * CheckConditionTransformer.resolvePrefixes} first — exactly what {@code RuleRunner} phase 2c does
- * before legacy evaluation — then evaluates via {@link CheckEvaluator}; the native side evaluates
+ * before legacy evaluation — then evaluates via {@code CheckEvaluator}; the native side evaluates
  * the RAW (unresolved) raised expression against a context carrying the domain prefix.
  * </p>
  */

@@ -407,6 +407,21 @@
         <Method name="fileName" />
         <Bug pattern="NM_CONFUSING" />
     </Match>
+    <Match>
+        <!-- Dictionary installer (Phase 8): a THIRD member of the same
+             filename/fileName family. Download.fileName is a record component
+             naming the plain file a dictionary artefact is saved under — the
+             natural name for it, camel-cased per this package's convention.
+             The clash is with ReportAssembler$DatasetInfo.filename above:
+             unrelated nested records in unrelated packages, no inheritance
+             relationship, so the case-confusion the pattern guards against
+             (accidentally failing to override) cannot arise. Attribution
+             lands on this class when SpotBugs visits it first, hence its own
+             entry alongside the pair above. -->
+        <Class name="net.cumba.cdisc.core.metadata.dictionary.HttpDictionarySource$Download" />
+        <Method name="fileName" />
+        <Bug pattern="NM_CONFUSING" />
+    </Match>
 
     <!-- Documented tri-state Boolean: null = "leaf cannot be evaluated
          at this level". Refactor to Optional<Boolean> would ripple
@@ -543,6 +558,20 @@
         <Class name="net.cumba.cdisc.core.model.Rule" />
         <Method name="groupingKeepMissings" />
         <Bug pattern="NP_BOOLEAN_RETURN_NULL" />
+    </Match>
+
+    <Match>
+        <!--
+            Verified false positive (SpotBugs 4.10). LibraryValidator's resolver returns
+            lookup.keySet() from availableDatasets(), and `lookup` is built as
+            Map.copyOf(mutable) precisely so it can be published to rule threads unsynchronised
+            (the comment at the freeze says so). An immutable map's keySet is an immutable view,
+            so nothing mutable is exposed; SpotBugs simply does not track immutability through
+            Map.copyOf.
+        -->
+        <Class name="~net\.cumba\.cdisc\.core\.report\.LibraryValidator\$\d+" />
+        <Method name="availableDatasets" />
+        <Bug pattern="EI_EXPOSE_REP" />
     </Match>
 
 </FindBugsFilter>

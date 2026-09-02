@@ -9,12 +9,12 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import java.util.List;
 import java.util.Map;
 import net.cumba.cdisc.core.RulePackageLoader;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.exec.RuleExecutionResult;
 import net.cumba.cdisc.core.exec.RuleRunner;
 import net.cumba.cdisc.core.expr.CheckToExpr;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

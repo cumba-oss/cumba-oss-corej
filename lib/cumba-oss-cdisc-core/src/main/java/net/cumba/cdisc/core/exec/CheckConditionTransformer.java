@@ -184,11 +184,13 @@ public final class CheckConditionTransformer
                 // ⚠ The grouping-key disposition must survive the rebuild, or a rule declaring
                 // keep_missings silently loses it the moment its name needs resolving — the exact
                 // silent-loss failure mode the parameter's validation exists to prevent.
-                // ⚠⚠ NOTE: `includeEmpty` is NOT copied here and never has been. That is a
-                // PRE-EXISTING gap with the same shape (Fix #121's include_empty is dropped by this
-                // rebuild), left untouched deliberately because it is outside this change's scope —
-                // it is reported, not silently fixed.
                 .keepMissings(leaf.getKeepMissings())
+                // Fix #121's include_empty has exactly that shape and was dropped here until now.
+                .includeEmpty(leaf.getIncludeEmpty())
+                // The composite tuple-membership target (T3) is the same shape again: a `names`
+                // leaf has a null `name`, so it reaches this rebuild only via a value rewrite —
+                // and dropping `names` would leave the leaf with no target at all.
+                .names(leaf.getNames())
                 // EC-87: the next-record comparison relation has the same silent-loss shape.
                 .relation(leaf.getRelation()).build();
     }

@@ -7,13 +7,13 @@ import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 import net.cumba.cdisc.core.exec.EvaluationContext;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.expr.CheckExpressionParser;
 import net.cumba.cdisc.core.expr.ExprLowering;
 import net.cumba.cdisc.core.model.CheckCondition;
 import net.cumba.cdisc.core.model.CheckConditionLeaf;
 import net.cumba.cdisc.core.model.CheckConditionNot;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

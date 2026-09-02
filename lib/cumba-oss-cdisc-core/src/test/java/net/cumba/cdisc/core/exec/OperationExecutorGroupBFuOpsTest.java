@@ -15,12 +15,14 @@ import java.util.Set;
 import net.cumba.cdisc.core.metadata.RuntimeDictionaryProvider;
 import net.cumba.cdisc.core.model.Operation;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Group-B follow-up operations (E1 / E6 / E8 / E10). Each new {@link OperationType} arm is
- * exercised through {@link OperationExecutor#executeOne} and its raw result inspected — the focused
- * counterpart to {@link OperationExecutorLibraryOpsTest} (library ops) and
+ * Group-B follow-up operations (E1 / E6 / E8 / E10). Each new
+ * {@link net.cumba.cdisc.core.model.OperationType} arm is exercised through
+ * {@link OperationExecutor#executeOne} and its raw result inspected — the focused counterpart to
+ * {@link OperationExecutorLibraryOpsTest} (library ops) and
  * {@link net.cumba.cdisc.core.DictionaryValidationTest} (dictionary ops). GroupedResult verdicts
  * are read from the per-value results map (single-column keys equal the raw cell value).
  */

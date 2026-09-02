@@ -1,0 +1,74 @@
+[
+  {
+    "codelist": "DATEFL",
+    "description": "Date Imputation Flag",
+    "variables": [
+      "ADTF",
+      "AENDTF",
+      "APEREDTF",
+      "APERSDTF",
+      "ASPREDTF",
+      "ASPRSDTF",
+      "ASTDTF",
+      "DTHDTF",
+      "PHEDTF",
+      "PHSDTF",
+      "STARTDTF",
+      "TRTEDTF",
+      "TRTSDTF"
+    ]
+  },
+  {
+    "codelist": "TIMEFL",
+    "description": "Time Imputation Flag",
+    "variables": [
+      "AENTMF",
+      "APERETMF",
+      "APERSTMF",
+      "ASPRETMF",
+      "ASTTMF",
+      "ATMF",
+      "PHETMF",
+      "PHSTMF",
+      "STARTTMF",
+      "TRTETMF",
+      "TRTSTMF"
+    ]
+  },
+  {
+    "codelist": "SBJTSTAT",
+    "description": "Subject Status",
+    "variables": [
+      "EOSSTT",
+      "EOTSTT"
+    ]
+  },
+  {
+    "codelist": "AGEU",
+    "description": "Age Unit",
+    "variables": [
+      "AGEU"
+    ]
+  },
+  {
+    "codelist": "RACE",
+    "description": "Race",
+    "variables": [
+      "RACE"
+    ]
+  },
+  {
+    "codelist": "SEX",
+    "description": "Sex",
+    "variables": [
+      "SEX"
+    ]
+  },
+  {
+    "codelist": "DTYPE",
+    "description": "Derivation Type",
+    "variables": [
+      "DTYPE"
+    ]
+  }
+]

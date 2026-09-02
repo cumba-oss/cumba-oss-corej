@@ -35,7 +35,7 @@ import org.jspecify.annotations.Nullable;
  * accessors read (the {@code Value Check against Define XML VLM} rule type).
  * </p>
  *
- * <h2>Semantics (grounded in {@code plans/PLAN-engine-vlm.md} §5.3)</h2>
+ * <h2>Semantics (grounded in {@code plans/done/PLAN-engine-vlm.md} §5.3)</h2>
  * <ul>
  * <li>A {@link WhereClauseDef} with multiple {@link RangeCheck}s is a logical <b>AND</b> — every
  * range check must hold (this matches the Define-XML model; the Python reference engine is patched

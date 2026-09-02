@@ -136,8 +136,8 @@ public final class ExprLowering
      * reversed here. {@code CheckToExpr.pureSuffix} accepts three fills ({@code ^.+SUF$},
      * {@code ^.*SUF$}, bare {@code SUF$}) that all collapse to the same call, and all three are
      * populated in {@code rules-src} (58 / 9 / 5 leaves, measured 2026-08-10). Any reverse would
-     * restore one and corrupt the other two — see {@code plans/PLAN-guard-emission-relocation.md}
-     * §"Results — P1–P4", P2.
+     * restore one and corrupt the other two — see
+     * {@code plans/done/PLAN-guard-emission-relocation.md} §"Results — P1–P4", P2.
      * </p>
      *
      * @param e
@@ -767,16 +767,7 @@ public final class ExprLowering
         {
             bld.suffix(len);
         }
-        LeafValue lv = leafValue(b.right());
-        bld.value(lv.node());
-        if (lv.reference() != null)
-        {
-            bld.valueIsReference(lv.reference());
-        }
-        if (lv.literal() != null)
-        {
-            bld.valueIsLiteral(lv.literal());
-        }
+        applyValue(bld, b.right());
         return bld.build();
     }
 
@@ -801,16 +792,7 @@ public final class ExprLowering
         Expr rhs = ((Expr.Call) b.right()).args().get(0);
         CheckConditionLeaf.CheckConditionLeafBuilder bld = CheckConditionLeaf.builder()
                 .name(nameOf(lhs)).operator(operator).typeInsensitive(Boolean.TRUE);
-        LeafValue lv = leafValue(rhs);
-        bld.value(lv.node());
-        if (lv.reference() != null)
-        {
-            bld.valueIsReference(lv.reference());
-        }
-        if (lv.literal() != null)
-        {
-            bld.valueIsLiteral(lv.literal());
-        }
+        applyValue(bld, rhs);
         return bld.build();
     }
 
@@ -1282,69 +1264,34 @@ public final class ExprLowering
     {
         CheckConditionLeaf.CheckConditionLeafBuilder b = CheckConditionLeaf.builder().name(name)
                 .operator(operator);
-        LeafValue lv = leafValue(value);
-        b.value(lv.node());
-        if (lv.reference() != null)
-        {
-            b.valueIsReference(lv.reference());
-        }
-        if (lv.literal() != null)
-        {
-            b.valueIsLiteral(lv.literal());
-        }
+        applyValue(b, value);
         return b.build();
     }
 
-    /**
-     * The {@code value} fields a right-hand operand contributes to a leaf: the node itself plus the
-     * optional {@code value_is_reference} / {@code value_is_literal} flags. A reference operand's
-     * value is the referenced column / {@code $}-op / built-in name, left verbatim (a textual value
-     * defaults to a reference in the engine's {@code ValueResolver}).
-     *
-     * @param node
-     *            the value node.
-     * @param reference
-     *            {@code TRUE} when the value names a reference, else {@code null}.
-     * @param literal
-     *            {@code TRUE} when the value is a literal, else {@code null}.
-     */
-    private record LeafValue(JsonNode node, @Nullable Boolean reference, @Nullable Boolean literal)
-    {
-    }
 
     /**
-     * Derive the {@code value} fields for a right-hand operand.
-     *
-     * <p>
-     * ⚠ This RETURNS the pieces rather than applying them to a builder, and that is deliberate.
-     * Naming Lombok's generated {@code CheckConditionLeafBuilder} in a method signature makes
-     * javadoc fail outright with "cannot find symbol": javadoc parses source, not
-     * annotation-processor output, so the generated type does not exist as far as it is concerned.
-     * It resolves every signature it parses — even a private one, and even with
-     * {@code -Dshow=public} — so the failure is not avoidable by scoping. Since Maven Central
-     * requires a {@code -javadoc.jar}, a generated type in a signature blocks publishing entirely.
-     * Local variables of that type (used freely above) are fine; javadoc does not resolve method
-     * bodies.
-     * </p>
-     *
-     * @param value
-     *            the right-hand operand.
-     * @return the value node and its optional flags.
+     * Sets {@code value} (and {@code value_is_literal} for literals) on the builder from a
+     * right-hand operand. A reference operand's value is the referenced column / {@code $}-op /
+     * built-in name, left verbatim (a textual value defaults to a reference in the engine's
+     * {@code ValueResolver}).
      */
-    private static LeafValue leafValue(Expr value)
+    private static void applyValue(CheckConditionLeaf.CheckConditionLeafBuilder b, Expr value)
     {
         if (isColRef(value))
         {
             // colref(X) -> value_is_reference:true (two-hop). The inner operand is the first-hop
             // column name; ValueResolver performs the second hop at runtime.
             Expr inner = ((Expr.Call) value).args().get(0);
-            return new LeafValue(NODES.textNode(referenceName(inner)), Boolean.TRUE, null);
+            b.value(NODES.textNode(referenceName(inner))).valueIsReference(Boolean.TRUE);
         }
-        if (value instanceof Expr.Lit lit)
+        else if (value instanceof Expr.Lit lit)
         {
-            return new LeafValue(literalNode(lit), null, Boolean.TRUE);
+            b.value(literalNode(lit)).valueIsLiteral(Boolean.TRUE);
         }
-        return new LeafValue(NODES.textNode(referenceName(value)), null, null);
+        else
+        {
+            b.value(NODES.textNode(referenceName(value)));
+        }
     }
 
 

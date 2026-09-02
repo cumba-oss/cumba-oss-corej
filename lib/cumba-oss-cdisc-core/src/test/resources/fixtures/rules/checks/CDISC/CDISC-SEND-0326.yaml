@@ -24,6 +24,17 @@ Outcome:
   Output_Variables:
   - "PCELTM"
   - "PCTPTREF"
+Source:
+  Class: "FND"
+  Domain: "PC"
+  Variable: "PCELTM"
+  Plain_Text_Explanation: "Specimen concentrations (e.g., plasma) used to calculate\
+    \ a time concentration profile must have PCELTM populated with the nominal time\
+    \ from the reference (dose) in order to accurately construct a graph. PCELTM should\
+    \ be the timing used to calculate the profile."
+  Condition: "Specimen concentration (e.g., plasma) was used to calculate a time concentration\
+    \ profile"
+  Rule: "PCELTM is populated with the nominal time from reference (dose)"
 Standards:
 - Organization: "CDISC"
   Standards:

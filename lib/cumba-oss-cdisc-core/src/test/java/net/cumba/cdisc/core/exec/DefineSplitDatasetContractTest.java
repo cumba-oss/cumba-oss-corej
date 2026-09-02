@@ -29,13 +29,14 @@ import net.cumba.cdisc.define.DefineXmlParser;
 import net.cumba.cdisc.define.ODM;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.provider.define.metadata.DefineMetadataLibrary;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 /**
  * <b>The per-part Define contract for a split dataset</b> —
- * {@code plans/PLAN-define-split-dataset-contract.md} §4, settled by decision <b>D6 option (a)</b>
- * (2026-08-07). A split dataset's parts are separate datasets for every purpose the
+ * {@code plans/done/PLAN-define-split-dataset-contract.md} §4, settled by decision <b>D6 option
+ * (a)</b> (2026-08-07). A split dataset's parts are separate datasets for every purpose the
  * {@code Dataset Metadata Check against Define XML} family cares about: each submitted file has its
  * own {@code ItemGroupDef}, each part is evaluated against <em>its own</em> {@code ItemGroupDef},
  * and a finding is attributed to <em>the part</em>. The logical name stays what <em>scope
@@ -139,10 +140,8 @@ class DefineSplitDatasetContractTest
     @BeforeAll
     static void parseTheRealDefineXml() throws IOException
     {
-        // Module-local copy: the Define-XML model lives in a separate repository here, so this
-        // fixture is vendored into this module rather than reached for across the reactor.
-        Path xml = Path.of(System.getProperty("projectBasedir"), "src", "test", "resources",
-                "convert", "define-v21-sdtm.xml").normalize();
+        Path xml = Path.of(System.getProperty("projectBasedir"), "..", "corej-cdisc-define", "src",
+                "test", "resources", "convert", "define-v21-sdtm.xml").normalize();
         assertTrue(Files.isRegularFile(xml), "MSG Define-XML 2.1 sample not found at " + xml
                 + " — this guard is worthless without the real artefact");
         try (InputStream in = Files.newInputStream(xml))

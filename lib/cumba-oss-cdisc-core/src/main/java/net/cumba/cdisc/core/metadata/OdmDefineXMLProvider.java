@@ -38,6 +38,9 @@ import org.jspecify.annotations.Nullable;
 public final class OdmDefineXMLProvider implements DefineXMLProvider
 {
 
+    private static final System.Logger LOGGER = System
+            .getLogger(OdmDefineXMLProvider.class.getName());
+
     private static final String EXT_CODE_ID = "nci:ExtCodeID";
 
     private final ODM odm;
@@ -87,6 +90,49 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
             for (ItemDef d : mdv.getItemDefs())
             {
                 out.put(d.getOid(), d);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The dictionary types the installed store models — the only keys
+     * {@link #externalDictionaryVersions()} may emit. Matching strips non-alphanumerics and case
+     * ({@code MedDRA}, {@code MED-RT}, {@code WHO Drug} all resolve); anything else is not a
+     * version-selection source and is omitted.
+     */
+    private static final Map<String, String> DICTIONARY_TYPES = Map.of("meddra", "meddra",
+            "whodrug", "whodrug", "loinc", "loinc", "medrt", "medrt", "unii", "unii", "snomed",
+            "snomed", "neoplasm", "neoplasm");
+
+    @Override
+    public Map<String, String> externalDictionaryVersions()
+    {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (CodeList cl : codeListsByOid().values())
+        {
+            ExternalCodeList ecl = cl.getExternalCodeList();
+            if (ecl == null || ecl.getDictionary() == null || ecl.getVersion() == null
+                    || ecl.getVersion().isBlank())
+            {
+                continue;
+            }
+            String type = DICTIONARY_TYPES.get(ecl.getDictionary().replaceAll("[^A-Za-z0-9]", "")
+                    .toLowerCase(java.util.Locale.ROOT));
+            if (type == null)
+            {
+                continue;
+            }
+            // First declaration wins, deterministically (document order). A define declaring two
+            // different versions of one dictionary is contradictory; keep the first and say so.
+            String previous = out.putIfAbsent(type, ecl.getVersion());
+            if (previous != null && !previous.equals(ecl.getVersion()))
+            {
+                LOGGER.log(System.Logger.Level.WARNING,
+                        "Define-XML declares conflicting {0} versions ({1} and {2}); using the "
+                                + "first declared, {1}. Override with the CLI version option if "
+                                + "that is wrong.",
+                        type, previous, ecl.getVersion());
             }
         }
         return out;
@@ -339,7 +385,7 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
             // backing define_variable_decode_matches. Empty ("{}") for an EnumeratedItem-only or
             // ExternalCodeList codelist, which carry no decodes to compare against.
             v.put("codelist_code_decode", DefineMetadataListCodec.encodeStringMap(codeDecode));
-            // E2 DEFINE-only accessors (plans/PLAN-group-b-followups.md).
+            // E2 DEFINE-only accessors (plans/done/PLAN-group-b-followups.md).
             v.put("origin_type", originType(def));
             v.put("has_comment", boolStr(def.getCommentOID() != null));
             v.put("has_method", boolStr(ref.getMethodOID() != null));

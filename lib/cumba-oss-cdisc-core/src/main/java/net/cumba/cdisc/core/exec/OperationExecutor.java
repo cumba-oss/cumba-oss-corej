@@ -352,7 +352,7 @@ public final class OperationExecutor
      * completeness of the audit, <b>not</b> as an invitation to route verdicts through it — column
      * existence is decided by the {@code var_exists(X)} / {@code var_exists("D.X")} function and
      * the operation only carries the answer into {@code Output_Variables}; see
-     * {@code plans/PLAN-variable-exists-cross-dataset.md} for why the verdict lives on the
+     * {@code plans/done/PLAN-variable-exists-cross-dataset.md} for why the verdict lives on the
      * function.
      *
      * <p>
@@ -3842,7 +3842,7 @@ public final class OperationExecutor
      * that ask the Library <em>"which variables does the standard oblige this dataset to
      * carry?"</em>
      *
-     * <h2>Why this is not one line</h2>
+     * <h4>Why this is not one line</h4>
      *
      * <p>
      * SDTM's variable model is keyed by <b>domain</b>, ADaM's by <b>data structure</b>. Keying both
@@ -3857,7 +3857,7 @@ public final class OperationExecutor
      * on a conformant ADSL.
      * </p>
      *
-     * <h2>What it does</h2>
+     * <h4>What it does</h4>
      *
      * <ol>
      * <li>A provider that is not structure-keyed (SDTM, every stub) keeps the domain-keyed call,
@@ -4886,8 +4886,8 @@ public final class OperationExecutor
 
 
     /**
-     * SDTM study day calculation: If date >= RFSTDTC: dy = daysBetween(RFSTDTC, date) + 1 If date <
-     * RFSTDTC: dy = daysBetween(RFSTDTC, date) (negative, no day 0)
+     * SDTM study day calculation: If date &gt;= RFSTDTC: dy = daysBetween(RFSTDTC, date) + 1 If
+     * date &lt; RFSTDTC: dy = daysBetween(RFSTDTC, date) (negative, no day 0)
      */
     private static @Nullable Long calculateStudyDay(String dateStr, String rfstdtc)
     {

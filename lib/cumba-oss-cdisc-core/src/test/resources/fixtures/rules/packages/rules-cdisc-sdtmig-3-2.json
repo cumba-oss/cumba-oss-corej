@@ -10,49 +10,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "SDTMIG",
-              "Version": "3.4",
-              "References": [
-                {
-                  "Origin": "SDTM and SDTMIG Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CG0001",
-                    "Version": "1"
-                  },
-                  "Version": "2.0"
-                }
-              ]
-            },
-            {
-              "Name": "SDTMIG",
-              "Version": "3.3",
-              "References": [
-                {
-                  "Origin": "SDTM and SDTMIG Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CG0001",
-                    "Version": "1"
-                  },
-                  "Version": "2.0"
-                }
-              ]
-            },
-            {
-              "Name": "SDTMIG",
-              "Version": "3.2",
-              "References": [
-                {
-                  "Origin": "SDTM and SDTMIG Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CG0001",
-                    "Version": "1"
-                  },
-                  "Version": "2.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CG0001"
           ]
         }
       ],
@@ -103,49 +62,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "SDTMIG",
-              "Version": "3.4",
-              "References": [
-                {
-                  "Origin": "SDTM and SDTMIG Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CG0006",
-                    "Version": "2"
-                  },
-                  "Version": "2.0"
-                }
-              ]
-            },
-            {
-              "Name": "SDTMIG",
-              "Version": "3.3",
-              "References": [
-                {
-                  "Origin": "SDTM and SDTMIG Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CG0006",
-                    "Version": "2"
-                  },
-                  "Version": "2.0"
-                }
-              ]
-            },
-            {
-              "Name": "SDTMIG",
-              "Version": "3.2",
-              "References": [
-                {
-                  "Origin": "SDTM and SDTMIG Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CG0006",
-                    "Version": "2"
-                  },
-                  "Version": "2.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CG0006"
           ]
         }
       ],
@@ -202,49 +120,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "SDTMIG",
-              "Version": "3.4",
-              "References": [
-                {
-                  "Origin": "SDTM and SDTMIG Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CG0007",
-                    "Version": "1"
-                  },
-                  "Version": "2.0"
-                }
-              ]
-            },
-            {
-              "Name": "SDTMIG",
-              "Version": "3.3",
-              "References": [
-                {
-                  "Origin": "SDTM and SDTMIG Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CG0007",
-                    "Version": "1"
-                  },
-                  "Version": "2.0"
-                }
-              ]
-            },
-            {
-              "Name": "SDTMIG",
-              "Version": "3.2",
-              "References": [
-                {
-                  "Origin": "SDTM and SDTMIG Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CG0007",
-                    "Version": "1"
-                  },
-                  "Version": "2.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CG0007"
           ]
         }
       ],
@@ -293,49 +170,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "SDTMIG",
-              "Version": "3.4",
-              "References": [
-                {
-                  "Origin": "SDTM and SDTMIG Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CG0008",
-                    "Version": "1"
-                  },
-                  "Version": "2.0"
-                }
-              ]
-            },
-            {
-              "Name": "SDTMIG",
-              "Version": "3.3",
-              "References": [
-                {
-                  "Origin": "SDTM and SDTMIG Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CG0008",
-                    "Version": "1"
-                  },
-                  "Version": "2.0"
-                }
-              ]
-            },
-            {
-              "Name": "SDTMIG",
-              "Version": "3.2",
-              "References": [
-                {
-                  "Origin": "SDTM and SDTMIG Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CG0008",
-                    "Version": "1"
-                  },
-                  "Version": "2.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CG0008"
           ]
         }
       ],
@@ -375,49 +211,8 @@
       "Authorities": [
         {
           "Organization": "CDISC",
-          "Standards": [
-            {
-              "Name": "SDTMIG",
-              "Version": "3.4",
-              "References": [
-                {
-                  "Origin": "SDTM and SDTMIG Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CG0009",
-                    "Version": "1"
-                  },
-                  "Version": "2.0"
-                }
-              ]
-            },
-            {
-              "Name": "SDTMIG",
-              "Version": "3.3",
-              "References": [
-                {
-                  "Origin": "SDTM and SDTMIG Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CG0009",
-                    "Version": "1"
-                  },
-                  "Version": "2.0"
-                }
-              ]
-            },
-            {
-              "Name": "SDTMIG",
-              "Version": "3.2",
-              "References": [
-                {
-                  "Origin": "SDTM and SDTMIG Conformance Rules",
-                  "Rule_Identifier": {
-                    "Id": "CG0009",
-                    "Version": "1"
-                  },
-                  "Version": "2.0"
-                }
-              ]
-            }
+          "Rule_Ids": [
+            "CG0009"
           ]
         }
       ],

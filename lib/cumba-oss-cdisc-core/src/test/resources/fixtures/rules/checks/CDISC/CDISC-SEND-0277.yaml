@@ -19,6 +19,12 @@ Outcome:
   Message: "The SEND dataset file name is not in lowercase."
   Output_Variables:
   - "$dataset_location"
+Source:
+  Class: "ALL"
+  Domain: "ALL"
+  Variable: "ALL"
+  Plain_Text_Explanation: "SEND dataset file names are in lowercase."
+  Rule: "SEND dataset file name is in lowercase."
 Standards:
 - Organization: "CDISC"
   Standards:

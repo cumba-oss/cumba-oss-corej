@@ -10,18 +10,18 @@ import java.util.Map;
 import java.util.TreeMap;
 import net.cumba.cdisc.core.RulePackageLoader;
 import net.cumba.cdisc.core.exec.DatasetResolver;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.exec.NativeExecutionRecorder;
 import net.cumba.cdisc.core.exec.RuleRunner;
 import net.cumba.cdisc.core.exec.Violation;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * P5 of {@code plans/PLAN-native-engine-full-coverage.md} — wildcard-template expansions carry a
- * native {@code checkExpr}: {@link WildcardExpander#expand} runs each fresh concrete rule through
+ * P5 of {@code plans/done/PLAN-native-engine-full-coverage.md} — wildcard-template expansions carry
+ * a native {@code checkExpr}: {@link WildcardExpander#expand} runs each fresh concrete rule through
  * the loader's single retention decision ({@code RulePackageLoader.installNativeExpr}), so the
  * expanded rules execute on the native engine exactly like loader-loaded concrete rules — while the
  * TEMPLATE itself (never executed) stays without an expression.

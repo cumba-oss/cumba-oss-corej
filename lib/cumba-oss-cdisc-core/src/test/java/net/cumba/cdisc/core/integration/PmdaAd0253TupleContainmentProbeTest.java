@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import net.cumba.cdisc.core.RulePackageLoader;
-import net.cumba.cdisc.core.exec.MockTable;
 import net.cumba.cdisc.core.exec.RuleExecutionResult;
 import net.cumba.cdisc.core.exec.RuleRunner;
 import net.cumba.cdisc.core.expr.CheckToExpr;
@@ -18,11 +17,12 @@ import net.cumba.cdisc.core.expr.eval.OperationKinds;
 import net.cumba.cdisc.core.model.Rule;
 import net.cumba.cdisc.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * <b>Phase 0 of {@code plans/PLAN-pmda-ad0253-rescope.md}</b> ({@code Fix #247}) &mdash; pins the
- * novel composition <em>before</em> the rule is authored.
+ * <b>Phase 0 of {@code plans/done/PLAN-pmda-ad0253-rescope.md}</b> ({@code Fix #247}) &mdash; pins
+ * the novel composition <em>before</em> the rule is authored.
  *
  * <p>
  * The re-authored {@code PMDA-AD0253} runs on ADAE, reads SDTM {@code AE} as reference data through

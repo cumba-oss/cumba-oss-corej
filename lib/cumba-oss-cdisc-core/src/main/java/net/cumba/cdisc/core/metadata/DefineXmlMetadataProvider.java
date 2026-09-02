@@ -94,7 +94,8 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
         // Coded codes are a list, carried JSON-encoded; default to the empty list.
         String coded = genVar.get("codelist_coded_codes");
         out.put("codelist_coded_codes", coded != null ? coded : "[]");
-        // E2 DEFINE-only accessors (plans/PLAN-group-b-followups.md): Origin Type, Comment/Method
+        // E2 DEFINE-only accessors (plans/done/PLAN-group-b-followups.md): Origin Type,
+        // Comment/Method
         // presence, and the bound codelist's external-dictionary name/version.
         putIfPresent(out, "origin_type", genVar.get("origin_type"));
         putIfPresent(out, "has_comment", genVar.get("has_comment"));

@@ -6,6 +6,7 @@ import java.util.List;
 import net.cumba.cdisc.core.model.CheckConditionAll;
 import net.cumba.cdisc.core.model.CheckConditionLeaf;
 import net.cumba.datatable.DataTableMeta;
+import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**

@@ -79,7 +79,8 @@ public final class BuiltinRegistry
             "define_variable_name", "define_variable_core", "define_variable_codelist",
             "define_variable_ordinal", "define_variable_length", "define_variable_ccode",
             "define_variable_codelist_coded_codes",
-            // DEFINE-only variable metadata (E2, plans/PLAN-group-b-followups.md): Origin Type,
+            // DEFINE-only variable metadata (E2, plans/done/PLAN-group-b-followups.md): Origin
+            // Type,
             // Comment/Method presence flags, and the bound codelist's external-dictionary
             // name/version. Auto-mapped to var_origin_type / var_has_comment / var_has_method /
             // var_external_dictionary(_version) by the define_variable_ prefix.
