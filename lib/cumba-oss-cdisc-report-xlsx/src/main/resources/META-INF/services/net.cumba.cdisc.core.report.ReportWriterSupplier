@@ -1,3 +1,0 @@
-# Report-writer registration for the corej report SPI (GenericServiceFactory, not
-# java.util.ServiceLoader — the resource format is identical).
-net.cumba.cdisc.core.report.xlsx.XlsxReportWriterSupplier

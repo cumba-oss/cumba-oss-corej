@@ -17,8 +17,8 @@ Third-party code is consumed only as ordinary **Maven dependencies** (Jackson, A
 POI, commons-compress, pyrolite, Lombok, JSpecify); those carry no obligation beyond
 not misrepresenting them.
 
-> Two points of possible confusion. The `cumba-oss-cdisc-core-ruletest` module's Java
-> package is `net.cumba.dataviewer.examples.cdt` — "dataviewer" is the internal
+> Two points of possible confusion. The `cumba-oss-corej-ruletest` module's Java
+> package is `net.cumba.corej.ruletest.cdt` — "dataviewer" is the internal
 > pre-migration Cumba codebase this source came from, not an external project. And the
 > engine implements the **CDISC CORE conformance rules**; the rule content itself is
 > not in this repository (see below).
@@ -30,11 +30,11 @@ classpath first; they are released separately to Maven Central.
 
 | Module | Java package | Purpose |
 |---|---|---|
-| [`cumba-oss-cdisc-core`](lib/cumba-oss-cdisc-core/README.md) | `net.cumba.cdisc.core` | The engine: rule-package loader, check evaluator, operation executor, report assembler, and the pluggable report-writer SPI. Ships **no** report writer of its own. |
-| `cumba-oss-cdisc-report-json` | `net.cumba.cdisc.core.report.json` | Registers two formats with the writer SPI — `json` (frozen v1 schema) and `json-2` (combined-finding v2). |
-| `cumba-oss-cdisc-report-xlsx` | `net.cumba.cdisc.core.report.xlsx` | Registers the `xlsx` format. The only module that puts Apache POI's writer path on the engine classpath, so an engine without it validates normally and simply offers no Excel output. |
-| [`cumba-oss-cdisc-core-ruletest`](lib/cumba-oss-cdisc-core-ruletest/README.md) | `net.cumba.dataviewer.examples.cdt` | Rule-test harness: load `.cdt` fixtures, evaluate a single rule against them, compare against expected findings. Ships no JUnit on its main path. |
-| `cumba-oss-cdisc-define-conformance` | `net.cumba.cdisc.define.conformance` | Define-XML conformance validator implementing the CDISC Define-XML v2.1 Conformance Rules and the PMDA Validation Rules v6.0 Define-XML sheet. |
+| [`cumba-oss-corej-core`](lib/cumba-oss-corej-core/README.md) | `net.cumba.corej.core` | The engine: rule-package loader, check evaluator, operation executor, report assembler, and the pluggable report-writer SPI. Ships **no** report writer of its own. |
+| `cumba-oss-corej-report-json` | `net.cumba.corej.core.report.json` | Registers two formats with the writer SPI — `json` (frozen v1 schema) and `json-2` (combined-finding v2). |
+| `cumba-oss-corej-report-xlsx` | `net.cumba.corej.core.report.xlsx` | Registers the `xlsx` format. The only module that puts Apache POI's writer path on the engine classpath, so an engine without it validates normally and simply offers no Excel output. |
+| [`cumba-oss-corej-ruletest`](lib/cumba-oss-corej-ruletest/README.md) | `net.cumba.corej.ruletest.cdt` | Rule-test harness: load `.cdt` fixtures, evaluate a single rule against them, compare against expected findings. Ships no JUnit on its main path. |
+| `cumba-oss-corej-define-conformance` | `net.cumba.corej.define.conformance` | Define-XML conformance validator implementing the CDISC Define-XML v2.1 Conformance Rules and the PMDA Validation Rules v6.0 Define-XML sheet. |
 
 ## What is not in this repository
 
@@ -71,13 +71,13 @@ Artifacts are published under groupId `net.cumba` with the module's artifactId:
 ```xml
 <dependency>
     <groupId>net.cumba</groupId>
-    <artifactId>cumba-oss-cdisc-core</artifactId>
+    <artifactId>cumba-oss-corej-core</artifactId>
     <version>0.2.0</version>
 </dependency>
 ```
 
 To produce a report you also need a writer on the classpath — add
-`cumba-oss-cdisc-report-json` and/or `cumba-oss-cdisc-report-xlsx`. Without one the
+`cumba-oss-corej-report-json` and/or `cumba-oss-corej-report-xlsx`. Without one the
 engine validates but can write nothing, and says so by name.
 
 ## The CI gate

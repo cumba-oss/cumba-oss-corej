@@ -28,4 +28,4 @@ One sub-directory per library artifact. Library modules:
    and is immutable; a README's `<dependency>` block is the first thing
    a consumer copies. Both have shipped wrong before.
 
-See `cumba-oss-cdisc-report-json/` for a small reference module.
+See `cumba-oss-corej-report-json/` for a small reference module.

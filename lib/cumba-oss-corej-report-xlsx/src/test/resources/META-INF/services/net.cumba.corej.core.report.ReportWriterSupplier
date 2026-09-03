@@ -1,0 +1,4 @@
+# TEST-SCOPE registration only (R5): a trivial CSV writer contributed from a test source root, to
+# prove that a new format needs no engine edit. It is never on a production classpath — this file
+# lives in src/test/resources.
+net.cumba.corej.core.report.xlsx.StubCsvReportWriterSupplier

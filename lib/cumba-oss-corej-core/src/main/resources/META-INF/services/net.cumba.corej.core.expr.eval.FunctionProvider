@@ -1,0 +1,3 @@
+# Built-in native-evaluator functions (Phase 2). Discovered by FunctionRegistry via the project
+# SPI (net.cumba.datatable.io.GenericServiceFactory).
+net.cumba.corej.core.expr.eval.spi.BuiltinFunctions

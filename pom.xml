@@ -134,7 +134,7 @@
 
             HISTORY, kept because the hold lasted three releases and the reason
             matters if it ever recurs: this repo was pinned at 4.9.8.3 while the
-            newer detectors reported 186 findings in cumba-oss-cdisc-core - 180 of
+            newer detectors reported 186 findings in cumba-oss-corej-core - 180 of
             them NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE across 165 sites in 28
             files. They were REAL, not false positives: model DTOs carry @Nullable
             fields that Lombok copies onto the generated getters, and the codebase
@@ -297,11 +297,11 @@
         well - the enforcer rule there fails the build if you forget.
     -->
     <modules>
-        <module>lib/cumba-oss-cdisc-core</module>
-        <module>lib/cumba-oss-cdisc-report-json</module>
-        <module>lib/cumba-oss-cdisc-report-xlsx</module>
-        <module>lib/cumba-oss-cdisc-core-ruletest</module>
-        <module>lib/cumba-oss-cdisc-define-conformance</module>
+        <module>lib/cumba-oss-corej-core</module>
+        <module>lib/cumba-oss-corej-report-json</module>
+        <module>lib/cumba-oss-corej-report-xlsx</module>
+        <module>lib/cumba-oss-corej-ruletest</module>
+        <module>lib/cumba-oss-corej-define-conformance</module>
 
         <module>coverage</module>
     </modules>
@@ -622,7 +622,7 @@
                                     of value is lost by excluding it.
                                 -->
                                 <excludedTestClasses>
-                                    <param>net.cumba.cdisc.core.exec.JoinCacheConcurrencyTest</param>
+                                    <param>net.cumba.corej.core.exec.JoinCacheConcurrencyTest</param>
                                 </excludedTestClasses>
                                 <!--
                                     Pin pitest's own `skipTests` to false. The plugin binds
@@ -972,13 +972,13 @@
                     <!--
                         Keep the test-jar OUT of the Central bundle.
 
-                        cumba-oss-cdisc-core attaches a test-jar so downstream modules can
+                        cumba-oss-corej-core attaches a test-jar so downstream modules can
                         reuse its test helpers. That is useful inside the build, but nothing
                         public consumes it today, and a Central artifact is immutable - so it
                         is not published until something actually needs it.
 
                         ⚠ excludeArtifacts (below) cannot express this: it matches on
-                        artifactId, so excluding cumba-oss-cdisc-core would drop the whole
+                        artifactId, so excluding cumba-oss-corej-core would drop the whole
                         module. Overriding the execution's phase to `none` is what keeps the
                         main jar published and the tests jar unattached. Normal builds are
                         unaffected - the test-jar is still produced and installed locally.
@@ -1183,7 +1183,7 @@
     <!--
         The child.scm.*.inherit.append.path attributes stop Maven appending each
         module's directory to the inherited SCM URLs, which would publish
-        unreachable paths like .../cumba-oss-corej.git/lib/cumba-oss-cdisc-core.
+        unreachable paths like .../cumba-oss-corej.git/lib/cumba-oss-corej-core.
     -->
     <scm child.scm.url.inherit.append.path="false"
          child.scm.connection.inherit.append.path="false"
@@ -1208,17 +1208,17 @@
 
             <dependency>
                 <groupId>${project.groupId}</groupId>
-                <artifactId>cumba-oss-cdisc-core</artifactId>
+                <artifactId>cumba-oss-corej-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>${project.groupId}</groupId>
-                <artifactId>cumba-oss-cdisc-report-json</artifactId>
+                <artifactId>cumba-oss-corej-report-json</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>${project.groupId}</groupId>
-                <artifactId>cumba-oss-cdisc-report-xlsx</artifactId>
+                <artifactId>cumba-oss-corej-report-xlsx</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -1233,7 +1233,7 @@
             <dependency><groupId>net.cumba</groupId><artifactId>cumba-oss-datatable-provider-define</artifactId><version>${dependency.cumba-oss-datatable.version}</version></dependency>
             <dependency><groupId>net.cumba</groupId><artifactId>cumba-oss-datatable-provider-cdt</artifactId><version>${dependency.cumba-oss-datatable.version}</version></dependency>
             <!-- Test helpers extracted from the engine 2026-09-01, published from the
-                 datatable repo since 0.2.0. cumba-oss-cdisc-core takes it at test scope;
+                 datatable repo since 0.2.0. cumba-oss-corej-core takes it at test scope;
                  255 of its test files use MockTable or TestMetadataFixtures. -->
             <dependency><groupId>net.cumba</groupId><artifactId>cumba-oss-datatable-testkit</artifactId><version>${dependency.cumba-oss-datatable.version}</version></dependency>
 
@@ -1326,12 +1326,12 @@
 
                     <dependency>
                 <groupId>${project.groupId}</groupId>
-                <artifactId>cumba-oss-cdisc-core-ruletest</artifactId>
+                <artifactId>cumba-oss-corej-ruletest</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>${project.groupId}</groupId>
-                <artifactId>cumba-oss-cdisc-define-conformance</artifactId>
+                <artifactId>cumba-oss-corej-define-conformance</artifactId>
                 <version>${project.version}</version>
             </dependency>
 </dependencies>
@@ -1377,7 +1377,7 @@
             <plugins>
 
                 <!-- Managed unconditionally, not only inside deploy-central:
-                     cumba-oss-cdisc-core declares a maven-javadoc-plugin block in
+                     cumba-oss-corej-core declares a maven-javadoc-plugin block in
                      <build><plugins> to carry its sourceFileExcludes (ExprLowering.java,
                      a Lombok-generated signature javadoc cannot resolve). Without a
                      managed version that block binds to whatever version the running

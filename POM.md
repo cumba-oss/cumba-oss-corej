@@ -26,7 +26,7 @@ every plugin bound along the way.
 
 The parent pom is special: it's a `pom`-packaged project with no code
 of its own. It exists to share configuration with the child modules
-(`lib/cumba-oss-cdisc-core`, etc.). Children inherit:
+(`lib/cumba-oss-corej-core`, etc.). Children inherit:
 
 - Properties (version numbers, encoding, …).
 - `<pluginManagement>` — default plugin configuration. A child only
@@ -421,8 +421,8 @@ inherit the version. Two reasons to centralise:
 
 This pom declares:
 
-- **In-house module declarations** (`cumba-oss-cdisc-core`,
-  `cumba-oss-cdisc-report-json`, `cumba-oss-cdisc-report-xlsx`) so children
+- **In-house module declarations** (`cumba-oss-corej-core`,
+  `cumba-oss-corej-report-json`, `cumba-oss-corej-report-xlsx`) so children
   can pull each other in without versioning.
 - **`junit-bom` + `mockito-bom`** imported with `<type>pom</type>
   <scope>import</scope>` — BOMs align every JUnit / Mockito artifact

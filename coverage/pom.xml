@@ -38,24 +38,24 @@
     <dependencies>
         <dependency>
             <groupId>${project.groupId}</groupId>
-            <artifactId>cumba-oss-cdisc-core</artifactId>
+            <artifactId>cumba-oss-corej-core</artifactId>
         </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
-            <artifactId>cumba-oss-cdisc-report-json</artifactId>
+            <artifactId>cumba-oss-corej-report-json</artifactId>
         </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
-            <artifactId>cumba-oss-cdisc-report-xlsx</artifactId>
+            <artifactId>cumba-oss-corej-report-xlsx</artifactId>
         </dependency>
         <dependency>
             <groupId>net.cumba</groupId>
-            <artifactId>cumba-oss-cdisc-core-ruletest</artifactId>
+            <artifactId>cumba-oss-corej-ruletest</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>net.cumba</groupId>
-            <artifactId>cumba-oss-cdisc-define-conformance</artifactId>
+            <artifactId>cumba-oss-corej-define-conformance</artifactId>
             <version>${project.version}</version>
         </dependency>
     </dependencies>
