@@ -386,7 +386,7 @@
     <Match>
         <!-- Regex fallback: RelrecLookup$1RelrecLink is a local class
              whose javac-synthesised name carries a numeric prefix. -->
-        <Class name="~net\.cumba\.cdisc\.core\.exec\.RelrecLookup\$[0-9]+RelrecLink" />
+        <Class name="~net\.cumba\.corej\.core\.exec\.RelrecLookup\$[0-9]+RelrecLink" />
         <Method name="usubjId" />
         <Bug pattern="NM_CONFUSING" />
     </Match>
@@ -569,7 +569,7 @@
             so nothing mutable is exposed; SpotBugs simply does not track immutability through
             Map.copyOf.
         -->
-        <Class name="~net\.cumba\.cdisc\.core\.report\.LibraryValidator\$\d+" />
+        <Class name="~net\.cumba\.corej\.core\.report\.LibraryValidator\$\d+" />
         <Method name="availableDatasets" />
         <Bug pattern="EI_EXPOSE_REP" />
     </Match>
