@@ -55,7 +55,7 @@ import org.junit.jupiter.api.Test;
  * {@code var_exists}-guarded in the top-level {@code and}; the 27th ({@code CDISC-AD0646}) is
  * unguarded but safe by evaluation, because {@code record_count} over an absent domain is 0 and
  * {@code 0 > 0} is false. Only the TIG package contains unguarded collapse shapes that fire.
- * {@code CrossStandardCollapseCorpusTest} in {@code cumba-oss-cdisc-rules} asserts that half over
+ * {@code CrossStandardCollapseCorpusTest} in {@code cumba-oss-corej-rules} asserts that half over
  * the whole shipped corpus.
  */
 class AbsentDatasetSkipCrossStandardCollapseTest

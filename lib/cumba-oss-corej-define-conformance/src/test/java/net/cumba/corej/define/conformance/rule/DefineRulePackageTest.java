@@ -19,7 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>
  * Every case builds its own package in a {@code @TempDir}. The real corpus lives in
- * {@code cumba-oss-cdisc-rules} — this module cannot depend on it (that would be a reactor cycle),
+ * {@code cumba-oss-corej-rules} — this module cannot depend on it (that would be a reactor cycle),
  * and should not: these are unit tests of the format, not of the corpus.
  * </p>
  */

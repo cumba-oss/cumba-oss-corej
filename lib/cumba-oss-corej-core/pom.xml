@@ -183,10 +183,10 @@
                      Publish this module's test helpers as a test-jar.
 
                      ⚠ As of 2026-09-01 this test-jar has ZERO consumers anywhere in the repo.
-                     cumba-oss-cdisc-rules was the only one and dropped it
+                     cumba-oss-corej-rules was the only one and dropped it
                      (the coreJ restructure): MockTable and
                      TestMetadataFixtures left for cumba-oss-datatable-testkit, StubMetadataProvider
-                     and SyntheticStringTable were copied into cumba-oss-cdisc-rules' own test tree.
+                     and SyntheticStringTable were copied into cumba-oss-corej-rules' own test tree.
                      A repo-wide sweep of every tracked pom finds no remaining
                      type=test-jar dependency other than the dependencyManagement entry.
 

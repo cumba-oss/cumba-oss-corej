@@ -73,7 +73,7 @@ public final class ScenarioCapture
      * Path.of(null, ...) throws — which in a static initialiser would be an
      * ExceptionInInitializerError for every suite that merely calls isEnabled(), i.e. all of them.
      * The property names the MODULE being built, which for a capture run is always the module
-     * holding the suites (cumba-oss-cdisc-rules), so this lands in that module's own corpus.
+     * holding the suites (cumba-oss-corej-rules), so this lands in that module's own corpus.
      */
     private static Path resourceRoot()
     {

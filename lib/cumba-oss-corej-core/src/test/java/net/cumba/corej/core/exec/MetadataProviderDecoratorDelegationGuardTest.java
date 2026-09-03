@@ -56,7 +56,7 @@ import org.junit.jupiter.api.Test;
  * capability method, assert the delegate saw the same call with the same arguments — is strictly
  * harder to fool than any text scan, and it was the first thing tried. It cannot be written
  * <em>here</em>: two of the four decorators live in modules that depend on this one
- * ({@code CompositeMetadataProvider} in {@code cumba-oss-cdisc-rules}' test sources,
+ * ({@code CompositeMetadataProvider} in {@code cumba-oss-corej-rules}' test sources,
  * {@code ScenarioDeclaredScopeProvider}, likewise there), so they are not on this module's test
  * classpath and cannot be. Loading them out of a sibling module's {@code target/test-classes} would
  * make the guard pass vacuously whenever that module happened not to be built — the exact failure
