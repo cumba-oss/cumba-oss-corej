@@ -30,17 +30,28 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
+import library  # noqa: E402
+import paths  # noqa: E402
 from violations import lib as vlib  # noqa: E402
 
 
-_DEFAULT_CLEAN = {
-    "sdtmig": "/data/testdata/synthetic/sdtmig-3-4/clean",
-    "sendig": "/data/testdata/synthetic/sendig-3-1-1/clean",
+#: Each lane's directory *under* the synthetic-testdata root. The root itself has
+#: no default (``paths.synth_root``): the study tree is this generator's output,
+#: not repository content, so nothing here may assume where it lives.
+_LANE_DIR = {
+    "sdtmig": "sdtmig-3-4",
+    "sendig": "sendig-3-1-1",
 }
-_DEFAULT_OUT = {
-    "sdtmig": "/data/testdata/synthetic/sdtmig-3-4/violations",
-    "sendig": "/data/testdata/synthetic/sendig-3-1-1/violations",
-}
+
+
+def default_clean(standard: str) -> str:
+    """The lane's clean study dir, relative to the configured synthetic root."""
+    return os.path.join(paths.lane_root(_LANE_DIR[standard]), "clean")
+
+
+def default_out(standard: str) -> str:
+    """The lane's violations output root, relative to the configured synthetic root."""
+    return os.path.join(paths.lane_root(_LANE_DIR[standard]), "violations")
 
 
 class Injector:
@@ -102,12 +113,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--standard", required=True, choices=("sdtmig", "sendig"))
     ap.add_argument("--rules", help="comma-separated CORE ids; omit with --all")
     ap.add_argument("--all", action="store_true", help="run every injector for the lane")
-    ap.add_argument("--clean", help="clean study dir (default: lane's clean dir)")
-    ap.add_argument("--out", help="output root (default: lane's violations dir)")
+    ap.add_argument("--clean", help="clean study dir (else the lane's dir under --synth-root)")
+    ap.add_argument("--out", help="output root (else the lane's dir under --synth-root)")
+    library.add_cache_dir_argument(ap)
+    paths.add_synth_root_argument(ap)
     args = ap.parse_args(argv)
 
-    clean_dir = args.clean or _DEFAULT_CLEAN[args.standard]
-    out_root = args.out or _DEFAULT_OUT[args.standard]
+    library.set_cache_dir(args.cache_dir)
+    paths.set_synth_root(args.synth_root)
+
+    # No absolute fallback: without --clean/--out the lane dirs are derived from the
+    # configured synthetic root, and if that is unset the run stops here saying so.
+    try:
+        clean_dir = args.clean or default_clean(args.standard)
+        out_root = args.out or default_out(args.standard)
+    except paths.SynthRootNotConfigured as exc:
+        raise SystemExit(
+            f"{exc}\nAlternatively pass --clean <dir> and --out <dir> explicitly."
+        ) from exc
 
     rules: set[str] | None
     if args.all:

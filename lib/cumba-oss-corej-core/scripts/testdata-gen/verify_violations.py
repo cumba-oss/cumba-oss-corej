@@ -33,24 +33,26 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
 import library  # noqa: E402
+import paths  # noqa: E402
 
 # The repository this script belongs to. Derived from the script's own location
-# (``<repo>/lib/corej-cdisc-core/scripts/testdata-gen/``) rather than hard-coded, so a
+# (``<repo>/lib/<engine module>/scripts/testdata-gen/``) rather than hard-coded, so a
 # checkout or git worktree verifies the engine and corpus *it* ships instead of silently
-# measuring a different tree. Resolves to /data/net.cumba.corej in the main checkout,
-# i.e. byte-identical to the literal it replaced.
+# measuring a different tree.
 _REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                       "..", "..", "..", ".."))
 _JAR = f"{_REPO}/clients/corej-cdisc-cli/target/corej-cdisc-cli-0.1.0-SNAPSHOT.jar"
 _RULES_DIR = f"{_REPO}/lib/corej-cdisc-rules/rules"
-# The engine's ``-pc`` pickle cache. ``library.CACHE_DIR_ENV`` overrides it for the
-# same reason it overrides the generator's: on a host that keeps the cache
-# elsewhere there is no such directory, and every engine run then reports nothing.
-_CACHE = os.environ.get(library.CACHE_DIR_ENV, library.DEFAULT_CACHE_DIR)
+# The engine's ``-pc`` pickle cache has no default — see ``library.resolve_cache_dir``.
+# It is resolved at the point of use so importing this module (``verify.py`` does)
+# never depends on a configured host.
 
+#: ``{lane: (standard flag, version, directory under the synthetic-testdata root)}``.
+#: The lane's absolute root is resolved through :func:`paths.lane_root`, which has no
+#: default: the study tree is generated output, not repository content.
 _LANE = {
-    "sdtmig": ("sdtmig", "3-4", "/data/testdata/synthetic/sdtmig-3-4"),
-    "sendig": ("sendig", "3-1-1", "/data/testdata/synthetic/sendig-3-1-1"),
+    "sdtmig": ("sdtmig", "3-4", "sdtmig-3-4"),
+    "sendig": ("sendig", "3-1-1", "sendig-3-1-1"),
 }
 
 
@@ -140,7 +142,7 @@ def run_engine(standard_flag: str, version: str, data_dir: str) -> set[str]:
             "-rp",
             ",".join(packages_for(standard_flag, version)),
             "-pc",
-            _CACHE,
+            library.resolve_cache_dir(),
             "-of",
             "json2",
             "-o",
@@ -159,7 +161,8 @@ def run_engine(standard_flag: str, version: str, data_dir: str) -> set[str]:
 
 
 def verify_lane(standard: str, rules: set[str] | None) -> tuple[int, int, list[str]]:
-    flag, version, root = _LANE[standard]
+    flag, version, lane_dir = _LANE[standard]
+    root = paths.lane_root(lane_dir)
     clean_set = run_engine(flag, version, os.path.join(root, "clean"))
     vio_root = os.path.join(root, "violations")
     if not os.path.isdir(vio_root):
@@ -216,7 +219,20 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--standard", required=True, choices=("sdtmig", "sendig"))
     ap.add_argument("--rules", help="comma-separated CORE ids (default: all in lane)")
+    library.add_cache_dir_argument(ap)
+    paths.add_synth_root_argument(ap)
     args = ap.parse_args(argv)
+
+    library.set_cache_dir(args.cache_dir)
+    paths.set_synth_root(args.synth_root)
+    # Resolved up front so an unconfigured run fails naming what to set, rather
+    # than after the first engine invocation has already been spawned.
+    try:
+        library.resolve_cache_dir()
+        paths.synth_root()
+    except (library.CacheDirNotConfigured, paths.SynthRootNotConfigured) as exc:
+        raise SystemExit(str(exc)) from exc
+
     rules = {r.strip() for r in args.rules.split(",")} if args.rules else None
     _passed, _total, lines = verify_lane(args.standard, rules)
     print("\n".join(lines))

@@ -1,8 +1,9 @@
 """Read the engine's own pickle cache as the metadata source.
 
-This is the same ``-pc`` cache the engine validates against
-(``/data/cdisc.metadata.library-cache-pkl``), so generating from it guarantees
-the synthetic data matches what the engine expects.
+This is the same ``-pc`` cache the engine validates against, so generating from
+it guarantees the synthetic data matches what the engine expects. The cache is
+**not** part of this repository and has no location that can be assumed — see
+:data:`CACHE_DIR_ENV` for how a caller points at one.
 
 Files used:
 
@@ -27,22 +28,57 @@ from dataclasses import dataclass
 from functools import cached_property
 
 
-#: Overrides the pickle-cache location. The default below is this project's
-#: standard host path; on a machine that keeps the cache elsewhere the default
-#: resolves to a directory that does not exist and every generator and harness
-#: entry point dies on the first ``open()``. Setting this env var to a
-#: materialised cache is the supported way to run in such a tree.
+#: Environment variable naming the pickle-cache location.
+#:
+#: There is deliberately **no** built-in default. The cache is a host-local
+#: artefact that no clone, CI runner or release carries, so a hardcoded path
+#: would resolve only on the machine it was written on and be silently absent
+#: everywhere else. A caller configures the location explicitly, or resolution
+#: fails immediately with a message saying how — it never guesses.
 CACHE_DIR_ENV = "CDISC_PICKLE_CACHE_DIR"
 
+#: The command-line flag every entry point exposes for the same value.
+CACHE_DIR_FLAG = "--cache-dir"
 
-#: The standalone pickle cache, which survives the fork submodule's removal
-#: (PLAN-fork-removal-stage4 phase 3). It is a host path, not a repo path, so it
-#: is the same value whether the caller runs from a clone or a worktree.
-DEFAULT_CACHE_DIR = "/data/cdisc.metadata.library-cache-pkl"
+#: Set from ``--cache-dir`` by an entry point's ``main()``; takes precedence
+#: over the environment, which is the precedence a flag has always had.
+_cache_dir_override: str | None = None
 
 
-def _default_cache_dir() -> str:
-    return os.environ.get(CACHE_DIR_ENV) or DEFAULT_CACHE_DIR
+class CacheDirNotConfigured(RuntimeError):
+    """No pickle-cache location was supplied by any supported route."""
+
+
+def set_cache_dir(value: str | None) -> None:
+    """Record a ``--cache-dir`` value. An empty value leaves the environment in charge."""
+    global _cache_dir_override
+    if value:
+        _cache_dir_override = value
+
+
+def resolve_cache_dir() -> str:
+    """The pickle-cache directory: ``--cache-dir`` first, then the environment.
+
+    Raises :class:`CacheDirNotConfigured` when neither supplies one, rather than
+    falling back to an absolute path outside the repository.
+    """
+    cache_dir = _cache_dir_override or os.environ.get(CACHE_DIR_ENV)
+    if not cache_dir:
+        raise CacheDirNotConfigured(
+            "No CDISC pickle metadata cache configured. The cache is not part of "
+            "this repository and has no location that can be assumed, so there is "
+            f"no default. Pass {CACHE_DIR_FLAG} <dir>, set the {CACHE_DIR_ENV} "
+            "environment variable, or construct Library(..., cache_dir=<dir>)."
+        )
+    return cache_dir
+
+
+def add_cache_dir_argument(parser) -> None:
+    """Register the shared ``--cache-dir`` flag on an ``argparse`` parser."""
+    parser.add_argument(
+        CACHE_DIR_FLAG,
+        help=f"CDISC pickle metadata cache directory (else ${CACHE_DIR_ENV})",
+    )
 
 
 # Which standard maps to which CT product + version-key spelling.
@@ -75,7 +111,9 @@ class Library:
 
     def __init__(self, spec: StandardSpec, cache_dir: str | None = None) -> None:
         self.spec = spec
-        self.cache_dir = cache_dir or _default_cache_dir()
+        # Resolved here, not at the first ``open()``: an unconfigured caller must
+        # learn what to set while the stack still names this constructor.
+        self.cache_dir = cache_dir or resolve_cache_dir()
         # Memoized per-domain variable lists. Variables are read-only dataclasses
         # (no caller mutates them), so sharing the cached list is safe and avoids
         # re-resolving codelists on every call (define.py looks a domain up once

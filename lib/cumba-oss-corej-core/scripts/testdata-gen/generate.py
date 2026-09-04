@@ -17,6 +17,7 @@ import os
 
 import copresence
 import define
+import library
 import domains as dom_mod
 import emit
 import study as study_mod
@@ -918,12 +919,20 @@ def main() -> None:
     ap.add_argument("--subjects", type=int, default=20)
     ap.add_argument("--visits", type=int, default=10)
     ap.add_argument("--seed", type=int, default=0)
+    library.add_cache_dir_argument(ap)
     args = ap.parse_args()
+
+    library.set_cache_dir(args.cache_dir)
 
     spec = SPECS.get((args.standard, args.version))
     if spec is None:
         raise SystemExit(f"no library spec for {args.standard}/{args.version}")
-    lib = Library(spec)
+    # The pickle cache has no default; without one this stops here, naming the
+    # flag and the environment variable, rather than dying on the first open().
+    try:
+        lib = Library(spec)
+    except library.CacheDirNotConfigured as exc:
+        raise SystemExit(str(exc)) from exc
     study = study_mod.build_study(
         args.standard, args.version, n_subjects=args.subjects,
         n_visits=args.visits, seed=args.seed,

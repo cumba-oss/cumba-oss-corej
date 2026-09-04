@@ -44,6 +44,7 @@ if _HERE not in sys.path:
 
 import apply_violations  # noqa: E402
 import library  # noqa: E402
+import paths  # noqa: E402
 import rulescan  # noqa: E402
 import study as study_mod  # noqa: E402
 import verify_violations  # noqa: E402
@@ -56,12 +57,9 @@ from generate import Generator  # noqa: E402
 _REPO = os.path.normpath(os.path.join(_HERE, "..", "..", "..", ".."))
 _JAR = f"{_REPO}/clients/corej-cdisc-cli/target/corej-cdisc-cli-0.1.0-SNAPSHOT.jar"
 _RULES_DIR = f"{_REPO}/lib/corej-cdisc-rules/rules"
-# The engine's ``-pc`` pickle cache. ``library.CACHE_DIR_ENV`` overrides it for the
-# same reason it overrides the generator's: on a host that keeps the cache
-# elsewhere there is no such directory, and every engine run then reports nothing.
-_CACHE = os.environ.get(library.CACHE_DIR_ENV, library.DEFAULT_CACHE_DIR)
-
-_SYNTH_ROOT = "/data/testdata/synthetic"
+# The engine's ``-pc`` pickle cache has no default — see ``library.resolve_cache_dir``.
+# It is resolved at the point of use, not at import, so the pure helpers below (and
+# ``tests/test_verify.py``) stay importable in a tree that has no cache configured.
 _EXPECTED = os.path.join(_HERE, "expected_residuals.json")
 _COVERAGE_DOC = os.path.normpath(
     os.path.join(_HERE, "..", "..", "..", "corej-cdisc-rules", "documentation",
@@ -74,13 +72,13 @@ _LANES = {
         "flag": "sdtmig",
         "version": "3-4",
         "spec": library.SDTMIG_3_4,
-        "root": f"{_SYNTH_ROOT}/sdtmig-3-4",
+        "dir": "sdtmig-3-4",
     },
     "sendig": {
         "flag": "sendig",
         "version": "3-1-1",
         "spec": library.SENDIG_3_1_1,
-        "root": f"{_SYNTH_ROOT}/sendig-3-1-1",
+        "dir": "sendig-3-1-1",
     },
 }
 
@@ -166,7 +164,7 @@ def dormant_rules_unlocked(standard: str, generated_domains) -> tuple[list[str],
 def regenerate(lane: str) -> dict[str, int]:
     """Regenerate ``<lane>/clean/`` (+ define.xml); return ``{domain: rows}``."""
     cfg = _LANES[lane]
-    clean_dir = os.path.join(cfg["root"], "clean")
+    clean_dir = os.path.join(paths.lane_root(cfg["dir"]), "clean")
     lib = library.Library(cfg["spec"])
     st = study_mod.build_study(cfg["flag"], cfg["version"])
     counts = Generator(lib, st).generate(clean_dir)
@@ -176,8 +174,8 @@ def regenerate(lane: str) -> dict[str, int]:
 def reapply_violations(lane: str) -> int:
     """Re-run every injector for the lane into ``<lane>/violations/``."""
     cfg = _LANES[lane]
-    clean_dir = os.path.join(cfg["root"], "clean")
-    out_root = os.path.join(cfg["root"], "violations")
+    clean_dir = os.path.join(paths.lane_root(cfg["dir"]), "clean")
+    out_root = os.path.join(paths.lane_root(cfg["dir"]), "violations")
     injectors = apply_violations.select(apply_violations.discover(), lane, None)
     for inj in injectors:
         apply_violations.apply_one(inj, clean_dir, out_root)
@@ -203,7 +201,7 @@ def run_engine(lane: str, data_dir: str, with_define: bool) -> dict:
         cmd += [
             "--rules-dir", _RULES_DIR,
             "-rp", ",".join(verify_violations.packages_for(cfg["flag"], cfg["version"])),
-            "-pc", _CACHE,
+            "-pc", library.resolve_cache_dir(),
             "-of", "json2", "-o", stem,
         ]
         proc = subprocess.run(cmd, cwd=_REPO, capture_output=True, text=True)
@@ -223,7 +221,7 @@ def run_engine(lane: str, data_dir: str, with_define: bool) -> dict:
 def verify_lane(lane: str, expected_all: dict, skip_regen: bool) -> dict:
     """Run the full Phase-6 verification for one lane; return a result dict."""
     cfg = _LANES[lane]
-    clean_dir = os.path.join(cfg["root"], "clean")
+    clean_dir = os.path.join(paths.lane_root(cfg["dir"]), "clean")
     expected = expected_for_lane(expected_all, lane)
 
     print(f"\n=== lane {lane} ===")
@@ -442,7 +440,19 @@ def main(argv: list[str] | None = None) -> int:
                     help="reuse the existing clean/ + violations/ (no regen)")
     ap.add_argument("--no-coverage-doc", action="store_true",
                     help="do not write documentation/synthetic-testdata-coverage.md")
+    library.add_cache_dir_argument(ap)
+    paths.add_synth_root_argument(ap)
     args = ap.parse_args(argv)
+
+    library.set_cache_dir(args.cache_dir)
+    paths.set_synth_root(args.synth_root)
+    # Both host-local inputs are resolved up front: an unconfigured run must fail
+    # here, naming what to set, rather than part-way through a lane.
+    try:
+        library.resolve_cache_dir()
+        paths.synth_root()
+    except (library.CacheDirNotConfigured, paths.SynthRootNotConfigured) as exc:
+        raise SystemExit(str(exc)) from exc
 
     lanes = ["sdtmig", "sendig"] if args.lane == "both" else [args.lane]
     expected_all = load_expected_residuals()

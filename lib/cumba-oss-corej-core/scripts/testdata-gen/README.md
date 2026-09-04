@@ -23,21 +23,27 @@ Options: `--subjects` (default 20), `--visits` (10), `--seed` (0). Output is
 deterministic for a given (standard, version, subjects, visits, seed).
 
 > ⛔ **The pickle cache is not in this repository, and neither is the output tree.**
-> Both are host-local inputs that no clone, CI runner or release carries. Set them
-> explicitly every time; do not rely on a default. `library.py` and the two
-> `verify*.py` harnesses all read `CDISC_PICKLE_CACHE_DIR`, so setting it is what
-> keeps the generator and the engine on the same metadata:
+> Both are host-local: no clone, CI runner or release carries either, so **neither
+> has a default**. Every entry point resolves each from its flag first, then from the
+> environment, and fails immediately — naming both — when neither supplies one. None
+> of them falls back to an absolute path.
+>
+> | Host-local input | Flag | Environment variable |
+> |---|---|---|
+> | pickle metadata cache (the engine's `-pc`) | `--cache-dir` | `CDISC_PICKLE_CACHE_DIR` |
+> | root of the generated study tree | `--synth-root` | `CDISC_SYNTHETIC_TESTDATA_ROOT` |
 >
 > ```bash
 > export CDISC_PICKLE_CACHE_DIR=<your materialised pickle cache>
 > export CDISC_API_CACHE=<your CDISC Library API cache>
-> export OUT=<where generated studies should go>
+> export CDISC_SYNTHETIC_TESTDATA_ROOT=<where generated studies should go>
+> export OUT="$CDISC_SYNTHETIC_TESTDATA_ROOT"   # the examples below use $OUT
 > ```
 >
-> ⚠ `library.DEFAULT_CACHE_DIR` and several sibling scripts still *carry* an
-> absolute default pointing outside the repository. Those defaults are a bug, not a
-> contract — they resolve only on the machine they were written on, and every entry
-> point dies on the first `open()` anywhere else.
+> `library.py` and both `verify*.py` harnesses read the same cache value, so the
+> generator and the engine cannot end up on different metadata.
+> `apply_violations.py` also accepts `--clean` / `--out` to name the two directories
+> directly, in which case the synthetic root is not consulted at all.
 
 > **Shape constraints for a fully clean study.** Subjects are assigned
 > round-robin to the 3 arms (2 active + placebo), so `--subjects` must be **>= 3**
@@ -77,7 +83,8 @@ java -Dcorej.maxErrorsPerRule=0 \
 
 | Module | Responsibility |
 |--------|----------------|
-| `library.py` | Reads the engine pickle cache (`variables_metadata.pkl`, `variable_codelist_maps.pkl`, `sdtmct/sendct-*.pkl`) — the same metadata the engine validates against. |
+| `library.py` | Reads the engine pickle cache (`variables_metadata.pkl`, `variable_codelist_maps.pkl`, `sdtmct/sendct-*.pkl`) — the same metadata the engine validates against. Owns `--cache-dir` / `CDISC_PICKLE_CACHE_DIR` resolution; raises `CacheDirNotConfigured` rather than guessing. |
+| `paths.py` | Owns `--synth-root` / `CDISC_SYNTHETIC_TESTDATA_ROOT` resolution and the per-lane roots under it; raises `SynthRootNotConfigured` rather than guessing. |
 | `rulescan.py` | Scans `rules-src/checks/CORE/*.yaml` for per-domain targets and referenced variables. |
 | `copresence.py` | Derives, from the lane's **shipped** rule packages, which unpopulated Permissible columns may not be dropped — co-presence pairs (`--DTC` ⇒ `--DY`), cross-dataset presence counts (`--LNKID`), and column-metadata rules. |
 | `study.py` | Deterministic subject + trial skeleton (subjects, arms, visits, epochs, reference dates). |
@@ -124,6 +131,11 @@ a failure. Re-baseline `expected_residuals.json` when the rule corpus changes.
 ```bash
 $PY -m pytest tests/ -q
 ```
+
+Tests that need the pickle cache **skip** when `CDISC_PICKLE_CACHE_DIR` is unset —
+an unconfigured checkout is a legitimate state. The contract that resolution refuses
+to guess is asserted in `tests/test_library.py` and `tests/test_paths.py`, neither of
+which needs a cache or a generated study.
 
 ## Status & next steps (for whoever picks this up)
 
