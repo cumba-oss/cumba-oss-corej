@@ -9,8 +9,8 @@ is not redistributed here.
 
 ```bash
 PY=../../.venv-py-parity/bin/python   # has pyyaml + pytest
-$PY generate.py --standard sdtmig --version 3-4 --out /data/testdata/synthetic/sdtmig-3-4/clean
-$PY generate.py --standard sendig --version 3-1-1 --out /data/testdata/synthetic/sendig-3-1-1/clean
+$PY generate.py --standard sdtmig --version 3-4 --out "$OUT/sdtmig-3-4/clean"
+$PY generate.py --standard sendig --version 3-1-1 --out "$OUT/sendig-3-1-1/clean"
 ```
 
 Each run also writes a full **Define-XML v2.1** (`define.xml`) into the output dir,
@@ -22,18 +22,22 @@ instead of being `SKIPPED` (see below).
 Options: `--subjects` (default 20), `--visits` (10), `--seed` (0). Output is
 deterministic for a given (standard, version, subjects, visits, seed).
 
-> **The pickle cache is a host path, not a repo path.** `library._default_cache_dir()`
-> and the `-pc` flag both default to `/data/cdisc.metadata.library-cache-pkl`
-> (`library.DEFAULT_CACHE_DIR`). On a host that keeps the cache elsewhere that
-> directory does not exist and every entry point dies on the first `open()`. Point
-> `CDISC_PICKLE_CACHE_DIR` at a materialised cache instead; both `library.py` and the
-> two `verify*.py` harnesses read it, so the generator and the engine cannot end up on
-> different metadata:
+> ⛔ **The pickle cache is not in this repository, and neither is the output tree.**
+> Both are host-local inputs that no clone, CI runner or release carries. Set them
+> explicitly every time; do not rely on a default. `library.py` and the two
+> `verify*.py` harnesses all read `CDISC_PICKLE_CACHE_DIR`, so setting it is what
+> keeps the generator and the engine on the same metadata:
 >
 > ```bash
-> export CDISC_PICKLE_CACHE_DIR=/data/cdisc.metadata.library-cache-pkl
-> export CDISC_API_CACHE=/data/cdisc.metadata.library-cache
+> export CDISC_PICKLE_CACHE_DIR=<your materialised pickle cache>
+> export CDISC_API_CACHE=<your CDISC Library API cache>
+> export OUT=<where generated studies should go>
 > ```
+>
+> ⚠ `library.DEFAULT_CACHE_DIR` and several sibling scripts still *carry* an
+> absolute default pointing outside the repository. Those defaults are a bug, not a
+> contract — they resolve only on the machine they were written on, and every entry
+> point dies on the first `open()` anywhere else.
 
 > **Shape constraints for a fully clean study.** Subjects are assigned
 > round-robin to the 3 arms (2 active + placebo), so `--subjects` must be **>= 3**
@@ -45,19 +49,22 @@ deterministic for a given (standard, version, subjects, visits, seed).
 
 ## Validate the generated study
 
-⚠ **This recipe assumes the internal monorepo checkout**, where the CLI and the rule
-corpus are sibling modules. From the public repositories the same run needs a built
-`cumba-oss-corej-cli` jar and an unpacked `cumba-oss-corej-rules` archive, and the three
-paths below have to be pointed at wherever those landed.
+Everything this needs lives outside this repository: a built CLI jar from
+`cumba-oss-corej-cli`, an unpacked rule corpus from a `cumba-oss-corej-rules` release,
+the pickle cache, and the study `$OUT` generated above. Point the variables at wherever
+yours are — none of them has a location that can be assumed.
 
 ```bash
-cd /data/net.cumba.corej
+CLI=<path to cumba-oss-corej-cli-<version>.jar>
+RULES=<path to an unpacked cumba-oss-corej-rules archive>/rules
+STUDY="$OUT/sdtmig-3-4/clean"
+
 java -Dcorej.maxErrorsPerRule=0 \
-  -jar clients/corej-cli/target/corej-cli-0.1.0-SNAPSHOT.jar \
-  -rp cdisc-sdtmig-3-4 -d /data/testdata/synthetic/sdtmig-3-4/clean \
-  -dxp /data/testdata/synthetic/sdtmig-3-4/clean/define.xml -dv 2-1 \
-  --rules-dir lib/corej-rules/target/rules \
-  -pc /data/cdisc.metadata.library-cache-pkl \
+  -jar "$CLI" \
+  -rp cdisc-sdtmig-3-4 -d "$STUDY" \
+  -dxp "$STUDY/define.xml" -dv 2-1 \
+  --rules-dir "$RULES" \
+  -pc "$CDISC_PICKLE_CACHE_DIR" \
   -of json2 -o /tmp/report.json
 # clean == report.v2.json "Issue_Summary" empty except the documented residuals.
 # With -dxp, the define-metadata rule CORE-001081 ("Define Item Metadata Check

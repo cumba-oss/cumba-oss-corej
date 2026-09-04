@@ -57,9 +57,9 @@ output.
   build. The Python lane it was once compared against was removed in
   wave 33 — the `PyParity` profile no longer exists in any `pom.xml`.
 - Some tests here need a Python-engine **pickle metadata cache**. Point
-  `CDISC_PICKLE_CACHE_DIR` (or `-Dcdisc.pickle.cache.dir`) at one; the
-  standard location on this project's hosts is
-  `/data/cdisc.metadata.library-cache-pkl`. Without it **this module's**
+  `CDISC_PICKLE_CACHE_DIR` (or `-Dcdisc.pickle.cache.dir`) at one; the cache
+  is not part of this repository and has no location it can be assumed to
+  occupy. Without it **this module's**
   pickle tests skip (`assumeTrue`). ⚠ In `cumba-oss-corej-rules` the
   cache is mandatory instead: `PickleProviderGuardTest` fails loudly
   there rather than let specs silently flip `EXECUTED` → `SKIPPED`.

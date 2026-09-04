@@ -28,7 +28,8 @@ the real id lives in `META["coreId"]`. The same rule can have an injector per la
 
 ```bash
 PY=../../.venv-py-parity/bin/python
-# write all sub-studies for a lane (default out: /data/testdata/synthetic/<lane>/violations)
+# write all sub-studies for a lane (pass --out explicitly; the built-in default
+# points outside the repository and resolves only on the authoring host)
 $PY apply_violations.py --standard sdtmig --all
 $PY apply_violations.py --standard sendig --rules CORE-000310
 # engine verification (requires the built corej-cli jar)
