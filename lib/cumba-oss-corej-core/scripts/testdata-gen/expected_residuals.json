@@ -1,7 +1,7 @@
 {
  "_meta": {
   "description": "Documented irreducible clean-study findings (the conformance floor) per lane. verify.py compares the engine's Issue_Summary against this set: a fired rule NOT listed here is a FAILURE; a listed rule that stops firing is a notable change (not a failure). See KNOWN-RESIDUALS.md for the full rationale.",
-  "corpus": "lib/corej-cdisc-rules/rules/rules-{lane}.json",
+  "corpus": "lib/corej-rules/rules/rules-{lane}.json",
   "rebaselined": "2026-06-29 (corpus mtime 19:32:46; floor moved SDTMIG 11->9 after the DS findings dropped out of the regenerated corpus)",
   "vacuity_history_2026_07_03_to_2026_08_05": "Between 2026-07-03 (family sharding 03b058bf5) and 2026-08-05 both harness scripts invoked the CLI without -f/--family, so only the default CDISC family loaded and none of these CORE/FDA entries could even be read - every run in that window reported PASS while checking nothing. Fixed 2026-08-05 (Fix #153): both scripts resolve every family shipping a package for the lane and pass them as -f, and verify.py now fails a lane outright when a floor rule appears nowhere in the engine report. The recorded PASSes dated 2026-06-29 predate the break and were honest measurements.",
   "first_honest_rerun_2026_08_05": "OVERALL FAIL. All 15 entries then documented still fired (sdtmig 9/9, sendig 6/6 as recorded; Lane R re-measured sdtmig at 8/9 - CORE-000080 had stopped firing) and 31 further clean-study findings appeared that no entry covered: 21 sdtmig (CDISC-CG0359, FDA-SD0037/1078/1082/1149/1240/1321, 14 PMDA-SD*) and 10 sendig (8 CDISC-SEND-*, FDA-SD0062).",

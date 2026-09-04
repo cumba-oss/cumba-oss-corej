@@ -174,24 +174,24 @@ def _here() -> str:
 
 
 def _rules_dir() -> str:
-    # scripts/testdata-gen/ -> lib/corej-cdisc-rules/rules
+    # scripts/testdata-gen/ -> lib/corej-rules/rules
     return os.path.normpath(os.path.join(_here(), "..", "..", "..",
-                                         "corej-cdisc-rules", "rules"))
+                                         "corej-rules", "rules"))
 
 
 def _rules_src_dir() -> str:
     return os.path.normpath(os.path.join(_here(), "..", "..", "..",
-                                         "corej-cdisc-rules", "rules-src", "checks"))
+                                         "corej-rules", "rules-src", "checks"))
 
 
 # Dual-form Check loading (Fix #257): the shared expression reader
-# (corej-cdisc-rules/scripts/lib/check_expr.py — the module that owns the
+# (corej-rules/scripts/lib/check_expr.py — the module that owns the
 # corpus) lowers an ``{expression: "..."}`` Check to the legacy dict this
 # module walks; a legacy Check passes through unchanged. The cross-tree path
 # mirrors ``_rules_dir()``'s existing data dependency on that module.
 _SHARED_LIB = os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "..", "..",
-    "corej-cdisc-rules", "scripts", "lib"))
+    "corej-rules", "scripts", "lib"))
 if _SHARED_LIB not in sys.path:
     sys.path.insert(0, _SHARED_LIB)
 from check_expr import dual_form_check  # noqa: E402  (needs the sys.path bootstrap)

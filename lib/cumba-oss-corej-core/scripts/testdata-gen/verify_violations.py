@@ -41,8 +41,8 @@ import paths  # noqa: E402
 # measuring a different tree.
 _REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                       "..", "..", "..", ".."))
-_JAR = f"{_REPO}/clients/corej-cdisc-cli/target/corej-cdisc-cli-0.1.0-SNAPSHOT.jar"
-_RULES_DIR = f"{_REPO}/lib/corej-cdisc-rules/rules"
+_JAR = f"{_REPO}/clients/corej-cli/target/corej-cli-0.1.0-SNAPSHOT.jar"
+_RULES_DIR = f"{_REPO}/lib/corej-rules/rules"
 # The engine's ``-pc`` pickle cache has no default — see ``library.resolve_cache_dir``.
 # It is resolved at the point of use so importing this module (``verify.py`` does)
 # never depends on a configured host.

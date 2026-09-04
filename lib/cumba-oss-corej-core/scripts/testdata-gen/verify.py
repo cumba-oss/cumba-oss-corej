@@ -55,14 +55,14 @@ from generate import Generator  # noqa: E402
 # --------------------------------------------------------------------------- #
 # Derived from the script's own location, not hard-coded — see verify_violations._REPO.
 _REPO = os.path.normpath(os.path.join(_HERE, "..", "..", "..", ".."))
-_JAR = f"{_REPO}/clients/corej-cdisc-cli/target/corej-cdisc-cli-0.1.0-SNAPSHOT.jar"
-_RULES_DIR = f"{_REPO}/lib/corej-cdisc-rules/rules"
+_JAR = f"{_REPO}/clients/corej-cli/target/corej-cli-0.1.0-SNAPSHOT.jar"
+_RULES_DIR = f"{_REPO}/lib/corej-rules/rules"
 # The engine's ``-pc`` pickle cache has no default — see ``library.resolve_cache_dir``.
 # It is resolved at the point of use, not at import, so the pure helpers below (and
 # ``tests/test_verify.py``) stay importable in a tree that has no cache configured.
 _EXPECTED = os.path.join(_HERE, "expected_residuals.json")
 _COVERAGE_DOC = os.path.normpath(
-    os.path.join(_HERE, "..", "..", "..", "corej-cdisc-rules", "documentation",
+    os.path.join(_HERE, "..", "..", "..", "corej-rules", "documentation",
                  "synthetic-testdata-coverage.md")
 )
 

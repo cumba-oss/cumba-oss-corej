@@ -24,7 +24,7 @@ from generate import Generator
 from violations import lib as vlib
 
 # Reuse the scanner's own resolution rather than re-deriving the relative path
-# here: ``rules-src`` lives in the sibling ``corej-cdisc-rules`` module, and a
+# here: ``rules-src`` lives in the sibling ``corej-rules`` module, and a
 # second hand-rolled copy of that walk silently rotted when the modules split.
 _CORE_DIR = rulescan._default_core_dir()
 

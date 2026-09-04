@@ -19,7 +19,7 @@ The output is well-formed ODM 1.3.2 + Define-XML 2.1, deterministic, and accepte
 by the engine via ``-dxp <file> -dv 2-1``. See the plan's Phase 5 section.
 
 Engine contract (see ``OdmDefineXMLProvider`` / ``DefineXmlMetadataProvider`` in
-``lib/corej-cdisc-core``): the engine matches an ``ItemGroupDef`` by ``Name`` or
+``lib/corej-core``): the engine matches an ``ItemGroupDef`` by ``Name`` or
 ``Domain``, resolves each ``ItemRef`` to its ``ItemDef`` by ``ItemOID``, and reads
 ``role`` from the *ItemRef*, ``ccode`` from the referenced ``CodeList``'s
 ``nci:ExtCodeID`` Alias, and the codelist coded codes from each CodeListItem's
