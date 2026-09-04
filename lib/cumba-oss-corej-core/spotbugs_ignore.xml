@@ -383,6 +383,17 @@
          record accessors in different files; both follow their local
          naming convention (CDISC variable name in lower case for the
          RelrecLink record; CamelCase for the LibraryValidator record). -->
+    <!--
+        ⛔⛔ REGEX MATCHER — the dots below are ESCAPED, so this line contains no
+        contiguous "net.cumba.corej.core" and a package rename done by literal
+        search-and-replace WILL SILENTLY MISS IT. The suppression then stops matching and
+        the build reds on a finding nobody changed.
+
+        Measured 2026-09-03 in cumba-oss-corej: exactly this happened. The rename passed
+        local verification because spotbugs failOnError defaults to FALSE — SpotBugs found
+        the bug, printed it, and the build still exited 0 — and CI caught it one push
+        later. Grep the escaped form: git grep -n 'net\\.cumba\\.'
+    -->
     <Match>
         <!-- Regex fallback: RelrecLookup$1RelrecLink is a local class
              whose javac-synthesised name carries a numeric prefix. -->
@@ -560,6 +571,17 @@
         <Bug pattern="NP_BOOLEAN_RETURN_NULL" />
     </Match>
 
+    <!--
+        ⛔⛔ REGEX MATCHER — the dots below are ESCAPED, so this line contains no
+        contiguous "net.cumba.corej.core" and a package rename done by literal
+        search-and-replace WILL SILENTLY MISS IT. The suppression then stops matching and
+        the build reds on a finding nobody changed.
+
+        Measured 2026-09-03 in cumba-oss-corej: exactly this happened. The rename passed
+        local verification because spotbugs failOnError defaults to FALSE — SpotBugs found
+        the bug, printed it, and the build still exited 0 — and CI caught it one push
+        later. Grep the escaped form: git grep -n 'net\\.cumba\\.'
+    -->
     <Match>
         <!--
             Verified false positive (SpotBugs 4.10). LibraryValidator's resolver returns
