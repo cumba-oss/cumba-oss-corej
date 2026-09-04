@@ -17,11 +17,12 @@ Third-party code is consumed only as ordinary **Maven dependencies** (Jackson, A
 POI, commons-compress, pyrolite, Lombok, JSpecify); those carry no obligation beyond
 not misrepresenting them.
 
-> Two points of possible confusion. The `cumba-oss-corej-ruletest` module's Java
-> package is `net.cumba.corej.ruletest.cdt` — "dataviewer" is the internal
-> pre-migration Cumba codebase this source came from, not an external project. And the
-> engine implements the **CDISC CORE conformance rules**; the rule content itself is
-> not in this repository (see below).
+> Two points of possible confusion. Parts of this code — the
+> `cumba-oss-corej-ruletest` harness among them — originate in "dataviewer", the
+> internal pre-migration Cumba codebase, not an external project; their Java packages
+> were renamed into `net.cumba.corej.*` for this repository. And the engine implements
+> the **CDISC CORE conformance rules**; the rule content itself is not in this
+> repository (see below).
 
 Depends on **`cumba-oss-commons`** and **`cumba-oss-datatable`**. Both must be on the
 classpath first; they are released separately to Maven Central.
@@ -41,24 +42,28 @@ classpath first; they are released separately to Maven Central.
 - **The rule corpus.** The authored CDISC/FDA/PMDA rule packages are distributed
   separately — the engine loads them at runtime from a rules directory. The engine and
   the content release on different schedules, which is why they are separate.
-- **The clients.** The validation CLI and the REST API live in `cumba-oss-clients`.
+- **The clients.** The validation CLI lives in `cumba-oss-corej-cli`, the REST API in
+  `cumba-oss-corej-rest`, and the browser UI over that API in `cumba-oss-corej-web`.
 
 ## The Cumba OSS repositories
 
 ```
 cumba-oss-commons     help · web-api · cdisc-library · bootstrap
       ▲
-cumba-oss-formats     sas-utils · datasetjson              (independent leaf)
+cumba-oss-formats     sas-utils · cdisc-dsj                (independent leaf)
       ▲
 cumba-oss-datatable   datatable · impl · cdisc-define · providers · manager-local · testkit
       ▲
-cumba-oss-corej       cdisc-core · report-json · report-xlsx · ruletest · define-conformance
+cumba-oss-corej       corej-core · report-json · report-xlsx · ruletest · define-conformance
       ▲
-cumba-oss-clients     cdisc-cli · cdisc-rest              (publishes nothing to Central)
+      ├─ cumba-oss-corej-rules  the rule corpus, loaded at runtime
+      ├─ cumba-oss-corej-cli    the validation CLI
+      └─ cumba-oss-corej-rest   the REST API      ◀─ cumba-oss-corej-web  (browser SPA)
 ```
 
 Dependencies run in one direction only. Build order is `cumba-oss-commons` →
-`cumba-oss-formats` → `cumba-oss-datatable` → `cumba-oss-corej`.
+`cumba-oss-formats` → `cumba-oss-datatable` → `cumba-oss-corej`. The four leaf
+repositories publish nothing to Maven Central — they ship signed release assets.
 
 ## Quick start
 
@@ -72,7 +77,7 @@ Artifacts are published under groupId `net.cumba` with the module's artifactId:
 <dependency>
     <groupId>net.cumba</groupId>
     <artifactId>cumba-oss-corej-core</artifactId>
-    <version>0.2.0</version>
+    <version>0.3.0</version>
 </dependency>
 ```
 
@@ -128,7 +133,9 @@ pom instead.
 - **Surefire test-CWD isolation.** The forked test JVM's working directory is pinned to
   `target/test-cwd/`, so a test resolving a relative path pollutes `target/` rather than
   the checkout. Tests needing a real root read `projectBasedir` or `repoRoot` from
-  system properties Surefire sets per fork.
+  system properties Surefire sets per fork. ⚠ `cumba-oss-corej-core` overrides this back
+  to `${project.basedir}` (see the comment on its own Surefire block); its tests resolve
+  module-relative paths.
 - **JaCoCo** enforces a per-module line-coverage minimum, `<jacoco.line.coverage>`,
   default `0.80`.
 

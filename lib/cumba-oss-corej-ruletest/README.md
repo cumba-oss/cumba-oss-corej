@@ -14,16 +14,17 @@ production by downstream services, and it shares no code with the rule corpus.
 <dependency>
     <groupId>net.cumba</groupId>
     <artifactId>cumba-oss-corej-ruletest</artifactId>
-    <version>0.2.0</version>
+    <version>0.3.0</version>
 </dependency>
 ```
 
 ## Java packages
 
-- `net.cumba.corej.ruletest.cdt.*` — CDT resource loading,
-  scenario capture, junit extension
-- `net.cumba.corej.ruletest.cdt.ruletest.*` — rule-test factory,
-  scenario record, resolver
+- `net.cumba.corej.ruletest.cdt` — `.cdt` resource loading and writing
+  (`CdtLoader`, `CdtWriter`)
+- `net.cumba.corej.ruletest.cdt.ruletest` — rule-test factory
+  (`RuleTestCdt`), scenario record (`RuleTestScenario`), scenario capture
+  and the library / scenario resolvers
 
 ## Dependencies
 
@@ -40,7 +41,9 @@ all, so the three classes consumers actually import — `RuleTestScenario`,
 
 ## Notes
 
-- Ships the dataviewer's rule-test harness source verbatim.
+- Originates in the dataviewer — the internal pre-migration Cumba
+  codebase — with the Java packages renamed into
+  `net.cumba.corej.ruletest.*` for this repository.
 - The `OverlayDataTable` (formerly `TestDataTable`) used by the
   scenario capture lives in `cumba-oss-datatable-impl`.
 - **Per-module gate overrides**: `jacoco.line.coverage` is `0.75` (vs the

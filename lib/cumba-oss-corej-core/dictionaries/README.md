@@ -106,8 +106,8 @@ normalise case.** Title-casing the FDA `DISPLAY_NAME` when building
 
 ### 1.3 Term types the shipped corpus requires
 
-Census over `lib/corej-cdisc-rules/rules/*.json` and
-`rules-src/checks/**/*.yaml` — the two populations name the same
+Census over the generated rule packages (`lib/corej-rules/target/rules/*.json`)
+and `rules-src/checks/**/*.yaml` — the two populations name the same
 **98 rules** (CDISC 27, FDA 41, PMDA 30). A type with no file loaded is
 *unavailable*: its rules **SKIP** rather than false-pass.
 
@@ -183,9 +183,9 @@ must be filtered to preferred records or `--DECOD` accepts trade names.
 
 Every source needs converting — no authority publishes the house format,
 and no off-the-shelf converter exists. The converters live in the
-dictionary installer; see
-**[`plans/done/PLAN-dictionary-seeder.md`](../../../plans/done/PLAN-dictionary-seeder.md)**
-for the design and delivery state.
+dictionary installer; the design and delivery state are recorded in
+`plans/done/PLAN-dictionary-seeder.md`, which is kept in the internal monorepo
+and is not redistributed here.
 
 ```bash
 # download + convert every freely available dictionary
@@ -307,7 +307,7 @@ entrypoints already use for rule packs:
   container flavour); the per-run report then repeats the degradation in
   `Dictionary_Basis` and the per-rule SKIP reasons.
 
-The REST images bake the corej-cdisc-cli bundle in at `/app/cli` as their
+The REST images bake the `corej-cli` bundle in at `/app/cli` as their
 installer (`docker exec <container> /app/cli/run.sh --install-dictionaries
 --dictionaries-dir /app/data/dictionaries`). The editor images carry the
 resolution path and store location (`/data/dictionaries`) but **no

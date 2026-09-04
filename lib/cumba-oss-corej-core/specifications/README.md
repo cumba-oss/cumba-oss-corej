@@ -1,12 +1,18 @@
 # CDISC Specifications and Documentation
 
-This directory contains CDISC specification documents (PDFs, XLSX),
-generated documentation (MD), schema files (JSON), and non-extensible
-controlled terminology extractions.
+This directory contains the generated rule documentation (MD), schema files
+(JSON) and non-extensible controlled-terminology extractions derived from the
+CDISC specifications.
+
+> ⛔ **The CDISC source documents themselves are not redistributed here.** The
+> PDF / XLSX / ZIP files catalogued in the next section are CDISC copyright.
+> They are listed as the *provenance* of the generated documentation below —
+> which document each conversion was made from — and are **not** files in this
+> directory. Obtain them from CDISC directly.
 
 ---
 
-## Specification Documents (PDFs)
+## Specification Documents (PDFs) — source documents, not shipped
 
 ### SDTM
 
@@ -58,7 +64,7 @@ controlled terminology extractions.
 | `ARM-for-Define-XML.zip` | Analysis Results Metadata for Define-XML |
 | `odm1_3_2.zip` | ODM v1.3.2 (base schema for Define-XML) |
 
-### Conformance Rules (Source)
+### Conformance Rules (Source) — source documents, not shipped
 
 | File | Description |
 |------|-------------|
@@ -192,7 +198,7 @@ Downloaded from [cdisc-org/cdisc-rules-engine](https://github.com/cdisc-org/cdis
 
 | File | Description |
 |------|-------------|
-| `CORE-base.json` | Master JSON schema for CORE rule definitions (16KB) |
+| `CORE-base.json` | Master JSON schema for CORE rule definitions (16KB) — ⚠ **not present in this repository**; only the four schemas below are |
 | `Operator.json` | JSON schema for check condition operators (57 operators) |
 | `Operations.json` | JSON schema for rule operations (24 types) |
 | `Rule_Type.json` | JSON schema for rule type classification (8 types) |

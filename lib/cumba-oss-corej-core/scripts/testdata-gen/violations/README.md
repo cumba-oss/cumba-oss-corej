@@ -4,9 +4,9 @@ Each injector takes the lane's **clean** study, applies the *minimal single
 mutation* that trips exactly one CORE rule, and emits a self-contained "dirty"
 sub-study plus an `expectation.json`. The clean study is never mutated in place.
 
-See the design in
-[`plans/done/PLAN-sdtm-testdata-gen.md`](../../../../../plans/done/PLAN-sdtm-testdata-gen.md)
-("Phase 4 — Per-rule violation injector scripts").
+Designed in `plans/done/PLAN-sdtm-testdata-gen.md` ("Phase 4 — Per-rule violation
+injector scripts"), which is kept in the internal monorepo and is not redistributed
+here.
 
 ## Layout
 
@@ -31,7 +31,7 @@ PY=../../.venv-py-parity/bin/python
 # write all sub-studies for a lane (default out: /data/testdata/synthetic/<lane>/violations)
 $PY apply_violations.py --standard sdtmig --all
 $PY apply_violations.py --standard sendig --rules CORE-000310
-# engine verification (requires the built corej-cdisc-cli jar)
+# engine verification (requires the built corej-cli jar)
 $PY verify_violations.py --standard sdtmig
 ```
 
