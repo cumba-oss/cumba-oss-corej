@@ -227,6 +227,14 @@ public final class CompanionDomainsProvider implements MetadataProvider
 
 
     @Override
+    public java.util.Optional<net.cumba.datatable.metadata.ICodeList> getCodelist(
+            String aCodelistName)
+    {
+        return base.getCodelist(aCodelistName);
+    }
+
+
+    @Override
     public Map<String, String> getVariableMetadata(String domain, String variable)
     {
         return base.getVariableMetadata(domain, variable);

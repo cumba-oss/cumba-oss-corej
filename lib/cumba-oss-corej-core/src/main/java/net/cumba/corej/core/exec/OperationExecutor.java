@@ -9,19 +9,23 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import lombok.CustomLog;
 import net.cumba.corej.core.expr.eval.IsoDateBounds;
 import net.cumba.corej.core.gen.WildcardExpander;
+import net.cumba.corej.core.metadata.MetadataKeys;
 import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.OperationType;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
+import net.cumba.datatable.metadata.ICodeList;
 import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
@@ -4235,17 +4239,38 @@ public final class OperationExecutor
 
 
     /**
-     * Resolves the term list for a {@code codelist_terms} / {@code get_codelist_attributes}
+     * Resolves the value list for a {@code codelist_terms} / {@code get_codelist_attributes}
      * operation. The codelist(s) may be named via the {@code name} field
      * ({@code get_codelist_attributes}) or the {@code codelists} array ({@code codelist_terms} —
-     * e.g. CORE-000929's {@code "codelists":["DOMAIN"]}); the term codes are unioned across all
-     * named codelists, preserving order and dropping duplicates.
+     * e.g. CORE-000929's {@code "codelists":["DOMAIN"]}); the values are unioned across all named
+     * codelists, preserving order and dropping duplicates.
      *
      * <p>
-     * {@link MetadataProvider#getCodelistTerms} returns each term's <em>code</em>, which matches
-     * the {@code level=term, returntype=code} shape of every bundled {@code codelist_terms} rule.
-     * Other {@code level} / {@code returntype} combinations are not honoured (no shipping rule uses
-     * them); add explicit handling here if such a rule is introduced.
+     * Mirrors Python's {@code operations/codelist_terms.py::_get_codelist_values}, including its
+     * defaults: at {@code level="term"} an absent/unrecognised {@code returntype} means
+     * {@code "code"} (NCI concept ids), at {@code level="codelist"} it means {@code "value"} (the
+     * codelist's own submission value), and a {@code level} that is neither {@code "term"} nor
+     * {@code "codelist"} contributes nothing. The six shapes:
+     * </p>
+     *
+     * <pre>
+     * level=term,     returntype=value          -> term submission values
+     * level=term,     returntype=pref_term      -> term NCI preferred terms
+     * level=term,     returntype=code (default) -> term NCI concept ids ("C-codes")
+     * level=codelist, returntype=value (default)-> the codelist's own submission value
+     * level=codelist, returntype=pref_term      -> the codelist's own NCI preferred term
+     * level=codelist, returntype=code           -> the codelist's own NCI concept id
+     * </pre>
+     *
+     * <p>
+     * ⚠ Only the {@code (term, value)} shape is served through
+     * {@link MetadataProvider#getCodelistTerms}; every other shape needs the richer
+     * {@link MetadataProvider#getCodelist} view, whose <em>default</em> is deliberately empty
+     * (honest degradation — see its contract). An empty union therefore reaches the
+     * {@code CODELIST_TERMS} arm's empty-list check and becomes {@code LIBRARY_NOT_AVAILABLE}: the
+     * rule SKIPs loudly instead of validating against the wrong representation, which is exactly
+     * what this executor used to do when it ignored both parameters and always answered term
+     * submission values.
      * </p>
      */
     private static List<String> codelistTerms(MetadataProvider provider, Operation op)
@@ -4264,8 +4289,107 @@ public final class OperationExecutor
             throw new IllegalArgumentException(
                     "codelist operation requires a name or codelists (op id=" + op.getId() + ")");
         }
+        String level = op.getLevel();
+        String returntype = op.getReturntype();
+        if ("term".equals(level) && "value".equals(returntype))
+        {
+            // The one shape the base MetadataProvider contract proves via getCodelistTerms —
+            // kept on that accessor so every provider (test stubs included) keeps serving it.
+            return names.stream().filter(Objects::nonNull).distinct()
+                    .flatMap(n -> provider.getCodelistTerms(n).stream()).distinct().toList();
+        }
         return names.stream().filter(Objects::nonNull).distinct()
-                .flatMap(n -> provider.getCodelistTerms(n).stream()).distinct().toList();
+                .flatMap(n -> projectCodelist(provider, n, level, returntype))
+                .filter(Objects::nonNull).distinct().toList();
+    }
+
+
+    /**
+     * Projects one codelist onto the requested {@code (level, returntype)} shape via
+     * {@link MetadataProvider#getCodelist}, mirroring Python's {@code _get_codelist_values}. An
+     * unknown codelist — or a provider whose {@code getCodelist} declines (the honest default) —
+     * contributes an empty stream, which the {@code CODELIST_TERMS} arm turns into a SKIP when the
+     * whole union ends up empty.
+     */
+    private static Stream<String> projectCodelist(MetadataProvider provider, String aName,
+            @Nullable String aLevel, @Nullable String aReturntype)
+    {
+        Optional<ICodeList> opt = provider.getCodelist(aName);
+        if (opt.isEmpty())
+        {
+            return Stream.empty();
+        }
+        ICodeList cl = opt.get();
+        if ("codelist".equals(aLevel))
+        {
+            String value = switch (aReturntype == null ? "value" : aReturntype)
+            {
+            case "code" -> codelistMetaString(cl, MetadataKeys.CODELIST_CONCEPT_ID);
+            case "pref_term" -> codelistMetaString(cl, MetadataKeys.CODELIST_PREFERRED_TERM);
+            // Python's else arm: "value" and anything unrecognised -> submission value.
+            default ->
+            {
+                String sv = codelistMetaString(cl, MetadataKeys.CODELIST_SUBMISSION_VALUE);
+                yield sv != null ? sv : cl.getName();
+            }
+            };
+            return value == null ? Stream.empty() : Stream.of(value);
+        }
+        if ("term".equals(aLevel))
+        {
+            return cl.getEntries().stream()
+                    .map(e -> switch (aReturntype == null ? "code" : aReturntype)
+                    {
+                    case "value" -> e.getCodeValue();
+                    // ⚠ getDecodeValue() is the NCI preferred term only because these
+                    // codelists are library-sourced (buildCodelist sets decode from the CT
+                    // term's preferredTerm). Do not generalise to Define-XML codelists.
+                    //
+                    // ⚠⚠ blankToNull is load-bearing, not tidying. ICodelistEntry declares
+                    // getDecodeValue() as a plain `String` — NOT @Nullable, unlike its sibling
+                    // getConceptId() — so every builder that has no preferred term to report
+                    // substitutes "" rather than null to honour that contract
+                    // (CdiscLibraryMetadataLibrary.buildCodelist:
+                    // `term.preferredTerm().orElse("")`; MapBackedLibraryMetadataProvider
+                    // .getCodelist: `mappings.getOrDefault(term, "")`; likewise the stubs).
+                    // Without this, "" survives codelistTerms()' .filter(Objects::nonNull),
+                    // .distinct() collapses the whole codelist to the single element [""], the
+                    // list is NON-EMPTY, and CODELIST_TERMS' empty-list check never fires: the
+                    // rule executes against [""] instead of SKIPping with
+                    // LIBRARY_NOT_AVAILABLE. Python raises KeyError on this shape rather than
+                    // inventing a value. Absent must degrade honestly here, at the projection,
+                    // because the builders cannot express it without breaking the interface.
+                    case "pref_term" -> blankToNull(e.getDecodeValue());
+                    // Python's else arm: "code" and anything unrecognised -> concept id.
+                    default -> e.getConceptId();
+                    });
+        }
+        // Python: a level that is neither "codelist" nor "term" appends nothing.
+        return Stream.empty();
+    }
+
+
+    /** The codelist-level meta value for {@code aKey}, or {@code null} when absent. */
+    private static @Nullable String codelistMetaString(ICodeList aCodelist, String aKey)
+    {
+        return aCodelist.getMetaValue(aKey).map(Object::toString).orElse(null);
+    }
+
+
+    /**
+     * {@code null} for a blank string, the string itself otherwise — the bridge between
+     * {@link ICodelistEntry}'s non-null {@code String} accessors and this projection's "absent
+     * contributes nothing" rule.
+     *
+     * <p>
+     * The codelist-<em>level</em> shapes need no such bridge: {@link #codelistMetaString} already
+     * yields {@code null} for an absent key, because the builders only put a meta entry they
+     * actually have. Only the term-level decode is forced to substitute a placeholder.
+     * </p>
+     */
+    private static @Nullable String blankToNull(@Nullable String aValue)
+    {
+        return aValue == null || aValue.isBlank() ? null : aValue;
     }
 
 

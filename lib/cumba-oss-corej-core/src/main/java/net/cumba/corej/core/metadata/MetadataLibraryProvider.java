@@ -3080,6 +3080,23 @@ public final class MetadataLibraryProvider implements MetadataProvider
     }
 
 
+    /**
+     * The full {@link ICodeList} view behind {@code codelist_terms}' {@code (level, returntype)}
+     * projection. The library-built instances already carry every field the projection needs:
+     * codelist attributes as meta keys ({@code CODELIST_SUBMISSION_VALUE} /
+     * {@code CODELIST_CONCEPT_ID} / {@code CODELIST_PREFERRED_TERM}, populated by
+     * {@code CdiscLibraryMetadataLibrary.buildCodelist}) and terms whose {@code getDecodeValue()}
+     * <em>is</em> the NCI preferred term — true only because these codelists are library-sourced; a
+     * Define-XML-sourced codelist's decode is the document's own {@code Decode} and must not be
+     * conflated with it.
+     */
+    @Override
+    public Optional<ICodeList> getCodelist(String aCodelistName)
+    {
+        return findCodelist(aCodelistName);
+    }
+
+
     @Override
     public List<String> getCodelistAttribute(String aCtPackageId, String aCtAttribute)
     {

@@ -272,10 +272,28 @@ class MetadataProviderDecoratorDelegationGuardTest
             // inherits it therefore turns every carry-over check into a silent pass — the exact
             // shape this guard exists to catch, and indistinguishable from a correct answer.
             capability("getPublishedVariablesByName(String)",
-                    "(?<![\\w.])List<PublishedVariable>\\s+%s\\s*\\(\\s*String\\s+(\\w+)\\s*\\)"));
+                    "(?<![\\w.])List<PublishedVariable>\\s+%s\\s*\\(\\s*String\\s+(\\w+)\\s*\\)"),
+            // ⭐ Re-derived over THIS repository's population, not inherited from the internal
+            // ledger. Both rows sat in INHERITABLE_DEFAULTS excused with "not delegated by
+            // CompositeMetadataProvider" — a class that has never existed here: it lives with the
+            // rule corpus in cumba-oss-corej-rules' test sources, outside SCAN_ROOTS, so no scan
+            // here can reach it. The excuse was therefore vacuous and two capability-shaped
+            // defaults that BOTH decorators in this tree already delegate were guarded by nothing.
+            // Measured 2026-09-08: CompanionDomainsProvider forwards both to `base`, and
+            // DefineXmlMetadataProvider forwards both to `fallback` after the ODM answers empty.
+            capability("getKeyVariables(String)", LIST_OF_STRING),
+            capability("getDatasetNames()", "(?<![\\w.])List<String>\\s+%s\\s*\\(\\s*\\)"));
 
-    /** Floor on the capability set itself, so an accidental deletion reds. */
-    private static final int MIN_CAPABILITIES = 9;
+    /**
+     * Floor on the capability set itself, so an accidental deletion reds.
+     *
+     * <p>
+     * ⚠ Despite the name this is asserted with {@code assertEquals}, so it is an <b>exact</b> count
+     * and must match this repository's own ledger. It is <b>11</b> here and a different number
+     * internally, because the populations differ — ⛔ never copy the value across repos.
+     * </p>
+     */
+    private static final int MIN_CAPABILITIES = 11;
 
     /** Floor on the interface's own default count, so a truncated parse cannot pass. */
     private static final int MIN_INTERFACE_DEFAULTS = 26;
@@ -327,10 +345,17 @@ class MetadataProviderDecoratorDelegationGuardTest
      * <p>
      * ⛔ The {@link Why#NOT_YET_ENFORCED} block is a <b>known, measured gap</b>, not a safety
      * argument: those defaults all return a constant "unknown", exactly like a capability method.
-     * The measurement behind each note was taken over the four decorators in this tree at Phase 11.
-     * Nearly all of it is one shape — {@code DefineXmlMetadataProvider} not passing the
-     * Library-flavoured accessors on to its optional {@code fallback} — which is a design question
-     * for that class's owner, not something to settle from inside a test.
+     * ⚠⚠ Every note must be re-measured against <b>this</b> repository's population and must name a
+     * class that exists in it — the ledger is <b>never</b> copied from another repo. Three rows
+     * here were, and excused themselves with {@code CompositeMetadataProvider}, which lives with
+     * the rule corpus in {@code cumba-oss-corej-rules} and is outside {@link #SCAN_ROOTS}: two of
+     * them (2026-09-08) were guarding nothing and have been promoted to
+     * {@link #CAPABILITY_METHODS}. The measurement behind each surviving note was taken over the
+     * <b>two</b> decorators in this tree ({@code CompanionDomainsProvider},
+     * {@code DefineXmlMetadataProvider}) on 2026-09-08. All of it is now one shape —
+     * {@code DefineXmlMetadataProvider} not passing the Library-flavoured accessors on to its
+     * optional {@code fallback} — which is a design question for that class's owner, not something
+     * to settle from inside a test.
      * </p>
      */
     private static final List<InheritableDefault> INHERITABLE_DEFAULTS = List.of(//
@@ -349,12 +374,10 @@ class MetadataProviderDecoratorDelegationGuardTest
                             + "which chains to the one-arg form"),
             inheritable("getDatasetClass(String)", Why.NOT_YET_ENFORCED,
                     "not delegated by DefineXmlMetadataProvider"),
-            inheritable("getKeyVariables(String)", Why.NOT_YET_ENFORCED,
-                    "not delegated by CompositeMetadataProvider"),
-            inheritable("getDatasetNames()", Why.NOT_YET_ENFORCED,
-                    "not delegated by CompositeMetadataProvider"),
             inheritable("getCodelistCodeMap(String, String)", Why.NOT_YET_ENFORCED,
-                    "not delegated by DefineXmlMetadataProvider or CompositeMetadataProvider"),
+                    "not delegated by DefineXmlMetadataProvider (the row also named "
+                            + "CompositeMetadataProvider, which is not in this repository's "
+                            + "scanned population; re-derived from the source)"),
             inheritable("getStandardVariableNames()", Why.NOT_YET_ENFORCED,
                     "not delegated by DefineXmlMetadataProvider"),
             inheritable("getStandardDatasetNames()", Why.NOT_YET_ENFORCED,
@@ -367,6 +390,12 @@ class MetadataProviderDecoratorDelegationGuardTest
                     "not delegated by DefineXmlMetadataProvider"),
             inheritable("getCodelistAttribute(String, String)", Why.NOT_YET_ENFORCED,
                     "not delegated by DefineXmlMetadataProvider"),
+            inheritable("getCodelist(String)", Why.NOT_YET_ENFORCED,
+                    "not delegated by DefineXmlMetadataProvider (same row as its codelist "
+                            + "siblings above); CompanionDomainsProvider DOES delegate it. The "
+                            + "honest-empty default degrades to LIBRARY_NOT_AVAILABLE — a loud "
+                            + "SKIP, never a substituted wrong answer (see the interface "
+                            + "contract)"),
             inheritable("getStandardModelVariables(IDataTable, DatasetResolver)",
                     Why.NOT_YET_ENFORCED, "not delegated by DefineXmlMetadataProvider"),
             inheritable("getStandardModelVariablesDetailed(IDataTable, DatasetResolver)",

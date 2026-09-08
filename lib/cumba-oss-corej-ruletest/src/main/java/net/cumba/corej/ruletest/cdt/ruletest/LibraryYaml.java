@@ -42,6 +42,9 @@ import java.util.Set;
  *     terms: [ Y, N, U ]
  *     extensible: false
  *     term-mappings: { Y: "Yes", N: "No" }
+ *     term-ccodes:   { Y: C49488, N: C49487 }
+ *     ccode: C66742
+ *     pref: "No Yes Response"
  * }</pre>
  */
 final class LibraryYaml
@@ -57,7 +60,8 @@ final class LibraryYaml
             "dataset-metadata", "variables", "model-variables", "variable-metadata",
             "codelist-codes");
 
-    private static final Set<String> CODELIST_KEYS = Set.of("terms", "extensible", "term-mappings");
+    private static final Set<String> CODELIST_KEYS = Set.of("terms", "extensible", "term-mappings",
+            "term-ccodes", "ccode", "pref");
 
     private LibraryYaml()
     {
@@ -208,6 +212,28 @@ final class LibraryYaml
         {
             aBuilder.codelistTermMappings(aCode,
                     stringMap(aNode.get("term-mappings"), aSource, aCode + ".term-mappings"));
+        }
+        // Mirrors '#library codelist-term-ccodes CODELIST TERM=Cxxxxx ...' — term submission
+        // value -> NCI concept id. Distinct from the (domain, variable)-scoped codelist-codes.
+        if (aNode.has("term-ccodes"))
+        {
+            aBuilder.codelistTermCcodes(aCode,
+                    stringMap(aNode.get("term-ccodes"), aSource, aCode + ".term-ccodes"));
+        }
+        // Mirrors '#library codelist-meta CODELIST ccode=... pref=...' — the codelist's own
+        // NCI concept id and preferred term (its submission value is the codelist key itself).
+        if (aNode.hasNonNull("ccode") || aNode.hasNonNull("pref"))
+        {
+            Map<String, String> meta = new LinkedHashMap<>();
+            if (aNode.hasNonNull("ccode"))
+            {
+                meta.put("ccode", asScalar(aNode.get("ccode"), aSource, aCode + ".ccode"));
+            }
+            if (aNode.hasNonNull("pref"))
+            {
+                meta.put("pref", asScalar(aNode.get("pref"), aSource, aCode + ".pref"));
+            }
+            aBuilder.codelistMeta(aCode, meta);
         }
     }
 

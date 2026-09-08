@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import net.cumba.corej.ruletest.cdt.CdtLoader;
@@ -794,6 +795,20 @@ public final class RuleTestCdt
             writeKeyValues(aOut, e.getValue());
             aOut.write('\n');
         }
+        for (var e : new java.util.TreeMap<>(aLib.getCodelistTermCcodesMap()).entrySet())
+        {
+            aOut.write("#library codelist-term-ccodes ");
+            aOut.write(quoteIfNeeded(e.getKey()));
+            writeKeyValues(aOut, e.getValue());
+            aOut.write('\n');
+        }
+        for (var e : new java.util.TreeMap<>(aLib.getCodelistMetaMap()).entrySet())
+        {
+            aOut.write("#library codelist-meta ");
+            aOut.write(quoteIfNeeded(e.getKey()));
+            writeKeyValues(aOut, e.getValue());
+            aOut.write('\n');
+        }
         writeVarListMap(aOut, "domain-variables", aLib.getDomainVariablesMap());
         writeVarListMap(aOut, "model-variables", aLib.getModelVariablesMap());
         writeVarListMap(aOut, "model-class-variables", aLib.getModelClassVariablesMap());
@@ -1170,6 +1185,8 @@ public final class RuleTestCdt
      * #library model-column-order    DOMAIN VAR VAR ...
      * #library custom-domain         DOMAIN [DOMAIN ...]
      * #library codelist-terms        CODELIST TERM TERM ...
+     * #library codelist-term-ccodes  CODELIST TERM=Cxxxxx TERM=Cxxxxx ...
+     * #library codelist-meta         CODELIST ccode=Cxxxxx pref="NCI Preferred Term"
      * #library published-ct-packages PKG [PKG ...]
      * #library standard-domains      DOMAIN [DOMAIN ...]
      * #library dataset-class         DOMAIN CLASSNAME
@@ -1282,6 +1299,39 @@ public final class RuleTestCdt
             }
             aBuilder.codelistTermMappings(rest.get(0),
                     parseKeyValues(rest.subList(1, rest.size()), aSource, aLineIdx, kind));
+        }
+        // Term submission value -> NCI concept id ("C-code"), the term-conceptId channel of
+        // codelist_terms(level="term", returntype="code"). Deliberately NOT named
+        // codelist-term-codes: the unrelated, (domain, variable)-scoped 'codelist-codes' kind
+        // below is one word away and the two must not be conflated.
+        case "codelist-term-ccodes" ->
+        {
+            if (rest.isEmpty())
+            {
+                throw error(aSource, aLineIdx, aLabel + " codelist-term-ccodes: missing codelist");
+            }
+            aBuilder.codelistTermCcodes(rest.get(0),
+                    parseKeyValues(rest.subList(1, rest.size()), aSource, aLineIdx, kind));
+        }
+        // The codelist's OWN attributes (its submission value is the directive key):
+        // ccode=<NCI concept id>, pref=<NCI preferred term>.
+        case "codelist-meta" ->
+        {
+            if (rest.isEmpty())
+            {
+                throw error(aSource, aLineIdx, aLabel + " codelist-meta: missing codelist");
+            }
+            Map<String, String> meta = parseKeyValues(rest.subList(1, rest.size()), aSource,
+                    aLineIdx, kind);
+            for (String k : meta.keySet())
+            {
+                if (!"ccode".equals(k) && !"pref".equals(k))
+                {
+                    throw error(aSource, aLineIdx, aLabel + " codelist-meta: unknown key '" + k
+                            + "' (expected 'ccode' or 'pref')");
+                }
+            }
+            aBuilder.codelistMeta(rest.get(0), meta);
         }
         case "variable-metadata" ->
         {

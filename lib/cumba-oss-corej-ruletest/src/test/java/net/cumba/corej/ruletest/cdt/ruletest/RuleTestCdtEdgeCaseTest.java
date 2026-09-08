@@ -486,6 +486,46 @@ class RuleTestCdtEdgeCaseTest
 
 
         @Test
+        void library_codelistTermCcodes_stored()
+        {
+            // The (term, code) shape of codelist_terms. ⚠ Deliberately NOT 'codelist-term-codes':
+            // the (domain, variable)-scoped 'codelist-codes' kind is one word away.
+            String content = scenario("""
+                    #test CORE-1 expect=violation domain=AE
+                    #library codelist-terms NY Y N
+                    #library codelist-term-ccodes NY Y=C49488 N=C49487""");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+
+            net.cumba.datatable.metadata.ICodeList cl = s.getLibrary().getCodelist("NY")
+                    .orElseThrow();
+            assertEquals(java.util.List.of("C49488", "C49487"), cl.getEntries().stream()
+                    .map(net.cumba.datatable.metadata.ICodelistEntry::getConceptId).toList());
+        }
+
+
+        @Test
+        void library_codelistMeta_stored()
+        {
+            // The (codelist, code) / (codelist, pref_term) shapes: the codelist's OWN attributes,
+            // keyed by its submission value.
+            String content = scenario("""
+                    #test CORE-1 expect=violation domain=AE
+                    #library codelist-meta NY ccode=C66742 pref="No Yes Response\"""");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+
+            net.cumba.datatable.metadata.ICodeList cl = s.getLibrary().getCodelist("NY")
+                    .orElseThrow();
+            assertEquals("C66742",
+                    cl.getMetaValue(net.cumba.corej.core.metadata.MetadataKeys.CODELIST_CONCEPT_ID)
+                            .orElseThrow());
+            assertEquals("No Yes Response",
+                    cl.getMetaValue(
+                            net.cumba.corej.core.metadata.MetadataKeys.CODELIST_PREFERRED_TERM)
+                            .orElseThrow());
+        }
+
+
+        @Test
         void library_variableMetadata_storedWithQuotedValues()
         {
             String content = scenario("#test CORE-1 expect=violation domain=AE\n"
@@ -596,6 +636,26 @@ class RuleTestCdtEdgeCaseTest
                     Arguments.of("codelist-term-mappings bad pair", """
                             #test CORE-1 expect=violation domain=AE
                             #library codelist-term-mappings NY badtoken""", "key=value"),
+                    Arguments.of("codelist-term-ccodes missing codelist", """
+                            #test CORE-1 expect=violation domain=AE
+                            #library codelist-term-ccodes""", "missing codelist"),
+                    Arguments.of("codelist-term-ccodes bad pair", """
+                            #test CORE-1 expect=violation domain=AE
+                            #library codelist-term-ccodes NY badtoken""", "key=value"),
+                    Arguments.of("codelist-meta missing codelist", """
+                            #test CORE-1 expect=violation domain=AE
+                            #library codelist-meta""", "missing codelist"),
+                    Arguments.of("codelist-meta bad pair", """
+                            #test CORE-1 expect=violation domain=AE
+                            #library codelist-meta NY badtoken""", "key=value"),
+                    // ⚠ codelist-meta is the only library kind with a CLOSED key set. A typo in
+                    // 'ccode' / 'pref' must be an error and not a silently ignored attribute:
+                    // an ignored one leaves the codelist-level shape unanswerable, and the rule
+                    // then SKIPs while the scenario looks like it declared what it needed.
+                    Arguments.of("codelist-meta unknown key", """
+                            #test CORE-1 expect=violation domain=AE
+                            #library codelist-meta NY code=C66742""",
+                            "unknown key 'code' (expected 'ccode' or 'pref')"),
                     Arguments.of("variable-metadata missing var", """
                             #test CORE-1 expect=violation domain=AE
                             #library variable-metadata AE""", "DOMAIN VAR"),
@@ -694,6 +754,8 @@ class RuleTestCdtEdgeCaseTest
                     #library model-class-variables EVENTS --TERM:Topic "--DECOD:Synonym Qualifier"
                     #library codelist-extensible C66742 false
                     #library codelist-term-mappings NY Y=Yes N=No
+                    #library codelist-term-ccodes NY Y=C49488 N=C49487
+                    #library codelist-meta NY ccode=C66742 pref="No Yes Response"
                     #library variable-metadata AE AETERM label="My Label" simpleDatatype=Char
                     #library codelist-codes LB LBTESTCD ALB=C64431
                     #library dataset-metadata DM structure="One per subject\"""");
@@ -705,6 +767,16 @@ class RuleTestCdtEdgeCaseTest
             assertTrue(out.contains("#library dataset-class AE EVENTS"), out);
             assertTrue(out.contains("#library codelist-extensible C66742 false"), out);
             assertTrue(out.contains("#library codelist-term-mappings NY"), out);
+            // ⚠⚠ The WRITER, not just the parser. ScenarioLocationBackfill rewrites live
+            // scenarios through this path: a channel the writer drops survives the parse, is
+            // silently omitted on the rewrite, and turns a discriminating fixture into a
+            // non-discriminating one — green, with the rule no longer exercising the shape it
+            // was written for. Both new codelist channels are asserted on the emitted text.
+            // writeKeyValues sorts the pairs (TreeMap), so N= precedes Y=.
+            assertTrue(out.contains("#library codelist-term-ccodes NY N=C49487 Y=C49488"), out);
+            assertTrue(
+                    out.contains("#library codelist-meta NY ccode=C66742 pref=\"No Yes Response\""),
+                    out);
             assertTrue(out.contains("#library variable-metadata AE AETERM"), out);
             assertTrue(out.contains("#library dataset-metadata DM"), out);
             assertTrue(out.contains("#library standard-domains AE CM DM"), out);
@@ -809,6 +881,66 @@ class RuleTestCdtEdgeCaseTest
             assertEquals(List.of("Y", "N"), lib.getCodelistTerms("NY"));
             assertFalse(lib.isCodelistExtensible("NY"));
             assertEquals("Yes", lib.getCodelistTermMappings("NY").get("Y"));
+        }
+
+
+        @Test
+        void include_codelistCcodeChannels_reachTheGetCodelistView(@TempDir Path aDir)
+            throws IOException
+        {
+            // The YAML sidecar is a third authoring channel beside the inline directive and the
+            // writer, and it carries three nodes the .cdt spells differently: 'term-ccodes'
+            // (= codelist-term-ccodes) plus the codelist-level 'ccode' / 'pref' (= codelist-meta).
+            // All three feed getCodelist, which is what the non-(term,value) codelist_terms
+            // shapes read — a sidecar that silently dropped them would make every such rule SKIP.
+            Path cdt = writePair(aDir, """
+                    #!RuleTest
+                    #test CORE-1 expect=violation domain=AE
+                    #library-include lib.yaml
+                    """ + CDT_BODY, """
+                    standard: sdtmig
+                    version: "3-4"
+                    codelists:
+                      NY:
+                        terms: [ Y, N ]
+                        term-ccodes: { Y: C49488, N: C49487 }
+                        ccode: C66742
+                        pref: "No Yes Response"
+                    """);
+            MapBackedLibraryMetadataProvider lib = RuleTestCdt.load(cdt).getLibrary();
+            assertNotNull(lib);
+
+            net.cumba.datatable.metadata.ICodeList cl = lib.getCodelist("NY").orElseThrow();
+            assertEquals(List.of("C49488", "C49487"), cl.getEntries().stream()
+                    .map(net.cumba.datatable.metadata.ICodelistEntry::getConceptId).toList());
+            assertEquals("C66742",
+                    cl.getMetaValue(net.cumba.corej.core.metadata.MetadataKeys.CODELIST_CONCEPT_ID)
+                            .orElseThrow());
+            assertEquals("No Yes Response",
+                    cl.getMetaValue(
+                            net.cumba.corej.core.metadata.MetadataKeys.CODELIST_PREFERRED_TERM)
+                            .orElseThrow());
+        }
+
+
+        @Test
+        void include_unknownCodelistKey_isRejected(@TempDir Path aDir) throws IOException
+        {
+            // CODELIST_KEYS is closed for the same reason codelist-meta's key set is: a typo in
+            // 'term-ccodes' / 'ccode' / 'pref' that is merely ignored leaves the codelist-level
+            // shapes unanswerable, and the rule then SKIPs while the sidecar looks complete.
+            Path cdt = writePair(aDir, """
+                    #!RuleTest
+                    #test CORE-1 expect=violation domain=AE
+                    #library-include lib.yaml
+                    """ + CDT_BODY, """
+                    codelists:
+                      NY:
+                        term-codes: { Y: C49488 }
+                    """);
+            RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
+                    () -> RuleTestCdt.load(cdt));
+            assertTrue(ex.getMessage().contains("term-codes"), ex.getMessage());
         }
 
 

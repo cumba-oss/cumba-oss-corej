@@ -45,6 +45,14 @@ public final class StubMetadataProvider implements MetadataProvider
 
     private final Map<String, List<String>> codelistTerms = new LinkedHashMap<>();
 
+    /**
+     * Codelist name &rarr; (term submission value &rarr; NCI concept id), the term-conceptId
+     * channel of {@link #getCodelist}. Registering it makes {@code codelist_terms(level="term",
+     * returntype="code")} resolvable; without it that shape degrades to the honest-empty default
+     * and the rule SKIPs.
+     */
+    private final Map<String, Map<String, String>> codelistTermCcodes = new LinkedHashMap<>();
+
     private final java.util.Set<String> customDomains = new java.util.HashSet<>();
 
     /**
@@ -115,6 +123,17 @@ public final class StubMetadataProvider implements MetadataProvider
     public StubMetadataProvider datasetMeta(String name, Map<String, String> attrs)
     {
         datasetMeta.put(name, new LinkedHashMap<>(attrs));
+        return this;
+    }
+
+
+    /**
+     * Registers a codelist's term submission value &rarr; NCI concept id map, making the
+     * {@code getCodelist} view carry term concept ids (insertion-ordered).
+     */
+    public StubMetadataProvider codelistTermCcodes(String codelistCode, Map<String, String> ccodes)
+    {
+        codelistTermCcodes.put(codelistCode, new LinkedHashMap<>(ccodes));
         return this;
     }
 
@@ -213,6 +232,118 @@ public final class StubMetadataProvider implements MetadataProvider
     public List<String> getCodelistTerms(String codelistCode)
     {
         return codelistTerms.getOrDefault(codelistCode, List.of());
+    }
+
+
+    /**
+     * The richer view behind {@code codelist_terms}' non-{@code (term, value)} shapes. Present only
+     * when {@link #codelist} or {@link #codelistTermCcodes} registered the name — an unregistered
+     * codelist stays empty so the executor's honest-degradation SKIP is exercised, not masked.
+     */
+    @Override
+    public java.util.Optional<net.cumba.datatable.metadata.ICodeList> getCodelist(
+            String aCodelistName)
+    {
+        List<String> terms = codelistTerms.get(aCodelistName);
+        Map<String, String> registeredCcodes = codelistTermCcodes.get(aCodelistName);
+        if (terms == null && registeredCcodes == null)
+        {
+            return java.util.Optional.empty();
+        }
+        Map<String, String> ccodes = registeredCcodes == null ? Map.of() : registeredCcodes;
+        List<String> termList = terms == null ? List.copyOf(ccodes.keySet()) : terms;
+        List<net.cumba.datatable.metadata.ICodelistEntry> entries = new ArrayList<>();
+        for (String term : termList)
+        {
+            entries.add(new net.cumba.datatable.metadata.ICodelistEntry()
+            {
+
+                @Override
+                public String getCodeValue()
+                {
+                    return term;
+                }
+
+
+                @Override
+                public String getDecodeValue()
+                {
+                    return "";
+                }
+
+
+                @Override
+                public String getConceptId()
+                {
+                    return ccodes.get(term);
+                }
+
+
+                @Override
+                public java.util.Set<String> getMetaKeys()
+                {
+                    return java.util.Set.of();
+                }
+
+
+                @Override
+                public java.util.Optional<Object> getMetaValue(String aKey)
+                {
+                    return java.util.Optional.empty();
+                }
+            });
+        }
+        List<net.cumba.datatable.metadata.ICodelistEntry> frozen = List.copyOf(entries);
+        return java.util.Optional.of(new net.cumba.datatable.metadata.ICodeList()
+        {
+
+            @Override
+            public String getName()
+            {
+                return aCodelistName;
+            }
+
+
+            @Override
+            public net.cumba.datatable.values.DataValueType getValueType()
+            {
+                return net.cumba.datatable.values.DataValueType.STRING;
+            }
+
+
+            @Override
+            public List<net.cumba.datatable.metadata.ICodelistEntry> getEntries()
+            {
+                return frozen;
+            }
+
+
+            @Override
+            public Boolean isExtensible()
+            {
+                return codelistExtensible.get(aCodelistName);
+            }
+
+
+            @Override
+            public java.util.Set<String> getMetaKeys()
+            {
+                return java.util.Set
+                        .of(net.cumba.corej.core.metadata.MetadataKeys.CODELIST_SUBMISSION_VALUE);
+            }
+
+
+            @Override
+            public java.util.Optional<Object> getMetaValue(String aKey)
+            {
+                if (net.cumba.corej.core.metadata.MetadataKeys.CODELIST_SUBMISSION_VALUE
+                        .equals(aKey))
+                {
+                    return java.util.Optional.of(aCodelistName);
+                }
+                return java.util.Optional.empty();
+            }
+        });
     }
 
 

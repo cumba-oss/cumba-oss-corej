@@ -11,6 +11,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.MetadataProvider;
+import net.cumba.corej.core.metadata.MetadataKeys;
+import net.cumba.datatable.metadata.ICodeList;
+import net.cumba.datatable.metadata.ICodelistEntry;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -266,6 +269,69 @@ class MapBackedLibraryMetadataProviderTest
             assertEquals(mappings, p.getCodelistTermMappings("NY"));
             // unknown codelist returns empty
             assertEquals(Map.of(), p.getCodelistTermMappings("OTHER"));
+        }
+
+
+        @Test
+        void codelistTermCcodes_reachTheGetCodelistTermConceptIds()
+        {
+            // The (term, code) shape of codelist_terms. The C-codes have no accessor of their
+            // own — they exist only as ICodelistEntry.getConceptId() inside the getCodelist
+            // view, so that is what has to be asserted.
+            MapBackedLibraryMetadataProvider p = MapBackedLibraryMetadataProvider.builder()
+                    .codelistTerms("ny", "Y", "N")
+                    .codelistTermCcodes("ny", Map.of("Y", "C49488", "N", "C49487")).build();
+
+            ICodeList cl = p.getCodelist("NY").orElseThrow();
+            assertEquals(List.of("Y", "N"),
+                    cl.getEntries().stream().map(ICodelistEntry::getCodeValue).toList());
+            assertEquals(List.of("C49488", "C49487"),
+                    cl.getEntries().stream().map(ICodelistEntry::getConceptId).toList());
+            // ⚠ A term with no declared ccode must stay null, not "" — the (term, code)
+            // projection filters nulls out, so an undeclared C-code degrades to a SKIP.
+            assertNull(MapBackedLibraryMetadataProvider.builder().codelistTerms("ny", "Y")
+                    .codelistTermCcodes("ny", Map.of()).build().getCodelist("NY").orElseThrow()
+                    .getEntries().get(0).getConceptId());
+            assertTrue(p.getCodelist("OTHER").isEmpty());
+        }
+
+
+        @Test
+        void codelistMeta_reachesTheCodelistLevelMetaKeys()
+        {
+            // The (codelist, code) / (codelist, pref_term) shapes. 'ccode' and 'pref' are the
+            // .cdt/YAML spellings; MetadataKeys.* is what the engine reads.
+            MapBackedLibraryMetadataProvider p = MapBackedLibraryMetadataProvider.builder()
+                    .codelistMeta("ny", Map.of("ccode", "C66742", "pref", "No Yes Response"))
+                    .build();
+
+            ICodeList cl = p.getCodelist("NY").orElseThrow();
+            assertEquals("C66742", cl.getMetaValue(MetadataKeys.CODELIST_CONCEPT_ID).orElseThrow());
+            assertEquals("No Yes Response",
+                    cl.getMetaValue(MetadataKeys.CODELIST_PREFERRED_TERM).orElseThrow());
+            // The codelist's own submission value is its key, always present.
+            assertEquals("NY",
+                    cl.getMetaValue(MetadataKeys.CODELIST_SUBMISSION_VALUE).orElseThrow());
+            // An undeclared attribute stays absent rather than becoming "" — same honest
+            // degradation as the term-level ccode above.
+            assertTrue(MapBackedLibraryMetadataProvider.builder()
+                    .codelistMeta("ny", Map.of("ccode", "C66742")).build().getCodelist("NY")
+                    .orElseThrow().getMetaValue(MetadataKeys.CODELIST_PREFERRED_TERM).isEmpty());
+        }
+
+
+        @Test
+        void codelistMetaAlone_declaresTheCodelist()
+        {
+            // ⚠ Both new channels are declaration channels in their own right: a scenario that
+            // states only the codelist's own attributes must still get a getCodelist view, or
+            // the (codelist, *) shapes would SKIP for want of a terms list they do not read.
+            assertTrue(MapBackedLibraryMetadataProvider.builder()
+                    .codelistMeta("ny", Map.of("ccode", "C66742")).build().getCodelist("NY")
+                    .isPresent());
+            assertTrue(MapBackedLibraryMetadataProvider.builder()
+                    .codelistTermCcodes("ny", Map.of("Y", "C49488")).build().getCodelist("NY")
+                    .isPresent());
         }
     }
 

@@ -12,7 +12,10 @@ import java.util.Set;
 
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
+import net.cumba.corej.core.metadata.MetadataKeys;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.metadata.ICodeList;
+import net.cumba.datatable.metadata.ICodelistEntry;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -103,6 +106,27 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
 
     private final Map<String, Map<String, String>> codelistTermMappings;
 
+    /**
+     * Per-codelist term submission value → NCI concept id ("C-code") maps ({@code #library
+     * codelist-term-ccodes CODELIST SUBMITTED=Cxxxxx ...}), the term-conceptId channel of
+     * {@code MetadataProvider.getCodelist}. Same shape as {@link #codelistTermMappings}: the
+     * codelist key is upper-cased, the term keys (submission values) are stored verbatim.
+     *
+     * <p>
+     * ⚠ Distinct from {@link #codelistCodes}, which is <em>domain+variable</em> scoped and feeds
+     * only {@link MetadataProvider#getCodelistCodeMap} (FDA/PMDA-CT2003) — the two are not
+     * interchangeable.
+     * </p>
+     */
+    private final Map<String, Map<String, String>> codelistTermCcodes;
+
+    /**
+     * Per-codelist own attributes ({@code #library codelist-meta CODELIST ccode=C66734
+     * pref="..."}): key {@code ccode} is the codelist NCI concept id, key {@code pref} its NCI
+     * preferred term. The codelist's own submission value is the directive key itself.
+     */
+    private final Map<String, Map<String, String>> codelistMeta;
+
     private final List<String> publishedCtPackages;
 
     /**
@@ -132,6 +156,8 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
         this.datasetMetadata = deepCopyLeaf(b.datasetMetadata);
         this.codelistExtensible = Map.copyOf(b.codelistExtensible);
         this.codelistTermMappings = deepCopyLeaf(b.codelistTermMappings);
+        this.codelistTermCcodes = deepCopyLeaf(b.codelistTermCcodes);
+        this.codelistMeta = deepCopyLeaf(b.codelistMeta);
         this.publishedCtPackages = List.copyOf(b.publishedCtPackages);
         this.standardDatasetNames = b.standardDatasetNames == null ? null
                 : List.copyOf(b.standardDatasetNames);
@@ -410,6 +436,144 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
     }
 
 
+    /**
+     * Builds the full {@link ICodeList} view from the four codelist channels
+     * ({@code codelist-terms} / {@code codelist-term-mappings} / {@code codelist-term-ccodes} /
+     * {@code codelist-meta}, plus {@code codelist-extensible}). Present only when the scenario
+     * declares the codelist on at least one of them — an undeclared codelist stays
+     * {@link java.util.Optional#empty()} so the engine's honest-degradation contract
+     * ({@code LIBRARY_NOT_AVAILABLE} ⇒ SKIP) is exercised rather than masked.
+     *
+     * <p>
+     * Mirrors {@code CdiscLibraryMetadataLibrary.buildCodelist}: entries come from the
+     * {@code codelist-terms} list (submission values); decode defaults to {@code ""} when no
+     * mapping is declared; the term concept id is {@code null} when no ccode is declared — so a
+     * fixture that declares only submission values yields an empty {@code (term, code)} projection
+     * and the rule SKIPs, exactly like a real library without that field.
+     * </p>
+     */
+    @Override
+    public java.util.Optional<ICodeList> getCodelist(String aCodelistName)
+    {
+        String key = up(aCodelistName);
+        boolean declared = codelistTerms.containsKey(key) || codelistTermMappings.containsKey(key)
+                || codelistTermCcodes.containsKey(key) || codelistMeta.containsKey(key)
+                || codelistExtensible.containsKey(key);
+        if (!declared)
+        {
+            return java.util.Optional.empty();
+        }
+        Map<String, String> mappings = codelistTermMappings.getOrDefault(key, Map.of());
+        Map<String, String> ccodes = codelistTermCcodes.getOrDefault(key, Map.of());
+        List<ICodelistEntry> entries = new ArrayList<>();
+        for (String term : codelistTerms.getOrDefault(key, List.of()))
+        {
+            entries.add(new MapBackedCodelistEntry(term, mappings.getOrDefault(term, ""),
+                    ccodes.get(term)));
+        }
+        Map<String, String> meta = codelistMeta.getOrDefault(key, Map.of());
+        Map<String, Object> metaKeys = new LinkedHashMap<>();
+        metaKeys.put(MetadataKeys.CODELIST_SUBMISSION_VALUE, key);
+        if (meta.get("ccode") != null)
+        {
+            metaKeys.put(MetadataKeys.CODELIST_CONCEPT_ID, meta.get("ccode"));
+        }
+        if (meta.get("pref") != null)
+        {
+            metaKeys.put(MetadataKeys.CODELIST_PREFERRED_TERM, meta.get("pref"));
+        }
+        return java.util.Optional.of(new MapBackedCodelist(key, codelistExtensible.get(key),
+                List.copyOf(entries), Collections.unmodifiableMap(metaKeys)));
+    }
+
+    /** The {@link ICodeList} materialisation behind {@link #getCodelist}. */
+    private record MapBackedCodelist(String name, @Nullable Boolean extensible,
+            List<ICodelistEntry> entries, Map<String, Object> meta) implements ICodeList
+    {
+
+        @Override
+        public String getName()
+        {
+            return name;
+        }
+
+
+        @Override
+        public net.cumba.datatable.values.DataValueType getValueType()
+        {
+            return net.cumba.datatable.values.DataValueType.STRING;
+        }
+
+
+        @Override
+        public List<ICodelistEntry> getEntries()
+        {
+            return entries;
+        }
+
+
+        @Override
+        public @Nullable Boolean isExtensible()
+        {
+            return extensible;
+        }
+
+
+        @Override
+        public Set<String> getMetaKeys()
+        {
+            return meta.keySet();
+        }
+
+
+        @Override
+        public java.util.Optional<Object> getMetaValue(String aKey)
+        {
+            return java.util.Optional.ofNullable(meta.get(aKey));
+        }
+    }
+
+
+    /** One term of a {@link MapBackedCodelist}. */
+    private record MapBackedCodelistEntry(String code, String decode,
+            @Nullable String conceptId) implements ICodelistEntry
+    {
+
+        @Override
+        public String getCodeValue()
+        {
+            return code;
+        }
+
+
+        @Override
+        public String getDecodeValue()
+        {
+            return decode;
+        }
+
+
+        @Override
+        public @Nullable String getConceptId()
+        {
+            return conceptId;
+        }
+
+
+        @Override
+        public Set<String> getMetaKeys()
+        {
+            return Set.of();
+        }
+
+
+        @Override
+        public java.util.Optional<Object> getMetaValue(String aKey)
+        {
+            return java.util.Optional.empty();
+        }
+    }
+
     @Override
     public String getStandard()
     {
@@ -498,6 +662,18 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
     }
 
 
+    public Map<String, Map<String, String>> getCodelistTermCcodesMap()
+    {
+        return codelistTermCcodes;
+    }
+
+
+    public Map<String, Map<String, String>> getCodelistMetaMap()
+    {
+        return codelistMeta;
+    }
+
+
     public Map<String, Map<String, Map<String, String>>> getVariableMetadataMap()
     {
         return variableMetadata;
@@ -526,6 +702,7 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
                 && domainVariables.isEmpty() && modelVariables.isEmpty()
                 && modelClassVariables.isEmpty() && datasetMetadata.isEmpty()
                 && codelistExtensible.isEmpty() && codelistTermMappings.isEmpty()
+                && codelistTermCcodes.isEmpty() && codelistMeta.isEmpty()
                 && publishedCtPackages.isEmpty() && standardDatasetNames == null;
     }
 
@@ -622,6 +799,10 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
 
         private final Map<String, Map<String, String>> codelistTermMappings = new HashMap<>();
 
+        private final Map<String, Map<String, String>> codelistTermCcodes = new HashMap<>();
+
+        private final Map<String, Map<String, String>> codelistMeta = new HashMap<>();
+
         private final List<String> publishedCtPackages = new ArrayList<>();
 
         private @Nullable List<String> standardDatasetNames;
@@ -710,6 +891,36 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
         public Builder codelistTermMappings(String aCodelistName, Map<String, String> aMappings)
         {
             codelistTermMappings.put(up(aCodelistName), new LinkedHashMap<>(aMappings));
+            return this;
+        }
+
+
+        /**
+         * Declare a codelist's term submission value → NCI concept id ("C-code") map, the
+         * term-conceptId channel of {@code MetadataProvider.getCodelist} (used by
+         * {@code codelist_terms(level="term", returntype="code")}). Term keys are kept verbatim,
+         * matching {@link #codelistTermMappings(String, Map)}.
+         *
+         * <p>
+         * ⚠ NOT the (domain, variable)-scoped {@link #codelistCodes(String, String, Map)}, which
+         * feeds only {@code getCodelistCodeMap} / CT2003.
+         * </p>
+         */
+        public Builder codelistTermCcodes(String aCodelistName, Map<String, String> aCcodes)
+        {
+            codelistTermCcodes.put(up(aCodelistName), new LinkedHashMap<>(aCcodes));
+            return this;
+        }
+
+
+        /**
+         * Declare a codelist's own attributes: key {@code ccode} (NCI concept id, e.g.
+         * {@code C66734}) and/or key {@code pref} (NCI preferred term). The codelist's own
+         * submission value is {@code aCodelistName} itself.
+         */
+        public Builder codelistMeta(String aCodelistName, Map<String, String> aMeta)
+        {
+            codelistMeta.put(up(aCodelistName), new LinkedHashMap<>(aMeta));
             return this;
         }
 

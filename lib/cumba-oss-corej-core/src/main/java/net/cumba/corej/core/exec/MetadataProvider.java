@@ -2,9 +2,11 @@ package net.cumba.corej.core.exec;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.metadata.ICodeList;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -456,6 +458,36 @@ public interface MetadataProvider
      * @return list of term values, or empty list if unknown
      */
     List<String> getCodelistTerms(String codelistCode);
+
+
+    /**
+     * The named codelist as a full {@link ICodeList} — its own attributes riding as meta keys
+     * ({@code MetadataKeys.CODELIST_SUBMISSION_VALUE} / {@code CODELIST_CONCEPT_ID} /
+     * {@code CODELIST_PREFERRED_TERM}) and its terms as {@code ICodelistEntry} instances
+     * ({@code getCodeValue()} = submission value, {@code getDecodeValue()} = NCI preferred term,
+     * {@code getConceptId()} = NCI C-code). This is what lets
+     * {@code OperationExecutor.codelistTerms} honour every {@code (level, returntype)} shape of the
+     * {@code codelist_terms} operation rather than always answering term submission values.
+     *
+     * <p>
+     * ⚠ <b>The default must degrade honestly, not guess.</b> A default that derived the richer view
+     * from {@link #getCodelistTerms} would answer five of the six shapes wrongly — C-codes
+     * requested, submission values served — which is exactly the defect the accessor exists to fix,
+     * relocated into the fallback. So the default returns {@link Optional#empty()}, the executor
+     * keeps serving the one shape {@code getCodelistTerms} proves
+     * ({@code level="term", returntype="value"}) without this accessor, and every other shape on a
+     * provider without a real implementation becomes {@code LIBRARY_NOT_AVAILABLE} — the rule SKIPs
+     * loudly instead of validating against the wrong representation.
+     * </p>
+     *
+     * @param aCodelistName
+     *            the codelist submission value or NCI C-code (e.g., "DOMAIN", "C66734")
+     * @return the codelist, or empty when this provider cannot supply the richer view
+     */
+    default Optional<ICodeList> getCodelist(String aCodelistName)
+    {
+        return Optional.empty();
+    }
 
 
     /**

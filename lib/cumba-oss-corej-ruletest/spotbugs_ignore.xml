@@ -88,6 +88,35 @@
     </Match>
 
     <Match>
+        <!-- Same tuple as getCodelistCodesMap: the introspection getter serves
+             the scenario writer and returns the already-unmodifiable deep copy
+             the constructor built (codelist-term-ccodes channel). -->
+        <Class name="net.cumba.corej.ruletest.cdt.ruletest.MapBackedLibraryMetadataProvider" />
+        <Method name="getCodelistTermCcodesMap" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+
+    <Match>
+        <!-- Same tuple as getCodelistTermCcodesMap, for the codelist-meta
+             channel (codelist ccode / preferred term). -->
+        <Class name="net.cumba.corej.ruletest.cdt.ruletest.MapBackedLibraryMetadataProvider" />
+        <Method name="getCodelistMetaMap" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+
+    <Match>
+        <!-- Record component: getEntries returns the List.copyOf-built immutable
+             list the getCodelist factory constructed; nothing can mutate it.
+             ⚠ Scoped to the one accessor, like every entry above: without the
+             <Method> this suppressed EI_EXPOSE_REP for every accessor of the
+             record, present and future, on the strength of an argument that
+             holds only for getEntries. -->
+        <Class name="net.cumba.corej.ruletest.cdt.ruletest.MapBackedLibraryMetadataProvider$MapBackedCodelist" />
+        <Method name="getEntries" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+
+    <Match>
         <!-- Path.getFileName() chains in scenario capture / trimmer:
              only null for root paths, unreachable for scenario file
              paths. -->

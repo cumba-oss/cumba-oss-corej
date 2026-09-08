@@ -101,6 +101,10 @@ class OperationExecutorLibraryOpsTest
 
         Operation op = makeOp("$terms", "codelist_terms");
         op.setName("C66731");
+        // (term, value) is the one shape served through getCodelistTerms; every other shape
+        // resolves through getCodelist, whose honest default is empty (rule SKIPs).
+        op.setLevel("term");
+        op.setReturntype("value");
         Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
         assertEquals(List.of("M", "F", "U"), vars.get("$terms"));
     }

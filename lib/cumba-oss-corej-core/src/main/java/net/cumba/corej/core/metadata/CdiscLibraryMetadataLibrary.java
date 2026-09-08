@@ -577,6 +577,11 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
         {
             meta.put(MetadataKeys.CODELIST_SUBMISSION_VALUE, submissionValue);
         }
+        String preferredTerm = aCodelist.preferredTerm().orElse(null);
+        if (preferredTerm != null)
+        {
+            meta.put(MetadataKeys.CODELIST_PREFERRED_TERM, preferredTerm);
+        }
 
         // Codelist name is the submission value, which the buildCodelists loop guarantees is
         // non-null/non-empty before this codelist is materialised.

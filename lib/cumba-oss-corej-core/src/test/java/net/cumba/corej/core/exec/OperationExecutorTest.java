@@ -1305,7 +1305,18 @@ class OperationExecutorTest
         IDataTable table = MockTable.of().col("DOMAIN", "DM").name("DM").build();
 
         MetadataProvider provider = mock(MetadataProvider.class);
-        when(provider.getCodelistTerms("DOMAIN")).thenReturn(List.of("C12345", "C67890"));
+        // returntype="code" resolves through the getCodelist view's term concept ids —
+        // getCodelistTerms (submission values) must NOT be consulted for this shape.
+        net.cumba.datatable.metadata.ICodelistEntry e1 = mock(
+                net.cumba.datatable.metadata.ICodelistEntry.class);
+        when(e1.getConceptId()).thenReturn("C12345");
+        net.cumba.datatable.metadata.ICodelistEntry e2 = mock(
+                net.cumba.datatable.metadata.ICodelistEntry.class);
+        when(e2.getConceptId()).thenReturn("C67890");
+        net.cumba.datatable.metadata.ICodeList cl = mock(
+                net.cumba.datatable.metadata.ICodeList.class);
+        when(cl.getEntries()).thenReturn(List.of(e1, e2));
+        when(provider.getCodelist("DOMAIN")).thenReturn(java.util.Optional.of(cl));
 
         // The codelist is named via `codelists`, not `name` (the shape that used to NPE).
         Operation op = makeOp("$domain_lib_ccode", "codelist_terms");
@@ -1333,6 +1344,10 @@ class OperationExecutorTest
 
         Operation op = makeOp("$codes", "codelist_terms");
         op.setCodelists(List.of("DOMAIN", "EXTRA"));
+        // (term, value) is the shape getCodelistTerms serves; other shapes go through
+        // getCodelist, and absent level mirrors Python's _get_codelist_values: nothing.
+        op.setLevel("term");
+        op.setReturntype("value");
 
         Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER,
                 provider);
@@ -1354,6 +1369,8 @@ class OperationExecutorTest
 
         Operation op = makeOp("$domain_lib_ccode", "codelist_terms");
         op.setCodelists(List.of("DOMAIN"));
+        op.setLevel("term");
+        op.setReturntype("value");
 
         Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER,
                 provider);

@@ -167,4 +167,14 @@ public final class MetadataKeys
      */
     public static final String CODELIST_SUBMISSION_VALUE = "CodelistSubmissionValue";
 
+    /**
+     * {@code String} — the codelist's own NCI preferred term (e.g. {@code "CDISC SDTM Domain
+     * Abbreviation Terminology"}). Populated from the CT package's codelist {@code preferredTerm};
+     * serves {@code codelist_terms(level="codelist",
+     * returntype="pref_term")}.
+     *
+     * @see ICodeList
+     */
+    public static final String CODELIST_PREFERRED_TERM = "CodelistPreferredTerm";
+
 }
