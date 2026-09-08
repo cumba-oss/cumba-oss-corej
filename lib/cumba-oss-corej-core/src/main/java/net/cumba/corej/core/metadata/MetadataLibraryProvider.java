@@ -2226,10 +2226,16 @@ public final class MetadataLibraryProvider implements MetadataProvider
         merged.addAll(aClassVars);
         merged.addAll(aTiming);
 
+        // ⚠ First occurrence wins (putIfAbsent), matching dedupeByNameKeepFirst below: the model
+        // buckets genuinely contain duplicate names (a self-contained IG class's classVariables
+        // repeat the General-Observations identifiers/timing vars), and the IG override must land
+        // on the occurrence that SURVIVES the keep-first dedupe. A last-wins index would place the
+        // IG attributes on the duplicate the dedupe then discards, silently answering with the
+        // Model's metadata instead of the IG's.
         Map<String, Integer> nameIndex = new java.util.HashMap<>();
         for (int i = 0; i < merged.size(); i++)
         {
-            nameIndex.put(merged.get(i).name(), i);
+            nameIndex.putIfAbsent(merged.get(i).name(), i);
         }
         int identifiersLen = aIdentifiers.size();
         int timingLen = aTiming.size();
@@ -2263,10 +2269,11 @@ public final class MetadataLibraryProvider implements MetadataProvider
             merged.add(insertionPoint, ig);
             // Rebuild the index — insertion shifted positions for entries after
             // insertionPoint. O(n) per IG-only insert; tolerable given typical IG sizes.
+            // putIfAbsent for the same keep-first reason as the initial build above.
             nameIndex.clear();
             for (int i = 0; i < merged.size(); i++)
             {
-                nameIndex.put(merged.get(i).name(), i);
+                nameIndex.putIfAbsent(merged.get(i).name(), i);
             }
         }
         return dedupeByNameKeepFirst(merged);
@@ -3107,9 +3114,9 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
 
     /**
-     * Resolves the requested CT package: the configured one when the id matches (or no id was
-     * configured but a package was supplied), otherwise via the loader. Returns {@code null} when
-     * neither yields a package.
+     * Resolves the requested CT package: the configured one when the id matches, otherwise via the
+     * loader. Returns {@code null} when neither yields the <em>requested</em> package — never a
+     * different package than the one asked for.
      */
     private @Nullable CtPackage resolveCtPackage(String aCtPackageId)
     {
@@ -3129,8 +3136,13 @@ public final class MetadataLibraryProvider implements MetadataProvider
                 return loaded;
             }
         }
-        // Last resort: the configured package (possibly empty) when no loader / no cache hit.
-        return configuredCtPackage;
+        // The requested package is neither the configured one nor loadable: answer null so
+        // getCodelistAttribute degrades to empty and the rule SKIPs. Never fall back to the
+        // configured package here — answering a request for package X out of package Y would
+        // run a controlled-terminology check against the wrong CT version and report it clean.
+        // (When no CT was configured at all, configuredCtPackage is null or the empty package;
+        // both read as "no terms" through getCodelistAttribute, so nothing is lost.)
+        return null;
     }
 
 

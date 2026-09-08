@@ -150,7 +150,11 @@ public final class DefineConformanceEngine
         // only, so running it against a 1.0 document would emit meaningless findings. Short-circuit
         // with the detected version preserved and a single out-of-scope finding — unless the caller
         // forces a version override (then honour it, they know what they're doing).
-        if (aInput.versionOverride() == null
+        // Blank-aware like resolveVersion and selectRules: a blank override is ABSENT, not a
+        // version — a null-only test here let versionOverride("") skip this short-circuit and
+        // validate a 1.0 document against the 2.1 corpus, labelled "2.1", with the
+        // DEFINE-XML-UNSUPPORTED declaration missing.
+        if (isBlank(aInput.versionOverride())
                 && prePass.version() == DefineXmlConverter.Version.V1_0)
         {
             return outOfScopeReport(aInput, aGeneratedAt, prePassFindings);

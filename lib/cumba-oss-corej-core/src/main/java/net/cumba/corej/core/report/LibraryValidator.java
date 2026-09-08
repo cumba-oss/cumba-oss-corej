@@ -1104,9 +1104,13 @@ public final class LibraryValidator
         }
         catch (RuntimeException e)
         {
-            // If rule generation itself fails, record a library-level warning
-            // and skip this dataset — no rules can run against it.
-            dsResult.addWarning("Rule generation failed for " + domain + ": " + e.getMessage());
+            // If rule generation itself fails, no rules can run against this dataset. Record it
+            // on the same per-dataset error channel as the table-open failure above, so the
+            // dataset carries a visible ERROR finding and a non-empty errors list in its
+            // DatasetExecutionSummary — never a clean "0 findings, 0 errors" row for a dataset
+            // on which nothing executed.
+            dsResult.addLoadError("Rule generation failed for " + domain + ": " + e.getMessage());
+            dsResult.runtimeMillis = System.currentTimeMillis() - startDs;
             return dsResult;
         }
         // Record source rules that did not match this dataset's scope (domain / class / variables)
