@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ODM xmlns:def="http://www.cdisc.org/ns/def/v2.0" ODMVersion="1.3.2"
+     FileType="Snapshot" FileOID="DEF.CT20" CreationDateTime="2026-01-01T00:00:00">
+  <Study OID="S1">
+    <MetaDataVersion OID="MDV.1" Name="CT selection scenarios (2.0)" DefineVersion="2.0.0"
+                     StandardName="SDTM-IG" StandardVersion="3.4">
+    </MetaDataVersion>
+  </Study>
+</ODM>

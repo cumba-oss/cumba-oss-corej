@@ -15,8 +15,10 @@ import net.cumba.cdisc.define.ItemRef;
 import net.cumba.cdisc.define.MetaDataVersion;
 import net.cumba.cdisc.define.ODM;
 import net.cumba.cdisc.define.Origin;
+import net.cumba.cdisc.define.Standard;
 import net.cumba.cdisc.define.Study;
 import net.cumba.cdisc.define.TranslatedText;
+import net.cumba.corej.core.gen.CtStandardRef;
 import net.cumba.corej.core.gen.DefineXMLProvider;
 import org.jspecify.annotations.Nullable;
 
@@ -136,6 +138,52 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
             }
         }
         return out;
+    }
+
+
+    /**
+     * PLAN-define-driven-ct-selection.md §4.1 — the {@code def:Standards} entries with
+     * {@code Type="CT"}, in document order, each with its derived package id
+     * ({@code <publishingset>ct-<version>}, e.g. {@code sdtmct-2023-12-15}).
+     *
+     * <p>
+     * Empty when the document carries no {@code def:Standards} — structurally the Define-XML 2.0
+     * case (the element exists only from 2.1; the Python reference engine gates on
+     * {@code model_package == "define_2_1"} for the same reason). A CT-typed entry lacking
+     * {@code PublishingSet} or {@code Version} cannot name a package and is skipped with a WARNING
+     * — a malformed declaration is a property of the <em>document</em> (a Define-XML rule's
+     * business, plan §4.4), never a run abort.
+     * </p>
+     */
+    @Override
+    public List<CtStandardRef> declaredCtPackages()
+    {
+        MetaDataVersion mdv = mdv();
+        if (mdv == null || mdv.getStandards() == null || mdv.getStandards().getStandards() == null)
+        {
+            return List.of();
+        }
+        List<CtStandardRef> out = new ArrayList<>();
+        for (Standard std : mdv.getStandards().getStandards())
+        {
+            if (std == null || std.getType() == null || !"CT".equalsIgnoreCase(std.getType()))
+            {
+                continue;
+            }
+            String publishingSet = std.getPublishingSet();
+            String version = std.getVersion();
+            if (publishingSet == null || publishingSet.isBlank() || version == null
+                    || version.isBlank())
+            {
+                LOGGER.log(System.Logger.Level.WARNING,
+                        "Define-XML def:Standard {0} is typed CT but lacks a PublishingSet or "
+                                + "Version; it names no CT package and is ignored.",
+                        std.getOid());
+                continue;
+            }
+            out.add(CtStandardRef.of(std.getOid(), publishingSet, version));
+        }
+        return List.copyOf(out);
     }
 
 

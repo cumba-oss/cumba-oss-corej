@@ -1,0 +1,12 @@
+#!RuleTest
+#test CT-RUN-1 expect=violation domain=VS
+#note §4.3 — a 2.1 define declaring TWO CTs of the same publishing set (the mixed-version case Python's broken merge was built for): both packages join the run. The runner seeds NY only into the newest package and AGEU only into the older one, so BOTH violations fire only if the merge really loaded both — a first-id-wins regression leaves AGEU unresolvable and the rule SKIPs instead.
+#define-xml define-21-merge-two-sdtm.xml
+#ct-available sdtmct-2025-03-28 sdtmct-2024-09-27
+#expectViolationCount 2
+dataset VS
+col VSSTAT type=Char
+col VSAGEU type=Char
+---
+BOGUS | BOGUS
+---

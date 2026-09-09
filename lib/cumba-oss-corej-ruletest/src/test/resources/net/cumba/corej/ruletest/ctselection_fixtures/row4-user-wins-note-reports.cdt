@@ -1,0 +1,13 @@
+#!RuleTest
+#test CT-RUN-1 expect=violation domain=VS
+#note §4.4 row 4 — populated field, all user ids present: the user's list wins, the define's declaration is ignored, and the divergence is reported as the run-level note.
+#define-xml define-21-sdtm-2023-12-15.xml
+#ct-packages sdtmct-2024-09-27
+#ct-available sdtmct-2024-09-27 sdtmct-2023-12-15
+#expect-ct-mismatch "define declares sdtmct-2023-12-15; run used sdtmct-2024-09-27"
+#expectViolationCount 1
+dataset VS
+col VSSTAT type=Char
+---
+BOGUS
+---

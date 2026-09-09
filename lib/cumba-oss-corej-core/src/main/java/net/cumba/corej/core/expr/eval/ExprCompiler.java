@@ -3490,7 +3490,9 @@ public final class ExprCompiler
         {
             return Boolean.TRUE;
         }
-        return Boolean.valueOf(library.isCodelistExtensible(cCode));
+        // The orElse(TRUE) is the documented VLM parity default (see the method javadoc), spelled
+        // out here since isCodelistExtensible itself no longer fails open (F-corej-ct-02).
+        return library.isCodelistExtensible(cCode).orElse(Boolean.TRUE);
     }
 
     // ---------------------------------------------------------------------
@@ -4659,9 +4661,9 @@ public final class ExprCompiler
             // PMDA-SD1325 (`ds_label("DATA") != ds_label("DEFINE")`) fire on conforming data.
             //
             // ⚠ The level is a PROXY for "this provider is domain-keyed", and the proxy is not
-            // exact. `CdiscLibraryProviderBuilder.buildOrDegraded` returns a study-backed
-            // `MetadataLibraryProvider(studyLib)` — member-name-keyed — when there is no access,
-            // an UNKNOWN standard, or a non-impl access object. Those runs are NOT degraded, so
+            // exact. StudyValidationService.buildProvider returns a study-backed
+            // `MetadataLibraryProvider(studyLib)` — member-name-keyed — for an UNKNOWN standard
+            // (pre-P4 the API builder did the same with no access). Those runs are NOT degraded, so
             // `Fix #369`'s `libraryAnswerable` gate (RuleRunner, "LIBRARY-level metadata may not
             // be answered from a non-library source") does not skip them, and tier 2 could answer
             // a split member from the define's parent declaration. It cannot move a finding today
@@ -4726,6 +4728,20 @@ public final class ExprCompiler
             meta = level == MetadataLevel.LIBRARY
                     ? libraryVariableMetadata(provider, ctx.getTable(), domain, name)
                     : provider.getVariableMetadata(domain, name);
+            // F-corej-ct-02 (define-ct plan P1): a variable WITH a bound library codelist whose
+            // extensibility did not resolve must not read as absent — `null == false` is false, so
+            // every shipped `var_codelist_extensible("LIBRARY") == false` guard would quietly
+            // no-fire and wrong CT would look like a clean run. The provider emits `codelist`
+            // unconditionally and `codelist_extensible` only when the codelist resolved, so
+            // "codelist present, codelist_extensible absent" is the unresolvable signature.
+            // RuleRunner's terminal catch turns this into a rule-level SKIPPED with the reason.
+            // (A variable with no codelist at all stays absent → no-fire, correct per D4.)
+            if (attr == MetadataAttribute.VAR_CODELIST_EXTENSIBLE && level == MetadataLevel.LIBRARY
+                    && meta != null && meta.get(attr.providerKey()) == null
+                    && meta.get("codelist") != null)
+            {
+                throw new UnresolvableCodelistException(domain, name, meta.get("codelist"));
+            }
         }
         return meta != null ? meta.get(attr.providerKey()) : null;
     }
@@ -4761,7 +4777,7 @@ public final class ExprCompiler
      *
      * <p>
      * ⭐⭐ <b>TIER 1 WINNING IS LOAD-BEARING, not an optimisation.</b> Two shapes depend on it: (a)
-     * {@code CdiscLibraryProviderBuilder.buildOrDegraded}'s no-access branch returns a
+     * {@code StudyValidationService.buildProvider}'s UNKNOWN-standard branch returns a
      * <em>study-backed</em> {@code MetadataLibraryProvider}, which is member-keyed — tier 1 is the
      * only correct answer there; (b) a {@code SUPPAE} table that happens to carry a {@code DOMAIN}
      * cell would resolve to {@code AE} under tier 2 and lose {@code RDOMAIN} / {@code QEVAL}

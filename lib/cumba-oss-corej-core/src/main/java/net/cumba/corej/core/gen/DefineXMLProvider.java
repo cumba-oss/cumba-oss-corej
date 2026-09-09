@@ -192,4 +192,25 @@ public interface DefineXMLProvider
         return Map.of();
     }
 
+
+    /**
+     * PLAN-define-driven-ct-selection.md §4.1 — the controlled-terminology packages this document
+     * declares conformance to via {@code def:Standards} ({@code Type="CT"} entries only), in
+     * document order.
+     *
+     * <p>
+     * Empty for a Define-XML 2.0 document (the {@code def:Standards} element does not exist before
+     * 2.1 — the run then falls back to the user's CT selection, §4.2), for a provider not backed by
+     * a parsed ODM model, and for a 2.1 document that declares no CT standard. A {@code Type="IG"}
+     * entry never contributes — driving metadata-product selection from the IG declaration is
+     * explicitly out of scope (plan §6).
+     * </p>
+     *
+     * @return the declared CT package references, empty when the document declares none
+     */
+    default List<CtStandardRef> declaredCtPackages()
+    {
+        return List.of();
+    }
+
 }

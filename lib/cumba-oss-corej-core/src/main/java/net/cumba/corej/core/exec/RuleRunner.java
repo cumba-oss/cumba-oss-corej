@@ -427,6 +427,24 @@ public final class RuleRunner
                             vlmResolver, reportedDatasets, crossStandardDatasets,
                             severityThreshold));
         }
+        catch (net.cumba.corej.core.expr.eval.UnresolvableCodelistException e)
+        {
+            // F-corej-ct-02 (define-ct plan P1): a var_codelist_extensible("LIBRARY") read hit a
+            // variable whose bound codelist is not resolvable in the loaded CT. Both old miss
+            // behaviours failed open (the `== false` guard went false and the rule silently did
+            // not fire), so wrong or missing terminology looked exactly like a clean run. SKIPPED
+            // with the stated reason is the decided behaviour — visible, never a silent pass —
+            // mirroring Python's MissingDataError → SKIPPED for codelist_extensible. The throw
+            // sites sit inside per-variable evaluation (both the row-level and the
+            // metadata-native paths), which is why the catch wraps the body.
+            String reason = "Rule skipped — " + e.getMessage();
+            LOGGER.log(System.Logger.Level.DEBUG, "[{0}] {1}",
+                    rule.effectiveId() != null ? rule.effectiveId() : "?", reason);
+            return stampSeverity(rule, RuleExecutionResult.builder().ruleId(rule.effectiveId())
+                    .message(rule.getOutcome() != null ? rule.getOutcome().getMessage() : null)
+                    .violations(List.of()).totalRows(table != null ? table.getRowCount() : 0L)
+                    .status(RuleExecutionStatus.SKIPPED).statusMessage(reason).build());
+        }
         catch (InvalidJoinedDomainException e)
         {
             // Fix #358 (ruling 1): a Match_Datasets name / RDOMAIN value resolved to a split

@@ -1,0 +1,13 @@
+#!RuleTest
+#test CT-RUN-1 expect=violation domain=VS
+#note ⭐⭐ §4.4 row 6 IS row 4 — populated field, define declares a package that is MISSING from the store: with the field populated the declaration is not consulted, not resolved and NOT VALIDATED, so its absence is a non-event and the run proceeds on the user's list. This is the escape hatch a naive "validate everything referenced" implementation breaks. The mismatch note keeps reporting.
+#define-xml define-21-sdtm-1999-01-01.xml
+#ct-packages sdtmct-2024-09-27
+#ct-available sdtmct-2024-09-27
+#expect-ct-mismatch "define declares sdtmct-1999-01-01; run used sdtmct-2024-09-27"
+#expectViolationCount 1
+dataset VS
+col VSSTAT type=Char
+---
+BOGUS
+---

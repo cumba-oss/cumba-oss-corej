@@ -1,0 +1,11 @@
+#!RuleTest
+#test CT-RUN-1 expect=violation domain=VS
+#note §4.4 row 2 — blank field, define declares SDTM CT 2024-09-27, package present: the run adopts the declaration, the codelist resolves, the rule fires. No mismatch note: declaration and run agree.
+#define-xml define-21-sdtm-2024-09-27.xml
+#ct-available sdtmct-2024-09-27
+#expectViolationCount 1
+dataset VS
+col VSSTAT type=Char
+---
+BOGUS
+---

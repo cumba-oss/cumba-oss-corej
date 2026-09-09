@@ -1,0 +1,9 @@
+#!RuleTest
+#test CT-RUN-1 expect=skipped domain=VS
+#note §4.4 row 1 — blank field, no define: the run proceeds with NO CT and the CT-dependent rule SKIPs. ⭐ This is the D3/R2 boundary pin: "nothing named" is the cache ruling's SKIP and must specifically NOT abort — a later "tighten the aborts" change that swallows this row breaks the decided state table.
+#ct-available none
+dataset VS
+col VSSTAT type=Char
+---
+BOGUS
+---

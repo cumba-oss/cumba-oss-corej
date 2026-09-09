@@ -181,6 +181,13 @@ public final class RuleTestCdt
         String defineXml = null;
         int defineXmlLine = -1;
         Severity runLevel = null;
+        // Run-level CT-selection directives (define-ct plan P6). Null = directive absent.
+        List<String> ctPackages = null;
+        List<String> ctAvailable = null;
+        String expectAbort = null;
+        int expectAbortLine = -1;
+        String expectCtMismatch = null;
+        int expectCtMismatchLine = -1;
 
         for (Directive d : directives)
         {
@@ -255,11 +262,49 @@ public final class RuleTestCdt
                 defineXml = parseDefineXmlPayload(tokens, aSource, d.lineIdx);
                 defineXmlLine = d.lineIdx;
             }
+            case "ct-packages" ->
+            {
+                if (ctPackages != null)
+                {
+                    throw error(aSource, d.lineIdx, "duplicate #ct-packages directive");
+                }
+                ctPackages = parseCtIdListPayload(tokens, "#ct-packages", false, aSource,
+                        d.lineIdx);
+            }
+            case "ct-available" ->
+            {
+                if (ctAvailable != null)
+                {
+                    throw error(aSource, d.lineIdx, "duplicate #ct-available directive");
+                }
+                ctAvailable = parseCtIdListPayload(tokens, "#ct-available", true, aSource,
+                        d.lineIdx);
+            }
+            case "expect-abort" ->
+            {
+                if (expectAbort != null)
+                {
+                    throw error(aSource, d.lineIdx, "duplicate #expect-abort directive");
+                }
+                expectAbort = parseSingleValuePayload(tokens, "#expect-abort", aSource, d.lineIdx);
+                expectAbortLine = d.lineIdx;
+            }
+            case "expect-ct-mismatch" ->
+            {
+                if (expectCtMismatch != null)
+                {
+                    throw error(aSource, d.lineIdx, "duplicate #expect-ct-mismatch directive");
+                }
+                expectCtMismatch = parseSingleValuePayload(tokens, "#expect-ct-mismatch", aSource,
+                        d.lineIdx);
+                expectCtMismatchLine = d.lineIdx;
+            }
             case "setup", "teardown" -> throw error(aSource, d.lineIdx, "directive '#" + keyword
                     + "' is reserved for a future version and not implemented in v1");
             default -> throw error(aSource, d.lineIdx, "unknown directive: #" + keyword
                     + " (expected #test, #note, #library, #library-include, #library-ref, "
-                    + "#define, #define-include, #define-xml, #dictionaries, or " + "#runLevel)");
+                    + "#define, #define-include, #define-xml, #dictionaries, #runLevel, "
+                    + "#ct-packages, #ct-available, #expect-abort, or #expect-ct-mismatch)");
             }
         }
         if (!sawTest)
@@ -379,11 +424,27 @@ public final class RuleTestCdt
                             + expectedViolations.size() + " #expectViolationAt line(s)");
         }
 
+        // Run-level CT directives: an aborted run reaches no rule and writes no report, so the
+        // verdict must honestly read "skipped" and no mismatch expectation can accompany it.
+        if (expectAbort != null && testExpect != Verdict.SKIPPED)
+        {
+            throw error(aSource, expectAbortLine,
+                    "#expect-abort requires expect=skipped (the run aborts before the rule runs)");
+        }
+        if (expectAbort != null && expectCtMismatch != null)
+        {
+            throw error(aSource, expectCtMismatchLine,
+                    "#expect-ct-mismatch cannot be combined with #expect-abort (an aborted run "
+                            + "produces no report)");
+        }
+
         return RuleTestScenario.builder().coreId(testCoreId).expect(testExpect).domain(testDomain)
                 .note(note).datasets(datasets).source(aSource).library(library)
                 .libraryRef(libraryRef).define(define).defineXml(defineXml)
                 .dictionaries(dictionaries).runLevel(runLevel).expectViolationCount(expectCount)
-                .expectedViolations(expectedViolations).build();
+                .expectedViolations(expectedViolations).ctPackages(ctPackages)
+                .ctAvailable(ctAvailable).expectAbort(expectAbort)
+                .expectCtMismatch(expectCtMismatch).build();
     }
 
 
@@ -679,6 +740,47 @@ public final class RuleTestCdt
             aOut.write('\n');
         }
 
+        List<String> ctPackages = aScenario.getCtPackages();
+        if (ctPackages != null)
+        {
+            aOut.write("#ct-packages");
+            for (String id : ctPackages)
+            {
+                aOut.write(' ');
+                aOut.write(quoteIfNeeded(id));
+            }
+            aOut.write('\n');
+        }
+        List<String> ctAvailable = aScenario.getCtAvailable();
+        if (ctAvailable != null)
+        {
+            aOut.write("#ct-available");
+            if (ctAvailable.isEmpty())
+            {
+                aOut.write(" none");
+            }
+            for (String id : ctAvailable)
+            {
+                aOut.write(' ');
+                aOut.write(quoteIfNeeded(id));
+            }
+            aOut.write('\n');
+        }
+        String expectAbort = aScenario.getExpectAbort();
+        if (expectAbort != null)
+        {
+            aOut.write("#expect-abort ");
+            aOut.write(quoteIfNeeded(expectAbort));
+            aOut.write('\n');
+        }
+        String expectCtMismatch = aScenario.getExpectCtMismatch();
+        if (expectCtMismatch != null)
+        {
+            aOut.write("#expect-ct-mismatch ");
+            aOut.write(quoteIfNeeded(expectCtMismatch));
+            aOut.write('\n');
+        }
+
         boolean first = true;
         for (IDataTable t : aScenario.getDatasets())
         {
@@ -838,7 +940,7 @@ public final class RuleTestCdt
         }
         for (var e : new java.util.TreeMap<>(aLib.getDatasetMetadataMap()).entrySet())
         {
-            java.util.Map<String, String> md = e.getValue();
+            Map<String, String> md = e.getValue();
             String cls = md.get("className");
             if (cls != null && md.size() == 1)
             {
@@ -885,7 +987,7 @@ public final class RuleTestCdt
 
 
     private static void writeStringListMap(Writer aOut, String aKind,
-            java.util.Map<String, List<String>> aMap)
+            Map<String, List<String>> aMap)
         throws IOException
     {
         for (var e : aMap.entrySet())
@@ -908,8 +1010,7 @@ public final class RuleTestCdt
      * Emit a {@code key=value} map as space-prefixed tokens, entries sorted by key for a stable
      * round-trip. Keys are simple identifiers (written verbatim); values are quoted when needed.
      */
-    private static void writeKeyValues(Writer aOut, java.util.Map<String, String> aMap)
-        throws IOException
+    private static void writeKeyValues(Writer aOut, Map<String, String> aMap) throws IOException
     {
         for (var kv : new java.util.TreeMap<>(aMap).entrySet())
         {
@@ -925,7 +1026,7 @@ public final class RuleTestCdt
 
 
     private static void writeVarListMap(Writer aOut, String aKind,
-            java.util.Map<String, List<java.util.Map<String, String>>> aMap)
+            Map<String, List<Map<String, String>>> aMap)
         throws IOException
     {
         for (var e : aMap.entrySet())
@@ -934,7 +1035,7 @@ public final class RuleTestCdt
             aOut.write(aKind);
             aOut.write(' ');
             aOut.write(quoteIfNeeded(e.getKey()));
-            for (java.util.Map<String, String> v : e.getValue())
+            for (Map<String, String> v : e.getValue())
             {
                 aOut.write(' ');
                 String name = v.getOrDefault("name", "");
@@ -1087,7 +1188,7 @@ public final class RuleTestCdt
     {
         Integer row = null;
         Severity severity = null;
-        java.util.Map<String, String> constraints = new java.util.LinkedHashMap<>();
+        Map<String, String> constraints = new java.util.LinkedHashMap<>();
         for (int i = 1; i < aTokens.size(); i++)
         {
             String tok = aTokens.get(i);
@@ -1391,10 +1492,10 @@ public final class RuleTestCdt
      * contain at least one {@code '='}; the split is on the <em>first</em> {@code '='} so values
      * may themselves contain {@code '='}. A token without {@code '='} is a directive error.
      */
-    private static java.util.Map<String, String> parseKeyValues(List<String> aToks, String aSource,
+    private static Map<String, String> parseKeyValues(List<String> aToks, String aSource,
             int aLineIdx, String aKind)
     {
-        java.util.Map<String, String> m = new java.util.LinkedHashMap<>();
+        Map<String, String> m = new java.util.LinkedHashMap<>();
         for (String tok : aToks)
         {
             int eq = tok.indexOf('=');
@@ -1431,7 +1532,7 @@ public final class RuleTestCdt
     private interface VarListFn
     {
 
-        void apply(String aDomain, List<java.util.Map<String, String>> aVars);
+        void apply(String aDomain, List<Map<String, String>> aVars);
     }
 
     private static void applyVarList(VarListFn aFn, List<String> aRest, String aSource,
@@ -1443,7 +1544,7 @@ public final class RuleTestCdt
                     + (aKind.startsWith("model-class") ? "class" : "domain"));
         }
         String domain = aRest.get(0);
-        List<java.util.Map<String, String>> vars = new ArrayList<>();
+        List<Map<String, String>> vars = new ArrayList<>();
         for (int i = 1; i < aRest.size(); i++)
         {
             String tok = aRest.get(i);
@@ -1457,6 +1558,52 @@ public final class RuleTestCdt
                     tok.substring(colon + 1)));
         }
         aFn.apply(domain, vars);
+    }
+
+
+    /**
+     * Parse a CT package id list directive ({@code #ct-packages} / {@code #ct-available}, define-ct
+     * plan P6). {@code #ct-available} additionally accepts the single token {@code none}, meaning
+     * "the store holds no CT package at all" (an empty list) — spelled out because an id-less
+     * {@code #ct-available} line would be indistinguishable from an authoring slip.
+     */
+    private static List<String> parseCtIdListPayload(List<String> aTokens, String aLabel,
+            boolean aAllowNone, String aSource, int aLineIdx)
+    {
+        if (aTokens.size() < 2)
+        {
+            throw error(aSource, aLineIdx,
+                    aLabel + " expects at least one CT package id"
+                            + (aAllowNone ? " (or the single token 'none')" : "")
+                            + "; omit the directive entirely for a blank field");
+        }
+        List<String> ids = aTokens.subList(1, aTokens.size());
+        if (aAllowNone && ids.size() == 1 && "none".equals(ids.get(0)))
+        {
+            return List.of();
+        }
+        for (String id : ids)
+        {
+            if ("none".equals(id))
+            {
+                throw error(aSource, aLineIdx,
+                        aLabel + ": 'none' must be the only token when used");
+            }
+        }
+        return List.copyOf(ids);
+    }
+
+
+    /** Parse a directive carrying exactly one (possibly quoted) value. */
+    private static String parseSingleValuePayload(List<String> aTokens, String aLabel,
+            String aSource, int aLineIdx)
+    {
+        if (aTokens.size() != 2)
+        {
+            throw error(aSource, aLineIdx,
+                    aLabel + " expects exactly one (quoted) value, got " + (aTokens.size() - 1));
+        }
+        return aTokens.get(1);
     }
 
 

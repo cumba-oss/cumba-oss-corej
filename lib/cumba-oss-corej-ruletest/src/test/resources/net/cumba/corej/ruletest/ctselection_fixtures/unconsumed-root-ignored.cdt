@@ -1,0 +1,11 @@
+#!RuleTest
+#test CT-RUN-1 expect=violation domain=VS
+#note §4.5.1 — the define also declares a CDASH CT this SDTM run never consumes, and that package is deliberately ABSENT from the store: an unconsumed-root declared package is never named, so it is ignored silently — no abort, no mismatch note. That asymmetry (a user-typed unusable-root id aborts, a define-derived one does not) is the decided design.
+#define-xml define-21-cdash-and-sdtm.xml
+#ct-available sdtmct-2024-09-27
+#expectViolationCount 1
+dataset VS
+col VSSTAT type=Char
+---
+BOGUS
+---

@@ -8,6 +8,7 @@ import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.corej.core.expr.ast.Expr;
+import net.cumba.corej.core.metadata.LibraryVariableAttributes;
 import net.cumba.corej.core.metadata.SdtmObservationClasses;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.OperationType;
@@ -140,7 +141,104 @@ public final class OperationExpressionParser
         validateMissingValues(op);
         validateKeepMissings(op);
         validateModelClass(op);
+        validateKeyName(op);
         return op;
+    }
+
+
+    /**
+     * Rejects a {@code key_name:} declaration that can never match anything, on the same
+     * {@code loadError} channel as {@link #validateMissingValues}.
+     *
+     * <p>
+     * <b>Silent under-report is this field's failure mode, and it has already cost a shipped
+     * rule.</b> {@code FDA-SD1078} was authored as
+     * {@code get_model_filtered_variables(key_name="core", key_value="Perm")} — a Model-level walk
+     * with a key that walk does not publish. {@code varRow.get("core")} was {@code null} for every
+     * variable, the filter matched nothing, {@code is_contained_by []} was always false and the
+     * rule could never fire: a 100 % under-report with no SKIP, no error and no log line. It was
+     * caught by a human reading metadata (corpus review R2, {@code OPS-MISC-03}), not by a test.
+     * </p>
+     *
+     * <p>
+     * Two rejections, both by allowlist:
+     * </p>
+     * <ol>
+     * <li><b>the operator</b> must be one that reads the field at all —
+     * {@code get_model_filtered_variables} and {@code get_dataset_filtered_variables} (the library
+     * variable filters) or {@code ts_parameter_value} (whose {@code key_name} is a <em>dataset
+     * column</em>, e.g. {@code TSPARMCD}, not a library attribute). ⚠⚠ Note what this catches:
+     * {@code get_column_order_from_library} <b>documents</b> {@code key_name}/{@code key_value} and
+     * the Python engine filters on them, but coreJ's arm never reads them — so a declaration there
+     * is not "empty", it is worse: the operation silently returns the <em>unfiltered</em> column
+     * order. Nothing else in the engine touches {@code Operation.getKeyName()};</li>
+     * <li><b>the value</b>, on the two library filters only, must be one of
+     * {@link LibraryVariableAttributes#KEYS} — the closed set of attribute keys any resolver
+     * populates a variable row with. ⚠ Since P3 widened the row that set is the full
+     * <em>scalar</em> field union, so the SEND authoring template's whole legal vocabulary
+     * ({@code definition} / {@code examples} / {@code notes} / {@code variableCcode} included) now
+     * loads. What remains rejected is a key outside it: the three list-valued stored fields
+     * ({@code valueList}, {@code codelistSubmissionValues}, {@code codelistIds}), which no row can
+     * carry because the row is {@code Map<String, String>} and the Python comparison against a list
+     * is always false — plus every typo. Such a key is published by no level, so the filter
+     * provably matches nothing on every dataset.</li>
+     * </ol>
+     *
+     * <p>
+     * ⛔ <b>What this deliberately does NOT reject is {@code core} on
+     * {@code get_model_filtered_variables}</b> — the very shape FDA-SD1078 got wrong. Measured in
+     * {@code MetadataLibraryProvider}: the Model walk publishes {@code core} for SUPP--/SQ--
+     * datasets (the cascade's tier A projects IG {@code SUPPQUAL} dataset variables, its tier C is
+     * the hard-coded RELATIONSHIP fallback) and for <em>every</em> ADaM dataset. Rejecting it at
+     * load would refuse rules that legitimately work. Whether the key is served is a per-dataset,
+     * per-level runtime fact, so that half is a runtime diagnostic —
+     * {@code OperationExecutor.warnUnservedKeyName} — which names the level, the dataset and the
+     * keys the resolved rows actually published, and which fires on every standard domain a rule of
+     * FDA-SD1078's shape is run against.
+     * </p>
+     *
+     * <p>
+     * Public and idempotent for the three-surface reason of {@link #validateMissingValues}: a
+     * field-form operation never reaches {@link #fromCall}, and an inline operation never reaches
+     * the rule's {@code Operations} list at all.
+     * </p>
+     *
+     * @param op
+     *            the operation to check
+     * @throws RuleDefinitionException
+     *             if the declaration can never match
+     */
+    public static void validateKeyName(Operation op)
+    {
+        String keyName = op.getKeyName();
+        if (keyName == null)
+        {
+            return;
+        }
+        OperationType type = OperationType.fromJson(op.getOperator());
+        if (type == OperationType.TS_PARAMETER_VALUE)
+        {
+            // T7's key_name names a column of the TS/TX dataset, not a library attribute — the
+            // library vocabulary below does not apply to it.
+            return;
+        }
+        if (type != OperationType.GET_MODEL_FILTERED_VARIABLES
+                && type != OperationType.GET_DATASET_FILTERED_VARIABLES)
+        {
+            throw new RuleDefinitionException(
+                    "`key_name` is not consumed by operation `" + op.getOperator() + "`; only `"
+                            + OperationType.GET_MODEL_FILTERED_VARIABLES.getJsonValue() + "`, `"
+                            + OperationType.GET_DATASET_FILTERED_VARIABLES.getJsonValue()
+                            + "` and `" + OperationType.TS_PARAMETER_VALUE.getJsonValue()
+                            + "` read it, so the filter would be silently dropped");
+        }
+        if (!LibraryVariableAttributes.KEYS.contains(keyName))
+        {
+            throw new RuleDefinitionException("`key_name` `" + keyName + "` on operation `"
+                    + op.getOperator() + "` is not an attribute of a library variable, so the"
+                    + " filter can never match; expected one of "
+                    + new java.util.TreeSet<>(LibraryVariableAttributes.KEYS));
+        }
     }
 
 

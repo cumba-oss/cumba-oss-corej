@@ -453,9 +453,10 @@ class RuleTestCdtEdgeCaseTest
                     #library codelist-extensible C66742 false""");
             RuleTestScenario s = RuleTestCdt.parse(content, "t");
 
-            assertFalse(s.getLibrary().isCodelistExtensible("C66742"));
-            // An unmentioned codelist still defaults to extensible=true.
-            assertTrue(s.getLibrary().isCodelistExtensible("C12345"));
+            assertEquals(java.util.Optional.of(Boolean.FALSE),
+                    s.getLibrary().isCodelistExtensible("C66742"));
+            // An unmentioned codelist is now ABSENT (F-corej-ct-02) — unresolvable, not "true".
+            assertEquals(java.util.Optional.empty(), s.getLibrary().isCodelistExtensible("C12345"));
         }
 
 
@@ -467,7 +468,8 @@ class RuleTestCdtEdgeCaseTest
                     #library codelist-extensible C66742 TRUE""");
             RuleTestScenario s = RuleTestCdt.parse(content, "t");
 
-            assertTrue(s.getLibrary().isCodelistExtensible("C66742"));
+            assertEquals(java.util.Optional.of(Boolean.TRUE),
+                    s.getLibrary().isCodelistExtensible("C66742"));
         }
 
 
@@ -804,7 +806,7 @@ class RuleTestCdtEdgeCaseTest
             assertEquals(2, lib.getModelVariablesForClass("EVENTS").size());
             assertEquals("Synonym Qualifier",
                     lib.getModelVariablesForClass("EVENTS").get(1).get("role"));
-            assertFalse(lib.isCodelistExtensible("C66742"));
+            assertEquals(java.util.Optional.of(Boolean.FALSE), lib.isCodelistExtensible("C66742"));
             assertEquals("Yes", lib.getCodelistTermMappings("NY").get("Y"));
             assertEquals("No", lib.getCodelistTermMappings("NY").get("N"));
             assertEquals("My Label", lib.getVariableMetadata("AE", "AETERM").get("label"));
@@ -879,7 +881,7 @@ class RuleTestCdtEdgeCaseTest
             assertEquals("Reported Term", lib.getVariableMetadata("AE", "AETERM").get("label"));
             assertEquals("C123", lib.getCodelistCodeMap("AE", "AEDECOD").get("Headache"));
             assertEquals(List.of("Y", "N"), lib.getCodelistTerms("NY"));
-            assertFalse(lib.isCodelistExtensible("NY"));
+            assertEquals(java.util.Optional.of(Boolean.FALSE), lib.isCodelistExtensible("NY"));
             assertEquals("Yes", lib.getCodelistTermMappings("NY").get("Y"));
         }
 
@@ -958,7 +960,7 @@ class RuleTestCdtEdgeCaseTest
             assertEquals("One record per event", lib.getDatasetMetadata("AE").get("structure"));
             assertEquals(1, lib.getDomainVariables("AE").size());
             assertEquals("Req", lib.getVariableMetadata("AE", "AETERM").get("core"));
-            assertFalse(lib.isCodelistExtensible("NY"));
+            assertEquals(java.util.Optional.of(Boolean.FALSE), lib.isCodelistExtensible("NY"));
         }
 
 

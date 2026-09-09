@@ -1,0 +1,11 @@
+#!RuleTest
+#test CT-RUN-1 expect=skipped domain=VS
+#note §4.4 row 3 — blank field, define declares SDTM CT 2023-12-15, store holds no CT: the DECLARED package is named-but-unavailable, so the run ABORTS naming it (ruling D3). Escapable via row 6: filling the field takes the declaration out of play.
+#define-xml define-21-sdtm-2023-12-15.xml
+#ct-available none
+#expect-abort "sdtmct-2023-12-15"
+dataset VS
+col VSSTAT type=Char
+---
+BOGUS
+---

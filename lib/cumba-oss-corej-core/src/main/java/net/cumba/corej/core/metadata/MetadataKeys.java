@@ -50,8 +50,11 @@ public final class MetadataKeys
     public static final String STANDARD_VERSION = "StandardVersion";
 
     /**
-     * {@code String} — the identifier of the CDISC CT package associated with the library, e.g.
-     * {@code "sdtmct-2024-03-29"}.
+     * {@code List<String>} — the precedence-winning CDISC CT package id per CT <b>root</b>, e.g.
+     * {@code ["sdtmct-2024-03-29"]} or {@code ["adamct-2024-03-29", "sdtmct-2024-03-29"]}
+     * (define-ct plan §4.3). Was a single {@code String} before the multi-package merge; no
+     * production reader existed at the shape change (verified 2026-09-08), only the writers in
+     * {@link CdiscLibraryMetadataLibrary}.
      *
      * @see IMetadataLibrary
      */

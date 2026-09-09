@@ -77,10 +77,11 @@ class MapBackedLibraryMetadataProviderTest
 
 
         @Test
-        void isCodelistExtensible_trueByDefault()
+        void isCodelistExtensible_absentByDefault()
         {
+            // F-corej-ct-02: an unknown codelist is unresolvable — absent, never defaulted true.
             MapBackedLibraryMetadataProvider p = MapBackedLibraryMetadataProvider.empty();
-            assertTrue(p.isCodelistExtensible("UnknownCodelist"));
+            assertEquals(java.util.Optional.empty(), p.isCodelistExtensible("UnknownCodelist"));
         }
 
 
@@ -253,9 +254,9 @@ class MapBackedLibraryMetadataProviderTest
             MapBackedLibraryMetadataProvider p = MapBackedLibraryMetadataProvider.builder()
                     .codelistExtensible("ny", false).build();
 
-            assertFalse(p.isCodelistExtensible("NY"));
-            // unknown codelists still default to true
-            assertTrue(p.isCodelistExtensible("OTHER"));
+            assertEquals(java.util.Optional.of(Boolean.FALSE), p.isCodelistExtensible("NY"));
+            // unknown codelists are absent (F-corej-ct-02)
+            assertEquals(java.util.Optional.empty(), p.isCodelistExtensible("OTHER"));
         }
 
 

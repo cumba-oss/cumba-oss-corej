@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ODM xmlns:def="http://www.cdisc.org/ns/def/v2.1" ODMVersion="1.3.2"
+     FileType="Snapshot" FileOID="DEF.CT" CreationDateTime="2026-01-01T00:00:00">
+  <Study OID="S1">
+    <MetaDataVersion OID="MDV.1" Name="CT selection scenarios" DefineVersion="2.1.0">
+      <def:Standards>
+        <def:Standard OID="STD.CT" Name="CDISC/NCI" Type="CT" PublishingSet="SDTM" Version="1999-01-01" Status="Final"/>
+      </def:Standards>
+    </MetaDataVersion>
+  </Study>
+</ODM>

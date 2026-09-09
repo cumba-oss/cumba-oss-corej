@@ -422,10 +422,11 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
 
 
     @Override
-    public boolean isCodelistExtensible(String aCodelistName)
+    public java.util.Optional<Boolean> isCodelistExtensible(String aCodelistName)
     {
-        // Default true when unknown (matches the interface JavaDoc).
-        return codelistExtensible.getOrDefault(up(aCodelistName), Boolean.TRUE);
+        // Empty when unknown (matches the interface contract, F-corej-ct-02) — an unresolvable
+        // codelist must stay distinguishable from a real answer, never default to extensible.
+        return java.util.Optional.ofNullable(codelistExtensible.get(up(aCodelistName)));
     }
 
 

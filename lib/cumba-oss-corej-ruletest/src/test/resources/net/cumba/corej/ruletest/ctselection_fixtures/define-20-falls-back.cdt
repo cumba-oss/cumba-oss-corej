@@ -1,0 +1,10 @@
+#!RuleTest
+#test CT-RUN-1 expect=skipped domain=VS
+#note §4.1 — Define-XML 2.0 has no def:Standards, so the declaration is structurally empty and a blank field falls back to row 1: run with no CT, rule SKIPs, no abort. The 2.0 path must not be regressed by 2.1-shaped fixes (plan §6).
+#define-xml define-20-no-standards.xml
+#ct-available none
+dataset VS
+col VSSTAT type=Char
+---
+BOGUS
+---

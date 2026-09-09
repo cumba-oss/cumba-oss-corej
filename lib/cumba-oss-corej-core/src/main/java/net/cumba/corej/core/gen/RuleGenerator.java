@@ -699,7 +699,16 @@ public class RuleGenerator
             String src = provider.getStandard() + " " + provider.getVersion() + ", " + domain + "."
                     + varName + ", codelist " + codelist;
 
-            if (provider.isCodelistExtensible(codelist))
+            java.util.Optional<Boolean> extensible = provider.isCodelistExtensible(codelist);
+            if (extensible.isEmpty())
+            {
+                // F-corej-ct-02: an unresolvable codelist is reported with its own reason rather
+                // than defaulting to "extensible" — the skip is the same, the diagnosis is not.
+                report.addSkipped(new SkippedRuleInfo(RuleCategory.CODELIST_VALUE, varName,
+                        "Codelist " + codelist + " cannot be resolved in the library"));
+                continue;
+            }
+            if (extensible.get())
             {
                 report.addSkipped(new SkippedRuleInfo(RuleCategory.CODELIST_VALUE, varName,
                         "Codelist " + codelist + " is extensible"));

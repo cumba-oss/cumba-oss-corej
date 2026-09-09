@@ -302,6 +302,10 @@ public final class ReportAssembler
         }
         putIfNotNull(m, "TIG_Use_Case", c.tigUseCase);
         m.put("CT_Version", c.ctVersion != null ? c.ctVersion : "");
+        // Define-ct plan §4.2 — present ONLY when the Define-XML's declared CT set diverges from
+        // what the run used, so no healthy report gains a key (the Library_Metadata_Basis /
+        // Dictionary_Basis precedent). A property of the run, never a finding on the data.
+        putIfNotNull(m, "CT_Declaration_Mismatch", c.ctDeclarationMismatch);
         putIfNotNull(m, "Define_XML_Version", c.defineXmlVersion);
         // Fix #369 — present ONLY on a run whose CDISC Library could not be consulted, so no
         // healthy report gains a key and the frozen v1 shape is unchanged for every existing
@@ -995,8 +999,8 @@ public final class ReportAssembler
     /**
      * ⛔⛔ <b>Both authority shapes, and neither may be assumed absent.</b> A released package
      * carries the flat {@code Rule_Ids} and no {@code Standards} at all
-     * ({@code ReleaseShapeTrimmer}); the authored source, the CDISC-Library ingestion path
-     * ({@code LibraryRuleMapper}) and the rule editor carry the nested tree and no
+     * ({@code ReleaseShapeTrimmer}); the authored source, the retired CDISC-Library ingestion path
+     * ({@code LibraryRuleMapper}, cache P4) and the rule editor carry the nested tree and no
      * {@code Rule_Ids}. This method used to {@code return} on a null {@code Standards}, which
      * silently blanked both report columns for every released rule — no exception, no log, because
      * an unbound {@code Rule_Ids} key is swallowed by {@code Rule}'s {@code @JsonAnySetter} and
@@ -1091,6 +1095,8 @@ public final class ReportAssembler
 
         private final @Nullable String ctVersion;
 
+        private final @Nullable String ctDeclarationMismatch;
+
         private final @Nullable String defineXmlVersion;
 
         private final @Nullable String libraryMetadataBasis;
@@ -1123,6 +1129,7 @@ public final class ReportAssembler
             version = b.version;
             tigUseCase = b.tigUseCase;
             ctVersion = b.ctVersion;
+            ctDeclarationMismatch = b.ctDeclarationMismatch;
             defineXmlVersion = b.defineXmlVersion;
             libraryMetadataBasis = b.libraryMetadataBasis;
             uniiVersion = b.uniiVersion;
@@ -1144,6 +1151,18 @@ public final class ReportAssembler
         public @Nullable String dictionaryBasis()
         {
             return dictionaryBasis;
+        }
+
+
+        /**
+         * Define-ct plan §4.2 — the run-level CT declaration mismatch note, or {@code null} (the
+         * normal case) when the Define-XML declares no CT packages or declaration and selection
+         * agree. Exposed for the run surfaces (P7: CLI stderr, REST projection) the same way as
+         * {@link #dictionaryBasis()}.
+         */
+        public @Nullable String ctDeclarationMismatch()
+        {
+            return ctDeclarationMismatch;
         }
 
 
@@ -1174,6 +1193,8 @@ public final class ReportAssembler
             private @Nullable String tigUseCase;
 
             private @Nullable String ctVersion;
+
+            private @Nullable String ctDeclarationMismatch;
 
             private @Nullable String defineXmlVersion;
 
@@ -1261,6 +1282,18 @@ public final class ReportAssembler
             public Builder ctVersion(@Nullable String s)
             {
                 ctVersion = s;
+                return this;
+            }
+
+
+            /**
+             * Define-ct plan §4.2 — the run-level CT declaration mismatch note ("define declares X;
+             * run used Y"), or {@code null} (the normal case) when the define declares no CT
+             * packages or declaration and selection agree.
+             */
+            public Builder ctDeclarationMismatch(@Nullable String s)
+            {
+                ctDeclarationMismatch = s;
                 return this;
             }
 

@@ -1258,9 +1258,9 @@ class OperationExecutorTest
 
 
             @Override
-            public boolean isCodelistExtensible(String cl)
+            public java.util.Optional<Boolean> isCodelistExtensible(String cl)
             {
-                return true;
+                return java.util.Optional.of(true);
             }
 
 

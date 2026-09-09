@@ -1821,9 +1821,9 @@ class RuleGeneratorTest
 
 
         @Override
-        public boolean isCodelistExtensible(String cl)
+        public java.util.Optional<Boolean> isCodelistExtensible(String cl)
         {
-            return !"SEX".equals(cl); // SEX is non-extensible in mock
+            return java.util.Optional.of(!"SEX".equals(cl)); // SEX is non-extensible in mock
         }
 
 

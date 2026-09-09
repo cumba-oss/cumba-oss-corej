@@ -127,6 +127,45 @@ public class RuleTestScenario
     net.cumba.datatable.report.@Nullable Severity runLevel;
 
     /**
+     * The run's {@code CT Packages} field for a <b>run-level</b> CT-selection scenario, from a
+     * {@code #ct-packages} directive (define-ct plan P6), or {@code null} when the directive is
+     * absent — which means a BLANK field (§4.4 rows 1–3), not "unspecified". Ignored by the
+     * rule-level corpus runner; consumed by the run-level scenario runner
+     * ({@code CtSelectionScenarioTest}), which passes it as the run's
+     * {@code controlledTerminologyPackages}.
+     */
+    @Nullable
+    List<String> ctPackages;
+
+    /**
+     * The CT packages the run's metadata store holds, from a {@code #ct-available} directive — the
+     * §4.4 availability axis. Empty for {@code #ct-available none} (a store holding no CT package
+     * at all); {@code null} when the directive is absent, in which case the run-level runner seeds
+     * every package the scenario references (field and declaration alike), so only a scenario that
+     * pins availability exercises the missing-package rows.
+     */
+    @Nullable
+    List<String> ctAvailable;
+
+    /**
+     * Expected run-abort message substring from {@code #expect-abort} (§4.4 rows 3 and 5), or
+     * {@code null} when the run must complete. When present the {@code #test} verdict is not
+     * evaluated — the run aborts before any rule executes — and the parser therefore requires it to
+     * be spelled {@code expect=skipped}, the honest reading of "this rule did not run".
+     */
+    @Nullable
+    String expectAbort;
+
+    /**
+     * Expected substring of the run-level {@code CT_Declaration_Mismatch} note (§4.2) from
+     * {@code #expect-ct-mismatch}; {@code null} asserts the completed run carries NO note. Not
+     * meaningful together with {@code #expect-abort} (an aborted run has no report) — the parser
+     * rejects the combination.
+     */
+    @Nullable
+    String expectCtMismatch;
+
+    /**
      * The dataset whose name equals {@code getDomain()} (case-insensitive).
      *
      * @return the primary table, or {@code null} if the domain does not match any declared dataset

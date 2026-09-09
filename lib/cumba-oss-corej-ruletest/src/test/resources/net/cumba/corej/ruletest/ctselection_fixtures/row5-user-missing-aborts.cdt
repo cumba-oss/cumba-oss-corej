@@ -1,0 +1,11 @@
+#!RuleTest
+#test CT-RUN-1 expect=skipped domain=VS
+#note §4.4 row 5 — populated field, a user-selected package the store does not hold: named-but-unavailable, so the run ABORTS naming it (ruling D3) instead of silently substituting an empty vocabulary.
+#ct-packages sdtmct-2023-12-15
+#ct-available none
+#expect-abort "sdtmct-2023-12-15"
+dataset VS
+col VSSTAT type=Char
+---
+BOGUS
+---
