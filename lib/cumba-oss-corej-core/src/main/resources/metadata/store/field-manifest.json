@@ -1,0 +1,163 @@
+{
+  "manifest": "metadata store reachable-field manifest",
+  "formatVersion": 2,
+  "frozen": "2026-09-08",
+  "authority": "databrowser-meta plans/AUDIT-metadata-reachable-fields.md sections 2 and 3 (the TABLES, never the prose counts)",
+  "guardedBy": "net.cumba.corej.core.metadata.store.seed.StoreFieldManifestTest",
+  "purpose": [
+    "Data only: the argument for every row lives in the audit and is not repeated here.",
+    "This file freezes WHAT the store carries, at every level, with the TYPE of each slot.",
+    "It exists because the store had already been silently narrowed once: `examples` was",
+    "typed List<String> against an array-only reader, so the field was dropped from every",
+    "seeded store while a fixture-fed round-trip test stayed green (fixed in 948647c,",
+    "StoreFormat.FORMAT_VERSION 1 -> 2)."
+  ],
+  "typeVocabulary": {
+    "scalar": "record component String",
+    "boolean": "record component Boolean",
+    "list": "record component List<String>",
+    "nested": "record component List<the record of the level named by `element`>"
+  },
+  "reachedByVocabulary": {
+    "both": "read by coreJ and by the Python engine",
+    "coreJ": "read by coreJ only",
+    "python": "read by the Python engine only",
+    "neither": "read by neither - stored as future-proofing, and a re-seed cannot be pushed to users retroactively"
+  },
+  "fieldKeys": {
+    "field": "the record component name",
+    "type": "from typeVocabulary",
+    "source": "the key in the source metadata JSON; omitted when identical to `field`",
+    "sourceless": "true when no source key feeds it (the store's own identity slots)",
+    "transformed": "true when the projection rewrites the value, so it is not equal to its source text",
+    "element": "for `nested`: the level the elements belong to",
+    "reached-by": "from reachedByVocabulary",
+    "note": "a pointer, never an argument"
+  },
+  "levels": [
+    {
+      "level": "term",
+      "record": "net.cumba.corej.core.metadata.store.StoredTerm",
+      "audit": "section 2",
+      "fields": [
+        { "field": "submissionValue", "type": "scalar", "reached-by": "both" },
+        { "field": "conceptId", "type": "scalar", "reached-by": "both" },
+        { "field": "preferredTerm", "type": "scalar", "reached-by": "both" },
+        { "field": "definition", "type": "scalar", "reached-by": "neither", "note": "audit section 2.1 - owner ruling: stored though unread" },
+        { "field": "synonyms", "type": "list", "reached-by": "neither", "note": "audit section 2.1 - owner ruling: stored though unread" }
+      ]
+    },
+    {
+      "level": "codelist",
+      "record": "net.cumba.corej.core.metadata.store.StoredCodelist",
+      "audit": "section 2",
+      "fields": [
+        { "field": "submissionValue", "type": "scalar", "reached-by": "both" },
+        { "field": "conceptId", "type": "scalar", "reached-by": "both" },
+        { "field": "preferredTerm", "type": "scalar", "reached-by": "both", "note": "audit section 2 records coreJ as not reaching it; PLAN-codelist-terms-returntype.md section 4.4 landed the reach (CODELIST_PREFERRED_TERM)" },
+        { "field": "definition", "type": "scalar", "reached-by": "neither", "note": "audit section 2.1 - owner ruling: stored though unread" },
+        { "field": "synonyms", "type": "list", "reached-by": "neither", "note": "audit section 2.1 - owner ruling: stored though unread" },
+        { "field": "extensible", "type": "boolean", "reached-by": "both", "note": "the engine's own Boolean, not the API's string (plan section 5.1)" },
+        { "field": "terms", "type": "nested", "element": "term", "reached-by": "both" }
+      ]
+    },
+    {
+      "level": "ctPackage",
+      "record": "net.cumba.corej.core.metadata.store.StoredCtPackage",
+      "audit": "sections 2, 4 and 6",
+      "entry": "ctPackage",
+      "fields": [
+        { "field": "id", "type": "scalar", "sourceless": true, "reached-by": "both", "note": "audit section 6 - four independent run-time paths resolve a package by id" },
+        { "field": "codelists", "type": "nested", "element": "codelist", "reached-by": "both" }
+      ]
+    },
+    {
+      "level": "variable",
+      "record": "net.cumba.corej.core.metadata.store.StoredVariable",
+      "audit": "sections 1, 3 and 3.1",
+      "fields": [
+        { "field": "name", "type": "scalar", "reached-by": "both" },
+        { "field": "label", "type": "scalar", "reached-by": "both" },
+        { "field": "ordinal", "type": "scalar", "reached-by": "both" },
+        { "field": "core", "type": "scalar", "reached-by": "both" },
+        { "field": "role", "type": "scalar", "reached-by": "both" },
+        { "field": "simpleDatatype", "type": "scalar", "reached-by": "both" },
+        { "field": "description", "type": "scalar", "reached-by": "both", "note": "audit section 1 answers A-1: keep" },
+        { "field": "valueList", "type": "list", "reached-by": "coreJ", "note": "structural read (ApiModelProjection); outside LibraryVariableAttributes.KEYS - a list can never equal a scalar key_value (audit section 1)" },
+        { "field": "describedValueDomain", "type": "scalar", "reached-by": "both" },
+        { "field": "codelistSubmissionValues", "type": "list", "reached-by": "coreJ", "note": "structural read (ApiModelProjection); outside LibraryVariableAttributes.KEYS (audit section 1)" },
+        { "field": "roleDescription", "type": "scalar", "reached-by": "both" },
+        { "field": "definition", "type": "scalar", "reached-by": "both" },
+        { "field": "notes", "type": "scalar", "reached-by": "both" },
+        { "field": "examples", "type": "scalar", "reached-by": "both", "note": "SCALAR. Audit section 3 listed it as list-valued and that error dropped the field from every seeded store - this row is the one this manifest most exists for" },
+        { "field": "usageRestrictions", "type": "scalar", "reached-by": "both" },
+        { "field": "variableCcode", "type": "scalar", "reached-by": "both" },
+        { "field": "codelistIds", "type": "list", "source": "_links.codelist[].href", "transformed": true, "reached-by": "coreJ", "note": "audit section 3 correction - _links.codelist is an ARRAY; each ref reduced to its trailing id segment" }
+      ]
+    },
+    {
+      "level": "dataset",
+      "record": "net.cumba.corej.core.metadata.store.StoredDataset",
+      "audit": "section 3",
+      "fields": [
+        { "field": "name", "type": "scalar", "reached-by": "both" },
+        { "field": "label", "type": "scalar", "reached-by": "both" },
+        { "field": "ordinal", "type": "scalar", "reached-by": "both" },
+        { "field": "datasetStructure", "type": "scalar", "reached-by": "both" },
+        { "field": "variables", "type": "nested", "element": "variable", "source": "datasetVariables", "reached-by": "both" }
+      ]
+    },
+    {
+      "level": "class",
+      "record": "net.cumba.corej.core.metadata.store.StoredClass",
+      "audit": "section 3",
+      "fields": [
+        { "field": "name", "type": "scalar", "reached-by": "both" },
+        { "field": "label", "type": "scalar", "reached-by": "both" },
+        { "field": "ordinal", "type": "scalar", "reached-by": "both" },
+        { "field": "classVariables", "type": "nested", "element": "variable", "reached-by": "both" },
+        { "field": "datasets", "type": "nested", "element": "dataset", "reached-by": "both" }
+      ]
+    },
+    {
+      "level": "variableSet",
+      "record": "net.cumba.corej.core.metadata.store.StoredVariableSet",
+      "audit": "section 3",
+      "fields": [
+        { "field": "name", "type": "scalar", "reached-by": "coreJ", "note": "audit section 3 names analysisVariableSets structurally without listing the set's own name/label/ordinal; coreJ carries all three (ApiModelProjection)" },
+        { "field": "label", "type": "scalar", "reached-by": "coreJ" },
+        { "field": "ordinal", "type": "scalar", "reached-by": "coreJ" },
+        { "field": "variables", "type": "nested", "element": "variable", "source": "analysisVariables", "reached-by": "both" }
+      ]
+    },
+    {
+      "level": "dataStructure",
+      "record": "net.cumba.corej.core.metadata.store.StoredDataStructure",
+      "audit": "section 3",
+      "fields": [
+        { "field": "name", "type": "scalar", "reached-by": "coreJ", "note": "audit section 3 lists only className/subClass/analysisVariableSets; coreJ carries name/label/ordinal too (ApiModelProjection)" },
+        { "field": "label", "type": "scalar", "reached-by": "coreJ" },
+        { "field": "ordinal", "type": "scalar", "reached-by": "coreJ" },
+        { "field": "className", "type": "scalar", "source": "class", "reached-by": "both" },
+        { "field": "subClass", "type": "scalar", "reached-by": "both" },
+        { "field": "variableSets", "type": "nested", "element": "variableSet", "source": "analysisVariableSets", "reached-by": "both" }
+      ]
+    },
+    {
+      "level": "product",
+      "record": "net.cumba.corej.core.metadata.store.StoredProduct",
+      "audit": "section 3",
+      "entry": "product",
+      "fields": [
+        { "field": "key", "type": "scalar", "sourceless": true, "reached-by": "coreJ", "note": "the catalogue key the store files the product under; not a published source field" },
+        { "field": "name", "type": "scalar", "reached-by": "both" },
+        { "field": "label", "type": "scalar", "reached-by": "both" },
+        { "field": "version", "type": "scalar", "reached-by": "both" },
+        { "field": "modelHref", "type": "scalar", "source": "_links.model.href", "reached-by": "coreJ", "note": "the one surviving product link (audit section 3); everything else under _links is dropped" },
+        { "field": "classes", "type": "nested", "element": "class", "reached-by": "both" },
+        { "field": "datasets", "type": "nested", "element": "dataset", "reached-by": "both", "note": "top-level model datasets - confirmed against standards_models.pkl during P1, implied by neither the audit nor the plan" },
+        { "field": "dataStructures", "type": "nested", "element": "dataStructure", "reached-by": "both" }
+      ]
+    }
+  ]
+}

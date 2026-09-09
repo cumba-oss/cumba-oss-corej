@@ -100,6 +100,50 @@ class ProviderRequirementsTest
 
 
     /**
+     * Surface 2b — a metadata <b>accessor call</b> naming its level, {@code var_*(…, "LIBRARY")} /
+     * {@code var_*(…, "DEFINE")} — the corpus's dominant operand form, and the one this derivation
+     * was blind to until {@code plans/PLAN-metadata-cache-unification.md} P0b.
+     *
+     * <p>
+     * ⚠⚠ The three fixtures are the <b>literal Check expressions</b> of shipped rules that derived
+     * {@code Library}/{@code Define} = <b>false</b> before P0b: {@code CDISC-SEND-0014}
+     * ({@code var_core("LIBRARY")} beside {@code var_*("DEFINE")}), {@code FDA-CT2003}
+     * ({@code library_variable_code_pair_matches}) and {@code FDA-SD1228} ({@code vlm_*}). Measured
+     * over the shipped corpus on 2026-09-08: <b>6</b> rules gained {@code library} and <b>18</b>
+     * gained {@code define}. Copy the expressions rather than simplifying them — a reduced fixture
+     * would still pass through the {@code library_*}-prefix arm and stop discriminating.
+     * </p>
+     */
+    @Test
+    @DisplayName("surface 2b — a var_*(\"LIBRARY\") / vlm_* accessor CALL (P0b)")
+    void metadataAccessorCallSurface() throws IOException
+    {
+        // CDISC-SEND-0014, verbatim.
+        ProviderRequirements send0014 = of("\"Variable_Universe\":\"Define\","
+                + "\"Check\":{\"expression\":\"not empty(var_name(\\\"DEFINE\\\")) and "
+                + "var_core(\\\"LIBRARY\\\") == \\\"Exp\\\" and "
+                + "max_value_length(variable_name) == 0 and "
+                + "var_has_comment(\\\"DEFINE\\\") == false\"}");
+        assertTrue(send0014.library(),
+                "var_core(\"LIBRARY\") reads the CDISC Library — CDISC-SEND-0014");
+        assertTrue(send0014.define(), "var_name(\"DEFINE\") reads the sponsor Define-XML");
+        assertFalse(send0014.dictionary());
+
+        // FDA-CT2003 / PMDA-CT2003, verbatim — the E9 paired code/decode call.
+        ProviderRequirements ct2003 = of("\"Check\":{\"expression\":\"not empty(value()) and "
+                + "library_variable_code_pair_matches(variable_name) == false\"}");
+        assertTrue(ct2003.library(), "the paired code/decode match reads library codelists");
+
+        // FDA-SD1228, verbatim — value-level metadata is Define-XML.
+        ProviderRequirements sd1228 = of("\"Check\":{\"expression\":\"not empty(value()) and "
+                + "vlm_has_codelist(variable_name) == true and "
+                + "value() not in vlm_codelist_coded_values(variable_name)\"}");
+        assertTrue(sd1228.define(), "vlm_* reads Define-XML value-level metadata");
+        assertFalse(sd1228.library());
+    }
+
+
+    /**
      * Surface 3 — an <b>inlined</b> operation call in the Check expression, which the loader gates
      * with an injected {@code Precondition} rather than an {@code Operations} entry.
      *
@@ -170,6 +214,57 @@ class ProviderRequirementsTest
                 + "\"Check\":{\"all\":[{\"name\":\"$r\",\"operator\":\"empty\"}]}");
         rule.setCheckExpr(null);
         assertTrue(ProviderRequirements.of(rule).library());
+    }
+
+
+    /** Overrides the fixture's shared {@code Core.Id} so a forecast can name individual rules. */
+    private static void id(Rule rule, String coreId)
+    {
+        assertNotNull(rule.getCore());
+        rule.getCore().setId(coreId);
+        assertEquals(coreId, rule.effectiveId());
+    }
+
+
+    /**
+     * &#167;6.1 gap 2 — the skip decided <b>up front</b>. The counts are what a run reports (<em>"N
+     * rules skipped: no metadata cache"</em>) before it validates anything.
+     */
+    @Test
+    @DisplayName("the forecast counts dependents and names only what will actually skip")
+    void skipForecast() throws IOException
+    {
+        Rule libraryOnly = load("\"Check\":{\"Id\":\"x\",\"expression\":"
+                + "\"var_core(\\\"LIBRARY\\\") == \\\"Exp\\\"\"}");
+        id(libraryOnly, "R-LIB");
+        Rule defineOnly = load(
+                "\"Check\":{\"expression\":" + "\"var_has_comment(\\\"DEFINE\\\") == false\"}");
+        id(defineOnly, "R-DEF");
+        Rule both = load("\"Check\":{\"expression\":\"var_core(\\\"LIBRARY\\\") == "
+                + "var_core(\\\"DEFINE\\\")\"}");
+        id(both, "R-BOTH");
+        Rule neither = load("\"Check\":{\"expression\":\"record_count() == 0\"}");
+        id(neither, "R-NONE");
+        java.util.List<Rule> rules = java.util.List.of(libraryOnly, defineOnly, both, neither);
+
+        ProviderRequirements.SkipForecast nothingAvailable = ProviderRequirements.forecast(rules,
+                false, false);
+        assertEquals(2, nothingAvailable.libraryDependent());
+        assertEquals(2, nothingAvailable.defineDependent());
+        assertEquals(java.util.List.of("R-BOTH", "R-LIB"), nothingAvailable.library());
+        assertEquals(java.util.List.of("R-BOTH", "R-DEF"), nothingAvailable.define());
+        assertEquals(3, nothingAvailable.skippedRuleCount(),
+                "R-BOTH needs two providers but is ONE skipped rule");
+
+        ProviderRequirements.SkipForecast libraryOk = ProviderRequirements.forecast(rules, true,
+                false);
+        assertEquals(2, libraryOk.libraryDependent(),
+                "the dependent count is provider-independent");
+        assertTrue(libraryOk.library().isEmpty(), "an answerable library skips nothing");
+        assertEquals(2, libraryOk.skippedRuleCount());
+
+        ProviderRequirements.SkipForecast allOk = ProviderRequirements.forecast(rules, true, true);
+        assertEquals(0, allOk.skippedRuleCount(), "a fully provisioned run forecasts no skip");
     }
 
 
