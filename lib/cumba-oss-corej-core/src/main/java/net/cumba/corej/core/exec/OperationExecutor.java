@@ -18,6 +18,7 @@ import java.util.stream.Stream;
 import lombok.CustomLog;
 import net.cumba.corej.core.expr.eval.IsoDateBounds;
 import net.cumba.corej.core.gen.WildcardExpander;
+import net.cumba.corej.core.metadata.LibraryVariableAttributes;
 import net.cumba.corej.core.metadata.MetadataKeys;
 import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
 import net.cumba.corej.core.model.Operation;
@@ -4523,9 +4524,61 @@ public final class OperationExecutor
         // natural_key_variables and the EC-40 record-key NATURAL tier.
         String keyName = op.getKeyName();
         String keyValue = op.getKeyValue();
-        return degradedAnswerOrSkip(provider, op, ruleId, StandardVariableSelector.select(provider,
-                table, resolver,
-                varRow -> keyName == null || Objects.equals(varRow.get(keyName), keyValue)));
+        return degradedAnswerOrSkip(provider, op, ruleId,
+                StandardVariableSelector.select(provider, table, resolver,
+                        varRow -> keyName == null || Objects.equals(varRow.get(keyName), keyValue),
+                        rows -> warnUnservedKeyName(keyName, rows,
+                                OperationType.GET_DATASET_FILTERED_VARIABLES, table, ruleId)));
+    }
+
+
+    /**
+     * ⭐ The FDA-SD1078 diagnostic. Warns when a {@code key_name} filter is running against variable
+     * rows that <b>carry no such key at all</b> — the difference between "the filter matched
+     * nothing" (the key is served; no variable holds that value) and "this level cannot serve this
+     * key" (the filter could never match, on any data, for any {@code key_value}).
+     *
+     * <p>
+     * The load-time guard ({@code OperationExpressionParser.validateKeyName}) rejects a key
+     * <em>no</em> level can serve. It deliberately cannot reject {@code core} on
+     * {@code get_model_filtered_variables} — the exact shape FDA-SD1078 got wrong — because the
+     * Model walk <em>does</em> publish {@code core} for SUPP--/SQ-- datasets and for every ADaM
+     * dataset (see {@link LibraryVariableAttributes}). Servability there is a per-dataset runtime
+     * fact, so this is where it is reported: on a standard SDTM domain a rule of FDA-SD1078's shape
+     * logs on every dataset it touches, while the same operation on a SUPP domain stays silent.
+     * </p>
+     *
+     * <p>
+     * A warning, not a SKIP: the verdict is deliberately unchanged, so landing the diagnostic moves
+     * no findings. Escalating it is a separate, owner-visible decision.
+     * </p>
+     *
+     * @param aKeyName
+     *            the declared {@code key_name}; {@code null} means no filter and nothing to warn
+     *            about
+     * @param aRows
+     *            the resolved variable rows the filter is about to run over
+     * @param aType
+     *            the operation, which is what names the metadata level in the message
+     * @param aTable
+     *            the dataset being validated
+     * @param aRuleId
+     *            the rule, for the log line
+     */
+    static void warnUnservedKeyName(@Nullable String aKeyName, List<Map<String, String>> aRows,
+            OperationType aType, @Nullable IDataTable aTable, @Nullable String aRuleId)
+    {
+        if (aKeyName == null || aRows.isEmpty()
+                || LibraryVariableAttributes.carriedByAny(aRows, aKeyName))
+        {
+            return;
+        }
+        LOGGER.log(System.Logger.Level.WARNING,
+                "[{0}] {1}: key_name `{2}` is carried by none of the {3} variables resolved for"
+                        + " dataset {4} — the filter can never match. This level publishes {5}.",
+                aRuleId != null ? aRuleId : "?", aType.getJsonValue(), aKeyName, aRows.size(),
+                aTable != null ? aTable.getMetaData().getName() : "?",
+                LibraryVariableAttributes.publishedKeys(aRows));
     }
 
 
@@ -4659,6 +4712,8 @@ public final class OperationExecutor
                 .requireNonNullElse(variableWildcardPrefix(table, domainPrefix(table)), "");
         String keyName = op.getKeyName();
         String keyValue = op.getKeyValue();
+        warnUnservedKeyName(keyName, source, OperationType.GET_MODEL_FILTERED_VARIABLES, table,
+                ruleId);
         List<String> out = new ArrayList<>();
         for (Map<String, String> varRow : source)
         {

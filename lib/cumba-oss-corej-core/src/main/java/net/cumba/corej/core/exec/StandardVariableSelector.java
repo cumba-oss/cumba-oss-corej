@@ -5,10 +5,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 import net.cumba.corej.core.metadata.CdiscDomainResolver;
 import net.cumba.datatable.IDataTable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Shared resolution of a dataset's <em>standard</em> (CDISC Library) variables, filtered by an
@@ -85,6 +87,29 @@ final class StandardVariableSelector
     static List<String> select(MetadataProvider provider, IDataTable table,
             DatasetResolver resolver, Predicate<Map<String, String>> filter)
     {
+        return select(provider, table, resolver, filter, null);
+    }
+
+
+    /**
+     * As {@link #select(MetadataProvider, IDataTable, DatasetResolver, Predicate)}, but hands the
+     * resolved variable rows to {@code sourceInspector} before filtering them.
+     *
+     * <p>
+     * The inspector exists for the {@code key_name} diagnostic
+     * ({@code OperationExecutor.warnUnservedKeyName}): whether the level serves the declared key is
+     * a property of these rows, and only this method knows which of the two sources (the
+     * class-aware resolver or the legacy per-domain fallback) actually answered. It is invoked
+     * once, after the source is known to be non-empty, and must not mutate the rows.
+     * </p>
+     *
+     * @param sourceInspector
+     *            observer of the resolved rows, or {@code null} for none
+     */
+    static List<String> select(MetadataProvider provider, IDataTable table,
+            DatasetResolver resolver, Predicate<Map<String, String>> filter,
+            @Nullable Consumer<List<Map<String, String>>> sourceInspector)
+    {
         List<Map<String, String>> source = provider.getStandardVariablesDetailed(table, resolver);
         boolean fromResolver = source != null;
         if (!fromResolver)
@@ -96,6 +121,10 @@ final class StandardVariableSelector
         if (source == null || source.isEmpty())
         {
             return List.of();
+        }
+        if (sourceInspector != null)
+        {
+            sourceInspector.accept(source);
         }
         // EC-36: variable names -> variable prefix; "" for SUPP, AP suffix for AP.
         String prefix = Objects.requireNonNullElse(OperationExecutor.variableWildcardPrefix(table,
