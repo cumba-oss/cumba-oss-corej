@@ -28,6 +28,11 @@
 *.sh     text eol=lf
 *.svg    text eol=lf
 
+# .cdt scenario fixtures are text and MUST stay LF. The engine's rule suites
+# read them byte-for-byte; a CRLF checkout corrupts them silently. 14 of them
+# are tracked here, and all are LF today (verified 2026-09-09).
+*.cdt    text eol=lf
+
 # Windows-specific scripts — keep CRLF so they run correctly on Windows.
 *.bat    text eol=crlf
 *.cmd    text eol=crlf
