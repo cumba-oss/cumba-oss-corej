@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -169,6 +170,6 @@ class WebApiStoreSeederTest
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("_links", Map.of("packages", links));
         new GzipFileApiCache(cacheDir.toAbsolutePath(), ".json").write("/api/mdr/ct/packages",
-                MAPPER.writeValueAsString(body));
+                MAPPER.writeValueAsString(body).getBytes(StandardCharsets.UTF_8));
     }
 }

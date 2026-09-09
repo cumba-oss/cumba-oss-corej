@@ -3,6 +3,7 @@ package net.cumba.corej.core.run;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -689,6 +690,85 @@ class StudyValidationServiceTest
         IOException ex = assertThrows(IOException.class,
                 () -> new StudyValidationService().validate(params));
         assertTrue(ex.getMessage().contains("define.xml not found"));
+    }
+
+    // ------------------------------------------------------------------
+    // F-corej-L2-07 — Define_Metadata_Basis; CT-R3 — ctResolutionNote
+    // ------------------------------------------------------------------
+
+
+    @Test
+    void validate_unparseableDefineXml_reportsDefineMetadataBasis() throws IOException
+    {
+        // F-corej-L2-07: a Define-XML that fails to parse degrades the run's define metadata to
+        // the lossy datatable conversion -- the run must SAY SO in the report (the
+        // Library_Metadata_Basis / Dictionary_Basis family), not only in the log.
+        IDataTableManager mgr = managerWith(dmTable());
+        Path rulesDir = writeRules("rules-custom-1-0.json", "CORE-X-020");
+        Path badDefine = tempDir.resolve("define.xml");
+        Files.writeString(badDefine, "this is not a Define-XML document");
+
+        StudyValidationParams params = StudyValidationParams.builder().manager(mgr)
+                .dataLibrary(tempDir.toString()).rulesDir(rulesDir.toString())
+                .defineXmlPath(badDefine.toString()).rulesPackages(List.of("custom-1-0"))
+                .metadataProducts(CUSTOM_PRODUCT).build();
+
+        StudyValidationResult result = new StudyValidationService("0.0.0-test").validate(params);
+        Object basis = result.sections().conformanceDetails().get("Define_Metadata_Basis");
+        assertNotNull(basis,
+                "a run whose Define-XML did not parse must be distinguishable from one whose"
+                        + " Define-XML parsed cleanly");
+        assertTrue(basis.toString().contains("could not be parsed"), basis.toString());
+    }
+
+
+    @Test
+    void validate_healthyRun_gainsNoBasisOrMismatchKeys() throws IOException
+    {
+        IDataTableManager mgr = managerWith(dmTable());
+        Path rulesDir = writeRules("rules-custom-1-0.json", "CORE-X-021");
+        StudyValidationParams params = StudyValidationParams.builder().manager(mgr)
+                .dataLibrary(tempDir.toString()).rulesDir(rulesDir.toString())
+                .rulesPackages(List.of("custom-1-0")).metadataProducts(CUSTOM_PRODUCT).build();
+
+        StudyValidationResult result = new StudyValidationService("0.0.0-test").validate(params);
+        assertFalse(result.sections().conformanceDetails().containsKey("Define_Metadata_Basis"),
+                "no Define-XML, no degradation, no key");
+        assertFalse(result.sections().conformanceDetails().containsKey("CT_Declaration_Mismatch"),
+                "no declaration divergence and no caller note, no key");
+    }
+
+
+    @Test
+    void validate_ctResolutionNote_joinsIntoCtDeclarationMismatch() throws IOException
+    {
+        // CT-R3 (owner ruling 2026-09-09): the caller's CT-resolution note (e.g. the manager's
+        // <recent> downgrade) surfaces through the EXISTING CT_Declaration_Mismatch field --
+        // engine text first, caller text appended, either alone when the other is null.
+        IDataTableManager mgr = managerWith(dmTable());
+        Path rulesDir = writeRules("rules-custom-1-0.json", "CORE-X-022");
+        String note = "<recent> resolved to sdtmct-2021-12-17 only; 1 selected package did not"
+                + " resolve";
+        StudyValidationParams params = StudyValidationParams.builder().manager(mgr)
+                .dataLibrary(tempDir.toString()).rulesDir(rulesDir.toString())
+                .ctResolutionNote(note).rulesPackages(List.of("custom-1-0"))
+                .metadataProducts(CUSTOM_PRODUCT).build();
+
+        StudyValidationResult result = new StudyValidationService("0.0.0-test").validate(params);
+        assertEquals(note, result.sections().conformanceDetails().get("CT_Declaration_Mismatch"),
+                "with no engine mismatch the caller's note stands alone in the existing field");
+    }
+
+
+    @Test
+    void joinCtNotes_allFourQuadrants()
+    {
+        assertNull(StudyValidationService.joinCtNotes(null, null));
+        assertNull(StudyValidationService.joinCtNotes(null, "  "), "a blank note is absent");
+        assertEquals("engine", StudyValidationService.joinCtNotes("engine", null));
+        assertEquals("caller", StudyValidationService.joinCtNotes(null, "caller"));
+        assertEquals("engine; caller", StudyValidationService.joinCtNotes("engine", "caller"),
+                "engine text first, caller text appended");
     }
 
     // ------------------------------------------------------------------

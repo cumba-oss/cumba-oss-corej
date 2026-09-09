@@ -165,9 +165,9 @@ final class CacheConformanceComparator
 
     private static JsonNode read(Path aDir, String aEndpoint) throws IOException
     {
-        String json = new GzipFileApiCache(aDir.toAbsolutePath(), ".json").read(aEndpoint)
+        byte[] json = new GzipFileApiCache(aDir.toAbsolutePath(), ".json").read(aEndpoint)
                 .orElseThrow(() -> new IOException("missing entry " + aEndpoint + " in " + aDir));
-        return MAPPER.readTree(json);
+        return MAPPER.readTree(new String(json, StandardCharsets.UTF_8));
     }
 
 

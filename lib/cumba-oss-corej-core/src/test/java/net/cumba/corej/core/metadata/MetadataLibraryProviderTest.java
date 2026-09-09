@@ -164,10 +164,13 @@ class MetadataLibraryProviderTest
 
 
     @Test
-    void isDomainCustomFalseForUnknownDomain()
+    void isDomainCustomTrueForUnknownDomain()
     {
+        // F-corej-L2-08: a domain the library knows nothing about is CUSTOM -- the same answer
+        // the product-backed branch gives for a domain in neither product. (This test previously
+        // pinned the fail-standard collapse the finding overturned.)
         MetadataProvider provider = new MetadataLibraryProvider(lib("study").build());
-        assertFalse(provider.isDomainCustom("XX"));
+        assertTrue(provider.isDomainCustom("XX"));
     }
 
     // ------------------------------------------------------------------

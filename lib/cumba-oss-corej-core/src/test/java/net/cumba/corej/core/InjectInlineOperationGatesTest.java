@@ -150,6 +150,59 @@ class InjectInlineOperationGatesTest
 
 
     @Test
+    void aKwargNestedEmptinessOnlyCallGetsTheExemptionToo()
+    {
+        // F-corej-L2-04: collectGateTerms walks args AND kwargs, but walkEmptinessUse walked args
+        // only, so an operation call reached only through a kwarg could never earn the emptiness
+        // exemption: the gate collector found it, the suppression walker did not, and
+        // available(<op>) was injected -- which per the exemption's own javadoc makes an
+        // emptiness-testing rule unreachable. The two walkers must see the same tree.
+        Rule rule = load("{\"Core\":{\"Id\":\"X-1\"}," + "\"Check\":{\"expression\":"
+                + "\"wrapper_fn(k = empty(dataset_class_from_library()))\"}}");
+        assertNull(rule.getLoadError());
+        assertEquals("library_available()", preconditionText(rule),
+                "the emptiness exemption must apply through a kwarg exactly as through an arg");
+        assertEquals("library_available()", rule.getInjectedPreconditionGates());
+    }
+
+
+    @Test
+    void anUnraisableWeakerLevelNeitherDiscardsStricterGatesNorStaysSilent()
+    {
+        // F-corej-L2-05 (multi-level half): terms are collected "from every declared level"
+        // (Plan C 3.3), so an unraisable WARNING level must not throw away the gate the ERROR
+        // level already needs -- and, like the unraisable-Precondition twin below, it must say
+        // what it could not do instead of silently skipping.
+        Rule rule = load("{\"Core\":{\"Id\":\"X-1\"}," + "\"Check\":{"
+                + "\"ERROR\":{\"expression\":\"domain_is_custom() == false\"},"
+                + "\"WARNING\":{\"name\":\"AETERM\",\"operator\":\"has_no_expression_surface_op\",\"value\":\"x\"}}}");
+        assertNull(rule.getLoadError());
+        assertEquals("library_available() and available(domain_is_custom())",
+                preconditionText(rule),
+                "the raisable ERROR level's gate must survive the unraisable WARNING level");
+        assertNotNull(rule.getInjectedPreconditionGates());
+        assertNotNull(rule.getLoadWarning(),
+                "an unraisable level must warn like the unraisable-Precondition twin");
+        assertTrue(rule.getLoadWarning().contains("cannot be raised"), rule.getLoadWarning());
+    }
+
+
+    @Test
+    void anUnraisableOnlyLevelWarnsInsteadOfSilentlySkipping()
+    {
+        // F-corej-L2-05 (single-level half): the silent bare `return` also covered the case where
+        // the ONLY declared level cannot be raised. Nothing can be gated then, but the exit must
+        // say so rather than leave the rule indistinguishable from one needing no gate.
+        Rule rule = load("{\"Core\":{\"Id\":\"X-1\"}," + "\"Check\":{\"name\":\"AETERM\","
+                + "\"operator\":\"has_no_expression_surface_op\",\"value\":\"x\"}}");
+        assertNull(rule.getLoadError());
+        assertNull(rule.getInjectedPreconditionGates(), "nothing raisable, nothing to inject");
+        assertNotNull(rule.getLoadWarning(),
+                "an unraisable level must warn like the unraisable-Precondition twin");
+    }
+
+
+    @Test
     void declaredOperationsStayWithTheEagerGatesNotThisOne()
     {
         // A $-ref goes through RuleRunner's declaration-keyed SKIP gates — no injection here.

@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -155,9 +156,9 @@ class PickleCacheSeederTest
 
     private static JsonNode readEntry(Path aCache, String aPath) throws IOException
     {
-        String json = new GzipFileApiCache(aCache.toAbsolutePath(), ".json").read(aPath)
+        byte[] json = new GzipFileApiCache(aCache.toAbsolutePath(), ".json").read(aPath)
                 .orElseThrow(() -> new AssertionError("no cache entry at " + aPath));
-        return MAPPER.readTree(json);
+        return MAPPER.readTree(new String(json, StandardCharsets.UTF_8));
     }
 
     // ------------------------------------------------------------------

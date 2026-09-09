@@ -193,16 +193,54 @@ class CheckToExprRegexOptimiseTest
     void varnameSuffixLowersToEndsWith()
     {
         // Phase 5 broadcast: pure-suffix varname() patterns -> ends_with(varname(), "SUF").
+        // Only the `.*` fill and the bare suffix collapse -- see varnameDotPlusSuffixStaysRegex
+        // for why `.+` may not (F-corej-L1-01).
         assertEquals("ends_with(varname(), \"FL\")",
-                lower("matches_regex", "variable_name", "^.+FL$"));
+                lower("matches_regex", "variable_name", "^.*FL$"));
         assertEquals("ends_with(varname(), \"DT\")",
-                lower("matches_regex", "variable_name", ".+DT$"));
+                lower("matches_regex", "variable_name", ".*DT$"));
         assertEquals("ends_with(varname(), \"TM\")",
                 lower("matches_regex", "variable_name", "TM$"));
         assertEquals("ends_with(varname(), \"DTM\")",
-                lower("matches_regex", "variable_name", ".+DTM$"));
+                lower("matches_regex", "variable_name", ".*DTM$"));
         assertEquals("ends_with(varname(), \"SDTF\")",
-                lower("matches_regex", "variable_name", ".+SDTF$"));
+                lower("matches_regex", "variable_name", ".*SDTF$"));
+    }
+
+
+    @Test
+    void varnameDotPlusSuffixStaysRegex()
+    {
+        // F-corej-L1-01: `.+` requires at least ONE character before the literal, so collapsing
+        // `^.+SUF$` to ends_with(varname(), "SUF") is TRUE for a variable named exactly "SUF"
+        // where the authored regex is FALSE. It is also a Java<->Python parity break:
+        // re.match(r"^.+FL$", "FL") is None. The sibling anchoredEndsWithLiteral already rejects
+        // `.+` for exactly this reason; pureSuffix must too. The `.*` fill and the bare suffix are
+        // unaffected (varnameSuffixLowersToEndsWith).
+        assertEquals("varname() =~ /^.+FL$/", lower("matches_regex", "variable_name", "^.+FL$"));
+        assertEquals("varname() =~ /.+DT$/", lower("matches_regex", "variable_name", ".+DT$"));
+        assertEquals("varname() !~ /.+DTM$/",
+                lower("not_matches_regex", "variable_name", ".+DTM$"));
+    }
+
+
+    @Test
+    void affixRegexAnchoringTracksCharacterClasses()
+    {
+        // F-corej-L1-02: inside a character class `(`, `)` and `|` are literals, so the
+        // paren-depth walk of hasTopLevelAlternation must suspend inside `[...]`. Anchoring is
+        // MANDATORY for the affix-regex operators (the operator evaluates with anchored
+        // matches(), `=~` with unanchored find()), so a top-level `|` hidden behind a bracketed
+        // paren that is not wrapped yields a semantically LOOSER regex than the author wrote.
+        // `\(([^)]*)\)|NONE` walks to depth -1 at the `|` without class tracking. The printer
+        // doubles every backslash.
+        assertEquals("X =~ /^(\\\\(([^)]*)\\\\)|NONE)$/",
+                lower("prefix_matches_regex", "X", "\\(([^)]*)\\)|NONE"));
+        // Minimal shape: a `(` inside a class before a top-level `|`.
+        assertEquals("X !~ /^([(]A|B)$/", lower("not_prefix_matches_regex", "X", "[(]A|B"));
+        // The other direction: a `|` that exists ONLY inside a class is not a top-level
+        // alternation, so no redundant group is emitted.
+        assertEquals("X =~ /^[|]A$/", lower("suffix_matches_regex", "X", "[|]A"));
     }
 
 

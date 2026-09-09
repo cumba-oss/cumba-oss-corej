@@ -235,6 +235,11 @@ public final class StudyValidationService
         // defineXmlPath; otherwise metadataLibrary is the data adapter, not a define). Carried for
         // the define_* operand family; consumed by the metadata-check evaluation path.
         MetadataProvider defineProvider = null;
+        // F-corej-L2-07 — the third member of the metadata-basis family (Fix #369 / D13): when
+        // the Define-XML fails to parse, the run degrades and the REPORT must say so, not only
+        // the log. Null (and so absent from Conformance_Details) whenever the define parsed
+        // cleanly or the run has none.
+        String defineMetadataBasis = null;
         // The direct (ODM-backed) Define-XML provider, captured so the per-record value-level
         // metadata resolver (VlmResolver) can be built from the same parsed model.
         net.cumba.corej.core.gen.DefineXMLProvider directDefine = null;
@@ -255,6 +260,20 @@ public final class StudyValidationService
             if (direct == null)
             {
                 direct = parseDefineXmlDirect(params.defineXmlPath());
+                if (direct == null)
+                {
+                    defineMetadataBasis = datatableDefine != null
+                            ? "datatable conversion — the Define-XML at " + params.defineXmlPath()
+                                    + " could not be parsed directly; define metadata degraded to"
+                                    + " the lossy ODM→datatable conversion (codelist C-codes and"
+                                    + " coded codes absent) and value-level (VLM) rules were"
+                                    + " SKIPPED"
+                            : "unavailable — the Define-XML at " + params.defineXmlPath()
+                                    + " could not be parsed and no datatable define metadata is"
+                                    + " available; define-dependent rules were SKIPPED";
+                    LOGGER.log(System.Logger.Level.WARNING, "Define metadata basis: {0}",
+                            defineMetadataBasis);
+                }
             }
             directDefine = direct;
             defineProvider = direct != null
@@ -319,7 +338,13 @@ public final class StudyValidationService
         // §4.2 — a divergence between what the define declares and what the run used is a
         // run-level note (a property of the RUN, never a finding on the data). Reported on every
         // divergent run, whichever way the precedence went.
-        String ctDeclarationMismatch = ctDeclarationMismatch(declaredCt, ctSelection.packageIds());
+        // CT-R3 (owner ruling 2026-09-09): the caller's resolution note (e.g. the manager's
+        // <recent> downgrade) joins the SAME field -- engine text first, caller text appended,
+        // either alone when the other is null; both null on an agreeing run keeps the field
+        // absent, so every existing consumer of CT_Declaration_Mismatch is unchanged.
+        String ctDeclarationMismatch = joinCtNotes(
+                ctDeclarationMismatch(declaredCt, ctSelection.packageIds()),
+                params.ctResolutionNote());
         if (ctDeclarationMismatch != null)
         {
             LOGGER.log(System.Logger.Level.WARNING, "CT declaration mismatch: {0}",
@@ -462,6 +487,7 @@ public final class StudyValidationService
                 .tigUseCase(params.useCase()).ctVersion(ctVersion)
                 .ctDeclarationMismatch(ctDeclarationMismatch).defineXmlVersion(defineXmlVersion)
                 .libraryMetadataBasis(libraryMetadataBasis).dictionaryBasis(dictionaryBasis)
+                .defineMetadataBasis(defineMetadataBasis)
                 .uniiVersion(versionOf(dictionaryProvider, "unii"))
                 .medRtVersion(versionOf(dictionaryProvider, "medrt"))
                 .meddraVersion(versionOf(dictionaryProvider, "meddra"))
@@ -1673,6 +1699,25 @@ public final class StudyValidationService
         }
         return "define declares " + String.join(", ", declaredIds) + "; run used "
                 + (usedIds.isEmpty() ? "none" : String.join(", ", usedIds));
+    }
+
+
+    /**
+     * CT-R3 (owner ruling 2026-09-09) — joins the engine's computed CT declaration mismatch with
+     * the caller's {@link StudyValidationParams#ctResolutionNote() resolution note} into the ONE
+     * existing {@code CT_Declaration_Mismatch} field: engine text first, caller text appended,
+     * either alone when the other is null/blank, {@code null} when both are — so the "absent when
+     * they agree" contract of the field is unchanged.
+     */
+    static @Nullable String joinCtNotes(@Nullable String aEngineMismatch,
+            @Nullable String aCallerNote)
+    {
+        boolean haveCaller = aCallerNote != null && !aCallerNote.isBlank();
+        if (aEngineMismatch == null)
+        {
+            return haveCaller ? aCallerNote : null;
+        }
+        return haveCaller ? aEngineMismatch + "; " + aCallerNote : aEngineMismatch;
     }
 
 

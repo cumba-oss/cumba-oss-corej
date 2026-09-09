@@ -1511,38 +1511,32 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * <p>
      * Extracted from {@link #buildResolvedSdtm} so {@link #getVariableMetadata} and
      * {@link #getCodelistCodeMap} can ask leg 1 about the same canonical name leg 2 resolved,
-     * without duplicating the rule. ⚠⚠ There are <b>THREE</b> copies of this canonicalisation, not
-     * two — this one, {@code buildResolvedSdtm}'s step 1, and {@code buildResolvedSdtmModel}'s.
-     * Keep all three in lockstep. {@code buildResolvedSdtm} additionally computes
-     * {@code wildcardDomain} and {@code addAP}, which this deliberately does not return because no
-     * caller outside the resolver needs them.
+     * without duplicating the rule. Since F-corej-L2-06 every consumer shares the ONE ladder in
+     * {@link #canonicaliseSdtmDomain}; this is its name-only projection.
      * </p>
      */
     private static String canonicalSdtmDomain(String aOriginalDomain)
     {
-        String upper = aOriginalDomain.toUpperCase(Locale.ROOT);
-        if (upper.length() > 2 && (upper.startsWith("SUPP") || upper.startsWith("SQ")))
-        {
-            return DOMAIN_SUPPQUAL;
-        }
-        if (upper.startsWith("AP") && upper.length() > 2)
-        {
-            return aOriginalDomain.substring(2);
-        }
-        return aOriginalDomain;
+        return canonicaliseSdtmDomain(aOriginalDomain).effectiveDomain();
     }
 
 
     /**
-     * Resolves the SDTM/SDTMIG model-side allowed variables for the given dataset, mirroring
-     * Python's {@code get_variables_metadata_from_standard_model}. Returns the rich
-     * {@link ResolvedVariable} list (substituted name + full attribute map) so callers can project
-     * to either name-only or Python-{@code variables_metadata}-shaped output.
+     * F-corej-L2-06 — the ONE copy of the SDTM domain-canonicalisation ladder. Step 1 of algorithms
+     * A and B ({@link #buildResolvedSdtm}, {@link #buildResolvedSdtmModel}) and the name-only
+     * {@link #canonicalSdtmDomain} all call this, so the former "keep all three copies in lockstep"
+     * comment-invariant is now enforced by construction. Package-visible so the ladder itself is
+     * pinned by a table-driven test.
+     *
+     * @param aOriginalDomain
+     *            the dataset's own (possibly derived) name
+     * @return {@code effectiveDomain} ({@code SUPP--}/{@code SQ--} → {@code SUPPQUAL}, {@code AP--}
+     *         → the stripped parent domain, else unchanged), {@code wildcardDomain} (the
+     *         {@code --}-substitution prefix: stripped for {@code AP--}, else the original name)
+     *         and {@code addAP} (whether the AP variable additions apply)
      */
-    private List<ResolvedVariable> buildResolvedSdtm(String aOriginalDomain)
+    static SdtmDomainCanonicalisation canonicaliseSdtmDomain(String aOriginalDomain)
     {
-        // Step 1 — Effective domain: SUPP/SQ → SUPPQUAL, AP* → strip prefix.
-        // ⚠ The name half of this is also `canonicalSdtmDomain` (Fix #373); the two must agree.
         String upper = aOriginalDomain.toUpperCase(Locale.ROOT);
         boolean addAP = false;
         String effectiveDomain = aOriginalDomain;
@@ -1565,6 +1559,28 @@ public final class MetadataLibraryProvider implements MetadataProvider
             wildcardDomain = effectiveDomain;
             addAP = true;
         }
+        return new SdtmDomainCanonicalisation(effectiveDomain, wildcardDomain, addAP);
+    }
+
+    /** The three step-1 facts of the domain-canonicalisation ladder (F-corej-L2-06). */
+    record SdtmDomainCanonicalisation(String effectiveDomain, String wildcardDomain, boolean addAP)
+    {
+    }
+
+    /**
+     * Resolves the SDTM/SDTMIG model-side allowed variables for the given dataset, mirroring
+     * Python's {@code get_variables_metadata_from_standard_model}. Returns the rich
+     * {@link ResolvedVariable} list (substituted name + full attribute map) so callers can project
+     * to either name-only or Python-{@code variables_metadata}-shaped output.
+     */
+    private List<ResolvedVariable> buildResolvedSdtm(String aOriginalDomain)
+    {
+        // Step 1 — Effective domain: SUPP/SQ → SUPPQUAL, AP* → strip prefix — the one shared
+        // ladder (F-corej-L2-06); `canonicalSdtmDomain` is its name-only projection.
+        SdtmDomainCanonicalisation canon = canonicaliseSdtmDomain(aOriginalDomain);
+        boolean addAP = canon.addAP();
+        String effectiveDomain = canon.effectiveDomain();
+        String wildcardDomain = canon.wildcardDomain();
 
         // Step 2 — Class resolution.
         // Special case: SUPP-prefixed and SQ-prefixed domains route to the SUPPQUAL variable set
@@ -1778,30 +1794,12 @@ public final class MetadataLibraryProvider implements MetadataProvider
     private List<ResolvedVariable> buildResolvedSdtmModel(String aOriginalDomain,
             @Nullable String aForcedClass)
     {
-        // Step 1 — Effective domain: SUPP/SQ → SUPPQUAL, AP* → strip prefix. Identical to
-        // buildResolvedSdtm.
-        String upper = aOriginalDomain.toUpperCase(Locale.ROOT);
-        boolean addAP = false;
-        String effectiveDomain = aOriginalDomain;
-        String wildcardDomain = aOriginalDomain;
-        if (upper.length() > 2 && (upper.startsWith("SUPP") || upper.startsWith("SQ")))
-        {
-            if (upper.startsWith("SQ"))
-            {
-                String parent = effectiveDomain.substring(2);
-                if (parent.toUpperCase(Locale.ROOT).startsWith("AP"))
-                {
-                    addAP = true;
-                }
-            }
-            effectiveDomain = DOMAIN_SUPPQUAL;
-        }
-        else if (upper.startsWith("AP") && upper.length() > 2)
-        {
-            effectiveDomain = aOriginalDomain.substring(2);
-            wildcardDomain = effectiveDomain;
-            addAP = true;
-        }
+        // Step 1 — Effective domain: SUPP/SQ → SUPPQUAL, AP* → strip prefix — the one shared
+        // ladder (F-corej-L2-06), identical to buildResolvedSdtm by construction.
+        SdtmDomainCanonicalisation canon = canonicaliseSdtmDomain(aOriginalDomain);
+        boolean addAP = canon.addAP();
+        String effectiveDomain = canon.effectiveDomain();
+        String wildcardDomain = canon.wildcardDomain();
 
         // Step 2 — Class resolution (SUPPQUAL short-circuit, IG class name, custom detector).
         // Identical to buildResolvedSdtm.
@@ -2950,8 +2948,13 @@ public final class MetadataLibraryProvider implements MetadataProvider
         {
             return !sdtmProductHasDomain(aDomain) && findModelDatasetByDomain(aDomain) == null;
         }
+        // F-corej-L2-08: distinguish "declared table without the flag" (standard, as before)
+        // from "no such table at all" -- the latter must answer custom, exactly as the
+        // product-backed branch above answers for a domain in neither product. Collapsing both
+        // to false made the two branches disagree on the same input.
         return library.getDataTable(aDomain)
-                .flatMap(t -> metaBoolean(t, MetadataKeys.IS_CUSTOM_DOMAIN)).orElse(Boolean.FALSE);
+                .map(t -> metaBoolean(t, MetadataKeys.IS_CUSTOM_DOMAIN).orElse(Boolean.FALSE))
+                .orElse(Boolean.TRUE);
     }
 
 

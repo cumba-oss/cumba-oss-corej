@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -29,7 +30,8 @@ class CacheConformanceComparatorTest
 
     private static void write(Path aDir, String aEndpoint, String aJson) throws IOException
     {
-        new GzipFileApiCache(aDir.toAbsolutePath(), ".json").write(aEndpoint, aJson);
+        new GzipFileApiCache(aDir.toAbsolutePath(), ".json").write(aEndpoint,
+                aJson.getBytes(StandardCharsets.UTF_8));
     }
 
 

@@ -678,6 +678,50 @@ class ChildMatchPreMergerTest
     // Helpers
     // ----------------------------------------------------------------------------------------
 
+    // ----------------------------------------------------------------------------------------
+    // F-corej-L1-05: the implicit-parent name gate must know SQAP-- as well as SUPP--.
+    // ----------------------------------------------------------------------------------------
+
+
+    @Test
+    void preMerge_implicitParent_sqapPrimaryResolvesLikeSuppPrimary()
+    {
+        // With no RDOMAIN column the parent domain can only come from the primary's own name
+        // (E4). childEntryMatchesPrimary ("SUPP--/SQAP-- wildcard") and
+        // OperationExecutor.resolvePrefixes both treat SQAP<x> as the sibling of SUPP<x>;
+        // resolveImplicitParent knew only SUPP, so an SQAPxx primary yielded no implicit parent
+        // and preMerge returned the primary UNCHANGED -- no error, no log, the whole child
+        // pre-merge silently skipped.
+        IDataTable parent = TableFixture.of("AE")//
+                .str("USUBJID", "U1")//
+                .str("AESEQ", "1")//
+                .str("AESEV", "MILD")//
+                .build();
+
+        IDataTable sqap = TableFixture.of("SQAPAE")//
+                .str("USUBJID", "U1")//
+                .str("IDVAR", "AESEQ")//
+                .str("IDVARVAL", "1")//
+                .build();
+        IDataTable sqapMerged = ChildMatchPreMerger.preMerge(sqap, List.of(md("AE", true)),
+                resolver("AE", parent), "CORE-L1-05", null);
+        assertNotSame(sqap, sqapMerged, "SQAPAE must resolve its implicit parent AE");
+        int sqapIdx = sqapMerged.getMetaData().getColumnIndex("AESEV");
+        assertEquals("MILD", sqapMerged.getColumn(sqapIdx).getDataValue(0).getValueAsString());
+
+        // The SUPP twin of the very same shape -- the behaviour the SQAP one must mirror.
+        IDataTable supp = TableFixture.of("SUPPAE")//
+                .str("USUBJID", "U1")//
+                .str("IDVAR", "AESEQ")//
+                .str("IDVARVAL", "1")//
+                .build();
+        IDataTable suppMerged = ChildMatchPreMerger.preMerge(supp, List.of(md("AE", true)),
+                resolver("AE", parent), "CORE-L1-05", null);
+        assertNotSame(supp, suppMerged);
+        int suppIdx = suppMerged.getMetaData().getColumnIndex("AESEV");
+        assertEquals("MILD", suppMerged.getColumn(suppIdx).getDataValue(0).getValueAsString());
+    }
+
 
     private static MatchDataset md(String name, Boolean child)
     {

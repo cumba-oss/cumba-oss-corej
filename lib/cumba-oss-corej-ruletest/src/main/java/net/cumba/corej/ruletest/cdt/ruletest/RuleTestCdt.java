@@ -1193,7 +1193,9 @@ public final class RuleTestCdt
         {
             String tok = aTokens.get(i);
             int eq = tok.indexOf('=');
-            if (eq < 0)
+            // F-corej-L3-05: eq == 0 means an EMPTY key ("=value") — a constraint on the empty
+            // column name matches nothing and fails the scenario without naming the typo.
+            if (eq <= 0)
             {
                 throw error(aSource, aLineIdx,
                         "#expectViolationAt: expected key=value, got '" + tok + "'");
@@ -1499,7 +1501,9 @@ public final class RuleTestCdt
         for (String tok : aToks)
         {
             int eq = tok.indexOf('=');
-            if (eq < 0)
+            // F-corej-L3-05 (same hole): an empty key ("=value") must not be silently absorbed
+            // into the metadata map — most consumers of this map never re-validate its keys.
+            if (eq <= 0)
             {
                 throw error(aSource, aLineIdx,
                         "#library " + aKind + ": expected key=value, got '" + tok + "'");

@@ -1223,7 +1223,21 @@ public class RulePackageLoader
             net.cumba.corej.core.expr.ast.Expr check = tryRaiseToExpr(condition);
             if (check == null)
             {
-                return;
+                // F-corej-L2-05: an unraisable level must neither abandon the terms already
+                // collected from the other declared levels (a `return` here dropped the
+                // strictest level's gate because a weaker level could not be raised) nor stay
+                // silent -- like the unraisable-Precondition twin below, it says what it could
+                // not do. Terms the unraisable level itself would need stay unknowable, which
+                // is exactly what the warning records.
+                String warning = "[" + ruleId(rule) + "] a declared Check level cannot be raised"
+                        + " to an expression, so availability-dependent operation calls inlined"
+                        + " in it (if any) cannot be gated -- such a rule silently PASSes instead"
+                        + " of SKIPPING when the provider is absent; gates from the other"
+                        + " declared levels are still injected";
+                rule.setLoadWarning(rule.getLoadWarning() == null ? warning
+                        : rule.getLoadWarning() + "; " + warning);
+                LOGGER.log(System.Logger.Level.WARNING, "{0}", warning);
+                continue;
             }
             collectGateTerms(check, check, needed);
         }
@@ -1422,8 +1436,14 @@ public class RulePackageLoader
             walkEmptinessUse(b.left(), target, false, counts);
             walkEmptinessUse(b.right(), target, false, counts);
         }
-        case net.cumba.corej.core.expr.ast.Expr.Call c -> c.args()
-                .forEach(arg -> walkEmptinessUse(arg, target, emptiness, counts));
+        case net.cumba.corej.core.expr.ast.Expr.Call c ->
+        {
+            // F-corej-L2-04: walk kwargs with the same flag as args, so this walker sees the
+            // same tree as collectGateTerms (which walks both) -- an operation call reached
+            // only through a kwarg must be able to earn the emptiness exemption.
+            c.args().forEach(arg -> walkEmptinessUse(arg, target, emptiness, counts));
+            c.kwargs().values().forEach(v -> walkEmptinessUse(v, target, emptiness, counts));
+        }
         default ->
         {
             // Lit / Ref — leaf nodes with no nested operands to walk.

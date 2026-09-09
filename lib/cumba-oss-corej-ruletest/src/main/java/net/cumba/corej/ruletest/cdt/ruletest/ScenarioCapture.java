@@ -193,18 +193,21 @@ public final class ScenarioCapture
         OverlayDataTable effectivePrimary = aPrimary;
         String primaryName = aPrimary.getMetaData().getName();
 
+        // F-corej-L3-04: relabel a WRAPPER (asOverlayDataTable), never the caller's live table
+        // in place — under -Dgenerate.scenarios=true an in-place rename would mutate the state
+        // of the very object the suite is still testing.
         if (primaryName != null && dropped.contains(primaryName.toUpperCase(Locale.ROOT)))
         {
             // Dropped-name override: resolverWithout(...) hides the primary's name.
             String proxyName = primaryName + "_DROPPED";
-            effectivePrimary.setTableName(proxyName);
+            effectivePrimary = asOverlayDataTable(aPrimary, proxyName);
             effectiveDomain = proxyName;
         }
         else if (primaryName == null || !primaryName.equalsIgnoreCase(effectiveDomain))
         {
-            // Primary name differs from domainPrefix — rename so the scenario's
-            // domain= directive matches the primary's declared dataset name.
-            effectivePrimary.setTableName(effectiveDomain);
+            // Primary name differs from domainPrefix — relabel so the scenario's
+            // domain= directive matches the emitted dataset's declared name.
+            effectivePrimary = asOverlayDataTable(aPrimary, effectiveDomain);
         }
 
         // Collect sibling datasets.
@@ -220,6 +223,19 @@ public final class ScenarioCapture
         for (OverlayDataTable s : siblings.values())
         {
             datasets.add(s);
+        }
+
+        // F-corej-L3-02: the guard above states a property of the WRITER ("CdtWriter only emits
+        // the `.` all-null sentinel when colCount > 1"), which holds for every dataset in the
+        // scenario, not only the primary. A single-column all-null SIBLING would silently mint a
+        // fixture that replays with one row fewer than was captured, so refuse the capture
+        // exactly as for an unrepresentable primary.
+        for (OverlayDataTable d : datasets)
+        {
+            if (d.getMetaData().getColumnCount() < 2 && hasAllNullRow(d))
+            {
+                return;
+            }
         }
 
         MapBackedLibraryMetadataProvider libraryToWrite = aLibrary instanceof MapBackedLibraryMetadataProvider m
@@ -428,51 +444,70 @@ public final class ScenarioCapture
         {
             return asOverlayDataTable(aLive, aLive.getMetaData().getName());
         }
-        // Build the set of primary-side join values per key.
-        Map<String, Set<String>> primaryValues = new LinkedHashMap<>();
-        for (String key : aKeys)
+        // F-corej-L3-03: a join on N keys is a test on the key TUPLE. Testing each key column's
+        // value-set independently is the Cartesian relaxation of the intended join and
+        // over-captures rows the real join can never produce.
+        int keyCount = aKeys.size();
+        int[] primaryIdx = new int[keyCount];
+        for (int k = 0; k < keyCount; k++)
         {
-            int idx = aPrimary.getMetaData().getColumnIndex(key);
-            if (idx < 0)
+            primaryIdx[k] = aPrimary.getMetaData().getColumnIndex(aKeys.get(k));
+            if (primaryIdx[k] < 0)
             {
                 // Primary doesn't have the key column — can't filter meaningfully.
                 // Return full sibling to be safe.
                 return asOverlayDataTable(aLive, aLive.getMetaData().getName());
             }
-            Set<String> values = new HashSet<>();
-            long rowCount = aPrimary.getRowCount();
-            for (long r = 0; r < rowCount; r++)
-            {
-                Object v = extractRaw(aPrimary.getValue(r, idx));
-                if (v != null) values.add(v.toString());
-            }
-            primaryValues.put(key, values);
         }
-        // Walk live rows, keep only those matching ALL key values on the primary.
-        Set<Long> keepRows = new LinkedHashSet<>();
-        for (long r = 0; r < aLive.getRowCount(); r++)
+        // The primary-side tuples, one per row; a row with any missing key value joins nothing.
+        Set<List<String>> primaryTuples = new LinkedHashSet<>();
+        long primaryRows = aPrimary.getRowCount();
+        for (long r = 0; r < primaryRows; r++)
         {
-            boolean matches = true;
-            for (Map.Entry<String, Set<String>> e : primaryValues.entrySet())
+            List<String> tuple = rowTuple(aPrimary, primaryIdx, r);
+            if (tuple != null) primaryTuples.add(tuple);
+        }
+        // Walk live rows, keep only those whose OWN tuple is a primary-side tuple. A live table
+        // missing a key column keeps no rows (as before: nothing can match).
+        int[] liveIdx = new int[keyCount];
+        boolean liveHasAllKeys = true;
+        for (int k = 0; k < keyCount; k++)
+        {
+            liveIdx[k] = aLive.getMetaData().getColumnIndex(aKeys.get(k));
+            if (liveIdx[k] < 0)
             {
-                int idx = aLive.getMetaData().getColumnIndex(e.getKey());
-                if (idx < 0)
-                {
-                    matches = false;
-                    break;
-                }
-                Object v = extractRaw(aLive.getValue(r, idx));
-                String s = v == null ? null : v.toString();
-                if (s == null || !e.getValue().contains(s))
-                {
-                    matches = false;
-                    break;
-                }
+                liveHasAllKeys = false;
+                break;
             }
-            if (matches) keepRows.add(r);
+        }
+        Set<Long> keepRows = new LinkedHashSet<>();
+        if (liveHasAllKeys)
+        {
+            for (long r = 0; r < aLive.getRowCount(); r++)
+            {
+                List<String> tuple = rowTuple(aLive, liveIdx, r);
+                if (tuple != null && primaryTuples.contains(tuple)) keepRows.add(r);
+            }
         }
         // Keep-rows → a fresh OverlayDataTable with same columns.
         return tableWithRows(aLive, keepRows);
+    }
+
+
+    /**
+     * The row's join-key tuple as string values, or {@code null} when any key cell is missing (a
+     * row with a missing key value participates in no equi-join match).
+     */
+    private static @Nullable List<String> rowTuple(IDataTable aTable, int[] aKeyIdx, long aRow)
+    {
+        List<String> tuple = new ArrayList<>(aKeyIdx.length);
+        for (int idx : aKeyIdx)
+        {
+            Object v = extractRaw(aTable.getValue(aRow, idx));
+            if (v == null) return null;
+            tuple.add(v.toString());
+        }
+        return tuple;
     }
 
 

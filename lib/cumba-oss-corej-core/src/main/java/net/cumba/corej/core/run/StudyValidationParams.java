@@ -91,6 +91,8 @@ public final class StudyValidationParams
 
     private final List<String> controlledTerminologyPackages;
 
+    private final @Nullable String ctResolutionNote;
+
     private final @Nullable String defineVersion;
 
     private final RuleSelectionMode ruleSelectionMode;
@@ -145,6 +147,7 @@ public final class StudyValidationParams
         metadataProducts = List.copyOf(b.metadataProducts);
         useCase = b.useCase;
         controlledTerminologyPackages = List.copyOf(b.controlledTerminologyPackages);
+        ctResolutionNote = b.ctResolutionNote;
         defineVersion = b.defineVersion;
         ruleSelectionMode = b.ruleSelectionMode;
         includeRules = List.copyOf(b.includeRules);
@@ -246,6 +249,19 @@ public final class StudyValidationParams
     public List<String> controlledTerminologyPackages()
     {
         return controlledTerminologyPackages;
+    }
+
+
+    /**
+     * CT-R3 — the caller's note on how {@link #controlledTerminologyPackages()} was resolved (e.g.
+     * the manager's {@code <recent>} downgrade when fewer packages resolved than were selected), or
+     * {@code null} when the selection resolved as given. Joined into the report's existing
+     * {@code CT_Declaration_Mismatch} field rather than a new key (owner ruling 2026-09-09): engine
+     * text first, this text appended, either alone when the other is null.
+     */
+    public @Nullable String ctResolutionNote()
+    {
+        return ctResolutionNote;
     }
 
 
@@ -496,6 +512,8 @@ public final class StudyValidationParams
 
         private List<String> controlledTerminologyPackages = new ArrayList<>();
 
+        private @Nullable String ctResolutionNote;
+
         private @Nullable String defineVersion;
 
         private RuleSelectionMode ruleSelectionMode = RuleSelectionMode.ALL;
@@ -614,6 +632,14 @@ public final class StudyValidationParams
         {
             controlledTerminologyPackages = aPackages != null ? new ArrayList<>(aPackages)
                     : new ArrayList<>();
+            return this;
+        }
+
+
+        /** CT-R3 — the caller's CT-resolution note; see {@link #ctResolutionNote()}. */
+        public Builder ctResolutionNote(@Nullable String aNote)
+        {
+            ctResolutionNote = aNote;
             return this;
         }
 

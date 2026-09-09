@@ -404,16 +404,34 @@ public final class CheckToExpr
     }
 
 
-    /** Whether {@code pattern} has a top-level (not parenthesised) {@code |} alternation. */
+    /**
+     * Whether {@code pattern} has a top-level (not parenthesised) {@code |} alternation. A
+     * character class suspends the accounting: inside {@code [...]} the characters {@code (},
+     * {@code )} and {@code |} are literals (F-corej-L1-02). The false-negative direction is what
+     * matters — {@link #anchored} would then leave a real top-level alternation unwrapped and emit
+     * a semantically LOOSER regex than the author wrote.
+     */
     private static boolean hasTopLevelAlternation(String pattern)
     {
         int depth = 0;
+        boolean inClass = false;
         for (int i = 0; i < pattern.length(); i++)
         {
             char c = pattern.charAt(i);
             if (c == '\\')
             {
                 i++;
+            }
+            else if (inClass)
+            {
+                if (c == ']')
+                {
+                    inClass = false;
+                }
+            }
+            else if (c == '[')
+            {
+                inClass = true;
             }
             else if (c == '(')
             {
@@ -1030,14 +1048,14 @@ public final class CheckToExpr
      * Phase 5 broadcast (per-variable / per-dataset) readability rewrites — no new functions.
      *
      * <ul>
-     * <li>{@code variable_name} ({@code varname()}) pure-suffix patterns ({@code ^.+FL$},
-     * {@code .+DT$}, {@code TM$}, {@code .*DTM$}, …) → {@code ends_with(varname(),
-     * "SUF")} ({@code not ends_with(…)} for the negated sense). The literal uppercase suffix is
-     * extracted from the pattern; only patterns whose body is purely {@code [A-Z]+} (after an
-     * optional {@code ^} and an optional {@code .+}/{@code .*} fill, before a trailing {@code $})
-     * are recognised, so the {@code \d{2}} / {@code \d} index patterns (which contain {@code \})
-     * and the charset patterns (which contain {@code [}/{@code (}) fall through and stay as
-     * regex.</li>
+     * <li>{@code variable_name} ({@code varname()}) pure-suffix patterns ({@code ^.*FL$},
+     * {@code .*DT$}, {@code TM$}, {@code .*DTM$}, …) → {@code ends_with(varname(),
+     * "SUF")} ({@code not ends_with(…)} for the negated sense; a {@code .+} fill is NOT recognised
+     * and stays as regex — F-corej-L1-01). The literal uppercase suffix is extracted from the
+     * pattern; only patterns whose body is purely {@code [A-Z]+} (after an optional {@code ^} and
+     * an optional {@code .*} fill, before a trailing {@code $}) are recognised, so the
+     * {@code \d{2}} / {@code \d} index patterns (which contain {@code \}) and the charset patterns
+     * (which contain {@code [}/{@code (}) fall through and stay as regex.</li>
      * <li>{@code dataset_name} ({@code ds_name("DATA")}) {@code ^AD} →
      * {@code starts_with(ds_name("DATA"), "AD")} ({@code not starts_with(…)} negated).</li>
      * </ul>
@@ -1069,11 +1087,12 @@ public final class CheckToExpr
     /**
      * Extracts the literal uppercase suffix from a pure-suffix regex, or {@code null} when the
      * pattern is not a pure suffix. A pure suffix is an optional leading {@code ^}, an optional
-     * {@code .+}/{@code .*} "any prefix" fill, then one or more uppercase ASCII letters
-     * ({@code [A-Z]+}), then a trailing {@code $} — and nothing else. The {@code [A-Z]+}-only body
-     * is what excludes the {@code \d{2}} / {@code \d} index patterns (a backslash is not
-     * {@code [A-Z]}) and the charset / token-class patterns (a {@code [} or {@code (} is not
-     * {@code [A-Z]}), so those are left as regex.
+     * {@code .*} "any prefix" fill ({@code .+} is deliberately NOT accepted — it requires a leading
+     * character, so it differs from {@code ends_with} on a name equal to the literal), then one or
+     * more uppercase ASCII letters ({@code [A-Z]+}), then a trailing {@code $} — and nothing else.
+     * The {@code [A-Z]+}-only body is what excludes the {@code \d{2}} / {@code \d} index patterns
+     * (a backslash is not {@code [A-Z]}) and the charset / token-class patterns (a {@code [} or
+     * {@code (} is not {@code [A-Z]}), so those are left as regex.
      */
     private static @Nullable String pureSuffix(String pattern)
     {
@@ -1083,8 +1102,13 @@ public final class CheckToExpr
         {
             i++;
         }
-        if (i + 1 < end && pattern.charAt(i) == '.'
-                && (pattern.charAt(i + 1) == '+' || pattern.charAt(i + 1) == '*'))
+        // ONLY the `.*` zero-or-more fill is consumed (F-corej-L1-01). `.+` requires at least one
+        // character BEFORE the literal, so `^.+SUF$` is FALSE for a variable named exactly "SUF"
+        // where ends_with is TRUE — a wrong verdict, and a Java↔Python parity break
+        // (`re.match(r"^.+FL$", "FL")` is None). Leaving `.+` unconsumed makes the body check
+        // below reject it (`.`/`+` are not [A-Z]), so those patterns stay as regex. The sibling
+        // anchoredEndsWithLiteral has rejected `.+` for the same reason since it was written.
+        if (i + 1 < end && pattern.charAt(i) == '.' && pattern.charAt(i + 1) == '*')
         {
             i += 2;
         }

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -566,11 +567,12 @@ public final class PickleCacheSeeder
             String json = mapper.writeValueAsString(aBody);
             if (options.writeMeta())
             {
-                target.writeEntry(path, new CacheEntry(200, SEEDED_HEADERS, json));
+                target.writeEntry(path,
+                        new CacheEntry(200, SEEDED_HEADERS, json.getBytes(StandardCharsets.UTF_8)));
             }
             else
             {
-                target.write(path, json);
+                target.write(path, json.getBytes(StandardCharsets.UTF_8));
             }
             // FileApiCache.write / writeMetaFile deliberately swallow IOException ("cache write
             // failures are non-fatal"), so a read-only or full target directory would otherwise

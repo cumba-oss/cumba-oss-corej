@@ -57,6 +57,11 @@ class RuleTestCdtEdgeCaseTest
                             #test CORE-1 expect=violation domain=AE
                             #note "first"
                             #note "second\"""", "duplicate #note"),
+                    // F-corej-L3-05 (same hole at parseKeyValues): an empty key in a #library
+                    // key=value payload was silently absorbed into the metadata map.
+                    Arguments.of("empty key in #library payload", """
+                            #test CORE-1 expect=violation domain=AE
+                            #library dataset-metadata AE =SPONSOR""", "key=value"),
                     Arguments.of("empty domain value", "#test CORE-1 expect=violation domain=",
                             "domain"),
                     Arguments.of("positional token after core id",
@@ -162,6 +167,12 @@ class RuleTestCdtEdgeCaseTest
                     Arguments.of("at without value", """
                             #test CORE-1 expect=violation domain=AE
                             #expectViolationAt USUBJID""", "key=value"),
+                    // F-corej-L3-05: a token whose '=' is at index 0 has NO key; accepting it
+                    // minted a constraint on the empty column name, which matches nothing and
+                    // fails the scenario without ever naming the typo.
+                    Arguments.of("at with empty key", """
+                            #test CORE-1 expect=violation domain=AE
+                            #expectViolationAt row=1 =AE""", "key=value"),
                     Arguments.of("at requires violation verdict", """
                             #test CORE-1 expect=noViolation domain=AE
                             #expectViolationAt row=1""", "require expect=violation"),

@@ -561,4 +561,80 @@ class OperationExecutorDateDiffLastInGroupTest
         assertEquals(39L, gr.results().get("2012-07-10" + NUL + "S1"));
     }
 
+    // -- F-corej-L1-04: the tie rule and the non-numeric ordering path ---------
+
+
+    @Test
+    void isLastInGroup_tieOnTheMaxOrderingValue_keepsTheFirstRow()
+    {
+        // Documented contract: "on ties the FIRST row achieving the max is kept (mirrors pandas
+        // idxmax first-occurrence)". Rows 1 and 2 both carry SESEQ 2, the group maximum.
+        // GroupedResult is keyed by (group... + ordering), so the two tied rows share ONE key --
+        // the key-space limitation this evaluator already documents at its group-absence guard.
+        // The surviving value at that shared key is therefore the distinguisher: with
+        // first-occurrence the later-written tied row is NOT the last, so the key reads false;
+        // the `> 0` -> `>= 0` ConditionalsBoundary mutant advances lastRow onto the LAST tied row,
+        // so the same key reads true.
+        IDataTable se = MockTable.of().col("USUBJID", "S1", "S1", "S1", "S2")
+                .col("SESEQ", "1", "2", "2", "7").name("SE").build();
+        Operation op = makeOp("$last", "is_last_in_group");
+        op.setGroup(List.of("USUBJID"));
+        op.setOrdering("SESEQ");
+
+        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, se, NO_RESOLVER, null,
+                new java.util.HashMap<>());
+        assertEquals(false, gr.results().get("S1" + NUL + "1"), "below the max");
+        assertEquals(false, gr.results().get("S1" + NUL + "2"),
+                "first-occurrence tie: the max is row 1, so row 2 writes false last");
+        assertEquals(true, gr.results().get("S2" + NUL + "7"), "untied control group");
+    }
+
+
+    @Test
+    void isLastInGroup_nonNumericOrderingComparesLexicographically()
+    {
+        // The ordering column parses as no number, so orderingCompare falls back to
+        // String.compareTo. The PrimitiveReturnsMutator mutant `return sa.compareTo(sb)` ->
+        // `return 0` makes every non-numeric value compare equal, so lastRow never advances past
+        // g[0] and the FIRST row of each group is flagged as its last.
+        IDataTable se = MockTable.of().col("USUBJID", "S1", "S1", "S1").col("ORD", "B", "A", "C")
+                .name("SE").build();
+        Operation op = makeOp("$last", "is_last_in_group");
+        op.setGroup(List.of("USUBJID"));
+        op.setOrdering("ORD");
+
+        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, se, NO_RESOLVER, null,
+                new java.util.HashMap<>());
+        assertEquals(true, gr.results().get("S1" + NUL + "C"), "lexicographic max is the last");
+        assertEquals(false, gr.results().get("S1" + NUL + "B"),
+                "the first row is NOT the last under string ordering");
+        assertEquals(false, gr.results().get("S1" + NUL + "A"));
+    }
+
+    // -- F-corej-L1-03: the SDTM "no Day 0" boundary of the dy operation -------
+
+
+    @Test
+    void dy_dateEqualToTheReferenceDate_isStudyDayOne()
+    {
+        // SDTM study day has NO day 0: the reference date itself is Day 1 and the day before it is
+        // Day -1. The `days >= 0` -> `days > 0` ConditionalsBoundary mutant ships Day 0 for a
+        // record dated exactly on DM.RFSTDTC -- the single input that observes it.
+        IDataTable dm = MockTable.of().col("USUBJID", "S1").col("RFSTDTC", "2020-01-15").name("DM")
+                .build();
+        IDataTable ae = MockTable.of().col("USUBJID", "S1", "S1", "S1")
+                .col("AESTDTC", "2020-01-15", "2020-01-14", "2020-01-16").name("AE").build();
+        Operation op = makeOp("$dy", "dy");
+        op.setName("AESTDTC");
+        DatasetResolver dmResolver = name -> "DM".equals(name) ? dm : null;
+
+        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, ae, dmResolver, null,
+                new java.util.HashMap<>());
+        assertEquals(List.of("USUBJID", "AESTDTC"), gr.groupColumns());
+        assertEquals(1L, gr.results().get("S1" + NUL + "2020-01-15"),
+                "a date equal to RFSTDTC is Day 1 -- there is no Day 0");
+        assertEquals(-1L, gr.results().get("S1" + NUL + "2020-01-14"),
+                "the day before the reference date is Day -1");
+        assertEquals(2L, gr.results().get("S1" + NUL + "2020-01-16"));
+    }
 }

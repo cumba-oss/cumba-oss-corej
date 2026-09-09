@@ -2,6 +2,7 @@ package net.cumba.corej.core.metadata.store.seed;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -101,7 +102,7 @@ final class SeedFixtures
         new PickleCacheSeeder().seed(SeedOptions
                 .builder(new LocalPickleSource(aPickleDir), aCacheDir, BASE_URL).build());
         new GzipFileApiCache(aCacheDir.toAbsolutePath(), ".json").write("/api/mdr/products",
-                MAPPER.writeValueAsString(productsDoc()));
+                MAPPER.writeValueAsString(productsDoc()).getBytes(StandardCharsets.UTF_8));
     }
 
 

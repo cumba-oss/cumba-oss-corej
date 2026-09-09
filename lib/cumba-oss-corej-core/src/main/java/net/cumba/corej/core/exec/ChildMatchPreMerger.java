@@ -413,7 +413,13 @@ public final class ChildMatchPreMerger
             return null;
         }
         String name = meta.getName();
-        if (name == null || !name.startsWith("SUPP") || name.length() <= 4)
+        // SUPP-- AND SQAP-- (F-corej-L1-05): the two routines this one is kept in lock-step with —
+        // childEntryMatchesPrimary above and OperationExecutor.resolvePrefixes — both treat
+        // SQAP<x> as the sibling of SUPP<x>. Handling only SUPP here made an SQAPxx primary with
+        // no RDOMAIN column yield no implicit parent, so preMerge returned it unchanged and the
+        // whole child pre-merge was skipped silently: no error, no log.
+        if (name == null || name.length() <= 4
+                || !(name.startsWith("SUPP") || name.startsWith("SQAP")))
         {
             return null;
         }

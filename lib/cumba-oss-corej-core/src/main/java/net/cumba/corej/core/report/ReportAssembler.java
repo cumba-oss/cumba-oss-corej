@@ -320,6 +320,10 @@ public final class ReportAssembler
         // (Conformance Details row 21) and the REST projection — the report is the artefact
         // anyone actually reads, and under D12 the degraded state is the default.
         putIfNotNull(m, "Dictionary_Basis", c.dictionaryBasis);
+        // F-corej-L2-07 — the third member of the basis family (Fix #369 / D13): present ONLY on
+        // a run whose Define-XML could not be parsed directly, naming what the define metadata
+        // degraded to. A run whose Define-XML parsed cleanly (or that has none) gains no key.
+        putIfNotNull(m, "Define_Metadata_Basis", c.defineMetadataBasis);
 
         putIfNotNull(m, "UNII_Version", c.uniiVersion);
         putIfNotNull(m, "Med_RT_Version", c.medRtVersion);
@@ -1117,6 +1121,8 @@ public final class ReportAssembler
 
         private final @Nullable String dictionaryBasis;
 
+        private final @Nullable String defineMetadataBasis;
+
         private Conformance(Builder b)
         {
             reportGeneration = b.reportGeneration;
@@ -1140,6 +1146,7 @@ public final class ReportAssembler
             loincVersion = b.loincVersion;
             neoplasmVersion = b.neoplasmVersion;
             dictionaryBasis = b.dictionaryBasis;
+            defineMetadataBasis = b.defineMetadataBasis;
         }
 
 
@@ -1215,6 +1222,8 @@ public final class ReportAssembler
             private @Nullable String neoplasmVersion;
 
             private @Nullable String dictionaryBasis;
+
+            private @Nullable String defineMetadataBasis;
 
             public Builder reportGeneration(@Nullable String s)
             {
@@ -1368,6 +1377,13 @@ public final class ReportAssembler
             public Builder dictionaryBasis(@Nullable String s)
             {
                 dictionaryBasis = s;
+                return this;
+            }
+
+
+            public Builder defineMetadataBasis(@Nullable String s)
+            {
+                defineMetadataBasis = s;
                 return this;
             }
 
