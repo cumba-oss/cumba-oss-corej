@@ -305,12 +305,13 @@ public class RulePackageLoader
      *
      * <p>
      * ⚠⚠ <b>A caller that bypasses {@link #finishLoad} must invoke this method itself.</b>
-     * {@link LibraryRuleMapper#mapRulePackage} is exactly that case — it hand-picks the passes that
-     * make sense without {@code normalizeOperations} rather than running the whole pipeline — so it
-     * calls this explicitly. That is why this method is package-private rather than private. Any
-     * future path that assembles a {@link RulePackage} outside {@code finishLoad} inherits the same
-     * obligation, or a rule sourced through it will declare itself not executable and run anyway. ⚠
-     * The upstream CDISC-Library corpus is <em>not</em> this repo's corpus and is not under this
+     * {@code LibraryRuleMapper.mapRulePackage} (retired with the CDISC-Library rules ingestion,
+     * cache P4) is exactly that case — it hand-picks the passes that make sense without
+     * {@code normalizeOperations} rather than running the whole pipeline — so it calls this
+     * explicitly. That is why this method is package-private rather than private. Any future path
+     * that assembles a {@link RulePackage} outside {@code finishLoad} inherits the same obligation,
+     * or a rule sourced through it will declare itself not executable and run anyway. ⚠ The
+     * upstream CDISC-Library corpus is <em>not</em> this repo's corpus and is not under this
      * project's control, so "zero rules declare the value today" is a fact about {@code rules-src/}
      * only.
      * </p>
@@ -562,6 +563,11 @@ public class RulePackageLoader
                     // field-form value, so the executor only ever sees the canonical spelling.
                     net.cumba.corej.core.expr.convert.OperationExpressionParser
                             .validateModelClass(op);
+                    // Same again for `key_name`: a FIELD-FORM operation never passes through
+                    // `fromCall`, and a key the library variable rows never carry (or an operator
+                    // that never reads the field) would otherwise be bound by Jackson and dropped
+                    // in silence — the FDA-SD1078 shape.
+                    net.cumba.corej.core.expr.convert.OperationExpressionParser.validateKeyName(op);
                 }
             }
             // ⚠ NOT inside the `ops` guard: an operation authored INLINE in the Check expression
@@ -759,13 +765,15 @@ public class RulePackageLoader
                     .fromJson(call.name()) != null;
             if (isOperationCall && (call.kwargs().containsKey("missing_values")
                     || call.kwargs().containsKey("keep_missings")
-                    || call.kwargs().containsKey("model_class")))
+                    || call.kwargs().containsKey("model_class")
+                    || call.kwargs().containsKey("key_name")))
             {
                 // Rebuilding the Operation is what applies BOTH rejections: fromCall runs the kwarg
                 // loop (so a list/number value is rejected by the same code as Form B) and then
                 // validateMissingValues (value enum + consuming operator + date_diff_days Mode 2),
-                // validateKeepMissings (consuming operator + non-empty group) and EC-85's
-                // validateModelClass (consuming operator + known class spelling).
+                // validateKeepMissings (consuming operator + non-empty group), EC-85's
+                // validateModelClass (consuming operator + known class spelling) and
+                // validateKeyName (consuming operator + library-variable attribute vocabulary).
                 net.cumba.corej.core.expr.convert.OperationExpressionParser.fromCall(call, null);
             }
             else if (!isOperationCall && call.kwargs().containsKey("keep_missings"))
@@ -2823,8 +2831,9 @@ public class RulePackageLoader
 
     /**
      * Per-rule variant of {@link #validateEnumFields(RulePackage)}, also applied by
-     * {@link LibraryRuleMapper} so CDISC-Library-sourced rules fail identically. Appends to a
-     * pre-existing {@code loadError} (e.g. an operand-substitution error) instead of clobbering it.
+     * {@code LibraryRuleMapper} (until cache P4 retired it) so CDISC-Library-sourced rules failed
+     * identically. Appends to a pre-existing {@code loadError} (e.g. an operand-substitution error)
+     * instead of clobbering it.
      */
     static void validateEnumFields(@Nullable Rule rule)
     {
@@ -2858,7 +2867,8 @@ public class RulePackageLoader
         checkGroupSensitivityConsistency(rule, errors);
         // Gate R5 — Requirements.Library/.Define/.Dictionary ⟺ the DERIVED dependency. A
         // value-agreement gate, so it belongs beside gate 3b and not with the shape gates; being
-        // here it also reaches LibraryRuleMapper, which calls this method and nothing else.
+        // here it also reached the retired LibraryRuleMapper, which called this method and nothing
+        // else.
         checkProviderRequirements(rule, errors);
         // Gate R7 — a Match_Datasets secondary this rule does not declare. Its own channel, NOT
         // `warnings`: see Rule.getRequirementsGapWarning().
@@ -3765,7 +3775,8 @@ public class RulePackageLoader
 
     /**
      * Per-rule variant of {@link #deriveOmittedFields(RulePackage)}, also applied by
-     * {@link LibraryRuleMapper} so CDISC-Library-sourced rules derive identically.
+     * {@code LibraryRuleMapper} (until cache P4 retired it) so CDISC-Library-sourced rules derived
+     * identically.
      *
      * <p>
      * Public because the corpus no longer carries these fields: anything that binds a {@link Rule}

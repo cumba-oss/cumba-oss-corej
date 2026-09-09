@@ -141,9 +141,9 @@ class CompanionDomainsProviderTest
 
 
         @Override
-        public boolean isCodelistExtensible(String codelistName)
+        public java.util.Optional<Boolean> isCodelistExtensible(String codelistName)
         {
-            return true;
+            return java.util.Optional.of(true);
         }
 
 
@@ -202,7 +202,7 @@ class CompanionDomainsProviderTest
         assertEquals(Map.of("who", "BASE"), p.getVariableMetadata("AE", "AETERM"));
         assertEquals(List.of(Map.of("who", "BASE")), p.getDomainVariables("AE"));
         assertEquals(Map.of("who", "BASE"), p.getDatasetMetadata("AE"));
-        assertTrue(p.isCodelistExtensible("C1"));
+        assertEquals(java.util.Optional.of(Boolean.TRUE), p.isCodelistExtensible("C1"));
         assertEquals(Map.of("who", "BASE"), p.getCodelistTermMappings("C1"));
         assertEquals("BASE-STD", p.getStandard());
         assertEquals("BASE-VER", p.getVersion());

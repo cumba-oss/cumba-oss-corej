@@ -17,9 +17,9 @@ import org.jspecify.annotations.Nullable;
  * and domain classifications.
  * </p>
  * <p>
- * Implementations bridge to a concrete Library client (e.g., {@code CdiscLibraryClient} from
- * {@code net.cumba.cdisc.library}). The standard and version context is set at construction time by
- * the caller.
+ * Implementations read a concrete offline metadata source — since cache P4 the unified metadata
+ * store ({@code StoreMetadataProviderFactory}); a validation run never reaches the network. The
+ * standard and version context is set at construction time by the caller.
  * </p>
  * <p>
  * When no provider is configured, Library-dependent Operations produce a "rule skipped" result.
@@ -106,13 +106,12 @@ public interface MetadataProvider
      * distinct from being consulted and having nothing to say.
      *
      * <p>
-     * <b>Fix #369.</b> {@code CdiscLibraryProviderBuilder} returns a <em>degraded</em> provider
-     * when the Library product fetch throws — the state of any run whose subscription key is
-     * missing or expired (an ordinary HTTP 401), not only of a network outage. A degraded provider
-     * still answers the variable-list accessors from its <em>study</em> library, and when that
-     * cannot answer either the result is an empty list, {@code contains_all(cols, [])} is vacuously
-     * true and a rule that claims to check the Library reports {@code SUCCESS} having never
-     * consulted it.
+     * <b>Fix #369.</b> The run degrades to a <em>degraded</em> provider when the Library product
+     * fetch throws — the state of any run whose subscription key is missing or expired (an ordinary
+     * HTTP 401), not only of a network outage. A degraded provider still answers the variable-list
+     * accessors from its <em>study</em> library, and when that cannot answer either the result is
+     * an empty list, {@code contains_all(cols, [])} is vacuously true and a rule that claims to
+     * check the Library reports {@code SUCCESS} having never consulted it.
      * </p>
      *
      * <p>
@@ -594,12 +593,22 @@ public interface MetadataProvider
     /**
      * Returns whether a codelist is extensible.
      *
+     * <p>
+     * F-corej-ct-02: an <em>unresolvable</em> codelist answers {@link Optional#empty()}, never a
+     * defaulted boolean. Both extensibility accessors (this one and the
+     * {@code var_codelist_extensible} attribute channel) share that miss behaviour, so "the
+     * codelist could not be resolved" stays distinguishable from a real answer — a defaulted
+     * {@code true} silently disarmed every shipped {@code == false} guard. Callers that need a
+     * fail-open boolean (rule <em>generation</em>, the VLM Python-parity default) must spell the
+     * default out via {@code orElse(...)} and own it.
+     * </p>
+     *
      * @param codelistName
      *            the codelist submission value (e.g., "NY", "SEX")
-     * @return {@code true} if extensible, {@code false} if non-extensible, {@code true} as default
-     *         if codelist is unknown
+     * @return {@code true} if extensible, {@code false} if non-extensible (a codelist found with an
+     *         unspecified flag counts as extensible); empty when the codelist cannot be resolved
      */
-    boolean isCodelistExtensible(String codelistName);
+    Optional<Boolean> isCodelistExtensible(String codelistName);
 
 
     /**
@@ -713,11 +722,27 @@ public interface MetadataProvider
     /**
      * Detailed companion to {@link #getStandardModelVariables} — returns the same resolved
      * variables, but each entry carries the variable's full attribute map (Python
-     * {@code variables_metadata} shape: {@code name}, {@code role}, {@code core},
-     * {@code simpleDatatype}, {@code label}, {@code ordinal}). The
-     * {@code get_dataset_filtered_variables} and {@code get_model_filtered_variables} Operations
-     * consume this output so they can filter by attribute (e.g. {@code role = "Timing"}) before
-     * projecting to names.
+     * {@code variables_metadata} shape). The {@code get_dataset_filtered_variables} and
+     * {@code get_model_filtered_variables} Operations consume this output so they can filter by
+     * attribute (e.g. {@code role = "Timing"}) before projecting to names.
+     *
+     * <p>
+     * ⭐ <b>The row keys are
+     * {@link net.cumba.corej.core.metadata.LibraryVariableAttributes#KEYS}</b> — {@code name},
+     * {@code role}, {@code core}, {@code simpleDatatype}, {@code label}, {@code ordinal},
+     * {@code description}, {@code roleDescription}, {@code definition}, {@code notes},
+     * {@code examples}, {@code usageRestrictions}, {@code variableCcode},
+     * {@code describedValueDomain} — and an entry carries only the ones its source product
+     * populated, so the key set varies per dataset and per level. ⚠ This javadoc enumerated six
+     * until 2026-09-08; a {@code key_name} filter naming any of the other eight matched nothing,
+     * silently. Read that class before trusting any list of these keys, here or in a plan.
+     * </p>
+     *
+     * <p>
+     * ⛔ The three list-valued stored fields ({@code valueList}, {@code codelistSubmissionValues},
+     * {@code codelistIds}) are deliberately absent: the row is {@code Map<String, String>}, so
+     * there is no honest scalar for them, and a {@code key_name} naming one is a load error.
+     * </p>
      *
      * <p>
      * Implementations without product access return {@code null} as the "library not available"
@@ -790,8 +815,12 @@ public interface MetadataProvider
      * {@code get_variables_metadata_from_standard}: the model-side class walk is overwritten by the
      * IG dataset variables (detectable classes) or replaced by the pure IG dataset variables
      * (non-detectable, non-custom), with custom domains emitting the model walk. Each entry carries
-     * the variable's full attribute map (Python {@code variables_metadata} shape: {@code name},
-     * {@code role}, {@code core}, {@code simpleDatatype}, {@code label}, {@code ordinal}).
+     * the variable's full attribute map (Python {@code variables_metadata} shape) — the same key
+     * vocabulary as {@link #getStandardModelVariablesDetailed}, namely
+     * {@link net.cumba.corej.core.metadata.LibraryVariableAttributes#KEYS}. ⚠ It is the <b>same</b>
+     * vocabulary and not an IG-only subset: this walk's identifier / class / timing buckets come
+     * from the <em>Model</em> product, so a model-only field such as {@code notes} reaches this
+     * output too (and a custom domain skips the IG merge entirely).
      *
      * <p>
      * Contrast with {@link #getStandardModelVariablesDetailed}, which is the algorithm-A pure-Model

@@ -371,9 +371,12 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
 
 
     @Override
-    public boolean isCodelistExtensible(String codelistName)
+    public java.util.Optional<Boolean> isCodelistExtensible(String codelistName)
     {
-        return fallback != null && fallback.isCodelistExtensible(codelistName);
+        // No fallback -> unresolvable (empty), matching the F-corej-ct-02 miss contract; the
+        // pre-Optional form answered `false` here, which was a third miss behaviour.
+        return fallback != null ? fallback.isCodelistExtensible(codelistName)
+                : java.util.Optional.empty();
     }
 
 

@@ -111,9 +111,9 @@ class AdamAdditionsReauthoredRulesTest
 
 
         @Override
-        public boolean isCodelistExtensible(String codelistName)
+        public java.util.Optional<Boolean> isCodelistExtensible(String codelistName)
         {
-            return false;
+            return java.util.Optional.of(false);
         }
 
 

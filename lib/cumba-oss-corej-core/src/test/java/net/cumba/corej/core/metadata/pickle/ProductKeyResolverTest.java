@@ -139,11 +139,11 @@ class ProductKeyResolverTest
 
 
     @Test
-    void resolveAllWithNoCacheNamesTheMissingCacheReason()
+    void resolveAllWithNoCacheNamesTheMissingStoreReason()
     {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                 () -> ProductKeyResolver.resolveAll(List.of("adamig-1-3"), Set.of()));
-        assertTrue(e.getMessage().contains("no pickle metadata cache"), e.getMessage());
+        assertTrue(e.getMessage().contains("no unified metadata store"), e.getMessage());
     }
 
 
@@ -162,9 +162,8 @@ class ProductKeyResolverTest
     void anEmptyCatalogueAcceptsFullFormOnly()
     {
         // No source available at all: full-form tokens pass verbatim, bare suffixes error with
-        // the no-catalogue reason. (The residue of the old "no pickle cache => full-key tokens
-        // only" rule, which Phase 7b superseded for API-backed deployments.)
-        MetadataProductCatalogue none = MetadataProductCatalogue.of(Set.of(), false, List.of());
+        // the no-catalogue reason.
+        MetadataProductCatalogue none = MetadataProductCatalogue.of(Set.of(), List.of());
         assertEquals(List.of("standards/adam/adamig-1-3"),
                 ProductKeyResolver.resolveAll(List.of("adam/adamig-1-3"), none));
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
@@ -174,67 +173,25 @@ class ProductKeyResolverTest
 
 
     @Test
-    void aPickleOnlyCatalogueResolvesABareToken()
+    void aStoreCatalogueResolvesABareToken()
     {
-        MetadataProductCatalogue pickleOnly = MetadataProductCatalogue.of(KEYS, true,
-                List.of("pickle cache"));
+        MetadataProductCatalogue store = MetadataProductCatalogue.of(KEYS,
+                List.of("metadata store"));
         assertEquals(List.of("standards/adam/adamig-1-3"),
-                ProductKeyResolver.resolveAll(List.of("adamig-1-3"), pickleOnly));
+                ProductKeyResolver.resolveAll(List.of("adamig-1-3"), store));
     }
 
 
     @Test
-    void anApiOnlyCatalogueResolvesABareToken()
+    void aTigTokenAgainstAStoreWithoutTigFailsWithTheSeedingReason()
     {
-        // §7c: an API-only deployment (no pickle cache anywhere) now resolves bare tokens too —
-        // the catalogue supersedes the old pickle-only rule.
-        MetadataProductCatalogue apiOnly = MetadataProductCatalogue.of(
-                Set.of("standards/adam/adamig-1-3", "standards/sdtmig/3-4"), false,
-                List.of("CDISC Library API product list"));
-        assertEquals(List.of("standards/adam/adamig-1-3"),
-                ProductKeyResolver.resolveAll(List.of("adamig-1-3"), apiOnly));
-    }
-
-
-    @Test
-    void aBothConfiguredCatalogueResolvesAgainstTheUnion()
-    {
-        // Pickle contributes TIG (pickle-only, §7-1); the API side contributes the IGs. A token
-        // of each source resolves through one union set.
-        Set<String> union = new LinkedHashSet<>(KEYS);
-        union.add("standards/cdashig/2-3");
-        MetadataProductCatalogue both = MetadataProductCatalogue.of(union, true,
-                List.of("pickle cache", "CDISC Library API product list"));
-        assertEquals(List.of("standards/tig/1-0/adam", "standards/cdashig/2-3"),
-                ProductKeyResolver.resolveAll(List.of("tig/1-0/adam", "cdashig/2-3"), both));
-    }
-
-
-    @Test
-    void resolveAllConfiguredResolvesABareTokenAgainstTheRealCatalogue()
-    {
-        // The configured-catalogue path end to end (gated on the real caches): a bare token
-        // resolves through the pickle/API union that resolveAllConfigured assembles itself.
-        String pickleDir = System.getenv("CDISC_PICKLE_CACHE_DIR");
-        org.junit.jupiter.api.Assumptions.assumeTrue(
-                pickleDir != null
-                        && java.nio.file.Files.isDirectory(java.nio.file.Path.of(pickleDir)),
-                "no real pickle cache configured");
-        assertEquals(List.of("standards/adam/adamig-1-3"), ProductKeyResolver.resolveAllConfigured(
-                List.of("adamig-1-3"), pickleDir, System.getenv("CDISC_API_CACHE")));
-    }
-
-
-    @Test
-    void aTigTokenInAnApiOnlyDeploymentFailsWithThePickleOnlyReason()
-    {
-        // §7-1: tig/1-0/* is pickle-only — the API cache has no TIG at all. The failure must
-        // state that reason, not present a mysterious not-found.
-        MetadataProductCatalogue apiOnly = MetadataProductCatalogue.of(
-                Set.of("standards/sdtmig/3-4"), false, List.of("CDISC Library API product list"));
+        // TIG enters the store only via pickle seeding; a store seeded from the API alone lacks
+        // it. The failure must state that reason, not present a mysterious not-found.
+        MetadataProductCatalogue apiSeeded = MetadataProductCatalogue
+                .of(Set.of("standards/sdtmig/3-4"), List.of("metadata store x"));
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> ProductKeyResolver.resolveAll(List.of("tig/1-0/adam"), apiOnly));
+                () -> ProductKeyResolver.resolveAll(List.of("tig/1-0/adam"), apiSeeded));
         assertTrue(e.getMessage().contains("TIG"), e.getMessage());
-        assertTrue(e.getMessage().contains("pickle metadata cache"), e.getMessage());
+        assertTrue(e.getMessage().contains("pickle"), e.getMessage());
     }
 }

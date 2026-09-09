@@ -182,9 +182,9 @@ class Core000550RegressionTest
 
 
             @Override
-            public boolean isCodelistExtensible(String c)
+            public java.util.Optional<Boolean> isCodelistExtensible(String c)
             {
-                return false;
+                return java.util.Optional.of(false);
             }
 
 

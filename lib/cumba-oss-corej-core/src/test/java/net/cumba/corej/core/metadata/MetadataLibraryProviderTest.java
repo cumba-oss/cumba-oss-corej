@@ -368,16 +368,18 @@ class MetadataLibraryProviderTest
                 .codelist(codelist("EXT").extensible(Boolean.TRUE).build())
                 .codelist(codelist("NONEXT").extensible(Boolean.FALSE).build()).build();
         MetadataProvider provider = new MetadataLibraryProvider(library);
-        assertTrue(provider.isCodelistExtensible("EXT"));
-        assertFalse(provider.isCodelistExtensible("NONEXT"));
+        assertEquals(java.util.Optional.of(Boolean.TRUE), provider.isCodelistExtensible("EXT"));
+        assertEquals(java.util.Optional.of(Boolean.FALSE), provider.isCodelistExtensible("NONEXT"));
     }
 
 
     @Test
-    void isCodelistExtensibleTrueForUnknown()
+    void isCodelistExtensibleEmptyForUnknown()
     {
+        // F-corej-ct-02: an unresolvable codelist is ABSENT, never a defaulted true — the old
+        // fail-open default silently disarmed every shipped `== false` guard.
         MetadataProvider provider = new MetadataLibraryProvider(lib("study").build());
-        assertTrue(provider.isCodelistExtensible("UNKNOWN"));
+        assertEquals(java.util.Optional.empty(), provider.isCodelistExtensible("UNKNOWN"));
     }
 
 
@@ -387,7 +389,7 @@ class MetadataLibraryProviderTest
         IMetadataLibrary library = lib("study").codelist(codelist("X").extensible(null).build())
                 .build();
         MetadataProvider provider = new MetadataLibraryProvider(library);
-        assertTrue(provider.isCodelistExtensible("X"));
+        assertEquals(java.util.Optional.of(Boolean.TRUE), provider.isCodelistExtensible("X"));
     }
 
     // ------------------------------------------------------------------

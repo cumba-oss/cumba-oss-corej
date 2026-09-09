@@ -121,7 +121,8 @@ class PickleIgModelLinkGuardTest
 
 
     /**
-     * Mirrors {@code PickleProductSource.modelKeyFromIg} — including the <b>prefix strip</b>
+     * Mirrors the IG-href-to-model-key derivation ({@code StoreMetadataProviderFactory.modelFor};
+     * formerly {@code PickleProductSource.modelKeyFromIg}) — including the <b>prefix strip</b>
      * ({@code /mdr/adam/adam-2-1} → version {@code adam-2-1} → {@code 2-1}) that a naive reading of
      * the href would miss.
      */

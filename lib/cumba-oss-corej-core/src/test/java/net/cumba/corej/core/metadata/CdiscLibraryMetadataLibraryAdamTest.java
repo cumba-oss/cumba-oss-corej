@@ -182,10 +182,11 @@ class CdiscLibraryMetadataLibraryAdamTest
         assertEquals("ADaM CT 2024-03-29", adamCt.pkg().name().orElse(null));
         assertEquals("SDTM CT 2024-03-29", sdtmCt.pkg().name().orElse(null));
 
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromAdam("adamig", "1-3",
-                adamFixture(), adamCt, sdtmCt);
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromAdam("adamig", "1-3", adamFixture(),
+                adamCt, sdtmCt);
 
-        assertEquals("adamct-2024-03-29", lib.getMetaValue(MetadataKeys.CT_VERSION).orElse(null));
+        assertEquals(java.util.List.of("adamct-2024-03-29", "sdtmct-2024-03-29"),
+                lib.getMetaValue(MetadataKeys.CT_VERSION).orElse(null));
         assertEquals(List.of("adamct-2024-03-29", "sdtmct-2024-03-29"),
                 lib.getMetaValue(MetadataKeys.PUBLISHED_CT_PACKAGES).orElse(null));
     }
@@ -195,8 +196,8 @@ class CdiscLibraryMetadataLibraryAdamTest
     @Test
     void publishedCtPackagesOmitsAbsentSdtmFallback()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromAdam("adamig", "1-3",
-                adamFixture(), adamCtFixture(), null);
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromAdam("adamig", "1-3", adamFixture(),
+                adamCtFixture(), null);
 
         assertEquals(List.of("adamct-2024-03-29"),
                 lib.getMetaValue(MetadataKeys.PUBLISHED_CT_PACKAGES).orElse(null));
@@ -206,22 +207,23 @@ class CdiscLibraryMetadataLibraryAdamTest
     @Test
     void adamLibraryNameAndVersion()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromAdam("adamig", "1-3",
-                adamFixture(), adamCtFixture(), null);
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromAdam("adamig", "1-3", adamFixture(),
+                adamCtFixture(), null);
 
         assertEquals("adamig", lib.getName());
         assertEquals("1-3", lib.getVersion());
         assertEquals("adamig", lib.getMetaValue(MetadataKeys.STANDARD_NAME).orElse(null));
         assertEquals("1-3", lib.getMetaValue(MetadataKeys.STANDARD_VERSION).orElse(null));
-        assertEquals("adamct-2024-03-29", lib.getMetaValue(MetadataKeys.CT_VERSION).orElse(null));
+        assertEquals(List.of("adamct-2024-03-29"),
+                lib.getMetaValue(MetadataKeys.CT_VERSION).orElse(null));
     }
 
 
     @Test
     void dataStructuresBecomeTablesWithClassName()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromAdam("adamig", "1-3",
-                adamFixture(), adamCtFixture(), null);
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromAdam("adamig", "1-3", adamFixture(),
+                adamCtFixture(), null);
 
         IDataTableMetadata adsl = lib.getDataTable("ADSL").orElseThrow();
         assertEquals("ADSL", adsl.getName());
@@ -233,8 +235,8 @@ class CdiscLibraryMetadataLibraryAdamTest
     @Test
     void variableSetsAreFlattenedAndOrdered()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromAdam("adamig", "1-3",
-                adamFixture(), adamCtFixture(), null);
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromAdam("adamig", "1-3", adamFixture(),
+                adamCtFixture(), null);
 
         IDataTableMetadata adsl = lib.getDataTable("ADSL").orElseThrow();
         List<IColumnMetadata> cols = adsl.getColumns();
@@ -251,8 +253,8 @@ class CdiscLibraryMetadataLibraryAdamTest
     @Test
     void modelColumnOrderIsPopulatedFromAllVariables()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromAdam("adamig", "1-3",
-                adamFixture(), adamCtFixture(), null);
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromAdam("adamig", "1-3", adamFixture(),
+                adamCtFixture(), null);
 
         IDataTableMetadata adsl = lib.getDataTable("ADSL").orElseThrow();
         Object mco = adsl.getMetaValue(MetadataKeys.MODEL_COLUMN_ORDER).orElseThrow();
@@ -265,8 +267,8 @@ class CdiscLibraryMetadataLibraryAdamTest
     @Test
     void sdtmCtFallbackExposesSdtmCodelists()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromAdam("adamig", "1-3",
-                adamFixture(), adamCtFixture(), sdtmCtFixture());
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromAdam("adamig", "1-3", adamFixture(),
+                adamCtFixture(), sdtmCtFixture());
 
         // Both ADaM codelist (YN) and SDTM codelist (SEX) should be visible
         assertTrue(lib.getCodelist("YN").isPresent());
@@ -282,8 +284,8 @@ class CdiscLibraryMetadataLibraryAdamTest
     @Test
     void withoutSdtmCtFallbackSdtmCodelistsAreUnavailable()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromAdam("adamig", "1-3",
-                adamFixture(), adamCtFixture(), null);
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromAdam("adamig", "1-3", adamFixture(),
+                adamCtFixture(), null);
 
         assertTrue(lib.getCodelist("YN").isPresent());
         assertFalse(lib.getCodelist("SEX").isPresent());
@@ -300,8 +302,8 @@ class CdiscLibraryMetadataLibraryAdamTest
         CtPackageRef adamCt = mkCtPackage("adamct-2024-03-29", "ADaM CT 2024-03-29",
                 List.of(adamSex));
 
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromAdam("adamig", "1-3",
-                adamFixture(), adamCt, sdtmCtFixture());
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromAdam("adamig", "1-3", adamFixture(),
+                adamCt, sdtmCtFixture());
 
         ICodeList sex = lib.getCodelist("SEX").orElseThrow();
         // ADaM's version should have won (2 entries, not 3)
@@ -313,8 +315,8 @@ class CdiscLibraryMetadataLibraryAdamTest
     @Test
     void sexColumnHasCodelistResolvedFromSdtmCt()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromAdam("adamig", "1-3",
-                adamFixture(), adamCtFixture(), sdtmCtFixture());
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromAdam("adamig", "1-3", adamFixture(),
+                adamCtFixture(), sdtmCtFixture());
 
         IDataTableMetadata adsl = lib.getDataTable("ADSL").orElseThrow();
         IColumnMetadata sex = adsl.getColumn("SEX").orElseThrow();
@@ -326,8 +328,8 @@ class CdiscLibraryMetadataLibraryAdamTest
     @Test
     void isCustomDomainIsFalseForAdamDataStructures()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromAdam("adamig", "1-3",
-                adamFixture(), adamCtFixture(), null);
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromAdam("adamig", "1-3", adamFixture(),
+                adamCtFixture(), null);
 
         IDataTableMetadata adsl = lib.getDataTable("ADSL").orElseThrow();
         assertEquals(false, adsl.getMetaValue(MetadataKeys.IS_CUSTOM_DOMAIN).orElse(null));
@@ -337,14 +339,14 @@ class CdiscLibraryMetadataLibraryAdamTest
     @Test
     void nullArgumentsAreRejected()
     {
-        assertThrows(NullPointerException.class, () -> CdiscLibraryMetadataLibrary.fromAdam(null,
-                "1-3", adamFixture(), adamCtFixture(), null));
-        assertThrows(NullPointerException.class, () -> CdiscLibraryMetadataLibrary
-                .fromAdam("adamig", null, adamFixture(), adamCtFixture(), null));
-        assertThrows(NullPointerException.class, () -> CdiscLibraryMetadataLibrary
-                .fromAdam("adamig", "1-3", null, adamCtFixture(), null));
-        assertThrows(NullPointerException.class, () -> CdiscLibraryMetadataLibrary
-                .fromAdam("adamig", "1-3", adamFixture(), null, null));
+        assertThrows(NullPointerException.class, () -> ApiModelLibraries.fromAdam(null, "1-3",
+                adamFixture(), adamCtFixture(), null));
+        assertThrows(NullPointerException.class, () -> ApiModelLibraries.fromAdam("adamig", null,
+                adamFixture(), adamCtFixture(), null));
+        assertThrows(NullPointerException.class,
+                () -> ApiModelLibraries.fromAdam("adamig", "1-3", null, adamCtFixture(), null));
+        assertThrows(NullPointerException.class, () -> ApiModelLibraries.fromAdam("adamig", "1-3",
+                adamFixture(), (CtPackageRef) null, null));
         // sdtmCt is optional, so null is OK — already exercised by the main tests.
     }
 
@@ -352,8 +354,8 @@ class CdiscLibraryMetadataLibraryAdamTest
     @Test
     void integratesWithMetadataLibraryProvider()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromAdam("adamig", "1-3",
-                adamFixture(), adamCtFixture(), sdtmCtFixture());
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromAdam("adamig", "1-3", adamFixture(),
+                adamCtFixture(), sdtmCtFixture());
         MetadataLibraryProvider provider = new MetadataLibraryProvider(lib);
 
         assertEquals("adamig", provider.getStandard());

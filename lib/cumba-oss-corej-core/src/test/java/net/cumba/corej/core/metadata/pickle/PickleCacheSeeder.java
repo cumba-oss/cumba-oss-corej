@@ -23,14 +23,23 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Converts the Python engine's pickle metadata cache into CDISC Library <b>web-api cache</b>
- * entries, so a user without an API key can populate the ordinary {@link GzipFileApiCache} that
- * {@code CdiscLibraryClient} already reads.
+ * entries — the ordinary {@link GzipFileApiCache} layout that {@code CdiscLibraryClient} reads.
  *
  * <p>
- * Nothing downstream changes: after seeding, the engine takes its normal API-client path and finds
- * the answers already cached. The conversion is a <em>re-serialisation</em>, not a
- * re-interpretation — {@link PickleProductSource} already proves the pickle maps and the live API
- * responses produce identical typed views.
+ * ⚠⚠ <b>TEST FIXTURE since cache P4.</b> The production feature this implemented (seeding the old
+ * web-api cache so a keyless run could take the API path) was cut with that path; nothing in the
+ * product writes or reads the old cache any more. The class moved to the test tree because the P2
+ * byte-identity conformance gates ({@code StoreSeederConformanceTest},
+ * {@code StoreSeederRealDataConformanceTest} via {@code SeedFixtures}) still need to synthesise a
+ * realistic web-api cache to drive {@code WebApiStoreSeeder} offline — which also keeps this
+ * writer's key/serialisation agreement with the client under test. Do not re-introduce it into main
+ * code; a real deployment's web-api cache comes from live API traffic.
+ * </p>
+ *
+ * <p>
+ * The conversion is a <em>re-serialisation</em>, not a re-interpretation — the deleted
+ * {@code PickleProductSource} already proved the pickle maps and the live API responses produce
+ * identical typed views.
  * </p>
  *
  * <h2>Canonical form: API-faithful</h2>
@@ -69,8 +78,10 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * The key itself is never assembled by hand: {@code Run.cacheKeyFor} builds the request CoreJ would
  * issue and asks the target cache to derive the key, so normalisation, parameter sorting and
- * over-long-key shortening can never drift out of step. {@code SeederEngineKeyAgreementTest} pins
- * the agreement against the real {@code CdiscLibraryClient}.
+ * over-long-key shortening can never drift out of step. The store-seeder conformance gates pin the
+ * agreement end to end: a key this writer derived differently from the real
+ * {@code CdiscLibraryClient} would leave {@code WebApiStoreSeeder} unable to find the entry, and
+ * the byte-identity assertion goes red.
  * </p>
  *
  * <h2>What is not seeded</h2>
@@ -123,10 +134,8 @@ public final class PickleCacheSeeder
      * The query {@code CdiscLibraryClient.expand(endpoint, true)} appends.
      *
      * <p>
-     * Every runtime call site for a product-style seeded endpoint passes {@code true}:
-     * {@code CdiscLibraryProviderBuilder:249} (SDTM-IG / SEND-IG), {@code :374} (the SDTM model),
-     * {@code :300} (ADaM), {@code CoreLibraryAccessImpl:201} (a CT package) and
-     * {@code CdiscLibraryBackedLibraryProvider:95}.
+     * Every consumer of a product-style seeded endpoint passes {@code true} — today that is
+     * {@code WebApiStoreSeeder}'s product and CT fetches (the pre-P4 engine read sites did too).
      * </p>
      */
     private static final String EXPAND_QUERY = "expand=true";

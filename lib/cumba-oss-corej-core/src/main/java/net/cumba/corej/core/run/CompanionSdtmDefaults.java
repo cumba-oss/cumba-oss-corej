@@ -59,7 +59,7 @@ public final class CompanionSdtmDefaults
      * The resolved companion SDTM product for an ADaM-family run.
      *
      * @param loaderStandard
-     *            the standard token to hand {@code PickleMetadataProviderFactory.forSdtm} — either
+     *            the standard token to hand {@code StoreMetadataProviderFactory.forSdtm} — either
      *            {@code sdtmig} or {@code tig}.
      * @param loaderVersion
      *            the version token for the same call — a bare SDTMIG version (e.g. {@code 3-4}) or,

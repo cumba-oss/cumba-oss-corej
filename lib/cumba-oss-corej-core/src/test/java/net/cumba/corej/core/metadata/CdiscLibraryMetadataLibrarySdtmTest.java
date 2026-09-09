@@ -203,10 +203,11 @@ class CdiscLibraryMetadataLibrarySdtmTest
         // Guard the premise: the fixture really does carry a label in name(), as the API does.
         assertEquals("SDTM CT 2024-03-29", ct.pkg().name().orElse(null));
 
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromSdtm("sdtmig", "3-4",
-                sdtmFixture(), ct);
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
+                ct);
 
-        assertEquals("sdtmct-2024-03-29", lib.getMetaValue(MetadataKeys.CT_VERSION).orElse(null));
+        assertEquals(java.util.List.of("sdtmct-2024-03-29"),
+                lib.getMetaValue(MetadataKeys.CT_VERSION).orElse(null));
         assertEquals(List.of("sdtmct-2024-03-29"),
                 lib.getMetaValue(MetadataKeys.PUBLISHED_CT_PACKAGES).orElse(null));
     }
@@ -222,8 +223,8 @@ class CdiscLibraryMetadataLibrarySdtmTest
     {
         CtPackageRef anonymous = CtPackageRef.anonymous(sdtmCtFixture().pkg());
 
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromSdtm("sdtmig", "3-4",
-                sdtmFixture(), anonymous);
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
+                anonymous);
 
         assertTrue(lib.getMetaValue(MetadataKeys.CT_VERSION).isEmpty());
         assertTrue(lib.getMetaValue(MetadataKeys.PUBLISHED_CT_PACKAGES).isEmpty());
@@ -238,10 +239,11 @@ class CdiscLibraryMetadataLibrarySdtmTest
     {
         List<String> published = List.of("sdtmct-2024-03-29", "sdtmct-2023-12-15");
 
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromSdtm("sdtmig", "3-4",
-                sdtmFixture(), sdtmCtFixture(), published);
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
+                sdtmCtFixture(), published);
 
-        assertEquals("sdtmct-2024-03-29", lib.getMetaValue(MetadataKeys.CT_VERSION).orElse(null));
+        assertEquals(java.util.List.of("sdtmct-2024-03-29"),
+                lib.getMetaValue(MetadataKeys.CT_VERSION).orElse(null));
         assertEquals(published, lib.getMetaValue(MetadataKeys.PUBLISHED_CT_PACKAGES).orElse(null));
     }
 
@@ -249,22 +251,23 @@ class CdiscLibraryMetadataLibrarySdtmTest
     @Test
     void libraryNameAndVersionFromExplicitArguments()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromSdtm("sdtmig", "3-4",
-                sdtmFixture(), sdtmCtFixture());
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
+                sdtmCtFixture());
 
         assertEquals("sdtmig", lib.getName());
         assertEquals("3-4", lib.getVersion());
         assertEquals("sdtmig", lib.getMetaValue(MetadataKeys.STANDARD_NAME).orElse(null));
         assertEquals("3-4", lib.getMetaValue(MetadataKeys.STANDARD_VERSION).orElse(null));
-        assertEquals("sdtmct-2024-03-29", lib.getMetaValue(MetadataKeys.CT_VERSION).orElse(null));
+        assertEquals(java.util.List.of("sdtmct-2024-03-29"),
+                lib.getMetaValue(MetadataKeys.CT_VERSION).orElse(null));
     }
 
 
     @Test
     void datasetsAreBuiltFromAllClasses()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromSdtm("sdtmig", "3-4",
-                sdtmFixture(), sdtmCtFixture());
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
+                sdtmCtFixture());
 
         List<IDataTableMetadata> tables = lib.getDataTables();
         assertEquals(2, tables.size());
@@ -284,8 +287,8 @@ class CdiscLibraryMetadataLibrarySdtmTest
     @Test
     void datasetLookupIsCaseInsensitive()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromSdtm("sdtmig", "3-4",
-                sdtmFixture(), sdtmCtFixture());
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
+                sdtmCtFixture());
         assertTrue(lib.getDataTable("ae").isPresent());
         assertTrue(lib.getDataTable("Ae").isPresent());
         assertTrue(lib.getDataTable("AE").isPresent());
@@ -295,8 +298,8 @@ class CdiscLibraryMetadataLibrarySdtmTest
     @Test
     void columnsAreOrderedByOrdinalAndHaveCorrectAttributes()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromSdtm("sdtmig", "3-4",
-                sdtmFixture(), sdtmCtFixture());
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
+                sdtmCtFixture());
 
         IDataTableMetadata ae = lib.getDataTable("AE").orElseThrow();
         List<IColumnMetadata> cols = ae.getColumns();
@@ -318,8 +321,8 @@ class CdiscLibraryMetadataLibrarySdtmTest
     @Test
     void modelColumnOrderIsPopulatedFromClassVariables()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromSdtm("sdtmig", "3-4",
-                sdtmFixture(), sdtmCtFixture());
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
+                sdtmCtFixture());
 
         IDataTableMetadata ae = lib.getDataTable("AE").orElseThrow();
         Object mco = ae.getMetaValue(MetadataKeys.MODEL_COLUMN_ORDER).orElseThrow();
@@ -333,8 +336,8 @@ class CdiscLibraryMetadataLibrarySdtmTest
     @Test
     void isCustomDomainIsFalseForStandardDatasets()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromSdtm("sdtmig", "3-4",
-                sdtmFixture(), sdtmCtFixture());
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
+                sdtmCtFixture());
 
         IDataTableMetadata ae = lib.getDataTable("AE").orElseThrow();
         assertEquals(false, ae.getMetaValue(MetadataKeys.IS_CUSTOM_DOMAIN).orElseThrow());
@@ -344,8 +347,8 @@ class CdiscLibraryMetadataLibrarySdtmTest
     @Test
     void codelistReferenceIsResolvedToSubmissionValue()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromSdtm("sdtmig", "3-4",
-                sdtmFixture(), sdtmCtFixture());
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
+                sdtmCtFixture());
 
         IDataTableMetadata ae = lib.getDataTable("AE").orElseThrow();
         IColumnMetadata aesev = ae.getColumn("AESEV").orElseThrow();
@@ -357,8 +360,8 @@ class CdiscLibraryMetadataLibrarySdtmTest
     @Test
     void codelistsAreBuiltWithConceptIdMetaKey()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromSdtm("sdtmig", "3-4",
-                sdtmFixture(), sdtmCtFixture());
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
+                sdtmCtFixture());
 
         List<ICodeList> codelists = lib.getCodelists();
         assertEquals(2, codelists.size());
@@ -380,14 +383,14 @@ class CdiscLibraryMetadataLibrarySdtmTest
     @Test
     void nullArgumentsAreRejected()
     {
-        assertThrows(NullPointerException.class, () -> CdiscLibraryMetadataLibrary.fromSdtm(null,
-                "3-4", sdtmFixture(), sdtmCtFixture()));
-        assertThrows(NullPointerException.class, () -> CdiscLibraryMetadataLibrary
-                .fromSdtm("sdtmig", null, sdtmFixture(), sdtmCtFixture()));
         assertThrows(NullPointerException.class,
-                () -> CdiscLibraryMetadataLibrary.fromSdtm("sdtmig", "3-4", null, sdtmCtFixture()));
+                () -> ApiModelLibraries.fromSdtm(null, "3-4", sdtmFixture(), sdtmCtFixture()));
         assertThrows(NullPointerException.class,
-                () -> CdiscLibraryMetadataLibrary.fromSdtm("sdtmig", "3-4", sdtmFixture(), null));
+                () -> ApiModelLibraries.fromSdtm("sdtmig", null, sdtmFixture(), sdtmCtFixture()));
+        assertThrows(NullPointerException.class,
+                () -> ApiModelLibraries.fromSdtm("sdtmig", "3-4", null, sdtmCtFixture()));
+        assertThrows(NullPointerException.class,
+                () -> ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(), null));
     }
 
     // ------------------------------------------------------------------
@@ -398,8 +401,8 @@ class CdiscLibraryMetadataLibrarySdtmTest
     @Test
     void integratesWithMetadataLibraryProvider()
     {
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromSdtm("sdtmig", "3-4",
-                sdtmFixture(), sdtmCtFixture());
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
+                sdtmCtFixture());
         MetadataLibraryProvider provider = new MetadataLibraryProvider(lib);
 
         assertEquals("sdtmig", provider.getStandard());
@@ -425,9 +428,9 @@ class CdiscLibraryMetadataLibrarySdtmTest
         assertFalse(provider.isDomainCustom("AE"));
 
         // Codelist extensibility
-        assertFalse(provider.isCodelistExtensible("AESEV"));
-        // Unknown codelist defaults to extensible
-        assertTrue(provider.isCodelistExtensible("UNKNOWN"));
+        assertEquals(java.util.Optional.of(Boolean.FALSE), provider.isCodelistExtensible("AESEV"));
+        // Unknown codelist is absent (F-corej-ct-02) — never a defaulted true
+        assertEquals(java.util.Optional.empty(), provider.isCodelistExtensible("UNKNOWN"));
 
         // Dataset-level metadata
         Map<String, String> dsMeta = provider.getDatasetMetadata("AE");
@@ -452,8 +455,8 @@ class CdiscLibraryMetadataLibrarySdtmTest
                 mkTerm("MODERATE", "Moderate", "C100002"), mkTerm("SEVERE", "Severe", "C100003"));
         CtPackageRef ct = mkCtPackage("sdtmct-2024-03-29", "SDTM CT 2024-03-29",
                 List.of(mkCodelist("C66769", "AESEV", false, terms)));
-        CdiscLibraryMetadataLibrary lib = CdiscLibraryMetadataLibrary.fromSdtm("sdtmig", "3-4",
-                sdtmFixture(), ct);
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
+                ct);
         MetadataLibraryProvider provider = new MetadataLibraryProvider(lib);
 
         Map<String, String> aesev = provider.getVariableMetadata("AE", "AESEV");
@@ -470,4 +473,41 @@ class CdiscLibraryMetadataLibrarySdtmTest
         assertFalse(aeterm.containsKey("codelist_extensible"));
     }
 
+
+    /**
+     * Define-ct plan §4.3 (ruling D1) — a multi-package selection is <b>merged</b>, never
+     * first-wins: every package contributes its codelists, the precedence head wins per codelist
+     * submission value, and {@code CtVersion} carries the precedence-winning id for the root.
+     */
+    @Test
+    void multiplePackagesOfOneRootAreMergedHeadWins()
+    {
+        // Newer package: AESEV without SEVERE (the discriminating difference), no NY.
+        Map<String, Object> newSeverity = mkCodelist("C66769", "AESEV", false,
+                List.of(mkTerm("MILD", "Mild"), mkTerm("MODERATE", "Moderate")));
+        CtPackageRef newer = mkCtPackage("sdtmct-2024-03-29", "SDTM CT 2024-03-29",
+                List.of(newSeverity));
+        // Older package: AESEV WITH SEVERE, plus NY (only here).
+        Map<String, Object> oldSeverity = mkCodelist("C66769", "AESEV", false,
+                List.of(mkTerm("MILD", "Mild"), mkTerm("MODERATE", "Moderate"),
+                        mkTerm("SEVERE", "Severe")));
+        Map<String, Object> ny = mkCodelist("C66742", "NY", false,
+                List.of(mkTerm("N", "No"), mkTerm("Y", "Yes")));
+        CtPackageRef older = mkCtPackage("sdtmct-2023-12-15", "SDTM CT 2023-12-15",
+                List.of(oldSeverity, ny));
+
+        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
+                List.of(newer, older), List.of("sdtmct-2024-03-29", "sdtmct-2023-12-15"));
+
+        // Head wins per codelist: AESEV comes from the NEWER package (no SEVERE).
+        ICodeList aesev = lib.getCodelist("AESEV").orElseThrow();
+        assertEquals(List.of("MILD", "MODERATE"),
+                aesev.getEntries().stream().map(ICodelistEntry::getCodeValue).toList());
+        // Merged, not first-wins: the older-only codelist is still present.
+        assertTrue(lib.getCodelist("NY").isPresent(),
+                "a codelist only in the second package must survive the merge");
+        // CT_VERSION is the precedence-winning id per root.
+        assertEquals(List.of("sdtmct-2024-03-29"),
+                lib.getMetaValue(MetadataKeys.CT_VERSION).orElse(null));
+    }
 }

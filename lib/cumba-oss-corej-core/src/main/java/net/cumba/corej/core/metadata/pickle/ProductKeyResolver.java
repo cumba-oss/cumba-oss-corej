@@ -14,9 +14,9 @@ import org.jspecify.annotations.Nullable;
  * a real {@code standards/...} cache key. A token may be given in full ({@code adam/adamig-1-3},
  * with or without the {@code standards/} prefix) or as any unique suffix of a key
  * ({@code adamig-1-3}); resolution is by suffix match against the configured
- * {@link MetadataProductCatalogue} (Phase 7b: the pickle cache's {@link PickleCache#standardKeys()}
- * unioned with the CDISC Library API's {@code /mdr/products} list — the token vocabulary is
- * identical in both, measured §7-1), never by parsing the token.
+ * {@link MetadataProductCatalogue} (since cache P4 a single source — the unified metadata store's
+ * declarable product catalogue; the token vocabulary is unchanged, because the seeders write the
+ * same {@code standards/...} keys the pickle cache carried), never by parsing the token.
  *
  * <p>
  * ⚠ Deliberately NOT a family table and NOT a dash-split heuristic. Cache keys are non-uniform
@@ -27,13 +27,11 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * <b>No catalogue source available ⇒ no key set to match against.</b> With an empty key set, an
+ * <b>No metadata store available ⇒ no key set to match against.</b> With an empty key set, an
  * explicit token is accepted verbatim only in full-key form (it contains a {@code /}, e.g.
  * {@code adam/adamig-1-3}); a bare suffix cannot be resolved and is an error naming the reason.
  * Validation is never silently skipped — that would reintroduce the silent no-op declared products
- * exist to remove. (This is the residue of the pre-Phase-7 "no pickle cache ⇒ full-key tokens only"
- * rule: an API-backed deployment now resolves bare tokens too, and only a deployment with
- * <em>neither</em> source falls back to full-form keys.)
+ * exist to remove.
  * </p>
  */
 public final class ProductKeyResolver
@@ -145,15 +143,15 @@ public final class ProductKeyResolver
      */
     public static List<String> resolveAll(List<String> tokens, Set<String> standardKeys)
     {
-        return resolveAll(tokens, MetadataProductCatalogue.of(standardKeys, true, List.of()));
+        return resolveAll(tokens, MetadataProductCatalogue.of(standardKeys, List.of()));
     }
 
 
     /**
-     * As {@link #resolveAll(List, Set)}, resolving against a source-agnostic
-     * {@link MetadataProductCatalogue} (Phase 7b) so failure messages can say <i>which</i> sources
-     * were consulted — in particular why a TIG token fails in an API-only deployment (TIG is
-     * pickle-only).
+     * As {@link #resolveAll(List, Set)}, resolving against a {@link MetadataProductCatalogue} so
+     * failure messages can say <i>which</i> source was consulted — in particular why a TIG token
+     * fails against a store that was seeded from the CDISC Library API alone (TIG enters a store
+     * only via pickle seeding).
      *
      * @param tokens
      *            the user tokens, in precedence order
@@ -189,19 +187,17 @@ public final class ProductKeyResolver
 
     /**
      * Convenience over {@link #resolveAll(List, MetadataProductCatalogue)} that builds the
-     * catalogue from the current configuration (Phase 7b): the pickle cache's {@code standards/...}
-     * keys when one is configured ({@code aExplicitPickleDir} first, then
-     * {@code CDISC_PICKLE_CACHE_DIR} / {@code cdisc.pickle.cache.dir}), <b>unioned</b> with the
-     * CDISC Library API's {@code /mdr/products} list (served from {@code aExplicitApiCacheDir} /
-     * {@code CDISC_API_CACHE} when cached there, the network otherwise). With no source available
-     * at all only full-form tokens resolve — see the class javadoc.
+     * catalogue from the current configuration: since cache P4 that is the unified metadata store
+     * ({@code CDISC_METADATA_STORE} / {@code cdisc.metadata.store}) and nothing else. With no store
+     * available only full-form tokens resolve — see the class javadoc.
      *
      * @param tokens
      *            the user tokens, in precedence order
      * @param aExplicitPickleDir
-     *            an explicit pickle-cache directory ({@code --pickle-cache}); may be {@code null}
+     *            pre-P4 pickle-cache override; <b>ignored</b> (kept so the P4b lane migrates the
+     *            CLI/REST callers deliberately)
      * @param aExplicitApiCacheDir
-     *            an explicit API-cache directory ({@code --cache}); may be {@code null}
+     *            pre-P4 API-cache override; <b>ignored</b> likewise
      * @return the resolved cache keys, in order
      * @throws IllegalArgumentException
      *             when any token fails to resolve; the message lists every failure
@@ -213,26 +209,26 @@ public final class ProductKeyResolver
         {
             return List.of();
         }
-        return resolveAll(tokens,
-                MetadataProductCatalogue.configured(aExplicitPickleDir, aExplicitApiCacheDir));
+        return resolveAll(tokens, MetadataProductCatalogue.configured());
     }
 
 
     /** One failure message for a {@link Result.NotFound}, naming the reason and candidates. */
     private static String describeNotFound(Result.NotFound nf, MetadataProductCatalogue catalogue)
     {
-        if (!catalogue.pickleConfigured() && MetadataProductKeys.isTig(normalise(nf.token())))
-        {
-            return "'" + nf.token() + "' names a TIG product, and TIG products exist only in the "
-                    + "pickle metadata cache (the CDISC Library API does not serve them) — "
-                    + "configure --pickle-cache / CDISC_PICKLE_CACHE_DIR";
-        }
         if (catalogue.keys().isEmpty())
         {
             return "'" + nf.token() + "' cannot be resolved: no product catalogue is available to "
-                    + "match against (no pickle metadata cache configured, CDISC Library product "
-                    + "list unreachable) — pass the full key form instead (e.g. adam/adamig-1-3), "
-                    + "or configure --pickle-cache / CDISC_PICKLE_CACHE_DIR";
+                    + "match against (no unified metadata store configured, or it is unreadable) "
+                    + "— pass the full key form instead (e.g. adam/adamig-1-3), or configure "
+                    + "CDISC_METADATA_STORE / cdisc.metadata.store and seed the store";
+        }
+        if (MetadataProductKeys.isTig(normalise(nf.token())))
+        {
+            return "'" + nf.token() + "' names a TIG product, which this metadata store does not "
+                    + "hold — TIG products enter the store only when it is seeded from the Python "
+                    + "engine's pickle cache (the CDISC Library API does not serve them); re-seed "
+                    + "the store from a pickle source";
         }
         return "'" + nf.token() + "' matches no known product key; nearest candidates: "
                 + nf.candidates();
@@ -273,7 +269,7 @@ public final class ProductKeyResolver
 
     /**
      * Trim, lower-case, strip a leading {@code standards/}, and dash-normalise dotted version
-     * digits ({@code 1.3} → {@code 1-3}), mirroring {@link PickleProductSource#standardsKey}.
+     * digits ({@code 1.3} → {@code 1-3}), mirroring {@link MetadataProductKeys#standardsKey}.
      */
     private static String normalise(String token)
     {

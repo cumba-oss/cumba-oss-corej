@@ -20,8 +20,9 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * Pairing the two in one value keeps them inseparable across the factories that take more than one
- * CT package (see {@code CdiscLibraryMetadataLibrary.fromAdam}, which takes an ADaM package plus an
- * optional SDTM fallback), so an id can never be attached to the wrong package.
+ * CT package (see {@code ApiModelLibraries.fromAdam}, which takes an ADaM package plus an optional
+ * SDTM fallback), so an id can never be attached to the wrong package. Since cache 8g this is a
+ * TEST fixture: the production stores carry the pairing as {@code StoredCtPackage.id()}.
  * </p>
  *
  * @param id

@@ -166,8 +166,8 @@ class StudyValidationParamsTest
                 .metadataProducts(List.of("standards/adam/adamig-1-3", "standards/tig/1-0/adam"))
                 .useCase("uc").controlledTerminologyPackages(List.of("adamct")).defineVersion("2-1")
                 .rulesDir("/rules").rulesFiles(List.of("/f.json")).datasetFilter(Set.of("DM"))
-                .ruleThreads(2).cacheDir("/cache").runtimeListener(rl).progressListener(pl)
-                .cancellation(cancel).build();
+                .ruleThreads(2).runtimeListener(rl).progressListener(pl).cancellation(cancel)
+                .build();
 
         assertSame(mgr, p.manager());
         assertEquals("/d", p.dataLibrary());
@@ -183,7 +183,6 @@ class StudyValidationParamsTest
         assertEquals(List.of("/f.json"), p.rulesFiles());
         assertEquals(Set.of("DM"), p.datasetFilter());
         assertEquals(2, p.ruleThreads());
-        assertEquals("/cache", p.cacheDir());
         assertSame(rl, p.runtimeListener());
         assertSame(pl, p.progressListener());
         assertSame(cancel, p.cancellation());

@@ -166,7 +166,7 @@ class MetadataLibraryProviderProductsTest
     void getModelColumnOrder_sdtm_walksClassVariables()
     {
         IMetadataLibrary study = studyWith("LB");
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(),
                 "sdtmig", "3-4");
         // LB lives under the Findings class — its classVariables() returns 4 names by ordinal.
         assertEquals(List.of("STUDYID", "USUBJID", "--SEQ", "--TESTCD"),
@@ -178,7 +178,7 @@ class MetadataLibraryProviderProductsTest
     void getModelColumnOrder_adam_walksDataStructureVariables()
     {
         IMetadataLibrary study = studyWith("ADSL");
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkAdamProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.adamProvider(study, mkAdamProduct(),
                 "adamig", "1-3");
         // Flattened across analysisVariableSets, ordered by ordinal: identifiers (1, 2) then ADT
         // (10).
@@ -193,7 +193,7 @@ class MetadataLibraryProviderProductsTest
         // empty list. The OperationExecutor SKIP shim then surfaces this as
         // LIBRARY_NOT_AVAILABLE for the get_model_column_order operation.
         IMetadataLibrary study = lib("study").table(table("MYAE").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(),
                 "sdtmig", "3-4");
         assertEquals(List.of(), provider.getModelColumnOrder("MYAE"));
     }
@@ -221,7 +221,7 @@ class MetadataLibraryProviderProductsTest
     void getStandardModelVariables_sdtm_returnsClassVariables()
     {
         IMetadataLibrary study = studyWith("LB");
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(),
                 "sdtmig", "3-4");
         List<String> result = provider.getStandardModelVariables(mockTable("LB"), null);
         // Fix #42 Phase 2: -- wildcards are substituted with the original domain prefix.
@@ -233,7 +233,7 @@ class MetadataLibraryProviderProductsTest
     void getStandardModelVariables_adam_returnsAnalysisVariables()
     {
         IMetadataLibrary study = studyWith("ADSL");
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkAdamProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.adamProvider(study, mkAdamProduct(),
                 "adamig", "1-3");
         List<String> result = provider.getStandardModelVariables(mockTable("ADSL"), null);
         assertEquals(List.of("STUDYID", "USUBJID", "ADT"), result);
@@ -256,7 +256,7 @@ class MetadataLibraryProviderProductsTest
         // "library is fine, just doesn't know this domain". Caller path can then
         // route to a Fix #41 sniffer or treat as custom.
         IMetadataLibrary study = lib("study").table(table("MYAE").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(),
                 "sdtmig", "3-4");
         List<String> result = provider.getStandardModelVariables(mockTable("MYAE"), null);
         assertNotNull(result);
@@ -275,7 +275,7 @@ class MetadataLibraryProviderProductsTest
         // The Define-XML class wins per documented precedence.
         IMetadataLibrary study = lib("study").table(table("LB").className("MyCustomClass").build())
                 .build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(),
                 "sdtmig", "3-4");
         assertEquals("MyCustomClass", provider.getDatasetClass("LB"));
     }
@@ -286,7 +286,7 @@ class MetadataLibraryProviderProductsTest
     {
         // Study has no class → fall to product reverse-walk. Findings class owns LB.
         IMetadataLibrary study = lib("study").table(table("LB").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(),
                 "sdtmig", "3-4");
         assertEquals("Findings", provider.getDatasetClass("LB"));
     }
@@ -296,7 +296,7 @@ class MetadataLibraryProviderProductsTest
     void getDatasetClass_adamReverseWalkFires()
     {
         IMetadataLibrary study = lib("study").table(table("ADSL").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkAdamProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.adamProvider(study, mkAdamProduct(),
                 "adamig", "1-3");
         assertEquals("SUBJECT LEVEL ANALYSIS DATASET", provider.getDatasetClass("ADSL"));
     }
@@ -306,7 +306,7 @@ class MetadataLibraryProviderProductsTest
     void getDatasetClass_unknownDomain_returnsNullPendingFix41Sniffer()
     {
         IMetadataLibrary study = lib("study").build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(),
                 "sdtmig", "3-4");
         assertNull(provider.getDatasetClass("MYXX"));
     }
@@ -360,7 +360,7 @@ class MetadataLibraryProviderProductsTest
         // OTHER"]-scoped
         // rules can reach it.
         IMetadataLibrary study = studyWith("ADEFF");
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkAdamProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.adamProvider(study, mkAdamProduct(),
                 "adamig", "1-3");
         assertEquals("ADAM OTHER", provider.getDatasetClass("ADEFF"));
     }
@@ -373,7 +373,7 @@ class MetadataLibraryProviderProductsTest
         // Classes.Include:["ADAM OTHER"] matches (normalize collapses the space), so the rule
         // applies to the structure-less ADaM dataset.
         IMetadataLibrary study = studyWith("ADEFF");
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkAdamProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.adamProvider(study, mkAdamProduct(),
                 "adamig", "1-3");
         String cls = provider.getDatasetClass("ADEFF");
         Rule rule = ruleWithClassInclude("BASIC DATA STRUCTURE", "ADAM OTHER");
@@ -390,7 +390,7 @@ class MetadataLibraryProviderProductsTest
         // must NOT apply to it.
         IMetadataLibrary study = lib("study")
                 .table(table("ADLBC").className("BASIC DATA STRUCTURE").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkAdamProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.adamProvider(study, mkAdamProduct(),
                 "adamig", "1-3");
         String cls = provider.getDatasetClass("ADLBC");
         assertEquals("BASIC DATA STRUCTURE", cls);
@@ -405,7 +405,7 @@ class MetadataLibraryProviderProductsTest
         // sentinel
         // is ADaM-only and must never leak into SDTM/SEND runs.
         IMetadataLibrary study = lib("study").build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(),
                 "sdtmig", "3-4");
         assertNull(provider.getDatasetClass("MYXX"));
     }
@@ -424,7 +424,7 @@ class MetadataLibraryProviderProductsTest
                         .column(column("PARAM", 2, DataValueType.STRING).build())
                         .column(column("AVAL", 3, DataValueType.STRING).build()).build())
                 .build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkAdamProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.adamProvider(study, mkAdamProduct(),
                 "adamig", "1-3");
         String cls = provider.getDatasetClass("ADBDS");
         assertNull(cls);
@@ -456,7 +456,7 @@ class MetadataLibraryProviderProductsTest
                         .column(column("USUBJID", 1, DataValueType.STRING).build())
                         .column(column("AEDECOD", 2, DataValueType.STRING).build()).build())
                 .build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkAdamProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.adamProvider(study, mkAdamProduct(),
                 "adamig", "1-3");
         String cls = provider.getDatasetClass("ADXAE");
         assertNull(cls);
@@ -471,7 +471,7 @@ class MetadataLibraryProviderProductsTest
         // only non-indicator columns the dataset resolves to the sentinel; with a BDS indicator
         // column present it stays null.
         IMetadataLibrary study = lib("study").build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkAdamProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.adamProvider(study, mkAdamProduct(),
                 "adamig", "1-3");
         assertEquals("ADAM OTHER",
                 provider.getDatasetClass("ADXX", "ADXX", java.util.Set.of("STUDYID", "USUBJID")));
@@ -547,7 +547,7 @@ class MetadataLibraryProviderProductsTest
         // Caller-supplied standard / version trump anything in the IMetadataLibrary's meta keys.
         IMetadataLibrary study = lib("study").meta(MetadataKeys.STANDARD_NAME, "OLD")
                 .meta(MetadataKeys.STANDARD_VERSION, "0-0").build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(),
                 "sdtmig", "3-4");
         assertEquals("sdtmig", provider.getStandard());
         assertEquals("3-4", provider.getVersion());
@@ -570,7 +570,7 @@ class MetadataLibraryProviderProductsTest
                         .column(column("DOMAIN", 2, DataValueType.STRING).build())
                         .column(column("MYAETERM", 3, DataValueType.STRING).build()).build())
                 .build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(),
                 "sdtmig", "3-4");
         assertEquals("EVENTS", provider.getDatasetClass("MYAE"));
     }
@@ -586,7 +586,7 @@ class MetadataLibraryProviderProductsTest
                 .table(table("MYDM").column(column("STUDYID", 0, DataValueType.STRING).build())
                         .column(column("USUBJID", 1, DataValueType.STRING).build()).build())
                 .build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(),
                 "sdtmig", "3-4");
         assertNull(provider.getDatasetClass("MYDM"));
     }
@@ -680,7 +680,7 @@ class MetadataLibraryProviderProductsTest
         // the CDISC domain code "LB" is what the SDTM product knows. Tier 1 (study) has no
         // className metadata, so tier 2 fires — keyed by CDISC code "LB" and finds Findings.
         IMetadataLibrary study = lib("study").table(table("LBHE").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(),
                 "sdtmig", "3-4");
         assertEquals("Findings", provider.getDatasetClass("LBHE", "LB"));
     }
@@ -715,7 +715,7 @@ class MetadataLibraryProviderProductsTest
         // so long as the IMetadataLibrary lookup succeeds. The lookup goes by member name.
         IMetadataLibrary study = lib("study")
                 .table(table("LBHE").className("OverriddenByDefine").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(),
                 "sdtmig", "3-4");
         assertEquals("OverriddenByDefine", provider.getDatasetClass("LBHE", "LB"));
     }
@@ -730,7 +730,7 @@ class MetadataLibraryProviderProductsTest
         // productReverseWalk_whenStudyClassIsNull scenario; this test guards a different
         // contract (single-arg delegation) and is intentionally kept distinct.
         IMetadataLibrary study = lib("study").table(table("LB").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(),
                 "sdtmig", "3-4");
         String resolved = provider.getDatasetClass("LB");
         assertEquals("Findings", resolved);
@@ -835,7 +835,7 @@ class MetadataLibraryProviderProductsTest
     void supp_tierA_igDatasetVariablesUsedFirst()
     {
         IMetadataLibrary study = lib("study").table(table("SUPPAE").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study,
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study,
                 mkSdtmIgWithSuppQual(true), mkSdtmModelWithRelationship(), "sdtmig", "3-4");
         List<String> vars = provider.getStandardModelVariables(mkSuppTable("SUPPAE"), null);
         assertNotNull(vars);
@@ -849,7 +849,7 @@ class MetadataLibraryProviderProductsTest
     void supp_tierB_modelClassFiresWhenIgDatasetVariablesEmpty()
     {
         IMetadataLibrary study = lib("study").table(table("SUPPAE").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study,
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study,
                 mkSdtmIgWithSuppQual(false), mkSdtmModelWithRelationship(), "sdtmig", "3-4");
         List<String> vars = provider.getStandardModelVariables(mkSuppTable("SUPPAE"), null);
         assertNotNull(vars);
@@ -866,7 +866,7 @@ class MetadataLibraryProviderProductsTest
     {
         // IG has SUPPQUAL with empty datasetVariables; no Model product configured.
         IMetadataLibrary study = lib("study").table(table("SUPPAE").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study,
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study,
                 mkSdtmIgWithSuppQual(false), null, "sdtmig", "3-4");
         List<String> vars = provider.getStandardModelVariables(mkSuppTable("SUPPAE"), null);
         assertNotNull(vars);
@@ -885,7 +885,7 @@ class MetadataLibraryProviderProductsTest
         // IG without a Relationship class entirely — common when the test fixture only models
         // Findings/Events. Tier A misses (no dataset), tier B misses (no Model), tier C fires.
         IMetadataLibrary study = lib("study").table(table("SUPPAE").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmProduct(), null,
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(), null,
                 "sdtmig", "3-4");
         List<String> vars = provider.getStandardModelVariables(mkSuppTable("SUPPAE"), null);
         assertNotNull(vars);
@@ -901,7 +901,7 @@ class MetadataLibraryProviderProductsTest
         // Pre-Fix-#61 callers using the IG-only constructor get tier A → tier C cascade. Tier B
         // (the Model) is unreachable because no Model product was passed.
         IMetadataLibrary study = lib("study").table(table("SUPPAE").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study,
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study,
                 mkSdtmIgWithSuppQual(false), "sdtmig", "3-4");
         List<String> vars = provider.getStandardModelVariables(mkSuppTable("SUPPAE"), null);
         assertNotNull(vars);
@@ -916,7 +916,7 @@ class MetadataLibraryProviderProductsTest
         // SQ-prefixed dataset shares the SUPPQUAL pivot. Mirror Python's behaviour: SQ* domains
         // resolve via the same A→B→C cascade as SUPP*.
         IMetadataLibrary study = lib("study").table(table("SQAE").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study,
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study,
                 mkSdtmIgWithSuppQual(true), mkSdtmModelWithRelationship(), "sdtmig", "3-4");
         List<String> vars = provider.getStandardModelVariables(mkSuppTable("SQAE"), null);
         assertNotNull(vars);
@@ -932,7 +932,7 @@ class MetadataLibraryProviderProductsTest
         // The detailed shape (Python variables_metadata) projects role/core/ordinal alongside
         // name. Tier C fixtures hard-code those, so the detailed call should round-trip them.
         IMetadataLibrary study = lib("study").table(table("SUPPAE").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmProduct(), null,
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(), null,
                 "sdtmig", "3-4");
         List<Map<String, String>> detailed = provider
                 .getStandardModelVariablesDetailed(mkSuppTable("SUPPAE"), null);
@@ -1012,7 +1012,7 @@ class MetadataLibraryProviderProductsTest
         // Model Special-Purpose class HAS classVariables → tier 1 wins (no IG overwrite under
         // algorithm A). The Model class var MODELCLASSVAR appears; the IG-only var does not.
         IMetadataLibrary study = lib("study").table(table("DM").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmIgWithDm(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmIgWithDm(),
                 mkSdtmModelWithDm(true), "sdtmig", "3-4");
         List<String> vars = provider.getStandardModelVariables(mockTable("DM"), null);
         assertNotNull(vars);
@@ -1026,7 +1026,7 @@ class MetadataLibraryProviderProductsTest
     {
         // Model Special-Purpose class is empty → tier 2 reads the Model's top-level DM dataset.
         IMetadataLibrary study = lib("study").table(table("DM").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmIgWithDm(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmIgWithDm(),
                 mkSdtmModelWithDm(false), "sdtmig", "3-4");
         List<String> vars = provider.getStandardModelVariables(mockTable("DM"), null);
         assertNotNull(vars);
@@ -1040,8 +1040,8 @@ class MetadataLibraryProviderProductsTest
     {
         // No Model product at all → tier 1 and tier 2 miss; tier 3 reads the IG DM dataset.
         IMetadataLibrary study = lib("study").table(table("DM").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmIgWithDm(),
-                null, "sdtmig", "3-4");
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmIgWithDm(), null,
+                "sdtmig", "3-4");
         List<String> vars = provider.getStandardModelVariables(mockTable("DM"), null);
         assertNotNull(vars);
         assertTrue(vars.contains("IGONLY"), "tier 3 falls back to IG dataset vars: " + vars);
@@ -1055,7 +1055,7 @@ class MetadataLibraryProviderProductsTest
         // use an AP-prefixed non-detectable domain. APDM strips AP → DM (Special-Purpose,
         // non-detectable) and merges ASSOCIATED PERSONS identifiers (minus USUBJID).
         IMetadataLibrary study = lib("study").table(table("APDM").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmIgWithDmAndAp(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmIgWithDmAndAp(),
                 mkSdtmModelWithDmAndAp(), "sdtmig", "3-4");
         List<String> vars = provider.getStandardModelVariables(mockTable("APDM"), null);
         assertNotNull(vars);
@@ -1112,7 +1112,7 @@ class MetadataLibraryProviderProductsTest
     void getStandardVariablesDetailed_algoB_returnsAttributeMaps()
     {
         IMetadataLibrary study = lib("study").table(table("DM").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkSdtmIgWithDm(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmIgWithDm(),
                 mkSdtmModelWithDm(false), "sdtmig", "3-4");
         List<Map<String, String>> detailed = provider.getStandardVariablesDetailed(mockTable("DM"),
                 null);
@@ -1134,7 +1134,7 @@ class MetadataLibraryProviderProductsTest
                 new IOException("HTTP 503"));
         assertNull(degraded.getStandardVariablesDetailed(mockTable("DM"), null));
 
-        MetadataLibraryProvider withProduct = new MetadataLibraryProvider(studyWith("DM"),
+        MetadataLibraryProvider withProduct = ApiModelLibraries.provider(studyWith("DM"),
                 mkSdtmIgWithDm(), "sdtmig", "3-4");
         assertNull(withProduct.getStandardVariablesDetailed(null, null));
     }

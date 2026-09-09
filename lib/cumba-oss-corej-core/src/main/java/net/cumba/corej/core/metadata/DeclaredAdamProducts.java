@@ -6,9 +6,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import lombok.CustomLog;
-import net.cumba.cdisc.library.api.model.adam.AdamDataStructure;
-import net.cumba.cdisc.library.api.model.adam.AdamProduct;
-import net.cumba.corej.core.metadata.pickle.PickleProductSource;
+import net.cumba.corej.core.metadata.store.StoredDataStructure;
+import net.cumba.corej.core.metadata.store.StoredProduct;
 
 /**
  * Phase 7 of {@code plans/PLAN-metadata-product-selection.md} — <b>the single construction site</b>
@@ -19,12 +18,13 @@ import net.cumba.corej.core.metadata.pickle.PickleProductSource;
  *
  * <p>
  * ⚠⚠⚠ <b>Both cache paths MUST funnel through {@link #assemble}.</b> The API path
- * ({@code CdiscLibraryProviderBuilder.buildAdam}) and the pickle path
- * ({@code PickleMetadataProviderFactory.forAdam}) differ only in the {@link AdamProductFetcher}
- * they supply. A path that built its own list — as the pickle path would have if
- * {@code tryPickleProvider} constructed its provider directly — would leave the multi-product
- * feature silently inert on that source while every test stayed green. Grep discipline: nothing
- * outside this class may turn a declared-key list into {@code DeclaredAdamProduct}s.
+ * ({@code StoreMetadataProviderFactory.forAdam}) and the pickle path (historically
+ * {@code PickleMetadataProviderFactory.forAdam}, deleted by cache 8g; today a test seeding path)
+ * differ only in the {@link AdamProductFetcher} they supply. A path that built its own list — as
+ * the pickle path would have if the deleted {@code tryPickleProvider} constructed its provider
+ * directly — would leave the multi-product feature silently inert on that source while every test
+ * stayed green. Grep discipline: nothing outside this class may turn a declared-key list into
+ * {@code DeclaredAdamProduct}s.
  * </p>
  *
  * <p>
@@ -60,9 +60,12 @@ public final class DeclaredAdamProducts
 
     /**
      * One cache source's way of materialising an ADaM-family product for a declared
-     * {@code standards/...} key. Implementations: the CDISC Library API
-     * ({@code client.getAdamProduct(id, true)} — which must <b>refuse a TIG leg with a stated
-     * reason</b>, the API has no TIG) and the pickle cache ({@code cache.get(key)}).
+     * {@code standards/...} key, as the engine's own {@link StoredProduct} (cache plan §4.3.1, P3 —
+     * api-model sources project through {@code ApiModelProjection} at this boundary).
+     * Implementations: the CDISC Library API ({@code client.getAdamProduct(id, true)} — which must
+     * <b>refuse a TIG leg with a stated reason</b>, the API has no TIG), the pickle cache
+     * ({@code cache.get(key)}), and the unified metadata store
+     * ({@code StoreMetadataProviderFactory}).
      */
     @FunctionalInterface
     public interface AdamProductFetcher
@@ -79,7 +82,7 @@ public final class DeclaredAdamProducts
          *             whole run (degrade, or fall back to the other source); it never drops the
          *             product from the list
          */
-        AdamProduct fetch(String aCacheKey) throws IOException;
+        StoredProduct fetch(String aCacheKey) throws IOException;
     }
 
     /**
@@ -128,7 +131,7 @@ public final class DeclaredAdamProducts
         }
         if (out.isEmpty())
         {
-            String igKey = PickleProductSource.standardsKey(aStandardName, aStandardVersion);
+            String igKey = MetadataProductKeys.standardsKey(aStandardName, aStandardVersion);
             out = List.of(
                     new MetadataLibraryProvider.DeclaredAdamProduct(igKey, aFetcher.fetch(igKey)));
         }
@@ -171,7 +174,7 @@ public final class DeclaredAdamProducts
         {
             List<String> unmapped = new ArrayList<>();
             int mapped = 0;
-            for (AdamDataStructure ds : declared.product().dataStructures())
+            for (StoredDataStructure ds : declared.product().dataStructures())
             {
                 if (MetadataLibraryProvider.structureTokenOf(declared.cacheKey(), ds) != null)
                 {
@@ -179,7 +182,7 @@ public final class DeclaredAdamProducts
                 }
                 else
                 {
-                    unmapped.add(ds.name().orElse("<unnamed>"));
+                    unmapped.add(ds.name() == null ? "<unnamed>" : ds.name());
                 }
             }
             if (unmapped.isEmpty())

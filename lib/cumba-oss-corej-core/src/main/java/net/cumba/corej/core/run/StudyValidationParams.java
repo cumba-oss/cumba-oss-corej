@@ -113,9 +113,9 @@ public final class StudyValidationParams
 
     private final net.cumba.datatable.report.@Nullable Severity severityThreshold;
 
-    private final @Nullable String cacheDir;
-
     private final @Nullable String pickleCacheDir;
+
+    private final @Nullable String metadataStore;
 
     private final @Nullable String dictionariesDir;
 
@@ -156,8 +156,8 @@ public final class StudyValidationParams
         ruleThreads = b.ruleThreads;
         maxErrorsPerRule = b.maxErrorsPerRule;
         severityThreshold = b.severityThreshold;
-        cacheDir = b.cacheDir;
         pickleCacheDir = b.pickleCacheDir;
+        metadataStore = b.metadataStore;
         dictionariesDir = b.dictionariesDir;
         dictionaryVersions = Collections.unmodifiableMap(new LinkedHashMap<>(b.dictionaryVersions));
         runtimeListener = b.runtimeListener;
@@ -357,20 +357,37 @@ public final class StudyValidationParams
     }
 
 
-    /** CDISC Library API cache directory ({@code -ca}); {@code null} for the client default. */
-    public @Nullable String cacheDir()
-    {
-        return cacheDir;
-    }
-
-
     /**
-     * Python pickle metadata cache directory ({@code --pickle-cache}); {@code null} to fall back to
-     * {@code CDISC_PICKLE_CACHE_DIR} / {@code cdisc.pickle.cache.dir}, then the CDISC Library API.
+     * Python pickle metadata cache directory ({@code --pickle-cache}). ⚠ <b>Unread by the engine
+     * since cache 8g</b> — the pickle provider leg this fed is deleted (the unified metadata store
+     * is the one metadata source; seed one from a pickle directory with {@code PickleStoreSeeder}).
+     * The field survives only so pre-P4b callers (the CLI, {@code CoreEngineRunner}) keep compiling
+     * until the P4b lane migrates them onto the store's configuration, exactly as the deleted
+     * {@code cacheDir} did for the API cache. Deliberately NOT {@code @Deprecated}: those callers
+     * build with {@code -Xlint:all} + {@code failOnWarning}, so the annotation would turn this
+     * compile-compatibility shim into the very compile break it exists to avoid.
      */
     public @Nullable String pickleCacheDir()
     {
         return pickleCacheDir;
+    }
+
+
+    /**
+     * The caller's explicit unified-metadata-store file for THIS run (the GUI's
+     * {@code Metadata Store} field, a CLI flag), or {@code null} when the caller named none.
+     * Carried per-run because it is the <b>top</b> tier of
+     * {@code StoreMetadataProviderFactory.resolveConfiguredFile}'s precedence (explicit &gt;
+     * {@code CDISC_METADATA_STORE} env &gt; {@code cdisc.metadata.store} sysprop) — smuggling the
+     * user's named store through the system property instead ranks it BELOW the environment
+     * variable, so an ambient {@code CDISC_METADATA_STORE} silently overrides the very store the
+     * user typed. Exactly the {@link #dictionariesDir()} argument, and the same regression class:
+     * at baseline the dialog's store fields reached the engine as real parameters no environment
+     * variable could outrank.
+     */
+    public @Nullable String metadataStore()
+    {
+        return metadataStore;
     }
 
 
@@ -503,9 +520,9 @@ public final class StudyValidationParams
 
         private net.cumba.datatable.report.@Nullable Severity severityThreshold;
 
-        private @Nullable String cacheDir;
-
         private @Nullable String pickleCacheDir;
+
+        private @Nullable String metadataStore;
 
         private @Nullable String dictionariesDir;
 
@@ -732,18 +749,27 @@ public final class StudyValidationParams
         }
 
 
-        /** CDISC Library API cache directory ({@code -ca}). */
-        public Builder cacheDir(@Nullable String aCacheDir)
+        /**
+         * Python pickle metadata cache directory ({@code --pickle-cache}). ⚠ Unread since cache 8g
+         * — see {@link StudyValidationParams#pickleCacheDir()} (and why it is not
+         * {@code @Deprecated}).
+         */
+        public Builder pickleCacheDir(@Nullable String aPickleCacheDir)
         {
-            cacheDir = aCacheDir;
+            pickleCacheDir = aPickleCacheDir;
             return this;
         }
 
 
-        /** Python pickle metadata cache directory ({@code --pickle-cache}). */
-        public Builder pickleCacheDir(@Nullable String aPickleCacheDir)
+        /**
+         * The caller's explicit unified-metadata-store file for this run — the top tier of the
+         * store resolution, above the {@code CDISC_METADATA_STORE} environment variable (see
+         * {@link StudyValidationParams#metadataStore()}). {@code null} (the default) resolves from
+         * the environment, then the {@code cdisc.metadata.store} system property.
+         */
+        public Builder metadataStore(@Nullable String aMetadataStore)
         {
-            pickleCacheDir = aPickleCacheDir;
+            metadataStore = aMetadataStore;
             return this;
         }
 

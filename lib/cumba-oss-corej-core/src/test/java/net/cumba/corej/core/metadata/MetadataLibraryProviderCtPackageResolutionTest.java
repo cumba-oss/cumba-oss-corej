@@ -55,7 +55,7 @@ class MetadataLibraryProviderCtPackageResolutionTest
             CtPackage aConfiguredPackage, Function<String, Optional<CtPackage>> aLoader)
     {
         IMetadataLibrary study = TestMetadataFixtures.lib("study").build();
-        return new MetadataLibraryProvider(study, (SdtmProduct) null, null, "sdtmig", "3-4",
+        return ApiModelLibraries.provider(study, (SdtmProduct) null, null, "sdtmig", "3-4",
                 aConfiguredId, aConfiguredPackage, aLoader);
     }
 

@@ -173,7 +173,7 @@ class MetadataLibraryProviderSubclassGovernanceTest
 
     private static MetadataLibraryProvider occdsProvider()
     {
-        return provider(new DeclaredAdamProduct("standards/adam/adam-occds-1-1", occds11()));
+        return provider(ApiModelLibraries.declared("standards/adam/adam-occds-1-1", occds11()));
     }
 
     // ------------------------------------------------------------------
@@ -275,7 +275,7 @@ class MetadataLibraryProviderSubclassGovernanceTest
     void ncaGovernsItsSixConflictingNames()
     {
         MetadataLibraryProvider p = provider(
-                new DeclaredAdamProduct("standards/adam/adam-nca-1-0", bdsWithNca()));
+                ApiModelLibraries.declared("standards/adam/adam-nca-1-0", bdsWithNca()));
 
         assertEquals(
                 List.of("AFRLT", "ALLOQ", "AVALU", "AVISIT", "DOSEA", "DOSEU", "USUBJID", "PARAM"),
@@ -292,7 +292,7 @@ class MetadataLibraryProviderSubclassGovernanceTest
         // Two detected subclasses (a declared def:SubClass list can carry several). The chain is
         // the caller's order, most specific first — the first tier that publishes a name decides.
         MetadataLibraryProvider p = provider(
-                new DeclaredAdamProduct("standards/adam/adam-occds-1-1", occds11()));
+                ApiModelLibraries.declared("standards/adam/adam-occds-1-1", occds11()));
         assertEquals(p.getRequiredVariablesForStructure(OCCDS_TOKEN, List.of(ADVERSE_EVENT)),
                 p.getRequiredVariablesForStructure(OCCDS_TOKEN, List.of(ADVERSE_EVENT, TTE)));
     }
@@ -347,7 +347,7 @@ class MetadataLibraryProviderSubclassGovernanceTest
         // requires nothing", passing the rule vacuously. null says "no such structure here", which
         // lets OperationExecutor try the next token and then SKIP loudly.
         MetadataLibraryProvider p = provider(
-                new DeclaredAdamProduct("standards/adam/adam-nca-1-0", ncaOnly()));
+                ApiModelLibraries.declared("standards/adam/adam-nca-1-0", ncaOnly()));
 
         assertNull(p.getRequiredVariablesForStructure(BDS_TOKEN, List.of()));
         assertEquals(List.of("AFRLT", "USUBJID"),
@@ -390,9 +390,9 @@ class MetadataLibraryProviderSubclassGovernanceTest
         // the AE tier is decided by specificity, whichever product carries it.
         AdamProduct other = product("adamig", structure("OCCDS", "OCCURRENCE DATA STRUCTURE", null,
                 List.of(adamVar("ZZTOP", "1", "Req"))));
-        DeclaredAdamProduct supplement = new DeclaredAdamProduct("standards/adam/adam-occds-1-1",
+        DeclaredAdamProduct supplement = ApiModelLibraries.declared("standards/adam/adam-occds-1-1",
                 occds11());
-        DeclaredAdamProduct ig = new DeclaredAdamProduct("standards/adam/adamig-1-3", other);
+        DeclaredAdamProduct ig = ApiModelLibraries.declared("standards/adam/adamig-1-3", other);
 
         List<String> supplementFirst = provider(supplement, ig)
                 .getRequiredVariablesForStructure(OCCDS_TOKEN, List.of(ADVERSE_EVENT));
@@ -435,7 +435,7 @@ class MetadataLibraryProviderSubclassGovernanceTest
                 structure("AE2", "OCCURRENCE DATA STRUCTURE", ADVERSE_EVENT,
                         List.of(adamVar("AESER", "1", "Req"))));
         MetadataLibraryProvider p = provider(
-                new DeclaredAdamProduct("standards/adam/adam-occds-1-1", twoAes));
+                ApiModelLibraries.declared("standards/adam/adam-occds-1-1", twoAes));
 
         List<String> logged = captureInfo(() -> assertEquals(List.of("AEDECOD", "AESER"),
                 p.getRequiredVariablesForStructure(OCCDS_TOKEN, List.of(ADVERSE_EVENT))));
@@ -466,7 +466,7 @@ class MetadataLibraryProviderSubclassGovernanceTest
     void anInapplicableTokenSaysSoInTheLog()
     {
         MetadataLibraryProvider p = provider(
-                new DeclaredAdamProduct("standards/adam/adam-nca-1-0", ncaOnly()));
+                ApiModelLibraries.declared("standards/adam/adam-nca-1-0", ncaOnly()));
 
         List<String> logged = captureInfo(
                 () -> assertNull(p.getRequiredVariablesForStructure(BDS_TOKEN, List.of())));

@@ -48,8 +48,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Unit tests for {@link StudyValidationService}. The data-table manager is mocked, so the tests run
  * fully offline. Using {@code standard = "custom"} keeps {@code StandardKind} UNKNOWN, which makes
- * {@code CdiscLibraryProviderBuilder.buildOrDegraded()} return a study-only provider with no
- * network call.
+ * {@code buildProvider} return a study-only provider (since cache P4 nothing here can reach a
+ * network at all — the run path knows only the metadata store).
  */
 class StudyValidationServiceTest
 {
@@ -106,7 +106,7 @@ class StudyValidationServiceTest
      * ⚑ Plan 2 (R5) — a run no longer carries {@code -s} / {@code -v}. These fixtures' packages
      * declare no CDISC Library standard, so the run's standard is derived from
      * {@code --metadata-products}. {@code standards/custom/1-0} is byte-for-byte the key the
-     * removed {@code -s custom -v 1-0} pair used to imply ({@code PickleProductSource
+     * removed {@code -s custom -v 1-0} pair used to imply ({@code MetadataProductKeys
      * .standardsKey}), so {@code StandardKind} stays {@code UNKNOWN} and the provider stays offline
      * exactly as before.
      */
@@ -1322,7 +1322,6 @@ class StudyValidationServiceTest
     {
         StudyValidationParams params = StudyValidationParams.builder()
                 .manager(managerWith(dmTable())).dataLibrary(tempDir.toString())
-                .pickleCacheDir(TestPickle.dirOrNull())
                 .metadataProducts(List.of("standards/sdtmig/3-2")).build();
 
         List<String> effective = StudyValidationService.effectiveMetadataProducts(params,
@@ -1345,7 +1344,6 @@ class StudyValidationServiceTest
     {
         StudyValidationParams params = StudyValidationParams.builder()
                 .manager(managerWith(dmTable())).dataLibrary(tempDir.toString())
-                .pickleCacheDir(TestPickle.dirOrNull())
                 .metadataProducts(List.of("standards/sdtmig/3-4")).build();
 
         List<String> effective = StudyValidationService.effectiveMetadataProducts(params,
@@ -1378,11 +1376,18 @@ class StudyValidationServiceTest
     @Test
     void effectiveMetadataProducts_unpublishedDeclarationFailsLoud() throws IOException
     {
-        org.junit.jupiter.api.Assumptions.assumeTrue(TestPickle.dirOrNull() != null,
-                "needs a pickle cache to have a catalogue to refute the token against");
+        // Cache P4: the catalogue that refutes the token is the unified metadata store's, so the
+        // refuting catalogue is a hermetic fixture now (pre-P4 this self-skipped without a real
+        // pickle cache). The store holds dart-1-1 — a catalogue exists, and dart-1-2 is not in it.
+        java.nio.file.Path store = tempDir.resolve("refuting-store.zip");
+        new net.cumba.corej.core.metadata.store.MetadataStoreWriter()
+                .productCatalogue(List.of("standards/sendig/dart-1-1"))
+                .publishedCtPackages(List.of()).write(store);
+        System.setProperty(
+                net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory.STORE_PROPERTY,
+                store.toString());
         StudyValidationParams params = StudyValidationParams.builder()
-                .manager(managerWith(dmTable())).dataLibrary(tempDir.toString())
-                .pickleCacheDir(TestPickle.dirOrNull()).build();
+                .manager(managerWith(dmTable())).dataLibrary(tempDir.toString()).build();
 
         // ⛔ Review finding R-8 — the TYPE changed deliberately. These ids come from the PACKAGE's
         // declaration, not from the user's -mp, but ProductKeyResolver reports an
@@ -1390,33 +1395,27 @@ class StudyValidationServiceTest
         // shipped packages declaring the unpublished sendig/dart-1-2 produced a raw stack trace
         // and exit 1 while blaming a flag the user never passed. Q1's fail-loud ruling is intact:
         // it still fails, and still names the token — it is now an operational error.
-        StudyValidationException ex = assertThrows(StudyValidationException.class,
-                () -> StudyValidationService.effectiveMetadataProducts(params,
-                        List.of(primary("sendig/dart-1-2"))));
-        assertTrue(ex.getMessage().contains("dart-1-2"), ex.getMessage());
-        assertTrue(ex.getMessage().contains("rule package"),
-                "the message must blame the DECLARATION, not the user's -mp: " + ex.getMessage());
-    }
-
-    /** Small helper: the configured pickle cache directory, or null when there is none. */
-    private static final class TestPickle
-    {
-
-        private TestPickle()
+        try
         {
+            StudyValidationException ex = assertThrows(StudyValidationException.class,
+                    () -> StudyValidationService.effectiveMetadataProducts(params,
+                            List.of(primary("sendig/dart-1-2"))));
+            assertTrue(ex.getMessage().contains("dart-1-2"), ex.getMessage());
+            assertTrue(ex.getMessage().contains("rule package"),
+                    "the message must blame the DECLARATION, not the user's -mp: "
+                            + ex.getMessage());
         }
-
-
-        static String dirOrNull()
+        finally
         {
-            String env = System.getenv("CDISC_PICKLE_CACHE_DIR");
-            return env != null && !env.isBlank() && Files.isDirectory(Path.of(env)) ? env : null;
+            System.clearProperty(
+                    net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory.STORE_PROPERTY);
         }
     }
 
     // ------------------------------------------------------------------
     // Plan 2 Phase 4 — ⛔ R4: -mp NEVER selects rules (the plan's required guard)
     // ------------------------------------------------------------------
+
 
     /**
      * ⛔⛔ <b>The regression guard the plan demands.</b> An ADaM run declares an SDTM product so its

@@ -149,7 +149,7 @@ class MetadataLibraryProviderCanonicalCodelistTest
 
     private static MetadataLibraryProvider provider()
     {
-        return new MetadataLibraryProvider(canonicalLibrary(), sdtmProduct(), "sdtmig", "3-4");
+        return ApiModelLibraries.provider(canonicalLibrary(), sdtmProduct(), "sdtmig", "3-4");
     }
 
     // ------------------------------------------------------------------

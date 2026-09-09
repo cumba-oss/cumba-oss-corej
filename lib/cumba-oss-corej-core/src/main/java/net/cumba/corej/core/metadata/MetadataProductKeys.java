@@ -28,10 +28,10 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * ⭐ <b>§7-0 (owner ruling 2026-08-28): the library layer follows the FIRST declared product of the
  * run's own family.</b> {@link #firstSdtmLoader(List)} and {@link #firstAdamFamilyKey(List)} are
- * that selection, shared by the API path ({@code CdiscLibraryProviderBuilder}) and the pickle path
- * ({@code PickleMetadataProviderFactory} / {@code StudyValidationService.tryPickleProvider}) so the
- * two cache sources cannot drift. {@code CompanionSdtmDefaults} delegates its SDTM-family detection
- * here for the same reason.
+ * that selection, shared by {@code StoreMetadataProviderFactory} and
+ * {@code StudyValidationService.tryStoreProvider} (since cache 8g the store is the only source; the
+ * corpus-test pickle factory that also shared it is deleted). {@code CompanionSdtmDefaults}
+ * delegates its SDTM-family detection here for the same reason.
  * </p>
  */
 public final class MetadataProductKeys
@@ -45,7 +45,7 @@ public final class MetadataProductKeys
      * {@code standards/sendig/<version>}. The version segment is deliberately unparsed — the
      * shipped cache carries {@code 3-4} as well as {@code ap-1-0}, {@code md-1-1}, {@code dart-1-1}
      * and {@code genetox-1-0}, and every one of them is a legitimate key that
-     * {@code PickleMetadataProviderFactory.forSdtm(family, version)} reassembles verbatim.
+     * {@code StoreMetadataProviderFactory.forSdtm(family, version)} reassembles verbatim.
      */
     private static final Pattern SDTM_FAMILY_KEY = Pattern
             .compile("standards/(sdtmig|sendig)/([^/]+)");
@@ -59,18 +59,52 @@ public final class MetadataProductKeys
     /** The TIG leg that is itself an ADaM product. */
     private static final String TIG_ADAM_LEG = "adam";
 
+    /** ADaM products that normalise to family {@code "adam"} with a prefixed version. */
+    private static final List<String> ADAM_PRODUCTS = List.of("adamig", "adam-adae", "adam-md",
+            "adam-nca", "adam-occds", "adam-tte", "adam-poppk");
+
     private MetadataProductKeys()
     {
     }
 
+
+    /**
+     * The {@code standards/...} product key for a run's {@code (standard, version)} pair — e.g.
+     * {@code ("sdtmig", "3-4")} → {@code standards/sdtmig/3-4}, {@code ("adamig", "1-3")} →
+     * {@code standards/adam/adamig-1-3} (ADaM products normalise to family {@code adam} with a
+     * prefixed version, mirroring the Python engine's {@code cdisc_rules_engine.utilities.utils}).
+     * Public because it is also the <b>default metadata product</b> an omitted
+     * {@code --metadata-products} implies (see {@code StudyValidationParams#metadataProducts()}).
+     * Moved here from the deleted {@code PickleProductSource} (cache 8g) — the key grammar belongs
+     * to the product-key layer, not to any one cache implementation, and the store's seeders write
+     * exactly these keys.
+     *
+     * @param aStandard
+     *            the run standard (e.g. {@code sdtmig}, {@code adamig})
+     * @param aVersion
+     *            the run version, dotted or dash form (e.g. {@code 3.4}, {@code 3-4})
+     * @return the {@code standards/...} key
+     */
+    public static String standardsKey(String aStandard, String aVersion)
+    {
+        String standard = aStandard;
+        String version = aVersion;
+        String lower = aStandard.toLowerCase(Locale.ROOT);
+        if (ADAM_PRODUCTS.contains(lower))
+        {
+            standard = "adam";
+            version = lower + "-" + aVersion;
+        }
+        // Product keys use dash-form versions (e.g. 3-4); callers may pass the dotted form (3.4).
+        return "standards/" + standard + "/" + version.replace('.', '-');
+    }
+
     /**
      * The {@code (standard, version)} pair to hand
-     * {@code PickleMetadataProviderFactory.forSdtm(standard, version)} /
-     * {@code CdiscLibraryClient.getSdtmVersion(standard, version, …)} for an SDTM-family product
+     * {@code StoreMetadataProviderFactory.forSdtm(standard, version)} for an SDTM-family product
      * key. For a TIG SDTM leg the version is the compound {@code <version>/sdtm}, which
-     * {@code PickleProductSource.standardsKey} reassembles into the verbatim cache key
-     * {@code standards/tig/<version>/sdtm} (the API path cannot load TIG at all and must say so —
-     * see {@code CdiscLibraryProviderBuilder}).
+     * {@link #standardsKey} reassembles into the verbatim product key
+     * {@code standards/tig/<version>/sdtm}.
      */
     public record SdtmLoader(String standard, String version)
     {

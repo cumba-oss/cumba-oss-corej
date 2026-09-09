@@ -101,7 +101,7 @@ class MetadataLibraryProviderIgOverrideMergeTest
     private static MetadataLibraryProvider provider(SdtmProduct aProduct)
     {
         IMetadataLibrary study = TestMetadataFixtures.lib("study").build();
-        return new MetadataLibraryProvider(study, aProduct, "sdtmig", "3-4");
+        return ApiModelLibraries.provider(study, aProduct, "sdtmig", "3-4");
     }
 
 

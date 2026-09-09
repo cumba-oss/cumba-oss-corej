@@ -29,7 +29,7 @@ public interface PickleSource extends AutoCloseable
 
 
     /**
-     * Where the pickles came from, in a form worth recording in a {@link SeedReport}.
+     * Where the pickles came from, in a form worth recording in a seed report.
      *
      * <p>
      * A seeded cache is otherwise indistinguishable from any other — the entries carry no note of

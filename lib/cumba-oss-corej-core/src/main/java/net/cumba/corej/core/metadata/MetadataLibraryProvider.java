@@ -16,19 +16,17 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.CustomLog;
-import net.cumba.cdisc.library.api.model.adam.AdamDataStructure;
-import net.cumba.cdisc.library.api.model.adam.AdamProduct;
-import net.cumba.cdisc.library.api.model.adam.AdamVariable;
-import net.cumba.cdisc.library.api.model.adam.AdamVariableSet;
-import net.cumba.cdisc.library.api.model.ct.CtCodelist;
-import net.cumba.cdisc.library.api.model.ct.CtPackage;
-import net.cumba.cdisc.library.api.model.ct.CtTerm;
-import net.cumba.cdisc.library.api.model.sdtm.SdtmClass;
-import net.cumba.cdisc.library.api.model.sdtm.SdtmDataset;
-import net.cumba.cdisc.library.api.model.sdtm.SdtmProduct;
-import net.cumba.cdisc.library.api.model.sdtm.SdtmVariable;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
+import net.cumba.corej.core.metadata.store.StoredClass;
+import net.cumba.corej.core.metadata.store.StoredCodelist;
+import net.cumba.corej.core.metadata.store.StoredCtPackage;
+import net.cumba.corej.core.metadata.store.StoredDataStructure;
+import net.cumba.corej.core.metadata.store.StoredDataset;
+import net.cumba.corej.core.metadata.store.StoredProduct;
+import net.cumba.corej.core.metadata.store.StoredTerm;
+import net.cumba.corej.core.metadata.store.StoredVariable;
+import net.cumba.corej.core.metadata.store.StoredVariableSet;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.ICodeList;
 import net.cumba.datatable.metadata.ICodelistEntry;
@@ -41,8 +39,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@link MetadataProvider} implementation backed by an arbitrary {@link IMetadataLibrary} with
- * optional direct access to a pre-fetched CDISC Library {@link SdtmProduct} or {@link AdamProduct}
- * for class-hierarchy queries (Fix #55).
+ * optional direct access to a pre-fetched CDISC Library {@link StoredProduct} for class-hierarchy
+ * queries (Fix #55).
  *
  * <p>
  * This is the canonical adapter used by the rule engine to read metadata from any well-behaved
@@ -52,8 +50,8 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * When constructed with a typed {@link SdtmProduct} or {@link AdamProduct}, methods that need to
- * walk the model class hierarchy ({@link #getModelColumnOrder(String)},
+ * When constructed with a typed {@link StoredProduct}, methods that need to walk the model class
+ * hierarchy ({@link #getModelColumnOrder(String)},
  * {@link #getStandardModelVariables(IDataTable, DatasetResolver)},
  * {@link #getDatasetClass(String)}) consult the products directly rather than the flattened
  * per-table key contract; per-table study-side queries continue to flow through the underlying
@@ -100,6 +98,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
     private static final String ROLE_IDENTIFIER = "Identifier";
 
     private static final String ROLE_RECORD_QUALIFIER = "Record Qualifier";
+
+    private static final String ATTR_ROLE = "role";
 
     private static final String ATTR_ORDINAL = "ordinal";
 
@@ -246,7 +246,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
     private final IMetadataLibrary library;
 
-    private final @Nullable SdtmProduct sdtmProduct;
+    private final @Nullable StoredProduct sdtmProduct;
 
     /**
      * Optional SDTM Model product (response from {@code /mdr/sdtm/{version}}), separate from the IG
@@ -255,7 +255,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * {@code datasetVariables}. May be {@code null} — the resolver then falls through to the
      * canonical hard-coded SUPPQUAL list (Fix #61 tier C).
      */
-    private final @Nullable SdtmProduct sdtmModelProduct;
+    private final @Nullable StoredProduct sdtmModelProduct;
 
     /**
      * Declared ADaM products, in the user's precedence order (ruling 1 of
@@ -279,24 +279,24 @@ public final class MetadataLibraryProvider implements MetadataProvider
     private final @Nullable String configuredCtPackageId;
 
     /**
-     * The pre-fetched {@link CtPackage} for {@link #configuredCtPackageId}, used by
+     * The pre-fetched {@link StoredCtPackage} for {@link #configuredCtPackageId}, used by
      * {@link #getCodelistAttribute(String, String)} when the requested id matches the configured
      * one. {@code null} when no CT package was supplied.
      */
-    private final @Nullable CtPackage configuredCtPackage;
+    private final @Nullable StoredCtPackage configuredCtPackage;
 
     /**
      * Loader for CT packages other than the configured one (e.g. when a {@code TS} row references a
      * different version than {@code config.ct_packages[0]}). Backed by the pickle cache.
      * {@code null} when no pickle source is wired (network / Define-XML providers).
      */
-    private final @Nullable Function<String, Optional<CtPackage>> ctPackageLoader;
+    private final @Nullable Function<String, Optional<StoredCtPackage>> ctPackageLoader;
 
     /**
      * One declared ADaM product with its provenance: the {@code standards/...} cache key it was
      * declared under (e.g. {@code standards/adam/adamig-1-3}) and the fetched product.
      */
-    public record DeclaredAdamProduct(String cacheKey, AdamProduct product)
+    public record DeclaredAdamProduct(String cacheKey, StoredProduct product)
     {
 
         public DeclaredAdamProduct
@@ -304,6 +304,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
             Objects.requireNonNull(cacheKey, "cacheKey");
             Objects.requireNonNull(product, "product");
         }
+
     }
 
 
@@ -320,13 +321,13 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * precisely so they cannot leak onto a like-named structure elsewhere.
      * </p>
      */
-    private record SourcedStructure(String cacheKey, AdamDataStructure structure)
+    private record SourcedStructure(String cacheKey, StoredDataStructure structure)
     {
 
         /** {@code NAME@standards/...} — the provenance token used in log lines. */
         String describe()
         {
-            return structure.name().orElse("?") + "@" + cacheKey;
+            return (structure.name() == null ? "?" : structure.name()) + "@" + cacheKey;
         }
     }
 
@@ -371,16 +372,23 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
 
     /**
-     * Constructs a provider with direct access to a pre-fetched {@link SdtmProduct}. Class
+     * Constructs an SDTM-family provider over a stored IG product (cache plan §4.3.1, P3). Class
      * hierarchy queries (model column order, standard model variables, dataset class) consult the
-     * product directly. Per-table queries still flow through {@code aLibrary} so Define-XML
+     * product directly; per-table queries still flow through {@code aLibrary} so Define-XML
      * enrichment is preserved.
+     *
+     * <p>
+     * ⚠ A named factory, not a constructor: with both product families now typed
+     * {@link StoredProduct}, an overloaded constructor could silently wire an ADaM product into the
+     * SDTM slot. {@link #forStoredAdam} is the ADaM counterpart.
+     * </p>
      */
-    public MetadataLibraryProvider(IMetadataLibrary aLibrary, @Nullable SdtmProduct aProduct,
-            @Nullable String aStandardName, @Nullable String aStandardVersion)
+    public static MetadataLibraryProvider forStoredSdtm(IMetadataLibrary aLibrary,
+            @Nullable StoredProduct aProduct, @Nullable String aStandardName,
+            @Nullable String aStandardVersion)
     {
-        this(aLibrary, aProduct, null, List.of(), aStandardName, aStandardVersion, false, null,
-                null, null);
+        return new MetadataLibraryProvider(aLibrary, aProduct, null, List.of(), aStandardName,
+                aStandardVersion, false, null, null, null);
     }
 
 
@@ -391,20 +399,20 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * {@code null} when the Model fetch failed at runtime — the resolver then uses the canonical
      * hard-coded SUPPQUAL list (tier C) so SUPP/SQ rules still execute.
      */
-    public MetadataLibraryProvider(IMetadataLibrary aLibrary, @Nullable SdtmProduct aProduct,
-            @Nullable SdtmProduct aModelProduct, @Nullable String aStandardName,
-            @Nullable String aStandardVersion)
+    public static MetadataLibraryProvider forStoredSdtm(IMetadataLibrary aLibrary,
+            @Nullable StoredProduct aProduct, @Nullable StoredProduct aModelProduct,
+            @Nullable String aStandardName, @Nullable String aStandardVersion)
     {
-        this(aLibrary, aProduct, aModelProduct, List.of(), aStandardName, aStandardVersion, false,
-                null, null, null);
+        return new MetadataLibraryProvider(aLibrary, aProduct, aModelProduct, List.of(),
+                aStandardName, aStandardVersion, false, null, null, null);
     }
 
 
     /**
-     * Fix: constructs an SDTM provider that additionally carries its configured {@link CtPackage}
-     * (and a loader for other packages) so the {@code get_codelist_attributes} operation can
-     * extract raw codelist/term attributes from the typed CT model. Used by
-     * {@code PickleMetadataProviderFactory.forSdtm}.
+     * Fix: constructs an SDTM provider that additionally carries its configured
+     * {@link StoredCtPackage} (and a loader for other packages) so the
+     * {@code get_codelist_attributes} operation can extract raw codelist/term attributes from the
+     * typed CT model. Used by {@code StoreMetadataProviderFactory.forSdtm}.
      *
      * @param aCtPackageId
      *            the configured CT package id (may be {@code null})
@@ -413,27 +421,28 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * @param aCtPackageLoader
      *            loader for non-configured CT packages by id (may be {@code null})
      */
-    public MetadataLibraryProvider(IMetadataLibrary aLibrary, @Nullable SdtmProduct aProduct,
-            @Nullable SdtmProduct aModelProduct, @Nullable String aStandardName,
-            @Nullable String aStandardVersion, @Nullable String aCtPackageId,
-            @Nullable CtPackage aCtPackage,
-            @Nullable Function<String, Optional<CtPackage>> aCtPackageLoader)
+    public static MetadataLibraryProvider forStoredSdtm(IMetadataLibrary aLibrary,
+            @Nullable StoredProduct aProduct, @Nullable StoredProduct aModelProduct,
+            @Nullable String aStandardName, @Nullable String aStandardVersion,
+            @Nullable String aCtPackageId, @Nullable StoredCtPackage aCtPackage,
+            @Nullable Function<String, Optional<StoredCtPackage>> aCtPackageLoader)
     {
-        this(aLibrary, aProduct, aModelProduct, List.of(), aStandardName, aStandardVersion, false,
-                aCtPackageId, aCtPackage, aCtPackageLoader);
+        return new MetadataLibraryProvider(aLibrary, aProduct, aModelProduct, List.of(),
+                aStandardName, aStandardVersion, false, aCtPackageId, aCtPackage, aCtPackageLoader);
     }
 
 
     /**
-     * Constructs a provider with direct access to a pre-fetched {@link AdamProduct}. Class
-     * hierarchy queries (model column order, standard model variables, dataset class) consult the
-     * product directly. Per-table queries still flow through {@code aLibrary} so Define-XML
-     * enrichment is preserved.
+     * Constructs an ADaM-family provider over a single stored product, declared under the cache key
+     * implied by the standard pair — the {@link StoredProduct}-typed counterpart of the deleted
+     * api-model {@code AdamProduct} constructor (see {@link #forStoredSdtm} for why these are named
+     * factories rather than overloaded constructors).
      */
-    public MetadataLibraryProvider(IMetadataLibrary aLibrary, @Nullable AdamProduct aProduct,
-            @Nullable String aStandardName, @Nullable String aStandardVersion)
+    public static MetadataLibraryProvider forStoredAdam(IMetadataLibrary aLibrary,
+            @Nullable StoredProduct aProduct, @Nullable String aStandardName,
+            @Nullable String aStandardVersion)
     {
-        this(aLibrary, null, null,
+        return new MetadataLibraryProvider(aLibrary, null, null,
                 aProduct == null ? List.<DeclaredAdamProduct> of()
                         : List.of(new DeclaredAdamProduct(
                                 derivedCacheKey(aStandardName, aStandardVersion), aProduct)),
@@ -470,16 +479,16 @@ public final class MetadataLibraryProvider implements MetadataProvider
         {
             return "<undeclared adam product>";
         }
-        return net.cumba.corej.core.metadata.pickle.PickleProductSource.standardsKey(aStandardName,
-                aStandardVersion);
+        return MetadataProductKeys.standardsKey(aStandardName, aStandardVersion);
     }
 
 
-    private MetadataLibraryProvider(IMetadataLibrary aLibrary, @Nullable SdtmProduct aSdtmProduct,
-            @Nullable SdtmProduct aSdtmModelProduct, List<DeclaredAdamProduct> aAdamProducts,
+    private MetadataLibraryProvider(IMetadataLibrary aLibrary, @Nullable StoredProduct aSdtmProduct,
+            @Nullable StoredProduct aSdtmModelProduct, List<DeclaredAdamProduct> aAdamProducts,
             @Nullable String aStandardName, @Nullable String aStandardVersion,
-            boolean aLibraryFailed, @Nullable String aCtPackageId, @Nullable CtPackage aCtPackage,
-            @Nullable Function<String, Optional<CtPackage>> aCtPackageLoader)
+            boolean aLibraryFailed, @Nullable String aCtPackageId,
+            @Nullable StoredCtPackage aCtPackage,
+            @Nullable Function<String, Optional<StoredCtPackage>> aCtPackageLoader)
     {
         library = Objects.requireNonNull(aLibrary, "library");
         sdtmProduct = aSdtmProduct;
@@ -642,7 +651,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * <h4>The precedence chain, first tier wins per name</h4>
      *
      * <ol>
-     * <li>the structures whose {@link AdamDataStructure#subClass()} equals a detected subclass
+     * <li>the structures whose {@link StoredDataStructure#subClass()} equals a detected subclass
      * token, one tier per token in {@code aSubclassTokens} order (most specific first);</li>
      * <li>the <b>base</b> structures for the token — those publishing no {@code subClass}.</li>
      * </ol>
@@ -701,10 +710,10 @@ public final class MetadataLibraryProvider implements MetadataProvider
      *
      * <p>
      * ⚠⚠ Reads {@code adamProducts} <b>directly</b>, never {@code library}. That is the whole
-     * point. On an ADaM run without a CT package {@code CdiscLibraryProviderBuilder.buildAdam}
-     * binds {@code library} to the <em>study</em>, whose columns carry no {@code core} attribute —
-     * so the domain-keyed {@link #getRequiredVariables} returns an empty list for <em>every</em>
-     * dataset, {@code ADSL} included, and the rule passes green with the defect present.
+     * point. On an ADaM run without a CT package the pre-P4 API builder bound {@code library} to
+     * the <em>study</em>, whose columns carry no {@code core} attribute — so the domain-keyed
+     * {@link #getRequiredVariables} returns an empty list for <em>every</em> dataset, {@code ADSL}
+     * included, and the rule passes green with the defect present.
      * </p>
      *
      * <p>
@@ -736,22 +745,23 @@ public final class MetadataLibraryProvider implements MetadataProvider
                         "Structure token {0} maps to {1} equally-specific data structures in {2} "
                                 + "({3}, subClass {4}); their published variables are unioned",
                         aStructureToken, tier.structures().size(), tier.cacheKey(),
-                        tier.structures().stream().map(s -> s.structure().name().orElse("?"))
+                        tier.structures().stream()
+                                .map(s -> s.structure().name() == null ? "?" : s.structure().name())
                                 .toList(),
                         tier.subClass());
             }
             Set<String> claimed = new LinkedHashSet<>();
             for (SourcedStructure sourced : tier.structures())
             {
-                AdamDataStructure ds = sourced.structure();
-                List<AdamVariable> flattened = new ArrayList<>();
-                for (AdamVariableSet set : ds.analysisVariableSets())
+                StoredDataStructure ds = sourced.structure();
+                List<StoredVariable> flattened = new ArrayList<>();
+                for (StoredVariableSet set : ds.variableSets())
                 {
-                    flattened.addAll(set.analysisVariables());
+                    flattened.addAll(set.variables());
                 }
-                for (AdamVariable v : sortAdamByOrdinal(flattened))
+                for (StoredVariable v : sortAdamByOrdinal(flattened))
                 {
-                    String name = v.name().orElse(null);
+                    String name = v.name();
                     if (name == null || governed.contains(name))
                     {
                         // Governed by a more specific tier: its `core` there is the answer, and
@@ -760,7 +770,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
                         continue;
                     }
                     claimed.add(name);
-                    if (aCorePredicate.test(v.core().orElse(null)))
+                    if (aCorePredicate.test(v.core()))
                     {
                         out.add(name);
                     }
@@ -784,7 +794,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * <p>
      * ⛔⛔ <b>Phase 11 finding F1 — this method exists so there is exactly ONE of it.</b> Phase 8
      * fixed the ordering defect inside {@link #adamNamesWhereCore} only. Its neighbours
-     * {@code findAdamDataStructureByClassName} and {@code adamDataStructureFor} had been widened
+     * {@code findStoredDataStructureByClassName} and {@code adamDataStructureFor} had been widened
      * from one product to N in Phase 2 and left as plain first-match-wins walks over the raw
      * published {@code class} string — no specificity, no {@link #ADAM_CLASS_ALIASES}, no
      * product-keyed overrides. Measured: {@code -mp adam/adam-nca-1-0,adam/adamig-1-3} on a plain
@@ -848,12 +858,12 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * that pairs a base with its specialisations. It is <b>not</b> universally true —
      * {@code adam-adae-1-0}'s {@code ADAE} publishes no {@code subClass} and is emphatically not a
      * base. {@link #SUBCLASS_OVERRIDES} supplies the missing value for the two known cases, which
-     * is why this method reads its subclass through {@link #subClassOf(String, AdamDataStructure)}
-     * rather than off the structure directly; that indirection is what keeps
-     * {@code ADAE → OCCURRENCE DATA STRUCTURE} from turning every occurrence dataset into an
-     * adverse-event one. Since the pool spans products, the subclass is resolved against <b>each
-     * structure's own</b> supplying product, so a product-keyed override can never fire on another
-     * product's like-named structure.
+     * is why this method reads its subclass through
+     * {@link #subClassOf(String, StoredDataStructure)} rather than off the structure directly; that
+     * indirection is what keeps {@code ADAE → OCCURRENCE DATA STRUCTURE} from turning every
+     * occurrence dataset into an adverse-event one. Since the pool spans products, the subclass is
+     * resolved against <b>each structure's own</b> supplying product, so a product-keyed override
+     * can never fire on another product's like-named structure.
      * </p>
      */
     private static List<ChainTier> governingChain(List<SourcedStructure> aPooled,
@@ -977,15 +987,14 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * information</em>, and for the two structures listed there the published variable content
      * supplies what the field omits.
      */
-    private static @Nullable String subClassOf(String aCacheKey, AdamDataStructure aStructure)
+    private static @Nullable String subClassOf(String aCacheKey, StoredDataStructure aStructure)
     {
-        String override = SUBCLASS_OVERRIDES
-                .get(StructureRef.of(aCacheKey, aStructure.name().orElse(null)));
+        String override = SUBCLASS_OVERRIDES.get(StructureRef.of(aCacheKey, aStructure.name()));
         if (override != null)
         {
             return override;
         }
-        String raw = aStructure.subClass().orElse(null);
+        String raw = aStructure.subClass();
         if (raw == null || raw.isBlank())
         {
             return null;
@@ -1003,8 +1012,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
      *
      * <p>
      * ⚠⚠ <b>The single mapping choke point.</b> {@link #adamStructuresForToken} matches against it
-     * and {@code CdiscLibraryProviderBuilder}'s declaration-time check (plan §6b) reports on it, so
-     * "which structures can a token reach" and "which structures did we just tell the user are
+     * and {@code DeclaredAdamProducts.assemble}'s declaration-time check (plan §6b) reports on it,
+     * so "which structures can a token reach" and "which structures did we just tell the user are
      * unreachable" cannot drift apart.
      * </p>
      *
@@ -1014,15 +1023,15 @@ public final class MetadataLibraryProvider implements MetadataProvider
      *            a published ADaM data structure
      * @return the canonical structure token, or {@code null} when the structure maps to none
      */
-    static @Nullable String structureTokenOf(String aCacheKey, AdamDataStructure aStructure)
+    static @Nullable String structureTokenOf(String aCacheKey, StoredDataStructure aStructure)
     {
         String override = STRUCTURE_CLASS_OVERRIDES
-                .get(StructureRef.of(aCacheKey, aStructure.name().orElse(null)));
+                .get(StructureRef.of(aCacheKey, aStructure.name()));
         if (override != null)
         {
             return override;
         }
-        return canonicalStructureToken(aStructure.className().orElse(null));
+        return canonicalStructureToken(aStructure.className());
     }
 
 
@@ -1041,7 +1050,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
      *
      * <p>
      * ⛔ <b>Phase 11 finding F1.</b> This was inlined in {@link #structureTokenOf} while
-     * {@code findAdamDataStructureByClassName} compared raw {@code class} strings and
+     * {@code findStoredDataStructureByClassName} compared raw {@code class} strings and
      * {@code adamClassForDomain} returned one verbatim — so declaring {@code adam/adam-adae-1-0}
      * made {@code getDatasetClass("ADAE")} answer the raw {@code "ADAE"}, which is in no token
      * vocabulary any consumer knows ({@code OperationExecutor}'s class-keyed grouping,
@@ -1062,7 +1071,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
 
     /**
-     * Every {@link AdamDataStructure} any declared product publishes for {@code aStructureToken},
+     * Every {@link StoredDataStructure} any declared product publishes for {@code aStructureToken},
      * <b>pooled across all of them</b> and carrying each one's supplying product. Structures appear
      * in declared-product order, and within a product in the product's own order. Empty when no
      * declared product defines a structure for the token.
@@ -1096,7 +1105,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
         List<SourcedStructure> pooled = new ArrayList<>();
         for (DeclaredAdamProduct declared : adamProducts)
         {
-            for (AdamDataStructure ds : declared.product().dataStructures())
+            for (StoredDataStructure ds : declared.product().dataStructures())
             {
                 if (token.equals(structureTokenOf(declared.cacheKey(), ds)))
                 {
@@ -1149,9 +1158,9 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * Resolution order (Fix #55):
      * </p>
      * <ol>
-     * <li><b>Product-first:</b> when an {@link SdtmProduct} or {@link AdamProduct} is configured
-     * (and {@link #libraryFailed} is false), walk the product hierarchy to find the class owning
-     * the dataset and return {@code SdtmClass.classVariables()} / the ADaM data-structure variable
+     * <li><b>Product-first:</b> when a {@link StoredProduct} is configured (and
+     * {@link #libraryFailed} is false), walk the product hierarchy to find the class owning the
+     * dataset and return {@code StoredClass.classVariables()} / the ADaM data-structure variable
      * set names ordered by ordinal. Domains not in the loaded product return an empty list.</li>
      * <li><b>Legacy fallback:</b> when no product is configured (no CDISC Library / no CT package
      * path, or pre-Fix-#55 callers), read {@link MetadataKeys#MODEL_COLUMN_ORDER} from the
@@ -1200,7 +1209,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
     /**
      * EC-13 — the union of variable NAMES across every dataset the loaded SDTM IG product defines.
-     * Walks {@code sdtmProduct.classes() → SdtmClass.datasets() → SdtmDataset.datasetVariables() →
+     * Walks {@code sdtmProduct.classes() → StoredClass.datasets() → StoredDataset.variables() →
      * name()} into an order-preserving {@link LinkedHashSet}, mirroring the Python reference
      * engine's {@code variable_names} (union of names over {@code variables_metadata}).
      *
@@ -1215,13 +1224,16 @@ public final class MetadataLibraryProvider implements MetadataProvider
             return null;
         }
         Set<String> names = new LinkedHashSet<>();
-        for (SdtmClass klass : sdtmProduct.classes())
+        for (StoredClass klass : sdtmProduct.classes())
         {
-            for (SdtmDataset ds : klass.datasets())
+            for (StoredDataset ds : klass.datasets())
             {
-                for (SdtmVariable v : ds.datasetVariables())
+                for (StoredVariable v : ds.variables())
                 {
-                    v.name().ifPresent(names::add);
+                    if (v.name() != null)
+                    {
+                        names.add(v.name());
+                    }
                 }
             }
         }
@@ -1274,7 +1286,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
     /**
      * EC-14 layer (i) — the canonical union of standard dataset (domain) NAMES: the IG product's
-     * datasets ({@code sdtmProduct.classes() → SdtmClass.datasets() → name()}) unioned with the
+     * datasets ({@code sdtmProduct.classes() → StoredClass.datasets() → name()}) unioned with the
      * SDTM Model product's top-level datasets ({@code sdtmModelProduct.datasets() → name()}),
      * preserving order via a {@link LinkedHashSet}. Mirrors the Python reference engine's
      * {@code standard_domains} ({@code standard ∪ model dataset_names}).
@@ -1291,18 +1303,24 @@ public final class MetadataLibraryProvider implements MetadataProvider
             return null;
         }
         Set<String> names = new LinkedHashSet<>();
-        for (SdtmClass klass : sdtmProduct.classes())
+        for (StoredClass klass : sdtmProduct.classes())
         {
-            for (SdtmDataset ds : klass.datasets())
+            for (StoredDataset ds : klass.datasets())
             {
-                ds.name().ifPresent(names::add);
+                if (ds.name() != null)
+                {
+                    names.add(ds.name());
+                }
             }
         }
         if (sdtmModelProduct != null)
         {
-            for (SdtmDataset ds : sdtmModelProduct.datasets())
+            for (StoredDataset ds : sdtmModelProduct.datasets())
             {
-                ds.name().ifPresent(names::add);
+                if (ds.name() != null)
+                {
+                    names.add(ds.name());
+                }
             }
         }
         return List.copyOf(names);
@@ -1325,7 +1343,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * {@link IMetadataLibrary} view (Define-XML / standard) or via product reverse-walk; custom
      * domains drop to Fix #41's {@link CustomDomainClassDetector}.</li>
      * <li><b>Walk the product class for variables.</b> Each class's
-     * {@link SdtmClass#classVariables()} contributes the model-side variable list. For detectable
+     * {@link StoredClass#classVariables()} contributes the model-side variable list. For detectable
      * classes ({@code FINDINGS}, {@code FINDINGS ABOUT}, {@code EVENTS}, {@code INTERVENTIONS}),
      * the GENERAL OBSERVATIONS class contributes shared identifier and timing variables (when the
      * loaded product carries that class).</li>
@@ -1337,7 +1355,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * </ol>
      *
      * <p>
-     * The Java {@link SdtmProduct} is the IG product; some IG responses embed only the
+     * The Java {@link StoredProduct} is the IG product; some IG responses embed only the
      * class-specific variables and rely on the model link for shared identifiers/timing. When the
      * loaded product happens to embed identifiers/timing inside each class (current
      * {@code CdiscLibraryMetadataLibrary.fromSdtm} consumers, test fixtures), the deduplicating
@@ -1587,15 +1605,15 @@ public final class MetadataLibraryProvider implements MetadataProvider
         // Step 3 — Walk the product class for variables (with detectable-class GenObs merging).
         // className is non-null here (guarded above), so ctClassName (poly-null) returns non-null.
         String classNameNorm = Objects.requireNonNull(ctClassName(className));
-        SdtmClass klass = findBaseClassByName(classNameNorm);
+        StoredClass klass = findBaseClassByName(classNameNorm);
         if (klass == null)
         {
             return List.<ResolvedVariable> of();
         }
         boolean detectable = isDetectableClass(classNameNorm);
-        List<SdtmVariable> identifiers = new ArrayList<>();
-        List<SdtmVariable> classVars = sortSdtmByOrdinal(klass.classVariables());
-        List<SdtmVariable> timing = new ArrayList<>();
+        List<StoredVariable> identifiers = new ArrayList<>();
+        List<StoredVariable> classVars = sortSdtmByOrdinal(klass.classVariables());
+        List<StoredVariable> timing = new ArrayList<>();
 
         if (detectable)
         {
@@ -1603,12 +1621,12 @@ public final class MetadataLibraryProvider implements MetadataProvider
             // present in the loaded product. The IG class's own classVariables list typically
             // already includes the General-Observations vars for self-contained IG products
             // (the dedupe pass below keeps the result correct).
-            SdtmClass genObs = findBaseClassByName("GENERAL OBSERVATIONS");
+            StoredClass genObs = findBaseClassByName("GENERAL OBSERVATIONS");
             if (genObs != null)
             {
-                for (SdtmVariable v : genObs.classVariables())
+                for (StoredVariable v : genObs.classVariables())
                 {
-                    String role = v.role().orElse("");
+                    String role = v.role();
                     if (ROLE_IDENTIFIER.equalsIgnoreCase(role))
                     {
                         identifiers.add(v);
@@ -1624,7 +1642,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
             // re-sorted afterwards.
             if (CLASS_FINDINGS_ABOUT.equals(classNameNorm))
             {
-                SdtmClass findings = findBaseClassByName("FINDINGS");
+                StoredClass findings = findBaseClassByName("FINDINGS");
                 if (findings != null)
                 {
                     classVars = mergeFindingsAboutClassVariables(findings.classVariables(),
@@ -1636,12 +1654,12 @@ public final class MetadataLibraryProvider implements MetadataProvider
         // Step 4 — AP shimming: merge ASSOCIATED PERSONS identifiers, excluding USUBJID.
         if (addAP)
         {
-            SdtmClass apClass = findBaseClassByName(CLASS_ASSOCIATED_PERSONS);
+            StoredClass apClass = findBaseClassByName(CLASS_ASSOCIATED_PERSONS);
             if (apClass != null)
             {
-                for (SdtmVariable v : apClass.classVariables())
+                for (StoredVariable v : apClass.classVariables())
                 {
-                    if (!VAR_USUBJID.equalsIgnoreCase(v.name().orElse("")))
+                    if (!VAR_USUBJID.equalsIgnoreCase(v.name()))
                     {
                         identifiers.add(v);
                     }
@@ -1669,11 +1687,11 @@ public final class MetadataLibraryProvider implements MetadataProvider
                 && !sdtmProductHasDomain(effectiveDomain);
         if (!isCustom)
         {
-            SdtmDataset igDataset = findSdtmDatasetByDomain(effectiveDomain);
+            StoredDataset igDataset = findStoredDatasetByDomain(effectiveDomain);
             if (igDataset != null)
             {
                 List<ResolvedVariable> igList = substituteAndResolve(
-                        sortSdtmByOrdinal(igDataset.datasetVariables()), wildcardDomain);
+                        sortSdtmByOrdinal(igDataset.variables()), wildcardDomain);
                 if (detectable)
                 {
                     // DETECTABLE_CLASSES: merge IG into model-derived list. Override-by-name;
@@ -1687,19 +1705,18 @@ public final class MetadataLibraryProvider implements MetadataProvider
                     // SQ-AP shapes). Mirrors Python sdtm_utilities.py:213-230.
                     if (addAP)
                     {
-                        SdtmClass apClass = findBaseClassByName(CLASS_ASSOCIATED_PERSONS);
+                        StoredClass apClass = findBaseClassByName(CLASS_ASSOCIATED_PERSONS);
                         if (apClass != null)
                         {
-                            List<SdtmVariable> apIds = new ArrayList<>();
-                            for (SdtmVariable v : apClass.classVariables())
+                            List<StoredVariable> apIds = new ArrayList<>();
+                            for (StoredVariable v : apClass.classVariables())
                             {
-                                if (!VAR_USUBJID.equalsIgnoreCase(v.name().orElse("")))
+                                if (!VAR_USUBJID.equalsIgnoreCase(v.name()))
                                 {
                                     apIds.add(v);
                                 }
                             }
-                            List<SdtmVariable> combined = new ArrayList<>(
-                                    igDataset.datasetVariables());
+                            List<StoredVariable> combined = new ArrayList<>(igDataset.variables());
                             combined.addAll(apIds);
                             igList = substituteAndResolve(sortSdtmByOrdinal(combined),
                                     wildcardDomain);
@@ -1830,8 +1847,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
             // D-2: tiers 2 and 3 below are DOMAIN-keyed and would return this dataset's own
             // variables under another class's name. A forced non-detectable class answers with
             // its own classVariables or nothing.
-            SdtmClass forced = findBaseClassByName(classNameNorm);
-            List<SdtmVariable> forcedVars = forced == null ? List.<SdtmVariable> of()
+            StoredClass forced = findBaseClassByName(classNameNorm);
+            List<StoredVariable> forcedVars = forced == null ? List.<StoredVariable> of()
                     : forced.classVariables();
             return forcedVars.isEmpty() ? List.<ResolvedVariable> of()
                     : assembleNonDetectable(forcedVars, wildcardDomain, addAP);
@@ -1842,24 +1859,24 @@ public final class MetadataLibraryProvider implements MetadataProvider
         // standard non-detectable domains the three-tier fallback below applies; the only
         // difference is that a custom domain has no IG dataset (tier 3 yields nothing), which is
         // the correct Python behaviour (custom → model only).
-        SdtmClass klass = findBaseClassByName(classNameNorm);
-        List<SdtmVariable> classVars = klass == null ? List.<SdtmVariable> of()
+        StoredClass klass = findBaseClassByName(classNameNorm);
+        List<StoredVariable> classVars = klass == null ? List.<StoredVariable> of()
                 : klass.classVariables();
         if (!classVars.isEmpty())
         {
             return assembleNonDetectable(classVars, wildcardDomain, addAP);
         }
         // Tier 2 — Model domain datasetVariables.
-        SdtmDataset modelDataset = findModelDatasetByDomain(effectiveDomain);
-        if (modelDataset != null && !modelDataset.datasetVariables().isEmpty())
+        StoredDataset modelDataset = findModelDatasetByDomain(effectiveDomain);
+        if (modelDataset != null && !modelDataset.variables().isEmpty())
         {
-            return assembleNonDetectable(modelDataset.datasetVariables(), wildcardDomain, addAP);
+            return assembleNonDetectable(modelDataset.variables(), wildcardDomain, addAP);
         }
         // Tier 3 — IG domain datasetVariables.
-        SdtmDataset igDataset = findSdtmDatasetByDomain(effectiveDomain);
-        if (igDataset != null && !igDataset.datasetVariables().isEmpty())
+        StoredDataset igDataset = findStoredDatasetByDomain(effectiveDomain);
+        if (igDataset != null && !igDataset.variables().isEmpty())
         {
-            return assembleNonDetectable(igDataset.datasetVariables(), wildcardDomain, addAP);
+            return assembleNonDetectable(igDataset.variables(), wildcardDomain, addAP);
         }
         return List.<ResolvedVariable> of();
     }
@@ -1875,21 +1892,21 @@ public final class MetadataLibraryProvider implements MetadataProvider
     private List<ResolvedVariable> modelDetectableWalk(String aClassNameNorm,
             String aWildcardDomain, boolean aAddAP)
     {
-        SdtmClass klass = findBaseClassByName(aClassNameNorm);
+        StoredClass klass = findBaseClassByName(aClassNameNorm);
         if (klass == null)
         {
             return List.<ResolvedVariable> of();
         }
-        List<SdtmVariable> identifiers = new ArrayList<>();
-        List<SdtmVariable> classVars = sortSdtmByOrdinal(klass.classVariables());
-        List<SdtmVariable> timing = new ArrayList<>();
+        List<StoredVariable> identifiers = new ArrayList<>();
+        List<StoredVariable> classVars = sortSdtmByOrdinal(klass.classVariables());
+        List<StoredVariable> timing = new ArrayList<>();
 
-        SdtmClass genObs = findBaseClassByName("GENERAL OBSERVATIONS");
+        StoredClass genObs = findBaseClassByName("GENERAL OBSERVATIONS");
         if (genObs != null)
         {
-            for (SdtmVariable v : genObs.classVariables())
+            for (StoredVariable v : genObs.classVariables())
             {
-                String role = v.role().orElse("");
+                String role = v.role();
                 if (ROLE_IDENTIFIER.equalsIgnoreCase(role))
                 {
                     identifiers.add(v);
@@ -1902,7 +1919,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
         }
         if (CLASS_FINDINGS_ABOUT.equals(aClassNameNorm))
         {
-            SdtmClass findings = findBaseClassByName("FINDINGS");
+            StoredClass findings = findBaseClassByName("FINDINGS");
             if (findings != null)
             {
                 classVars = mergeFindingsAboutClassVariables(findings.classVariables(), classVars);
@@ -1910,12 +1927,12 @@ public final class MetadataLibraryProvider implements MetadataProvider
         }
         if (aAddAP)
         {
-            SdtmClass apClass = findBaseClassByName(CLASS_ASSOCIATED_PERSONS);
+            StoredClass apClass = findBaseClassByName(CLASS_ASSOCIATED_PERSONS);
             if (apClass != null)
             {
-                for (SdtmVariable v : apClass.classVariables())
+                for (StoredVariable v : apClass.classVariables())
                 {
-                    if (!VAR_USUBJID.equalsIgnoreCase(v.name().orElse("")))
+                    if (!VAR_USUBJID.equalsIgnoreCase(v.name()))
                     {
                         identifiers.add(v);
                     }
@@ -1938,19 +1955,19 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * identifiers (minus USUBJID), substitute {@code --}, and dedupe. Mirrors Python's
      * non-detectable branches in {@code get_variables_metadata_from_standard_model}.
      */
-    private List<ResolvedVariable> assembleNonDetectable(List<SdtmVariable> aVars,
+    private List<ResolvedVariable> assembleNonDetectable(List<StoredVariable> aVars,
             String aWildcardDomain, boolean aAddAP)
     {
-        List<SdtmVariable> combined = sortSdtmByOrdinal(aVars);
+        List<StoredVariable> combined = sortSdtmByOrdinal(aVars);
         if (aAddAP)
         {
-            SdtmClass apClass = findBaseClassByName(CLASS_ASSOCIATED_PERSONS);
+            StoredClass apClass = findBaseClassByName(CLASS_ASSOCIATED_PERSONS);
             if (apClass != null)
             {
-                List<SdtmVariable> merged = new ArrayList<>(combined);
-                for (SdtmVariable v : apClass.classVariables())
+                List<StoredVariable> merged = new ArrayList<>(combined);
+                for (StoredVariable v : apClass.classVariables())
                 {
-                    if (!VAR_USUBJID.equalsIgnoreCase(v.name().orElse("")))
+                    if (!VAR_USUBJID.equalsIgnoreCase(v.name()))
                     {
                         merged.add(v);
                     }
@@ -1963,9 +1980,9 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
     /**
      * Internal record carried across the Phase 2 resolver pipeline. Holds the
-     * {@code --}-substituted variable name and the variable's full attribute map (role, core,
-     * simpleDatatype, label, ordinal — whichever the source product populated). Both views are
-     * needed: name-only consumers project {@code name()}; the
+     * {@code --}-substituted variable name and the variable's full attribute map
+     * ({@link LibraryVariableAttributes#KEYS} — whichever of them the source product populated).
+     * Both views are needed: name-only consumers project {@code name()}; the
      * {@code getStandardModelVariablesDetailed} accessor (and the filtered-variable Operations)
      * project {@link #toAttributeMap()}.
      */
@@ -1980,8 +1997,9 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
         /**
          * Returns a Python-{@code variables_metadata}-shaped map: the resolver's {@code --}-
-         * substituted name plus all source attributes (role, core, simpleDatatype, label, ordinal).
-         * The output is unmodifiable; callers must build a copy if they need to mutate.
+         * substituted name plus every scalar source attribute the variable published
+         * ({@link LibraryVariableAttributes#KEYS}). The output is unmodifiable; callers must build
+         * a copy if they need to mutate.
          */
         Map<String, String> toAttributeMap()
         {
@@ -1993,30 +2011,71 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
     /**
      * Substitutes {@code --} → {@code aDomain} on each variable's name and packs the variable's
-     * attributes (role, core, simpleDatatype, label, ordinal) into a map for downstream filter
-     * operations. Skips entries with null/empty names. The output preserves input order.
+     * attributes ({@link #scalarAttributes}) into a map for downstream filter operations. Skips
+     * entries with null/empty names. The output preserves input order.
      */
-    private static List<ResolvedVariable> substituteAndResolve(List<SdtmVariable> aVars,
+    private static List<ResolvedVariable> substituteAndResolve(List<StoredVariable> aVars,
             String aDomain)
     {
         List<ResolvedVariable> out = new ArrayList<>(aVars.size());
-        for (SdtmVariable v : aVars)
+        for (StoredVariable v : aVars)
         {
-            String name = v.name().orElse(null);
+            String name = v.name();
             if (name == null || name.isEmpty())
             {
                 continue;
             }
             String resolved = name.contains("--") ? name.replace("--", aDomain) : name;
-            Map<String, String> attrs = new LinkedHashMap<>();
-            v.role().ifPresent(r -> attrs.put("role", r));
-            v.core().ifPresent(c -> attrs.put("core", c));
-            v.simpleDatatype().ifPresent(t -> attrs.put(ATTR_SIMPLE_DATATYPE, t));
-            v.label().ifPresent(l -> attrs.put(ATTR_LABEL, l));
-            v.ordinal().ifPresent(o -> attrs.put(ATTR_ORDINAL, o));
-            out.add(new ResolvedVariable(resolved, attrs));
+            out.add(new ResolvedVariable(resolved, scalarAttributes(v)));
         }
         return out;
+    }
+
+
+    /**
+     * ⭐ The ONE place a stored variable becomes a filter row. Publishes every <b>scalar</b> field
+     * the source populated — {@link LibraryVariableAttributes#KEYS} minus {@code name}, which the
+     * {@code --} substitution owns and {@link ResolvedVariable#toAttributeMap()} adds.
+     *
+     * <p>
+     * The first five are the historical six-key row; the rest were added by
+     * PLAN-library-variable-key-name-breadth.md P3, because both engines filter these rows by an
+     * arbitrary caller-supplied {@code key_name} and a field the row omits makes such a filter
+     * match nothing on every dataset, with no diagnostic (the FDA-SD1078 shape). A field the source
+     * did not publish stays absent from the map, which is what the runtime diagnostic
+     * ({@code OperationExecutor.warnUnservedKeyName}) reads.
+     * </p>
+     *
+     * <p>
+     * ⛔ The three list-valued stored fields — {@code valueList}, {@code codelistSubmissionValues},
+     * {@code codelistIds} — are deliberately NOT published here. The row is
+     * {@code Map<String, String>} and {@code key_value} is a scalar; in Python
+     * {@code var.get("valueList") == "<scalar>"} compares a list to a string and is <em>always</em>
+     * false, so serving them could only ever be a no-op wearing a costume. They stay rejected at
+     * rule load instead (P2 ruling, 2026-09-08).
+     * </p>
+     *
+     * @param aVariable
+     *            the stored variable
+     * @return a mutable, insertion-ordered attribute map holding only the published fields
+     */
+    private static Map<String, String> scalarAttributes(StoredVariable aVariable)
+    {
+        Map<String, String> attrs = new LinkedHashMap<>();
+        putAttr(attrs, ATTR_ROLE, aVariable.role());
+        putAttr(attrs, "core", aVariable.core());
+        putAttr(attrs, ATTR_SIMPLE_DATATYPE, aVariable.simpleDatatype());
+        putAttr(attrs, ATTR_LABEL, aVariable.label());
+        putAttr(attrs, ATTR_ORDINAL, aVariable.ordinal());
+        putAttr(attrs, "description", aVariable.description());
+        putAttr(attrs, "roleDescription", aVariable.roleDescription());
+        putAttr(attrs, "definition", aVariable.definition());
+        putAttr(attrs, "notes", aVariable.notes());
+        putAttr(attrs, "examples", aVariable.examples());
+        putAttr(attrs, "usageRestrictions", aVariable.usageRestrictions());
+        putAttr(attrs, "variableCcode", aVariable.variableCcode());
+        putAttr(attrs, "describedValueDomain", aVariable.describedValueDomain());
+        return attrs;
     }
 
     /**
@@ -2045,7 +2104,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
             String aCore, int aOrdinal)
     {
         Map<String, String> attrs = new LinkedHashMap<>();
-        attrs.put("role", aRole);
+        attrs.put(ATTR_ROLE, aRole);
         attrs.put("core", aCore);
         attrs.put(ATTR_ORDINAL, Integer.toString(aOrdinal));
         return new ResolvedVariable(aName, Collections.unmodifiableMap(attrs));
@@ -2078,12 +2137,11 @@ public final class MetadataLibraryProvider implements MetadataProvider
     private List<ResolvedVariable> resolveSuppQualVariables(String aWildcardDomain, boolean aAddAP)
     {
         // Tier A — IG product's SUPPQUAL dataset.
-        SdtmDataset igSuppQual = findSdtmDatasetByDomain(DOMAIN_SUPPQUAL);
+        StoredDataset igSuppQual = findStoredDatasetByDomain(DOMAIN_SUPPQUAL);
         List<ResolvedVariable> base = null;
-        if (igSuppQual != null && !igSuppQual.datasetVariables().isEmpty())
+        if (igSuppQual != null && !igSuppQual.variables().isEmpty())
         {
-            base = substituteAndResolve(sortSdtmByOrdinal(igSuppQual.datasetVariables()),
-                    aWildcardDomain);
+            base = substituteAndResolve(sortSdtmByOrdinal(igSuppQual.variables()), aWildcardDomain);
         }
         // Tier B — SDTM Model RELATIONSHIP class. Tried for both null base and empty base.
         if (base == null || base.isEmpty())
@@ -2114,7 +2172,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
     private @Nullable List<ResolvedVariable> resolveRelationshipModelClassVars(
             String aWildcardDomain)
     {
-        SdtmClass modelRel = findSdtmModelClassByName("RELATIONSHIP");
+        StoredClass modelRel = findSdtmModelClassByName("RELATIONSHIP");
         if (modelRel == null)
         {
             modelRel = findSdtmModelClassByName("RELATIONSHIPS");
@@ -2140,15 +2198,15 @@ public final class MetadataLibraryProvider implements MetadataProvider
     private List<ResolvedVariable> mergeAssociatedPersonsIdentifiers(List<ResolvedVariable> aBase,
             String aWildcardDomain)
     {
-        SdtmClass apClass = findSdtmClassByName(CLASS_ASSOCIATED_PERSONS);
+        StoredClass apClass = findStoredClassByName(CLASS_ASSOCIATED_PERSONS);
         if (apClass == null)
         {
             return aBase;
         }
-        List<SdtmVariable> apIds = new ArrayList<>();
-        for (SdtmVariable v : apClass.classVariables())
+        List<StoredVariable> apIds = new ArrayList<>();
+        for (StoredVariable v : apClass.classVariables())
         {
-            if (!VAR_USUBJID.equalsIgnoreCase(v.name().orElse("")))
+            if (!VAR_USUBJID.equalsIgnoreCase(v.name()))
             {
                 apIds.add(v);
             }
@@ -2167,11 +2225,11 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * Look up the base class used to source the model-side variable walk (identifiers, class
      * variables, timing). Prefers the SDTM <em>Model</em> product ({@link #sdtmModelProduct}) when
      * one is configured and carries the class, falling back to the IG product
-     * ({@link #findSdtmClassByName}) when the Model is absent or doesn't define the class.
+     * ({@link #findStoredClassByName}) when the Model is absent or doesn't define the class.
      *
      * <p>
      * This is the fix for the parity bug where the base walk read class variables from the IG
-     * product. IG responses frequently leave {@code SdtmClass.classVariables()} empty and rely on
+     * product. IG responses frequently leave {@code StoredClass.classVariables()} empty and rely on
      * the linked Model for the shared identifier/class/timing variable definitions — so the walk
      * must source from the Model (mirroring Python's {@code model_metadata} usage in both
      * {@code get_variables_metadata_from_standard} and
@@ -2179,27 +2237,27 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * single-product constructors) this falls back to the IG so today's behaviour is preserved.
      * </p>
      */
-    private @Nullable SdtmClass findBaseClassByName(@Nullable String aNormalisedName)
+    private @Nullable StoredClass findBaseClassByName(@Nullable String aNormalisedName)
     {
-        SdtmClass model = findSdtmModelClassByName(aNormalisedName);
+        StoredClass model = findSdtmModelClassByName(aNormalisedName);
         if (model != null)
         {
             return model;
         }
-        return findSdtmClassByName(aNormalisedName);
+        return findStoredClassByName(aNormalisedName);
     }
 
 
     /** Look up a class in the SDTM <em>Model</em> product (separate from the IG). */
-    private @Nullable SdtmClass findSdtmModelClassByName(@Nullable String aNormalisedName)
+    private @Nullable StoredClass findSdtmModelClassByName(@Nullable String aNormalisedName)
     {
         if (sdtmModelProduct == null || aNormalisedName == null)
         {
             return null;
         }
-        for (SdtmClass klass : sdtmModelProduct.classes())
+        for (StoredClass klass : sdtmModelProduct.classes())
         {
-            if (aNormalisedName.equals(ctClassName(klass.name().orElse(null))))
+            if (aNormalisedName.equals(ctClassName(klass.name())))
             {
                 return klass;
             }
@@ -2361,7 +2419,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
     {
         // First try direct dataset/data-structure name match. ADSL → ADSL data structure;
         // ADAE → BDS-class data structure (ADaM data-structure model).
-        List<AdamDataStructure> structures;
+        List<StoredDataStructure> structures;
         SourcedStructure named = adamDataStructureFor(aDomain);
         if (named != null)
         {
@@ -2391,26 +2449,26 @@ public final class MetadataLibraryProvider implements MetadataProvider
         // Structure by structure, governing tier first: within a structure the standard's own
         // ordinal order, across structures first-occurrence-wins, so the governing structure's
         // attributes (notably `core`) are the ones reported. Mirrors adamNamesWhereCore.
-        for (AdamDataStructure ds : structures)
+        for (StoredDataStructure ds : structures)
         {
-            List<AdamVariable> all = new ArrayList<>();
-            for (AdamVariableSet set : ds.analysisVariableSets())
+            List<StoredVariable> all = new ArrayList<>();
+            for (StoredVariableSet set : ds.variableSets())
             {
-                all.addAll(set.analysisVariables());
+                all.addAll(set.variables());
             }
-            for (AdamVariable v : sortAdamByOrdinal(all))
+            for (StoredVariable v : sortAdamByOrdinal(all))
             {
-                String name = v.name().orElse(null);
+                String name = v.name();
                 if (name == null || name.isEmpty())
                 {
                     continue;
                 }
-                Map<String, String> attrs = new LinkedHashMap<>();
-                v.label().ifPresent(l -> attrs.put(ATTR_LABEL, l));
-                v.ordinal().ifPresent(o -> attrs.put(ATTR_ORDINAL, o));
-                v.simpleDatatype().ifPresent(t -> attrs.put(ATTR_SIMPLE_DATATYPE, t));
-                v.core().ifPresent(c -> attrs.put("core", c));
+                Map<String, String> attrs = scalarAttributes(v);
                 // ADaM variables don't carry a "role" attribute the way SDTM does; leave absent.
+                // ⚠ Removed rather than never-added: an ADaM payload that started publishing one
+                // would otherwise silently turn `natural_key_variables` (a role-set filter over
+                // this very row) from empty into a live answer on ADaM datasets.
+                attrs.remove(ATTR_ROLE);
                 seen.putIfAbsent(name, new ResolvedVariable(name, attrs));
             }
         }
@@ -2423,14 +2481,14 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * the {@code --TEST} variable: pre-{@code --TEST} (inclusive) prepended, post-{@code --TEST}
      * appended after the FINDINGS ABOUT class vars.
      */
-    private static List<SdtmVariable> mergeFindingsAboutClassVariables(
-            List<SdtmVariable> aFindingsVars, List<SdtmVariable> aFindingsAboutVars)
+    private static List<StoredVariable> mergeFindingsAboutClassVariables(
+            List<StoredVariable> aFindingsVars, List<StoredVariable> aFindingsAboutVars)
     {
-        List<SdtmVariable> sortedFindings = sortSdtmByOrdinal(aFindingsVars);
+        List<StoredVariable> sortedFindings = sortSdtmByOrdinal(aFindingsVars);
         int testIndex = -1;
         for (int i = 0; i < sortedFindings.size(); i++)
         {
-            if ("--TEST".equals(sortedFindings.get(i).name().orElse(null)))
+            if ("--TEST".equals(sortedFindings.get(i).name()))
             {
                 testIndex = i;
                 break;
@@ -2439,11 +2497,11 @@ public final class MetadataLibraryProvider implements MetadataProvider
         if (testIndex < 0)
         {
             // No --TEST variable; fall through to a simple concatenation.
-            List<SdtmVariable> out = new ArrayList<>(sortedFindings);
+            List<StoredVariable> out = new ArrayList<>(sortedFindings);
             out.addAll(aFindingsAboutVars);
             return out;
         }
-        List<SdtmVariable> out = new ArrayList<>();
+        List<StoredVariable> out = new ArrayList<>();
         out.addAll(sortedFindings.subList(0, testIndex + 1));
         out.addAll(aFindingsAboutVars);
         out.addAll(sortedFindings.subList(testIndex + 1, sortedFindings.size()));
@@ -2478,11 +2536,11 @@ public final class MetadataLibraryProvider implements MetadataProvider
         {
             return false;
         }
-        for (SdtmClass klass : sdtmProduct.classes())
+        for (StoredClass klass : sdtmProduct.classes())
         {
-            for (SdtmDataset ds : klass.datasets())
+            for (StoredDataset ds : klass.datasets())
             {
-                if (aDomain.equalsIgnoreCase(ds.name().orElse(null)))
+                if (aDomain.equalsIgnoreCase(ds.name()))
                 {
                     return true;
                 }
@@ -2493,15 +2551,15 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
 
     /** Look up a class by name (compared after {@link #ctClassName} normalisation). */
-    private @Nullable SdtmClass findSdtmClassByName(@Nullable String aNormalisedName)
+    private @Nullable StoredClass findStoredClassByName(@Nullable String aNormalisedName)
     {
         if (sdtmProduct == null || aNormalisedName == null)
         {
             return null;
         }
-        for (SdtmClass klass : sdtmProduct.classes())
+        for (StoredClass klass : sdtmProduct.classes())
         {
-            if (aNormalisedName.equals(ctClassName(klass.name().orElse(null))))
+            if (aNormalisedName.equals(ctClassName(klass.name())))
             {
                 return klass;
             }
@@ -2511,23 +2569,23 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
 
     /**
-     * Look up the IG-level {@link SdtmDataset} owning the given domain, scanning every loaded
+     * Look up the IG-level {@link StoredDataset} owning the given domain, scanning every loaded
      * class. Returns {@code null} if the domain isn't in the product (custom domain). The returned
-     * dataset's {@link SdtmDataset#datasetVariables()} is the source of IG-level variables for Fix
-     * #42 Phase 2's IG-override merge step (Python's
+     * dataset's {@link StoredDataset#datasetVariables()} is the source of IG-level variables for
+     * Fix #42 Phase 2's IG-override merge step (Python's
      * {@code IG_domain_details["datasetVariables"]}).
      */
-    private @Nullable SdtmDataset findSdtmDatasetByDomain(String aDomain)
+    private @Nullable StoredDataset findStoredDatasetByDomain(String aDomain)
     {
         if (sdtmProduct == null || aDomain == null)
         {
             return null;
         }
-        for (SdtmClass klass : sdtmProduct.classes())
+        for (StoredClass klass : sdtmProduct.classes())
         {
-            for (SdtmDataset ds : klass.datasets())
+            for (StoredDataset ds : klass.datasets())
             {
-                if (aDomain.equalsIgnoreCase(ds.name().orElse(null)))
+                if (aDomain.equalsIgnoreCase(ds.name()))
                 {
                     return ds;
                 }
@@ -2544,15 +2602,15 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * trial-design / relationship datasets). Returns {@code null} when no Model is configured or
      * the domain is absent.
      */
-    private @Nullable SdtmDataset findModelDatasetByDomain(String aDomain)
+    private @Nullable StoredDataset findModelDatasetByDomain(String aDomain)
     {
         if (sdtmModelProduct == null || aDomain == null)
         {
             return null;
         }
-        for (SdtmDataset ds : sdtmModelProduct.datasets())
+        for (StoredDataset ds : sdtmModelProduct.datasets())
         {
-            if (aDomain.equalsIgnoreCase(ds.name().orElse(null)))
+            if (aDomain.equalsIgnoreCase(ds.name()))
             {
                 return ds;
             }
@@ -2568,9 +2626,9 @@ public final class MetadataLibraryProvider implements MetadataProvider
      *
      * <p>
      * ⛔⛔ <b>Phase 11 finding F1 — what this replaces.</b> The predecessor,
-     * {@code findAdamDataStructureByClassName}, compared the requested class against each product's
-     * raw published {@code class} string and returned the <b>first</b> hit in declaration order.
-     * Two defects fell out of that, both invisible while only one product could be declared:
+     * {@code findStoredDataStructureByClassName}, compared the requested class against each
+     * product's raw published {@code class} string and returned the <b>first</b> hit in declaration
+     * order. Two defects fell out of that, both invisible while only one product could be declared:
      * </p>
      * <ol>
      * <li><b>The answer depended on declaration order.</b> {@code -mp
@@ -2600,7 +2658,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * @return the contributing structures, governing tier first; empty when the class maps to no
      *         token, or when no declared product publishes an applicable structure for it
      */
-    private List<AdamDataStructure> adamStructuresForClassName(@Nullable String aClassName,
+    private List<StoredDataStructure> adamStructuresForClassName(@Nullable String aClassName,
             String aDomain)
     {
         String token = canonicalStructureToken(aClassName);
@@ -2608,7 +2666,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
         {
             return List.of();
         }
-        List<AdamDataStructure> out = new ArrayList<>();
+        List<StoredDataStructure> out = new ArrayList<>();
         for (ChainTier tier : governingTiers(token, getDeclaredSubClasses(aDomain)))
         {
             for (SourcedStructure sourced : tier.structures())
@@ -2627,9 +2685,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * <li><b>Define-XML / study class.</b> When {@link IMetadataLibrary#getDataTable(String)}
      * returns a table whose {@link IDataTableMetadata#getClassName()} is non-null and non-empty,
      * that wins (Define-XML may override the standard's class assignment).</li>
-     * <li><b>Product reverse-walk.</b> When an {@link SdtmProduct} or {@link AdamProduct} is
-     * configured, scan its classes / data structures for one that owns a dataset whose name
-     * matches.</li>
+     * <li><b>Product reverse-walk.</b> When a {@link StoredProduct} is configured, scan its classes
+     * / data structures for one that owns a dataset whose name matches.</li>
      * <li><b>Custom-domain sniffer.</b> Fix #41 hooks in here. Until the sniffer ships, this tier
      * returns {@code null}.</li>
      * </ol>
@@ -2652,8 +2709,9 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * via {@link IDataTableMetadata#getClassName()}) — verbatim, no product walk, no curated
      * fallback, no heuristics. {@code null} when the study metadata declares nothing. Review
      * finding 3: reads the {@link #declaredSourceLibrary() undecorated study library} so a
-     * standards-library class supplied by {@link EnrichedMetadataLibrary} enrichment never
-     * masquerades as a declared define class.
+     * standards-library class supplied by enrichment never masquerades as a declared define class.
+     * (The {@code EnrichedMetadataLibrary} overlay itself was retired by cache P4 with the CDISC
+     * Library API path — the store- and pickle-built libraries never wrap.)
      */
     @Override
     public @Nullable String getDeclaredDatasetClass(String aDatasetName)
@@ -2676,13 +2734,14 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
 
     /**
-     * The library to consult for <em>declared</em> study-metadata values: the undecorated primary
-     * when {@link #library} is an {@link EnrichedMetadataLibrary}, else the library itself.
+     * The library to consult for <em>declared</em> study-metadata values. Historically this
+     * unwrapped an {@code EnrichedMetadataLibrary} overlay to its primary; since cache P4 retired
+     * the overlay with the API path, the library itself is always the declared source. The seam
+     * stays so the read sites keep naming the intent.
      */
     private IMetadataLibrary declaredSourceLibrary()
     {
-        return library instanceof EnrichedMetadataLibrary enriched ? enriched.getPrimary()
-                : library;
+        return library;
     }
 
 
@@ -3100,7 +3159,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
     @Override
     public List<String> getCodelistAttribute(String aCtPackageId, String aCtAttribute)
     {
-        CtPackage pkg = resolveCtPackage(aCtPackageId);
+        StoredCtPackage pkg = resolveCtPackage(aCtPackageId);
         if (pkg == null)
         {
             return List.of();
@@ -3111,15 +3170,15 @@ public final class MetadataLibraryProvider implements MetadataProvider
         switch (aCtAttribute)
         {
         case "Codelist CCODE" -> collectDistinct(out,
-                pkg.codelists().stream().map(CtCodelist::conceptId));
+                pkg.codelists().stream().map(StoredCodelist::conceptId));
         case "Codelist Value" -> collectDistinct(out,
-                pkg.codelists().stream().map(CtCodelist::submissionValue));
-        case "Term CCODE" -> collectDistinct(out,
-                pkg.codelists().stream().flatMap(c -> c.terms().stream()).map(CtTerm::conceptId));
+                pkg.codelists().stream().map(StoredCodelist::submissionValue));
+        case "Term CCODE" -> collectDistinct(out, pkg.codelists().stream()
+                .flatMap(c -> c.terms().stream()).map(StoredTerm::conceptId));
         case "Term Value", "Term Submission Value" -> collectDistinct(out, pkg.codelists().stream()
-                .flatMap(c -> c.terms().stream()).map(CtTerm::submissionValue));
+                .flatMap(c -> c.terms().stream()).map(StoredTerm::submissionValue));
         case "Term Preferred Term" -> collectDistinct(out, pkg.codelists().stream()
-                .flatMap(c -> c.terms().stream()).map(CtTerm::preferredTerm));
+                .flatMap(c -> c.terms().stream()).map(StoredTerm::preferredTerm));
         default ->
         {
             // Unknown attribute — Python raises ValueError; we degrade to empty so a bad rule
@@ -3135,7 +3194,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * loader. Returns {@code null} when neither yields the <em>requested</em> package — never a
      * different package than the one asked for.
      */
-    private @Nullable CtPackage resolveCtPackage(String aCtPackageId)
+    private @Nullable StoredCtPackage resolveCtPackage(String aCtPackageId)
     {
         // Exact match to the configured package id wins (avoids a redundant cache load).
         if (configuredCtPackage != null && aCtPackageId.equals(configuredCtPackageId))
@@ -3147,7 +3206,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
         // than, or in the absence of, the configured one.)
         if (ctPackageLoader != null)
         {
-            CtPackage loaded = ctPackageLoader.apply(aCtPackageId).orElse(null);
+            StoredCtPackage loaded = ctPackageLoader.apply(aCtPackageId).orElse(null);
             if (loaded != null)
             {
                 return loaded;
@@ -3163,10 +3222,9 @@ public final class MetadataLibraryProvider implements MetadataProvider
     }
 
 
-    private static void collectDistinct(Set<String> aOut, Stream<Optional<String>> aValues)
+    private static void collectDistinct(Set<String> aOut, Stream<@Nullable String> aValues)
     {
-        aValues.filter(Optional::isPresent).map(Optional::get).filter(Objects::nonNull)
-                .filter(v -> !v.isEmpty()).forEach(aOut::add);
+        aValues.filter(Objects::nonNull).filter(v -> !v.isEmpty()).forEach(aOut::add);
     }
 
 
@@ -3188,17 +3246,19 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
 
     @Override
-    public boolean isCodelistExtensible(String aCodelistName)
+    public Optional<Boolean> isCodelistExtensible(String aCodelistName)
     {
-        Optional<ICodeList> cl = findCodelist(aCodelistName);
-        if (cl.isEmpty())
+        // F-corej-ct-02: an unresolvable codelist answers empty — a defaulted `true` here fails
+        // open (every shipped consumer gates on == false, so the rule silently never fires).
+        // The var_codelist_extensible attribute channel (codelistExtensible below) shares this
+        // miss behaviour; the engine surfaces the unresolvable case as a rule SKIP.
+        return findCodelist(aCodelistName).map(cl ->
         {
-            // Unknown codelist — default to extensible to avoid false positives.
-            return true;
-        }
-        Boolean extensible = cl.get().isExtensible();
-        // Per the ICodeList contract, null means "unknown".
-        return extensible == null || extensible;
+            Boolean extensible = cl.isExtensible();
+            // Per the ICodeList contract, null means "unknown" — a FOUND codelist with an
+            // unspecified flag is treated extensible (a real answer, not an absence).
+            return extensible == null || extensible;
+        });
     }
 
     // ------------------------------------------------------------------
@@ -3216,16 +3276,19 @@ public final class MetadataLibraryProvider implements MetadataProvider
         {
             return List.of();
         }
-        SdtmClass klass = sdtmClassFor(aDomain);
+        StoredClass klass = sdtmClassFor(aDomain);
         if (klass == null)
         {
             return List.of();
         }
-        List<SdtmVariable> vars = sortSdtmByOrdinal(klass.classVariables());
+        List<StoredVariable> vars = sortSdtmByOrdinal(klass.classVariables());
         List<String> out = new ArrayList<>(vars.size());
-        for (SdtmVariable v : vars)
+        for (StoredVariable v : vars)
         {
-            v.name().ifPresent(out::add);
+            if (v.name() != null)
+            {
+                out.add(v.name());
+            }
         }
         return Collections.unmodifiableList(out);
     }
@@ -3233,22 +3296,22 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
     private @Nullable String sdtmClassForDomain(String aDomain)
     {
-        SdtmClass klass = sdtmClassFor(aDomain);
-        return klass != null ? klass.name().orElse(null) : null;
+        StoredClass klass = sdtmClassFor(aDomain);
+        return klass != null ? klass.name() : null;
     }
 
 
-    private @Nullable SdtmClass sdtmClassFor(String aDomain)
+    private @Nullable StoredClass sdtmClassFor(String aDomain)
     {
         if (sdtmProduct == null || aDomain == null)
         {
             return null;
         }
-        for (SdtmClass klass : sdtmProduct.classes())
+        for (StoredClass klass : sdtmProduct.classes())
         {
-            for (SdtmDataset ds : klass.datasets())
+            for (StoredDataset ds : klass.datasets())
             {
-                if (aDomain.equalsIgnoreCase(ds.name().orElse(null)))
+                if (aDomain.equalsIgnoreCase(ds.name()))
                 {
                     return klass;
                 }
@@ -3274,16 +3337,19 @@ public final class MetadataLibraryProvider implements MetadataProvider
         {
             return List.of();
         }
-        List<AdamVariable> all = new ArrayList<>();
-        for (AdamVariableSet set : sourced.structure().analysisVariableSets())
+        List<StoredVariable> all = new ArrayList<>();
+        for (StoredVariableSet set : sourced.structure().variableSets())
         {
-            all.addAll(set.analysisVariables());
+            all.addAll(set.variables());
         }
-        List<AdamVariable> ordered = sortAdamByOrdinal(all);
+        List<StoredVariable> ordered = sortAdamByOrdinal(all);
         List<String> out = new ArrayList<>(ordered.size());
-        for (AdamVariable v : ordered)
+        for (StoredVariable v : ordered)
         {
-            v.name().ifPresent(out::add);
+            if (v.name() != null)
+            {
+                out.add(v.name());
+            }
         }
         return Collections.unmodifiableList(out);
     }
@@ -3342,9 +3408,9 @@ public final class MetadataLibraryProvider implements MetadataProvider
         }
         for (DeclaredAdamProduct declared : adamProducts)
         {
-            for (AdamDataStructure ds : declared.product().dataStructures())
+            for (StoredDataStructure ds : declared.product().dataStructures())
             {
-                if (aDomain.equalsIgnoreCase(ds.name().orElse(null)))
+                if (aDomain.equalsIgnoreCase(ds.name()))
                 {
                     return new SourcedStructure(declared.cacheKey(), ds);
                 }
@@ -3354,20 +3420,18 @@ public final class MetadataLibraryProvider implements MetadataProvider
     }
 
 
-    private static List<SdtmVariable> sortSdtmByOrdinal(List<SdtmVariable> aVariables)
+    private static List<StoredVariable> sortSdtmByOrdinal(List<StoredVariable> aVariables)
     {
-        List<SdtmVariable> copy = new ArrayList<>(aVariables);
-        copy.sort((a, b) -> Integer.compare(parseOrdinal(a.ordinal().orElse(null)),
-                parseOrdinal(b.ordinal().orElse(null))));
+        List<StoredVariable> copy = new ArrayList<>(aVariables);
+        copy.sort((a, b) -> Integer.compare(parseOrdinal(a.ordinal()), parseOrdinal(b.ordinal())));
         return copy;
     }
 
 
-    private static List<AdamVariable> sortAdamByOrdinal(List<AdamVariable> aVariables)
+    private static List<StoredVariable> sortAdamByOrdinal(List<StoredVariable> aVariables)
     {
-        List<AdamVariable> copy = new ArrayList<>(aVariables);
-        copy.sort((a, b) -> Integer.compare(parseOrdinal(a.ordinal().orElse(null)),
-                parseOrdinal(b.ordinal().orElse(null))));
+        List<StoredVariable> copy = new ArrayList<>(aVariables);
+        copy.sort((a, b) -> Integer.compare(parseOrdinal(a.ordinal()), parseOrdinal(b.ordinal())));
         return copy;
     }
 
@@ -3647,8 +3711,16 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
     /**
      * Lower-case {@code "true"} / {@code "false"} for the bound codelist's extensibility, or
-     * {@code null} when the variable has no codelist or it is not found (treated as extensible — no
-     * fire, D4).
+     * {@code null} when the variable has no codelist (no fire, D4) or the bound codelist cannot be
+     * resolved.
+     *
+     * <p>
+     * F-corej-ct-02: this is one resolution shared with {@link #isCodelistExtensible(String)} — a
+     * FOUND codelist with an unspecified flag answers {@code "true"} (extensible, a real answer),
+     * while an unresolvable one leaves the key absent. Because {@code codelist} is emitted
+     * regardless, "codelist present but codelist_extensible absent" is the unresolvable signature
+     * the evaluator turns into a rule SKIP — never a silent no-fire.
+     * </p>
      */
     private @Nullable String codelistExtensible(IColumnMetadata aCol)
     {
@@ -3657,7 +3729,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
         {
             return null;
         }
-        return findCodelist(name).map(ICodeList::isExtensible).map(String::valueOf).orElse(null);
+        return isCodelistExtensible(name).map(String::valueOf).orElse(null);
     }
 
 
@@ -3698,6 +3770,20 @@ public final class MetadataLibraryProvider implements MetadataProvider
     private static void putIfPresent(Map<String, String> aMap, String aKey, @Nullable String aValue)
     {
         if (aValue != null && !aValue.isEmpty())
+        {
+            aMap.put(aKey, aValue);
+        }
+    }
+
+
+    /**
+     * Puts a resolver attribute when the stored field is present. Unlike {@link #putIfPresent} this
+     * keeps an empty string — it replaces the api-model {@code Optional.ifPresent} pattern, which
+     * also kept one.
+     */
+    private static void putAttr(Map<String, String> aMap, String aKey, @Nullable String aValue)
+    {
+        if (aValue != null)
         {
             aMap.put(aKey, aValue);
         }

@@ -406,9 +406,9 @@ public final class StubMetadataProvider implements MetadataProvider
 
 
     @Override
-    public boolean isCodelistExtensible(String codelistName)
+    public java.util.Optional<Boolean> isCodelistExtensible(String codelistName)
     {
-        return codelistExtensible.getOrDefault(codelistName, Boolean.FALSE);
+        return java.util.Optional.of(codelistExtensible.getOrDefault(codelistName, Boolean.FALSE));
     }
 
 

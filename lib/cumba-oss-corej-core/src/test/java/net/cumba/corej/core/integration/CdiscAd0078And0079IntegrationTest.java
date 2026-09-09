@@ -137,9 +137,9 @@ class CdiscAd0078And0079IntegrationTest
 
 
             @Override
-            public boolean isCodelistExtensible(String c)
+            public java.util.Optional<Boolean> isCodelistExtensible(String c)
             {
-                return true;
+                return java.util.Optional.of(true);
             }
 
 

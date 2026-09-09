@@ -132,7 +132,7 @@ class MetadataLibraryProviderCrossProductSpecificityTest
     /** {@code adamig-1-3}'s shape for this test: a base BDS, no subclass of its own. */
     private static DeclaredAdamProduct igBds()
     {
-        return new DeclaredAdamProduct(IG_KEY,
+        return ApiModelLibraries.declared(IG_KEY,
                 product("adamig",
                         structure("BDS", "BASIC DATA STRUCTURE", null,
                                 List.of(adamVar("USUBJID", "1", "Req"),
@@ -144,7 +144,7 @@ class MetadataLibraryProviderCrossProductSpecificityTest
     /** {@code adam-nca-1-0}: {@code BASIC DATA STRUCTURE} published ONLY as a subclass. */
     private static DeclaredAdamProduct ncaSupplement()
     {
-        return new DeclaredAdamProduct(NCA_KEY,
+        return ApiModelLibraries.declared(NCA_KEY,
                 product("adam-nca", structure("ADNCA", "BASIC DATA STRUCTURE", NCA,
                         List.of(adamVar("AFRLT", "1", "Req"), adamVar("AVISIT", "2", "Req")))));
     }
@@ -153,7 +153,7 @@ class MetadataLibraryProviderCrossProductSpecificityTest
     /** {@code adam-poppk-1-0}: another subclass-only supplement on the same token. */
     private static DeclaredAdamProduct poppkSupplement()
     {
-        return new DeclaredAdamProduct(POPPK_KEY, product("adam-poppk", structure("ADPPK",
+        return ApiModelLibraries.declared(POPPK_KEY, product("adam-poppk", structure("ADPPK",
                 "BASIC DATA STRUCTURE", POPPK, List.of(adamVar("DOSEA", "1", "Req")))));
     }
 
@@ -165,7 +165,7 @@ class MetadataLibraryProviderCrossProductSpecificityTest
      */
     private static DeclaredAdamProduct occdsBaseProduct()
     {
-        return new DeclaredAdamProduct(IG_KEY,
+        return ApiModelLibraries.declared(IG_KEY,
                 product("occds-base", structure("OCCDS", "OCCURRENCE DATA STRUCTURE", null,
                         List.of(adamVar("USUBJID", "1", "Req"), adamVar("--SEQ", "2", "Cond"),
                                 adamVar("--DECOD", "3", "Cond"), adamVar("CMTRT", "4", "Req"),
@@ -176,7 +176,7 @@ class MetadataLibraryProviderCrossProductSpecificityTest
     /** The {@code AE} specialisation, in a product of its own. */
     private static DeclaredAdamProduct aeSupplement()
     {
-        return new DeclaredAdamProduct(OCCDS_KEY,
+        return ApiModelLibraries.declared(OCCDS_KEY,
                 product("adam-occds",
                         structure("AE", "OCCURRENCE DATA STRUCTURE", ADVERSE_EVENT, List.of(
                                 adamVar("USUBJID", "1", "Req"), adamVar("--SEQ", "2", "Req"),
@@ -296,7 +296,7 @@ class MetadataLibraryProviderCrossProductSpecificityTest
         // competing descriptions of the same thing, and there is no specificity with which to
         // choose: ruling 1's declaration order decides, and the loser is named in the log rather
         // than dropped silently.
-        DeclaredAdamProduct otherBase = new DeclaredAdamProduct(POPPK_KEY,
+        DeclaredAdamProduct otherBase = ApiModelLibraries.declared(POPPK_KEY,
                 product("other", structure("BDS", "BASIC DATA STRUCTURE", null,
                         List.of(adamVar("ZZTOP", "1", "Req")))));
 
@@ -323,10 +323,10 @@ class MetadataLibraryProviderCrossProductSpecificityTest
     {
         // The distinction the defect blurred. The IG wins the BASE level (declared first), and
         // the supplement still wins the ADVERSE EVENT level — one token, two products, two levels.
-        DeclaredAdamProduct igOccds = new DeclaredAdamProduct(IG_KEY,
+        DeclaredAdamProduct igOccds = ApiModelLibraries.declared(IG_KEY,
                 product("adamig", structure("OCCDS", "OCCURRENCE DATA STRUCTURE", null,
                         List.of(adamVar("ZZTOP", "1", "Req")))));
-        DeclaredAdamProduct supplementWithBase = new DeclaredAdamProduct(OCCDS_KEY,
+        DeclaredAdamProduct supplementWithBase = ApiModelLibraries.declared(OCCDS_KEY,
                 product("adam-occds",
                         structure("OCCDS", "OCCURRENCE DATA STRUCTURE", null,
                                 List.of(adamVar("CMTRT", "1", "Req"))),
@@ -423,10 +423,10 @@ class MetadataLibraryProviderCrossProductSpecificityTest
         // Resolving every pooled structure's subclass against one product's key would either lose
         // adam-adae-1-0's ADVERSE EVENT identity or leak it onto the look-alike, and the
         // look-alike would stop being the base it genuinely is.
-        DeclaredAdamProduct lookalike = new DeclaredAdamProduct(IG_KEY,
+        DeclaredAdamProduct lookalike = ApiModelLibraries.declared(IG_KEY,
                 product("adamig", structure("ADAE", "OCCURRENCE DATA STRUCTURE", null,
                         List.of(adamVar("ZZBASE", "1", "Req")))));
-        DeclaredAdamProduct realAdae = new DeclaredAdamProduct("standards/adam/adam-adae-1-0",
+        DeclaredAdamProduct realAdae = ApiModelLibraries.declared("standards/adam/adam-adae-1-0",
                 product("adam-adae",
                         structure("ADAE", "ADAE", null, List.of(adamVar("AETERM", "1", "Req")))));
 
@@ -451,10 +451,10 @@ class MetadataLibraryProviderCrossProductSpecificityTest
         // either makes that structure invisible to BASIC DATA STRUCTURE (so a TTE dataset silently
         // resolves against the plain base) or hands a class to a like-named structure that
         // published none — and a structure CDISC gave no class is not one this engine may invent.
-        DeclaredAdamProduct tte = new DeclaredAdamProduct("standards/adam/adam-tte-1-0", product(
+        DeclaredAdamProduct tte = ApiModelLibraries.declared("standards/adam/adam-tte-1-0", product(
                 "adam-tte",
                 structure("BDS for TTE", null, null, List.of(adamVar("CNSR", "1", "Req")))));
-        DeclaredAdamProduct lookalike = new DeclaredAdamProduct(POPPK_KEY, product("other",
+        DeclaredAdamProduct lookalike = ApiModelLibraries.declared(POPPK_KEY, product("other",
                 structure("BDS for TTE", null, null, List.of(adamVar("ZZINVIS", "1", "Req")))));
         List<String> timeToEvent = List.of(AdamSubclassDetector.TIME_TO_EVENT);
 
@@ -532,7 +532,7 @@ class MetadataLibraryProviderCrossProductSpecificityTest
         // `BASIC DATA STRUCTURE`. The old raw-string comparison against the conventional fallback
         // token matched 1-3 and silently NOTHING in the three older products — the same
         // silent-empty shape as the lint-rules.py version-key bug.
-        DeclaredAdamProduct oldSpelling = new DeclaredAdamProduct("standards/adam/adamig-1-0",
+        DeclaredAdamProduct oldSpelling = ApiModelLibraries.declared("standards/adam/adamig-1-0",
                 product("adamig-1-0", structure("BDS", "BDS", null,
                         List.of(adamVar("USUBJID", "1", "Req"), adamVar("AVAL", "2", "Req")))));
 
@@ -572,7 +572,7 @@ class MetadataLibraryProviderCrossProductSpecificityTest
         // govern ≠ replace on the domain-keyed side: with the dataset's subclass unknown only the
         // base tier governs, but two products publishing an equally-specific base still tie-break
         // by declaration order rather than one of them vanishing.
-        DeclaredAdamProduct otherBase = new DeclaredAdamProduct(POPPK_KEY,
+        DeclaredAdamProduct otherBase = ApiModelLibraries.declared(POPPK_KEY,
                 product("other", structure("BDS", "BASIC DATA STRUCTURE", null,
                         List.of(adamVar("ZZTOP", "1", "Req")))));
 
@@ -590,7 +590,7 @@ class MetadataLibraryProviderCrossProductSpecificityTest
         // string "ADAE". adamClassForDomain returned that verbatim, so declaring the product made
         // getDatasetClass("ADAE") answer a token that is in NO consumer's vocabulary — worse than
         // the ADAM OTHER sentinel the same dataset got before the product could be declared.
-        DeclaredAdamProduct adae = new DeclaredAdamProduct("standards/adam/adam-adae-1-0",
+        DeclaredAdamProduct adae = ApiModelLibraries.declared("standards/adam/adam-adae-1-0",
                 product("adam-adae",
                         structure("ADAE", "ADAE", null, List.of(adamVar("AETERM", "1", "Req")))));
 
@@ -610,7 +610,7 @@ class MetadataLibraryProviderCrossProductSpecificityTest
         // yield null from the product tier so the remaining tiers still get their turn — here the
         // FU-4 ADAM OTHER sentinel. Returning the unknown string verbatim (the old behaviour)
         // both skipped those tiers and handed ScopeMatcher a token it cannot match.
-        DeclaredAdamProduct odd = new DeclaredAdamProduct("standards/adam/adam-odd-1-0",
+        DeclaredAdamProduct odd = ApiModelLibraries.declared("standards/adam/adam-odd-1-0",
                 product("odd", structure("ADZZZ", "SOME UNMAPPED CLASS", null,
                         List.of(adamVar("ZZVAR", "1", "Req")))));
 
@@ -647,9 +647,10 @@ class MetadataLibraryProviderCrossProductSpecificityTest
         // ⚠ Deliberate, and NOT the F1 defect: an exact name match cannot produce structures of
         // different specificity, so there is nothing for specificity to decide and ruling 1's
         // declaration order is the whole answer. Pinned so a future reader does not "fix" it.
-        DeclaredAdamProduct first = new DeclaredAdamProduct(IG_KEY, product("a", structure("ADSL",
-                "SUBJECT LEVEL ANALYSIS DATASET", null, List.of(adamVar("AAA", "1", "Req")))));
-        DeclaredAdamProduct second = new DeclaredAdamProduct(POPPK_KEY,
+        DeclaredAdamProduct first = ApiModelLibraries.declared(IG_KEY,
+                product("a", structure("ADSL", "SUBJECT LEVEL ANALYSIS DATASET", null,
+                        List.of(adamVar("AAA", "1", "Req")))));
+        DeclaredAdamProduct second = ApiModelLibraries.declared(POPPK_KEY,
                 product("b", structure("ADSL", "SUBJECT LEVEL ANALYSIS DATASET", null,
                         List.of(adamVar("BBB", "1", "Req")))));
 

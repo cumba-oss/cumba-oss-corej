@@ -211,7 +211,7 @@ class MetadataLibraryProviderInvisibleStructuresTest
     {
         // Before Phase 6a, REFERENCE DATA STRUCTURE was not a token at all, so no lookup could
         // ever ask for this structure — declaring tig/1-0/adam simply lost it.
-        MetadataLibraryProvider p = provider(new DeclaredAdamProduct(TIG_ADAM_KEY, tigAdam10()));
+        MetadataLibraryProvider p = provider(ApiModelLibraries.declared(TIG_ADAM_KEY, tigAdam10()));
 
         assertEquals(List.of("STUDYID", "SRCVAR"),
                 p.getRequiredVariablesForStructure(REFERENCE, List.of()));
@@ -265,7 +265,7 @@ class MetadataLibraryProviderInvisibleStructuresTest
     @Test
     void adaeIsReachableByTheOccurrenceTokenOnAnAdverseEventDataset()
     {
-        MetadataLibraryProvider p = provider(new DeclaredAdamProduct(ADAE_KEY, adae10()));
+        MetadataLibraryProvider p = provider(ApiModelLibraries.declared(ADAE_KEY, adae10()));
 
         assertEquals(
                 List.of("STUDYID", "USUBJID", "AETERM", "AEDECOD", "AEBODSYS", "AESER", "AESEQ"),
@@ -280,7 +280,7 @@ class MetadataLibraryProviderInvisibleStructuresTest
         // chain has no applicable tier in this product: null ("no such structure here") and the
         // outer token chain SKIPs loudly. Without the ADVERSE EVENT override, ADAE would be read
         // as a BASE occurrence structure and this would return the five AE-specific Req names.
-        MetadataLibraryProvider p = provider(new DeclaredAdamProduct(ADAE_KEY, adae10()));
+        MetadataLibraryProvider p = provider(ApiModelLibraries.declared(ADAE_KEY, adae10()));
 
         List<String> forAdcm = p.getRequiredVariablesForStructure(OCCDS_TOKEN, List.of());
         assertNull(forAdcm,
@@ -297,7 +297,7 @@ class MetadataLibraryProviderInvisibleStructuresTest
         AdamProduct lookalike = product("adamig",
                 structure("ADAE", OCCDS_TOKEN, null, List.of(adamVar("USUBJID", "1", "Req"))));
         MetadataLibraryProvider p = provider(
-                new DeclaredAdamProduct("standards/adam/adamig-1-3", lookalike));
+                ApiModelLibraries.declared("standards/adam/adamig-1-3", lookalike));
 
         assertEquals(List.of("USUBJID"), p.getRequiredVariablesForStructure(OCCDS_TOKEN, List.of()),
                 "this ADAE publishes its own OCCURRENCE class and is a genuine base structure");
@@ -311,7 +311,7 @@ class MetadataLibraryProviderInvisibleStructuresTest
     @Test
     void bdsForTteGetsItsNullClassSuppliedAndItsSubclassRestored()
     {
-        MetadataLibraryProvider p = provider(new DeclaredAdamProduct(TTE_KEY, tte10()));
+        MetadataLibraryProvider p = provider(ApiModelLibraries.declared(TTE_KEY, tte10()));
 
         assertEquals(List.of("STUDYID", "USUBJID", "PARAM", "PARAMCD", "AVAL", "TRTP"),
                 p.getRequiredVariablesForStructure(BDS_TOKEN, List.of(TTE)),
@@ -329,7 +329,7 @@ class MetadataLibraryProviderInvisibleStructuresTest
         // a device time-to-event dataset, and the governing chain builds one tier per detected
         // token that some structure publishes — so the TTE structure governs. Before Phase 4 the
         // list was [MD TTE] alone, no tier matched, and the answer was null.
-        MetadataLibraryProvider p = provider(new DeclaredAdamProduct(TTE_KEY, tte10()));
+        MetadataLibraryProvider p = provider(ApiModelLibraries.declared(TTE_KEY, tte10()));
 
         assertNotNull(p.getRequiredVariablesForStructure(BDS_TOKEN, List.of(MD_TTE, TTE)));
         assertEquals(p.getRequiredVariablesForStructure(BDS_TOKEN, List.of(TTE)),

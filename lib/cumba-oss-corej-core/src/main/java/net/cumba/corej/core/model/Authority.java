@@ -14,8 +14,8 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * {@link #standards} is the full nested tree — {@code Standards[] → References[] →
  * Rule_Identifier.Id}, with the citation text and per-reference versions beside it. It is what
- * {@code rules-src/} authors, what {@code LibraryRuleMapper} writes on the CDISC-Library ingestion
- * path, and what the rule editor round-trips.
+ * {@code rules-src/} authors, what the retired {@code LibraryRuleMapper} wrote on the CDISC-Library
+ * ingestion path, and what the rule editor round-trips.
  * </p>
  *
  * <p>

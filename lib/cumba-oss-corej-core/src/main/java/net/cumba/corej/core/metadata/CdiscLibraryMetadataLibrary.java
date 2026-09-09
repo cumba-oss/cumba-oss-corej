@@ -12,24 +12,20 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
-import net.cumba.cdisc.library.api.model.adam.AdamDataStructure;
-import net.cumba.cdisc.library.api.model.adam.AdamProduct;
-import net.cumba.cdisc.library.api.model.adam.AdamVariable;
-import net.cumba.cdisc.library.api.model.adam.AdamVariableSet;
-import net.cumba.cdisc.library.api.model.ct.CtCodelist;
-import net.cumba.cdisc.library.api.model.ct.CtPackage;
-import net.cumba.cdisc.library.api.model.ct.CtTerm;
-import net.cumba.cdisc.library.api.model.sdtm.SdtmClass;
-import net.cumba.cdisc.library.api.model.sdtm.SdtmDataset;
-import net.cumba.cdisc.library.api.model.sdtm.SdtmProduct;
-import net.cumba.cdisc.library.api.model.sdtm.SdtmVariable;
+import net.cumba.corej.core.metadata.store.StoredCodelist;
+import net.cumba.corej.core.metadata.store.StoredCtPackage;
+import net.cumba.corej.core.metadata.store.StoredDataStructure;
+import net.cumba.corej.core.metadata.store.StoredDataset;
+import net.cumba.corej.core.metadata.store.StoredProduct;
+import net.cumba.corej.core.metadata.store.StoredTerm;
+import net.cumba.corej.core.metadata.store.StoredVariable;
+import net.cumba.corej.core.metadata.store.StoredVariableSet;
 import net.cumba.datatable.metadata.ICodeList;
 import net.cumba.datatable.metadata.ICodelistEntry;
 import net.cumba.datatable.metadata.IColumnMetadata;
 import net.cumba.datatable.metadata.IDataTableMetadata;
 import net.cumba.datatable.metadata.IMetadataLibrary;
 import net.cumba.datatable.values.DataValueType;
-import net.cumba.web.api.Link;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -41,8 +37,8 @@ import org.jspecify.annotations.Nullable;
  * Construct instances via the static factories:
  * </p>
  * <ul>
- * <li>{@link #fromSdtm(String, String, SdtmProduct, CtPackageRef)} — SDTM / SDTMIG</li>
- * <li>{@link #fromAdam(String, String, AdamProduct, CtPackageRef, CtPackageRef)} — ADaM / ADaMIG,
+ * <li>{@link #fromStoredSdtm(String, String, StoredProduct, List, List)} — SDTM / SDTMIG</li>
+ * <li>{@link #fromStoredAdam(String, String, StoredProduct, List, List, List)} — ADaM / ADaMIG,
  * with an optional SDTM CT fallback for codelists that ADaM variables reference but that live in
  * SDTM CT (e.g. {@code SEX}, {@code RACE})</li>
  * </ul>
@@ -99,79 +95,62 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
 
 
     /**
-     * Builds an SDTM / SDTMIG metadata library.
+     * The SDTM-family factory — cache plan §4.3.1: the library is built from the unified store's
+     * own records. (The api-model {@code fromSdtm} overloads that projected onto this method were
+     * deleted with the pickle read path, cache 8g.)
      *
      * @param aStandardName
-     *            the rule-engine standard identifier (e.g. {@code "sdtmig"})
+     *            the standard name (e.g. {@code sdtmig})
      * @param aStandardVersion
-     *            the standard version identifier (e.g. {@code "3-4"})
+     *            the standard version (e.g. {@code 3-4})
      * @param aProduct
-     *            the pre-fetched {@link SdtmProduct} (should be fetched with {@code expand=true} so
-     *            classes and datasets are embedded)
-     * @param aCtPackage
-     *            the pre-fetched CT package containing the SDTM CT codelists (should be fetched
-     *            with {@code expand=true}), paired with the id it was requested under
-     */
-    public static CdiscLibraryMetadataLibrary fromSdtm(String aStandardName,
-            String aStandardVersion, SdtmProduct aProduct, CtPackageRef aCtPackage)
-    {
-        Objects.requireNonNull(aCtPackage, "ctPackage");
-        // Online/enhancer path: PUBLISHED_CT_PACKAGES is just the single requested package. The
-        // id comes from the request — CtPackage.name() is the API's display label
-        // ("SDTM CT 2024-09-27"), not the id valid_codelist_dates prefix-matches.
-        List<String> single = new ArrayList<>();
-        if (aCtPackage.id() != null)
-        {
-            single.add(aCtPackage.id());
-        }
-        return fromSdtm(aStandardName, aStandardVersion, aProduct, aCtPackage, single);
-    }
-
-
-    /**
-     * As {@link #fromSdtm(String, String, SdtmProduct, CtPackageRef)}, but with an explicit list of
-     * published CT package names for {@code PUBLISHED_CT_PACKAGES} (J9). The pickle path enumerates
-     * the full set from the cache directory ({@code PickleCache.publishedCtPackages()}) so
-     * {@code valid_codelist_dates} sees every published date, rather than only the requested one.
-     *
-     * @param aStandardName
-     *            the standard name (e.g. {@code SDTMIG})
-     * @param aStandardVersion
-     *            the standard version
-     * @param aProduct
-     *            the SDTM IG product model
-     * @param aCtPackage
-     *            the requested CT package, paired with its id (the id drives {@code CT_VERSION};
-     *            the package drives the codelists)
+     *            the stored IG product
+     * @param aCtPackages
+     *            the requested CT packages in <b>precedence order</b> (newest first); must be
+     *            non-empty. Each package's own {@link StoredCtPackage#id()} is the id it was
+     *            requested under ({@code null} for the anonymous no-CT package).
      * @param aPublishedCtPackages
-     *            the published CT package <em>ids</em> for {@code PUBLISHED_CT_PACKAGES}
+     *            the published CT package ids for {@code PUBLISHED_CT_PACKAGES}. ⚠ On the
+     *            store-backed path this MUST be the store's whole published enumeration
+     *            ({@code MetadataStore.publishedCtPackages()}), never the requested ids — deriving
+     *            it from what a run loaded is the live over-fire defect the store exists to fix
+     *            (plan §1.1-1).
      * @return the assembled library
      */
-    public static CdiscLibraryMetadataLibrary fromSdtm(String aStandardName,
-            String aStandardVersion, SdtmProduct aProduct, CtPackageRef aCtPackage,
+    public static CdiscLibraryMetadataLibrary fromStoredSdtm(String aStandardName,
+            String aStandardVersion, StoredProduct aProduct, List<StoredCtPackage> aCtPackages,
             List<String> aPublishedCtPackages)
     {
         Objects.requireNonNull(aStandardName, "standardName");
         Objects.requireNonNull(aStandardVersion, "standardVersion");
         Objects.requireNonNull(aProduct, "product");
-        Objects.requireNonNull(aCtPackage, "ctPackage");
+        Objects.requireNonNull(aCtPackages, "ctPackages");
         Objects.requireNonNull(aPublishedCtPackages, "publishedCtPackages");
+        if (aCtPackages.isEmpty())
+        {
+            throw new IllegalArgumentException(
+                    "ctPackages must be non-empty — the no-CT path constructs "
+                            + "MetadataLibraryProvider directly");
+        }
 
-        // 1. Build codelists with concept-id → submission-value resolution map.
-        List<ICodeList> codelists = buildCodelists(List.of(aCtPackage.pkg()));
+        // 1. Build codelists with concept-id → submission-value resolution map. The precedence
+        // order of aCtPackages is load-bearing: buildCodelists collapses the packages into one
+        // map keyed by submission value with putIfAbsent, so the FIRST package carrying a
+        // codelist wins (define-ct plan §4.3 — merge within a publishing set, order across).
+        List<ICodeList> codelists = buildCodelists(aCtPackages);
         Map<String, String> conceptIdToSubmissionValue = buildConceptIdIndex(codelists);
 
         // 2. Iterate classes → datasets, building tables.
         List<IDataTableMetadata> tables = new ArrayList<>();
-        for (SdtmClass klass : aProduct.classes())
+        for (net.cumba.corej.core.metadata.store.StoredClass klass : aProduct.classes())
         {
-            String className = klass.name().orElse(null);
-            List<SdtmVariable> classVariables = sortByOrdinal(klass.classVariables());
-            List<String> modelColumnOrder = classVariables.stream().map(v -> v.name().orElse(null))
+            String className = klass.name();
+            List<StoredVariable> classVariables = sortByOrdinal(klass.classVariables());
+            List<String> modelColumnOrder = classVariables.stream().map(StoredVariable::name)
                     .filter(Objects::nonNull).toList();
             List<Map<String, String>> modelVariables = sdtmModelVariables(classVariables);
 
-            for (SdtmDataset dataset : klass.datasets())
+            for (StoredDataset dataset : klass.datasets())
             {
                 tables.add(buildSdtmTable(dataset, className, modelColumnOrder, modelVariables,
                         conceptIdToSubmissionValue));
@@ -181,9 +160,10 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
         Map<String, Object> libMeta = new LinkedHashMap<>();
         libMeta.put(MetadataKeys.STANDARD_NAME, aStandardName);
         libMeta.put(MetadataKeys.STANDARD_VERSION, aStandardVersion);
-        if (aCtPackage.id() != null)
+        List<String> ctVersions = ctVersionPerRoot(aCtPackages);
+        if (!ctVersions.isEmpty())
         {
-            libMeta.put(MetadataKeys.CT_VERSION, aCtPackage.id());
+            libMeta.put(MetadataKeys.CT_VERSION, ctVersions);
         }
         if (!aPublishedCtPackages.isEmpty())
         {
@@ -196,53 +176,69 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
 
 
     /**
-     * Builds an ADaM / ADaMIG metadata library.
+     * The ADaM-family factory — see {@link #fromStoredSdtm} for the store seam and the
+     * {@code aPublishedCtPackages} contract (on the store-backed path: the store's whole published
+     * enumeration, never the requested ids).
+     *
+     * <p>
+     * ⛔ ADaM-first ordering is the whole cross-set precedence mechanism: the two package lists are
+     * concatenated ADaM-then-SDTM and collapsed by {@code buildCodelists}' submission-value
+     * {@code putIfAbsent} — there is no per-root slot in the resulting library, deliberately.
+     * Within each list the caller's order is the precedence order (newest first).
+     * </p>
      *
      * @param aStandardName
-     *            the rule-engine standard identifier (e.g. {@code "adamig"})
+     *            the standard name (e.g. {@code adamig})
      * @param aStandardVersion
-     *            the standard version identifier (e.g. {@code "1-3"})
+     *            the standard version (e.g. {@code 1-3})
      * @param aProduct
-     *            the pre-fetched {@link AdamProduct}
-     * @param aAdamCtPackage
-     *            the pre-fetched ADaM CT package, paired with its id
-     * @param aSdtmCtPackage
-     *            optional SDTM CT package whose codelists are exposed as a fallback for ADaM
-     *            variables that reference SDTM-defined terminology (e.g. {@code SEX},
-     *            {@code RACE}). Pass {@code null} when not needed.
+     *            the stored ADaM product
+     * @param aAdamCtPackages
+     *            the ADaM CT packages in precedence order; must be non-empty
+     * @param aSdtmCtPackages
+     *            SDTM CT packages exposed as a fallback for ADaM variables referencing SDTM-defined
+     *            terminology (e.g. {@code SEX}, {@code RACE}); may be empty
+     * @param aPublishedCtPackages
+     *            the published CT package ids for {@code PUBLISHED_CT_PACKAGES}
+     * @return the assembled library
      */
-    public static CdiscLibraryMetadataLibrary fromAdam(String aStandardName,
-            String aStandardVersion, AdamProduct aProduct, CtPackageRef aAdamCtPackage,
-            @Nullable CtPackageRef aSdtmCtPackage)
+    public static CdiscLibraryMetadataLibrary fromStoredAdam(String aStandardName,
+            String aStandardVersion, StoredProduct aProduct, List<StoredCtPackage> aAdamCtPackages,
+            List<StoredCtPackage> aSdtmCtPackages, List<String> aPublishedCtPackages)
     {
         Objects.requireNonNull(aStandardName, "standardName");
         Objects.requireNonNull(aStandardVersion, "standardVersion");
         Objects.requireNonNull(aProduct, "product");
-        Objects.requireNonNull(aAdamCtPackage, "adamCtPackage");
-
-        // 1. Merge codelists from ADaM CT (primary) and SDTM CT (fallback).
-        List<CtPackage> ctPackages = new ArrayList<>();
-        ctPackages.add(aAdamCtPackage.pkg());
-        if (aSdtmCtPackage != null)
+        Objects.requireNonNull(aAdamCtPackages, "adamCtPackages");
+        Objects.requireNonNull(aSdtmCtPackages, "sdtmCtPackages");
+        Objects.requireNonNull(aPublishedCtPackages, "publishedCtPackages");
+        if (aAdamCtPackages.isEmpty())
         {
-            ctPackages.add(aSdtmCtPackage.pkg());
+            throw new IllegalArgumentException(
+                    "adamCtPackages must be non-empty — the no-CT path constructs "
+                            + "MetadataLibraryProvider directly");
         }
-        List<ICodeList> codelists = buildCodelists(ctPackages);
+
+        // 1. Merge codelists from ADaM CT (primary) and SDTM CT (fallback), each set internally
+        // in precedence order.
+        List<StoredCtPackage> orderedCts = new ArrayList<>(aAdamCtPackages);
+        orderedCts.addAll(aSdtmCtPackages);
+        List<ICodeList> codelists = buildCodelists(orderedCts);
         Map<String, String> conceptIdToSubmissionValue = buildConceptIdIndex(codelists);
 
         // 2. Iterate data structures → variable sets → variables.
         List<IDataTableMetadata> tables = new ArrayList<>();
-        for (AdamDataStructure ds : aProduct.dataStructures())
+        for (StoredDataStructure ds : aProduct.dataStructures())
         {
-            String className = ds.className().orElse(null);
+            String className = ds.className();
 
-            List<AdamVariable> flattened = new ArrayList<>();
-            for (AdamVariableSet set : ds.analysisVariableSets())
+            List<StoredVariable> flattened = new ArrayList<>();
+            for (StoredVariableSet set : ds.variableSets())
             {
-                flattened.addAll(set.analysisVariables());
+                flattened.addAll(set.variables());
             }
-            List<AdamVariable> ordered = sortAdamByOrdinal(flattened);
-            List<String> modelColumnOrder = ordered.stream().map(v -> v.name().orElse(null))
+            List<StoredVariable> ordered = sortByOrdinal(flattened);
+            List<String> modelColumnOrder = ordered.stream().map(StoredVariable::name)
                     .filter(Objects::nonNull).toList();
             List<Map<String, String>> modelVariables = adamModelVariables(ordered);
 
@@ -253,22 +249,14 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
         Map<String, Object> libMeta = new LinkedHashMap<>();
         libMeta.put(MetadataKeys.STANDARD_NAME, aStandardName);
         libMeta.put(MetadataKeys.STANDARD_VERSION, aStandardVersion);
-        if (aAdamCtPackage.id() != null)
+        List<String> ctVersions = ctVersionPerRoot(orderedCts);
+        if (!ctVersions.isEmpty())
         {
-            libMeta.put(MetadataKeys.CT_VERSION, aAdamCtPackage.id());
+            libMeta.put(MetadataKeys.CT_VERSION, ctVersions);
         }
-        List<String> publishedCtPackages = new ArrayList<>();
-        if (aAdamCtPackage.id() != null)
+        if (!aPublishedCtPackages.isEmpty())
         {
-            publishedCtPackages.add(aAdamCtPackage.id());
-        }
-        if (aSdtmCtPackage != null && aSdtmCtPackage.id() != null)
-        {
-            publishedCtPackages.add(aSdtmCtPackage.id());
-        }
-        if (!publishedCtPackages.isEmpty())
-        {
-            libMeta.put(MetadataKeys.PUBLISHED_CT_PACKAGES, List.copyOf(publishedCtPackages));
+            libMeta.put(MetadataKeys.PUBLISHED_CT_PACKAGES, List.copyOf(aPublishedCtPackages));
         }
 
         return new CdiscLibraryMetadataLibrary(aStandardName, aStandardVersion, tables, codelists,
@@ -355,23 +343,23 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
     // ------------------------------------------------------------------
 
 
-    private static IDataTableMetadata buildSdtmTable(SdtmDataset aDataset,
+    private static IDataTableMetadata buildSdtmTable(StoredDataset aDataset,
             @Nullable String aClassName, List<String> aModelColumnOrder,
             List<Map<String, String>> aModelVariables,
             Map<String, String> aConceptIdToSubmissionValue)
     {
-        String name = aDataset.name().orElse("");
-        String label = aDataset.label().orElse(null);
-        String structure = aDataset.datasetStructure().orElse(null);
+        String name = aDataset.name() == null ? "" : aDataset.name();
+        String label = aDataset.label();
+        String structure = aDataset.datasetStructure();
 
-        List<SdtmVariable> ordered = sortByOrdinal(aDataset.datasetVariables());
+        List<StoredVariable> ordered = sortByOrdinal(aDataset.variables());
         List<IColumnMetadata> columns = new ArrayList<>(ordered.size());
         int idx = 0;
-        for (SdtmVariable v : ordered)
+        for (StoredVariable v : ordered)
         {
-            columns.add(buildColumn(new ColumnSpec(v.name().orElse(""), v.label().orElse(null),
-                    v.simpleDatatype().orElse(null), v.core().orElse(null), v.role().orElse(null),
-                    v.codelistLink().flatMap(Link::id).orElse(null), idx++),
+            columns.add(buildColumn(
+                    new ColumnSpec(v.name() == null ? "" : v.name(), v.label(), v.simpleDatatype(),
+                            v.core(), v.role(), firstCodelistId(v), idx++),
                     aConceptIdToSubmissionValue));
         }
 
@@ -403,18 +391,19 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
      * used by {@code get_model_filtered_variables} (Fix #3). Mirrors the column-map shape produced
      * by {@code MetadataLibraryProvider.columnToMap}.
      */
-    private static List<Map<String, String>> sdtmModelVariables(List<SdtmVariable> aClassVariables)
+    private static List<Map<String, String>> sdtmModelVariables(
+            List<StoredVariable> aClassVariables)
     {
         List<Map<String, String>> out = new ArrayList<>(aClassVariables.size());
         int idx = 0;
-        for (SdtmVariable v : aClassVariables)
+        for (StoredVariable v : aClassVariables)
         {
             Map<String, String> m = new LinkedHashMap<>();
-            v.name().ifPresent(s -> m.put("name", s));
-            v.label().ifPresent(s -> m.put("label", s));
-            v.simpleDatatype().ifPresent(s -> m.put("simpleDatatype", s));
-            v.core().ifPresent(s -> m.put("core", s));
-            v.role().ifPresent(s -> m.put("role", s));
+            putIfPresent(m, "name", v.name());
+            putIfPresent(m, "label", v.label());
+            putIfPresent(m, "simpleDatatype", v.simpleDatatype());
+            putIfPresent(m, "core", v.core());
+            putIfPresent(m, "role", v.role());
             m.put("ordinal", Integer.toString(idx++));
             out.add(Collections.unmodifiableMap(m));
         }
@@ -422,11 +411,33 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
     }
 
 
-    private static List<SdtmVariable> sortByOrdinal(List<SdtmVariable> aVariables)
+    private static List<StoredVariable> sortByOrdinal(List<StoredVariable> aVariables)
     {
-        List<SdtmVariable> copy = new ArrayList<>(aVariables);
-        copy.sort(Comparator.comparingInt(v -> parseOrdinal(v.ordinal().orElse(null))));
+        List<StoredVariable> copy = new ArrayList<>(aVariables);
+        copy.sort(Comparator.comparingInt(v -> parseOrdinal(v.ordinal())));
         return copy;
+    }
+
+
+    private static void putIfPresent(Map<String, String> aMap, String aKey, @Nullable String aValue)
+    {
+        if (aValue != null)
+        {
+            aMap.put(aKey, aValue);
+        }
+    }
+
+
+    /**
+     * The variable's first codelist ref — identical to the api-model path's
+     * {@code codelistLink().flatMap(Link::id)}, whose {@code getLink} contract returns the first
+     * entry of a link array. ⚠ 31 real variables carry 2–5 refs; consuming beyond the first is a
+     * deliberate non-goal of P3 (behaviour preservation) and a known follow-up.
+     */
+    private static @Nullable String firstCodelistId(StoredVariable aVariable)
+    {
+        List<String> ids = aVariable.codelistIds();
+        return ids == null || ids.isEmpty() ? null : ids.get(0);
     }
 
     // ------------------------------------------------------------------
@@ -434,22 +445,21 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
     // ------------------------------------------------------------------
 
 
-    private static IDataTableMetadata buildAdamTable(AdamDataStructure aDs,
-            @Nullable String aClassName, List<AdamVariable> aOrderedVariables,
+    private static IDataTableMetadata buildAdamTable(StoredDataStructure aDs,
+            @Nullable String aClassName, List<StoredVariable> aOrderedVariables,
             List<String> aModelColumnOrder, List<Map<String, String>> aModelVariables,
             Map<String, String> aConceptIdToSubmissionValue)
     {
-        String name = aDs.name().orElse("");
-        String label = aDs.label().orElse(null);
+        String name = aDs.name() == null ? "" : aDs.name();
+        String label = aDs.label();
 
         List<IColumnMetadata> columns = new ArrayList<>(aOrderedVariables.size());
         int idx = 0;
-        for (AdamVariable v : aOrderedVariables)
+        for (StoredVariable v : aOrderedVariables)
         {
             columns.add(buildColumn(
-                    new ColumnSpec(v.name().orElse(""), v.label().orElse(null),
-                            v.simpleDatatype().orElse(null), v.core().orElse(null), /* role */ null,
-                            v.codelistLink().flatMap(Link::id).orElse(null), idx++),
+                    new ColumnSpec(v.name() == null ? "" : v.name(), v.label(), v.simpleDatatype(),
+                            v.core(), /* role */ null, firstCodelistId(v), idx++),
                     aConceptIdToSubmissionValue));
         }
 
@@ -474,29 +484,24 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
     }
 
 
-    private static List<Map<String, String>> adamModelVariables(List<AdamVariable> aVariables)
+    private static List<Map<String, String>> adamModelVariables(List<StoredVariable> aVariables)
     {
         List<Map<String, String>> out = new ArrayList<>(aVariables.size());
         int idx = 0;
-        for (AdamVariable v : aVariables)
+        for (StoredVariable v : aVariables)
         {
             Map<String, String> m = new LinkedHashMap<>();
-            v.name().ifPresent(s -> m.put("name", s));
-            v.label().ifPresent(s -> m.put("label", s));
-            v.simpleDatatype().ifPresent(s -> m.put("simpleDatatype", s));
-            v.core().ifPresent(s -> m.put("core", s));
+            putIfPresent(m, "name", v.name());
+            putIfPresent(m, "label", v.label());
+            putIfPresent(m, "simpleDatatype", v.simpleDatatype());
+            putIfPresent(m, "core", v.core());
+            // No "role": the ADaM sources publish none. Even if a stored ADaM variable carried
+            // one, emitting it here would silently widen what the deleted api-model path
+            // answered — keep the shape stable.
             m.put("ordinal", Integer.toString(idx++));
             out.add(Collections.unmodifiableMap(m));
         }
         return Collections.unmodifiableList(out);
-    }
-
-
-    private static List<AdamVariable> sortAdamByOrdinal(List<AdamVariable> aVariables)
-    {
-        List<AdamVariable> copy = new ArrayList<>(aVariables);
-        copy.sort(Comparator.comparingInt(v -> parseOrdinal(v.ordinal().orElse(null))));
-        return copy;
     }
 
     // ------------------------------------------------------------------
@@ -504,7 +509,7 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
     // ------------------------------------------------------------------
 
     /**
-     * Snapshot of the seven column properties from upstream (SdtmVariable / AdamVariable) needed to
+     * Snapshot of the seven column properties from upstream ({@link StoredVariable}) needed to
      * build a {@link CdiscColumnMetadata}. Bundled to keep the {@link #buildColumn} signature
      * manageable.
      */
@@ -529,16 +534,42 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
     }
 
 
-    private static List<ICodeList> buildCodelists(List<CtPackage> aPackages)
+    /**
+     * {@code CT_VERSION}'s value (define-ct plan §4.3): the precedence-winning package id per CT
+     * <b>root</b> ({@code sdtmct} / {@code adamct} / {@code sendct} …), in first-seen order —
+     * ADaM-first on {@code fromAdam} by construction. The winner is the first id of its root in
+     * {@code aRefs}, because the same order decided the codelist merge. Anonymous packages
+     * ({@code id == null}) contribute nothing, matching the pre-merge behaviour of leaving
+     * {@code CtVersion} unset rather than inventing a value.
+     */
+    private static List<String> ctVersionPerRoot(List<StoredCtPackage> aPackages)
+    {
+        Map<String, String> winnerPerRoot = new LinkedHashMap<>();
+        for (StoredCtPackage pkg : aPackages)
+        {
+            String id = pkg.id();
+            if (id == null)
+            {
+                continue;
+            }
+            int i = id.indexOf("ct-");
+            String root = i >= 0 ? id.substring(0, i + 2) : id;
+            winnerPerRoot.putIfAbsent(root, id);
+        }
+        return List.copyOf(winnerPerRoot.values());
+    }
+
+
+    private static List<ICodeList> buildCodelists(List<StoredCtPackage> aPackages)
     {
         // Primary-wins merge: the first package's codelist for a given submission
         // value takes precedence over later packages.
         Map<String, ICodeList> seen = new LinkedHashMap<>();
-        for (CtPackage pkg : aPackages)
+        for (StoredCtPackage pkg : aPackages)
         {
-            for (CtCodelist cl : pkg.codelists())
+            for (StoredCodelist cl : pkg.codelists())
             {
-                String submissionValue = cl.submissionValue().orElse(null);
+                String submissionValue = cl.submissionValue();
                 if (submissionValue == null || submissionValue.isEmpty())
                 {
                     continue;
@@ -550,22 +581,29 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
     }
 
 
-    private static ICodeList buildCodelist(CtCodelist aCodelist)
+    /**
+     * Builds the engine-facing {@link ICodeList} from one stored codelist version — the P3 seam of
+     * PLAN-codelist-terms-returntype.md §4.1.1: same target type as before, different source. The
+     * stored {@code definition}/{@code synonyms} (term and codelist level) are deliberately NOT
+     * projected — no accessor and no meta-key exists for them (cache plan §4.3.1), which is the
+     * future-proofing the §3.2 ruling bought.
+     */
+    private static ICodeList buildCodelist(StoredCodelist aCodelist)
     {
-        String submissionValue = aCodelist.submissionValue().orElse(null);
-        String conceptId = aCodelist.conceptId().orElse(null);
-        Boolean extensible = aCodelist.extensible().orElse(null);
+        String submissionValue = aCodelist.submissionValue();
+        String conceptId = aCodelist.conceptId();
+        Boolean extensible = aCodelist.extensible();
 
         List<ICodelistEntry> entries = new ArrayList<>();
-        for (CtTerm term : aCodelist.terms())
+        for (StoredTerm term : aCodelist.terms())
         {
-            String code = term.submissionValue().orElse(null);
+            String code = term.submissionValue();
             if (code == null)
             {
                 continue;
             }
-            String decode = term.preferredTerm().orElse("");
-            entries.add(new CdiscCodelistEntry(code, decode, term.conceptId().orElse(null)));
+            String decode = term.preferredTerm() == null ? "" : term.preferredTerm();
+            entries.add(new CdiscCodelistEntry(code, decode, term.conceptId()));
         }
 
         Map<String, Object> meta = new LinkedHashMap<>();
@@ -577,7 +615,7 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
         {
             meta.put(MetadataKeys.CODELIST_SUBMISSION_VALUE, submissionValue);
         }
-        String preferredTerm = aCodelist.preferredTerm().orElse(null);
+        String preferredTerm = aCodelist.preferredTerm();
         if (preferredTerm != null)
         {
             meta.put(MetadataKeys.CODELIST_PREFERRED_TERM, preferredTerm);

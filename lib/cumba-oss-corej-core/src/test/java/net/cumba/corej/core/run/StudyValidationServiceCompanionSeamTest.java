@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import net.cumba.corej.core.exec.MetadataProvider;
@@ -16,25 +15,23 @@ import net.cumba.corej.core.metadata.CompanionDomainsProvider;
 import net.cumba.corej.core.run.StudyValidationService.StandardKind;
 import net.cumba.datatable.manager.IDataTableManager;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 /**
- * EC-14 layer (ii) — branch coverage for {@link StudyValidationService#maybeWrapCompanion} /
- * {@code companionFromPickle} without a real pickle cache: an empty {@code @TempDir} stands in for
- * a configured-but-productless cache, and the {@code apiLoader} seam supplies (or withholds) the
- * companion. The end-to-end pickle path lives in the rulespec module's
- * {@code StudyValidationServiceCompanionTest}, next to the bundled cache.
+ * EC-14 layer (ii) — branch coverage for {@link StudyValidationService#maybeWrapCompanion} without
+ * a configured metadata store: {@code companionFromStore} resolves nothing (no
+ * {@code CDISC_METADATA_STORE} / {@code cdisc.metadata.store} in a unit-test JVM), so the
+ * {@code apiLoader} seam supplies (or withholds) the companion. (Until cache 8g the middle leg was
+ * {@code companionFromPickle} over an empty {@code @TempDir} cache; that leg is deleted.) The
+ * end-to-end store path lives in the rulespec module's {@code StudyValidationServiceCompanionTest},
+ * next to the seeded store.
  */
 class StudyValidationServiceCompanionSeamTest
 {
 
-    @TempDir
-    Path emptyCacheDir;
-
     private StudyValidationParams.Builder base()
     {
         return StudyValidationParams.builder().manager(mock(IDataTableManager.class))
-                .dataLibrary("x").pickleCacheDir(emptyCacheDir.toString());
+                .dataLibrary("x");
     }
 
 

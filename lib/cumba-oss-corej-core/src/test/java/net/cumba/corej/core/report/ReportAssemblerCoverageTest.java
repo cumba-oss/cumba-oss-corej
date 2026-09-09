@@ -44,6 +44,28 @@ class ReportAssemblerCoverageTest
 
 
     @Test
+    void ctDeclarationMismatch_absentWhenDeclarationAndRunAgree()
+    {
+        // Define-ct plan §4.2 — same contract as Library_Metadata_Basis: no key on a run with no
+        // divergence to report, so the frozen v1 Conformance_Details shape is unchanged for every
+        // existing consumer; the note appears only when the define and the run disagree.
+        Map<String, Object> agreeing = conformanceDetails(Conformance.builder().standard("sdtmig"));
+        assertFalse(agreeing.containsKey("CT_Declaration_Mismatch"),
+                "a run with no CT divergence must not gain the key at all");
+
+        Map<String, Object> divergent = conformanceDetails(Conformance.builder().standard("sdtmig")
+                .ctDeclarationMismatch("define declares sdtmct-2023-12-15; run used none"));
+        assertEquals("define declares sdtmct-2023-12-15; run used none",
+                divergent.get("CT_Declaration_Mismatch"));
+
+        // The accessor is the P7 surface hook (CLI stderr / REST) — pin it like dictionaryBasis().
+        assertEquals("x",
+                Conformance.builder().ctDeclarationMismatch("x").build().ctDeclarationMismatch());
+        assertNull(Conformance.builder().build().ctDeclarationMismatch());
+    }
+
+
+    @Test
     void dictionaryBasis_absentOnAHealthyRun_presentWhenDegraded()
     {
         // D13 item 1 — same contract as Library_Metadata_Basis: no healthy report gains a key
@@ -89,11 +111,12 @@ class ReportAssemblerCoverageTest
         Conformance c = Conformance.builder().reportGeneration("2026-05-18T10:00:00")
                 .totalRuntimeSeconds(12.34).coreEngineVersion("0.5.0").issueLimitPerRule(50)
                 .issueLimitPerDataset(true).standard("sdtmig").subStandard("safety").version("3-4")
-                .tigUseCase("INDH").ctVersion("2024-09-26").defineXmlVersion("2.0")
-                .uniiVersion("2024-01").medRtVersion("2024-02").meddraVersion("27.0")
-                .whodrugVersion("2024 MAR 1").snomedVersion("2024-01-31").loincVersion("2.78")
-                .neoplasmVersion("2026-03-27").dictionaryBasis("external dictionaries degraded: …")
-                .build();
+                .tigUseCase("INDH").ctVersion("2024-09-26")
+                .ctDeclarationMismatch("define declares sdtmct-2023-12-15; run used none")
+                .defineXmlVersion("2.0").uniiVersion("2024-01").medRtVersion("2024-02")
+                .meddraVersion("27.0").whodrugVersion("2024 MAR 1").snomedVersion("2024-01-31")
+                .loincVersion("2.78").neoplasmVersion("2026-03-27")
+                .dictionaryBasis("external dictionaries degraded: …").build();
         assertNotNull(c);
 
         ReportAssembler writer = new ReportAssembler()
@@ -110,6 +133,8 @@ class ReportAssemblerCoverageTest
         assertEquals("safety", conformanceMap.get("Sub_Standard"));
         assertEquals("INDH", conformanceMap.get("TIG_Use_Case"));
         assertEquals("2024-09-26", conformanceMap.get("CT_Version"));
+        assertEquals("define declares sdtmct-2023-12-15; run used none",
+                conformanceMap.get("CT_Declaration_Mismatch"));
         assertEquals("2.0", conformanceMap.get("Define_XML_Version"));
         assertEquals("2024-01", conformanceMap.get("UNII_Version"));
         assertEquals("2024-02", conformanceMap.get("Med_RT_Version"));

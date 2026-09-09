@@ -23,15 +23,14 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 import lombok.CustomLog;
-import net.cumba.corej.core.CoreLibraryAccess;
+
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.metadata.AdamSubclassDetector;
-import net.cumba.corej.core.metadata.CdiscLibraryProviderBuilder;
+
 import net.cumba.corej.core.metadata.CompanionDomainsProvider;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
 import net.cumba.corej.core.metadata.MetadataProductKeys;
-import net.cumba.corej.core.metadata.pickle.PickleMetadataProviderFactory;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.corej.core.report.LibraryValidator;
@@ -225,23 +224,12 @@ public final class StudyValidationService
             externalReferences.addAll(loadReferenceLibrary(manager, refPath, datasets, loaded));
         }
 
-        // Phase B: enrich metadata via CDISC Library API (best-effort). Metadata source is
-        // the metadata-overlay library when a define.xml accompanies the data library, otherwise
-        // the data library.
-        // R7 — resolve the rule selection FIRST: the packages' declared standards join the
-        // effective metadata-product list the provider is built from. This is also what retires
-        // the hardwired ADaMIG->SDTMIG companion table (R9/R10): the companion is now a declared
-        // product like any other.
-        RuleSelection selection = selectRulePackages(params);
-        List<String> effectiveProducts = effectiveMetadataProducts(params, selection.declared());
-        requireDisambiguatedTigLeg(params.metadataProducts(), effectiveProducts);
-        // R5 — the run's standard is DERIVED from the selected packages' declared primaries (or,
-        // for a package that declares none, from the first --metadata-products entry). There is no
-        // -s/-v to read any more.
-        RunStandard runStandard = runStandardOf(selection.declared(), effectiveProducts);
-        StandardKind kind = StandardKind.fromName(runStandard.standard());
-        MetadataProvider provider = buildProvider(manager, metadataLibrary, params, kind,
-                effectiveProducts, runStandard);
+        // Phase A3 (define-ct plan §4.5): parse the sponsor Define-XML BEFORE the metadata
+        // provider is built. The declared CT packages (def:Standards, §4.1) must be known when the
+        // provider's CT selection is resolved, so the parse — which used to sit after
+        // buildProvider — is hoisted here, and the ONE parsed model then feeds all three
+        // consumers: the CT declaration, defineProvider, and vlmResolver. Never parse twice.
+        //
         // Sponsor Define-XML metadata as an independent provider — the "define" level of the
         // three-level metadata model. Present only when a Define-XML was supplied (gated on
         // defineXmlPath; otherwise metadataLibrary is the data adapter, not a define). Carried for
@@ -294,6 +282,49 @@ public final class StudyValidationService
                 LOGGER.log(System.Logger.Level.WARNING, "Define-XML value-level metadata: {0}", w);
             }
         }
+        // §4.1 — the CT packages the Define-XML declares (empty for 2.0, no define, or a define
+        // declaring none). Read once here; consulted by the CT selection and the §4.2 mismatch
+        // note below.
+        List<net.cumba.corej.core.gen.CtStandardRef> declaredCt = directDefine != null
+                ? directDefine.declaredCtPackages()
+                : List.of();
+
+        // Phase B: build the run's metadata provider. Metadata source is the metadata-overlay
+        // library when a define.xml accompanies the data library, otherwise the data library.
+        // R7 — resolve the rule selection FIRST: the packages' declared standards join the
+        // effective metadata-product list the provider is built from. This is also what retires
+        // the hardwired ADaMIG->SDTMIG companion table (R9/R10): the companion is now a declared
+        // product like any other.
+        RuleSelection selection = selectRulePackages(params);
+        List<String> effectiveProducts = effectiveMetadataProducts(params, selection.declared());
+        requireDisambiguatedTigLeg(params.metadataProducts(), effectiveProducts);
+        // R5 — the run's standard is DERIVED from the selected packages' declared primaries (or,
+        // for a package that declares none, from the first --metadata-products entry). There is no
+        // -s/-v to read any more.
+        RunStandard runStandard = runStandardOf(selection.declared(), effectiveProducts);
+        StandardKind kind = StandardKind.fromName(runStandard.standard());
+        // §4.2 (D1) — resolve the run's CT selection: an explicit user selection wins outright
+        // (the declaration is then out of play entirely — §4.4 row 6); a blank field takes the
+        // define's declared set; with neither, the run has no CT (row 1: SKIP, never abort).
+        CtSelection ctSelection = CtSelection.resolve(params.controlledTerminologyPackages(),
+                declaredCt);
+        if (ctSelection.source() == CtSelection.Source.DEFINE)
+        {
+            LOGGER.log(System.Logger.Level.INFO,
+                    "CT Packages is blank; using the Define-XML's declared CT set: {0}",
+                    String.join(", ", ctSelection.packageIds()));
+        }
+        MetadataProvider provider = buildProvider(manager, metadataLibrary, params, kind,
+                effectiveProducts, runStandard, ctSelection);
+        // §4.2 — a divergence between what the define declares and what the run used is a
+        // run-level note (a property of the RUN, never a finding on the data). Reported on every
+        // divergent run, whichever way the precedence went.
+        String ctDeclarationMismatch = ctDeclarationMismatch(declaredCt, ctSelection.packageIds());
+        if (ctDeclarationMismatch != null)
+        {
+            LOGGER.log(System.Logger.Level.WARNING, "CT declaration mismatch: {0}",
+                    ctDeclarationMismatch);
+        }
 
         // Phase C: load rule packages (selection already resolved in Phase B for R7).
         List<Rule> rules = loadRules(selection);
@@ -311,6 +342,17 @@ public final class StudyValidationService
 
         LibraryValidator.RuntimeListener listener = combinedListener(params.runtimeListener(),
                 progress, params.cancellation());
+
+        // §6.1 gap 2 — the provider-absence skip, decided HERE rather than discovered per rule
+        // deep inside evaluation. A keyless run is the normal case for the population R2 targets,
+        // so the run must be able to say what it cannot check before it starts checking.
+        // ⚠ libraryAnswerable, not `provider != null`: a DEGRADED provider is non-null and cannot
+        // serve LIBRARY-level reads (Fix #369), which is precisely the run with the most skips.
+        net.cumba.corej.core.exec.ProviderRequirements.SkipForecast skipForecast = net.cumba.corej.core.exec.ProviderRequirements
+                .forecast(rules,
+                        net.cumba.corej.core.exec.OperationExecutor.libraryAnswerable(provider),
+                        defineProvider != null);
+        logSkipForecast(skipForecast);
 
         // Fix #218 — the run-level fact behind cross-standard SKIP. See crossStandardDatasets().
         Set<String> crossStandard = crossStandardDatasets(provider);
@@ -367,8 +409,10 @@ public final class StudyValidationService
         // dataset listener wired above — no end-of-run replay needed.
 
         // Phase E: assemble the result.
-        String ctVersion = params.controlledTerminologyPackages().isEmpty() ? null
-                : String.join(", ", params.controlledTerminologyPackages());
+        // §4.2 — CT_Version reports what the run actually used, from whichever source the
+        // selection resolved (a define-derived set must not report as "no CT").
+        String ctVersion = ctSelection.packageIds().isEmpty() ? null
+                : String.join(", ", ctSelection.packageIds());
         // Define-XML version: explicit param wins; otherwise read from the loaded library
         // metadata (Define-XML-backed libraries populate this; other library types return null).
         String defineXmlVersion = params.defineVersion() != null ? params.defineVersion()
@@ -385,8 +429,13 @@ public final class StudyValidationService
                                     + "consulted for this run and -D"
                                     + net.cumba.corej.core.exec.OperationExecutor.DEGRADED_DEFINE_FALLBACK_PROPERTY
                                     + "=true was given"
-                            : "unavailable — the CDISC Library could not be consulted for this run;"
-                                    + " rules that cite it were SKIPPED";
+                            // §6.1 gap 2 — the COUNT, not just the fact. Every library-dependent
+                            // rule of this run is unanswerable in this branch (the library cannot
+                            // be consulted at all), so the forecast's dependent count IS the
+                            // skipped count; the per-rule ids go to the DEBUG log, not here.
+                            : "unavailable — the CDISC Library could not be consulted for this"
+                                    + " run; the " + skipForecast.libraryDependent()
+                                    + " library-dependent rules in this run were SKIPPED";
             LOGGER.log(System.Logger.Level.WARNING, "Library metadata basis: {0}",
                     libraryMetadataBasis);
         }
@@ -411,8 +460,9 @@ public final class StudyValidationService
                 .standard(runStandard.standard()).version(runStandard.version())
                 .subStandard(CompanionSdtmDefaults.tigLeg(effectiveProducts))
                 .tigUseCase(params.useCase()).ctVersion(ctVersion)
-                .defineXmlVersion(defineXmlVersion).libraryMetadataBasis(libraryMetadataBasis)
-                .dictionaryBasis(dictionaryBasis).uniiVersion(versionOf(dictionaryProvider, "unii"))
+                .ctDeclarationMismatch(ctDeclarationMismatch).defineXmlVersion(defineXmlVersion)
+                .libraryMetadataBasis(libraryMetadataBasis).dictionaryBasis(dictionaryBasis)
+                .uniiVersion(versionOf(dictionaryProvider, "unii"))
                 .medRtVersion(versionOf(dictionaryProvider, "medrt"))
                 .meddraVersion(versionOf(dictionaryProvider, "meddra"))
                 .whodrugVersion(versionOf(dictionaryProvider, "whodrug"))
@@ -940,6 +990,40 @@ public final class StudyValidationService
 
 
     /**
+     * The one up-front line about what this run cannot check — {@code §6.1} gap 2 of
+     * {@code plans/PLAN-metadata-cache-unification.md}.
+     *
+     * <p>
+     * ⭐ It is emitted <b>before</b> the first dataset is validated, and it is silent when nothing
+     * will skip. The per-rule SKIPPED statuses still carry the detail; what was missing was the
+     * total, at a point where the user can still act on it (supply a cache, supply a define.xml)
+     * instead of reading it out of a finished report.
+     * </p>
+     *
+     * @param forecast
+     *            the forecast for this run's selected rules
+     */
+    private static void logSkipForecast(
+            net.cumba.corej.core.exec.ProviderRequirements.SkipForecast forecast)
+    {
+        if (forecast.skippedRuleCount() == 0)
+        {
+            return;
+        }
+        LOGGER.log(System.Logger.Level.INFO,
+                "{0} rule(s) will be SKIPPED for want of metadata: {1} of {2} library-dependent"
+                        + " (no CDISC Library metadata available to this run), {3} of {4}"
+                        + " define-dependent (no Define-XML supplied)",
+                forecast.skippedRuleCount(), forecast.library().size(), forecast.libraryDependent(),
+                forecast.define().size(), forecast.defineDependent());
+        LOGGER.log(System.Logger.Level.DEBUG, "  library-dependent, skipped: {0}",
+                forecast.library());
+        LOGGER.log(System.Logger.Level.DEBUG, "  define-dependent, skipped: {0}",
+                forecast.define());
+    }
+
+
+    /**
      * D13 item 1 / D6 — the run-level {@code Dictionary_Basis} line: which dictionary types loaded
      * (with versions), which required ones did not and <em>why</em> (the same operator-actionable
      * diagnosis the per-rule SKIP reasons carry), and how many of this run's dictionary rules could
@@ -1070,58 +1154,48 @@ public final class StudyValidationService
 
     private MetadataProvider buildProvider(IDataTableManager manager, IDataTableLibraryRef library,
             StudyValidationParams params, StandardKind kind, List<String> effectiveProducts,
-            RunStandard runStandard)
+            RunStandard runStandard, CtSelection ctSelection)
         throws IOException
     {
-        // Offline path: when a Python pickle metadata cache is configured (flag / env / sysprop)
-        // and it carries this run's products, source metadata from it and skip the network
-        // entirely. Phase 7a: SDTM-family AND ADaM-family (the -s/-v product or any declared
-        // ADaM product missing from the pickle falls through to the API path).
-        MetadataProvider pickle = tryPickleProvider(params, kind, effectiveProducts, runStandard);
-        if (pickle != null)
+        // Cache P4 (PLAN-metadata-cache-unification.md §6, ruling R2): the CDISC Library API
+        // path was CUT here — a validation run can no longer reach the network, full stop. The
+        // unified metadata store (CDISC_METADATA_STORE / cdisc.metadata.store) is the one
+        // metadata source; without one that serves this run, the run degrades and its
+        // library-dependent rules SKIP (the P0b forecast reports them up front).
+        MetadataProvider stored = tryStoreProvider(params, kind, effectiveProducts, runStandard,
+                ctSelection);
+        if (stored != null)
         {
-            // On an ADaM-family run the companion wrap engages here too; the companion product
-            // itself loads from the same pickle cache (companionFromPickle) — no API fallback
-            // loader, deliberately: this path exists to stay offline.
-            return maybeWrapCompanion(pickle, params, kind, effectiveProducts, null);
+            return maybeWrapCompanion(stored, params, kind, effectiveProducts, null);
         }
-        // The service always wants an access (Library rule endpoints are reachable anonymously
-        // via the "dummy" key fallback), so we use open(...) not openIfConfigured() here.
-        CoreLibraryAccess access = buildAccess(params);
+        // The offline pickle leg that used to sit here (tryPickleProvider) was deleted by cache
+        // 8g, once cumba-corej-rules' harness moved onto the store: the unified metadata store is
+        // the ONE metadata source of a validation run. A pickle-configured deployment migrates by
+        // seeding a store from its pickle directory (PickleStoreSeeder — the seeding surfaces are
+        // P4b's cross-repo work).
         if (kind == StandardKind.UNKNOWN)
         {
             LOGGER.log(System.Logger.Level.WARNING,
                     "Standard {0} not supported for metadata enrichment. "
                             + "Running without enrichment.",
                     runStandard.standard());
+            return maybeWrapCompanion(
+                    new MetadataLibraryProvider(manager.getMetadataLibrary(library)), params, kind,
+                    effectiveProducts, null);
         }
-        // Facade absorbs the fetch / wire / degraded-fallback pipeline. CT selection now also
-        // happens inside the builder; we just supply candidate ids + a progress hook so the
-        // user-visible "Fetching CT package ..." line still fires.
-        //
-        // libraryAsStudy() makes this the pure CDISC-Library ("library") level of the three-level
-        // metadata model — no study/define overlay polluting library_* operands. The sponsor
-        // Define-XML flows independently via the defineProvider slot (see validate()). With a CT
-        // package the product-derived library is used; without one it degrades to the legacy
-        // study-backed build (the study passed below is the fallback for that case).
-        // ⭐ metadataProducts(...) carries the run's EFFECTIVE ordered product list into the
-        // provider: the user's own --metadata-products first, then the selected rule packages'
-        // declared standards appended last (R7). Without it the subclass precedence chain has a
-        // single product to walk and is inert on more than one.
-        // ⚠ Since R5 removed -s/-v (and §1b′ with them) the user's half may be EMPTY; the
-        // declarations are what make the effective list non-empty. A run where both are empty is
-        // refused by runStandardOf before reaching here.
-        MetadataProvider base = CdiscLibraryProviderBuilder.from(access)
-                .study(manager.getMetadataLibrary(library)).libraryAsStudy()
-                .standard(runStandard.standard()).version(runStandard.version())
-                .metadataProducts(effectiveProducts)
-                .ctPackageIds(params.controlledTerminologyPackages()).onCtFetch(id -> LOGGER
-                        .log(System.Logger.Level.INFO, "Fetching CT package {0}...", id))
-                .buildOrDegraded();
-        // EC-14 layer (ii): on an ADaM-family run wrap the provider so standard_domains enumerates
-        // the companion SDTMIG's domains; pickle-first, then a best-effort API build.
-        return maybeWrapCompanion(base, params, kind, effectiveProducts,
-                c -> buildCompanionViaApi(access, manager, library, c));
+        // R2: no store configured, or the configured one cannot serve this run. Degrade loudly —
+        // library-dependent rules SKIP with this cause — instead of falling back to the network
+        // (the pre-P4 behaviour for exactly this situation was a doomed "dummy"-key API attempt
+        // that ended in the same degraded provider, minus the honest message).
+        MetadataProvider degraded = MetadataLibraryProvider.degraded(
+                manager.getMetadataLibrary(library),
+                new IOException("No unified metadata store is available for "
+                        + runStandard.standard() + " " + runStandard.version() + " (configure "
+                        + net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory.STORE_ENV
+                        + " / "
+                        + net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory.STORE_PROPERTY
+                        + " and seed it); library-dependent rules will SKIP"));
+        return maybeWrapCompanion(degraded, params, kind, effectiveProducts, null);
     }
 
 
@@ -1150,8 +1224,8 @@ public final class StudyValidationService
      *
      * <p>
      * ⚠ Degrades to an empty set — i.e. to the pre-{@code Fix #218} engine — when no companion
-     * product is available (offline, or no pickle cache). {@link #maybeWrapCompanion} already logs
-     * a WARNING there, so the degradation is never silent.
+     * product is available (no store, or the store lacks it). {@link #maybeWrapCompanion} already
+     * logs a WARNING there, so the degradation is never silent.
      * </p>
      *
      * @param provider
@@ -1199,13 +1273,14 @@ public final class StudyValidationService
      * @param base
      *            the run's metadata provider.
      * @param params
-     *            the run parameters (standard / version / declared metadata products / pickle cache
-     *            dir).
+     *            the run parameters (standard / version / declared metadata products).
      * @param kind
      *            the resolved {@link StandardKind}.
      * @param apiLoader
-     *            fallback that builds the companion via the CDISC Library API when the pickle cache
-     *            has no product; may be {@code null} (the SDTM pickle path never needs it).
+     *            extra fallback companion loader consulted after the store leg; {@code null} in
+     *            production since cache P4 cut the CDISC Library API path (the parameter survives
+     *            as the injection seam existing tests — including {@code cumba-corej-rules}'
+     *            companion test — drive this method through).
      * @return {@code base}, or a {@link CompanionDomainsProvider} wrapping it.
      */
     static MetadataProvider maybeWrapCompanion(MetadataProvider base, StudyValidationParams params,
@@ -1231,7 +1306,7 @@ public final class StudyValidationService
         // ⚑ The Q-12d "defaulted to the newest SDTMIG" warning lived here. R10 deleted the
         // fallback itself, so nothing can set Companion.defaulted() any more and the branch went
         // with it; a run with no declared companion is reported above, before this point.
-        MetadataProvider companion = companionFromPickle(params, c);
+        MetadataProvider companion = companionFromStore(c, params.metadataStore());
         if (companion == null && apiLoader != null)
         {
             companion = apiLoader.apply(c);
@@ -1272,10 +1347,10 @@ public final class StudyValidationService
      * shipped TIG packages declare four primaries — {@code tig/1-0/}{@code {adam,cdash,sdtm,send}}
      * — with {@code adam} FIRST. R7 appends all four to the effective product list, and
      * {@code CompanionSdtmDefaults.tigLeg} returns the leg of the FIRST TIG key it sees, so
-     * {@code isTigAdamRun} answered true and {@link #tryPickleProvider} routed the whole run onto
-     * the ADaM leg. An SDTM-shaped TIG run then resolved every SDTM domain against an ADaM
-     * provider, which returns empty for all of them (Fix #373) — so rules that used to SKIP visibly
-     * reported "executed, no findings" instead.
+     * {@code isTigAdamRun} answered true and the then-current pickle provider leg (now the store
+     * path) routed the whole run onto the ADaM leg. An SDTM-shaped TIG run then resolved every SDTM
+     * domain against an ADaM provider, which returns empty for all of them (Fix #373) — so rules
+     * that used to SKIP visibly reported "executed, no findings" instead.
      * </p>
      *
      * <p>
@@ -1360,130 +1435,244 @@ public final class StudyValidationService
 
 
     /**
-     * Loads the companion SDTM product from the Python pickle cache when one is configured, else
-     * {@code null}. Package-private static for unit testing. (The Q-12e hard error for an explicit
-     * {@code --sdtm-version} miss went with the removed flag.)
-     */
-    static @Nullable MetadataProvider companionFromPickle(StudyValidationParams params,
-            CompanionSdtmDefaults.Companion c)
-    {
-        Path dir = PickleMetadataProviderFactory.resolveConfiguredDir(params.pickleCacheDir());
-        if (dir == null)
-        {
-            return null;
-        }
-        return PickleMetadataProviderFactory.open(dir)
-                .forSdtm(c.loaderStandard(), c.loaderVersion(), null).orElse(null);
-    }
-
-
-    /**
-     * Best-effort companion SDTM provider built via the CDISC Library API when the pickle cache has
-     * no product. Only the {@code sdtmig} companion is buildable this way; a TIG companion requires
-     * the pickle cache and returns {@code null} (⇒ {@code standard_domains} SKIPs).
-     */
-    private @Nullable MetadataProvider buildCompanionViaApi(CoreLibraryAccess access,
-            IDataTableManager manager, IDataTableLibraryRef library,
-            CompanionSdtmDefaults.Companion c)
-    {
-        if (!"sdtmig".equals(c.loaderStandard()))
-        {
-            return null;
-        }
-        try
-        {
-            return CdiscLibraryProviderBuilder.from(access)
-                    .study(manager.getMetadataLibrary(library)).libraryAsStudy().standard("sdtmig")
-                    .version(c.loaderVersion()).buildOrDegraded();
-        }
-        catch (IOException e)
-        {
-            LOGGER.log(System.Logger.Level.WARNING,
-                    "Failed to build companion SDTM provider {0}: {1}", c.display(),
-                    e.getMessage());
-            return null;
-        }
-    }
-
-
-    private static CoreLibraryAccess buildAccess(StudyValidationParams params)
-    {
-        String apiKey = System.getenv("CDISC_API_KEY");
-        if (apiKey == null || apiKey.isBlank())
-        {
-            apiKey = System.getProperty("cdisc.library.api.key");
-        }
-        // null/blank apiKey is substituted with "dummy" by CoreLibraryAccess.open(...).
-        Path cacheDir = params.cacheDir() != null
-                ? new File(params.cacheDir()).getAbsoluteFile().toPath()
-                : null;
-        return CoreLibraryAccess.open(apiKey, null, cacheDir);
-    }
-
-
-    /**
-     * Builds an offline metadata provider from the Python pickle cache when one is configured
-     * (param / {@code CDISC_PICKLE_CACHE_DIR} / {@code cdisc.pickle.cache.dir}) and it actually
-     * carries the run's products. Returns {@code null} — so the caller falls back to the CDISC
-     * Library API path — for standards of no loadable family, when no cache is configured, or when
-     * the cache lacks a needed product. Package-private static for unit testing.
+     * Builds a metadata provider from the unified metadata store when one is configured
+     * ({@code CDISC_METADATA_STORE} / {@code cdisc.metadata.store}) and it carries the run's
+     * products. Returns {@code null} — the caller then degrades the run (cache P4 / ruling R2:
+     * library-dependent rules SKIP; there is no other metadata path any more) — when no store is
+     * configured, the store cannot be opened, or it lacks a needed product. Package-private static
+     * for unit testing.
      *
      * <p>
-     * Phase 7a: both families load offline. An SDTM-family run goes through
-     * {@code PickleMetadataProviderFactory.forSdtm}; an ADaM-family run — {@code kind == ADAM}, or
-     * a declared TIG ADaM leg (§7-2) — through {@code forAdam}, whose ordered product list is
-     * assembled by the same {@code DeclaredAdamProducts.assemble} choke point the API path uses.
-     * §7-0: the SDTM library layer follows the <b>first declared SDTM-family product</b> in the
-     * effective list — the user's {@code --metadata-products} first, then the selected packages'
-     * declared standards (R7). ⚠ §1b′ and the {@code -s}/{@code -v} fallback it described are gone
-     * (R5); with no SDTM-family key anywhere the run falls back to {@code runStandard}, which is
-     * itself derived from the declared primaries.
+     * {@code PUBLISHED_CT_PACKAGES} on this path is the store's whole published enumeration on
+     * every family (plan §1.1-1).
      * </p>
      */
-    static @Nullable MetadataProvider tryPickleProvider(StudyValidationParams params,
+    static @Nullable MetadataProvider tryStoreProvider(StudyValidationParams params,
             StandardKind kind, List<String> effectiveProducts, RunStandard runStandard)
+    {
+        // The pre-P4 (define-ct) entry point: the CT selection is the user's field alone. Kept
+        // delegating — cumba-corej-rules' test tree (read-only to this lane) calls this shape.
+        return tryStoreProvider(params, kind, effectiveProducts, runStandard,
+                CtSelection.resolve(params.controlledTerminologyPackages(), List.of()));
+    }
+
+
+    /**
+     * As {@link #tryStoreProvider(StudyValidationParams, StandardKind, List, RunStandard)}, with
+     * the run's resolved {@link CtSelection} (define-ct plan §4.2) supplying the CT package ids.
+     */
+    static @Nullable MetadataProvider tryStoreProvider(StudyValidationParams params,
+            StandardKind kind, List<String> effectiveProducts, RunStandard runStandard,
+            CtSelection ctSelection)
     {
         boolean adamFamily = kind == StandardKind.ADAM || isTigAdamRun(effectiveProducts);
         if (kind != StandardKind.SDTM && !adamFamily)
         {
-            // UNKNOWN with nothing ADaM-shaped declared has no product to load.
             return null;
         }
-        Path dir = PickleMetadataProviderFactory.resolveConfiguredDir(params.pickleCacheDir());
-        if (dir == null)
+        // ⭐ F2 (final cross-plan review): the run's OWN store parameter is the top tier — an
+        // explicitly named store must never lose to an ambient CDISC_METADATA_STORE.
+        Path file = net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory
+                .resolveConfiguredFile(params.metadataStore());
+        if (file == null)
         {
             return null;
         }
-        PickleMetadataProviderFactory factory = PickleMetadataProviderFactory.open(dir);
+        net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory factory;
+        try
+        {
+            factory = net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory.open(file);
+        }
+        catch (IOException e)
+        {
+            // A configured store that cannot be opened is worth a loud line, but the disposition
+            // is the R2 degraded run, not an abort: since cache P4 there is no other metadata
+            // path, so the library-dependent rules SKIP visibly.
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "Configured metadata store {0} cannot be opened ({1}); the run degrades and "
+                            + "the library-dependent rules will SKIP.",
+                    file, e.getMessage());
+            return null;
+        }
         Optional<MetadataProvider> provider;
+        // The CT package ids this run intends to load from the store — the §4.4 "named" set,
+        // after root filtering (a root the run does not consume is not named, §4.5.1).
+        List<String> namedCtIds;
         if (kind == StandardKind.SDTM)
         {
             MetadataProductKeys.SdtmLoader loader = MetadataProductKeys
                     .firstSdtmLoader(effectiveProducts);
             String libStd = loader != null ? loader.standard() : runStandard.standard();
             String libVersion = loader != null ? loader.version() : runStandard.version();
-            String sdtmCt = ctIdWithPrefix(params.controlledTerminologyPackages(), "sdtmct");
-            provider = factory.forSdtm(libStd, libVersion, sdtmCt);
+            // §4.3 (define-ct plan): ALL matching packages join the merge, newest first — and a
+            // SEND-family run's own CT root (sendct) precedes the sdtmct fallback root.
+            List<String> ctIds = new ArrayList<>();
+            if (runStandard.standard() != null
+                    && runStandard.standard().toLowerCase(Locale.ROOT).startsWith("send"))
+            {
+                ctIds.addAll(ctIdsWithPrefix(ctSelection.packageIds(), "sendct"));
+            }
+            ctIds.addAll(ctIdsWithPrefix(ctSelection.packageIds(), "sdtmct"));
+            namedCtIds = ctIds;
+            provider = factory.forSdtm(libStd, libVersion, ctIds);
         }
         else
         {
-            String adamCt = ctIdWithPrefix(params.controlledTerminologyPackages(), "adamct");
-            String sdtmCt = ctIdWithPrefix(params.controlledTerminologyPackages(), "sdtmct");
+            List<String> adamCts = ctIdsWithPrefix(ctSelection.packageIds(), "adamct");
+            List<String> sdtmCts = ctIdsWithPrefix(ctSelection.packageIds(), "sdtmct");
+            namedCtIds = new ArrayList<>(adamCts);
+            namedCtIds.addAll(sdtmCts);
             provider = factory.forAdam(runStandard.standard(), runStandard.version(),
-                    effectiveProducts, adamCt, sdtmCt);
+                    effectiveProducts, adamCts, sdtmCts);
         }
         if (provider.isPresent())
         {
+            // §4.4 (D3, define-ct P5): the store is serving this run, so every CT package the run
+            // NAMED for a root it consumes must actually be present — a named-but-unavailable
+            // package aborts, never quietly becomes the empty substitution inside the factory.
+            // Root filtering already happened above, so a declared package for a root this run
+            // does not consume was never named here (§4.5.1: ignored silently); and with a
+            // populated user field the declaration never reached the selection at all (row 6).
+            requireNamedCtPackagesPresent(factory, file, namedCtIds, ctSelection.source());
             LOGGER.log(System.Logger.Level.INFO,
-                    "Using offline pickle metadata cache at {0} for {1} {2} (metadata products "
-                            + "{3})",
-                    dir, runStandard.standard(), runStandard.version(), effectiveProducts);
+                    "Using unified metadata store at {0} for {1} {2} (metadata products {3})", file,
+                    runStandard.standard(), runStandard.version(), effectiveProducts);
             return provider.get();
         }
         LOGGER.log(System.Logger.Level.WARNING,
-                "Pickle cache {0} has no product for {1} {2}; falling back to CDISC Library API",
-                dir, runStandard.standard(), runStandard.version());
+                "Metadata store {0} has no product for {1} {2}; the run degrades and the "
+                        + "library-dependent rules will SKIP.",
+                file, runStandard.standard(), runStandard.version());
         return null;
+    }
+
+
+    /**
+     * Loads the companion SDTM product from the configured unified metadata store, else
+     * {@code null} — since cache 8g the only offline companion source (the pickle leg that used to
+     * follow it is deleted), ahead of the {@code apiLoader} test seam. {@code aExplicitStore} is
+     * the run's own {@link StudyValidationParams#metadataStore()}, so the companion is read from
+     * the SAME store {@link #tryStoreProvider} served the run from — never from an ambient
+     * {@code CDISC_METADATA_STORE} outranking the store the caller named (F2).
+     */
+    static @Nullable MetadataProvider companionFromStore(CompanionSdtmDefaults.Companion c,
+            @Nullable String aExplicitStore)
+    {
+        Path file = net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory
+                .resolveConfiguredFile(aExplicitStore);
+        if (file == null)
+        {
+            return null;
+        }
+        try
+        {
+            return net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory.open(file)
+                    .forSdtm(c.loaderStandard(), c.loaderVersion(), List.<String> of())
+                    .orElse(null);
+        }
+        catch (IOException e)
+        {
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "Configured metadata store {0} cannot be opened for the companion SDTM "
+                            + "product ({1}).",
+                    file, e.getMessage());
+            return null;
+        }
+    }
+
+
+    /**
+     * §4.4 (owner ruling D3, define-ct P5) — <b>abort when something named is missing or unusable;
+     * skip when nothing is named at all.</b> Called only once the store is actually serving the
+     * run: every CT package id the run named for a consumed root must be
+     * {@link net.cumba.corej.core.metadata.store.Presence#PRESENT}, else the run aborts naming the
+     * package — the factory's quiet empty-package substitution must never stand in for a package
+     * someone asked for.
+     *
+     * <p>
+     * The two abort rows this implements: a missing <em>declared</em> package while the declaration
+     * is in play (row 3 — escapable, because filling the field takes the declaration out of play
+     * entirely, row 6), and a missing <em>user-selected</em> package (row 5). An empty
+     * {@code aNamedCtIds} — nothing named ({@code CtSelection.Source.NONE}), or every id
+     * root-filtered away — checks nothing: that is the cache ruling's territory (run with no CT;
+     * CT-dependent rules SKIP visibly).
+     * </p>
+     *
+     * @param aFactory
+     *            the factory over the serving store
+     * @param aStoreFile
+     *            the store file, for the message
+     * @param aNamedCtIds
+     *            the root-filtered CT package ids this run intends to load
+     * @param aSource
+     *            where the selection came from (decides the message, not the check)
+     * @throws StudyValidationException
+     *             when a named package is absent or its id is malformed
+     */
+    static void requireNamedCtPackagesPresent(
+            net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory aFactory,
+            Path aStoreFile, List<String> aNamedCtIds, CtSelection.Source aSource)
+    {
+        for (String id : aNamedCtIds)
+        {
+            net.cumba.corej.core.metadata.store.Presence presence = aFactory.presence(id);
+            if (presence == net.cumba.corej.core.metadata.store.Presence.PRESENT)
+            {
+                continue;
+            }
+            String problem = presence == net.cumba.corej.core.metadata.store.Presence.MALFORMED
+                    ? "is not a valid CT package id (expected <family>ct-<yyyy-mm-dd>)"
+                    : "is not held by the metadata store at " + aStoreFile;
+            if (aSource == CtSelection.Source.DEFINE)
+            {
+                throw new StudyValidationException("The Define-XML declares "
+                        + "controlled-terminology package '" + id + "' (def:Standards), which "
+                        + problem + ". Seed the store with it, or fill the CT Packages field "
+                        + "explicitly - an explicit selection takes the define's declaration "
+                        + "out of play.");
+            }
+            throw new StudyValidationException("Controlled-terminology package '" + id
+                    + "' was requested, but it " + problem + ".");
+        }
+    }
+
+
+    /**
+     * The §4.2 run-level mismatch note, or {@code null} when there is nothing to report: the define
+     * declares no CT packages, or the declared set equals (order-insensitively) the set of package
+     * ids the run used.
+     *
+     * <p>
+     * The comparison is against the run's CT <em>selection</em>, before any root filtering — §4.5.1
+     * rules that a declared package for a root the run does not consume is ignored
+     * <em>silently</em>, so post-filter comparison would wrongly flag exactly that case.
+     * </p>
+     *
+     * @param aDeclared
+     *            the define's declared CT packages (empty when none)
+     * @param aUsed
+     *            the CT package ids the run's selection resolved to
+     * @return the note text, or {@code null} when declaration and selection agree
+     */
+    static @Nullable String ctDeclarationMismatch(
+            List<net.cumba.corej.core.gen.CtStandardRef> aDeclared, List<String> aUsed)
+    {
+        if (aDeclared.isEmpty())
+        {
+            return null;
+        }
+        Set<String> declaredIds = new LinkedHashSet<>();
+        for (net.cumba.corej.core.gen.CtStandardRef ref : aDeclared)
+        {
+            declaredIds.add(ref.packageId());
+        }
+        Set<String> usedIds = new LinkedHashSet<>(aUsed);
+        if (declaredIds.equals(usedIds))
+        {
+            return null;
+        }
+        return "define declares " + String.join(", ", declaredIds) + "; run used "
+                + (usedIds.isEmpty() ? "none" : String.join(", ", usedIds));
     }
 
 
@@ -1498,6 +1687,26 @@ public final class StudyValidationService
             }
         }
         return null;
+    }
+
+
+    /**
+     * Every id in {@code aIds} starting with {@code aPrefix}, newest first (define-ct plan §4.3: a
+     * multi-package selection is merged with newest-first precedence within a root; the
+     * lexicographic order works because CT ids end in an ISO date).
+     */
+    static List<String> ctIdsWithPrefix(List<String> aIds, String aPrefix)
+    {
+        List<String> out = new ArrayList<>();
+        for (String id : aIds)
+        {
+            if (id != null && id.startsWith(aPrefix))
+            {
+                out.add(id);
+            }
+        }
+        out.sort(java.util.Comparator.reverseOrder());
+        return out;
     }
 
     // ------------------------------------------------------------------
@@ -1723,7 +1932,7 @@ public final class StudyValidationService
         try
         {
             out.addAll(net.cumba.corej.core.metadata.pickle.ProductKeyResolver
-                    .resolveAllConfigured(ids, params.pickleCacheDir(), params.cacheDir()));
+                    .resolveAllConfigured(ids, params.pickleCacheDir(), null));
         }
         catch (IllegalArgumentException e)
         {

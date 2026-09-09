@@ -266,7 +266,7 @@ class StandardModelVariablesResolverTest
         // LB ⇒ Findings class. Identifiers (STUDYID, USUBJID, --SEQ) + class vars
         // (--TESTCD, --TEST, --ORRES) + timing (--DTC). All `--` wildcards substituted to LB.
         IMetadataLibrary study = lib("study").table(table("LB").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
 
         List<String> result = provider.getStandardModelVariables(mockTable("LB"), null);
@@ -282,7 +282,7 @@ class StandardModelVariablesResolverTest
     void standardSdtmEventsDomain_returnsIdentifiersClassVarsAndTiming_wildcardSubstituted()
     {
         IMetadataLibrary study = lib("study").table(table("AE").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
 
         List<String> result = provider.getStandardModelVariables(mockTable("AE"), null);
@@ -307,7 +307,7 @@ class StandardModelVariablesResolverTest
                         .column(column("DOMAIN", 2, DataValueType.STRING).build())
                         .column(column("MYAETERM", 3, DataValueType.STRING).build()).build())
                 .build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
 
         List<String> result = provider.getStandardModelVariables(mockTable("MYAE"), null);
@@ -332,7 +332,7 @@ class StandardModelVariablesResolverTest
                         .column(column("MYFATESTCD", 3, DataValueType.STRING).build())
                         .column(column("MYFAOBJ", 4, DataValueType.STRING).build()).build())
                 .build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
 
         List<String> result = provider.getStandardModelVariables(mockTable("MYFA"), null);
@@ -355,7 +355,7 @@ class StandardModelVariablesResolverTest
         // SUPPDM ⇒ effective domain SUPPQUAL. No `--` wildcards in SUPPQUAL class vars; the
         // wildcardDomain (SUPPDM) is irrelevant. No add_AP since parent (DM) doesn't start AP.
         IMetadataLibrary study = lib("study").table(table("SUPPDM").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
 
         List<String> result = provider.getStandardModelVariables(mockTable("SUPPDM"), null);
@@ -377,7 +377,7 @@ class StandardModelVariablesResolverTest
         // wildcardDomain is the stripped form (AE) per Python parity (original_domain = domain
         // after strip).
         IMetadataLibrary study = lib("study").table(table("APAE").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
 
         List<String> result = provider.getStandardModelVariables(mockTable("APAE"), null);
@@ -398,7 +398,7 @@ class StandardModelVariablesResolverTest
     void adamAdsl_returnsSubjectLevelAnalysisDatasetVariables()
     {
         IMetadataLibrary study = lib("study").table(table("ADSL").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkAdamProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.adamProvider(study, mkAdamProduct(),
                 "adamig", "1-3");
 
         List<String> result = provider.getStandardModelVariables(mockTable("ADSL"), null);
@@ -413,7 +413,7 @@ class StandardModelVariablesResolverTest
         // ADAE isn't a directly-named ADaM data structure; it's a BDS-class dataset. The
         // resolver's class-name fallback (AD-prefixed and not ADSL) routes it to BDS.
         IMetadataLibrary study = lib("study").table(table("ADAE").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkAdamProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.adamProvider(study, mkAdamProduct(),
                 "adamig", "1-3");
 
         List<String> result = provider.getStandardModelVariables(mockTable("ADAE"), null);
@@ -427,7 +427,7 @@ class StandardModelVariablesResolverTest
     {
         // A non-AD-prefixed unknown domain doesn't match any structure or className fallback.
         IMetadataLibrary study = lib("study").table(table("XYZZY").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkAdamProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.adamProvider(study, mkAdamProduct(),
                 "adamig", "1-3");
 
         List<String> result = provider.getStandardModelVariables(mockTable("XYZZY"), null);
@@ -468,7 +468,7 @@ class StandardModelVariablesResolverTest
     @Test
     void nullTable_returnsNull()
     {
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(lib("study").build(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(lib("study").build(),
                 mkRichSdtmProduct(), "sdtmig", "3-4");
         assertNull(provider.getStandardModelVariables(null, null));
     }
@@ -482,7 +482,7 @@ class StandardModelVariablesResolverTest
                 .table(table("ZZZZ").column(column("STUDYID", 0, DataValueType.STRING).build())
                         .column(column("USUBJID", 1, DataValueType.STRING).build()).build())
                 .build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
 
         List<String> result = provider.getStandardModelVariables(mockTable("ZZZZ"), null);
@@ -573,7 +573,7 @@ class StandardModelVariablesResolverTest
         // override-by-name swaps the IG entry into the existing position; the dedupe of
         // substituted names produces a single LBTESTCD entry, not two.
         IMetadataLibrary study = lib("study").table(table("LB").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study,
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study,
                 mkSdtmProductWithIgVars(), "sdtmig", "3-4");
 
         // Algorithm-B IG-override merge via getColumnOrder (see sibling test note).
@@ -592,7 +592,7 @@ class StandardModelVariablesResolverTest
         // getStandardVariablesDetailed); getStandardModelVariables is the pure-Model algorithm A
         // (no IG override). This test exercises the algorithm-B merge via getColumnOrder.
         IMetadataLibrary study = lib("study").table(table("LB").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study,
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study,
                 mkSdtmProductWithIgVars(), "sdtmig", "3-4");
 
         List<String> result = provider.getColumnOrder("LB");
@@ -612,7 +612,7 @@ class StandardModelVariablesResolverTest
     void igOverride_detectableClass_insertsIgOnlyTimingAtEnd()
     {
         IMetadataLibrary study = lib("study").table(table("LB").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study,
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study,
                 mkSdtmProductWithIgVars(), "sdtmig", "3-4");
 
         // Algorithm-B IG-override merge via getColumnOrder (see sibling test note).
@@ -629,7 +629,7 @@ class StandardModelVariablesResolverTest
     void igOverride_detectableClass_insertsIgOnlyClassVarBeforeTimingSection()
     {
         IMetadataLibrary study = lib("study").table(table("LB").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study,
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study,
                 mkSdtmProductWithIgVars(), "sdtmig", "3-4");
 
         // Algorithm-B IG-override merge via getColumnOrder (see sibling test note).
@@ -654,7 +654,7 @@ class StandardModelVariablesResolverTest
         // not the relevant source — Python uses IG datasetVariables instead. The IG list adds
         // USUBJID, RFSTDTC, AGE, ARM that the class-level model doesn't carry.
         IMetadataLibrary study = lib("study").table(table("DM").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study,
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study,
                 mkSdtmProductWithIgVars(), "sdtmig", "3-4");
 
         // Non-detectable, non-custom: algorithm B returns the IG datasetVariables. This is the
@@ -686,7 +686,7 @@ class StandardModelVariablesResolverTest
                         .column(column("DOMAIN", 2, DataValueType.STRING).build())
                         .column(column("MYAETERM", 3, DataValueType.STRING).build()).build())
                 .build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study,
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study,
                 mkSdtmProductWithIgVars(), "sdtmig", "3-4");
 
         // mkSdtmProductWithIgVars has no EVENTS class with --TERM, but the sniffer still
@@ -708,7 +708,7 @@ class StandardModelVariablesResolverTest
     void detailed_sdtmFindings_returnsAttributeMaps()
     {
         IMetadataLibrary study = lib("study").table(table("LB").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
 
         List<Map<String, String>> result = provider
@@ -740,7 +740,7 @@ class StandardModelVariablesResolverTest
         // Simulates what evalGetModelFilteredVariables does: filter the detailed output by
         // role=Timing → just the timing variables.
         IMetadataLibrary study = lib("study").table(table("LB").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
 
         List<Map<String, String>> all = provider.getStandardModelVariablesDetailed(mockTable("LB"),
@@ -761,7 +761,7 @@ class StandardModelVariablesResolverTest
     {
         // ADaM analysisVariables don't carry "role"; the detailed output reflects that.
         IMetadataLibrary study = lib("study").table(table("ADSL").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkAdamProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.adamProvider(study, mkAdamProduct(),
                 "adamig", "1-3");
 
         List<Map<String, String>> result = provider
@@ -816,7 +816,7 @@ class StandardModelVariablesResolverTest
         // and returned empty (the runtime then SKIPped the rule). Post-Fix-#59, the lookup
         // routes through the LB Findings class and returns the LB allowed variables.
         IMetadataLibrary study = lib("study").table(table("LBHE").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
 
         List<String> result = provider.getStandardModelVariables(mockSplitTable("LBHE", "LB"),
@@ -843,7 +843,7 @@ class StandardModelVariablesResolverTest
     void lbheStyleSplit_detailedAccessorAlsoUsesDomainColumn()
     {
         IMetadataLibrary study = lib("study").table(table("LBHE").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
 
         List<Map<String, String>> result = provider
@@ -878,7 +878,7 @@ class StandardModelVariablesResolverTest
         // --DECOD + timing) and substitute `--` with LB — the dataset's OWN prefix — so the
         // answer is "the EVENTS variables as they would be spelled inside LB".
         IMetadataLibrary study = lib("study").table(table("LB").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
 
         List<Map<String, String>> result = provider
@@ -898,7 +898,7 @@ class StandardModelVariablesResolverTest
     void forcedClassIsNormalisedLikeTheResolversOwnClassNames()
     {
         IMetadataLibrary study = lib("study").table(table("LB").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
 
         List<Map<String, String>> lower = provider
@@ -925,7 +925,7 @@ class StandardModelVariablesResolverTest
         // SAME list, so "not in $model_order" is exactly "not in my own class's table".
         IMetadataLibrary study = lib("study").table(table("LB").build()).table(table("AE").build())
                 .table(table("CM").build()).table(table("FA").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
         for (String domain : List.of("LB", "AE", "CM", "FA"))
         {
@@ -944,7 +944,7 @@ class StandardModelVariablesResolverTest
         // D-3: a SUPP-- table has no general observation class; SUPPQUAL wins over the forced
         // EVENTS and the answer is the SUPPQUAL cascade's, not EVENTS under a SUPPDM prefix.
         IMetadataLibrary study = lib("study").table(table("SUPPDM").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
 
         List<Map<String, String>> result = provider
@@ -961,7 +961,7 @@ class StandardModelVariablesResolverTest
     {
         // D-4: ADaM has no observation class to select — library-not-available, never a walk.
         IMetadataLibrary study = lib("study").table(table("ADSL").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkAdamProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.adamProvider(study, mkAdamProduct(),
                 "adamig", "1-3");
 
         assertNull(provider.getStandardModelVariablesForClass(mockTable("ADSL"), null, "EVENTS"));
@@ -980,7 +980,7 @@ class StandardModelVariablesResolverTest
         // the non-detectable assembly (no GenObs merge). A class the model does NOT carry must
         // come back null — NOT LB's own variables via the domain-keyed tiers 2/3.
         IMetadataLibrary study = lib("study").table(table("LB").build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
 
         List<Map<String, String>> ap = provider.getStandardModelVariablesForClass(mockTable("LB"),
@@ -999,7 +999,7 @@ class StandardModelVariablesResolverTest
     void forcedClassWithNoResolvableDomain_returnsEmptyList()
     {
         IMetadataLibrary study = lib("study").build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(study, mkRichSdtmProduct(),
+        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkRichSdtmProduct(),
                 "sdtmig", "3-4");
         List<Map<String, String>> result = provider.getStandardModelVariablesForClass(mockTable(""),
                 null, "EVENTS");

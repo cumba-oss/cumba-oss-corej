@@ -1,19 +1,20 @@
 package net.cumba.corej.core;
 
-import java.io.IOException;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Optional;
 
-import net.cumba.corej.core.model.Rule;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Front-door to the CDISC Library used by the rule engine. Hides
- * {@link net.cumba.cdisc.library.api.client.CdiscLibraryClient} and every
- * {@code net.cumba.cdisc.library.api.model.*} type from downstream modules so that neither
- * {@code manager.local} nor the {@code dataviewer.cli} sidecar needs an
- * {@code import net.cumba.cdisc.library.*} line in either production or test code.
+ * Front-door to the CDISC Library. Since cache P4 this is a <b>seeding-time</b> API only — the
+ * validation run path never opens one (ruling R2: no network during a run), and since the P4b
+ * cross-repo lane re-pointed the manager's pickers at the unified metadata store its one remaining
+ * production consumer is {@code WebApiStoreSeeder} (where an API key legitimately belongs). Hides
+ * {@link net.cumba.cdisc.library.api.client.CdiscLibraryClient} from downstream modules so that
+ * neither {@code manager.local} nor the {@code dataviewer.cli} sidecar needs an
+ * {@code import net.cumba.cdisc.library.*} line in either production or test code; since the final
+ * review's F4 cut {@code listCtPackageIds} (zero callers) it declares no instance methods at all —
+ * it is the factory seam over the client, nothing more.
  *
  * <p>
  * Instances come from the static factories below. The default implementation
@@ -72,22 +73,4 @@ public interface CoreLibraryAccess
     {
         return CoreLibraryAccessImpl.open(aApiKey, aBaseUrl, aCacheDir);
     }
-
-
-    /**
-     * Fetch the rule package for {@code aStandard}/{@code aVersion} from the Library API and map it
-     * to the engine's domain. Returns an empty list when the API yields no rules. Throws
-     * {@link IOException} on transport / parse failure with a message that names the standard and
-     * version, preserving the user-visible error text that the manager-local code emitted before
-     * this migration.
-     */
-    List<Rule> loadRules(String aStandard, String aVersion) throws IOException;
-
-
-    /**
-     * List CT-package IDs (e.g. {@code "sdtmct-2024-09-27"}, {@code "adamct-2024-03-29"}). Returns
-     * an empty list on any failure — callers degrade to "no CT picker." Matches the existing
-     * tolerance in the manager's prior {@code fetchCtPackageIds} helper.
-     */
-    List<String> listCtPackageIds();
 }

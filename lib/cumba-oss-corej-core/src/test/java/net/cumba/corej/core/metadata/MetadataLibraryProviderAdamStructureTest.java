@@ -125,7 +125,7 @@ class MetadataLibraryProviderAdamStructureTest
 
     private static MetadataLibraryProvider providerFor(AdamProduct aProduct)
     {
-        return new MetadataLibraryProvider(DataTableLibraryMetadataAdapter.empty(), aProduct,
+        return ApiModelLibraries.adamProvider(DataTableLibraryMetadataAdapter.empty(), aProduct,
                 "adamig", "1-3");
     }
 

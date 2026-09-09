@@ -140,6 +140,17 @@
         <Bug pattern="EI_EXPOSE_REP" />
     </Match>
 
+    <!-- StoreManifest: the compact constructor stores the part-hash map as an
+         unmodifiable ORDER-PRESERVING copy (Collections.unmodifiableMap over a
+         private LinkedHashMap; Map.copyOf would randomise iteration order and
+         break the manifest's byte determinism), so the record accessor returns
+         an immutable map — same shape as Violation$Unit$Group above. -->
+    <Match>
+        <Class name="net.cumba.corej.core.metadata.store.StoreManifest" />
+        <Field name="partHashes" />
+        <Bug pattern="EI_EXPOSE_REP" />
+    </Match>
+
     <!-- VlmResolver: structuralWarnings is List.copyOf (immutable); VlmMatch copies its list
          components in the compact constructor, so the record accessors return immutable lists. -->
     <Match>

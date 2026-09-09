@@ -116,9 +116,9 @@ class MetadataLibraryProviderMultiProductTest
     @Test
     void firstDeclaredProductWins_precedenceIsTheUsersOrder()
     {
-        DeclaredAdamProduct supplement = new DeclaredAdamProduct("standards/adam/adam-occds-1-1",
+        DeclaredAdamProduct supplement = ApiModelLibraries.declared("standards/adam/adam-occds-1-1",
                 occdsSupplement());
-        DeclaredAdamProduct base = new DeclaredAdamProduct("standards/adam/adamig-1-3",
+        DeclaredAdamProduct base = ApiModelLibraries.declared("standards/adam/adamig-1-3",
                 occdsBase());
 
         // Supplement first: AE's Req set answers; the base product is NOT consulted, so its
@@ -135,10 +135,10 @@ class MetadataLibraryProviderMultiProductTest
     @Test
     void laterProductSuppliesTokensTheFirstDoesNotDefine()
     {
-        DeclaredAdamProduct bdsOnly = new DeclaredAdamProduct("standards/adam/adam-tte-1-0",
+        DeclaredAdamProduct bdsOnly = ApiModelLibraries.declared("standards/adam/adam-tte-1-0",
                 product("adam-tte", structure("TTE", "BASIC DATA STRUCTURE",
                         List.of(adamVar("CNSR", "1", "Req")))));
-        DeclaredAdamProduct base = new DeclaredAdamProduct("standards/adam/adamig-1-3",
+        DeclaredAdamProduct base = ApiModelLibraries.declared("standards/adam/adamig-1-3",
                 occdsBase());
 
         MetadataLibraryProvider p = provider(bdsOnly, base);
@@ -170,7 +170,7 @@ class MetadataLibraryProviderMultiProductTest
     @Test
     void singleProductConstructorDerivesItsCacheKeyFromStandardAndVersion()
     {
-        MetadataLibraryProvider p = new MetadataLibraryProvider(study(), occdsBase(), "adamig",
+        MetadataLibraryProvider p = ApiModelLibraries.adamProvider(study(), occdsBase(), "adamig",
                 "1-3");
         assertTrue(p.supportsStructureKeyedVariables());
         assertEquals(List.of("standards/adam/adamig-1-3"), p.declaredStructureKeyedProducts());
@@ -184,7 +184,8 @@ class MetadataLibraryProviderMultiProductTest
     @Test
     void singleProductConstructorWithoutStandardContextUsesAPlaceholderKey()
     {
-        MetadataLibraryProvider p = new MetadataLibraryProvider(study(), occdsBase(), null, null);
+        MetadataLibraryProvider p = ApiModelLibraries.adamProvider(study(), occdsBase(), null,
+                null);
         assertEquals(List.of("<undeclared adam product>"), p.declaredStructureKeyedProducts());
     }
 
@@ -199,7 +200,7 @@ class MetadataLibraryProviderMultiProductTest
                         .column(column("USUBJID", 0, DataValueType.STRING).build()).build())
                 .build();
         MetadataLibraryProvider p = new MetadataLibraryProvider(study,
-                List.of(new DeclaredAdamProduct("standards/adam/adamig-1-3", occdsBase())),
+                List.of(ApiModelLibraries.declared("standards/adam/adamig-1-3", occdsBase())),
                 "adamig", "1-3");
         assertEquals(List.of(), p.getStandardModelVariables(mockTable("ADXX"), null));
     }
@@ -221,8 +222,8 @@ class MetadataLibraryProviderMultiProductTest
     void declaredProductsAreReportedInPrecedenceOrder()
     {
         MetadataLibraryProvider p = provider(
-                new DeclaredAdamProduct("standards/adam/adam-occds-1-1", occdsSupplement()),
-                new DeclaredAdamProduct("standards/adam/adamig-1-3", occdsBase()));
+                ApiModelLibraries.declared("standards/adam/adam-occds-1-1", occdsSupplement()),
+                ApiModelLibraries.declared("standards/adam/adamig-1-3", occdsBase()));
         assertEquals(List.of("standards/adam/adam-occds-1-1", "standards/adam/adamig-1-3"),
                 p.declaredStructureKeyedProducts());
     }
@@ -232,7 +233,7 @@ class MetadataLibraryProviderMultiProductTest
     void companionDecoratorDelegatesProvenanceToTheRunProvider()
     {
         MetadataLibraryProvider base = provider(
-                new DeclaredAdamProduct("standards/adam/adamig-1-3", occdsBase()));
+                ApiModelLibraries.declared("standards/adam/adamig-1-3", occdsBase()));
         MetadataProvider companion = new MetadataLibraryProvider(study());
         CompanionDomainsProvider wrapped = new CompanionDomainsProvider(base, companion);
         assertEquals(List.of("standards/adam/adamig-1-3"),
@@ -251,7 +252,7 @@ class MetadataLibraryProviderMultiProductTest
                 structure("CM", "OCCURRENCE DATA STRUCTURE",
                         List.of(adamVar("CMTRT", "1", "Req"))));
         MetadataLibraryProvider p = provider(
-                new DeclaredAdamProduct("standards/adam/adam-occds-1-1", twoStructures));
+                ApiModelLibraries.declared("standards/adam/adam-occds-1-1", twoStructures));
 
         Logger logger = Logger.getLogger(MetadataLibraryProvider.class.getName());
         CapturingHandler handler = new CapturingHandler();

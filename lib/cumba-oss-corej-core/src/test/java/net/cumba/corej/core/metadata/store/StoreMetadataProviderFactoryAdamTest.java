@@ -1,4 +1,4 @@
-package net.cumba.corej.core.metadata.pickle;
+package net.cumba.corej.core.metadata.store;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -19,34 +19,40 @@ import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.metadata.AdamDataStructureDetector;
 import net.cumba.corej.core.metadata.AdamSubclassDetector;
 import net.cumba.corej.core.metadata.UnmappedMetadataProductException;
+import net.cumba.corej.core.metadata.pickle.LocalPickleSource;
+import net.cumba.corej.core.metadata.store.seed.PickleStoreSeeder;
+import net.cumba.corej.core.metadata.store.seed.StoreSeedOptions;
 import net.razorvine.pickle.Pickler;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Phase 7a of {@code plans/PLAN-metadata-product-selection.md} —
- * {@link PickleMetadataProviderFactory#forAdam}: ADaM runs work offline, and the ordered
- * declared-product list goes through the <b>same</b> construction site as the API path.
+ * Phase 7a of {@code plans/PLAN-metadata-product-selection.md}, carried onto the store path (cache
+ * 8g — this file is the migrated {@code PickleMetadataProviderFactoryAdamTest}, its subject deleted
+ * with the pickle read path): {@link StoreMetadataProviderFactory#forAdam} over stores seeded from
+ * the same hermetic pickle fixtures, so ADaM runs work offline and the ordered declared-product
+ * list goes through the <b>same</b> construction site ({@code DeclaredAdamProducts.assemble}) the
+ * old paths shared.
  *
  * <h2>Why the two-product test is the load-bearing one</h2>
  *
  * <p>
- * A pickle ADaM path that constructed its provider directly would bypass
+ * A store ADaM path that constructed its provider directly would bypass
  * {@code DeclaredAdamProducts.assemble} and the multi-product feature would be silently inert
  * offline — every single-product test green, ruling 1 unreachable. The only thing that proves the
- * wiring is a two-product pickle-backed build resolving <em>differently</em> from a one-product
- * one: the pickle mirror of Phase 3's {@code CMTRT} evidence.
+ * wiring is a two-product store-backed build resolving <em>differently</em> from a one-product one:
+ * the store mirror of Phase 3's {@code CMTRT} evidence.
  * </p>
  *
  * <p>
  * Hermetic fixtures are pickled at runtime with {@link Pickler} (the {@code PickleCacheKeysTest}
- * pattern) and mirror {@code CdiscLibraryProviderBuilderMetadataProductsTest}'s products, so the
- * two cache paths are demonstrably tested against the same shape. The environment-gated tests run
- * the same probes over the <b>real</b> cache.
+ * pattern) and seeded through the REAL {@code PickleStoreSeeder}, so every probe here also
+ * exercises the seed projection. The environment-gated tests run the same probes over a store
+ * seeded from the <b>real</b> corpus.
  * </p>
  */
-class PickleMetadataProviderFactoryAdamTest
+class StoreMetadataProviderFactoryAdamTest
 {
 
     private static final String ADAMIG_KEY = "standards/adam/adamig-9-9";
@@ -97,7 +103,6 @@ class PickleMetadataProviderFactoryAdamTest
 
 
     @SafeVarargs
-
     @SuppressWarnings("varargs") // passes its own varargs array to List.of
     private static Map<String, Object> product(String name, Map<String, Object>... structures)
     {
@@ -129,13 +134,15 @@ class PickleMetadataProviderFactoryAdamTest
     }
 
 
-    private static PickleMetadataProviderFactory factory(Path dir,
+    private static StoreMetadataProviderFactory factory(Path dir,
             Map<String, Map<String, Object>> standards)
         throws IOException
     {
         Files.write(dir.resolve("standards_details.pkl"),
                 new Pickler().dumps(new LinkedHashMap<>(standards)));
-        return PickleMetadataProviderFactory.open(dir);
+        Path store = dir.resolve("store.zip");
+        new PickleStoreSeeder(new LocalPickleSource(dir)).seed(StoreSeedOptions.of(store));
+        return StoreMetadataProviderFactory.open(store);
     }
 
 
@@ -156,12 +163,12 @@ class PickleMetadataProviderFactoryAdamTest
     void aTwoProductPickleRunResolvesDifferentlyFromAOneProductOne(@TempDir Path dir)
         throws IOException
     {
-        PickleMetadataProviderFactory factory = factory(dir, bothProducts());
+        StoreMetadataProviderFactory factory = factory(dir, bothProducts());
 
         // (a) One product — today's run. adamig publishes no occurrence structure, so an
         // occurrence dataset cannot resolve at all: null, i.e. the loud SKIP.
-        MetadataProvider one = factory.forAdam("adamig", "9-9", List.of(ADAMIG_KEY), null, null)
-                .orElseThrow();
+        MetadataProvider one = factory
+                .forAdam("adamig", "9-9", List.of(ADAMIG_KEY), List.of(), List.of()).orElseThrow();
         assertNull(one.getRequiredVariablesForStructure(OCCDS_TOKEN, List.of(ADVERSE_EVENT)));
         assertEquals(List.of(ADAMIG_KEY), one.declaredStructureKeyedProducts());
 
@@ -169,7 +176,8 @@ class PickleMetadataProviderFactoryAdamTest
         // structure governs --SEQ (Req), and CMTRT — published only by the base OCCDS behind it —
         // still resolves. Byte-for-byte the API path's answer for the same declaration.
         MetadataProvider two = factory
-                .forAdam("adamig", "9-9", List.of(OCCDS_KEY, ADAMIG_KEY), null, null).orElseThrow();
+                .forAdam("adamig", "9-9", List.of(OCCDS_KEY, ADAMIG_KEY), List.of(), List.of())
+                .orElseThrow();
         assertEquals(List.of("USUBJID", "--SEQ", "CMTRT"),
                 two.getRequiredVariablesForStructure(OCCDS_TOKEN, List.of(ADVERSE_EVENT)));
         assertEquals(List.of("USUBJID", "CMTRT"),
@@ -178,7 +186,7 @@ class PickleMetadataProviderFactoryAdamTest
 
         assertNotEquals(one.getRequiredVariablesForStructure(OCCDS_TOKEN, List.of(ADVERSE_EVENT)),
                 two.getRequiredVariablesForStructure(OCCDS_TOKEN, List.of(ADVERSE_EVENT)),
-                "if these agree, the pickle path never carried the declared product list — the "
+                "if these agree, the store path never carried the declared product list — the "
                         + "multi-product feature is inert offline");
     }
 
@@ -186,11 +194,11 @@ class PickleMetadataProviderFactoryAdamTest
     @Test
     void theSingleProductDefaultUsesTheDerivedKey(@TempDir Path dir) throws IOException
     {
-        // §1b′ / no -mp: the params default arrives as the single -s/-v key; the pickle path
-        // resolves it exactly as the API path does.
-        PickleMetadataProviderFactory factory = factory(dir, bothProducts());
-        MetadataProvider p = factory.forAdam("adamig", "9-9", List.of(ADAMIG_KEY), null, null)
-                .orElseThrow();
+        // §1b′ / no -mp: the params default arrives as the single -s/-v key; the store path
+        // resolves it exactly as the deleted legacy paths did.
+        StoreMetadataProviderFactory factory = factory(dir, bothProducts());
+        MetadataProvider p = factory
+                .forAdam("adamig", "9-9", List.of(ADAMIG_KEY), List.of(), List.of()).orElseThrow();
         assertTrue(p.supportsStructureKeyedVariables());
         assertEquals(List.of("USUBJID"),
                 p.getRequiredVariablesForStructure(AdamDataStructureDetector.ADSL));
@@ -198,18 +206,18 @@ class PickleMetadataProviderFactoryAdamTest
 
 
     @Test
-    void ctPackagesFlowIntoThePickleAdamProvider(@TempDir Path dir) throws IOException
+    void ctPackagesFlowIntoTheStoreAdamProvider(@TempDir Path dir) throws IOException
     {
-        // The forSdtm parity: configured ADaM and SDTM CT package ids resolve from the cache
-        // directory (whole-file pickles) and feed CdiscLibraryMetadataLibrary.fromAdam.
-        PickleMetadataProviderFactory factory = factory(dir, bothProducts());
+        // The forSdtm parity: configured ADaM and SDTM CT package ids are seeded from the
+        // corpus directory and feed CdiscLibraryMetadataLibrary.fromStoredAdam.
+        StoreMetadataProviderFactory factory = factory(dir, bothProducts());
         Map<String, Object> ct = new LinkedHashMap<>();
         ct.put("name", "ct");
         Files.write(dir.resolve("adamct-9999-01-01.pkl"), new Pickler().dumps(ct));
         Files.write(dir.resolve("sdtmct-9999-01-01.pkl"), new Pickler().dumps(ct));
 
         MetadataProvider p = factory.forAdam("adamig", "9-9", List.of(OCCDS_KEY),
-                "adamct-9999-01-01", "sdtmct-9999-01-01").orElseThrow();
+                List.of("adamct-9999-01-01"), List.of("sdtmct-9999-01-01")).orElseThrow();
 
         assertEquals(List.of(OCCDS_KEY), p.declaredStructureKeyedProducts());
         assertEquals(List.of("USUBJID", "CMTRT"),
@@ -217,20 +225,21 @@ class PickleMetadataProviderFactoryAdamTest
     }
 
     // ------------------------------------------------------------------
-    // §7-2 — the TIG ADaM leg enters the ordered list (pickle-only product)
+    // §7-2 — the TIG ADaM leg enters the ordered list
     // ------------------------------------------------------------------
 
 
     @Test
-    void aDeclaredTigAdamLegLoadsFromThePickle(@TempDir Path dir) throws IOException
+    void aDeclaredTigAdamLegLoadsFromTheStore(@TempDir Path dir) throws IOException
     {
         Map<String, Map<String, Object>> standards = bothProducts();
         standards.put(TIG_ADAM_KEY, product("tig-adam", structure("REFERENDS",
                 "REFERENCE DATA STRUCTURE", null, List.of(adamVar("INPRM", "1", "Req")))));
-        PickleMetadataProviderFactory factory = factory(dir, standards);
+        StoreMetadataProviderFactory factory = factory(dir, standards);
 
         MetadataProvider p = factory
-                .forAdam("tig", "9-9", List.of(TIG_ADAM_KEY, OCCDS_KEY), null, null).orElseThrow();
+                .forAdam("tig", "9-9", List.of(TIG_ADAM_KEY, OCCDS_KEY), List.of(), List.of())
+                .orElseThrow();
 
         assertEquals(List.of(TIG_ADAM_KEY, OCCDS_KEY), p.declaredStructureKeyedProducts());
         assertEquals(List.of("INPRM"), p.getRequiredVariablesForStructure(
@@ -243,60 +252,77 @@ class PickleMetadataProviderFactoryAdamTest
 
 
     @Test
-    void anAbsentDeclaredProductFallsBackToTheApiPath(@TempDir Path dir) throws IOException
+    void anAbsentDeclaredProductMakesTheSourceDecline(@TempDir Path dir) throws IOException
     {
-        // A declared product the pickle cannot deliver: the whole source declines (empty), the
-        // caller falls back to the API path. Never a silently shortened list (ruling 1).
-        PickleMetadataProviderFactory factory = factory(dir, bothProducts());
+        // A declared product the store cannot deliver: the whole source declines (empty), the
+        // caller degrades the run. Never a silently shortened list (ruling 1).
+        StoreMetadataProviderFactory factory = factory(dir, bothProducts());
         assertEquals(Optional.empty(), factory.forAdam("adamig", "9-9",
-                List.of("standards/adam/adam-nope-1-0", OCCDS_KEY), null, null));
+                List.of("standards/adam/adam-nope-1-0", OCCDS_KEY), List.of(), List.of()));
     }
 
 
     @Test
-    void anAbsentDefaultProductFallsBackToTheApiPath(@TempDir Path dir) throws IOException
+    void anAbsentDefaultProductMakesTheSourceDecline(@TempDir Path dir) throws IOException
     {
         // Nothing ADaM-shaped declared (an SDTM-only -mp) falls back to the -s/-v product; when
-        // even that is not in the pickle, the source declines.
-        PickleMetadataProviderFactory factory = factory(dir, bothProducts());
-        assertEquals(Optional.empty(),
-                factory.forAdam("adamig", "8-8", List.of("standards/sdtmig/3-4"), null, null));
+        // even that is not in the store, the source declines.
+        StoreMetadataProviderFactory factory = factory(dir, bothProducts());
+        assertEquals(Optional.empty(), factory.forAdam("adamig", "8-8",
+                List.of("standards/sdtmig/3-4"), List.of(), List.of()));
     }
 
 
     @Test
-    void aWhollyUnmappableDeclaredProductFailsLoudlyOnThePicklePathToo(@TempDir Path dir)
+    void aWhollyUnmappableDeclaredProductFailsLoudlyOnTheStorePathToo(@TempDir Path dir)
         throws IOException
     {
-        // §6b runs at the shared choke point, so the pickle path fails the same bad declaration
-        // the API path fails — never Optional.empty (which would silently retry via the API).
+        // §6b runs at the shared choke point, so the store path fails the same bad declaration
+        // the legacy paths failed — never Optional.empty (a bad declaration must reach the user,
+        // not degrade the run around it).
         Map<String, Map<String, Object>> standards = bothProducts();
         standards.put("standards/adam/adam-future-1-0", product("adam-future", structure("FUTURE",
                 "A CLASS THIS ENGINE DOES NOT KNOW", null, List.of(adamVar("X", "1", "Req")))));
-        PickleMetadataProviderFactory factory = factory(dir, standards);
+        StoreMetadataProviderFactory factory = factory(dir, standards);
 
         assertThrows(UnmappedMetadataProductException.class, () -> factory.forAdam("adamig", "9-9",
-                List.of("standards/adam/adam-future-1-0", OCCDS_KEY), null, null));
+                List.of("standards/adam/adam-future-1-0", OCCDS_KEY), List.of(), List.of()));
     }
 
     // ------------------------------------------------------------------
-    // Integration — the REAL pickle cache (skipped when not configured)
+    // Integration — a store seeded from the REAL corpus (skipped when not configured)
     // ------------------------------------------------------------------
 
+    private static @Nullable StoreMetadataProviderFactory realStore;
 
-    private static @Nullable Path realCache()
+    private static @Nullable StoreMetadataProviderFactory realStoreFactory() throws IOException
     {
-        String dir = System.getenv("CDISC_PICKLE_CACHE_DIR");
-        return dir != null && Files.isDirectory(Path.of(dir)) ? Path.of(dir) : null;
+        // ⭐ F5 (final cross-plan review): resolved through RealCorpusLocator — the SAME
+        // resolution StoreSeederRealDataConformanceTest uses — instead of the environment
+        // variable alone, which silently skipped these two tests on every machine that carries
+        // the corpus at the well-known path. A named-but-broken corpus now fails loudly in the
+        // locator; only a corpus absent everywhere still skips (named message).
+        java.util.Optional<Path> dir = RealCorpusLocator.locate();
+        if (dir.isEmpty())
+        {
+            return null;
+        }
+        if (realStore == null)
+        {
+            Path store = Files.createTempDirectory("corej-real-store").resolve("store.zip");
+            new PickleStoreSeeder(new LocalPickleSource(dir.get()))
+                    .seed(StoreSeedOptions.of(store));
+            realStore = StoreMetadataProviderFactory.open(store);
+        }
+        return realStore;
     }
 
 
     @Test
-    void everyRealCachedAdamFamilyProductResolvesOffline()
+    void everyRealCachedAdamFamilyProductResolvesOffline() throws IOException
     {
-        Path real = realCache();
-        assumeTrue(real != null, "no real pickle cache configured");
-        PickleMetadataProviderFactory factory = PickleMetadataProviderFactory.open(real);
+        StoreMetadataProviderFactory factory = realStoreFactory();
+        assumeTrue(factory != null, RealCorpusLocator.ABSENT_MESSAGE);
         // The 11 standards/adam products plus the TIG ADaM leg — §7a's "15 ADaM/TIG products"
         // minus the three non-ADaM TIG legs, which are not this provider's to load.
         List<String> keys = List.of("standards/adam/adamig-1-0", "standards/adam/adamig-1-1",
@@ -307,8 +333,8 @@ class PickleMetadataProviderFactoryAdamTest
                 "standards/adam/adam-tte-1-0", "standards/tig/1-0/adam");
         for (String key : keys)
         {
-            Optional<MetadataProvider> p = factory.forAdam("adamig", "1-3", List.of(key), null,
-                    null);
+            Optional<MetadataProvider> p = factory.forAdam("adamig", "1-3", List.of(key), List.of(),
+                    List.of());
             assertTrue(p.isPresent(), () -> key + " did not resolve offline");
             assertTrue(p.get().supportsStructureKeyedVariables(), key);
             assertEquals(List.of(key), p.get().declaredStructureKeyedProducts(), key);
@@ -317,24 +343,22 @@ class PickleMetadataProviderFactoryAdamTest
 
 
     @Test
-    void theRealCacheTwoProductRunMirrorsThePhase3Evidence()
+    void theRealCacheTwoProductRunMirrorsThePhase3Evidence() throws IOException
     {
         // Phase 3's CMTRT evidence (run A vs run B), replayed offline: adamig-1-3 alone cannot
         // answer the occurrence token; declaring adam-occds-1-1 first resolves it, the AE
         // specialisation governs, and CMTRT (base OCCDS: Req; AE: Not Used) is correctly NOT
         // demanded of an adverse-event dataset — while the base-only answer still carries it.
-        Path real = realCache();
-        assumeTrue(real != null, "no real pickle cache configured");
-        PickleMetadataProviderFactory factory = PickleMetadataProviderFactory.open(real);
+        StoreMetadataProviderFactory factory = realStoreFactory();
+        assumeTrue(factory != null, RealCorpusLocator.ABSENT_MESSAGE);
 
-        MetadataProvider one = factory
-                .forAdam("adamig", "1-3", List.of("standards/adam/adamig-1-3"), null, null)
-                .orElseThrow();
+        MetadataProvider one = factory.forAdam("adamig", "1-3",
+                List.of("standards/adam/adamig-1-3"), List.of(), List.of()).orElseThrow();
         assertNull(one.getRequiredVariablesForStructure(OCCDS_TOKEN, List.of(ADVERSE_EVENT)));
 
         MetadataProvider two = factory.forAdam("adamig", "1-3",
-                List.of("standards/adam/adam-occds-1-1", "standards/adam/adamig-1-3"), null, null)
-                .orElseThrow();
+                List.of("standards/adam/adam-occds-1-1", "standards/adam/adamig-1-3"), List.of(),
+                List.of()).orElseThrow();
         List<String> ae = two.getRequiredVariablesForStructure(OCCDS_TOKEN, List.of(ADVERSE_EVENT));
         assertTrue(ae != null && ae.contains("--SEQ") && ae.contains("--DECOD"),
                 () -> String.valueOf(ae));
