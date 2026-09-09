@@ -98,7 +98,6 @@ class MetadataLibraryProviderSubclassGovernanceTest
 
 
     @SafeVarargs
-
     @SuppressWarnings("varargs") // passes its own varargs array to List.of
     private static AdamProduct product(String name, Map<String, Object>... structures)
     {

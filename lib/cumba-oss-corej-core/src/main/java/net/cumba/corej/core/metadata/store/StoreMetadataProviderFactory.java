@@ -113,8 +113,8 @@ public final class StoreMetadataProviderFactory
      * precedence inversion. The env-over-property order of the two ambient tiers is deliberate and
      * must stay: operators set the environment variable on purpose, and the system property doubles
      * as the app-default publication channel ({@code ~/.cumbaDataBrowser/metadata-cache.zip} via
-     * {@code cumba-datatable}'s {@code MetadataCacheLocator} cascade, plan §5.3 — that cascade
-     * lives downstream, so this factory has no app-default tier of its own).
+     * {@code cumba-oss-datatable}'s {@code MetadataCacheLocator} cascade — that cascade lives
+     * downstream, so this factory has no app-default tier of its own).
      * </p>
      *
      * @param aExplicit

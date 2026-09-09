@@ -55,16 +55,25 @@ import org.junit.jupiter.api.Test;
  * A <b>behavioural</b> guard — construct every decorator over a recording delegate, invoke each
  * capability method, assert the delegate saw the same call with the same arguments — is strictly
  * harder to fool than any text scan, and it was the first thing tried. It cannot be written
- * <em>here</em>: two of the four decorators live in modules that depend on this one
- * ({@code CompositeMetadataProvider} in {@code cumba-oss-corej-rules}' test sources,
- * {@code ScenarioDeclaredScopeProvider}, likewise there), so they are not on this module's test
- * classpath and cannot be. Loading them out of a sibling module's {@code target/test-classes} would
- * make the guard pass vacuously whenever that module happened not to be built — the exact failure
- * mode this rewrite exists to remove — and those two are precisely the classes that drifted. So the
- * instrument is a source scan, but a <b>parsing</b> one rather than a {@code contains(..)} one:
- * comments and string literals are blanked before anything is matched, the {@code @Override} must
- * be present, the method body is extracted by brace matching, and the body must forward to a
- * delegate field passing <em>every</em> declared parameter through in order.
+ * <em>here</em> over the whole population: {@code MapBackedLibraryMetadataProvider} lives in
+ * {@code cumba-oss-corej-ruletest}, which <em>depends on</em> this module, so it is not on this
+ * module's test classpath and cannot be. Loading it out of a sibling module's
+ * {@code target/test-classes} would make the guard pass vacuously whenever that module happened not
+ * to be built — the exact failure mode this rewrite exists to remove.
+ * </p>
+ *
+ * <p>
+ * ⚠ That reason is narrower here than it was in the coreJ monorepo, where two of the four
+ * decorators were out of reach; in this repository both decorators
+ * ({@code CompanionDomainsProvider}, {@code DefineXmlMetadataProvider}) sit in this module's own
+ * {@code src/main} and would load fine. The scan is kept for a second reason that has not narrowed:
+ * it derives the <b>population</b> from the tree, and the population is what {@link #PINNED} and
+ * every floor below rest on — a decorator nobody remembered to instantiate would simply not be
+ * checked, which is this file's own disease. So the instrument is a source scan, but a
+ * <b>parsing</b> one rather than a {@code contains(..)} one: comments and string literals are
+ * blanked before anything is matched, the {@code @Override} must be present, the method body is
+ * extracted by brace matching, and the body must forward to a delegate field passing <em>every</em>
+ * declared parameter through in order.
  * </p>
  *
  * <p>
@@ -104,14 +113,24 @@ class MetadataProviderDecoratorDelegationGuardTest
     private static final Path REPO_ROOT = findRepoRoot();
 
     /**
-     * The source trees scanned. {@code lib} is the only module root that holds Java in this
-     * repository — the CLI / REST / rule-editor front ends under {@code clients} are not part of
-     * this open-source distribution, and {@link #providerSources()} asserts each root exists, so
-     * naming a root that is absent here would fail the guard rather than widen it. ⚠ Test sources
-     * are scanned too (only {@code *Test.java} is skipped, see {@link #providerSources()}) —
-     * {@code CompositeMetadataProvider} and {@code ScenarioDeclaredScopeProvider} are both
-     * production-shaped harness components living under {@code src/test/java}, they are handed to
-     * the engine on every spec / .cdt run, and they are the two that actually drifted.
+     * The source trees scanned: {@code lib}, which in this repo holds the engine and its harnesses.
+     *
+     * <p>
+     * ⚠ The coreJ monorepo also scanned {@code clients} (the CLI / REST / rule-editor front ends).
+     * The split moved those to their own repos, which this repo's build never checks out, so the
+     * root is gone rather than merely empty. Measured when it was dropped: no client implemented
+     * {@code MetadataProvider}, so nothing stops being policed today — but a client that grows one
+     * later is outside this guard, and needs its own copy in its own repo.
+     * </p>
+     *
+     * <p>
+     * Test sources are scanned too (only {@code *Test.java} is skipped, see
+     * {@link #providerSources()}). No decorator lives under {@code src/test/java} in this
+     * repository today — the two production-shaped harness components that did, and that are the
+     * ones that actually drifted, moved to cumba-oss-corej-rules with the rule corpus — but
+     * {@code StubMetadataProvider} does, and scanning test sources is what keeps a decorator added
+     * there tomorrow from being invisible.
+     * </p>
      */
     private static final List<String> SCAN_ROOTS = List.of("lib");
 
@@ -174,16 +193,23 @@ class MetadataProviderDecoratorDelegationGuardTest
      * Floors, so a refactor that empties the population reds instead of passing vacuously.
      *
      * <p>
-     * ⚠ These are <b>5 / 2</b> here and <b>8 / 4</b> in the internal monorepo, and the difference
-     * is population, not a lowered bar. This repository is a filtered extraction: it ships
-     * {@code lib} only, so the three implementations the internal pin also lists —
-     * {@code ScenarioDeclaredScopeProvider} and {@code CompositeMetadataProvider} (the .cdt and
-     * rulespec harnesses, which live with the rule corpus) and {@code MockLibraryProvider} — have
-     * no source here for the scan to find. The scan itself is unchanged and still sees every
-     * implementation this repository contains; {@link #PINNED} above lists exactly those five. ⛔ Do
-     * not raise these to match internal without first adding the missing sources, and do not lower
-     * them to silence a scan that has gone blind — that is what the message on the assertion warns
-     * about.
+     * ⚠⚠ <b>These were 8 / 4 in the coreJ monorepo, and the three missing implementations did not
+     * disappear — they moved to another repository.</b> {@code CompositeMetadataProvider},
+     * {@code MockLibraryProvider} and {@code ScenarioDeclaredScopeProvider} all live in
+     * {@code cumba-oss-corej-rules}' test sources (at
+     * {@code src/test/java/net/cumba/corej/core/rulespec} and {@code .../ruletestsuites}), and this
+     * repo's build never checks that repo out. Lowering the floor is therefore recording a
+     * boundary, not weakening the guard — which is the one thing the message on the failing
+     * assertion tells you not to do, so it is spelled out here.
+     * </p>
+     *
+     * <p>
+     * ⚠ That obligation is discharged upstream, where the rule-corpus repository carries its own
+     * copy of this guard pinned over its own three implementations; ⛔ measured 2026-09-09,
+     * {@code cumba-oss-corej-rules} does <b>not</b> yet carry that copy, so those three are
+     * unguarded in this distribution. ⚠ In either case that ledger and this one are measured over
+     * different populations and are <b>supposed</b> to differ — copying a value across is how a row
+     * gets excused by a class the copying repository does not contain.
      * </p>
      */
     private static final int MIN_IMPLEMENTATIONS = 5;
@@ -273,14 +299,20 @@ class MetadataProviderDecoratorDelegationGuardTest
             // shape this guard exists to catch, and indistinguishable from a correct answer.
             capability("getPublishedVariablesByName(String)",
                     "(?<![\\w.])List<PublishedVariable>\\s+%s\\s*\\(\\s*String\\s+(\\w+)\\s*\\)"),
-            // ⭐ Re-derived over THIS repository's population, not inherited from the internal
-            // ledger. Both rows sat in INHERITABLE_DEFAULTS excused with "not delegated by
-            // CompositeMetadataProvider" — a class that has never existed here: it lives with the
-            // rule corpus in cumba-oss-corej-rules' test sources, outside SCAN_ROOTS, so no scan
-            // here can reach it. The excuse was therefore vacuous and two capability-shaped
-            // defaults that BOTH decorators in this tree already delegate were guarded by nothing.
-            // Measured 2026-09-08: CompanionDomainsProvider forwards both to `base`, and
-            // DefineXmlMetadataProvider forwards both to `fallback` after the ODM answers empty.
+            // ⭐ Re-derived over THIS repository's population (2026-09-08). Both rows below sat in
+            // INHERITABLE_DEFAULTS excused as "not delegated by CompositeMetadataProvider" — a
+            // class that has never existed here. It lives with the rule corpus in
+            // cumba-oss-corej-rules, outside SCAN_ROOTS, so the excuse was true THERE and vacuous
+            // HERE: it named nothing this scan can reach, and the guard had silently stopped
+            // guarding two capability-shaped defaults. Both decorators in this tree do in fact
+            // delegate them — CompanionDomainsProvider forwards to `base`;
+            // DefineXmlMetadataProvider answers from the ODM and falls back to `fallback` when
+            // the ODM declares none.
+            //
+            // Both defaults return List.of(), i.e. "I cannot answer" wearing the clothes of a
+            // real answer: a decorator inheriting getDatasetNames() reports a study containing no
+            // datasets, and one inheriting getKeyVariables() reports a domain with no key
+            // sequence — which the key-uniqueness checks read as "nothing to check" and pass.
             capability("getKeyVariables(String)", LIST_OF_STRING),
             capability("getDatasetNames()", "(?<![\\w.])List<String>\\s+%s\\s*\\(\\s*\\)"));
 
@@ -288,9 +320,9 @@ class MetadataProviderDecoratorDelegationGuardTest
      * Floor on the capability set itself, so an accidental deletion reds.
      *
      * <p>
-     * ⚠ Despite the name this is asserted with {@code assertEquals}, so it is an <b>exact</b> count
-     * and must match this repository's own ledger. It is <b>11</b> here and a different number
-     * internally, because the populations differ — ⛔ never copy the value across repos.
+     * ⚠ Exact equality despite the name, and this repository's own number — the sibling ledgers in
+     * cumba-oss-corej-rules and in the internal coreJ repository are measured over different
+     * populations and carry different values on purpose. Never copy one across.
      * </p>
      */
     private static final int MIN_CAPABILITIES = 11;
@@ -310,8 +342,10 @@ class MetadataProviderDecoratorDelegationGuardTest
         /**
          * ⚠ Same "I cannot answer" shape as a {@link Capability}, and <b>not</b> established as
          * safe — merely not enforced yet. Promoting it today would red decorators this change does
-         * not own, so the decision is recorded here rather than made silently. The note names the
-         * decorators that do not delegate it as of Phase 11.
+         * not own, so the decision is recorded here rather than made silently. ⚠ The note must name
+         * a class that EXISTS in this repository's population and say why it does not delegate; a
+         * note naming an absent class excuses the row against nothing and the guard silently stops
+         * guarding the method. Re-derived 2026-09-08.
          */
         NOT_YET_ENFORCED
     }
@@ -345,17 +379,16 @@ class MetadataProviderDecoratorDelegationGuardTest
      * <p>
      * ⛔ The {@link Why#NOT_YET_ENFORCED} block is a <b>known, measured gap</b>, not a safety
      * argument: those defaults all return a constant "unknown", exactly like a capability method.
-     * ⚠⚠ Every note must be re-measured against <b>this</b> repository's population and must name a
-     * class that exists in it — the ledger is <b>never</b> copied from another repo. Three rows
-     * here were, and excused themselves with {@code CompositeMetadataProvider}, which lives with
-     * the rule corpus in {@code cumba-oss-corej-rules} and is outside {@link #SCAN_ROOTS}: two of
-     * them (2026-09-08) were guarding nothing and have been promoted to
-     * {@link #CAPABILITY_METHODS}. The measurement behind each surviving note was taken over the
-     * <b>two</b> decorators in this tree ({@code CompanionDomainsProvider},
-     * {@code DefineXmlMetadataProvider}) on 2026-09-08. All of it is now one shape —
-     * {@code DefineXmlMetadataProvider} not passing the Library-flavoured accessors on to its
-     * optional {@code fallback} — which is a design question for that class's owner, not something
-     * to settle from inside a test.
+     * Every note below was re-derived on 2026-09-08 against the <b>two</b> decorators in this tree,
+     * from whether the class declares a forwarding {@code @Override} — not carried over from the
+     * monorepo's four-decorator measurement, which is how two rows came to be excused by a class
+     * that does not exist here. Every surviving row is now one shape:
+     * {@code DefineXmlMetadataProvider} declaring no override at all and so not passing the
+     * Library-flavoured accessors on to its optional {@code fallback}, while
+     * {@code CompanionDomainsProvider} delegates all of them. Several of those fallbacks
+     * ({@code MetadataLibraryProvider}) really do implement the accessor, so these are live gaps —
+     * but closing one means changing that class, which is a design question for its owner and not
+     * something to settle from inside a test.
      * </p>
      */
     private static final List<InheritableDefault> INHERITABLE_DEFAULTS = List.of(//
@@ -375,9 +408,11 @@ class MetadataProviderDecoratorDelegationGuardTest
             inheritable("getDatasetClass(String)", Why.NOT_YET_ENFORCED,
                     "not delegated by DefineXmlMetadataProvider"),
             inheritable("getCodelistCodeMap(String, String)", Why.NOT_YET_ENFORCED,
-                    "not delegated by DefineXmlMetadataProvider (the row also named "
-                            + "CompositeMetadataProvider, which is not in this repository's "
-                            + "scanned population; re-derived from the source)"),
+                    "not delegated by DefineXmlMetadataProvider, which declares no override at "
+                            + "all; CompanionDomainsProvider DOES delegate it. A LIVE gap: "
+                            + "MetadataLibraryProvider implements it, so a define provider built "
+                            + "over a library fallback answers Map.of() while the fallback "
+                            + "beneath it holds the map"),
             inheritable("getStandardVariableNames()", Why.NOT_YET_ENFORCED,
                     "not delegated by DefineXmlMetadataProvider"),
             inheritable("getStandardDatasetNames()", Why.NOT_YET_ENFORCED,

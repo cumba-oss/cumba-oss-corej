@@ -205,11 +205,27 @@ public record GroupKeyPolicy(boolean keepMissings, Blankness blankness)
         KeyPart MISSING_ERROR = new Missing(MissingValue.MIS_ERROR);
 
         /**
-         * The interned {@link Missing} constant for {@code marker} — never allocates.
+         * The {@link Missing} part for {@code marker}, interned for the three markers the engine
+         * actually meets in rule data.
+         *
+         * <p>
+         * ⚠ The {@code default} arm is not dead code, even where the three interned cases happen to
+         * be the whole enum. {@code net.cumba.datatable}'s {@code MissingValue} carries the SAS
+         * special-missing set — {@code ._} and {@code .A}–{@code .Z} — in its full form, so the
+         * switch is only exhaustive against a reduced one and the remaining markers must still
+         * yield a part rather than fail to compile.
+         * </p>
+         *
+         * <p>
+         * That is safe rather than merely tolerable: {@code Missing} is a record, so equality and
+         * {@code hashCode} are by value and an allocated part compares equal to an interned one.
+         * Only the {@code assertSame} identity that {@code GroupKeyCompositeIdentityTest} asserts
+         * for the three hot markers depends on interning, and those three keep it.
+         * </p>
          *
          * @param marker
          *            the missing-value marker
-         * @return the interned {@code Missing} part
+         * @return the {@code Missing} part for {@code marker}, interned where one exists
          */
         static KeyPart missing(MissingValue marker)
         {
@@ -218,6 +234,7 @@ public record GroupKeyPolicy(boolean keepMissings, Blankness blankness)
             case MIS -> MISSING_MIS;
             case MIS_UNKNOWN -> MISSING_UNKNOWN;
             case MIS_ERROR -> MISSING_ERROR;
+            default -> new Missing(marker);
             };
         }
 
