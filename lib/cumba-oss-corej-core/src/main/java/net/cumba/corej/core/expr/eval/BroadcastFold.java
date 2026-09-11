@@ -351,6 +351,16 @@ public final class BroadcastFold
      * what routed {@code FDA-SD9714} / {@code PMDA-SD9714} per record — one finding per row from a
      * rule minted to report a dataset-wide absence once.
      * </p>
+     * <p>
+     * ⛔ <b>Every member must accept exactly the three argument shapes
+     * {@link #isBroadcastColumnPredicate} tests for</b> — the {@code varname()} cursor, an
+     * {@code Expr.Ref}, or a string {@code Expr.Lit}. That guard is written for {@code var_is_null}
+     * specifically, including its arity of 1. A member with a different surface (an arity-0 form,
+     * say) would be rejected by the guard in {@link DomainScan} and the corpus lint while still
+     * short-circuiting {@code RuleClassifier.nonDatasetReason}, which keys on the NAME alone — i.e.
+     * half-registered and split-brained, the exact failure this set exists to prevent. Such a
+     * member needs its own guard, not an entry here.
+     * </p>
      */
     public static final Set<String> BROADCAST_COLUMN_PREDICATES = Set.of("var_is_null");
 

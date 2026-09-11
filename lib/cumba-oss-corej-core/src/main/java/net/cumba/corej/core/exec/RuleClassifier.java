@@ -190,6 +190,15 @@ public final class RuleClassifier
      * &sect;4.4): the membership list lives in {@link BroadcastFold#WHOLE_COLUMN_VERDICT_OPERATORS}
      * so the operator-leaf view here and the raised-expression view there cannot drift apart.
      * </p>
+     * <p>
+     * ⚠ <b>This view is keyed on the operator NAME alone</b>, while {@link DomainScan} and the
+     * corpus mixed-granularity lint go through {@code BroadcastFold.isBroadcastColumnPredicate},
+     * which also tests the argument shape. An {@code Atom} carries no {@code Expr} tree, so there
+     * is nothing here to inspect. For a shape the guard excludes the three views therefore disagree
+     * by construction — but no such rule can execute: {@code ExprCompiler.compileVarIsNull} throws
+     * {@code unsupported} for exactly those shapes, so the disagreement is unreachable rather than
+     * benign. Stated because the premise of the shared set is that these views cannot drift.
+     * </p>
      */
     private static final Set<String> BROADCAST_OPERATORS = BroadcastFold.WHOLE_COLUMN_VERDICT_OPERATORS;
 
