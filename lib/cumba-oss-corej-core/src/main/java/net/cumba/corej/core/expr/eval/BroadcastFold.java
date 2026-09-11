@@ -325,6 +325,71 @@ public final class BroadcastFold
         return WHOLE_COLUMN_VERDICT_OPERATORS.contains(c.name());
     }
 
+    /**
+     * Predicates whose verdict is one dataset-wide fact about a <b>named column</b>, even though
+     * the operand is spelled as an ordinary column reference.
+     *
+     * <p>
+     * Deliberately <em>distinct</em> from {@link #WHOLE_COLUMN_VERDICT_OPERATORS}: those reduce
+     * over the column's distinct <em>values</em> and that is what their javadoc promises, while
+     * these answer a question about the column <em>itself</em>. Widening that set instead would
+     * have made its own documentation false, and a set whose documentation has stopped describing
+     * its members is how the next omission happens.
+     * </p>
+     *
+     * <p>
+     * Grounded in {@code ExprCompiler.compileVarIsNull}, which is documented <em>and
+     * implemented</em> as broadcast-constant: it computes one boolean and paints it over the whole
+     * row range.
+     * </p>
+     *
+     * <p>
+     * <b>Single source</b> with the operator-leaf view in {@code RuleClassifier.nonDatasetReason}
+     * and the raised-expression views in {@link DomainScan} and the corpus mixed-granularity lint,
+     * exactly as {@link #WHOLE_COLUMN_VERDICT_OPERATORS} is: adding an operator here is the only
+     * place it needs adding. {@code var_is_null} being registered in <em>none</em> of these sets is
+     * what routed {@code FDA-SD9714} / {@code PMDA-SD9714} per record — one finding per row from a
+     * rule minted to report a dataset-wide absence once.
+     * </p>
+     */
+    public static final Set<String> BROADCAST_COLUMN_PREDICATES = Set.of("var_is_null");
+
+    /**
+     * Whether {@code c} is a {@linkplain #BROADCAST_COLUMN_PREDICATES broadcast column predicate}
+     * in one of the argument shapes that actually compiles.
+     *
+     * <p>
+     * &#9888; The shape check is <b>not</b> decoration. Callers hand an accepted call to
+     * {@code DomainScan.existsCall}, which ends in {@code (String) ((Expr.Lit) arg).value()} and
+     * casts blind; a name-and-arity-only guard would therefore hand it
+     * {@code var_is_null(upper(X))} or {@code var_is_null(3)} and throw {@link ClassCastException}
+     * on a path {@code DomainScan.infer} runs at <em>load</em>, for every rule. The accepted set is
+     * exactly {@code ExprCompiler.compileVarIsNull}'s: the current-variable cursor, a plain column
+     * reference, or a string literal. Anything else keeps falling through to the generic operand
+     * scan, which answers without throwing.
+     * </p>
+     *
+     * <p>
+     * {@link #isExistsCall}'s guard cannot be reused here: it rejects the {@code varname()}
+     * {@link Expr.Call} form, which {@code compileVarIsNull} accepts and {@code FDA-SD1078} uses.
+     * </p>
+     *
+     * @param c
+     *            the call to test
+     * @return whether it is a broadcast column predicate in a compilable argument shape
+     */
+    public static boolean isBroadcastColumnPredicate(Expr.Call c)
+    {
+        if (!BROADCAST_COLUMN_PREDICATES.contains(c.name()) || c.args().size() != 1
+                || !c.kwargs().isEmpty())
+        {
+            return false;
+        }
+        Expr arg = c.args().get(0);
+        return ExprCompiler.isCurrentVariableName(arg) || arg instanceof Expr.Ref
+                || (arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING);
+    }
+
 
     /**
      * Whether {@code c} is a §9.C library skip-gate call — {@code library_available()} (arity 0) or

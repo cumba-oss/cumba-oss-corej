@@ -169,6 +169,75 @@ class DomainScanTest
     }
 
 
+    /**
+     * {@code var_is_null} is a {@linkplain BroadcastFold#BROADCAST_COLUMN_PREDICATES broadcast
+     * column predicate}: {@code ExprCompiler.compileVarIsNull} computes one boolean and paints it
+     * over every row, so its named-column argument must not demand the row cursor.
+     *
+     * <p>
+     * Registered 2026-09-11. Until then the call matched none of the {@link DomainScan#call}
+     * branches, fell through to the generic operand scan, and {@code FDA-SD9714}
+     * ({@code not var_is_null(--ORRES) and not var_exists("--ORRESU")}) inferred {@code {ROW}} —
+     * one finding per record from a rule minted to report a dataset-wide absence once.
+     * </p>
+     */
+    @Test
+    void varIsNullIsABroadcastColumnPredicate()
+    {
+        // The evidence case: a bare column reference inferred {ROW} before registration.
+        assertEquals(Domain.DATASET, infer("var_is_null(--ORRES)"));
+        assertEquals(Domain.DATASET, infer("var_is_null(AEORRES)"));
+        // The defect in full: SD9714's own Check.
+        assertEquals(Domain.DATASET,
+                infer("not var_is_null(--ORRES) and not var_exists(\"--ORRESU\")"));
+        // A pin, not evidence: the string-literal form already reached DATASET through
+        // DomainScan.literal() before registration, so its green says nothing about the fix.
+        assertEquals(Domain.DATASET, infer("var_is_null(\"AEORRES\")"));
+        // The cursor form must keep its per-variable answer — one finding per variable is exactly
+        // right for FDA-SD1078 / PMDA-SD1078 / FDA-SD1149 ("every Permissible variable that is
+        // entirely null"), which is why the branch reuses existsCall rather than answering DATASET.
+        assertEquals(Domain.VARIABLE, infer("var_is_null(varname())"));
+        assertEquals(Domain.VARIABLE, infer("var_is_null(variable_name)"));
+        assertEquals(Domain.VARIABLE,
+                infer("varname() in $permissible_variables and var_is_null(varname())"));
+        // A ${...} driver template is a per-row substitution, exactly as for the exists family.
+        // ⚠ This is a CHANGE: the unregistered call used to answer DATASET here. No corpus rule
+        // uses the form, and compileVarIsNull never expands the template, so ROW is both the
+        // consistent and the conservative answer.
+        assertEquals(Domain.ROW, infer("var_is_null(\"AP${APERIOD}SDT\")"));
+    }
+
+
+    /**
+     * The argument shapes {@code ExprCompiler.compileVarIsNull} <em>rejects</em> must keep falling
+     * through to the generic operand scan.
+     *
+     * <p>
+     * &#9888; This is the crash a name-and-arity-only guard would have introduced, not a
+     * hypothetical: {@link DomainScan}'s shared {@code existsCall} helper ends in
+     * {@code (String) ((Expr.Lit) arg).value()} and casts blind, and {@code DomainScan.infer} runs
+     * at <b>load</b> for every rule — so one unguarded shape would have failed the whole corpus
+     * with a {@link ClassCastException}. Both shapes answered without throwing before the change
+     * and must still.
+     * </p>
+     */
+    @Test
+    void unsupportedVarIsNullArgumentShapesStillInferWithoutThrowing()
+    {
+        assertEquals(Domain.ROW, infer("var_is_null(upper(AEORRES))"));
+        assertEquals(Domain.DATASET, infer("var_is_null(3)"));
+        assertEquals(Domain.DATASET, infer("var_is_null(\"A\", \"B\")"));
+        assertFalse(
+                BroadcastFold.isBroadcastColumnPredicate(
+                        (Expr.Call) CheckExpressionParser.parse("var_is_null(3)")),
+                "a numeric literal is not one of compileVarIsNull's three shapes");
+        assertTrue(
+                BroadcastFold.isBroadcastColumnPredicate(
+                        (Expr.Call) CheckExpressionParser.parse("var_is_null(varname())")),
+                "isExistsCall's guard would reject the varname() Call form FDA-SD1078 uses");
+    }
+
+
     @Test
     void domainAlgebra()
     {

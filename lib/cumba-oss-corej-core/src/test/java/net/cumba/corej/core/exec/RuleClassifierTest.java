@@ -311,6 +311,69 @@ class RuleClassifierTest
                             + "\"not_contains_all\",\"value\":\"$ds\"}]}}"));
         }
 
+
+        /**
+         * The {@code FDA-SD9714} / {@code PMDA-SD9714} regression.
+         *
+         * <p>
+         * &#9940; Both leaves are dataset-wide facts, so the conjunction is one verdict per
+         * dataset. Deriving {@code Record} here means the rule emits <b>one finding per record</b>
+         * on every Findings dataset that omits {@code --ORRESU} and carries a non-empty
+         * {@code --ORRES} — and the rule was minted (2026-08-27, {@code Fix #330}) precisely to
+         * <em>replace</em> such a flood with a single "the units variable is missing" finding.
+         * </p>
+         *
+         * <p>
+         * Measured {@code Record}/{@code LIKELY} before {@code var_is_null} was registered in
+         * {@code BroadcastFold.BROADCAST_COLUMN_PREDICATES}, with the rationale
+         * <i>"var_is_null(--ORRES) — --ORRES is a per-record column"</i>: the compiled plan paints
+         * one boolean over every row, but no vocabulary told the classifier so.
+         * </p>
+         */
+        @Test
+        void aBroadcastColumnPredicateBesideAPresenceLeafIsDatasetNotAPerRecordFlood()
+        {
+            RuleClassifier.Derived<Sensitivity> s = RuleClassifier.deriveSensitivity(
+                    rule("{\"Check\":{\"expression\":\"not var_is_null(--ORRES) and not"
+                            + " var_exists(\\\"--ORRESU\\\")\"}}"));
+            assertEquals(Sensitivity.DATASET, s.value(),
+                    () -> "Record here is one finding per record: " + s.rationale());
+            assertEquals(RuleClassifier.Confidence.CERTAIN, s.confidence());
+            assertEquals(Sensitivity.DATASET, sensitivity(leaf("AEORRES", "var_is_null")));
+        }
+
+
+        /**
+         * The three cursor-form {@code var_is_null} rules ({@code FDA-SD1078}, {@code PMDA-SD1078},
+         * {@code FDA-SD1149}) must <b>not</b> move: one finding per variable is exactly right for
+         * <i>"every Permissible variable that is entirely null"</i>.
+         *
+         * <p>
+         * {@code nonDatasetReason} keys on the operator name alone, so the new short-circuit
+         * silences the {@code var_is_null} leaf for these rules too — but
+         * {@link RuleClassifier#deriveSensitivity} scans <em>every</em> leaf, and the sibling
+         * {@code varname() in $…} leaf lowers to {@code is_contained_by(variable_name)}, which
+         * classifies {@code VARIABLE_META} and yields a reason on its own. That leaf is first in
+         * document order, so even the rationale string is unchanged — pinned verbatim below against
+         * the value measured before the change.
+         * </p>
+         */
+        @Test
+        void theCursorFormVarIsNullRulesKeepTheirRecordDerivationAndRationale()
+        {
+            RuleClassifier.Derived<Sensitivity> s = RuleClassifier
+                    .deriveSensitivity(rule("{\"Operations\":[{\"id\":\"$permissible_variables\","
+                            + "\"expression\":\"get_dataset_filtered_variables(key_name=\\\"core\\\","
+                            + " key_value=\\\"Perm\\\")\"}],\"Check\":{\"expression\":\"varname() in"
+                            + " $permissible_variables and var_is_null(varname())\"}}"));
+            assertEquals(Sensitivity.RECORD, s.value());
+            assertEquals(RuleClassifier.Confidence.LIKELY, s.confidence());
+            assertEquals(
+                    "is_contained_by(variable_name) — variable_name is variable-level metadata,"
+                            + " evaluated once per variable rather than yielding a single dataset verdict",
+                    s.rationale());
+        }
+
     }
 
 

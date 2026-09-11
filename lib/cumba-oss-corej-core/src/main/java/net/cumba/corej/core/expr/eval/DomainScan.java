@@ -184,6 +184,14 @@ public final class DomainScan
         {
             return existsCall(c);
         }
+        if (BroadcastFold.isBroadcastColumnPredicate(c))
+        {
+            // One dataset-wide verdict about a NAMED column (ExprCompiler.compileVarIsNull paints
+            // a single boolean over every row), so the argument's ROW cursor demand is absorbed —
+            // but the argument analysis is shared with the exists family, so the cursor form keeps
+            // its per-variable answer and a ${...} driver template stays per row.
+            return existsCall(c);
+        }
         if (BroadcastFold.isWholeColumnVerdictCall(c))
         {
             // One dataset fact per column: the ROW cursor demand of its operands is absorbed
@@ -236,6 +244,13 @@ public final class DomainScan
      * A presence fact is a dataset-level fact — unless it names the cursor variable
      * ({@code var_exists(varname())}, the §3.7 universe discriminator) or carries a {@code ${...}}
      * per-row driver template (Fix #37: a row read).
+     *
+     * <p>
+     * Also serves the {@linkplain BroadcastFold#BROADCAST_COLUMN_PREDICATES broadcast column
+     * predicates}, which take the same three argument shapes and want the same three answers. It
+     * casts the literal blind, so every caller must first have narrowed the argument to a reference
+     * or a string literal.
+     * </p>
      */
     private static Domain existsCall(Expr.Call c)
     {

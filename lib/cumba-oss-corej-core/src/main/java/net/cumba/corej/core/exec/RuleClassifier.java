@@ -194,6 +194,30 @@ public final class RuleClassifier
     private static final Set<String> BROADCAST_OPERATORS = BroadcastFold.WHOLE_COLUMN_VERDICT_OPERATORS;
 
     /**
+     * Predicates whose verdict is one dataset-wide fact about a <b>named</b> column, even though
+     * the operand is spelled as an ordinary column reference — {@code var_is_null}, whose compiled
+     * plan ({@code ExprCompiler.compileVarIsNull}) computes a single boolean and paints it over
+     * every row.
+     *
+     * <p>
+     * <b>Single source</b>, for the same reason as {@link #BROADCAST_OPERATORS}: the membership
+     * list lives in {@link BroadcastFold#BROADCAST_COLUMN_PREDICATES} so this operator-leaf view
+     * and the raised-expression views ({@code DomainScan}, the corpus mixed-granularity lint)
+     * cannot drift apart. {@code var_is_null} was in none of these sets until 2026-09-11, which is
+     * why {@code FDA-SD9714} / {@code PMDA-SD9714} — minted to report a dataset-wide absence
+     * <em>once</em> — derived {@code Record} and emitted one finding per record.
+     * </p>
+     *
+     * <p>
+     * Keying on the operator name alone is correct here and does <em>not</em> move the cursor-form
+     * rules ({@code FDA-SD1078}, {@code PMDA-SD1078}, {@code FDA-SD1149}): their other leaf,
+     * {@code varname() in $…}, lowers to {@code is_contained_by(variable_name)} and yields a
+     * non-dataset reason on its own, and {@link #deriveSensitivity} scans every leaf.
+     * </p>
+     */
+    private static final Set<String> BROADCAST_COLUMN_PREDICATES = BroadcastFold.BROADCAST_COLUMN_PREDICATES;
+
+    /**
      * Columns whose value is constant within a dataset, so a check on them yields one verdict per
      * dataset rather than per record. {@code DOMAIN} is already special-cased by
      * {@code OperationExecutor.domainPrefix}.
@@ -1127,7 +1151,8 @@ public final class RuleClassifier
         Atom atom = p.atom();
         String operator = atom.operator();
         if (operator != null && (DATASET_PRESENCE.contains(operator)
-                || VARIABLE_PRESENCE.contains(operator) || BROADCAST_OPERATORS.contains(operator)))
+                || VARIABLE_PRESENCE.contains(operator) || BROADCAST_OPERATORS.contains(operator)
+                || BROADCAST_COLUMN_PREDICATES.contains(operator)))
         {
             return null;
         }
