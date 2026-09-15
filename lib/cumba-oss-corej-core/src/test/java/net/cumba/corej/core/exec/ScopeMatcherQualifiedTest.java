@@ -476,6 +476,13 @@ class ScopeMatcherQualifiedTest
         assertNotNull(reason, "SKIP: neither entry is satisfied, so the leg is unmet");
         assertTrue(reason.contains("could not be decided"),
                 "and it reports the undecidable entry, not absence: " + reason);
+        // ⚠ Added by review finding 1 (2026-09-10). `All` and `Any` share one entry matcher, which
+        // hard-coded the facet label "All" — so this assertion passed on a message that named a
+        // facet the rule does not declare, and the sibling None test checking its own label made
+        // the gap look deliberate. Assert the label, not just the phrase.
+        assertTrue(reason.contains("Requirements.Variables.Any"),
+                "⛔ and it must name the facet the author actually wrote: " + reason);
+        assertFalse(reason.contains("Variables.All"), "⛔ never the other leg's label: " + reason);
     }
 
 

@@ -784,7 +784,8 @@ public final class ScopeMatcher
         {
             for (String varName : all)
             {
-                String reason = describeIncludeEntry(varName, meta, domainPrefix, foreign, policy);
+                String reason = describeIncludeEntry(varName, meta, domainPrefix, foreign, policy,
+                        "All");
                 if (reason != null)
                 {
                     return reason;
@@ -860,7 +861,8 @@ public final class ScopeMatcher
         String undecidable = null;
         for (String varName : any)
         {
-            String reason = describeIncludeEntry(varName, meta, domainPrefix, foreign, policy);
+            String reason = describeIncludeEntry(varName, meta, domainPrefix, foreign, policy,
+                    "Any");
             if (reason == null)
             {
                 return null; // short-circuit: one present entry satisfies the whole leg
@@ -965,10 +967,17 @@ public final class ScopeMatcher
      * Include leg for one entry: {@code null} when the entry is satisfied, otherwise the mismatch
      * description. Splits the qualified case off first; the unqualified path is byte-for-byte the
      * pre-Fix-#124 logic.
+     *
+     * <p>
+     * ⚠ {@code facet} names the CALLER's facet ({@code All} or {@code Any}) and appears in every
+     * message built here. {@code All} and {@code Any} deliberately share one matcher so they can
+     * never disagree about what "present" means — but that also means the leg cannot be inferred
+     * inside it, and a hard-coded label is wrong half the time.
+     * </p>
      */
     private static @Nullable String describeIncludeEntry(String varName, DataTableMeta meta,
             @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign,
-            QualifiedEntryPolicy policy)
+            QualifiedEntryPolicy policy, String facet)
     {
         ScopeVariableEntry entry = ScopeVariableEntry.parse(varName);
         String qualifier = entry.qualifier();
@@ -976,8 +985,12 @@ public final class ScopeMatcher
         {
             if (foreign == null)
             {
+                // ⚠ The facet comes from the CALLER, never from this method. `All` and `Any`
+                // share this matcher, and describeAnyLeg propagates the string it returns as the
+                // leg's own answer — so a hard-coded "All" made an `Any` rule report a facet it
+                // does not declare. Review finding 1, 2026-09-10.
                 return policy == QualifiedEntryPolicy.SKIP
-                        ? undecidableQualifiedReason("All", varName)
+                        ? undecidableQualifiedReason(facet, varName)
                         : null;
             }
             // Name the RESOLVED dataset in every message (SUPP-- -> SUPPAE), so the reader is
@@ -997,23 +1010,23 @@ public final class ScopeMatcher
                 {
                     return null;
                 }
-                return "Requirements.Variables.All variable " + varName + " not present — dataset "
-                        + dataset + " not available";
+                return "Requirements.Variables." + facet + " variable " + varName
+                        + " not present — dataset " + dataset + " not available";
             }
             Pattern pattern = scopeEntryPattern(entry.variable());
             if (pattern != null)
             {
                 if (firstColumnMatching(metas, pattern) == null)
                 {
-                    return "no variable matching Requirements.Variables.All entry " + varName
-                            + " present in dataset " + dataset;
+                    return "no variable matching Requirements.Variables." + facet + " entry "
+                            + varName + " present in dataset " + dataset;
                 }
             }
             else if (!anyHasColumn(metas, entry.variable())
                     && !foreign.existsViaSuppQnam(qualifier, entry.variable()))
             {
-                return "Requirements.Variables.All variable " + varName + " not present in dataset "
-                        + dataset;
+                return "Requirements.Variables." + facet + " variable " + varName
+                        + " not present in dataset " + dataset;
             }
             return null;
         }
@@ -1024,14 +1037,14 @@ public final class ScopeMatcher
             if (firstColumnMatching(meta, pattern) == null)
             {
                 // no dataset variable matches the required pattern
-                return "no variable matching Requirements.Variables.All entry "
+                return "no variable matching Requirements.Variables." + facet + " entry "
                         + entryLabel(varName, resolved) + " present in dataset";
             }
         }
         else if (meta.getColumnIndex(resolved) < 0)
         {
             // required variable missing
-            return "Requirements.Variables.All variable " + entryLabel(varName, resolved)
+            return "Requirements.Variables." + facet + " variable " + entryLabel(varName, resolved)
                     + " not present in dataset";
         }
         return null;

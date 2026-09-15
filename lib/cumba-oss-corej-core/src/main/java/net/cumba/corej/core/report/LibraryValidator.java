@@ -1216,7 +1216,15 @@ public final class LibraryValidator
 
         // Fire the runtime listener for every input rule that the generator filtered out by
         // scope. The runtime report becomes a complete audit: one entry per (input rule × dataset)
-        // tuple, executed or otherwise. statusMessage carries the skip reason for diagnostics.
+        // tuple, executed or otherwise.
+        //
+        // ⚠ Corrected 2026-09-10: the sentence here used to claim "statusMessage carries the skip
+        // reason for diagnostics". RuntimeEntry HAS no statusMessage — it never did — so a reader
+        // chasing a SKIPPED entry's reason through this listener finds nothing. The reason is not
+        // lost: it travels on the per-dataset channel as DatasetExecutionSummary.RuleExecution's
+        // `reason` (built from SkippedSourceRule.reason() a few hundred lines above), which is what
+        // the report actually renders. Only this diagnostics hook is reason-less, and widening the
+        // record is a public-API change that is not this plan's to make.
         if (runtimeListener != null && !pkg.getSkippedSourceRules().isEmpty())
         {
             for (SkippedSourceRule skipped : pkg.getSkippedSourceRules())

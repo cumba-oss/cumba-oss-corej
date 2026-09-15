@@ -527,17 +527,30 @@ public class RuleGenerator
                     memberName, nullClassSkipCount, domName);
         }
 
-        // Fix #124: the companion discoverability WARN for qualified Scope.Variables entries that
-        // could not be decided. Same shape and rationale as the Fix #41 log above: a rule whose
-        // cross-dataset gate is silently ignored would otherwise leave no trace at all, since the
-        // rule simply runs as if it had no such entry.
+        // Fix #124: the companion discoverability WARN for qualified Requirements.Variables entries
+        // that could not be decided. Same shape and rationale as the Fix #41 log above: a rule
+        // whose
+        // cross-dataset gate does not apply would otherwise leave no trace, since the rule simply
+        // runs as if it had no such entry.
+        //
+        // ⭐⭐ NARROWED 2026-09-10 by the SKIP policy, and the narrowing is the point of the WARN's
+        // new wording. The counter's guard is `scopeReason == null`, so a rule counted here RAN. An
+        // undecidable entry in `All` or `None` now makes `scopeReason` non-null — the rule is
+        // skipped and visible in `skippedSourceRules` — so it can no longer be counted here at all.
+        // What remains is exactly the `Any`-leg residual: every qualified entry undecided, yet an
+        // unqualified sibling satisfied the leg, so the rule ran with its cross-dataset gate
+        // inapplicable. Zero corpus carriers today (no `Any` rule authors a qualified entry), which
+        // is why the count is expected to be 0 and why a non-zero one is worth a WARN.
+        // ⛔ Do not "simplify" this away as dead code: it becomes live the day an `Any` rule authors
+        // a qualified entry, which is precisely the shape nothing else in the stack would report.
         if (ignoredQualifiedScopeCount > 0)
         {
             String memberName = meta.getName() != null ? meta.getName() : domName;
             LOGGER.log(System.Logger.Level.WARNING,
-                    "Dataset {0}: {1} rule(s) carry a qualified Scope.Variables entry but the "
-                            + "dataset resolver cannot enumerate other datasets — those entries "
-                            + "were ignored and the rules ran unguarded.",
+                    "Dataset {0}: {1} rule(s) ran with a qualified Requirements.Variables.Any entry "
+                            + "that could not be decided — the dataset resolver cannot enumerate "
+                            + "other datasets, and an unqualified sibling satisfied the leg, so the "
+                            + "cross-dataset gate did not apply.",
                     memberName, ignoredQualifiedScopeCount);
         }
 
@@ -2510,8 +2523,9 @@ public class RuleGenerator
             return reason;
         }
         // Fix #124: `scopeForeign` lets a qualified entry (DM.ARM) be decided against the foreign
-        // dataset. It is null when this generator has no inventory-capable resolver, in which case
-        // qualified entries are ignored and the caller emits a one-time WARN.
+        // dataset. It is null when this generator has no inventory-capable resolver — and since
+        // 2026-09-10 that is a SKIP, not an ignore (see the policy argument below). The one-time
+        // WARN the caller emits therefore now covers only the `Any`-leg residual; its text says so.
         // ⭐ SKIP mirrors RuleRunner's own gate (owner ruling 2026-09-10, disposition (b) of
         // plans/PLAN-qualified-requirements-cross-standard.md §8.4). The two gates evaluate the
         // SAME predicate at two moments, so a split policy between them would be drift by

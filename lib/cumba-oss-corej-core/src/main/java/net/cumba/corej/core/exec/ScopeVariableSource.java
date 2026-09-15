@@ -35,10 +35,19 @@ import org.jspecify.annotations.Nullable;
  *
  * <h2>Evaluability</h2> Only an inventory-capable resolver can answer a qualified entry: without an
  * inventory there is no way to distinguish "the dataset is genuinely absent" from "this resolver
- * cannot see other datasets" (the {@code RuleEditorService} plain-{@code .cdt} preview supplies a
- * non-null resolver that resolves nothing). {@link #of} therefore returns {@code null} for anything
- * that is not a {@link DatasetResolver.WithInventory}, and callers treat a {@code null} source as
- * "ignore qualified entries" plus a one-time WARN.
+ * cannot see other datasets" (a plain-{@code .cdt} preview supplies a non-null resolver that
+ * resolves nothing). {@link #of} therefore returns {@code null} for anything that is not a
+ * {@link DatasetResolver.WithInventory}.
+ *
+ * <p>
+ * ⭐ <b>What a {@code null} source MEANS changed on 2026-09-10</b> (owner ruling, disposition (b) of
+ * {@code <meta>/plans/PLAN-qualified-requirements-cross-standard.md} §8.4). It used to mean "ignore
+ * qualified entries" plus a one-time WARN — which left a rule whose {@code Check}-side guard had
+ * been hoisted into {@code Requirements} running with nothing in its place. Production callers now
+ * pass {@link ScopeMatcher.QualifiedEntryPolicy#SKIP}: an undecidable entry skips the rule with a
+ * reason naming the <em>resolver</em>, not the dataset. The WARN survives only for the {@code Any}
+ * leg, where an unqualified sibling can still satisfy the leg on its own.
+ * </p>
  *
  * <h2>Threading</h2> The production path validates cohorts in parallel, so both memos are
  * {@link ConcurrentHashMap}s. An instance is scoped to one primary dataset (the {@code --}

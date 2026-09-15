@@ -547,9 +547,14 @@ public final class RuleRunner
             scopeForeign = ScopeVariableSource.of(resolver, table);
             if (scopeForeign == null)
             {
+                // ⚠ Text corrected 2026-09-10 with the SKIP policy below: the entry is no longer
+                // "ignored". It cannot be DECIDED, and an All/None entry therefore skips the rule
+                // a few lines down with a reason naming the resolver. The one case that still runs
+                // is an `Any` leg satisfied by an unqualified sibling, which is why this stays a
+                // log rather than becoming dead code.
                 LOGGER.log(System.Logger.Level.DEBUG,
-                        "[{0}] qualified Scope.Variables entry ignored — the dataset resolver"
-                                + " cannot enumerate other datasets",
+                        "[{0}] qualified Requirements.Variables entry cannot be decided — the"
+                                + " dataset resolver cannot enumerate other datasets",
                         ruleId != null ? ruleId : "?");
             }
         }
