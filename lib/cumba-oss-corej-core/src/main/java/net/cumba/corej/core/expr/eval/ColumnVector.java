@@ -12,13 +12,20 @@ import org.jspecify.annotations.Nullable;
  * there is no extra boxing beyond what the datatable API already imposes (feasibility review Item
  * 4: the public datatable API exposes no primitive bulk accessor).
  *
+ * @param name
+ *            the resolved column name this vector was built for, or {@code null} when the read is
+ *            not an authored column reference (the {@code value()} cursor of a per-variable rule).
+ *            {@link ColumnTypeGate} gates only <em>named</em> column vectors (§10 F9), and uses the
+ *            name in its mismatch message
  * @param column
  *            the resolved primary-table column
  * @param declaredType
  *            the column's declared value type (from {@code DataTableMeta}), used for the
- *            compile-time operand-homogeneity check and the polymorphic date dispatch
+ *            compile-time operand-homogeneity check, the polymorphic date dispatch and the
+ *            column-type mismatch gate
  */
-public record ColumnVector(IDataTableColumn column, DataValueType declaredType) implements Vector
+public record ColumnVector(@Nullable String name, IDataTableColumn column,
+        DataValueType declaredType) implements Vector
 {
 
     @Override

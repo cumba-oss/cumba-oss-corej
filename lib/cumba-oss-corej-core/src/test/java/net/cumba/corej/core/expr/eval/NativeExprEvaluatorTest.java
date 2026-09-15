@@ -87,7 +87,10 @@ class NativeExprEvaluatorTest
     {
         // C1 drop-ins compile in expression position: abs(value fn) under a comparison, between
         // (boolean fn) as a top-level call.
-        IDataTable t = MockTable.of().col("X", "-5", "2", "10").build();
+        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
+        // declare a numeric column. Do not put this back to col(...) with digit strings.
+        IDataTable t = MockTable.of().colLong("X", -5L, 2L, 10L).build();
         assertEquals(bits(0, 2),
                 NativeExprEvaluator.evaluate(bin(BinOp.GT, call("abs", ref("X")), num(3)), ctx(t)),
                 "abs(X) > 3");
@@ -296,8 +299,11 @@ class NativeExprEvaluatorTest
         // Phase 4b: X != A / B evaluates natively via ArithmeticSemantics and equals the legacy
         // not_equal_to_divide. row0 2==10/5 ok; row1 4!=10/2 violation; row2 div-by-zero skipped;
         // row3 missing name skipped.
-        IDataTable t = MockTable.of().col("R2BASE", "2", "4", "1", "")
-                .col("AVAL", "10", "10", "5", "10").col("BASE", "5", "2", "0", "5").build();
+        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
+        // declare a numeric column. Do not put this back to col(...) with digit strings.
+        IDataTable t = MockTable.of().colLong("R2BASE", 2L, 4L, 1L, null)
+                .colLong("AVAL", 10L, 10L, 5L, 10L).colLong("BASE", 5L, 2L, 0L, 5L).build();
         CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("R2BASE")
                 .operator("not_equal_to_divide")
                 .value(MAPPER.createArrayNode().add("AVAL").add("BASE")).build();
@@ -369,15 +375,18 @@ class NativeExprEvaluatorTest
     {
         // Phase 9b (D2): an all-numeric list literal runs numerically. A "10.0" / "10" / "010" cell
         // all match the member 10; "15" / blank / "x" do not. Subsumes B1 ("3.0" vs 3).
+        // R3 (PLAN-column-type-conformance): a raw Char probe against a numeric list is a rule
+        // defect and errors (ColumnTypeGateTest pins that); the authored form is num(DOSE), whose
+        // conversion parses the probe per cell with the same verdicts this test always pinned.
         IDataTable t = MockTable.of().col("DOSE", "10.0", "10", "010", "20", "15", "", "x").build();
-        Expr in = bin(BinOp.IN, ref("DOSE"), list(num(10), num(20), num(30)));
+        Expr in = bin(BinOp.IN, call("num", ref("DOSE")), list(num(10), num(20), num(30)));
         assertEquals(bits(0, 1, 2, 3), NativeExprEvaluator.evaluate(in, ctx(t)),
-                "DOSE in [10,20,30]");
+                "num(DOSE) in [10,20,30]");
         // not in is the exact polarity inverse — a missing / non-numeric probe is NOT a member, so
         // it fires for not_in (rows 4,5,6).
-        Expr notIn = bin(BinOp.NOT_IN, ref("DOSE"), list(num(10), num(20), num(30)));
+        Expr notIn = bin(BinOp.NOT_IN, call("num", ref("DOSE")), list(num(10), num(20), num(30)));
         assertEquals(bits(4, 5, 6), NativeExprEvaluator.evaluate(notIn, ctx(t)),
-                "DOSE not in [10,20,30]");
+                "num(DOSE) not in [10,20,30]");
     }
 
 
@@ -416,12 +425,25 @@ class NativeExprEvaluatorTest
                 .value(MAPPER.valueToTree(List.of(1, 2, 3))).build(), t);
         assertParity(CheckConditionLeaf.builder().name("AESEV").operator("is_not_contained_by")
                 .value(MAPPER.valueToTree(List.of(1, 2, 3))).build(), t);
-        // Same against a STRING-typed column with formatted-numeric cells ("2.0", "03") — numeric
-        // mode parses the probe so they match, and native must equal legacy on every row.
-        assertParity(CheckConditionLeaf.builder().name("AESEVC").operator("is_contained_by")
-                .value(MAPPER.valueToTree(List.of(1, 2, 3))).build(), t);
-        assertParity(CheckConditionLeaf.builder().name("AESEVC").operator("is_not_contained_by")
-                .value(MAPPER.valueToTree(List.of(1, 2, 3))).build(), t);
+        // A STRING-typed column against the same numeric list is the R3 defect shape — since
+        // Phase 3 of PLAN-column-type-conformance it ERRORS (dataset-wide false-positive family;
+        // the authored form is num(AESEVC) in [1,2,3]) instead of silently parsing.
+        assertThrows(ColumnTypeMismatchException.class,
+                () -> NativeExprEvaluator
+                        .evaluate(
+                                CheckToExpr.toExpr(CheckConditionLeaf.builder().name("AESEVC")
+                                        .operator("is_contained_by")
+                                        .value(MAPPER.valueToTree(List.of(1, 2, 3))).build()),
+                                ctx(t)),
+                "Char probe against a numeric list errors (R3/R4)");
+        assertThrows(ColumnTypeMismatchException.class,
+                () -> NativeExprEvaluator
+                        .evaluate(
+                                CheckToExpr.toExpr(CheckConditionLeaf.builder().name("AESEVC")
+                                        .operator("is_not_contained_by")
+                                        .value(MAPPER.valueToTree(List.of(1, 2, 3))).build()),
+                                ctx(t)),
+                "Char probe against a numeric not-in list errors (R3/R4)");
     }
 
 
@@ -968,8 +990,11 @@ class NativeExprEvaluatorTest
     void hasEqualLengthPolymorphicLength()
     {
         // Phase 3: the length operand of has_equal_length / has_not_equal_length is now per-row.
-        // X cells have lengths 5, 3, 0(missing). LENCOL holds a numeric length; SLEN a char "5".
-        IDataTable t = MockTable.of().col("X", "ABCDE", "QWE", "").col("LENCOL", "5", "5", "3")
+        // X cells have lengths 5, 3, 0(missing). LENCOL holds a numeric length — its old
+        // col(...) declaration was a fixture bug (the comments always called it numeric;
+        // PLAN-column-type-conformance Phase 2). SLEN is a char "5", read through num(SLEN)
+        // since the column-type gate reds the raw Char read of a length operand.
+        IDataTable t = MockTable.of().col("X", "ABCDE", "QWE", "").colLong("LENCOL", 5L, 5L, 3L)
                 .col("SLEN", "5", "5", "5").build();
 
         // Numeric literal (regression): has_equal_length(X, 5) — only the length-5 cell fires.
@@ -990,11 +1015,11 @@ class NativeExprEvaluatorTest
                 bits(0), NativeExprEvaluator
                         .evaluate(call("has_equal_length", ref("X"), ref("LENCOL")), ctx(t)),
                 "has_equal_length(X, LENCOL) numeric column per-row");
-        // Per-row char column holding "5": SLEN = ["5","5","5"] → only the length-5 row0 fires.
-        assertEquals(
-                bits(0), NativeExprEvaluator
-                        .evaluate(call("has_equal_length", ref("X"), ref("SLEN")), ctx(t)),
-                "has_equal_length(X, SLEN) char column parses per-row");
+        // Per-row char column holding "5" through num(): only the length-5 row0 fires.
+        assertEquals(bits(0),
+                NativeExprEvaluator.evaluate(
+                        call("has_equal_length", ref("X"), call("num", ref("SLEN"))), ctx(t)),
+                "has_equal_length(X, num(SLEN)) converted char column parses per-row");
 
         // has_not_equal_length polarity = complement on every shape.
         assertEquals(
@@ -1013,10 +1038,10 @@ class NativeExprEvaluatorTest
                 bits(1, 2), NativeExprEvaluator
                         .evaluate(call("has_not_equal_length", ref("X"), ref("LENCOL")), ctx(t)),
                 "has_not_equal_length(X, LENCOL)");
-        assertEquals(
-                bits(1, 2), NativeExprEvaluator
-                        .evaluate(call("has_not_equal_length", ref("X"), ref("SLEN")), ctx(t)),
-                "has_not_equal_length(X, SLEN)");
+        assertEquals(bits(1, 2),
+                NativeExprEvaluator.evaluate(
+                        call("has_not_equal_length", ref("X"), call("num", ref("SLEN"))), ctx(t)),
+                "has_not_equal_length(X, num(SLEN))");
     }
 
 
@@ -1115,7 +1140,10 @@ class NativeExprEvaluatorTest
     {
         // X != ( A / 2 ): the divisor is a numeric literal (Phase 9c). row0 2==4/2 ok;
         // row1 4!=4/2 violation; row2 missing A skipped; row3 missing X skipped.
-        IDataTable t = MockTable.of().col("X", "2", "4", "1", "").col("A", "4", "4", "", "4")
+        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
+        // declare a numeric column. Do not put this back to col(...) with digit strings.
+        IDataTable t = MockTable.of().colLong("X", 2L, 4L, 1L, null).colLong("A", 4L, 4L, null, 4L)
                 .build();
         Expr e = bin(BinOp.NEQ, ref("X"), bin(BinOp.DIV, ref("A"), num(2)));
         assertTrue(NativeExprEvaluator.isSupported(e), "X != ( A / 2 ) supported");
@@ -1128,7 +1156,10 @@ class NativeExprEvaluatorTest
     {
         // X != ( A - 2 ): the subtrahend is a numeric literal (Phase 9c). row0 3==5-2 ok;
         // row1 4!=5-2 violation.
-        IDataTable t = MockTable.of().col("X", "3", "4").col("A", "5", "5").build();
+        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
+        // declare a numeric column. Do not put this back to col(...) with digit strings.
+        IDataTable t = MockTable.of().colLong("X", 3L, 4L).colLong("A", 5L, 5L).build();
         Expr e = bin(BinOp.NEQ, ref("X"), bin(BinOp.SUB, ref("A"), num(2)));
         assertTrue(NativeExprEvaluator.isSupported(e), "X != ( A - 2 ) supported");
         assertEquals(bits(1), NativeExprEvaluator.evaluate(e, ctx(t)), "X != ( A - 2 )");
@@ -1139,8 +1170,11 @@ class NativeExprEvaluatorTest
     void arithmeticNotEqualDivideBothColumnsRegression()
     {
         // Regression: X != ( A / B ) with both operands columns still works (Phase 4b shape).
-        IDataTable t = MockTable.of().col("X", "2", "4").col("A", "10", "10").col("B", "5", "2")
-                .build();
+        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
+        // declare a numeric column. Do not put this back to col(...) with digit strings.
+        IDataTable t = MockTable.of().colLong("X", 2L, 4L).colLong("A", 10L, 10L)
+                .colLong("B", 5L, 2L).build();
         Expr e = bin(BinOp.NEQ, ref("X"), bin(BinOp.DIV, ref("A"), ref("B")));
         assertEquals(bits(1), NativeExprEvaluator.evaluate(e, ctx(t)), "X != ( A / B )");
     }
@@ -1152,8 +1186,11 @@ class NativeExprEvaluatorTest
         // The percent-change shape X != ((A-B)/B)*100 keeps its ref-only structural detection
         // (the divisor and subtrahend must be the same Ref). row0 100==((10-5)/5)*100 ok;
         // row1 50!=((10-5)/5)*100 violation.
-        IDataTable t = MockTable.of().col("X", "100", "50").col("A", "10", "10").col("B", "5", "5")
-                .build();
+        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
+        // declare a numeric column. Do not put this back to col(...) with digit strings.
+        IDataTable t = MockTable.of().colLong("X", 100L, 50L).colLong("A", 10L, 10L)
+                .colLong("B", 5L, 5L).build();
         Expr pctchg = bin(BinOp.MUL, bin(BinOp.DIV, bin(BinOp.SUB, ref("A"), ref("B")), ref("B")),
                 num(100));
         Expr e = bin(BinOp.NEQ, ref("X"), pctchg);
@@ -1261,15 +1298,26 @@ class NativeExprEvaluatorTest
         assertEquals(expected,
                 NativeExprEvaluator.evaluate(bin(BinOp.GT, ref("AGE"), ref("LIMITCOL")), ctx(t)),
                 "AGE > LIMITCOL (numeric column RHS)");
+        // Phase 3 (R3): a RAW character column in an order comparison errors — the authored form
+        // is num(THRESHSTR), whose conversion gives the numeric-column verdict.
+        assertThrows(
+                ColumnTypeMismatchException.class, () -> NativeExprEvaluator
+                        .evaluate(bin(BinOp.GT, ref("AGE"), ref("THRESHSTR")), ctx(t)),
+                "AGE > THRESHSTR (raw Char RHS) errors");
         assertEquals(expected,
-                NativeExprEvaluator.evaluate(bin(BinOp.GT, ref("AGE"), ref("THRESHSTR")), ctx(t)),
-                "AGE > THRESHSTR (character column holding \"0\" RHS)");
+                NativeExprEvaluator
+                        .evaluate(bin(BinOp.GT, ref("AGE"), call("num", ref("THRESHSTR"))), ctx(t)),
+                "AGE > num(THRESHSTR) (converted character column RHS)");
 
-        // LHS shapes: a character column holding a number compares identically to the numeric
-        // column. AGECHAR = ["30","10","20",""] > 0 => rows 0,1,2 (the empty cell is missing).
+        // LHS shapes: num() over a character column holding numbers compares identically to the
+        // numeric column. num(AGECHAR) = [30,10,20,missing] > 0 => rows 0,1,2.
+        assertThrows(ColumnTypeMismatchException.class,
+                () -> NativeExprEvaluator.evaluate(bin(BinOp.GT, ref("AGECHAR"), num(0)), ctx(t)),
+                "AGECHAR > 0 (raw Char LHS) errors");
         assertEquals(expected,
-                NativeExprEvaluator.evaluate(bin(BinOp.GT, ref("AGECHAR"), num(0)), ctx(t)),
-                "AGECHAR > 0 (character LHS parses, same verdict as the numeric column)");
+                NativeExprEvaluator.evaluate(bin(BinOp.GT, call("num", ref("AGECHAR")), num(0)),
+                        ctx(t)),
+                "num(AGECHAR) > 0 (converted LHS, same verdict as the numeric column)");
 
         // <= mirrors the same four RHS shapes (AGE <= 20 => rows 1,2; missing row never fires).
         BitSet le20 = bits(1, 2);
@@ -1301,39 +1349,50 @@ class NativeExprEvaluatorTest
         // between(X, lo, hi) fires where X is numeric and lo <= X <= hi. lo/hi accept a numeric
         // literal, a parsing string literal ("18"/"65"), and per-row columns — all parity. A
         // missing or non-numeric bound never fires.
-        // X = [10, 18, 40, 65, 80, x]; the 18..65 band fires rows 1,2,3.
+        // X = [10, 18, 40, 65, 80, x]; the 18..65 band fires rows 1,2,3. Phase 3 (R3): the Char
+        // subject X reads numerically only through num(X) — the raw read errors (see
+        // ColumnTypeGateTest) — and the "x" cell pins the per-cell soft failure (§4b F1). The
+        // bound COLUMNS are declared Num; a converted Char bound column is asserted as parity too.
         IDataTable t = MockTable.of().col("X", "10", "18", "40", "65", "80", "x")
-                .col("LOCOL", "18", "18", "18", "18", "18", "18")
-                .col("HICOL", "65", "65", "65", "65", "65", "65").build();
+                .colLong("LOCOL", 18L, 18L, 18L, 18L, 18L, 18L)
+                .colLong("HICOL", 65L, 65L, 65L, 65L, 65L, 65L).build();
         BitSet expected = bits(1, 2, 3);
+        Expr x = call("num", ref("X"));
 
         assertEquals(expected,
-                NativeExprEvaluator.evaluate(call("between", ref("X"), num(18), num(65)), ctx(t)),
-                "between(X, 18, 65) numeric literal bounds");
+                NativeExprEvaluator.evaluate(call("between", x, num(18), num(65)), ctx(t)),
+                "between(num(X), 18, 65) numeric literal bounds");
         assertEquals(expected,
-                NativeExprEvaluator.evaluate(call("between", ref("X"), s("18"), s("65")), ctx(t)),
-                "between(X, \"18\", \"65\") string literal bounds that parse");
+                NativeExprEvaluator.evaluate(call("between", x, s("18"), s("65")), ctx(t)),
+                "between(num(X), \"18\", \"65\") string literal bounds that parse");
         assertEquals(
                 expected, NativeExprEvaluator
-                        .evaluate(call("between", ref("X"), ref("LOCOL"), ref("HICOL")), ctx(t)),
-                "between(X, LOCOL, HICOL) per-row column bounds");
+                        .evaluate(call("between", x, ref("LOCOL"), ref("HICOL")), ctx(t)),
+                "between(num(X), LOCOL, HICOL) per-row column bounds");
         // Mixed shapes (literal lo, column hi) still parity.
-        assertEquals(
-                expected, NativeExprEvaluator
-                        .evaluate(call("between", ref("X"), num(18), ref("HICOL")), ctx(t)),
-                "between(X, 18, HICOL) mixed literal/column bounds");
+        assertEquals(expected,
+                NativeExprEvaluator.evaluate(call("between", x, num(18), ref("HICOL")), ctx(t)),
+                "between(num(X), 18, HICOL) mixed literal/column bounds");
+        // A converted Char bound column is parity with the numeric column bound.
+        IDataTable ct = MockTable.of().col("X", "10", "18", "40", "65", "80", "x")
+                .col("LOC", "18", "18", "18", "18", "18", "18")
+                .col("HIC", "65", "65", "65", "65", "65", "65").build();
+        assertEquals(expected,
+                NativeExprEvaluator.evaluate(call("between", call("num", ref("X")),
+                        call("num", ref("LOC")), call("num", ref("HIC"))), ctx(ct)),
+                "between(num(X), num(LOC), num(HIC)) converted char-column bounds");
 
         // A non-numeric bound never fires (the whole predicate yields no rows).
         assertEquals(new BitSet(),
-                NativeExprEvaluator.evaluate(call("between", ref("X"), s("LOW"), num(65)), ctx(t)),
-                "between(X, \"LOW\", 65) non-numeric lo never fires");
+                NativeExprEvaluator.evaluate(call("between", x, s("LOW"), num(65)), ctx(t)),
+                "between(num(X), \"LOW\", 65) non-numeric lo never fires");
         // A missing bound column never fires.
-        IDataTable mt = MockTable.of().col("X", "20", "40").col("LO", "", "").col("HI", "65", "65")
-                .build();
-        assertEquals(
-                new BitSet(), NativeExprEvaluator
-                        .evaluate(call("between", ref("X"), ref("LO"), ref("HI")), ctx(mt)),
-                "between(X, LO, HI) with missing lo never fires");
+        IDataTable mt = MockTable.of().col("X", "20", "40").colLong("LO", (Long) null, null)
+                .colLong("HI", 65L, 65L).build();
+        assertEquals(new BitSet(),
+                NativeExprEvaluator.evaluate(
+                        call("between", call("num", ref("X")), ref("LO"), ref("HI")), ctx(mt)),
+                "between(num(X), LO, HI) with missing lo never fires");
     }
 
 
@@ -1341,8 +1400,9 @@ class NativeExprEvaluatorTest
     void substringPrefixSuffixNumericArgShapesAreSymmetric()
     {
         // substring/prefix/suffix take their start/length/n numeric arg as a numeric literal, a
-        // parsing string literal ("2"), or a per-row column (numeric or character holding a
-        // number) — all parity with the numeric literal. NCOL is numeric 2; SCOL a char "2".
+        // parsing string literal ("2"), or a per-row column — all parity with the numeric
+        // literal. NCOL is numeric 2; SCOL a char "2", which since Phase 3 (R3) must be read
+        // through num(SCOL) — the raw Char read errors (see ColumnTypeGateTest).
         IDataTable t = MockTable.of().col("X", "ABCDE", "QBCDZ").colLong("NCOL", 2L, 2L)
                 .col("SCOL", "2", "2").build();
 
@@ -1361,10 +1421,10 @@ class NativeExprEvaluatorTest
                         ctx(t)),
                 "substring(X, NCOL, 3) numeric-column start parity");
         assertEquals(expected,
-                NativeExprEvaluator.evaluate(
-                        bin(BinOp.EQ, call("substring", ref("X"), ref("SCOL"), num(3)), s("BCD")),
+                NativeExprEvaluator.evaluate(bin(BinOp.EQ,
+                        call("substring", ref("X"), call("num", ref("SCOL")), num(3)), s("BCD")),
                         ctx(t)),
-                "substring(X, SCOL, 3) char-column-holding-number start parity");
+                "substring(X, num(SCOL), 3) converted char-column start parity");
         // length arg as the polymorphic operand too: substring(X, 2, NCOL) length 2 => "BC".
         assertEquals(NativeExprEvaluator.evaluate(
                 bin(BinOp.EQ, call("substring", ref("X"), num(2), num(2)), s("BC")), ctx(t)),
@@ -1387,8 +1447,9 @@ class NativeExprEvaluatorTest
                 "prefix(X, NCOL) numeric-column n parity");
         assertEquals(prefExpected,
                 NativeExprEvaluator.evaluate(
-                        bin(BinOp.EQ, call("prefix", ref("X"), ref("SCOL")), s("AB")), ctx(t)),
-                "prefix(X, SCOL) char-column-holding-number n parity");
+                        bin(BinOp.EQ, call("prefix", ref("X"), call("num", ref("SCOL"))), s("AB")),
+                        ctx(t)),
+                "prefix(X, num(SCOL)) converted char-column n parity");
 
         // suffix(X, 2) == "DE"/"DZ" — n as literal/string-literal/column all parity.
         Expr sufLit = bin(BinOp.EQ, call("suffix", ref("X"), num(2)), s("DE"));
@@ -1404,48 +1465,49 @@ class NativeExprEvaluatorTest
                 "suffix(X, NCOL) numeric-column n parity");
         assertEquals(sufExpected,
                 NativeExprEvaluator.evaluate(
-                        bin(BinOp.EQ, call("suffix", ref("X"), ref("SCOL")), s("DE")), ctx(t)),
-                "suffix(X, SCOL) char-column-holding-number n parity");
+                        bin(BinOp.EQ, call("suffix", ref("X"), call("num", ref("SCOL"))), s("DE")),
+                        ctx(t)),
+                "suffix(X, num(SCOL)) converted char-column n parity");
     }
 
 
     @Test
     void numericValueFunctionsParseCharacterColumn()
     {
-        // abs/round/floor/ceil parse a character column holding "-3.5" to a number, identical to a
-        // numeric column carrying -3.5. abs => 3.5; round(-3.5) => -3 (Math.round half-up to +inf);
-        // floor => -4; ceil => -3.
+        // Phase 3 (R2/R3): abs/round/floor/ceil over a RAW character column error (the gate; see
+        // ColumnTypeGateTest) — the authored numeric read is num(CHARNUM), whose conversion
+        // parses "-3.5" identically to a numeric column carrying -3.5. abs => 3.5; round(-3.5)
+        // => -3 (Math.round half-up to +inf); floor => -4; ceil => -3.
         IDataTable t = MockTable.of().col("CHARNUM", "-3.5").colDouble("NUMCOL", -3.5).build();
 
         for (String fn : List.of("abs", "round", "floor", "ceil"))
         {
-            // Compare the value-function result over the char column against the numeric column by
-            // wrapping each in an equality leaf against the other; equal_to is numeric on declared-
-            // numeric operands, so the parity check is "abs(CHARNUM) == abs(NUMCOL)" => fires row
-            // 0.
-            Expr e = bin(BinOp.EQ, call(fn, ref("CHARNUM")), call(fn, ref("NUMCOL")));
+            // Compare the value-function result over num(char column) against the numeric column
+            // by wrapping each in an equality leaf against the other; equal_to is numeric on
+            // declared-numeric operands, so the parity check is "abs(num(CHARNUM)) ==
+            // abs(NUMCOL)" => fires row 0.
+            Expr e = bin(BinOp.EQ, call(fn, call("num", ref("CHARNUM"))), call(fn, ref("NUMCOL")));
             assertEquals(bits(0), NativeExprEvaluator.evaluate(e, ctx(t)),
-                    fn + "(CHARNUM) == " + fn + "(NUMCOL) — char column parses to the same number");
+                    fn + "(num(CHARNUM)) == " + fn + "(NUMCOL) — the conversion parses the cell");
         }
 
         // Spot-check the concrete folded values via a comparison against a literal: abs => 3.5,
         // floor => -4, ceil => -3, round => -3.
+        Expr charnum = call("num", ref("CHARNUM"));
+        assertEquals(bits(0),
+                NativeExprEvaluator.evaluate(bin(BinOp.EQ, call("abs", charnum), num(3.5)), ctx(t)),
+                "abs(num(\"-3.5\")) == 3.5");
         assertEquals(
                 bits(0), NativeExprEvaluator
-                        .evaluate(bin(BinOp.EQ, call("abs", ref("CHARNUM")), num(3.5)), ctx(t)),
-                "abs(\"-3.5\") == 3.5");
+                        .evaluate(bin(BinOp.EQ, call("floor", charnum), num(-4)), ctx(t)),
+                "floor(num(\"-3.5\")) == -4");
+        assertEquals(bits(0),
+                NativeExprEvaluator.evaluate(bin(BinOp.EQ, call("ceil", charnum), num(-3)), ctx(t)),
+                "ceil(num(\"-3.5\")) == -3");
         assertEquals(
                 bits(0), NativeExprEvaluator
-                        .evaluate(bin(BinOp.EQ, call("floor", ref("CHARNUM")), num(-4)), ctx(t)),
-                "floor(\"-3.5\") == -4");
-        assertEquals(
-                bits(0), NativeExprEvaluator
-                        .evaluate(bin(BinOp.EQ, call("ceil", ref("CHARNUM")), num(-3)), ctx(t)),
-                "ceil(\"-3.5\") == -3");
-        assertEquals(
-                bits(0), NativeExprEvaluator
-                        .evaluate(bin(BinOp.EQ, call("round", ref("CHARNUM")), num(-3)), ctx(t)),
-                "round(\"-3.5\") == -3");
+                        .evaluate(bin(BinOp.EQ, call("round", charnum), num(-3)), ctx(t)),
+                "round(num(\"-3.5\")) == -3");
     }
 
 
@@ -1526,47 +1588,61 @@ class NativeExprEvaluatorTest
         EvaluationContext c = ctx(t);
         assertEquals(bits(0), NativeExprEvaluator.evaluate(bin(BinOp.EQ, ref("AGE"), num(18)), c),
                 "AGE == 18 (numeric literal)");
-        assertEquals(bits(0), NativeExprEvaluator.evaluate(bin(BinOp.EQ, ref("AGE"), s("18")), c),
-                "AGE == \"18\" (string parses)");
-        assertEquals(bits(0), NativeExprEvaluator.evaluate(bin(BinOp.EQ, ref("AGE"), s("18.0")), c),
-                "AGE == \"18.0\" (string parses)");
+        // Phase 3 (R9/R12 — the `TDSTOFF != "0"` family): a QUOTED string literal against a Num
+        // column is a column-type mismatch and ERRORS; the legal authoring is the unquoted
+        // numeric literal. The old "string parses" assertions pinned the pre-gate accident.
+        assertThrows(ColumnTypeMismatchException.class,
+                () -> NativeExprEvaluator.evaluate(bin(BinOp.EQ, ref("AGE"), s("18")), c),
+                "AGE == \"18\" (string literal vs Num column) errors");
+        assertThrows(ColumnTypeMismatchException.class,
+                () -> NativeExprEvaluator.evaluate(bin(BinOp.EQ, ref("AGE"), s("18.0")), c),
+                "AGE == \"18.0\" (string literal vs Num column) errors");
         assertEquals(bits(0),
                 NativeExprEvaluator.evaluate(bin(BinOp.EQ, ref("AGE"), ref("AGE2")), c),
                 "AGE == AGE2 (numeric column)");
         assertEquals(bits(0),
                 NativeExprEvaluator.evaluate(bin(BinOp.EQ, ref("AGE"), ref("WEIGHT")), c),
                 "AGE == WEIGHT (numeric column)");
-        // != is the exact complement on a present cell.
-        assertEquals(new BitSet(),
-                NativeExprEvaluator.evaluate(bin(BinOp.NEQ, ref("AGE"), s("18.0")), c),
-                "AGE != \"18.0\" does not fire");
+        assertThrows(ColumnTypeMismatchException.class,
+                () -> NativeExprEvaluator.evaluate(bin(BinOp.NEQ, ref("AGE"), s("18.0")), c),
+                "AGE != \"18.0\" (string literal vs Num column) errors");
     }
 
 
     @Test
-    void phase8b_numericColumn_nonParseableRhs_foldsTextual()
+    void phase8b_numericColumn_stringLiteralRhs_errors()
     {
-        // Option B: AGE (numeric) == "abc" — the RHS does not parse, so the verdict falls back to
-        // the textual fold ("18" vs "abc"): == false, != fires.
+        // Superseded Option B (PLAN-column-type-conformance R9): AGE (numeric) == "abc" used to
+        // fall back to the textual fold — a verdict that depended on the number's formatting.
+        // Since Phase 3 the mismatch errors, in BOTH polarities, naming both types.
         IDataTable t = MockTable.of().colLong("AGE", 18L).build();
         EvaluationContext c = ctx(t);
-        assertEquals(new BitSet(),
-                NativeExprEvaluator.evaluate(bin(BinOp.EQ, ref("AGE"), s("abc")), c),
-                "AGE == \"abc\" is false (textual)");
-        assertEquals(bits(0), NativeExprEvaluator.evaluate(bin(BinOp.NEQ, ref("AGE"), s("abc")), c),
-                "AGE != \"abc\" fires (textual)");
+        ColumnTypeMismatchException ex = assertThrows(ColumnTypeMismatchException.class,
+                () -> NativeExprEvaluator.evaluate(bin(BinOp.EQ, ref("AGE"), s("abc")), c),
+                "AGE == \"abc\" errors");
+        assertTrue(ex.getMessage().contains("AGE") && ex.getMessage().contains("Num")
+                && ex.getMessage().contains("character"), ex.getMessage());
+        assertThrows(ColumnTypeMismatchException.class,
+                () -> NativeExprEvaluator.evaluate(bin(BinOp.NEQ, ref("AGE"), s("abc")), c),
+                "AGE != \"abc\" errors");
     }
 
 
     @Test
-    void phase8b_characterColumn_numericRhsParsesCell()
+    void phase8b_characterColumn_numericRhs_requiresNum()
     {
-        // AGEC is a CHARACTER column holding "18.0"; the numeric RHS literal 18 triggers numeric
-        // mode (target is a Number), so AGEC == 18 parses the cell → true.
+        // Phase 3 (R3/R4): AGEC is a CHARACTER column holding "18.0"; the raw numeric-literal
+        // comparison is the `--STRESC == 10` defect shape and ERRORS — the authored form is
+        // num(AGEC) == 18, whose conversion parses the cell → true on row 0.
         IDataTable t = MockTable.of().col("AGEC", "18.0", "19").build();
         EvaluationContext c = ctx(t);
-        assertEquals(bits(0), NativeExprEvaluator.evaluate(bin(BinOp.EQ, ref("AGEC"), num(18)), c),
-                "AGEC == 18 (RHS numeric parses char cell)");
+        ColumnTypeMismatchException ex = assertThrows(ColumnTypeMismatchException.class,
+                () -> NativeExprEvaluator.evaluate(bin(BinOp.EQ, ref("AGEC"), num(18)), c),
+                "AGEC == 18 (raw Char vs numeric literal) errors");
+        assertTrue(ex.getMessage().contains("num(AGEC)"), ex.getMessage());
+        assertEquals(bits(0),
+                NativeExprEvaluator.evaluate(bin(BinOp.EQ, call("num", ref("AGEC")), num(18)), c),
+                "num(AGEC) == 18 parses the cell");
     }
 
 

@@ -282,7 +282,10 @@ class OperationExecutorTest
     @Test
     void testMax()
     {
-        IDataTable table = MockTable.of().col("SCORE", "10", "25", "5", "20").build();
+        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
+        // declare a numeric column. Do not put this back to col(...) with digit strings.
+        IDataTable table = MockTable.of().colLong("SCORE", 10L, 25L, 5L, 20L).build();
 
         Operation op = makeOp("$max_score", "max");
         op.setName("SCORE");
@@ -295,7 +298,10 @@ class OperationExecutorTest
     @Test
     void testMax_withMissing()
     {
-        IDataTable table = MockTable.of().col("SCORE", "10", null, "30").build();
+        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
+        // declare a numeric column. Do not put this back to col(...) with digit strings.
+        IDataTable table = MockTable.of().colLong("SCORE", 10L, null, 30L).build();
 
         Operation op = makeOp("$max_score", "max");
         op.setName("SCORE");
@@ -372,7 +378,10 @@ class OperationExecutorTest
     @Test
     void testMax_filter_numeric()
     {
-        IDataTable table = MockTable.of().col("SCORE", "10", "25", "5").col("ABLFL", "Y", "", "Y")
+        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
+        // declare a numeric column. Do not put this back to col(...) with digit strings.
+        IDataTable table = MockTable.of().colLong("SCORE", 10L, 25L, 5L).col("ABLFL", "Y", "", "Y")
                 .build();
 
         Operation op = makeOp("$max_score", "max");
@@ -418,7 +427,10 @@ class OperationExecutorTest
     @Test
     void testMax_filter_prefixWildcard()
     {
-        IDataTable table = MockTable.of().col("SCORE", "5", "50", "7")
+        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
+        // declare a numeric column. Do not put this back to col(...) with digit strings.
+        IDataTable table = MockTable.of().colLong("SCORE", 5L, 50L, 7L)
                 .col("VISIT", "BASELINE 1", "WEEK 2", "BASELINE 2").build();
 
         Operation op = makeOp("$max_score", "max");
@@ -1101,8 +1113,11 @@ class OperationExecutorTest
     @Test
     void testMax_grouped()
     {
+        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
+        // declare a numeric column. Do not put this back to col(...) with digit strings.
         IDataTable table = MockTable.of().col("USUBJID", "S01", "S01", "S02", "S02")
-                .col("SCORE", "10", "30", "20", "5").build();
+                .colLong("SCORE", 10L, 30L, 20L, 5L).build();
 
         Operation op = makeOp("$max_score", "max");
         op.setName("SCORE");

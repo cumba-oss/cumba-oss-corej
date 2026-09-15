@@ -288,7 +288,10 @@ class IndexHelperGroupByPresentTest
     @Test
     void maxGrouped_absentGroupColumn_isTheDatasetWideMaximum()
     {
-        IDataTable t = MockTable.of().col("SEQ", "3", "7", "5").build();
+        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
+        // declare a numeric column. Do not put this back to col(...) with digit strings.
+        IDataTable t = MockTable.of().colLong("SEQ", 3L, 7L, 5L).build();
 
         Operation op = makeOp("$MAX", "max");
         op.setName("SEQ");

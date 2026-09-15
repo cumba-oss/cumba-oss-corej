@@ -72,7 +72,10 @@ class ExprCompilerOperandArithmeticPlansTest
     @Test
     void notEqualToDivideVerdict()
     {
-        IDataTable t = MockTable.of().name("LB").col("X", "2.5", "3", "")
+        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
+        // declare a numeric column. Do not put this back to col(...) with digit strings.
+        IDataTable t = MockTable.of().name("LB").colDouble("X", 2.5, 3.0, null)
                 .colDouble("A", 10.0, 10.0, 10.0).colDouble("B", 4.0, 4.0, 4.0).build();
         EvaluationContext c = EvaluationContext.builder().table(t).build();
         assertEquals(bits(1), eval("X != A / B", c),
@@ -83,7 +86,10 @@ class ExprCompilerOperandArithmeticPlansTest
     @Test
     void notEqualToSubtractVerdict()
     {
-        IDataTable t = MockTable.of().name("LB").col("X", "6", "7", "")
+        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
+        // declare a numeric column. Do not put this back to col(...) with digit strings.
+        IDataTable t = MockTable.of().name("LB").colDouble("X", 6.0, 7.0, null)
                 .colDouble("A", 10.0, 10.0, 10.0).colDouble("B", 4.0, 4.0, 4.0).build();
         EvaluationContext c = EvaluationContext.builder().table(t).build();
         assertEquals(bits(1), eval("X != A - B", c),
@@ -94,7 +100,10 @@ class ExprCompilerOperandArithmeticPlansTest
     @Test
     void notEqualToPercentChangeVerdict()
     {
-        IDataTable t = MockTable.of().name("LB").col("X", "150", "151", "")
+        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
+        // declare a numeric column. Do not put this back to col(...) with digit strings.
+        IDataTable t = MockTable.of().name("LB").colDouble("X", 150.0, 151.0, null)
                 .colDouble("A", 10.0, 10.0, 10.0).colDouble("B", 4.0, 4.0, 4.0).build();
         EvaluationContext c = EvaluationContext.builder().table(t).build();
         assertEquals(bits(1), eval("X != ((A - B) / B) * 100", c),
@@ -105,8 +114,11 @@ class ExprCompilerOperandArithmeticPlansTest
     @Test
     void missingArithmeticOperandNeverFires()
     {
-        IDataTable t = MockTable.of().name("LB").col("X", "9", "9").col("A", "10", "")
-                .col("B", "4", "4").build();
+        // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+        // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
+        // declare a numeric column. Do not put this back to col(...) with digit strings.
+        IDataTable t = MockTable.of().name("LB").colDouble("X", 9.0, 9.0).colDouble("A", 10.0, null)
+                .colDouble("B", 4.0, 4.0).build();
         EvaluationContext c = EvaluationContext.builder().table(t).build();
         assertEquals(bits(0), eval("X != A / B", c),
                 "a missing arithmetic operand makes no decision — only the complete row fires");

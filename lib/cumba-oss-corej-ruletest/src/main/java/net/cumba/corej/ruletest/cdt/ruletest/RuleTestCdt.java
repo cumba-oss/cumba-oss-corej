@@ -186,6 +186,8 @@ public final class RuleTestCdt
         List<String> ctAvailable = null;
         String expectAbort = null;
         int expectAbortLine = -1;
+        String expectErrorMessage = null;
+        int expectErrorMessageLine = -1;
         String expectCtMismatch = null;
         int expectCtMismatchLine = -1;
 
@@ -288,6 +290,16 @@ public final class RuleTestCdt
                 }
                 expectAbort = parseSingleValuePayload(tokens, "#expect-abort", aSource, d.lineIdx);
                 expectAbortLine = d.lineIdx;
+            }
+            case "expect-execution-error" ->
+            {
+                if (expectErrorMessage != null)
+                {
+                    throw error(aSource, d.lineIdx, "duplicate #expect-execution-error directive");
+                }
+                expectErrorMessage = parseSingleValuePayload(tokens, "#expect-execution-error",
+                        aSource, d.lineIdx);
+                expectErrorMessageLine = d.lineIdx;
             }
             case "expect-ct-mismatch" ->
             {
@@ -424,6 +436,15 @@ public final class RuleTestCdt
                             + expectedViolations.size() + " #expectViolationAt line(s)");
         }
 
+        // R7: the error-message substring only means anything next to the verdict it qualifies.
+        // On any other verdict it would be dead text that reads like an assertion — the author
+        // believes the message is pinned and nothing checks it.
+        if (expectErrorMessage != null && testExpect != Verdict.EXECUTION_ERROR)
+        {
+            throw error(aSource, expectErrorMessageLine,
+                    "#expect-execution-error requires expect=executionError");
+        }
+
         // Run-level CT directives: an aborted run reaches no rule and writes no report, so the
         // verdict must honestly read "skipped" and no mismatch expectation can accompany it.
         if (expectAbort != null && testExpect != Verdict.SKIPPED)
@@ -444,7 +465,7 @@ public final class RuleTestCdt
                 .dictionaries(dictionaries).runLevel(runLevel).expectViolationCount(expectCount)
                 .expectedViolations(expectedViolations).ctPackages(ctPackages)
                 .ctAvailable(ctAvailable).expectAbort(expectAbort)
-                .expectCtMismatch(expectCtMismatch).build();
+                .expectCtMismatch(expectCtMismatch).expectErrorMessage(expectErrorMessage).build();
     }
 
 
@@ -771,6 +792,13 @@ public final class RuleTestCdt
         {
             aOut.write("#expect-abort ");
             aOut.write(quoteIfNeeded(expectAbort));
+            aOut.write('\n');
+        }
+        String expectErrorMessage = aScenario.getExpectErrorMessage();
+        if (expectErrorMessage != null)
+        {
+            aOut.write("#expect-execution-error ");
+            aOut.write(quoteIfNeeded(expectErrorMessage));
             aOut.write('\n');
         }
         String expectCtMismatch = aScenario.getExpectCtMismatch();
@@ -1107,8 +1135,10 @@ public final class RuleTestCdt
                 expect = Verdict.parse(value);
                 if (expect == null)
                 {
-                    throw error(aSource, aLineIdx, "#test: invalid expect=" + value
-                            + " (expected 'violation', 'noViolation' or 'skipped')");
+                    throw error(aSource, aLineIdx,
+                            "#test: invalid expect=" + value
+                                    + " (expected 'violation', 'noViolation', 'skipped' or"
+                                    + " 'executionError')");
                 }
             }
             case "domain" ->

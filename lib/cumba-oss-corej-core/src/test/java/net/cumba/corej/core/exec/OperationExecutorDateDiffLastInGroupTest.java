@@ -78,7 +78,12 @@ class OperationExecutorDateDiffLastInGroupTest
     void dateDiffDays_mode1_offsetColumn()
     {
         IDataTable ds = MockTable.of().col("MYDTC", "2020-01-10", "2020-01-10")
-                .col("REFDTC", "2020-01-01", "2020-01-01").col("OFF", "3", "10").name("XX").build();
+                // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
+                // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path
+                // must
+                // declare a numeric column. Do not put this back to col(...) with digit strings.
+                .col("REFDTC", "2020-01-01", "2020-01-01").colLong("OFF", 3L, 10L).name("XX")
+                .build();
         Operation op = makeOp("$d", "date_diff_days");
         op.setName("MYDTC");
         op.setReference("REFDTC");

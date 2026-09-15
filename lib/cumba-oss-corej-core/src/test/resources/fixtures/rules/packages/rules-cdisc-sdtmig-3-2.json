@@ -30,10 +30,6 @@
           ]
         }
       },
-      "Requirements": {
-        "Library": true,
-        "Define": true
-      },
       "Variable_Universe": "Define",
       "Operations": [
         {
@@ -181,7 +177,7 @@
         "Version": "1"
       },
       "Description": "Raise an error when the planned elapsed time (--ELTM) is populated but its fixed reference point (--TPTREF) is empty; --ELTM must be empty when --TPTREF is empty.",
-      "Executability": "Fully Executable",
+      "Executability": "Partially Executable - Possible Underreporting",
       "Scope": {
         "Domains": {
           "Include": [
@@ -192,7 +188,8 @@
       "Requirements": {
         "Variables": {
           "All": [
-            "--ELTM"
+            "--ELTM",
+            "--TPTREF"
           ]
         }
       },

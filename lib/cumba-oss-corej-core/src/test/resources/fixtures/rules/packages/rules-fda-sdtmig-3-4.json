@@ -29,9 +29,6 @@
           ]
         }
       },
-      "Requirements": {
-        "Define": true
-      },
       "Operations": [
         {
           "id": "$dataset_variables",
@@ -79,9 +76,6 @@
           ]
         }
       },
-      "Requirements": {
-        "Define": true
-      },
       "Check": {
         "expression": "not empty(var_name(\"DEFINE\")) and var_type(\"DATA\") != var_type(\"DEFINE\")"
       },
@@ -117,9 +111,6 @@
           ]
         }
       },
-      "Requirements": {
-        "Define": true
-      },
       "Check": {
         "expression": "not empty(varname()) and empty(var_name(\"DEFINE\"))"
       },
@@ -152,9 +143,6 @@
             "ALL"
           ]
         }
-      },
-      "Requirements": {
-        "Define": true
       },
       "Check": {
         "expression": "not empty(var_name(\"DEFINE\")) and var_label(\"DATA\") != var_label(\"DEFINE\")"

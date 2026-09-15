@@ -1334,10 +1334,41 @@ class RuleTestCdtEdgeCaseTest
         @Test
         void verdict_valuesAndValueOf_basicEnumContract()
         {
-            assertEquals(3, Verdict.values().length);
+            assertEquals(4, Verdict.values().length);
             assertEquals(Verdict.VIOLATION, Verdict.valueOf("VIOLATION"));
             assertEquals(Verdict.NO_VIOLATION, Verdict.valueOf("NO_VIOLATION"));
             assertEquals(Verdict.SKIPPED, Verdict.valueOf("SKIPPED"));
+            assertEquals(Verdict.EXECUTION_ERROR, Verdict.valueOf("EXECUTION_ERROR"));
+        }
+
+
+        @ParameterizedTest
+        @ValueSource(strings =
+        {
+                "executionError", "EXECUTIONERROR", "execution_error", "EXECUTION_ERROR"
+        })
+        void verdict_executionError_parsedCaseInsensitively(String aToken)
+        {
+            String content = scenario("#test CORE-1 expect=" + aToken + " domain=AE");
+            assertEquals(Verdict.EXECUTION_ERROR, RuleTestCdt.parse(content, "t").getExpect());
+        }
+
+
+        /**
+         * ⛔ The severity collision: {@code severity=ERROR} / {@code #runLevel ERROR} are a check
+         * LEVEL. A verdict spelled {@code error} must be refused, never silently mapped.
+         */
+        @ParameterizedTest
+        @ValueSource(strings =
+        {
+                "error", "ERROR", "Error", "executionerrors", "exec_error"
+        })
+        void verdict_bareErrorIsNotAVerdict(String aToken)
+        {
+            String content = scenario("#test CORE-1 expect=" + aToken + " domain=AE");
+            RuleTestCdtException e = assertThrows(RuleTestCdtException.class,
+                    () -> RuleTestCdt.parse(content, "t"));
+            assertTrue(e.getMessage().contains("executionError"), e.getMessage());
         }
 
 

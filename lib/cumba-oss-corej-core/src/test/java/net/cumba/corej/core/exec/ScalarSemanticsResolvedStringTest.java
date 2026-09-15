@@ -38,7 +38,7 @@ class ScalarSemanticsResolvedStringTest
     private static ColumnVector vector(IDataTable t, String name)
     {
         int idx = t.getMetaData().getColumnIndex(name);
-        return new ColumnVector(t.getColumn(idx), t.getMetaData().getColumn(idx).getType());
+        return new ColumnVector(name, t.getColumn(idx), t.getMetaData().getColumn(idx).getType());
     }
 
 

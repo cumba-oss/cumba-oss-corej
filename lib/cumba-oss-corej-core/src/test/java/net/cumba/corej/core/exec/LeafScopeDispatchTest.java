@@ -63,7 +63,10 @@ class LeafScopeDispatchTest
     @Test
     void studyFactGuardBesideRowReadsIsRowDomainAndFiresPerRow() throws Exception
     {
-        Rule r = load("MIX1", "ds_exists(\"EX\") and EXDOSE > 0", "");
+        // Phase 3 of PLAN-column-type-conformance (R3): the fixture's EXDOSE is Char, so the
+        // numeric read is authored num(EXDOSE) — the raw read would trip the column-type gate,
+        // which is not this test's subject.
+        Rule r = load("MIX1", "ds_exists(\"EX\") and num(EXDOSE) > 0", "");
         assertNull(r.getLoadError());
         assertEquals(Domain.ROW, r.getEvaluationDomain());
         RuleExecutionResult res = RuleRunner.execute(r, ex(), with(ex()));
@@ -128,11 +131,12 @@ class LeafScopeDispatchTest
     @Test
     void rowDomainEmitsPerRowUnderRecordAndFirstRowUnderDataset() throws Exception
     {
-        Rule record = load("R-REC", "EXDOSE >= 1", "\"Sensitivity\":\"Record\",");
+        // num(EXDOSE): the Char fixture's numeric read, per R3 (see MIX1 above).
+        Rule record = load("R-REC", "num(EXDOSE) >= 1", "\"Sensitivity\":\"Record\",");
         assertEquals(Domain.ROW, record.getEvaluationDomain());
         assertEquals(2, RuleRunner.execute(record, ex(), with(ex())).getViolationCount());
 
-        Rule dataset = load("R-DS", "EXDOSE >= 1", "\"Sensitivity\":\"Dataset\",");
+        Rule dataset = load("R-DS", "num(EXDOSE) >= 1", "\"Sensitivity\":\"Dataset\",");
         RuleExecutionResult collapsed = RuleRunner.execute(dataset, ex(), with(ex()));
         assertEquals(1, collapsed.getViolationCount());
         assertEquals(0L, collapsed.getViolations().getFirst().getRow(), "the first firing row");

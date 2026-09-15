@@ -29,9 +29,6 @@
           ]
         }
       },
-      "Requirements": {
-        "Define": true
-      },
       "Operations": [
         {
           "id": "$define_key_variables",

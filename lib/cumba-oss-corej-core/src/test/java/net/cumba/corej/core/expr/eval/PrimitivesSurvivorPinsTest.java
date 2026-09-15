@@ -229,13 +229,16 @@ class PrimitivesSurvivorPinsTest
     @Test
     void isNumericDigitBoundariesAndRejections()
     {
+        // " + RULING + "
         IDataTable t = MockTable.of().col("X", "0", "9", "1.0", "1.9", "-3", ".5", "007", // numeric
-                "", "abc", "1.", ".", "+5", " 1", "1 ", "1e5") // not numeric
+                "", "abc", "1.", ".", "+5", " 1", "1 ", "1e5") // see below
                 .build();
-        assertEquals(bits(0, 1, 2, 3, 4, 5, 6), Primitives.isNumeric(col(t, "X"), 15, false));
+        // Now numeric too: 1.(9), +5(11), " 1"(12), "1 "(13), 1e5(14). Still not: ""(7), abc(8),
+        // a lone "."(10) -- none of those parses.
+        assertEquals(bits(0, 1, 2, 3, 4, 5, 6, 9, 11, 12, 13, 14),
+                Primitives.isNumeric(col(t, "X"), 15, false));
         // The negated operator fires on exactly the complement.
-        assertEquals(bits(7, 8, 9, 10, 11, 12, 13, 14),
-                Primitives.isNumeric(col(t, "X"), 15, true));
+        assertEquals(bits(7, 8, 10), Primitives.isNumeric(col(t, "X"), 15, true));
     }
 
     // -------------------------------------------------------------------------

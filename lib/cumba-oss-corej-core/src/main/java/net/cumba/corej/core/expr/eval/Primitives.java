@@ -485,6 +485,9 @@ public final class Primitives
     public static BitSet affixRegex(Vector v, Pattern pattern, int rowCount, boolean isPrefix,
             Vector affixLen, boolean negate)
     {
+        // Hoisted out of integral(): the gate is a pure function of the VECTOR, so calling it
+        // per row asked the same question rowCount times to get the same answer.
+        ColumnTypeGate.requireNumericRead(affixLen, "an integer-length operand");
         return scan(v, rowCount, (dv, r) ->
         {
             String s = ScalarSemantics.isMissing(dv) ? "" : dv.getValueAsString();
@@ -496,8 +499,28 @@ public final class Primitives
 
 
     /**
+     * The {@code num(X)} conversion (R2/R10, PLAN-column-type-conformance §10): reads {@code v} as
+     * a number, per cell, publishing {@link net.cumba.datatable.values.DataValueType#DOUBLE} — the
+     * type the column-type gate interrogates, which is how an explicit {@code num()} satisfies the
+     * numeric direction. Per-cell semantics are exactly
+     * {@link ScalarSemantics#comparisonLhsAsDouble}: a missing cell, or one whose content does not
+     * parse, yields <b>missing</b> — never an error (§4b F1: a mixed-content column such as
+     * {@code --STRESC} legitimately holds free text on some rows, and {@code num()} must tolerate
+     * exactly those rows).
+     */
+    public static Vector numConversion(Vector v, int rowCount)
+    {
+        return new ComputedVector(rowCount, net.cumba.datatable.values.DataValueType.DOUBLE,
+                row -> ScalarSemantics.comparisonLhsAsDouble(v.dataValue(row)));
+    }
+
+
+    /**
      * The integral value of {@code v} at {@code row}, or {@code null} when missing, non-numeric, or
-     * not an exact (finite) integer. Mirrors {@code BuiltinFunctions.integral}.
+     * not an exact (finite) integer. Mirrors {@code BuiltinFunctions.integral}. A resolved
+     * {@code Char} column here is a numeric read of character data and errors through
+     * {@link ColumnTypeGate#requireNumericRead} (R3/R4) — a literal, a computed value or a
+     * {@code num(...)} conversion pass.
      */
     private static @Nullable Integer integral(Vector v, int row)
     {
@@ -754,6 +777,8 @@ public final class Primitives
      */
     public static BitSet lengthEquality(Vector v, Vector lengthVec, int rowCount, boolean negate)
     {
+        // Hoisted out of integral() — see the note in the affix scan above.
+        ColumnTypeGate.requireNumericRead(lengthVec, "an integer-length operand");
         return scan(v, rowCount, (dv, r) ->
         {
             Integer length = integral(lengthVec, r); // exact int; missing/non-integral ⇒ null
@@ -916,8 +941,51 @@ public final class Primitives
      */
     public static BitSet isInteger(Vector v, int rowCount, boolean negate)
     {
-        return scan(v, rowCount, (dv, _) -> ScalarSemantics.isIntegerString(
-                ScalarSemantics.isMissing(dv) ? "" : dv.getValueAsString()) != negate);
+        return scan(v, rowCount, (dv, _) -> isIntegerCell(dv) != negate);
+    }
+
+
+    /**
+     * Whether {@code dv} holds a finite whole number, <b>without</b> routing a numeric cell through
+     * its string form.
+     * <p>
+     * ⚠ The obvious spelling — {@code isIntegerString(dv.getValueAsString())} — makes a numeric
+     * cell take a full round trip: {@code DataValueDouble.getValueAsString()} allocates a
+     * {@code String} and performs the whole-number test to decide its own format, then
+     * {@code Double.parseDouble} parses it straight back, and the whole-number test runs a second
+     * time. Once per row, per rule, across a corpus where 26 rules call {@code is_integer}.
+     * </p>
+     * <p>
+     * ⭐ It is also arriving at the right answer through a wrong intermediate: that round trip
+     * formats via {@code String.valueOf((long) cleaned)}, which <b>saturates</b>, so {@code 1e20}
+     * becomes {@code "9223372036854775807"}. The verdict survives only because every double ≥
+     * 2<sup>53</sup> is necessarily whole. Reading the double directly has no such hazard.
+     * </p>
+     * <p>
+     * Behaviour is unchanged for every cell shape. A character cell still takes the string path —
+     * {@code DataValueString.getValueAsDouble()} is a hard {@code NaN} by contract — and so does a
+     * numeric cell holding {@code NaN}, which the string path rejects exactly as before.
+     * </p>
+     *
+     * @param dv
+     *            the cell.
+     * @return {@code true} when the cell is a finite whole number.
+     */
+    private static boolean isIntegerCell(IDataValue dv)
+    {
+        if (ScalarSemantics.isMissing(dv))
+        {
+            return false;
+        }
+        double d = dv.getValueAsDouble();
+        if (!Double.isNaN(d))
+        {
+            // Double.compare, not `==`: SpotBugs' FE_FLOATING_POINT_EQUALITY fires on the latter,
+            // and integral() below already uses this idiom. Equivalent here — floor preserves the
+            // sign of zero, so the two spellings cannot disagree once NaN is excluded above.
+            return !Double.isInfinite(d) && Double.compare(d, Math.floor(d)) == 0;
+        }
+        return ScalarSemantics.isIntegerString(dv.getValueAsString());
     }
 
     // -------------------------------------------------------------------------
@@ -941,51 +1009,86 @@ public final class Primitives
      */
     public static BitSet isNumeric(Vector v, int rowCount, boolean negate)
     {
-        return scan(v, rowCount, (dv, _) -> isNumericString(
-                ScalarSemantics.isMissing(dv) ? "" : dv.getValueAsString()) != negate);
+        return scan(v, rowCount, (dv, _) -> isNumericCell(dv) != negate);
     }
 
 
     /**
-     * Hand-rolled finite-decimal scan backing {@link #isNumeric}: optional leading {@code -} (a
-     * leading {@code +} is <b>not</b> accepted — see the inline comment), then either
-     * {@code digits[.digits]} or {@code .digits}. Rejects the empty string, a lone / trailing dot,
-     * exponents, and any surrounding whitespace or stray character.
+     * Whether {@code dv} holds a numeric value — the cell already being a number, or its text
+     * parsing as one.
+     * <p>
+     * ⭐⭐ Owner ruling, 2026-09-14: <i>"for all numeric column types we do not need any check, as
+     * the cell is numeric already. For char columns … even string values with exponents are numeric
+     * values, so is_numeric should return true for all values that can be parsed to either Double
+     * or long."</i>
+     * </p>
+     * <p>
+     * ⛔ This <b>fixes a defect</b>, it is not only a fast path. The previous implementation asked a
+     * hand-rolled scan that deliberately rejected exponents — but a numeric cell's text comes from
+     * {@code String.valueOf(double)}, which <em>produces</em> exponents outside roughly
+     * [10<sup>-3</sup>, 10<sup>7</sup>). So {@code is_numeric(NUMCOL)} answered <b>false</b> for a
+     * genuinely numeric cell holding {@code 0.00000000012} (rendered {@code "1.2E-10"}) — the same
+     * string-rendering-leaks-into-a-verdict shape that ruling R9 was made about, reached from the
+     * other side. Lab results and {@code --STRESN} routinely sit in that range.
+     * </p>
+     * <p>
+     * A non-finite value is not a numeric <em>value</em>: an infinity, and a cell whose text is
+     * {@code "NaN"} or {@code "Infinity"}, answer {@code false} — consistent with
+     * {@link #isIntegerCell}. A missing cell answers {@code false}, so {@code not is_numeric} still
+     * fires on a blank.
+     * </p>
+     * ⚠ Widened deliberately, and the widening is real: {@code +5}, {@code 1e5}, {@code 1.} and
+     * {@code .5} are now numeric where the old scan rejected them. ⚠⚠ It also inherits three things
+     * {@code Double.parseDouble} accepts that nobody chose — surrounding whitespace
+     * ({@code " 5 "}), a Java float/double suffix ({@code 5f}, {@code 5d}) and a hex-float literal
+     * ({@code 0x1p3}). {@link ScalarSemantics#isIntegerString} has always accepted them too, so the
+     * two predicates are now at least <em>consistent</em>; if those are to be rejected, they must
+     * be rejected in both.
+     *
+     * @param dv
+     *            the cell.
+     * @return {@code true} when the cell holds a finite numeric value.
      */
-    private static boolean isNumericString(String s)
+    private static boolean isNumericCell(IDataValue dv)
     {
-        int n = s.length();
-        int i = 0;
-        // Only a leading '-' is allowed (the legacy regexes are all `-?`); a leading '+' is
-        // rejected, matching the source patterns and avoiding a Double.parseDouble-style widening.
-        if (i < n && s.charAt(i) == '-')
+        if (ScalarSemantics.isMissing(dv))
         {
-            i++;
+            return false;
         }
-        int intDigits = 0;
-        while (i < n && s.charAt(i) >= '0' && s.charAt(i) <= '9')
+        double d = dv.getValueAsDouble();
+        if (!Double.isNaN(d))
         {
-            i++;
-            intDigits++;
+            // A numeric-typed cell: already a number, no text involved.
+            return !Double.isInfinite(d);
         }
-        int fracDigits = 0;
-        if (i < n && s.charAt(i) == '.')
+        // A character cell — DataValueString.getValueAsDouble() is a hard NaN by contract (R1) —
+        // or a numeric cell holding NaN, which the parse below rejects exactly as before.
+        return isParsableNumber(dv.getValueAsString());
+    }
+
+
+    /**
+     * Whether {@code s} parses as a finite number, by the ruling above.
+     *
+     * @param s
+     *            the text form.
+     * @return {@code true} when it parses to a finite {@code double}.
+     */
+    private static boolean isParsableNumber(String s)
+    {
+        if (s == null || s.isEmpty())
         {
-            i++;
-            while (i < n && s.charAt(i) >= '0' && s.charAt(i) <= '9')
-            {
-                i++;
-                fracDigits++;
-            }
-            // A dot must be followed by at least one fractional digit (rejects "1." and a lone
-            // ".").
-            if (fracDigits == 0)
-            {
-                return false;
-            }
+            return false;
         }
-        // The whole string must be consumed and carry at least one digit overall.
-        return i == n && (intDigits > 0 || fracDigits > 0);
+        try
+        {
+            double d = Double.parseDouble(s);
+            return !Double.isNaN(d) && !Double.isInfinite(d);
+        }
+        catch (NumberFormatException _)
+        {
+            return false;
+        }
     }
 
     // -------------------------------------------------------------------------

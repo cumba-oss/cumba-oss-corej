@@ -68,9 +68,9 @@ class EngineErrorMessageContractTest
 
 
     @Test
-    void theEngineStillHasExactlyFiveErrorSites() throws IOException
+    void theEngineStillHasExactlySixErrorSites() throws IOException
     {
-        // The ErrorReason vocabulary is exhaustive only as long as RuleRunner has no sixth way to
+        // The ErrorReason vocabulary is exhaustive only as long as RuleRunner has no seventh way to
         // return ERROR. If this count changes, the classifier needs a new branch — otherwise the
         // new site silently lands in OTHER. Site 5 is Fix #358's InvalidJoinedDomainException
         // catch (split-domain union failure → INVALID_SPLIT_DOMAIN, matched by its fixed message
@@ -78,7 +78,7 @@ class EngineErrorMessageContractTest
         // count deliberately does not see — one vocabulary token covers both).
         long sites = source("RuleRunner.java").lines()
                 .filter(l -> l.contains("RuleExecutionStatus.ERROR")).count();
-        Assertions.assertEquals(5, sites,
+        Assertions.assertEquals(6, sites,
                 "RuleRunner's ERROR-producing sites changed. Re-derive the ErrorReason vocabulary "
                         + "in cumba-oss-corej-rules' ViolationNormaliser before accepting this.");
     }

@@ -2,6 +2,7 @@ package net.cumba.corej.core.integration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
@@ -19,9 +20,9 @@ import org.junit.jupiter.api.Test;
 /**
  * Probes for the three re-validated SEND PC §6.3.11 rules that were previously gapped as "no data
  * signal": CDISC-SEND-0327 (pre-dose PCELTM=PT0H, the SE2280 twin), CDISC-SEND-0326 (PCELTM must be
- * populated on a profile record), and CDISC-SEND-0324 (a quantifiably out-of-range result must
- * carry the matching BLQ/ALQ token). Each is loaded from {@code rules-src} directly (no corpus
- * regeneration), proven native-convertible, and exercised for firing correctness.
+ * populated on a profile record), and CDISC-SEND-0324 (a quantifiably below-limit result must carry
+ * the BLQ token). Each is loaded from {@code rules-src} directly (no corpus regeneration), proven
+ * native-convertible, and exercised for firing correctness.
  */
 class SendPcProfileRulesProbeTest
 {
@@ -88,20 +89,36 @@ class SendPcProfileRulesProbeTest
 
 
     @Test
-    void send0324_firesWhenOutOfRangeResultLacksToken() throws Exception
+    void send0324_firesWhenBelowLimitResultLacksBlqToken() throws Exception
     {
-        // 2026-07-26 redesign (INFO pass): SEND324 is now a genuine LOQ-detection rule —
-        // PCORRES < PCLLOQ must carry PCSTRESC='BLQ', PCORRES > PCULOQ (sponsor-provided,
-        // model-permissible) must carry 'ALQ'. Textual PCORRES skips (numeric coercion).
+        // 2026-07-26 redesign (INFO pass): SEND324 is a genuine LOQ-detection rule. The published
+        // row's two halves were SPLIT on 2026-09-12 (top-level-`or` board, R-5.25) and the limit
+        // was then hoisted out of the Check: this parent now carries the below-limit half only,
+        // with PCLLOQ gated by Requirements.Variables.All instead of a var_exists() leaf.
+        // ⚠ The above-limit ('ALQ') half is the sibling CDISC-SEND-0324-A, which has NO curated
+        // fixture here — giving it one needs its id added to B1_IDS in the corpus repo's
+        // scripts/build-core-fixtures.py. Until that lands, this probe covers the BLQ half alone.
         Rule rule = load("CDISC-SEND-0324");
         // below w/o token (fires) | below w/ token (ok) | textual PCORRES (skips)
-        // | above w/ wrong token (fires) | in range (ok)
+        // | above the upper limit, now the sibling's business (inert here) | in range (ok)
         IDataTable pc = MockTable.of().col("USUBJID", "S1", "S1", "S1", "S1", "S1")
                 .col("PCORRES", "2.5", "3.1", "BLQ", "250", "50")
                 .col("PCLLOQ", "5", "5", "5", "5", "5")
                 .col("PCULOQ", "100", "100", "100", "100", "100")
                 .col("PCSTRESC", "2.5", "BLQ", "BLQ", "BLQ", "50").name("PC").build();
-        assertEquals(2, violations(rule, pc),
-                "the token-less below-limit row and the mis-tokened above-limit row fire");
+        assertEquals(1, violations(rule, pc), "only the token-less below-limit row fires");
+    }
+
+
+    @Test
+    void send0324_skipsWhenPclloqIsAbsent() throws Exception
+    {
+        // The hoist's whole point: a PC dataset without the limit column takes an auditable SKIP
+        // naming it, rather than running to a silent no-finding.
+        Rule rule = load("CDISC-SEND-0324");
+        IDataTable pc = MockTable.of().col("USUBJID", "S1").col("PCORRES", "2.5")
+                .col("PCSTRESC", "2.5").name("PC").build();
+        assertTrue(RuleRunner.execute(rule, pc, _ -> null).isSkipped(),
+                "an absent PCLLOQ must SKIP on the Requirements.Variables.All gate");
     }
 }

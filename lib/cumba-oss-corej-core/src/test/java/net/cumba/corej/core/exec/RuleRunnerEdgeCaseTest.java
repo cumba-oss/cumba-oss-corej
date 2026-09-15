@@ -194,8 +194,9 @@ class RuleRunnerEdgeCaseTest
     @Test
     void testExecute_withDatasetResolver_operationOnOtherDomain()
     {
+        // Phase 3 (column-type gate): AGE is compared numerically below, so it is declared Num.
         IDataTable dm = MockTable.of().name("DM").col("USUBJID", "S01", "S02")
-                .col("AGE", "25", "30").build();
+                .colLong("AGE", 25L, 30L).build();
         IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S01", "S01")
                 .col("AETERM", "Headache", "Nausea").build();
 

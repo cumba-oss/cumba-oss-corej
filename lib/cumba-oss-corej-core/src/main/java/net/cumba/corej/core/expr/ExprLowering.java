@@ -34,8 +34,17 @@ public final class ExprLowering
 
     private static final JsonNodeFactory NODES = JsonNodeFactory.instance;
 
-    /** Unary operand wrappers that select an operator family (or transform). */
-    private static final Set<String> UNARY_WRAPPERS = Set.of("date", "num", "len", "date_part",
+    /**
+     * Unary operand wrappers that select an operator family (or transform). ⚠ R10
+     * (PLAN-column-type-conformance §10): {@code num} is deliberately NOT here any more — it is a
+     * value <b>conversion</b> with no v1 operator surface, and this lowering used to strip it
+     * silently ({@code unwrap}/{@code nameOf}), which discarded the author's conversion on the
+     * shipped path. A {@code num(...)} operand now fails to lower (see {@link #rejectConversion}),
+     * so the deserializer keeps the rule as a {@code CheckConditionExpression} and the native
+     * evaluator — where the conversion is a real value plan — executes it. That is the mirror that
+     * keeps the two engines from drifting.
+     */
+    private static final Set<String> UNARY_WRAPPERS = Set.of("date", "len", "date_part",
             "time_part", "lowcase", "upcase");
 
     private ExprLowering()
@@ -1214,7 +1223,8 @@ public final class ExprLowering
         {
             return "time_part";
         }
-        // null, "num" -> plain numeric/equality.
+        // null -> plain numeric/equality. (R10: "num" no longer reaches here — a num() operand
+        // fails the lowering and the rule stays on the native evaluator.)
         return "plain";
     }
 
@@ -1303,8 +1313,26 @@ public final class ExprLowering
     }
 
 
+    /**
+     * R10: a {@code num(...)} conversion cannot be expressed in the v1 operator-leaf AST — there is
+     * no operator that carries "read this operand as a number". Silently stripping it (the pre-R10
+     * behaviour, when {@code num} sat in {@link #UNARY_WRAPPERS}) discarded the author's
+     * conversion; rejecting instead keeps the rule on the native evaluator, which implements it.
+     */
+    private static void rejectConversion(Expr e)
+    {
+        if (e instanceof Expr.Call c && "num".equals(c.name()) && c.args().size() == 1
+                && c.kwargs().isEmpty())
+        {
+            throw unsupported("num(...) is a value conversion with no v1 operator surface; the "
+                    + "rule is evaluated natively");
+        }
+    }
+
+
     private static String referenceName(Expr e)
     {
+        rejectConversion(e);
         Expr inner = unwrap(e);
         String current = currentVariableOperand(inner);
         if (current != null)
@@ -1326,6 +1354,7 @@ public final class ExprLowering
 
     private static String nameOf(Expr e)
     {
+        rejectConversion(e);
         Expr inner = unwrap(e);
         String current = currentVariableOperand(inner);
         if (current != null)

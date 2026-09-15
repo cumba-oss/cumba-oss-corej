@@ -166,6 +166,22 @@ public class RuleTestScenario
     String expectCtMismatch;
 
     /**
+     * Expected substring of the engine's own error message from {@code #expect-execution-error}, or
+     * {@code null} when the scenario asserts only <em>that</em> the rule errored. Meaningful only
+     * with {@link Verdict#EXECUTION_ERROR}; the parser rejects it on any other verdict.
+     *
+     * <p>
+     * Matched with a case-sensitive {@link String#contains}: an error message is a sentence the
+     * engine is free to reword at the edges, so pinning it whole would make every message
+     * improvement a corpus-wide edit, while pinning nothing would let an unrelated failure (an NPE,
+     * a missing dataset) satisfy a scenario written to prove a <em>type mismatch</em> errors. A
+     * substring is the smallest thing that tells those two apart.
+     * </p>
+     */
+    @Nullable
+    String expectErrorMessage;
+
+    /**
      * The dataset whose name equals {@code getDomain()} (case-insensitive).
      *
      * @return the primary table, or {@code null} if the domain does not match any declared dataset
@@ -203,11 +219,12 @@ public class RuleTestScenario
      * The contract a scenario declares on its {@code #test} directive.
      * <p>
      * {@link #VIOLATION} and {@link #NO_VIOLATION} both assert that the rule <b>ran</b>;
-     * {@link #SKIPPED} asserts that it deliberately did not. Without that third state a rule that
-     * never executed reports zero violations and is indistinguishable from one that ran and found
-     * nothing — so an {@code expect=noViolation} scenario passes whether or not it tests anything.
-     * That is how a fixture rots: tighten a rule's scope, or strip the column its scope needs, and
-     * the scenario keeps passing while exercising nothing.
+     * {@link #SKIPPED} asserts that it deliberately did not, and {@link #EXECUTION_ERROR} that it
+     * tried and failed. Without those last two states a rule that never executed reports zero
+     * violations and is indistinguishable from one that ran and found nothing — so an
+     * {@code expect=noViolation} scenario passes whether or not it tests anything. That is how a
+     * fixture rots: tighten a rule's scope, or strip the column its scope needs, and the scenario
+     * keeps passing while exercising nothing.
      * </p>
      */
     public enum Verdict
@@ -222,11 +239,37 @@ public class RuleTestScenario
          * dataset that does not carry the variable must skip, and the scenario exists to prove it.
          * Previously such scenarios had to borrow {@code noViolation}, which asserted nothing.
          */
-        SKIPPED;
+        SKIPPED,
+
+        /**
+         * The rule is expected to <b>fail</b> on this scenario — it was selected, it started, and
+         * the engine reported {@code RuleExecutionStatus.ERROR} (ruling R7: a rule that can error
+         * needs a scenario proving it errors).
+         *
+         * <p>
+         * ⛔ <b>Not to be confused with {@code severity=ERROR} / {@code #runLevel ERROR}</b>, which
+         * are a check <em>severity level</em> ({@code Reject}/{@code Error}/{@code Warning}/
+         * {@code Info}) — the level a violation fires <em>at</em>. {@code #expectViolationAt
+         * severity=ERROR} asserts the rule <b>fired</b>; this verdict asserts it <b>could not
+         * run</b>. The token is deliberately the longer {@code executionError} rather than
+         * {@code error} so the two cannot be reached for by mistake: a scenario spelled
+         * {@code expect=error} sitting one line from {@code severity=ERROR} would be the
+         * silent-disarming-guard shape — the author writes what they mean and asserts something
+         * else, greenly.
+         * </p>
+         *
+         * <p>
+         * Like {@link #SKIPPED}, this exists because an errored rule reports zero violations (bar
+         * the {@code __error__} sentinel) and would otherwise have to borrow {@code noViolation},
+         * which asserts nothing about the failure it was written to pin.
+         * </p>
+         */
+        EXECUTION_ERROR;
 
         /**
          * Parse a verdict token as written on a {@code #test} directive. Case-insensitive. Accepts
-         * {@code violation}, {@code noViolation}/{@code no_violation}, and {@code skipped}.
+         * {@code violation}, {@code noViolation}/{@code no_violation}, {@code skipped} and
+         * {@code executionError}/{@code execution_error}.
          */
         static @Nullable Verdict parse(@Nullable String aToken)
         {
@@ -240,6 +283,7 @@ public class RuleTestScenario
             case "violation" -> VIOLATION;
             case "noviolation", "no_violation" -> NO_VIOLATION;
             case "skipped" -> SKIPPED;
+            case "executionerror", "execution_error" -> EXECUTION_ERROR;
             default -> null;
             };
         }
@@ -253,6 +297,7 @@ public class RuleTestScenario
             case VIOLATION -> "violation";
             case NO_VIOLATION -> "noViolation";
             case SKIPPED -> "skipped";
+            case EXECUTION_ERROR -> "executionError";
             };
         }
     }

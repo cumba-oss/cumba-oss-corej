@@ -116,14 +116,22 @@ class PrimitivesTest
     @Test
     void equality_forceNumeric_stringColumns()
     {
-        // Phase 8a: forceNumeric upgrades two STRING columns to numeric mode (the num() path).
+        // R10 (PLAN-column-type-conformance §10): the num() path is a CONVERSION now — the
+        // operand vector arrives already parsed to DOUBLE (Primitives.numConversion), and R1
+        // keeps a raw table Char cell's getValueAsDouble() a hard NaN. So forceNumeric over two
+        // RAW string columns stays textual (the old assertion pinned the pre-R1 MockTable
+        // accident of parsing), while the converted vectors compare numerically without needing
+        // forceNumeric at all.
         IDataTable t = MockTable.of().col("A", "70", "70").col("B", "70.0", "80").build();
         ColumnVector a = col(t, "A");
         ColumnVector b = col(t, "B");
         // forceNumeric off → textual: "70" != "70.0", "70" != "80" → no match.
         assertEquals(new BitSet(), Primitives.equality(a, b, 2, false, false, false, false));
-        // forceNumeric on → numeric: 70 == 70.0 (row0), 70 != 80 (row1).
-        assertEquals(bits(0), Primitives.equality(a, b, 2, false, false, false, true));
+        // forceNumeric on, RAW Char cells: R1's hard NaN keeps the textual fold → still no match.
+        assertEquals(new BitSet(), Primitives.equality(a, b, 2, false, false, false, true));
+        // The num() conversion is what makes the comparison numeric: 70 == 70.0 (row0 only).
+        assertEquals(bits(0), Primitives.equality(Primitives.numConversion(a, 2),
+                Primitives.numConversion(b, 2), 2, false, false, false, false));
     }
 
 
@@ -471,26 +479,30 @@ class PrimitivesTest
     @Test
     void isNumeric()
     {
-        // Hand-rolled finite-decimal scan: accept 0/-3/3.5/007/.5; reject 1./1e5/+1/" 1 "/""/abc
-        // and a genuine missing (only a leading '-' is allowed, matching the legacy `-?` regexes).
-        // The negate (not is_numeric) form is the exact complement, and a missing/"" cell folds to
-        // non-numeric so not is_numeric fires on it.
+        // PLAN-column-type-conformance follow-up, owner ruling 2026-09-14: is_numeric is
+        // "the cell is a number, or its text parses as one". A numeric cell answers true
+        // without touching its text; a character cell is parsed with Double.parseDouble.
+        // That WIDENS the old hand-rolled scan -- 1., 1e5, +1, " 1 " and +.5 are numeric now
+        // -- and it FIXES a defect: the old scan rejected exponents, but String.valueOf(double)
+        // PRODUCES them outside [1e-3, 1e7), so is_numeric(NUMCOL) answered false for a
+        // genuinely numeric 0.00000000012 rendered "1.2E-10".
+        // Only ""/abc/missing stay non-numeric here. The negate form is the exact complement.
         IDataTable t = MockTable.of().col("X", "0", "-3", "3.5", "007", ".5", "1.", "1e5", "+1",
                 " 1 ", "", "abc", (String) null).build();
         ColumnVector x = col(t, "X");
-        assertEquals(bits(0, 1, 2, 3, 4), Primitives.isNumeric(x, 12, false));
-        // not is_numeric fires on the rejects 5,6,7,8,9,10 and the genuine missing 11.
-        assertEquals(bits(5, 6, 7, 8, 9, 10, 11), Primitives.isNumeric(x, 12, true));
+        assertEquals(bits(0, 1, 2, 3, 4, 5, 6, 7, 8), Primitives.isNumeric(x, 12, false));
+        // not is_numeric fires on ""(9), abc(10) and the genuine missing (11).
+        assertEquals(bits(9, 10, 11), Primitives.isNumeric(x, 12, true));
     }
 
 
     @Test
     void isNumericDotEdgeCases()
     {
-        // A lone "." and the sign-only "-"/"+" are not numbers; a leading "+" is rejected
-        // (minus only), so "+.5" is NOT numeric but "-.5" and "0.0" are.
+        // A lone "." and the sign-only "-"/"+" still do not parse. ⭐ "+.5" IS numeric now --
+        // the 2026-09-14 ruling accepts a leading '+', where the old scan took minus only.
         IDataTable t = MockTable.of().col("X", ".", "-", "+", "+.5", "-.5", "0.0").build();
-        assertEquals(bits(4, 5), Primitives.isNumeric(col(t, "X"), 6, false));
+        assertEquals(bits(3, 4, 5), Primitives.isNumeric(col(t, "X"), 6, false));
     }
 
 

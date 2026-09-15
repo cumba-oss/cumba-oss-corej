@@ -82,8 +82,25 @@ public final class ExprCompiler
 
     private static final System.Logger LOGGER = System.getLogger(ExprCompiler.class.getName());
 
-    /** Comparison-mode tag markers that select an operator family (not value transforms). */
-    private static final Set<String> TAGS = Set.of("date", "date_part", "time_part", "num");
+    /**
+     * Comparison-mode tag markers that select an operator family (not value transforms). ⚠ R10
+     * (PLAN-column-type-conformance §4b F3): {@code date}/{@code date_part}/{@code time_part} stay
+     * mode tags <b>deliberately</b> — a partial ISO-8601 date's determinacy ({@code IsoDateBounds})
+     * cannot be carried as one double, so the mode must live on the comparison. Do not "finish the
+     * job" by moving them to {@link #CONVERSIONS}.
+     */
+    private static final Set<String> TAGS = Set.of("date", "date_part", "time_part");
+
+    /**
+     * Value <b>conversions</b> (R10): unlike a mode tag, a conversion is a property of the value —
+     * it means the same thing wherever it is written, and it compiles to a real value plan
+     * ({@link Primitives#numConversion}) publishing its result type instead of being erased.
+     * {@code num} was the only conversion mis-filed in {@link #TAGS}; for routing purposes
+     * ({@link #family}, the affix-NEQ branch, {@code numTag}) a conversion still reads as its
+     * marker name via {@code markerOf}, so every expression that compiled before R10 routes
+     * identically.
+     */
+    private static final Set<String> CONVERSIONS = Set.of("num");
 
     /**
      * <b>Fix #370</b> tier 3 — the {@code [domain name]} placeholder in the Library's
@@ -596,6 +613,11 @@ public final class ExprCompiler
             {
                 return new BitSet();
             }
+            // Phase 3 (R3/R4): arithmetic is numeric per se — a resolved Char operand (the
+            // measured `AVAL / AyLO` family) errors instead of yielding all-missing terms.
+            ColumnTypeGate.requireNumericRead(nameV, "an arithmetic comparison");
+            ColumnTypeGate.requireNumericRead(aV, "an arithmetic comparison");
+            ColumnTypeGate.requireNumericRead(bV, "an arithmetic comparison");
             int rc = run.rowCount();
             BitSet result = new BitSet(rc);
             for (int r = 0; r < rc; r++)
@@ -636,6 +658,11 @@ public final class ExprCompiler
                 // by a `$`-name not in context and by an unresolved `--` wildcard.
                 return new BitSet();
             }
+            // Phase 3 (R9): a regex asserts a property of the TEXT form; a numeric column's text
+            // form is a formatting decision (1.2e-10 vs 0.00000000012), so a resolved Num subject
+            // errors instead of matching by accident. The measured `CNSR !~ /^\d+$/` family works
+            // today only because those variables happen to hold whole numbers.
+            ColumnTypeGate.requireCharacterRead(v, "a regex match");
             return Primitives.regexFind(v, pattern, run.rowCount(), negate);
         };
     }
@@ -731,9 +758,15 @@ public final class ExprCompiler
                 return run ->
                 {
                     Vector v = nameP.eval(run);
-                    return v == null ? new BitSet()
-                            : Primitives.numericMembership(v, numericMembers, run.rowCount(),
-                                    negate);
+                    if (v == null)
+                    {
+                        return new BitSet();
+                    }
+                    // Phase 3 (R3/R4): a numeric list expects a numeric probe. An untagged Char
+                    // probe is the dataset-wide-false-positive family (`not in` firing on every
+                    // row); it errors — the authoring is num(X) in [10, 20].
+                    ColumnTypeGate.requireNumericRead(v, "membership in a numeric list");
+                    return Primitives.numericMembership(v, numericMembers, run.rowCount(), negate);
                 };
             }
         }
@@ -750,12 +783,21 @@ public final class ExprCompiler
         // supporting both the broadcast-set and the per-row GroupedResult shapes (e.g. an inlined
         // `X in distinct(SV.VISITNUM, group=[USUBJID])`). Built once at compile time.
         Operation inlineSetOp = inlineSetOperation(right);
+        // Phase 3 (R9): only a STATIC all-string list literal states a character expectation the
+        // gate can hold a probe to; a $-list, wildcard, accessor or grouped set is dynamic and
+        // never gates (mirroring numericMemberSet's literal-only classification). The explicit
+        // case-insensitive surface (upper(X) in […]) is a declared string mode and is not gated.
+        boolean allStringLiteralList = !caseInsensitive && isAllStringList(right);
         return run ->
         {
             Vector v = nameP.eval(run);
             if (v == null)
             {
                 return new BitSet();
+            }
+            if (allStringLiteralList)
+            {
+                ColumnTypeGate.requireCharacterRead(v, "membership in a string list");
             }
             // A $-reference may resolve to a per-row GroupedResult (e.g. CORE-000168's
             // $sv_visitnum, a distinct-per-USUBJID operation). The legacy engine resolves the
@@ -1113,8 +1155,8 @@ public final class ExprCompiler
             return compileTypeInsensitiveEquality(b);
         }
 
-        String lt = tagOf(b.left());
-        String rt = tagOf(b.right());
+        String lt = markerOf(b.left());
+        String rt = markerOf(b.right());
         Expr li = untag(b.left());
         Expr ri = untag(b.right());
 
@@ -1143,18 +1185,33 @@ public final class ExprCompiler
         }
 
         String family = family(lt, rt);
-        // Phase 8a: a num()-tagged operand on either side forces numeric-mode equality.
+        // Phase 8a: a num()-marked operand on either side forces numeric-mode equality. Since R10
+        // the marker is a CONVERSION and the operand plan below already publishes DOUBLE cells, so
+        // forceNumeric is belt-and-braces (numeric mode also enters via isNumericType) — kept
+        // because equalsNumericAware is a shared parity anchor with its own contract.
         boolean numTag = "num".equals(lt) || "num".equals(rt);
         Expr.BinOp op = b.op();
 
         // EC-43: one shared target plan for EQ/NEQ, all four ORDER ops and the date families.
-        ValuePlan leftP = operandPlan(li, true, true);
+        // R10: only the MODE tag is stripped for the plans — a num() conversion stays in the
+        // operand and compiles (operandPlan's conversion branch) to a per-cell parse publishing
+        // DOUBLE, so `num(X) == 10` compares an actual numeric value instead of relying on the
+        // erased-tag + forceNumeric mechanism that R1's hard-NaN contract had quietly disarmed.
+        Expr lp = stripModeTag(b.left());
+        Expr rp = stripModeTag(b.right());
+        ValuePlan leftP = operandPlan(lp, true, true);
         // Affix-compare RHS (Phase 5): both EQ and NEQ resolve the RHS through the generic
         // valuePlan (value position), so `prefix(X,2) == REF` reads REF as a per-row column /
         // $-var identical to the != form and to plain ==. A quoted-literal RHS (`== "FA"`) still
         // folds to a ConstVector via valuePlan, matching the converter's emitted form, so existing
         // converted-rule parity is preserved.
-        ValuePlan rightP = valuePlan(ri);
+        ValuePlan rightP = valuePlan(rp);
+        // Phase 3 (R4/R9) — the column-type gate's statically-known side kinds: a numeric literal
+        // or num() conversion sets a NUMERIC expectation, a string literal a CHARACTER one;
+        // everything else stays unknown so a $-ref / computed / absent operand never gates the
+        // other side (§10 F9).
+        ColumnTypeGate.Kind lStatic = staticKind(lp);
+        ColumnTypeGate.Kind rStatic = staticKind(rp);
 
         // EC-49 (Fix #148): an affix NEQ fires on an empty left operand, exactly like every other
         // negative leaf. The `Primitives.nonEmpty(lv)` mask that used to sit here was the engine's
@@ -1178,7 +1235,7 @@ public final class ExprCompiler
         // numTag), so this also makes the affix EQ/NEQ pair complementary again.
         if (op == Expr.BinOp.NEQ && isAffixCall(li))
         {
-            return compilePlain(op, leftP, rightP, numTag);
+            return compilePlain(op, leftP, rightP, numTag, lStatic, rStatic);
         }
 
         return switch (family)
@@ -1186,8 +1243,32 @@ public final class ExprCompiler
         case "date" -> compileDate(op, leftP, rightP);
         case "date_part" -> compileDatePart(op, leftP, rightP, false);
         case "time_part" -> compileDatePart(op, leftP, rightP, true);
-        default -> compilePlain(op, leftP, rightP, numTag);
+        default -> compilePlain(op, leftP, rightP, numTag, lStatic, rStatic);
         };
+    }
+
+
+    /**
+     * The statically-known {@link ColumnTypeGate.Kind} of a comparison operand: a numeric literal
+     * or a {@code num(...)} conversion is NUMERIC, a string literal CHARACTER, anything else
+     * unknown ({@code null}).
+     */
+    private static ColumnTypeGate.@Nullable Kind staticKind(Expr e)
+    {
+        if (conversionOf(e) != null)
+        {
+            return ColumnTypeGate.Kind.NUMERIC;
+        }
+        if (e instanceof Expr.Lit lit)
+        {
+            return switch (lit.kind())
+            {
+            case NUMBER -> ColumnTypeGate.Kind.NUMERIC;
+            case STRING -> ColumnTypeGate.Kind.CHARACTER;
+            default -> null;
+            };
+        }
+        return null;
     }
 
 
@@ -1343,8 +1424,18 @@ public final class ExprCompiler
     }
 
 
+    /**
+     * Plain-family comparison. Phase 3 (PLAN-column-type-conformance, R4/R5/R9): both shapes run
+     * the column-type gate per evaluation, once the operands have resolved against the concrete
+     * table — {@code ==}/{@code !=} require the two sides' kinds to agree wherever both are known
+     * ({@link ColumnTypeGate#requireAgreedEquality}); the four order operators are numeric per se,
+     * so each side that is a resolved column must be numeric regardless of the other. The gate
+     * fires only for named {@link ColumnVector}s (§10 F9) — a {@code num()} conversion compiles to
+     * a {@code ComputedVector} and therefore satisfies it structurally.
+     */
     private static ExprProgram.BoolPlan compilePlain(Expr.BinOp op, ValuePlan leftP,
-            ValuePlan rightP, boolean forceNumeric)
+            ValuePlan rightP, boolean forceNumeric, ColumnTypeGate.@Nullable Kind lStatic,
+            ColumnTypeGate.@Nullable Kind rStatic)
     {
         if (op == Expr.BinOp.EQ || op == Expr.BinOp.NEQ)
         {
@@ -1357,6 +1448,7 @@ public final class ExprCompiler
                 {
                     return new BitSet();
                 }
+                ColumnTypeGate.requireAgreedEquality(lv, rv, lStatic, rStatic);
                 return Primitives.equality(lv, rv, run.rowCount(), negate, false, false,
                         forceNumeric);
             };
@@ -1371,6 +1463,8 @@ public final class ExprCompiler
             {
                 return new BitSet();
             }
+            ColumnTypeGate.requireNumericRead(lv, "an order comparison");
+            ColumnTypeGate.requireNumericRead(rv, "an order comparison");
             return Primitives.comparison(lv, rv, run.rowCount(), direction, orEqual);
         };
     }
@@ -3580,6 +3674,19 @@ public final class ExprCompiler
         }
         case Expr.Call c ->
         {
+            if (conversionOf(c) != null)
+            {
+                // R10: a conversion is a VALUE, not an erasable marker. num(X) compiles to a
+                // per-cell parse publishing DOUBLE (Primitives.numConversion) — the type the
+                // Phase 3 gate interrogates. A null inner plan (a $-name not in context, an
+                // unresolved -- wildcard) stays null, preserving the empty-BitSet contracts.
+                ValuePlan inner = operandPlan(c.args().get(0), namePosition, foldAbsentColumn);
+                yield run ->
+                {
+                    Vector v = inner.eval(run);
+                    return v == null ? null : Primitives.numConversion(v, run.rowCount());
+                };
+            }
             if (tagOf(c) != null)
             {
                 yield operandPlan(untag(c), namePosition, foldAbsentColumn);
@@ -3829,7 +3936,7 @@ public final class ExprCompiler
             int idx = meta.getColumnIndex(name);
             if (idx >= 0)
             {
-                return new ColumnVector(ctx.getTable().getColumn(idx),
+                return new ColumnVector(name, ctx.getTable().getColumn(idx),
                         meta.getColumn(idx).getType());
             }
             // Unqualified name absent from the primary table: if a Match_Datasets join carries it,
@@ -3935,7 +4042,7 @@ public final class ExprCompiler
             int idx = meta.getColumnIndex(name);
             if (idx >= 0)
             {
-                return new ColumnVector(ctx.getTable().getColumn(idx),
+                return new ColumnVector(name, ctx.getTable().getColumn(idx),
                         meta.getColumn(idx).getType());
             }
             // An unresolvable value-position identifier yields null, never the bareword itself:
@@ -5197,6 +5304,33 @@ public final class ExprCompiler
 
 
     /**
+     * Whether {@code right} is a non-empty list literal of string literals only — the shape that
+     * states a character expectation for the Phase 3 membership gate.
+     */
+    private static boolean isAllStringList(Expr right)
+    {
+        if (!(right instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.LIST)
+        {
+            return false;
+        }
+        @SuppressWarnings("unchecked")
+        List<Expr> items = (List<Expr>) lit.value();
+        if (items.isEmpty())
+        {
+            return false;
+        }
+        for (Expr item : items)
+        {
+            if (!(item instanceof Expr.Lit m) || m.kind() != Expr.LitKind.STRING)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+
+    /**
      * Phase 9b (decision D2): classifies a membership <b>list literal</b> by member type. Returns
      * the parsed {@code Set<Double>} of members when EVERY member is a numeric literal (all-numeric
      * ⇒ numeric membership), {@code null} when no member is numeric (all-string ⇒ textual
@@ -5323,7 +5457,45 @@ public final class ExprCompiler
     }
 
 
+    /** The conversion marker of {@code e} ({@code num}), or {@code null} — mirror of tagOf. */
+    private static @Nullable String conversionOf(Expr e)
+    {
+        if (e instanceof Expr.Call c && c.kwargs().isEmpty() && c.args().size() == 1
+                && CONVERSIONS.contains(c.name()))
+        {
+            return c.name();
+        }
+        return null;
+    }
+
+
+    /**
+     * The routing marker of {@code e}: a mode tag or a conversion name. {@link #family} and the
+     * {@code numTag} flag consume this, so {@code num(X) == date(D)} keeps routing {@code "plain"}
+     * exactly as it did when {@code num} sat in {@link #TAGS}.
+     */
+    private static @Nullable String markerOf(Expr e)
+    {
+        String t = tagOf(e);
+        return t != null ? t : conversionOf(e);
+    }
+
+
+    /**
+     * Strips a top-level mode tag <b>or</b> conversion. Stripping both is load-bearing for the
+     * routing checks that consume the inner operand — {@code isAffixCall} must see the affix inside
+     * {@code num(prefix(X, 2))} for the Fix #149 branch to fire. The <em>plans</em> keep the
+     * conversion (only the mode tag is stripped there — see {@code compileComparison}), which is
+     * what makes {@code num()} a value instead of an erased marker.
+     */
     private static Expr untag(Expr e)
+    {
+        return markerOf(e) != null ? ((Expr.Call) e).args().get(0) : e;
+    }
+
+
+    /** Strips only a top-level mode tag, keeping a conversion in place for the value plan. */
+    private static Expr stripModeTag(Expr e)
     {
         return tagOf(e) != null ? ((Expr.Call) e).args().get(0) : e;
     }

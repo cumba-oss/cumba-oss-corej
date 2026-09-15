@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.nio.file.Path;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.RuleExecutionResult;
@@ -97,19 +99,49 @@ class CdiscAd0640To0646IntegrationTest
     }
 
 
+    /**
+     * ⚠ Must be inventory-capable. The seven rules carry {@code AE.<col>} in
+     * {@code Requirements.Variables.All} since the corpus hoisted the guard out of the
+     * {@code Check} (2026-09-11 absent-column board), and {@code ScopeVariableSource.of} answers a
+     * qualified entry only for a {@link DatasetResolver.WithInventory}: a plain lambda cannot
+     * distinguish "AE is genuinely absent" from "this resolver cannot see other datasets", so the
+     * owner-ruled {@code QualifiedEntryPolicy.SKIP} would skip every rule here and the seven
+     * "fires" tests would assert 0 against a rule that never ran.
+     */
     private static DatasetResolver resolverOf(IDataTable ae, IDataTable suppae)
     {
-        return name ->
+        return new DatasetResolver.WithInventory()
         {
-            if ("AE".equals(name))
+
+            @Override
+            public IDataTable resolve(String domainName)
             {
-                return ae;
+                if ("AE".equals(domainName))
+                {
+                    return ae;
+                }
+                if ("SUPPAE".equals(domainName))
+                {
+                    return suppae;
+                }
+                return null;
             }
-            if ("SUPPAE".equals(name))
+
+
+            @Override
+            public Set<String> availableDatasets()
             {
-                return suppae;
+                Set<String> names = new LinkedHashSet<>();
+                if (ae != null)
+                {
+                    names.add("AE");
+                }
+                if (suppae != null)
+                {
+                    names.add("SUPPAE");
+                }
+                return names;
             }
-            return null;
         };
     }
 

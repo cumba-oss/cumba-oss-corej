@@ -161,8 +161,8 @@ class DefineVariableDecodeMatchesE2ETest
     void codeValueOutsideTheCodelistIsNotThisRulesConcern() throws IOException
     {
         // "ZZZ" is not a term of CL.PARAMCD -> no expected decode -> no decision (SD0037's job).
-        IDataTable xx = MockTable.of().name("XX").col("PARAMCD", "ZZZ")
-                .col("PARAM", "Albumin", "Bilirubin").build();
+        IDataTable xx = MockTable.of().name("XX").col("PARAMCD", "ZZZ").col("PARAM", "Albumin")
+                .build();
         assertEquals(0, run(xx, define).getViolationCount(),
                 "an out-of-codelist coded value is SD0037's finding, not a decode mismatch");
     }

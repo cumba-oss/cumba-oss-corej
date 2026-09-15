@@ -67,7 +67,12 @@ class AbsentColumnContractTest
             "not equalsIgnoreCase(TSVAL, \"x\")", "len(TSVAL) != 4",
             // positives — Q1 = uniform
             "TSVAL == \"X\"", "TSVAL =~ /^[1-9]\\d*$/", "TSVAL in [\"Y\", \"N\"]", "len(TSVAL) > 3",
-            "len(TSVAL) < 200", "TSVAL > 3",
+            // Phase 3 of PLAN-column-type-conformance: the order surface carries num(), because a
+            // RAW Char column in an order comparison now errors when present (the column-type
+            // gate) while an absent one still folds — an asymmetry that is the gate's own
+            // documented F9 gap, pinned in ColumnTypeGateTest, not an EC-43 disagreement. The
+            // ruled authoring num(TSVAL) > 3 keeps absent == all-blank (both all-missing).
+            "len(TSVAL) < 200", "num(TSVAL) > 3",
             // registry boolean predicates (the compileBoolCall generic tail)
             "is_integer(TSVAL)", "not is_integer(TSVAL)", "contains(TSVAL, \"Q\")",
             "not contains(TSVAL, \"Q\")", "starts_with(TSVAL, \"Q\")", "invalid_date(TSVAL)",

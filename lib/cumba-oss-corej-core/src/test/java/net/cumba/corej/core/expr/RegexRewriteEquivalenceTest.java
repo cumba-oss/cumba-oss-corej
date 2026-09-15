@@ -42,10 +42,21 @@ class RegexRewriteEquivalenceTest
                 .build();
         BitSet regex = eval("X =~ /^-?(0|[1-9]\\d*)(\\.\\d+)?$/", t);
         BitSet rewrite = eval("is_numeric(X)", t);
-        // DOCUMENTED widenings (is_numeric is a superset): "007" (row 1) and ".5" (row 2) now count
-        // as numeric where the strict regex did not match them.
+        // DOCUMENTED widenings — is_numeric is a strict superset of the regex, and the owner
+        // ruling of 2026-09-14 widened it again. The regex is the narrow reference; every row
+        // below is a value the regex rejects and is_numeric accepts:
+        // 1 "007" leading zeros 2 ".5" leading-dot fraction
+        // 3 "1." trailing dot 4 "1e5" exponent ⭐ the ruling's headline case
+        // 5 "+1" leading plus 6 " 1 " surrounding whitespace
+        // ⚠ Row 6 is inherited from Double.parseDouble rather than chosen; is_integer has always
+        // accepted it too, so the two predicates are at least consistent. See Primitives
+        // .isNumericCell's javadoc.
         regex.set(1);
         regex.set(2);
+        regex.set(3);
+        regex.set(4);
+        regex.set(5);
+        regex.set(6);
         assertEquals(regex, rewrite,
                 "is_numeric vs strict numeric regex (with documented widening)");
     }
@@ -112,7 +123,10 @@ class RegexRewriteEquivalenceTest
         // and the revert is correct.
         IDataTable t = MockTable.of().col("X", "5.0", "1e5", " 5 ").build();
         BitSet regex = eval("X !~ /^\\d+$/", t);
-        BitSet rewrite = eval("not (is_integer(X) and X >= 0)", t);
+        // Phase 3 of PLAN-column-type-conformance: the numeric half of the rewrite reads the Char
+        // column through num(X) — the raw `X >= 0` order read now errors (R3), and the per-cell
+        // soft failure of num() preserves the rewrite's verdicts bit for bit.
+        BitSet rewrite = eval("not (is_integer(X) and num(X) >= 0)", t);
         // The strict regex fires on every row (none is a bare run of digits).
         BitSet allFire = new BitSet();
         allFire.set(0, 3);
@@ -183,7 +197,11 @@ class RegexRewriteEquivalenceTest
         // between(X, 0, 1) rewrite admitted it).
         IDataTable t = MockTable.of().col("X", "0", "1", "1.0", "0.5", "0a5", "0X5", "2", "abc", "")
                 .build();
-        BitSet rewrite = eval("not empty(X) and (X <= 0 or X > 1 or X !~"
+        // Phase 3 of PLAN-column-type-conformance: the range half reads the Char column through
+        // num(X) (the raw order read errors per R3); num()'s per-cell soft failure plus the
+        // format-regex guard keep the converged shape's verdicts identical — the same migration
+        // Phase 6 applies to CDISC-CG0280 / FDA-SD1269 / PMDA-SD1269 themselves.
+        BitSet rewrite = eval("not empty(X) and (num(X) <= 0 or num(X) > 1 or X !~"
                 + " /^[+-]?([0-9]+(\\.[0-9]+)?|\\.[0-9]+)$/)", t);
         // INTENDED behaviour of the converged (0,1] shape, asserted explicitly:
         // 1, 1.0, 0.5 are valid quotients in (0,1] -> NO fire (rows 1-3).

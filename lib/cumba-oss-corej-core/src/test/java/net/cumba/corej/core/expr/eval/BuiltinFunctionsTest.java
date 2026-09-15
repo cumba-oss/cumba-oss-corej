@@ -266,12 +266,14 @@ class BuiltinFunctionsTest
         assertEquals(expected,
                 bool("prefix_matches", 5, col(n, "X"), ConstVector.of(re), col(n, "LEN")),
                 "per-row numeric column length 2");
-        // (c) CHAR column holding the text "2" — parses via asDouble
+        // (c) CHAR column holding the text "2" — the raw Char read now errors (Phase 3 gate);
+        // the authored form is num(LEN), whose conversion vector parses per cell.
         IDataTable c = MockTable.of().col("X", "FAKE", "AP01", "XFA1", "F", "")
                 .col("LEN", "2", "2", "2", "2", "2").build();
         assertEquals(expected,
-                bool("prefix_matches", 5, col(c, "X"), ConstVector.of(re), col(c, "LEN")),
-                "char column holding \"2\"");
+                bool("prefix_matches", 5, col(c, "X"), ConstVector.of(re),
+                        Primitives.numConversion(col(c, "LEN"), 5)),
+                "char column holding \"2\" through the num() conversion");
         // (d) "2" string literal
         assertEquals(expected,
                 bool("prefix_matches", 5, x, ConstVector.of(re), ConstVector.of("2")),
@@ -286,10 +288,11 @@ class BuiltinFunctionsTest
         // (same edge semantics as the Integer-arg overload). "FA" anchored against (AP|FA) matches;
         // "FAKE" whole-string does NOT. So with a missing length only row 0 ("FA") fires.
         IDataTable t = MockTable.of().col("X", "FA", "FAKE").build();
-        // missing length (empty char cells)
+        // missing length (an all-missing NUMERIC column — Phase 3's column-type gate reds a
+        // Char length column, which is not this test's subject: the missing-length fallback is)
         assertEquals(bits(0),
                 bool("prefix_matches", 2, col(t, "X"), ConstVector.of("(AP|FA)"),
-                        col(MockTable.of().col("L", "", "").build(), "L")),
+                        col(MockTable.of().colLong("L", (Long) null, null).build(), "L")),
                 "missing length ⇒ whole string");
         // non-integral length 2.5 ⇒ null ⇒ whole string
         assertEquals(bits(0), bool("prefix_matches", 2, col(t, "X"), ConstVector.of("(AP|FA)"),
@@ -352,12 +355,17 @@ class BuiltinFunctionsTest
     @Test
     void isNumericBattery()
     {
-        // Full grammar battery: accept 0/-3/3.5/007/.5; reject 1./1e5/+1/" 1 "/""/abc
-        // (only a leading '-' is allowed, matching the legacy `-?` regexes).
+        // PLAN-column-type-conformance follow-up, owner ruling 2026-09-14: is_numeric is
+        // "the cell is a number, or its text parses as one". A numeric cell answers true
+        // without touching its text; a character cell is parsed with Double.parseDouble.
+        // That WIDENS the old hand-rolled scan -- 1., 1e5, +1, " 1 " and +.5 are numeric now
+        // -- and it FIXES a defect: the old scan rejected exponents, but String.valueOf(double)
+        // PRODUCES them outside [1e-3, 1e7), so is_numeric(NUMCOL) answered false for a
+        // genuinely numeric 0.00000000012 rendered "1.2E-10".
         IDataTable t = MockTable.of()
                 .col("X", "0", "-3", "3.5", "007", ".5", "1.", "1e5", "+1", " 1 ", "", "abc")
                 .build();
-        assertEquals(bits(0, 1, 2, 3, 4), bool("is_numeric", 11, col(t, "X")));
+        assertEquals(bits(0, 1, 2, 3, 4, 5, 6, 7, 8), bool("is_numeric", 11, col(t, "X")));
     }
 
 
@@ -549,18 +557,24 @@ class BuiltinFunctionsTest
     @Test
     void absRoundFloorCeil()
     {
+        // R2/R3 (PLAN-column-type-conformance): a raw Char column in a numeric function is a rule
+        // defect and errors (see ColumnTypeGateTest); the authored numeric read is num(X), whose
+        // conversion vector this test feeds directly. The Char fixture is kept ON PURPOSE — the
+        // "abc" cell pins "non-numeric → missing" as distinct from the parsing cells, which a
+        // colDouble fixture could not express.
         IDataTable t = MockTable.of().col("X", "-3.5", "2.5", "", "abc").build();
-        Vector a = value("abs", 4, col(t, "X"));
+        Vector x = Primitives.numConversion(col(t, "X"), 4);
+        Vector a = value("abs", 4, x);
         assertEquals(3.5, a.asDouble(0));
         assertTrue(a.isMissing(2), "missing in -> missing out");
         assertTrue(a.isMissing(3), "non-numeric -> missing");
 
         // round is half-up toward +inf (Math.round): 2.5 -> 3, -3.5 -> -3.
-        assertEquals(3.0, value("round", 4, col(t, "X")).asDouble(1));
-        assertEquals(-3.0, value("round", 4, col(t, "X")).asDouble(0));
+        assertEquals(3.0, value("round", 4, x).asDouble(1));
+        assertEquals(-3.0, value("round", 4, x).asDouble(0));
         // floor / ceil
-        assertEquals(-4.0, value("floor", 4, col(t, "X")).asDouble(0));
-        assertEquals(3.0, value("ceil", 4, col(t, "X")).asDouble(1));
+        assertEquals(-4.0, value("floor", 4, x).asDouble(0));
+        assertEquals(3.0, value("ceil", 4, x).asDouble(1));
     }
 
 
@@ -700,11 +714,14 @@ class BuiltinFunctionsTest
     @Test
     void betweenInclusiveNumeric()
     {
+        // R2/R3: between over a raw Char column errors (column-type gate); the authored form is
+        // between(num(X), lo, hi). The Char fixture stays so the "abc" cell pins the per-cell
+        // soft-failure convention (non-numeric probe → skip, never an error — §4b F1).
         IDataTable t = MockTable.of().col("X", "5", "20", "30", "", "abc").build();
         // 10 <= X <= 30 : row1 (20) and row2 (30, inclusive) fire; 5 below, missing/non-numeric
         // skip.
-        assertEquals(bits(1, 2),
-                bool("between", 5, col(t, "X"), ConstVector.of(10.0), ConstVector.of(30.0)));
+        assertEquals(bits(1, 2), bool("between", 5, Primitives.numConversion(col(t, "X"), 5),
+                ConstVector.of(10.0), ConstVector.of(30.0)));
     }
 
 

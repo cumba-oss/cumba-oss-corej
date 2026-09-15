@@ -88,9 +88,13 @@ class ExprCompilerMembershipPlansTest
     {
         IDataTable t = MockTable.of().name("DS").col("NUM", "10.0", "010", "15", "").build();
         EvaluationContext c = ctxOf(t);
-        assertEquals(bits(0, 1), eval("NUM in [10, 20]", c),
-                "an all-numeric list must parse the probe (10.0 and 010 are the member 10)");
-        assertEquals(bits(2, 3), eval("NUM not in [10, 20]", c),
+        // Phase 3 (R3): the raw Char probe against a numeric list errors — the authored form is
+        // num(NUM), whose conversion parses the probe with the verdicts this test always pinned.
+        assertThrows(ColumnTypeMismatchException.class, () -> eval("NUM in [10, 20]", c),
+                "a raw Char probe against a numeric list errors (R3/R4)");
+        assertEquals(bits(0, 1), eval("num(NUM) in [10, 20]", c),
+                "an all-numeric list must parse the converted probe (10.0 and 010 are 10)");
+        assertEquals(bits(2, 3), eval("num(NUM) not in [10, 20]", c),
                 "not in fires non-members INCLUDING the unparseable blank");
     }
 

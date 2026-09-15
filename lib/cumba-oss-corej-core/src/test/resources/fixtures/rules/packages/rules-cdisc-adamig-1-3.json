@@ -140,6 +140,13 @@
           ]
         }
       },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "DM.USUBJID"
+          ]
+        }
+      },
       "Match_Datasets": [
         {
           "Name": "DM",
@@ -150,7 +157,7 @@
         }
       ],
       "Check": {
-        "expression": "var_exists(DM.USUBJID) and empty(DM.USUBJID)"
+        "expression": "empty(DM.USUBJID)"
       },
       "Outcome": {
         "Message": "This record's USUBJID value was not found in SDTM.DM",
@@ -405,6 +412,13 @@
           ]
         }
       },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "DM.AGE"
+          ]
+        }
+      },
       "Match_Datasets": [
         {
           "Name": "DM",
@@ -414,7 +428,7 @@
         }
       ],
       "Check": {
-        "expression": "var_exists(DM.AGE) and AGE != DM.AGE"
+        "expression": "AGE != DM.AGE"
       },
       "Outcome": {
         "Message": "For this subject, ADSL.AGE does not equal DM.AGE",
@@ -447,6 +461,13 @@
           ]
         }
       },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "DM.ARM"
+          ]
+        }
+      },
       "Match_Datasets": [
         {
           "Name": "DM",
@@ -456,7 +477,7 @@
         }
       ],
       "Check": {
-        "expression": "var_exists(DM.ARM) and ARM != DM.ARM"
+        "expression": "ARM != DM.ARM"
       },
       "Outcome": {
         "Message": "For this subject, ADSL.ARM does not equal DM.ARM",
@@ -489,6 +510,13 @@
           ]
         }
       },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "DM.ACTARM"
+          ]
+        }
+      },
       "Match_Datasets": [
         {
           "Name": "DM",
@@ -498,7 +526,7 @@
         }
       ],
       "Check": {
-        "expression": "var_exists(DM.ACTARM) and ACTARM != DM.ACTARM"
+        "expression": "ACTARM != DM.ACTARM"
       },
       "Outcome": {
         "Message": "ACTARM does not equal DM.ACTARM for this subject.",
@@ -851,8 +879,15 @@
           ]
         }
       },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "AE.AETRTEM"
+          ]
+        }
+      },
       "Check": {
-        "expression": "var_exists(AE.AETRTEM) and not var_exists(\"AETRTEM\")"
+        "expression": "not var_exists(\"AETRTEM\")"
       },
       "Outcome": {
         "Message": "AE.AETRTEM is present but AETRTEM is not present",
@@ -890,8 +925,15 @@
           ]
         }
       },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "AE.AESTDY"
+          ]
+        }
+      },
       "Check": {
-        "expression": "var_exists(AE.AESTDY) and not var_exists(\"AESTDY\")"
+        "expression": "not var_exists(\"AESTDY\")"
       },
       "Outcome": {
         "Message": "AE.AESTDY is present but AESTDY is not present",
@@ -929,8 +971,15 @@
           ]
         }
       },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "AE.AEENDY"
+          ]
+        }
+      },
       "Check": {
-        "expression": "var_exists(AE.AEENDY) and not var_exists(\"AEENDY\")"
+        "expression": "not var_exists(\"AEENDY\")"
       },
       "Outcome": {
         "Message": "AE.AEENDY is present but AEENDY is not present",
@@ -968,8 +1017,15 @@
           ]
         }
       },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "AE.AEDUR"
+          ]
+        }
+      },
       "Check": {
-        "expression": "var_exists(AE.AEDUR) and not var_exists(\"AEDUR\")"
+        "expression": "not var_exists(\"AEDUR\")"
       },
       "Outcome": {
         "Message": "AE.AEDUR is present but AEDUR is not present",
@@ -1007,8 +1063,15 @@
           ]
         }
       },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "AE.AESEV"
+          ]
+        }
+      },
       "Check": {
-        "expression": "var_exists(AE.AESEV) and not var_exists(\"AESEV\")"
+        "expression": "not var_exists(\"AESEV\")"
       },
       "Outcome": {
         "Message": "AE.AESEV is present but AESEV is not present",
@@ -1046,8 +1109,15 @@
           ]
         }
       },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "AE.AETOXGR"
+          ]
+        }
+      },
       "Check": {
-        "expression": "var_exists(AE.AETOXGR) and not var_exists(\"AETOXGR\")"
+        "expression": "not var_exists(\"AETOXGR\")"
       },
       "Outcome": {
         "Message": "AE.AETOXGR is present but AETOXGR is not present",

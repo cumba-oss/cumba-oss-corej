@@ -55,7 +55,13 @@ class ExprCompilerComparisonTagFamiliesTest
         IDataTable t = MockTable.of().name("AE").colLong("CNUM", 1L, 2L, 10L)
                 .col("SVAL", "1", "02", "10").build();
         EvaluationContext c = ctxOf(t);
-        assertEquals(bits(0, 1, 2), eval("CNUM == SVAL", c),
+        // Phase 3 (R9): an UNTYPED Num-vs-Char column comparison is the `--STRESN != --STRESC`
+        // defect shape and errors; the ruled authoring converts the Char side, and the numeric-
+        // aware verdict (02 matches 2) survives through it.
+        org.junit.jupiter.api.Assertions.assertThrows(ColumnTypeMismatchException.class,
+                () -> eval("CNUM == SVAL", c),
+                "an untyped Num-vs-Char column comparison errors (R9)");
+        assertEquals(bits(0, 1, 2), eval("CNUM == num(SVAL)", c),
                 "plain equality on a numeric LHS must be numeric-aware (02 matches 2)");
         assertEquals(bits(0, 2), eval("str(CNUM) == str(SVAL)", c),
                 "str()==str() must compare string forms only (02 does not match 2)");

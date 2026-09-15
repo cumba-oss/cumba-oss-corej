@@ -465,6 +465,26 @@ public final class RuleRunner
                     .totalRows(table != null ? table.getRowCount() : 0L)
                     .status(RuleExecutionStatus.ERROR).statusMessage(errorMsg).build());
         }
+        catch (net.cumba.corej.core.expr.eval.ColumnTypeMismatchException e)
+        {
+            // Phase 3 of PLAN-column-type-conformance (R4/R5/R9): the rule read a resolved column
+            // against its declared type without a conversion — a Char column where a number is
+            // expected (author num(X)), or a Num column where text is expected. Per-DATASET
+            // execution on purpose (§10 F1): the same wildcard rule stays green on the domains
+            // whose column shipped with the right type, which a Rule.loadError wiring could not
+            // do. Same "__error__" sentinel channel as InvalidJoinedDomainException — visible in
+            // the findings list and surfaced as DatasetExecutionSummary.RuleError, never a silent
+            // per-row verdict.
+            String errorMsg = String.valueOf(e.getMessage());
+            LOGGER.log(System.Logger.Level.WARNING, "[{0}] {1}",
+                    rule.effectiveId() != null ? rule.effectiveId() : "?", errorMsg);
+            Violation sentinel = new Violation(0, Map.of("__error__", errorMsg));
+            return stampSeverity(rule, RuleExecutionResult.builder().ruleId(rule.effectiveId())
+                    .message(rule.getOutcome() != null ? rule.getOutcome().getMessage() : null)
+                    .violations(List.of(sentinel))
+                    .totalRows(table != null ? table.getRowCount() : 0L)
+                    .status(RuleExecutionStatus.ERROR).statusMessage(errorMsg).build());
+        }
     }
 
 

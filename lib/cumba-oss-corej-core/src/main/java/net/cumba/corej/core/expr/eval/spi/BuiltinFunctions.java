@@ -213,7 +213,8 @@ public final class BuiltinFunctions implements FunctionProvider
             {
                 return ConstVector.of(null);
             }
-            return new ColumnVector(ctx.getTable().getColumn(idx), meta.getColumn(idx).getType());
+            return new ColumnVector(null, ctx.getTable().getColumn(idx),
+                    meta.getColumn(idx).getType());
         }));
 
         // -- VALUE numeric helpers (native-only; no legacy operator) ---------
@@ -364,6 +365,16 @@ public final class BuiltinFunctions implements FunctionProvider
             Vector x = args.get(0);
             Vector lo = args.get(1);
             Vector hi = args.get(2);
+            // ⭐ Gate hoisted out of numeric(): ColumnTypeGate.requireNumericRead is a pure
+            // function of the VECTOR, so asking it per row asked the same question rowCount times
+            // to get the same answer. Raised here, before the loop, so an operand of the wrong
+            // declared type still errors the rule exactly as before — just once.
+            net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(x,
+                    "a numeric function operand");
+            net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(lo,
+                    "a numeric function operand");
+            net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(hi,
+                    "a numeric function operand");
             BitSet result = new BitSet(run.rowCount());
             for (int row = 0; row < run.rowCount(); row++)
             {
@@ -583,6 +594,11 @@ public final class BuiltinFunctions implements FunctionProvider
     private static ComputedVector numericValue(int rowCount, Vector x, DataValueType type,
             java.util.function.DoubleUnaryOperator op)
     {
+        // Gate hoisted out of numeric() — pure in the vector, so once is enough. ⚠ Raised at plan
+        // construction rather than on first row access, which is strictly earlier and therefore
+        // still cannot let a mistyped operand through.
+        net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(x,
+                "a numeric function operand");
         return new ComputedVector(rowCount, type, row ->
         {
             Double d = numeric(x, row);
@@ -602,6 +618,11 @@ public final class BuiltinFunctions implements FunctionProvider
 
     /**
      * The numeric value of {@code x} at {@code row}, or {@code null} when missing / non-numeric.
+     * Phase 3 (R3/R4, PLAN-column-type-conformance): every numeric read of a function operand runs
+     * the column-type gate first — a resolved {@code Char} column ({@code abs(X)},
+     * {@code between(X, lo, hi)}, a {@code substring}/{@code prefix}/{@code suffix} length arg)
+     * errors instead of silently yielding all-missing; the authoring is {@code num(X)}. Literals,
+     * computed values, {@code num()} conversions and the {@code value()} cursor pass.
      */
     private static @Nullable Double numeric(Vector x, int row)
     {
@@ -748,6 +769,10 @@ public final class BuiltinFunctions implements FunctionProvider
      */
     private static @Nullable Integer integral(Vector v, int row)
     {
+        // ⚠ integral() is itself per-row; its callers hoist the gate. Kept here as a belt-and-
+        // braces raise for any future caller that forgets — requireNumericRead is idempotent.
+        net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(v,
+                "a numeric function operand");
         Double d = numeric(v, row);
         if (d == null || Double.compare(d, Math.rint(d)) != 0 || Double.isInfinite(d))
         {
