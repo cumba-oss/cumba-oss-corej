@@ -28,9 +28,9 @@ import org.junit.jupiter.api.Test;
  * work-order rows L-03 / L-04 / L-05).
  *
  * <p>
- * When {@code RuleGenerator.generate} throws, no rule can run against the dataset. That state must
- * travel the same per-dataset error channel as a table-open failure — a visible ERROR finding on
- * the dataset's own domain plus a non-empty {@code errors} list in its
+ * When {@code DatasetRuleResolver.generate} throws, no rule can run against the dataset. That state
+ * must travel the same per-dataset error channel as a table-open failure — a visible ERROR finding
+ * on the dataset's own domain plus a non-empty {@code errors} list in its
  * {@link DatasetExecutionSummary} — never a run-level warning that leaves the dataset's row reading
  * {@code executed=0, errors=[]}: in a conformance report a clean row for a dataset on which nothing
  * executed is indistinguishable from a genuine "no findings".
@@ -57,8 +57,8 @@ class LibraryValidatorGenerationFailureTest
 
     /**
      * A provider whose {@code getDeclaredDatasetClass} throws. In the LibraryValidator flow that
-     * method is consulted only inside {@code RuleGenerator.generate}, so the throw surfaces exactly
-     * on the generation-failure path under test; everything else delegates to a real
+     * method is consulted only inside {@code DatasetRuleResolver.generate}, so the throw surfaces
+     * exactly on the generation-failure path under test; everything else delegates to a real
      * {@link MetadataLibraryProvider}.
      */
     private static MetadataProvider throwingProvider()

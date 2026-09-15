@@ -59,9 +59,9 @@ import org.jspecify.annotations.Nullable;
  * {@code CDISC-AD0591} and {@code CDISC-AD0898} shipped for months loading cleanly, passing every
  * gate and checking nothing. So a source that cannot be read never expands to zero rules quietly:
  * it returns {@link WildcardExpander.ExpansionResult.NoMatch} with a stated reason, which
- * {@code RuleGenerator} turns into a SKIPPED audit row. The same discipline applies at the far end
- * — a token surviving into a resolved rule means substitution failed, so that rule is dropped with
- * a reason rather than evaluated against a column named {@code &VAR}.
+ * {@code DatasetRuleResolver} turns into a {@link SkippedSourceRule} audit row. The same discipline
+ * applies at the far end — a token surviving into a resolved rule means substitution failed, so
+ * that rule is dropped with a reason rather than evaluated against a column named {@code &VAR}.
  * </p>
  */
 @CustomLog
@@ -81,9 +81,9 @@ public final class TokenExpander
      * compiling.
      *
      * @param foreign
-     *            the foreign-dataset metadata source built at {@code RuleGenerator}'s own call site
-     *            (Fix #124), or {@code null} when this generator has no inventory-capable resolver
-     *            — in which case "the dataset is absent" and "this resolver is blind" are
+     *            the foreign-dataset metadata source built at {@code DatasetRuleResolver}'s own
+     *            call site (Fix #124), or {@code null} when this generator has no inventory-capable
+     *            resolver — in which case "the dataset is absent" and "this resolver is blind" are
      *            indistinguishable, so a source that needs it must skip rather than guess
      * @param provider
      *            the run's metadata provider; {@code getStandardDatasetNames()} is what

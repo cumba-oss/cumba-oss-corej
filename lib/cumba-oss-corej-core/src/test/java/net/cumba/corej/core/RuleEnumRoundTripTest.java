@@ -180,7 +180,8 @@ class RuleEnumRoundTripTest
     void programmaticTypedSetter_serializesCanonicalValue()
     {
         // The Lombok typed setters stay the programmatic construction path (LibraryRuleMapper,
-        // WildcardExpander, RuleGenerator); the @JsonGetter must emit the canonical value even
+        // WildcardExpander, DatasetRuleResolver); the @JsonGetter must emit the canonical value
+        // even
         // though no raw string was ever bound.
         Rule rule = new Rule();
         rule.setSensitivity(Sensitivity.DATASET);

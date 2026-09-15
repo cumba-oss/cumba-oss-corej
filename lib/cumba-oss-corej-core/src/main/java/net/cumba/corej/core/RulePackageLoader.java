@@ -431,22 +431,25 @@ public class RulePackageLoader
      * field is absent" as a distinguishable state is dead for loader-loaded rules. That is
      * precisely how {@code RuleCohortGrouper.equalityCohortKey}'s {@code getJoinType() != null}
      * rejection became unreachable for the corpus (EC-74) — while staying reachable for the
-     * {@code CDISC-AD0591-<domain>-<var>} rules {@code RuleGenerator} built per dataset, which
-     * never come through here. ⚑ That grouper is retired ({@code PLAN-retire-cohort-runner.md});
-     * the example stands as the clearest illustration of this pass's reach, and the reach itself is
-     * unchanged. The engine's {@code KeyMatchRowExpander} keeps {@code left} as a defensive
-     * fallback for exactly those loader-bypassing rules.
+     * {@code CDISC-AD0591-<domain>-<var>} rules the {@code CROSS_DATASET_METADATA} generator built
+     * per dataset, which never came through here (that generator is now deleted:
+     * {@code plans/PLAN-remove-rule-generator.md}). ⚑ That grouper is retired
+     * ({@code PLAN-retire-cohort-runner.md}); the example stands as the clearest illustration of
+     * this pass's reach, and the reach itself is unchanged. The engine's
+     * {@code KeyMatchRowExpander} keeps {@code left} as a defensive fallback for exactly those
+     * loader-bypassing rules.
      * </p>
      *
      * <p>
-     * ⚑ <b>Since Fix #366 that family no longer runs in production.</b> {@code LibraryValidator}
-     * enables only {@code RuleCategory.corpusDeliveryOnly()}, so {@code CROSS_DATASET_METADATA} —
-     * the sole minter of those rules — never fires. The {@code left} fallback is therefore
-     * unreachable outside tests; it stays because the generator code stays (disable now, delete
-     * later) and becomes deletable with it. ⚑ Its former companion, the
-     * {@code getJoinType() != null} rejection, is already <b>deleted</b> rather than merely
-     * unreachable — it lived in the retired {@code RuleCohortGrouper}
-     * ({@code PLAN-retire-cohort-runner.md}).
+     * ⚑ <b>That family no longer exists.</b> Fix #366 stopped {@code CROSS_DATASET_METADATA} — the
+     * sole minter of those rules — from firing, and {@code plans/PLAN-remove-rule-generator.md}
+     * deleted the generator itself. No production or test path now mints a rule that bypasses this
+     * loader, so the {@code left} fallback in {@code KeyMatchRowExpander} is unreachable. ⚠ It is
+     * <b>deliberately left in place</b>: it is a defensive default on the execution path, and
+     * removing it is a behaviour change rather than a deletion of dead generator code. Surfaced as
+     * a follow-up, not taken here. ⚑ Its former companion, the {@code getJoinType() != null}
+     * rejection, is already <b>deleted</b> rather than merely unreachable — it lived in the retired
+     * {@code RuleCohortGrouper} ({@code PLAN-retire-cohort-runner.md}).
      * </p>
      */
     private static void normalizeJoinTypes(RulePackage pkg)
@@ -475,13 +478,13 @@ public class RulePackageLoader
      * </p>
      *
      * <p>
-     * ⚠⚠ {@code RuleGenerator} also bypasses {@link #load} — it calls {@link #installNativeExpr}
-     * and the Output_Variables derivation, but <b>not</b> this method. Its generated
-     * {@code Match_Datasets} (e.g. the {@code CDISC-AD0591-}/{@code GEN-XDVAL-} cross-dataset value
-     * family) therefore keep a null {@code Join_Type} and are executed as a <b>left</b> join via
-     * {@code KeyMatchRowExpander}'s fallback, whereas a corpus rule with the identical
-     * {@code Match_Datasets} is executed as an <b>inner</b> join. Whether that divergence is
-     * intended has not been established; it is recorded, not resolved, by {@code Fix #233}. ⚑
+     * ⚠⚠ {@code DatasetRuleResolver} also bypasses {@link #load} — it calls
+     * {@link #installNativeExpr} and the Output_Variables derivation, but <b>not</b> this method.
+     * Its generated {@code Match_Datasets} (e.g. the {@code CDISC-AD0591-}/{@code GEN-XDVAL-}
+     * cross-dataset value family) therefore keep a null {@code Join_Type} and are executed as a
+     * <b>left</b> join via {@code KeyMatchRowExpander}'s fallback, whereas a corpus rule with the
+     * identical {@code Match_Datasets} is executed as an <b>inner</b> join. Whether that divergence
+     * is intended has not been established; it is recorded, not resolved, by {@code Fix #233}. ⚑
      * <b>Moot for shipped runs since Fix #366</b>: that family is no longer generated in
      * production, so the divergence survives only as a property of test-constructed generators.
      * </p>
@@ -1486,7 +1489,7 @@ public class RulePackageLoader
 
     /**
      * The single native-retention decision (P5: shared by THIS loader and the per-dataset
-     * {@code RuleGenerator} seam, so generated/expanded concrete rules carry the same native
+     * {@code DatasetRuleResolver} seam, so generated/expanded concrete rules carry the same native
      * {@code checkExpr} a loader-loaded rule would): raise the rule's Check to {@code Expr},
      * canonicalize its metadata operands (Epic B4 — uniformly, for every rule, since phase 4 of
      * {@code PLAN-leaf-scope-domain-inference.md}), install the expression when the native backend
@@ -4278,7 +4281,7 @@ public class RulePackageLoader
      * <p>
      * ⚠⚠ <b>Absence is NOT a violation and must never become one.</b> {@code null} / blank means
      * "not authored": {@link #normalizeJoinTypes(Rule)} stamps {@code inner} onto it a few passes
-     * later, and {@code RuleGenerator} — which never calls that method — relies on the null
+     * later, and {@code DatasetRuleResolver} — which never calls that method — relies on the null
      * surviving. ⚑ Its original motive is gone: the null used to be what kept
      * {@code RuleCohortGrouper}'s equality-cohort path reachable for the generated
      * {@code CDISC-AD0591-<domain>-<var>} family ({@code Fix #233} / EC-74), and that grouper is
@@ -4520,7 +4523,7 @@ public class RulePackageLoader
      * <li><b>the source's own operand present</b> ({@code with:} / {@code pattern:}), and the
      * pattern actually contains the token.</li>
      * <li><b>no token in {@code Scope.Variables}.</b> Scope is evaluated BEFORE expansion
-     * ({@code RuleGenerator} calls {@code describeScopeSkip} then {@code tryExpand}), so the
+     * ({@code DatasetRuleResolver} calls {@code describeScopeSkip} then {@code tryExpand}), so the
      * matcher sees the template and would test the token text literally — no such column, rule
      * skipped for every dataset, never expanded. R-4.9 is deliberately left untouched.</li>
      * <li><b>no engine-owned wildcard markers in the same Check.</b> The two expansion mechanisms
@@ -4564,7 +4567,7 @@ public class RulePackageLoader
             errors.add("Expansion cannot be combined with the engine-owned wildcard markers"
                     + " (xx/zz/y/w/*) in the same Check — the two expansions are independent walks");
         }
-        // The `wildcard*` directives all steer the OTHER mechanism, and RuleGenerator's
+        // The `wildcard*` directives all steer the OTHER mechanism, and DatasetRuleResolver's
         // applyTemplatePostFilters reads them by splitting an expanded id at the FIRST '-' after
         // the base id — which is wrong for a multi-directive token expansion (`X-AGE-AESEQ` yields
         // the "column" `AGE-AESEQ`). Rejecting the combination closes that latent wrong answer

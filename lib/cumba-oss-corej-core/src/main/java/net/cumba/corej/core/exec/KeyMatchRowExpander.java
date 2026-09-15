@@ -37,13 +37,35 @@ import org.jspecify.annotations.Nullable;
  * ⚠ <b>The {@code left} fallback is defensive, not the corpus path.</b> It applies only when
  * {@code Join_Type} is absent, and {@code RulePackageLoader.normalizeJoinTypes} stamps
  * {@code inner} onto every entry that omits it — so a rule that came through the loader always
- * arrives with a value, and only a loader-bypassing rule (notably {@code RuleGenerator}'s
- * per-dataset {@code CDISC-AD0591-}/{@code GEN-XDVAL-} family) reaches the fallback. Saying this
- * class "defaults to {@code left}" without that qualification is misleading: for the shipped corpus
- * the effective default is {@code inner}. ⚑ <b>Since Fix #366 the fallback is unreachable in
- * production</b> — the named family's category is no longer enabled at the one production
- * {@code RuleGenerator} construction site — so only a test-constructed generator still reaches it.
- * It stays while the generator code stays.
+ * arrives with a value, and only a loader-bypassing rule reached the fallback — in practice the
+ * per-dataset {@code CDISC-AD0591-}/{@code GEN-XDVAL-} family minted by the retired
+ * {@code CROSS_DATASET_METADATA} generator. Saying this class "defaults to {@code left}" without
+ * that qualification is misleading: for the shipped corpus the effective default is {@code inner}.
+ * ⚑ <b>That generator is now deleted</b> ({@code plans/done/PLAN-remove-rule-generator.md}), so no
+ * <b>production</b> path reaches the fallback any more.
+ *
+ * <p>
+ * ⛔⛔ <b>Removing it was TRIED on 2026-09-15 (owner request) and REVERTED — measured, not
+ * assumed.</b> Replacing the implicit default with {@code Objects.requireNonNull(md.getJoinType())}
+ * reds <b>28 cases across 9 test classes</b> ({@code KeyMatchRowExpanderTest},
+ * {@code JoinCacheConcurrencyTest}, {@code OutputVariableExclusionProjectionTest},
+ * {@code RuleCheckLevelsExecutionTest}, the two {@code OperandTemplate*IntegrationTest}s and three
+ * probe tests). They build {@link MatchDataset} by hand and never set {@code Join_Type}, so the
+ * fallback is unreachable only from <em>production</em> — it is load-bearing for the fixtures.
+ * </p>
+ *
+ * <p>
+ * ⚠⚠ <b>And the two defaults disagree, which is why this is not a mechanical fix.</b>
+ * {@code RulePackageLoader.normalizeJoinTypes} stamps {@code inner}; this site defaults to
+ * {@code left}. A hand-built fixture that omits {@code Join_Type} is therefore asserting a
+ * semantics the loader would never have produced for it. Making those fixtures explicit means
+ * choosing {@code left} (preserving every current assertion, but pinning a default production
+ * cannot reach) or {@code inner} (loader-faithful, but changing what several of them assert —
+ * unmatched primary rows would be dropped rather than kept). That is a behavioural decision for the
+ * owner, not a cleanup, and it is the same open question as triage finding {@code S2}
+ * ({@code plans/PLAN-expired-justifications-triage.md}). <b>Settle S2 first; do not retry the
+ * deletion on its own.</b>
+ * </p>
  * </p>
  *
  * <p>

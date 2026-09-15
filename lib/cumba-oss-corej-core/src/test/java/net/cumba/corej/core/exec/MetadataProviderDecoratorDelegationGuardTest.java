@@ -280,8 +280,10 @@ class MetadataProviderDecoratorDelegationGuardTest
             // the sponsor's Define-XML def:Class / def:SubClass and says "undeclared".
             //
             // CompanionDomainsProvider inherited both. On the RuleRunner path the loss is usually
-            // masked by tier 1 (the define provider answers first), but RuleGenerator has NO define
-            // tier: LibraryValidator builds it with the wrapped provider and RuleGenerator reads
+            // masked by tier 1 (the define provider answers first), but DatasetRuleResolver has NO
+            // define
+            // tier: LibraryValidator builds it with the wrapped provider and DatasetRuleResolver
+            // reads
             // both accessors straight off it, so the generation-time Scope.Data_Structures /
             // Scope.Subclasses gate silently lost the declaration and reverted to the column
             // heuristic — the rule landed in skippedSourceRules and was never executed, so

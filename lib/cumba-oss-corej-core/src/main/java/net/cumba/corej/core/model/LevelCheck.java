@@ -90,9 +90,9 @@ public record LevelCheck(CheckCondition condition, @Nullable String message)
      *
      * <p>
      * &#9888;&#9888; This is what the three {@code new Rule()} <b>clone sites</b>
-     * ({@code gen/RuleGenerator}, {@code gen/WildcardExpander}, {@code gen/TokenExpander}) call:
-     * each of them rebuilds a rule field by field and rewrites the Check, so a level map that is
-     * not rewritten alongside it would ship the template's unresolved names — and the drop is
+     * ({@code gen/DatasetRuleResolver}, {@code gen/WildcardExpander}, {@code gen/TokenExpander})
+     * call: each of them rebuilds a rule field by field and rewrites the Check, so a level map that
+     * is not rewritten alongside it would ship the template's unresolved names — and the drop is
      * invisible to the loader, both schemas and the writer, because the template still carries the
      * field. That exact omission cost Plan C phase 3 944 finding rows on {@code Severity}.
      * </p>

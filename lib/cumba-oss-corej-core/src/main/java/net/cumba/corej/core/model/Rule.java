@@ -1005,7 +1005,7 @@ public class Rule
      *
      * <p>
      * File-loaded rules carry <em>no</em> {@code id} — the rule-package map key <em>is</em> the
-     * {@code Core.Id} — while generated ({@link net.cumba.corej.core.gen.RuleGenerator}) and
+     * {@code Core.Id} — while generated ({@link net.cumba.corej.core.exec.DatasetRuleResolver}) and
      * CDISC-Library-sourced rules carry a synthetic {@code id} and may carry no {@code Core}.
      * Neither field alone identifies every rule, so callers that need "which rule is this, across
      * datasets" must use this method and never {@code getId()} directly.

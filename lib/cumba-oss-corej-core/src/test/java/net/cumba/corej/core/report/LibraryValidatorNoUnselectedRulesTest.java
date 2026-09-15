@@ -1,18 +1,15 @@
 package net.cumba.corej.core.report;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.MetadataProvider;
-import net.cumba.corej.core.gen.GeneratedRulePackage;
-import net.cumba.corej.core.gen.RuleCategory;
-import net.cumba.corej.core.gen.RuleGenerator;
 import net.cumba.corej.core.metadata.MetadataKeys;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
 import net.cumba.corej.core.model.CheckConditionLeaf;
@@ -29,27 +26,31 @@ import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.Test;
 
 /**
- * ⭐ The acceptance of {@code plans/done/PLAN-retire-engine-generated-rules.md} phase 2, asserted
- * against the <b>shipped</b> wiring: <i>no rule may fire unless it is in a package the user
- * selected.</i>
+ * ⭐ The shipped acceptance of <i>"no rule may fire unless it is in a package the user
+ * selected"</i>, asserted against the <b>real</b> {@link LibraryValidator} wiring — no
+ * {@code EnumSet} anywhere in the subject.
  *
  * <p>
  * The engine used to mint rules in Java at run time — {@code GEN-*} identities carrying no
  * {@code Standards} block, therefore belonging to no package, therefore selected by nobody — and
- * merge them into the executed set on every dataset of every run. {@code LibraryValidator} is the
- * one production construction site of {@link RuleGenerator}, and since Fix #366 it constructs it
- * with {@link RuleCategory#corpusDeliveryOnly()}: the two categories that deliver the selected
- * packages' own rules, and nothing else.
+ * merge them into the executed set on every dataset of every run. Fix #366 disabled that;
+ * {@code plans/PLAN-remove-rule-generator.md} deleted it. <b>The property is now structural</b>: no
+ * code path can mint a rule, so there is no longer anything for the engine to leak.
  * </p>
  *
  * <p>
- * ⚠⚠ <b>Why the control below is not optional.</b> A test that builds its own restricted
- * {@code RuleGenerator} and finds no {@code GEN-} id proves the mechanism works and never that
- * production carries it — the shape that let {@code KDICT-F1} hide behind a green gate. So this
- * class drives {@link LibraryValidator#validate()} (no {@code EnumSet} anywhere in the subject) and
- * separately proves, with an {@code allOf} generator over the <em>same</em> fixture, that the
- * fixture really is one on which the retired generators would fire. Without that second half a
- * fixture that simply gives the generators nothing to do would pass identically.
+ * ⚠⚠ <b>What happened to the old non-vacuity control, and why this is not a weakening.</b> This
+ * class used to carry a second test that built a {@code DatasetRuleResolver} with
+ * {@code EnumSet.allOf(RuleCategory.class)} and asserted it still minted {@code GEN-DISALLOW-DM} —
+ * proving the fixture was one on which a retired generator <em>would</em> have fired, so the
+ * assertion below could not pass merely because the generators had nothing to do. That control's
+ * subject is exactly what the deletion removed, so it could not be kept and could not be repaired.
+ * Its javadoc forbade the lazy answer — <i>"must be re-aimed, not deleted"</i> — and it was
+ * <b>re-aimed</b>, per ruling {@code R1}: the fixture now carries a <b>wildcard template</b> whose
+ * expansion children are the {@code CORE-SELECTED-1-*} ids, and
+ * {@link #theDeliveryPathReallyDeliversOnThisFixture()} pins that they actually appear. That keeps
+ * the same guarantee where it still bites — the assertion below cannot go green on a fixture
+ * through which nothing was delivered — and it now also guards the delivery path itself.
  * </p>
  */
 class LibraryValidatorNoUnselectedRulesTest
@@ -74,12 +75,17 @@ class LibraryValidatorNoUnselectedRulesTest
 
 
     /**
-     * DM with one column the Library does not define ({@code SPONSORX}) — the trigger for the
-     * {@code DISALLOWED_VARIABLE} generator, which minted {@code GEN-DISALLOW-DM}.
+     * DM carrying two columns a {@code TRTxxP} wildcard template expands over, so the selected
+     * package reaches execution through the <b>delivery path</b> and not only as a pass-through. ⚑
+     * {@code SPONSORX} is retained: it is a column the Library does not define, which is what the
+     * retired {@code DISALLOWED_VARIABLE} generator keyed on. If a minting path is ever
+     * reintroduced, this fixture still gives it something to mint — and
+     * {@link #everyRuleThatRunsCameFromTheSelectedPackage()} would catch it.
      */
     private static IDataTable dmTable()
     {
-        return MockTable.of().name("DM").col("STUDYID", "STUDY1").col("SPONSORX", "x").build();
+        return MockTable.of().name("DM").col("STUDYID", "STUDY1").col("SPONSORX", "x")
+                .col("TRT01P", "A").col("TRT02P", "B").build();
     }
 
 
@@ -96,9 +102,24 @@ class LibraryValidatorNoUnselectedRulesTest
         outcome.setMessage("STUDYID must not be empty");
         rule.setOutcome(outcome);
 
+        // A wildcard template under the SAME selected core id. Its expansions are
+        // CORE-SELECTED-1-TRT01P / -TRT02P, which is the `SELECTED_ID + "-"` arm of the assertion
+        // below — the arm that would otherwise never be exercised.
+        Rule template = new Rule();
+        template.setId("uuid-" + SELECTED_ID + "-tpl");
+        RuleCore tplCore = new RuleCore();
+        tplCore.setId(SELECTED_ID);
+        template.setCore(tplCore);
+        template.setSensitivity(Sensitivity.RECORD);
+        template.setCheck(CheckConditionLeaf.builder().name("TRTxxP").operator("empty").build());
+        Outcome tplOutcome = new Outcome();
+        tplOutcome.setMessage("TRTxxP must not be empty");
+        template.setOutcome(tplOutcome);
+
         RulePackage pkg = new RulePackage();
         Map<String, Rule> rules = new HashMap<>();
         rules.put(SELECTED_ID, rule);
+        rules.put(SELECTED_ID + "-tpl", template);
         pkg.setRules(rules);
         return pkg;
     }
@@ -125,26 +146,31 @@ class LibraryValidatorNoUnselectedRulesTest
 
 
     /**
-     * The control. Same provider, same table — but a generator with every category enabled, which
-     * is what {@code LibraryValidator} used to build. It mints {@code GEN-DISALLOW-DM}, an identity
-     * carrying no {@code Standards} block and belonging to no package. If this ever stops firing,
-     * the assertion above has gone vacuous and must be re-aimed, not deleted.
+     * ⭐ The re-aimed non-vacuity control (ruling {@code R1}).
+     *
+     * <p>
+     * {@link #everyRuleThatRunsCameFromTheSelectedPackage()} is a <em>universal</em> assertion over
+     * the executed set, so it passes trivially on a fixture through which little was delivered.
+     * This pins that the fixture genuinely exercises the delivery path: the {@code TRTxxP} template
+     * in the selected package must reach execution as its expansion <b>children</b>, {@code
+     * CORE-SELECTED-1-TRT01P} and {@code -TRT02P}. If wildcard expansion ever silently stops, this
+     * reds — and the assertion above would otherwise have kept passing, more vacuously than before.
+     * </p>
      */
     @Test
-    void theFixtureReallyWouldProduceAnUnselectedRuleUnderTheOldWiring()
+    void theDeliveryPathReallyDeliversOnThisFixture()
     {
-        MetadataProvider provider = provider();
-        RuleGenerator allCategories = new RuleGenerator(provider, null, null, provider.getVersion(),
-                EnumSet.allOf(RuleCategory.class));
-        allCategories.setStaticRules(List.of(selectedPackage().getRules().get(SELECTED_ID)));
-        allCategories.setDomainName("DM");
-        allCategories.setClassName("Special-Purpose");
+        List<String> executed = Collections.synchronizedList(new ArrayList<>());
 
-        GeneratedRulePackage pkg = allCategories.generate(dmTable());
+        LibraryValidator.builder().provider(provider()).rules(selectedPackage())
+                .targetDataset("DM", "dm.xpt", dmTable())
+                .runtimeListener(entry -> executed.add(String.valueOf(entry.coreId()))).build()
+                .validate();
 
-        List<String> ids = pkg.getRules().stream()
-                .map(r -> r.getCore() != null ? r.getCore().getId() : null).toList();
-        assertTrue(ids.contains("GEN-DISALLOW-DM"),
-                () -> "the control no longer mints an unselected rule; ids were " + ids);
+        List<String> children = executed.stream().filter(id -> id.startsWith(SELECTED_ID + "-"))
+                .sorted().toList();
+        assertEquals(List.of(SELECTED_ID + "-TRT01P", SELECTED_ID + "-TRT02P"), children,
+                () -> "the wildcard template was not delivered as expansion children; executed was "
+                        + executed);
     }
 }

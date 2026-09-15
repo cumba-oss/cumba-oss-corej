@@ -240,7 +240,7 @@ class ScopeMatcherRequirementsTest
          * discovered later.
          *
          * <p>
-         * {@code foreign == null} is generation time: {@code RuleGenerator.describeScopeSkip}
+         * {@code foreign == null} is generation time: {@code DatasetRuleResolver.describeScopeSkip}
          * passes null deliberately, so a resolver that cannot enumerate datasets does not skip
          * every qualified rule. There {@code describeIncludeEntry} answers "satisfied" for
          * <em>every</em> qualified entry.

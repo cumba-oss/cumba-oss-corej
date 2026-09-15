@@ -550,7 +550,7 @@ public final class RuleRunner
         // column absent from this dataset — or whose Exclude names one present — is not applicable
         // here: report SKIPPED naming the responsible variable, so an absent *required* column
         // surfaces as "skipped" rather than a silent no-finding. This is the runtime counterpart of
-        // the generation-time filter in RuleGenerator and intentionally mirrors the existing
+        // the generation-time filter in DatasetRuleResolver and intentionally mirrors the existing
         // metadata/precondition SKIPPED gates below. The primary (pre-merge) `table` metadata is
         // used so a foreign column pulled in by a later Match_Datasets merge cannot falsely satisfy
         // an Include; `domainPrefix` resolves a leading `--` (e.g. --OCCUR -> AEOCCUR) per dataset.
@@ -636,7 +636,8 @@ public final class RuleRunner
 
         // Fix #117/#118/#119/#154: ADaM data-structure / subclass scope gates
         // (Scope.Data_Structures / Scope.Subclasses) — runtime counterpart of the generation-time
-        // gate in RuleGenerator, so direct-execution paths (the .cdt ruletest harness, suites)
+        // gate in DatasetRuleResolver, so direct-execution paths (the .cdt ruletest harness,
+        // suites)
         // enforce them too. The detectors run only when the rule actually carries one of the
         // scopes. Fix #154 (decision D21-remainder) fixes the tier order as
         // 1. Define-XML declaration (def:Class / def:SubClass), if it folds to a token
@@ -3514,7 +3515,7 @@ public final class RuleRunner
      *
      * <p>
      * ⚠ This is the raw-entry shape {@code Fix #356} fixed at the three <em>generation</em> sites
-     * ({@code RuleGenerator#expandSdtmPrefixRules}, {@code TokenExpander},
+     * ({@code DatasetRuleResolver#expandSdtmPrefixRules}, {@code TokenExpander},
      * {@code WildcardExpander}) — and it is deliberately NOT routed through
      * {@link net.cumba.corej.core.model.OutputVariableToken#mapName}, because an
      * {@code OutputVariableToken} can never reach here. Every list that arrives is a

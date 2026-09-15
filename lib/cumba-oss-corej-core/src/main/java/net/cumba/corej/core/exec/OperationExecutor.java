@@ -712,9 +712,9 @@ public final class OperationExecutor
      * Used by {@code --} template re-resolution (Fix #1 {@code variable_count}), library-metadata
      * operations (Fixes #2/#3), RELREC per-row {@code **} resolution (Fix #5), and the Child-match
      * pre-merger (Fix #6). Public (Phase 4, PLAN-extend-expression-engine) so
-     * {@link net.cumba.corej.core.gen.RuleGenerator} can derive the prefix for resolving {@code --}
-     * placeholders in {@code Scope.Variables} entries at generation time with the same semantics as
-     * execution-time resolution.
+     * {@link net.cumba.corej.core.exec.DatasetRuleResolver} can derive the prefix for resolving
+     * {@code --} placeholders in {@code Scope.Variables} entries at generation time with the same
+     * semantics as execution-time resolution.
      * </p>
      *
      * @param table

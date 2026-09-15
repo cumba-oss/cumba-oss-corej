@@ -2801,7 +2801,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
         // Returns null when no pattern matches; ScopeMatcher.matchesClass treats null strictly
         // under Fix #41, skipping any class-scoped rule on this dataset and emitting a one-time
         // WARN
-        // per dataset from RuleGenerator.
+        // per dataset from DatasetRuleResolver.
         // Prefer the actual dataset's columns when supplied; otherwise the metadata-library table's
         // columns. This is the column set consulted by both the tier-3 sniffer and the FU-4 gate.
         Set<String> actualColumns = aActualColumns != null && !aActualColumns.isEmpty()

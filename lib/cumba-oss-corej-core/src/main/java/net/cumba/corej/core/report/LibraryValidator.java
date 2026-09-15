@@ -20,6 +20,7 @@ import java.util.function.UnaryOperator;
 import lombok.CustomLog;
 import net.cumba.corej.core.exec.AbsentDatasetSkip;
 import net.cumba.corej.core.exec.DatasetResolver;
+import net.cumba.corej.core.exec.DatasetRuleResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
@@ -28,7 +29,6 @@ import net.cumba.corej.core.exec.StudyRuleClassifier;
 import net.cumba.corej.core.gen.GeneratedRuleInfo;
 import net.cumba.corej.core.gen.GeneratedRulePackage;
 import net.cumba.corej.core.gen.RuleCategory;
-import net.cumba.corej.core.gen.RuleGenerator;
 import net.cumba.corej.core.gen.SkippedSourceRule;
 import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
 import net.cumba.corej.core.metadata.VlmResolver;
@@ -1069,13 +1069,12 @@ public final class LibraryValidator
         // class-scoped rule skipped under the strict-on-null behaviour from Fix #41.
         String className = classNameFor(memberName, cdiscDomain, table, aResolver);
 
-        // RuleGenerator is created fresh per dataset — no shared state.
-        // ⚠⚠ RuleCategory.corpusDeliveryOnly(), never the 2-arg constructor's EnumSet.allOf: this
-        // is the ONLY production construction site, and it is where "no rule may fire unless it is
-        // in a package the user selected" is enforced (Fix #366). The two enabled values are not
-        // generators — they are the corpus delivery path; read their javadoc before touching this.
-        RuleGenerator generator = new RuleGenerator(provider, null, null, provider.getVersion(),
-                RuleCategory.corpusDeliveryOnly());
+        // Created fresh per dataset — no shared state.
+        // ⚑ There is no category set to pass any more. "No rule may fire unless it is in a package
+        // the user selected" (Fix #366) used to be enforced here, by handing the generator only the
+        // two non-generator categories; since PLAN-remove-rule-generator.md deleted the in-Java
+        // generators it is enforced structurally — no code path can mint a rule at all.
+        DatasetRuleResolver generator = new DatasetRuleResolver(provider);
         generator.setStaticRules(aDatasetRules);
         generator.setDatasetResolver(aResolver);
         generator.setDomainName(cdiscDomain);

@@ -1479,7 +1479,8 @@ public final class ExprCompiler
             // Owner ruling 1 (PLAN-leaf-scope-domain-inference.md): the Rule_Type-dependent generic
             // presence operators are retired. The loader rejects them first
             // (RulePackageLoader.GENERIC_PRESENCE_OPERATORS); this arm is the same verdict for a
-            // rule that reaches the compiler by another path (RuleGenerator, a direct API caller).
+            // rule that reaches the compiler by another path (DatasetRuleResolver, a direct API
+            // caller).
             throw new RuleDefinitionException("the generic presence operator '" + name
                     + "' was retired — spell the fact the rule means: var_exists(X) /"
                     + " var_not_exists(X) for column presence, ds_exists(X) / ds_not_exists(X)"

@@ -240,8 +240,8 @@ class CompanionDomainsProviderTest
      * Without the two overrides this asserts, the wrapper answers {@code null} and {@code []}. The
      * damage is invisible on the {@code RuleRunner} path (the define provider is consulted first
      * and answers), and live in rule <b>generation</b>, which has no define tier:
-     * {@code LibraryValidator} builds {@code RuleGenerator} with this wrapper,
-     * {@code RuleGenerator} reads both accessors off it, and the generation-time
+     * {@code LibraryValidator} builds {@code DatasetRuleResolver} with this wrapper,
+     * {@code DatasetRuleResolver} reads both accessors off it, and the generation-time
      * {@code Scope.Data_Structures} / {@code Scope.Subclasses} gate then reverts to the column
      * heuristic — the rule is dropped into {@code skippedSourceRules} and never runs at all.
      * </p>

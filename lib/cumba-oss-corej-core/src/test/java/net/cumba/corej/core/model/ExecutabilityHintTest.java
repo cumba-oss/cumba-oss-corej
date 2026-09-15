@@ -17,9 +17,9 @@ class ExecutabilityHintTest
         assertNull(h.getCategory());
         assertNull(h.getDetail());
         h.setCategory("generated");
-        h.setDetail("Requires generation via RuleGenerator.");
+        h.setDetail("Requires generation via DatasetRuleResolver.");
         assertEquals("generated", h.getCategory());
-        assertEquals("Requires generation via RuleGenerator.", h.getDetail());
+        assertEquals("Requires generation via DatasetRuleResolver.", h.getDetail());
     }
 
 

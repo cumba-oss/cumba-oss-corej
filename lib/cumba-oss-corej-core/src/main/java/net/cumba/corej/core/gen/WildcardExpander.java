@@ -74,8 +74,8 @@ public final class WildcardExpander
     /**
      * Outcome of {@link #tryExpand(Rule, DataTableMeta)}. Tells the caller whether the rule carries
      * real wildcard tokens that need column-name expansion, and if so whether any dataset columns
-     * matched. Distinguishing these three states lets {@code RuleGenerator} route each rule to
-     * exactly one downstream pipeline (run as concrete rule, run the expansions, or skip with an
+     * matched. Distinguishing these three states lets {@code DatasetRuleResolver} route each rule
+     * to exactly one downstream pipeline (run as concrete rule, run the expansions, or skip with an
      * audit row) — replacing the previous heuristic-based filters that conflated "looks like a
      * wildcard" with "is a column-name template".
      */

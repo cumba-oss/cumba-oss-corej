@@ -1,4 +1,4 @@
-package net.cumba.corej.core.gen;
+package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.expr.ExpressionPrinter;
+import net.cumba.corej.core.gen.RuleGenerationReport;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.GroupingSpec;
@@ -23,7 +24,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code RuleGenerator.expandSdtmPrefixRules} — the second of the two live corpus-delivery
+ * {@code DatasetRuleResolver.expandSdtmPrefixRules} — the second of the two live corpus-delivery
  * expansions, and the third {@code new Rule()} clone site in the engine. It resolves a
  * domain-neutral {@code --DTC} rule into the concrete {@code AEDTC} rule the engine runs.
  *
@@ -75,8 +76,8 @@ class SdtmPrefixExpansionCarryOverTest
     private static Rule expandOnce(Rule template)
     {
         List<Rule> out = new ArrayList<>();
-        new RuleGenerator(null, null).expandSdtmPrefixRules(aeTable().getMetaData(), "AE",
-                List.of(template), out, new RuleGenerationReport("AE", null, null, null));
+        new DatasetRuleResolver(null).expandSdtmPrefixRules(aeTable().getMetaData(), "AE",
+                List.of(template), out, new RuleGenerationReport());
         assertEquals(1, out.size(), "one source rule expands to exactly one per-domain rule");
         Rule expanded = out.get(0);
         // ⛔ A load-errored expansion short-circuits deriveOmittedFields, which would make the

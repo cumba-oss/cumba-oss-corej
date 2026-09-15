@@ -99,8 +99,8 @@ public final class CompanionDomainsProvider implements MetadataProvider
      * ⚠⚠ Why it was not caught by the run: on the {@code RuleRunner} path the loss is normally
      * <em>masked</em>, because the define provider is consulted first and answers. It is unmasked
      * in rule <b>generation</b>, which has no define tier at all — {@code LibraryValidator} builds
-     * {@code RuleGenerator} with this wrapper, and {@code RuleGenerator} reads both declared-tier
-     * accessors straight off it to feed {@code AdamDataStructureDetector.detectAll} /
+     * {@code DatasetRuleResolver} with this wrapper, and {@code DatasetRuleResolver} reads both
+     * declared-tier accessors straight off it to feed {@code AdamDataStructureDetector.detectAll} /
      * {@code AdamSubclassDetector.resolve}. With the declaration lost, the generation-time
      * {@code Scope.Data_Structures} / {@code Scope.Subclasses} gate falls back to the column
      * heuristic, the rule lands in {@code skippedSourceRules} and is never executed — so

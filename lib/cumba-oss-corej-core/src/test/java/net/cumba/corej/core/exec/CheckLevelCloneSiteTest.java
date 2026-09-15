@@ -1,4 +1,4 @@
-package net.cumba.corej.core.gen;
+package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -13,10 +13,11 @@ import java.util.Map;
 import java.util.SequencedMap;
 import java.util.Set;
 import java.util.UUID;
-import net.cumba.corej.core.exec.DatasetResolver;
-import net.cumba.corej.core.exec.ScopeVariableSource;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ExpressionPrinter;
+import net.cumba.corej.core.gen.RuleGenerationReport;
+import net.cumba.corej.core.gen.TokenExpander;
+import net.cumba.corej.core.gen.WildcardExpander;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionExpression;
@@ -39,12 +40,13 @@ import org.junit.jupiter.api.Test;
  * ⛔⛔ Plan C phase 4, D2b — <b>the {@code new Rule()} clone sites carry the level map.</b>
  *
  * <p>
- * Each of {@code WildcardExpander#expandRule}, {@code TokenExpander} and {@code RuleGenerator}'s
- * {@code --}-prefix expansion rebuilds a rule <em>field by field</em> from a fresh
- * {@code new Rule()}. A top-level field the rebuild does not name is <b>silently dropped</b> from
- * every expanded child, and the drop is invisible to the loader, to both schemas and to the writer,
- * because the <em>template</em> still carries it. Plan C phase 3 lost <b>944 finding rows</b> to
- * exactly that on {@code Severity}; this test exists so the level map cannot repeat it.
+ * Each of {@code WildcardExpander#expandRule}, {@code TokenExpander} and
+ * {@code DatasetRuleResolver}'s {@code --}-prefix expansion rebuilds a rule <em>field by field</em>
+ * from a fresh {@code new Rule()}. A top-level field the rebuild does not name is <b>silently
+ * dropped</b> from every expanded child, and the drop is invisible to the loader, to both schemas
+ * and to the writer, because the <em>template</em> still carries it. Plan C phase 3 lost <b>944
+ * finding rows</b> to exactly that on {@code Severity}; this test exists so the level map cannot
+ * repeat it.
  * </p>
  *
  * <p>
@@ -221,7 +223,7 @@ class CheckLevelCloneSiteTest
 
 
     @Test
-    @DisplayName("RuleGenerator's --prefix expansion — every level is resolved (the phase-3 site)")
+    @DisplayName("DatasetRuleResolver's --prefix expansion — every level is resolved (the phase-3 site)")
     void sdtmPrefixExpansionCarriesTheLevelMap()
     {
         IDataTable ae = MockTable.of().name("AE").col("AEDTC", "2020-01-01").col("AESTDTC", "")
@@ -247,8 +249,8 @@ class CheckLevelCloneSiteTest
         tpl.setOutcome(o);
 
         List<Rule> out = new java.util.ArrayList<>();
-        new RuleGenerator(null, null).expandSdtmPrefixRules(ae.getMetaData(), "AE", List.of(tpl),
-                out, new RuleGenerationReport("AE", null, null, null));
+        new DatasetRuleResolver(null).expandSdtmPrefixRules(ae.getMetaData(), "AE", List.of(tpl),
+                out, new RuleGenerationReport());
 
         assertEquals(1, out.size(), out.toString());
         SequencedMap<Severity, LevelCheck> got = out.getFirst().getCheckLevels();
@@ -266,7 +268,7 @@ class CheckLevelCloneSiteTest
         assertEquals(Severity.WARNING, out.getFirst().effectiveSeverity(),
                 "⛔⛔ Severity must ride onto the clone (M1) — THIS is the site that cost phase 3 "
                         + "944 finding rows; authored Warning so the Error default cannot satisfy "
-                        + "it, and deleting RuleGenerator's setSeverity line must turn this red");
+                        + "it, and deleting DatasetRuleResolver's setSeverity line must turn this red");
     }
 
 

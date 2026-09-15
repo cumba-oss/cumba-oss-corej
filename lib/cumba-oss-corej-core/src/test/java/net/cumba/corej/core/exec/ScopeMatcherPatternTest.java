@@ -645,7 +645,7 @@ class ScopeMatcherPatternTest
                 "the data-derived base SUPPLB is what strict SUPP-- matches");
         // ⚠ The table-less, NAME-only heuristic strips one trailing letter and yields the
         // 7-character SUPPLBH, which strict SUPP-- cannot match. Production never takes this
-        // path (RuleGenerator passes OperationExecutor.unsplitNameFromData), but the two-arg
+        // path (DatasetRuleResolver passes OperationExecutor.unsplitNameFromData), but the two-arg
         // overload's weaker answer is pinned here so the difference is not rediscovered.
         assertNotNull(ScopeMatcher.describeDomainMismatch(rule, "SUPPLBHM"),
                 "name-only base SUPPLBH is 7 characters — strict SUPP-- misses it");

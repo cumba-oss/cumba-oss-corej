@@ -89,7 +89,7 @@ public final class ScopeMatcher
      * on the other. The divergence needs a SUPP/AP letter-suffix split to appear; digit-suffix
      * splits ({@code LB1}) agree on both paths.
      * <p>
-     * Nothing in the engine's own execution path is affected: {@code RuleGenerator} computes
+     * Nothing in the engine's own execution path is affected: {@code DatasetRuleResolver} computes
      * {@code unsplitName} from the dataset ({@code OperationExecutor.unsplitNameFromData}) and
      * calls the three-argument overload. This overload survives for callers that genuinely have
      * only a name — it is <em>not</em> a shorthand for the data-driven one. No guard is placed on
@@ -422,7 +422,8 @@ public final class ScopeMatcher
             // rule_processor.rule_applies_to_class:255 — when the dataset's class can't be
             // determined and the rule carries an Include or Exclude class scope, the rule is
             // rejected. Permissive only when neither list is set (i.e., the rule isn't
-            // class-scoped at all). RuleGenerator emits a one-time WARN per dataset listing how
+            // class-scoped at all). DatasetRuleResolver emits a one-time WARN per dataset listing
+            // how
             // many rules were skipped due to this path so the change is discoverable.
             boolean hasInclude = classes.getInclude() != null && !classes.getInclude().isEmpty();
             boolean hasExclude = classes.getExclude() != null && !classes.getExclude().isEmpty();
@@ -688,13 +689,14 @@ public final class ScopeMatcher
      * </p>
      *
      * <p>
-     * ⚠⚠ <b>Production callers pass {@code SKIP}</b> ({@code RuleRunner}, {@code RuleGenerator};
-     * owner ruling 2026-09-10, {@code plans/PLAN-qualified-requirements-cross-standard.md} §8.4
-     * disposition (b)). {@code IGNORE} is retained only for the qualified-blind overloads above,
-     * whose published contract is that they ignore qualified entries. ⛔ Do not "simplify" a
-     * production call site back onto this overload: under {@code IGNORE} a rule whose
-     * {@code var_exists(DM.ARM)} guard was hoisted into {@code Requirements} runs with nothing in
-     * the guard's place, which is the flood the hoist was supposed to make auditable.
+     * ⚠⚠ <b>Production callers pass {@code SKIP}</b> ({@code RuleRunner},
+     * {@code DatasetRuleResolver}; owner ruling 2026-09-10,
+     * {@code plans/PLAN-qualified-requirements-cross-standard.md} §8.4 disposition (b)).
+     * {@code IGNORE} is retained only for the qualified-blind overloads above, whose published
+     * contract is that they ignore qualified entries. ⛔ Do not "simplify" a production call site
+     * back onto this overload: under {@code IGNORE} a rule whose {@code var_exists(DM.ARM)} guard
+     * was hoisted into {@code Requirements} runs with nothing in the guard's place, which is the
+     * flood the hoist was supposed to make auditable.
      * </p>
      *
      * @param rule

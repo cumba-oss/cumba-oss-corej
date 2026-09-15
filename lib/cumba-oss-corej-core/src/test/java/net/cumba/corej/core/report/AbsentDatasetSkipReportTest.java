@@ -120,8 +120,8 @@ class AbsentDatasetSkipReportTest
 
     /**
      * The findings of the two rules under test, as {@code <coreId>#<rowCount>}. The metadata
-     * provider also drives {@code RuleGenerator}'s synthetic {@code GEN-*} library rules, which are
-     * irrelevant here and deliberately filtered out.
+     * provider also drives {@code DatasetRuleResolver}'s synthetic {@code GEN-*} library rules,
+     * which are irrelevant here and deliberately filtered out.
      */
     private static List<String> findingRuleIds(ValidationReport report)
     {

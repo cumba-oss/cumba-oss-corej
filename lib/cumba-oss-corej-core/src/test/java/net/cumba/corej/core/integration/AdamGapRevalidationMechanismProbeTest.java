@@ -214,7 +214,8 @@ class AdamGapRevalidationMechanismProbeTest
     // cannot fail, since the unexpanded Check reads an absent column. That vacuous probe was the
     // whole evidential basis for `adam-gap-revalidation.md`'s SUPPORTED verdict while the defect
     // was live. The replacement runs the template through WildcardExpander.expand against real
-    // column metadata — the same call RuleGenerator makes — and then executes BOTH directions on
+    // column metadata — the same call DatasetRuleResolver makes — and then executes BOTH directions
+    // on
     // the expanded rule, so a regression in either the expansion or the comparison turns it red.
 
 

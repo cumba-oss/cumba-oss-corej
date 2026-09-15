@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import net.cumba.corej.core.RulePackageLoader;
+import net.cumba.corej.core.exec.DatasetRuleResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.metadata.MetadataKeys;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
@@ -23,14 +24,15 @@ import org.junit.jupiter.api.Test;
  * loaded through {@link RulePackageLoader}, hence carrying no raw {@code id}.
  *
  * <p>
- * {@code RuleGenerator} records a skipped source rule only for rules present in its
+ * {@code DatasetRuleResolver} records a skipped source rule only for rules present in its
  * {@code staticRuleSourceIds} audit set. That set used to be filled from {@code Rule#getId()},
  * which is {@code null} for every rule loaded from a shipped package, so the set was always empty
- * and no corpus rule ever produced a scope-skip audit row. The existing {@code RuleGeneratorTest}
- * cases miss this because their fixtures assign an explicit {@code id}.
+ * and no corpus rule ever produced a scope-skip audit row. The existing
+ * {@code DatasetRuleResolverTest} cases miss this because their fixtures assign an explicit
+ * {@code id}.
  * </p>
  */
-class RuleGeneratorLoadedRuleAuditTest
+class DatasetRuleResolverLoadedRuleAuditTest
 {
 
     /**
@@ -84,7 +86,7 @@ class RuleGeneratorLoadedRuleAuditTest
 
     private static GeneratedRulePackage generateFor(Rule rule, String domain)
     {
-        RuleGenerator gen = new RuleGenerator(provider(), null);
+        DatasetRuleResolver gen = new DatasetRuleResolver(provider());
         gen.setStaticRules(List.of(rule));
         gen.setDomainName(domain);
         return gen.generate(table(domain));

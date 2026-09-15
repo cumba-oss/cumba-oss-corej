@@ -272,7 +272,7 @@ public final class AdamDataStructureDetector
      * #154</b>, which is the single definition every caller of the four-argument
      * {@link #detect(String, Collection, String, boolean) detect} /
      * {@link AdamSubclassDetector#resolve resolve} overloads reads ({@code RuleRunner},
-     * {@code RuleGenerator}, the {@code .cdt} suites pre-gate).
+     * {@code DatasetRuleResolver}, the {@code .cdt} suites pre-gate).
      *
      * <p>
      * <b>Why declared-before-inferred.</b> Not merely "a declaration is authority":

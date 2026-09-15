@@ -6,15 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
-import java.util.EnumSet;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.DatasetResolver;
+import net.cumba.corej.core.exec.DatasetRuleResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleRunner;
 import net.cumba.corej.core.exec.StubMetadataProvider;
-import net.cumba.corej.core.gen.RuleCategory;
-import net.cumba.corej.core.gen.RuleGenerator;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.corej.core.model.WildcardFilter;
@@ -163,8 +161,7 @@ class CdiscAd0078And0079IntegrationTest
                 return "1.3";
             }
         };
-        RuleGenerator gen = new RuleGenerator(noOp, null, null, "adamct-2025-09-26",
-                EnumSet.of(RuleCategory.WILDCARD_EXPANSION));
+        DatasetRuleResolver gen = new DatasetRuleResolver(noOp);
         gen.setStaticRules(java.util.List.of(template));
         gen.setDomainName("ADSL");
         gen.setClassName("SUBJECT LEVEL ANALYSIS DATASET");

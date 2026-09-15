@@ -116,7 +116,7 @@ class RuleLoadValidationExpansionTest
     @Test
     void aTokenInAVariableRequirementIsRejected() throws IOException
     {
-        // The requirement gate runs BEFORE expansion (RuleGenerator: describeScopeSkip, then
+        // The requirement gate runs BEFORE expansion (DatasetRuleResolver: describeScopeSkip, then
         // tryExpand), so it would match '&VAR' literally, skip the rule for every dataset, and the
         // template would never expand. That is how 25 CDISC-AD rules were silently always-skipped
         // once. ⚠ The bar re-pointed onto Requirements.Variables when Scope.Variables retired
@@ -177,7 +177,8 @@ class RuleLoadValidationExpansionTest
     @Test
     void mixingAnExpansionWithTheWildcardMechanismDirectivesIsRejected() throws IOException
     {
-        // RuleGenerator.applyTemplatePostFilters derives the "expanded column" by cutting the id
+        // DatasetRuleResolver.applyTemplatePostFilters derives the "expanded column" by cutting the
+        // id
         // after the base id, which is wrong for a multi-directive token expansion.
         String error = errorOf("""
                 {

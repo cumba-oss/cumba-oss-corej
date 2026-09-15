@@ -1,4 +1,4 @@
-package net.cumba.corej.core.gen;
+package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -9,10 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.RulePackageLoader;
-import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleExecutionStatus;
-import net.cumba.corej.core.exec.RuleRunner;
-import net.cumba.corej.core.exec.StubMetadataProvider;
+import net.cumba.corej.core.gen.GeneratedRulePackage;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.corej.core.report.ValidationReportBuilder;
@@ -26,7 +23,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@code Fix #356} — the per-domain {@code --} expansion
- * ({@link RuleGenerator#expandSdtmPrefixRules}) must resolve the wildcard <em>inside</em> an
+ * ({@link DatasetRuleResolver#expandSdtmPrefixRules}) must resolve the wildcard <em>inside</em> an
  * {@code Outcome.Output_Variables} exclusion token
  * ({@link net.cumba.corej.core.model.OutputVariableToken}).
  *
@@ -81,7 +78,7 @@ class PerDomainOutputExclusionTest
 
     private static Rule expandFor(String domain, IDataTable table) throws Exception
     {
-        RuleGenerator generator = new RuleGenerator(new StubMetadataProvider(), null);
+        DatasetRuleResolver generator = new DatasetRuleResolver(new StubMetadataProvider());
         generator.setDomainName(domain);
         generator.setStaticRules(List.of(staticRule()));
         GeneratedRulePackage out = generator.generate(table);
@@ -205,7 +202,7 @@ class PerDomainOutputExclusionTest
         assertNotNull(template);
 
         IDataTable table = lb();
-        RuleGenerator generator = new RuleGenerator(new StubMetadataProvider(), null);
+        DatasetRuleResolver generator = new DatasetRuleResolver(new StubMetadataProvider());
         generator.setDomainName("LB");
         generator.setStaticRules(List.of(template));
         Rule concrete = generator.generate(table).getRules().stream()

@@ -7,16 +7,14 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
-import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import net.cumba.corej.core.exec.DatasetRuleResolver;
 import net.cumba.corej.core.exec.OperationExecutor;
 import net.cumba.corej.core.exec.ScopeMatcher;
 import net.cumba.corej.core.gen.GeneratedRulePackage;
-import net.cumba.corej.core.gen.RuleCategory;
-import net.cumba.corej.core.gen.RuleGenerator;
 import net.cumba.corej.core.gen.SkippedSourceRule;
 import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.DomainScope;
@@ -52,10 +50,10 @@ import org.junit.jupiter.params.provider.CsvSource;
  *
  * <p>
  * The datasets in {@code net/cumba/corej/ruletest/scope_fixtures/} close that gap. Every assertion
- * below runs the production two-step exactly as {@code RuleGenerator.doGenerate} does —
+ * below runs the production two-step exactly as {@code DatasetRuleResolver.doGenerate} does —
  * {@link OperationExecutor#unsplitNameFromData} on the loaded table, then
  * {@code ScopeMatcher.describeDomainMismatch(rule, name, base)} — and
- * {@link #ruleGeneratorSelectsByFamily()} drives the whole of {@link RuleGenerator} so the
+ * {@link #ruleGeneratorSelectsByFamily()} drives the whole of {@link DatasetRuleResolver} so the
  * selection path (rule emitted vs. rule skipped, with its reason) is covered too.
  * </p>
  *
@@ -112,7 +110,7 @@ class ApSqDomainScopeFromDataTest
 
     /**
      * The production two-step: the dataset's own name plus its <em>data-derived</em> base, exactly
-     * as {@code RuleGenerator.doGenerate} assembles them.
+     * as {@code DatasetRuleResolver.doGenerate} assembles them.
      */
     private static String mismatch(Rule aRule, String aDataset)
     {
@@ -361,14 +359,14 @@ class ApSqDomainScopeFromDataTest
     }
 
     // ------------------------------------------------------------------------------------
-    // 5. End-to-end through RuleGenerator — the production selection path
+    // 5. End-to-end through DatasetRuleResolver — the production selection path
     // ------------------------------------------------------------------------------------
 
 
     /**
      * Everything above calls {@link ScopeMatcher} directly with production's inputs. This test
-     * instead hands the loaded table to {@link RuleGenerator} and asserts on what the generator
-     * emitted versus what it skipped and why — so the wiring itself ({@code doGenerate} →
+     * instead hands the loaded table to {@link DatasetRuleResolver} and asserts on what the
+     * generator emitted versus what it skipped and why — so the wiring itself ({@code doGenerate} →
      * {@code unsplitNameFromData} → {@code describeScopeSkip}) is covered, not merely the matcher
      * it calls.
      */
@@ -396,15 +394,15 @@ class ApSqDomainScopeFromDataTest
 
     /**
      * ⚠ {@code SDTM_PREFIX_EXPANSION} is not optional here even though nothing in this class uses a
-     * {@code --} variable prefix: {@code RuleGenerator} drains {@code scopedStaticRules} into the
-     * output <em>inside</em> that category's guard, so with the category disabled a static rule is
-     * scope-matched and then silently dropped. Every other category stays off so the package holds
-     * exactly the rule under test.
+     * {@code --} variable prefix: {@code DatasetRuleResolver} drains {@code scopedStaticRules} into
+     * the output <em>inside</em> that category's guard, so with the category disabled a static rule
+     * is scope-matched and then silently dropped. Every other category stays off so the package
+     * holds exactly the rule under test.
      */
     private static GeneratedRulePackage generateFor(String aIncludeToken, String aDataset)
     {
-        RuleGenerator generator = new RuleGenerator(MapBackedLibraryMetadataProvider.empty(), null,
-                null, null, EnumSet.of(RuleCategory.SDTM_PREFIX_EXPANSION));
+        DatasetRuleResolver generator = new DatasetRuleResolver(
+                MapBackedLibraryMetadataProvider.empty());
         generator.setStaticRules(List.of(scoped(List.of(aIncludeToken), null)));
         return generator.generate(dataset(aDataset));
     }

@@ -122,14 +122,14 @@ public final class OutputVariableDeriver
      *
      * <p>
      * ⚠ E-3.4 rejects {@code !--SEQ}, but the per-domain expansion
-     * ({@code RuleGenerator#expandSdtmPrefixRules}) re-validates the <em>substituted</em> rule,
-     * where the same authored token now reads {@code !LBSEQ} — not a member of the set, so the
-     * verbatim test alone lets it through on the way out ({@code Fix #356}; latent, 0 carriers).
-     * Resolving the wildcard members here against {@link #pinnedDomains} — the identical population
-     * D5's own {@code <D>SEQ} removal walks in {@link #derivedSet} — makes the token a load error
-     * on both sides of the expansion, with the same message. Both the full domain code and the
-     * two-character prefix the expansion actually substitutes are matched, so a longer pinned
-     * domain cannot slip past.
+     * ({@code DatasetRuleResolver#expandSdtmPrefixRules}) re-validates the <em>substituted</em>
+     * rule, where the same authored token now reads {@code !LBSEQ} — not a member of the set, so
+     * the verbatim test alone lets it through on the way out ({@code Fix #356}; latent, 0
+     * carriers). Resolving the wildcard members here against {@link #pinnedDomains} — the identical
+     * population D5's own {@code <D>SEQ} removal walks in {@link #derivedSet} — makes the token a
+     * load error on both sides of the expansion, with the same message. Both the full domain code
+     * and the two-character prefix the expansion actually substitutes are matched, so a longer
+     * pinned domain cannot slip past.
      * </p>
      */
     public static boolean isLocationVariable(@Nullable Rule rule, String name)

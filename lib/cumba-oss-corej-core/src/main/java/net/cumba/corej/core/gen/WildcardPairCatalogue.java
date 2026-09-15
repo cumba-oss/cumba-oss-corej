@@ -19,8 +19,10 @@ import java.util.Set;
  * category, visit, timepoint, phase, period, analysis-value, baseline). It is deliberately a
  * curated <em>starter</em> set, not exhaustive: indexed families ({@code TRT01P}…,
  * {@code PARCAT1}…) are seeded with the low-index representatives that appear in practice; extend
- * as needed. Modelled on the static-pattern precedent in
- * {@code RuleGenerator.generatePairOneToOneRules}.
+ * as needed. ⚑ It was modelled on the static-pattern precedent in
+ * {@code DatasetRuleResolver.generatePairOneToOneRules}, a generator deleted by
+ * {@code plans/PLAN-remove-rule-generator.md}; this catalogue is unaffected and remains live — it
+ * serves corpus wildcard rules through {@link WildcardExpander}.
  */
 public final class WildcardPairCatalogue
 {

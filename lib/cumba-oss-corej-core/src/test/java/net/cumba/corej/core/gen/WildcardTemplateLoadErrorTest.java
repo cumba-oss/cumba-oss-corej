@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.RulePackageLoader;
+import net.cumba.corej.core.exec.DatasetRuleResolver;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
 import net.cumba.corej.core.exec.RuleRunner;
@@ -58,7 +59,7 @@ class WildcardTemplateLoadErrorTest
 
     private static GeneratedRulePackage generate(Rule staticRule, IDataTable table)
     {
-        RuleGenerator generator = new RuleGenerator(new EmptyLibraryProvider(), null);
+        DatasetRuleResolver generator = new DatasetRuleResolver(new EmptyLibraryProvider());
         generator.setDomainName("ADSL");
         generator.setStaticRules(List.of(staticRule));
         return generator.generate(table);

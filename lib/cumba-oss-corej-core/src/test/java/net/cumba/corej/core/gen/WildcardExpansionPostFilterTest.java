@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.List;
 import java.util.Map;
+import net.cumba.corej.core.exec.DatasetRuleResolver;
 import net.cumba.corej.core.exec.StubMetadataProvider;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
@@ -16,9 +17,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code RuleGenerator.applyTemplatePostFilters} — the gate that decides <b>which</b> wildcard
- * expansions survive to be executed, and the only place a wildcard expansion is announced to the
- * {@link RuleGenerationReport}.
+ * {@code DatasetRuleResolver.applyTemplatePostFilters} — the gate that decides <b>which</b>
+ * wildcard expansions survive to be executed, and the only place a wildcard expansion is announced
+ * to the {@link RuleGenerationReport}.
  *
  * <p>
  * The generator is built with {@link RuleCategory#corpusDeliveryOnly()}, i.e. the exact category
@@ -68,8 +69,7 @@ class WildcardExpansionPostFilterTest
     private static GeneratedRulePackage generate(StubMetadataProvider provider, String domain,
             Rule template, IDataTable table)
     {
-        RuleGenerator generator = new RuleGenerator(provider, null, null, null,
-                RuleCategory.corpusDeliveryOnly());
+        DatasetRuleResolver generator = new DatasetRuleResolver(provider);
         generator.setDomainName(domain);
         generator.setStaticRules(List.of(template));
         return generator.generate(table);

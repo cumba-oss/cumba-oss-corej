@@ -20,9 +20,12 @@ import org.jspecify.annotations.Nullable;
  * </p>
  * <ul>
  * <li>{@code expanded} — the rule's {@code --} domain-prefix wildcards must be expanded to the
- * target dataset (handled by {@code WildcardExpander} / {@code RuleGenerator}).</li>
- * <li>{@code generated} — concrete rules must be generated from a wildcard/root-name template (e.g.
- * {@code *FL}) by {@code RuleGenerator} using dataset and CDISC Library variable metadata.</li>
+ * target dataset (handled by {@code WildcardExpander} / {@code DatasetRuleResolver}).</li>
+ * <li>{@code generated} — concrete rules must be materialised from a wildcard/root-name template
+ * (e.g. {@code *FL}) by {@code DatasetRuleResolver} using dataset and CDISC Library variable
+ * metadata. ⚑ The template is the corpus rule's own; the hint's name predates
+ * {@code plans/PLAN-remove-rule-generator.md}, which removed the in-Java generators — nothing is
+ * minted from metadata any more, only expanded from a rule the user selected.</li>
  * <li>{@code not executable} — the rule cannot be run by the current engine (e.g. it needs dynamic
  * value-indexed variable resolution or multi-axis index expansion); {@link Executability} stays
  * {@link Executability#NOT_EXECUTABLE} and {@link #detail} explains the blocker.</li>

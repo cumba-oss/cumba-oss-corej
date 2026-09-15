@@ -1,4 +1,4 @@
-package net.cumba.corej.core.gen;
+package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import net.cumba.corej.core.expr.ExpressionPrinter;
+import net.cumba.corej.core.gen.RuleGenerationReport;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionLeaf;
@@ -18,8 +19,8 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Pins {@code RuleGenerator.expandSdtmPrefixRules} — the {@code --}-prefix expansion that turns one
- * domain-neutral static rule into the concrete per-domain rule.
+ * Pins {@code DatasetRuleResolver.expandSdtmPrefixRules} — the {@code --}-prefix expansion that
+ * turns one domain-neutral static rule into the concrete per-domain rule.
  *
  * <p>
  * {@code CheckLevelCloneSiteTest} already holds the level-map half of this method (the phase-3
@@ -38,7 +39,7 @@ import org.junit.jupiter.api.Test;
  * observable, and {@link #aLongerDomainCodeStillContributesATwoCharacterPrefix} kills that.
  * </p>
  */
-class RuleGeneratorSdtmPrefixExpansionTest
+class DatasetRuleResolverSdtmPrefixExpansionTest
 {
 
     private static CheckConditionLeaf leaf(String name, String operator)
@@ -76,8 +77,8 @@ class RuleGeneratorSdtmPrefixExpansionTest
     private static List<Rule> expand(String domain, Rule... templates)
     {
         List<Rule> out = new ArrayList<>();
-        new RuleGenerator(null, null).expandSdtmPrefixRules(ae().getMetaData(), domain,
-                List.of(templates), out, new RuleGenerationReport(domain, null, null, null));
+        new DatasetRuleResolver(null).expandSdtmPrefixRules(ae().getMetaData(), domain,
+                List.of(templates), out, new RuleGenerationReport());
         return out;
     }
 
