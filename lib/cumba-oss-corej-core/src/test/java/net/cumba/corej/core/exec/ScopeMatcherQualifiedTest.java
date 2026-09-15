@@ -408,20 +408,74 @@ class ScopeMatcherQualifiedTest
     }
 
     // ------------------------------------------------------------------
-    // No inventory ⇒ qualified entries are ignored
+    // No inventory ⇒ the entry is UNDECIDABLE, and the policy says what that means
     // ------------------------------------------------------------------
 
 
     @Test
-    void bareResolverYieldsNoSourceAndQualifiedEntriesAreIgnored()
+    void bareResolverYieldsNoSourceAndIgnorePolicyLetsTheRuleRun()
     {
         assertNull(ScopeVariableSource.of(_ -> null, primary()),
                 "a bare DatasetResolver cannot enumerate datasets");
-        assertNull(ScopeMatcher.describeVariablesMismatch(include("DM.ARM"),
-                primary().getMetaData(), "AE", null),
-                "without a source a qualified entry must not skip the rule");
+        assertNull(
+                ScopeMatcher.describeVariablesMismatch(include("DM.ARM"), primary().getMetaData(),
+                        "AE", null),
+                "under IGNORE (this overload's documented default) a qualified entry must not skip");
         assertNull(ScopeMatcher.describeVariablesMismatch(exclude("DM.ARM"),
                 primary().getMetaData(), "AE", null));
+    }
+
+
+    /**
+     * Owner ruling 2026-09-10, disposition (b) of
+     * {@code plans/PLAN-qualified-requirements-cross-standard.md} §8.4 — the production policy. The
+     * inverse of the test above, and the reason the two live side by side: the difference between
+     * them is the whole of the ruling.
+     */
+    @Test
+    void bareResolverUnderSkipPolicyReportsTheEntryAsUndecidable()
+    {
+        String all = ScopeMatcher.describeVariablesMismatch(include("DM.ARM"),
+                primary().getMetaData(), "AE", null, ScopeMatcher.QualifiedEntryPolicy.SKIP);
+        assertNotNull(all, "under SKIP an undecidable qualified entry must skip the rule");
+        assertTrue(all.contains("could not be decided") && all.contains("resolver"),
+                "the reason must name the RESOLVER, so the report cannot be read as "
+                        + "\"the column was absent\": " + all);
+        assertFalse(all.contains("not available"),
+                "⛔ it must not borrow the dataset-absent wording: " + all);
+        assertTrue(all.contains("DM.ARM"), "and it must name the entry: " + all);
+
+        String none = ScopeMatcher.describeVariablesMismatch(exclude("DM.ARM"),
+                primary().getMetaData(), "AE", null, ScopeMatcher.QualifiedEntryPolicy.SKIP);
+        assertNotNull(none, "None is as undecidable as All");
+        assertTrue(none.contains("None"), "and says which facet it was: " + none);
+    }
+
+
+    /**
+     * The {@code Any} leg short-circuits on the first satisfied entry, so under {@code IGNORE} one
+     * qualified entry satisfies the whole leg vacuously. Under {@code SKIP} it must not — and the
+     * reason must be the undecidable one, never "no variable present", which would claim absence.
+     */
+    @Test
+    void anyLegUnderSkipPolicyReportsUndecidableRatherThanAbsent()
+    {
+        Rule rule = new Rule();
+        Requirements req = new Requirements();
+        VariableRequirement vars = new VariableRequirement();
+        vars.setAny(List.of("AESTDTC", "DM.ARM"));
+        req.setVariables(vars);
+        rule.setRequirements(req);
+
+        assertNull(
+                ScopeMatcher.describeVariablesMismatch(rule, primary().getMetaData(), "AE", null),
+                "IGNORE: the qualified entry satisfies the leg vacuously");
+
+        String reason = ScopeMatcher.describeVariablesMismatch(rule, primary().getMetaData(), "AE",
+                null, ScopeMatcher.QualifiedEntryPolicy.SKIP);
+        assertNotNull(reason, "SKIP: neither entry is satisfied, so the leg is unmet");
+        assertTrue(reason.contains("could not be decided"),
+                "and it reports the undecidable entry, not absence: " + reason);
     }
 
 

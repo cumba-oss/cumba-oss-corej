@@ -2512,7 +2512,13 @@ public class RuleGenerator
         // Fix #124: `scopeForeign` lets a qualified entry (DM.ARM) be decided against the foreign
         // dataset. It is null when this generator has no inventory-capable resolver, in which case
         // qualified entries are ignored and the caller emits a one-time WARN.
-        return ScopeMatcher.describeVariablesMismatch(r, meta, domainPrefix, scopeForeign);
+        // ⭐ SKIP mirrors RuleRunner's own gate (owner ruling 2026-09-10, disposition (b) of
+        // plans/PLAN-qualified-requirements-cross-standard.md §8.4). The two gates evaluate the
+        // SAME predicate at two moments, so a split policy between them would be drift by
+        // construction: a rule the generator let through would then be skipped at execution, and
+        // the audit trail would name two different reasons for one fact.
+        return ScopeMatcher.describeVariablesMismatch(r, meta, domainPrefix, scopeForeign,
+                ScopeMatcher.QualifiedEntryPolicy.SKIP);
     }
 
     /**

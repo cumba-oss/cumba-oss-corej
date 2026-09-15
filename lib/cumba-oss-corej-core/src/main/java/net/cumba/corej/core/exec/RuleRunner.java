@@ -572,8 +572,17 @@ public final class RuleRunner
         // callers already substitute nothing, exactly as before EC-36. Re-introducing a skip is a
         // separate change and needs a predicate DERIVED from the resolvers; see the plan's §10.4.
 
+        // ⭐ SKIP, not IGNORE (owner ruling 2026-09-10, disposition (b) of
+        // plans/PLAN-qualified-requirements-cross-standard.md §8.4): when `scopeForeign` is null
+        // the
+        // resolver cannot enumerate datasets, so a qualified entry is UNDECIDABLE — and answering
+        // "satisfied" there leaves a rule whose Check-side var_exists(DS.COL) guard was hoisted
+        // into
+        // Requirements running with nothing in the guard's place. The reason string names the
+        // resolver, never the dataset, so the report cannot be read as "the column was absent".
         String variableScopeMismatch = ScopeMatcher.describeVariablesMismatch(rule,
-                table.getMetaData(), varWildcardPrefix, scopeForeign);
+                table.getMetaData(), varWildcardPrefix, scopeForeign,
+                ScopeMatcher.QualifiedEntryPolicy.SKIP);
         if (variableScopeMismatch != null)
         {
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)

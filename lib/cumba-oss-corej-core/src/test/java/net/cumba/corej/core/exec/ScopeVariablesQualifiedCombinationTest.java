@@ -324,36 +324,61 @@ class ScopeVariablesQualifiedCombinationTest
     }
 
     // ==================================================================
-    // A4 — no inventory => the qualified entry is IGNORED (fails open)
+    // A4 — no inventory => the qualified entry is UNDECIDABLE (fails closed)
     // ==================================================================
 
 
     /**
      * A4: a non-null resolver that is not {@link DatasetResolver.WithInventory} makes
-     * {@code ScopeVariableSource.of} return null, and RuleRunner then ignores the qualified entry
-     * entirely — the rule RUNS even though the dataset it declared as required is unreachable. The
-     * design fails OPEN, not closed.
+     * {@code ScopeVariableSource.of} return null, so the qualified entry cannot be decided at all
+     * and {@code RuleRunner} skips the rule.
+     *
+     * <p>
+     * ⭐ <b>Inverted 2026-09-10 by owner ruling</b> (disposition (b) of
+     * {@code plans/PLAN-qualified-requirements-cross-standard.md} §8.4). The design used to fail
+     * <b>open</b> — this test asserted the rule RAN — on the reasoning that a resolver-less preview
+     * must not silence every qualified rule. Measured cost of failing open: a rule whose
+     * {@code Check}-side {@code var_exists(DM.ARM)} guard had been hoisted into
+     * {@code Requirements} ran here with nothing in the guard's place, and flooded. It now fails
+     * <b>closed</b>.
+     * </p>
+     *
+     * <p>
+     * ⚠ The two skips below are NOT the same skip, and the difference is the point: an
+     * inventory-capable resolver with no DM reports the <b>dataset</b> absent, while a resolver
+     * that cannot enumerate reports that it <b>could not decide</b>. Conflating them would hide a
+     * blind resolver behind a data finding.
+     * </p>
      */
     @Test
-    void a4_resolverWithoutInventory_qualifiedGlobIgnored_ruleRuns()
+    void a4_resolverWithoutInventory_qualifiedGlobUndecidable_ruleSkips()
     {
-        assertRan(run(rule(List.of("DM.*"), null), _ -> null));
+        assertSkipped(run(rule(List.of("DM.*"), null), _ -> null), "could not be decided");
 
-        // Control: the SAME entry against an inventory-capable resolver with no DM skips. The
-        // difference is the resolver's TYPE alone, not the data.
+        // Control: the SAME entry against an inventory-capable resolver with no DM also skips, but
+        // for the other reason. The difference is the resolver's TYPE alone, not the data.
         assertSkipped(run(rule(List.of("DM.*"), null), inventory(map())), "dataset DM");
     }
 
 
     /**
-     * A4: fails-open is per-entry, not per-rule — the unqualified half of a mixed list still gates,
-     * so an inventory-less run degrades a mixed rule to its primary-dataset half.
+     * A4: the unqualified half of a mixed list still gates on its own terms — an undecidable
+     * qualified sibling does not mask it. ⚠ {@code All} reports the <b>first</b> unmet entry in
+     * authored order, so the reason names whichever of the two comes first; both orders are driven
+     * here, because a single order cannot tell a correct implementation from one that always
+     * answers on the qualified entry.
      */
     @Test
     void a4_resolverWithoutInventory_unqualifiedHalfStillGates()
     {
+        // Unqualified entry first and absent ⇒ its reason wins.
         assertSkipped(run(rule(List.of("AESTDTC", "DM.*"), null), _ -> null), "AESTDTC");
-        assertRan(run(rule(List.of("AESTDY", "DM.*"), null), _ -> null));
+        // Unqualified entry first and PRESENT ⇒ the undecidable qualified entry decides.
+        assertSkipped(run(rule(List.of("AESTDY", "DM.*"), null), _ -> null),
+                "could not be decided");
+        // Qualified entry first ⇒ it decides even though the unqualified sibling is absent too.
+        assertSkipped(run(rule(List.of("DM.*", "AESTDTC"), null), _ -> null),
+                "could not be decided");
     }
 
     // ==================================================================

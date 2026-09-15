@@ -1,6 +1,7 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -159,19 +160,39 @@ class RuleRunnerQualifiedVariableScopeTest
     }
 
     // ------------------------------------------------------------------
-    // Resolver without an inventory — the RuleEditorService NO_RESOLVER shape
+    // Resolver without an inventory — the plain-.cdt preview NO_RESOLVER shape
     // ------------------------------------------------------------------
 
 
+    /**
+     * ⭐ <b>Inverted 2026-09-10 by owner ruling</b> (disposition (b) of
+     * {@code plans/PLAN-qualified-requirements-cross-standard.md} §8.4). It used to assert the
+     * opposite — <i>"a resolver without an inventory must not skip the rule"</i> — on the grounds
+     * that skipping would silence every qualified rule in the plain-{@code .cdt} preview. That
+     * reasoning was measured and found to cost more than it saved: with the entry ignored, a rule
+     * whose {@code Check}-side {@code var_exists(DM.ARM)} guard has been hoisted into
+     * {@code Requirements} runs here with <b>nothing</b> in the guard's place and floods. A skip
+     * the reader can see beats a flood nobody attributes.
+     *
+     * <p>
+     * ⚠ The production validation path is unaffected either way: {@code LibraryValidator} builds a
+     * {@code DatasetResolver.WithInventory}, and so does the {@code .cdt} scenario runner
+     * ({@code ScenarioResolver}). This arm is reached only by a resolver that cannot enumerate.
+     * </p>
+     */
     @Test
-    void bareResolver_qualifiedEntryIgnored_ruleRuns()
+    void bareResolver_qualifiedEntryUndecidable_ruleSkipsNamingTheResolver()
     {
-        // RuleEditorService's plain-.cdt preview passes `_ -> null`: a NON-null resolver that
-        // resolves nothing. Skipping on it would silence every qualified rule in the editor, so
-        // the entry must be ignored instead.
+        // A NON-null resolver that resolves nothing: ScopeVariableSource.of returns null for it,
+        // so the qualified entry cannot be decided at all.
         RuleExecutionResult res = run(ruleWithVarScope(List.of("DM.ARM"), null), _ -> null);
-        assertNotEquals(RuleExecutionStatus.SKIPPED, res.getStatus(),
-                "a resolver without an inventory must not skip the rule");
+        assertEquals(RuleExecutionStatus.SKIPPED, res.getStatus(),
+                "an undecidable qualified entry must skip the rule, not let it run unguarded");
+        assertNotNull(res.getStatusMessage());
+        assertTrue(res.getStatusMessage().contains("could not be decided"),
+                "the reason must say it could not be decided: " + res.getStatusMessage());
+        assertFalse(res.getStatusMessage().contains("not available"),
+                "⛔ and must not claim the dataset was absent: " + res.getStatusMessage());
     }
 
     // ------------------------------------------------------------------
