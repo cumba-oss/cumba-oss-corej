@@ -283,6 +283,13 @@ public final class ReportAssembler
                     String.format(Locale.ROOT, "%.2f seconds", c.totalRuntimeSeconds));
         }
         putIfNotNull(m, "CORE_Engine_Version", c.coreEngineVersion);
+        // D13: the run's effective numeric-comparison tolerance, so a finding can be reproduced
+        // from its own report -- same study + same corpus + a different tolerance = different
+        // verdicts. ⚑ Emitted HERE, with the other run-level facts, rather than in the v2
+        // projection: a projection that reads a live setting makes its output depend on the JVM
+        // (review F7). ReportSections.toExportDocument strips it again for the FROZEN v1 schema.
+        m.put(ReportSections.NUMERIC_TOLERANCE_DIGITS,
+                net.cumba.corej.core.exec.ScalarSemantics.toleranceDigits());
         m.put("Issue_Limit_Per_Rule",
                 c.issueLimitPerRule != null ? c.issueLimitPerRule.toString() : "None");
         m.put("Issue_Limit_Per_Dataset", c.issueLimitPerDataset ? "True" : "None");

@@ -19,10 +19,20 @@ import org.jspecify.annotations.Nullable;
  * parent does not expose the named column — E14).
  * </p>
  * <p>
- * Augmented cells are exposed as {@link DataValueType#STRING} regardless of the parent column's
- * native type, so rule operators that compare these cells against string literals see uniform
- * typing across joined-in columns. The augmented column meta therefore declares {@code STRING}, and
- * the read path stringifies the parent cell on every access.
+ * <b>Typing (J8, {@code PLAN-joined-column-typing}).</b> The column reports the <em>parent column's
+ * own declared type</em> when every parent that exposes the name agrees on it, and
+ * {@link DataValueType#STRING} when they disagree. {@code ChildMatchPreMerger} computes that once
+ * and passes it here <b>and</b> to the augmented meta, so the declared type and the cells can never
+ * diverge — {@code ScalarSemantics.equalsNumericAware} branches on the <em>cell's</em> type rather
+ * than the declared one, so a mismatch would silently flip {@code AESEQ == "3"} between textual and
+ * numeric equality.
+ * </p>
+ * <p>
+ * When the type is {@code STRING} the read path keeps the historical stringify-and-retype exactly,
+ * which is also the disagreement fallback. Otherwise it forwards the parent's own
+ * {@link IDataValue} unchanged (J2 Option A): one allocation per access instead of three, and — the
+ * point of the change — the value never passes through
+ * {@code DataValueSupport.getAsDoubleCleaned}'s 12-significant-digit rounding.
  * </p>
  * <p>
  * {@link DataValueType#MISSING} is returned when:
@@ -52,13 +62,23 @@ final class PolymorphicMergedColumn extends AbstractDataTableColumn
      */
     private final @Nullable IDataTableColumn[] perParentColumn;
 
+    /**
+     * The J8 declared type this column reports, as computed by
+     * {@code ChildMatchPreMerger.agreedParentType} and mirrored into the augmented meta.
+     * {@code STRING} means either a genuinely character parent column or parents that disagree;
+     * both take the historical stringifying read path.
+     */
+    private final DataValueType declaredType;
+
     PolymorphicMergedColumn(int aIndex, byte[] aPerRowParentIdx,
-            IDataBufferNumeric aPerRowParentRow, @Nullable IDataTableColumn[] aPerParentColumn)
+            IDataBufferNumeric aPerRowParentRow, @Nullable IDataTableColumn[] aPerParentColumn,
+            DataValueType aDeclaredType)
     {
         super(aIndex);
         perRowParentIdx = aPerRowParentIdx;
         perRowParentRow = aPerRowParentRow;
         perParentColumn = aPerParentColumn;
+        declaredType = aDeclaredType;
     }
 
 
@@ -80,7 +100,15 @@ final class PolymorphicMergedColumn extends AbstractDataTableColumn
         IDataValue dv = readParentDataValue(aRow);
         // IDataTableColumn#getValue is @Nullable in this module's datatable, so a miss returns a
         // bare null (the pre-existing behaviour) rather than the MISSING sentinel.
-        return dv == null || dv.isMissingOrInvalid() ? null : dv.getValueAsString();
+        if (dv == null || dv.isMissingOrInvalid())
+        {
+            return null;
+        }
+        // J8: a STRING column (character parent, or parents that disagree) keeps the historical
+        // text form. Otherwise hand back the parent's own value object, so ScalarSemantics
+        // .resolvedString's `raw instanceof String` fast path misses and its fallback reads the
+        // parent IDataValue directly -- identical text, no cleaning on the numeric path.
+        return declaredType == DataValueType.STRING ? dv.getValueAsString() : dv.getValue();
     }
 
 
@@ -92,10 +120,18 @@ final class PolymorphicMergedColumn extends AbstractDataTableColumn
         {
             return MISSING_VALUE;
         }
-        // String-coerce so the augmented column reports a uniform STRING type — rule operators
-        // that compare augmented cells against String literals must see strings here even when
-        // the parent column is numeric (LONG --SEQ etc., E17).
-        return DataValueSupport.getAsDataValue(dv.getValueAsString(), DataValueType.STRING);
+        // J8: STRING means a character parent or parents that disagree -- keep the historical
+        // stringify-and-retype so that case is byte-identical to the pre-change engine. Otherwise
+        // forward the parent's own IDataValue (J2 Option A): the cell keeps its real type, so
+        // equalsNumericAware takes its numeric branch on a real value instead of on text that
+        // getAsDoubleCleaned has already rounded to 12 significant digits.
+        //
+        // NB the E17 citation that used to justify the unconditional STRING coercion was a
+        // misattribution: E17 is the numeric-IDVAR *join key* coercion (ChildMatchPreMerger
+        // .wrapWithCoercedIdvarval), not the merged *value*. No ruling ever covered this.
+        return declaredType == DataValueType.STRING
+                ? DataValueSupport.getAsDataValue(dv.getValueAsString(), DataValueType.STRING)
+                : dv;
     }
 
 

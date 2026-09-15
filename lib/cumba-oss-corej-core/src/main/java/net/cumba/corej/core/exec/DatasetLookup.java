@@ -13,6 +13,8 @@ import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.databuffer.DataBufferFactory;
 import net.cumba.datatable.impl.databuffer.IDataBufferNumeric;
 import net.cumba.datatable.impl.view.HashLookup;
+import net.cumba.datatable.values.DataValueSupport;
+import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
@@ -298,6 +300,96 @@ public class DatasetLookup implements JoinLookup
             }
         }
         return out;
+    }
+
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>
+     * Step B: the same match as {@link #lookup}, handed back as the parent cell's own
+     * {@link IDataValue}. {@code lookup} renders that cell through
+     * {@link ScalarSemantics#resolvedString}, which for a numeric column ends in
+     * {@code getValueAsString()} and therefore in {@code getAsDoubleCleaned}'s 12-significant-digit
+     * rounding — so the joined half of the precision defect and the engine-wide half (Step A) are
+     * the very same line.
+     * </p>
+     */
+    @Override
+    public @Nullable IDataValue lookupValue(IDataTable primaryTable, long row, String columnName)
+    {
+        ensureJoinMap(primaryTable);
+        long joinedRow = Objects.requireNonNull(joinMap, "joinMap set by ensureJoinMap")
+                .getValueAsLong((int) row);
+        if (joinedRow < 0)
+        {
+            return null;
+        }
+        int colIdx = datasetMeta.getColumnIndex(columnName);
+        if (colIdx < 0)
+        {
+            return null;
+        }
+        IDataValue dv = dataset.getColumn(colIdx).getDataValue(joinedRow);
+        // ⚑ Mirrors lookup()'s blank contract rather than inventing one: resolvedString maps a
+        // blank NUMERIC cell to null (no value) and a blank CHARACTER cell to "". A missing cell in
+        // a character column must therefore still produce a value, not a null.
+        if (dv.isMissingOrInvalid())
+        {
+            return datasetMeta.getColumn(colIdx).getType() == DataValueType.STRING
+                    ? DataValueSupport.getAsDataValue("", DataValueType.STRING)
+                    : null;
+        }
+        return dv;
+    }
+
+
+    /** {@inheritDoc} Step B — the typed sibling of {@link #lookupAll}, same 0..N contract. */
+    @Override
+    public List<IDataValue> lookupAllValues(IDataTable primaryTable, long row, String columnName)
+    {
+        int colIdx = datasetMeta.getColumnIndex(columnName);
+        if (colIdx < 0)
+        {
+            return List.of();
+        }
+        ensureMultiMap();
+        DataTableMeta primaryMeta = primaryTable.getMetaData();
+        int[] primaryKeyColIds = KeyHashing.resolveColIds(primaryMeta, keyColumns);
+        int h = KeyHashing.computeKeyHashSafe(primaryTable, row, primaryKeyColIds);
+        int[] candidates = Objects
+                .requireNonNull(joinedRowsByHash, "joinedRowsByHash set by ensureMultiMap").get(h);
+        if (candidates == null)
+        {
+            return List.of();
+        }
+        KeyMatcher matcher = new KeyMatcher(dataset, joinedKeyColIds, primaryTable,
+                primaryKeyColIds);
+        List<IDataValue> out = new ArrayList<>();
+        for (int joinedRow : candidates)
+        {
+            if (!matcher.matches(joinedRow, (int) row))
+            {
+                continue;
+            }
+            IDataValue dv = dataset.getColumn(colIdx).getDataValue(joinedRow);
+            // Same filter as lookupAll: a missing matched cell contributes nothing.
+            if (!dv.isMissingOrInvalid())
+            {
+                out.add(dv);
+            }
+        }
+        return out;
+    }
+
+
+    /** {@inheritDoc} D1 — answered from the foreign metadata this lookup already holds. */
+    @Override
+    public DataValueType declaredTypeOf(String columnName)
+    {
+        int colIdx = datasetMeta.getColumnIndex(columnName);
+        // An absent column is UNKNOWN, not Char -- see JoinLookup.declaredTypeOf.
+        return colIdx < 0 ? DataValueType.MISSING : datasetMeta.getColumn(colIdx).getType();
     }
 
 

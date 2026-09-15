@@ -77,7 +77,12 @@ public final class JoinedCandidatesVector implements Vector
         this.name = name;
         this.transform = transform;
         this.declaredType = declaredType;
-        this.scalar = new ComputedVector(rowCount, declaredType, this::firstNonNull);
+        // Shape 3: with no transform the value position reads typed cells, so the scalar view
+        // stops rounding a numeric joined value through getValueAsString(). A transform (upper/len)
+        // is text by definition, so that case keeps the untyped producer.
+        this.scalar = transform == null
+                ? ComputedVector.typed(rowCount, declaredType, this::firstNonNullCell)
+                : new ComputedVector(rowCount, declaredType, this::firstNonNull);
     }
 
 
@@ -143,6 +148,69 @@ public final class JoinedCandidatesVector implements Vector
             liveResolved = true;
         }
         return live;
+    }
+
+
+    /**
+     * The typed sibling of {@link #candidates}, with the same three-way contract: {@code null} when
+     * no lookup is live (the row casts no vote), an empty list when the live lookup matched
+     * elsewhere but not here (the missing-probe case), else the row's matched cells.
+     *
+     * <p>
+     * Shape 3 of {@code PLAN-joined-column-typing}. ⚠ Used by {@link Primitives#scan}, which builds
+     * each candidate's cell for the row test — typing the vector without typing {@code scan} would
+     * have moved the lie downstream rather than closing it (review R2-2), because every candidate
+     * would still have reached the test as a STRING-typed cell.
+     * </p>
+     *
+     * <p>
+     * ⚑ A transform ({@code upper}/{@code len}) is text by definition, so a transformed vector
+     * wraps its transformed strings rather than carrying the parent cell through.
+     * </p>
+     *
+     * @param row
+     *            the 0-based row index.
+     * @return the row's typed candidates, or {@code null} when no lookup is live.
+     */
+    public @Nullable List<IDataValue> candidateCells(int row)
+    {
+        JoinLookup lookup = liveLookup();
+        if (lookup == null)
+        {
+            return null;
+        }
+        if (transform != null)
+        {
+            List<String> raw = candidates(row);
+            if (raw == null)
+            {
+                return null;
+            }
+            List<IDataValue> out = new java.util.ArrayList<>(raw.size());
+            for (String v : raw)
+            {
+                out.add(DataValues.of(v));
+            }
+            return out;
+        }
+        return lookup.lookupAllValues(ctx.getTable(), row, name);
+    }
+
+
+    /** {@link #firstNonNull} over typed cells — the value-position contract, untransformed. */
+    private @Nullable IDataValue firstNonNullCell(int row)
+    {
+        for (JoinLookup lookup : ctx.getJoinedDatasets().values())
+        {
+            for (IDataValue v : lookup.lookupAllValues(ctx.getTable(), row, name))
+            {
+                if (!v.isMissingOrInvalid())
+                {
+                    return v;
+                }
+            }
+        }
+        return null;
     }
 
 

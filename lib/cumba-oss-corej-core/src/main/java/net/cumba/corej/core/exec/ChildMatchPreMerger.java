@@ -661,21 +661,77 @@ public final class ChildMatchPreMerger
         {
             @Nullable
             IDataTableColumn[] perParent = new IDataTableColumn[parentArr.length];
+            @Nullable
+            DataValueType[] perParentType = new DataValueType[parentArr.length];
             for (int p = 0; p < parentArr.length; p++)
             {
-                int c = parentArr[p].getMetaData().getColumnIndex(name);
+                DataTableMeta pm = parentArr[p].getMetaData();
+                int c = pm.getColumnIndex(name);
                 perParent[p] = c >= 0 ? parentArr[p].getColumn(c) : null;
+                // The DECLARED type, from the parent's meta -- never a cell's type: row 0 may be
+                // missing (reporting MISSING) and an empty parent has no row 0 at all.
+                perParentType[p] = c >= 0 ? pm.getColumn(c).getType() : null;
             }
+            // J8 (PLAN-joined-column-typing): the merged column reports the parent column's own
+            // type when every parent that exposes the name agrees, and STRING when they disagree.
+            // Computed ONCE here and handed to BOTH the meta and the column, so the declared type
+            // and the cells can never diverge -- ScalarSemantics.equalsNumericAware branches on the
+            // CELL's type, not the declared one, so a mismatch would silently flip
+            // `AESEQ == "3"` between textual and numeric equality.
+            DataValueType merged = agreedParentType(perParentType);
             cols[colIdx] = new PolymorphicMergedColumn(colIdx, perRowParentIdx, perRowParentRow,
-                    perParent);
+                    perParent, merged);
             metaCols[colIdx] = DataTableColumnMeta.builder().index(colIdx).name(name).label(name)
-                    .type(DataValueType.STRING).build();
+                    .type(merged).build();
             colIdx++;
         }
         DataTableMeta augmentedMeta = DataTableMeta.builder().name("augmented").label("augmented")
                 .rowCount(perRowParentIdx.length).totalRowCount(perRowParentIdx.length)
                 .columns(metaCols).build();
         return new ColumnCachedDataTable(augmentedMeta, cols);
+    }
+
+
+    /**
+     * The J8 type of a merged column: the declared type shared by <b>every</b> parent that exposes
+     * the name, or {@link DataValueType#STRING} when they disagree.
+     * <p>
+     * A {@code Child:true} merge is polymorphic by construction -- CO and RELREC primaries resolve
+     * a different parent domain per row -- so the same column name can be {@code LONG} on one
+     * parent and {@code STRING} on another. There is no single correct type for such a column, and
+     * {@code STRING} is what the engine did for every merged column before
+     * {@code PLAN-joined-column-typing}, so disagreement falls back to exactly the previous
+     * behaviour rather than to a guess.
+     * </p>
+     * <p>
+     * ⚠ {@code null} entries are parents that do not expose the column at all (E14) and are
+     * skipped: they are not a disagreement. A column no parent exposes cannot occur here, because
+     * {@code computeAugmentedCols} only admits names at least one parent carries.
+     * </p>
+     *
+     * @param aPerParentType
+     *            per-parent DECLARED column types, {@code null} where that parent lacks the column.
+     * @return the agreed type, else {@link DataValueType#STRING}.
+     */
+    private static DataValueType agreedParentType(@Nullable DataValueType[] aPerParentType)
+    {
+        DataValueType agreed = null;
+        for (DataValueType t : aPerParentType)
+        {
+            if (t == null)
+            {
+                continue;
+            }
+            if (agreed == null)
+            {
+                agreed = t;
+            }
+            else if (agreed != t)
+            {
+                return DataValueType.STRING;
+            }
+        }
+        return agreed == null ? DataValueType.STRING : agreed;
     }
 
 

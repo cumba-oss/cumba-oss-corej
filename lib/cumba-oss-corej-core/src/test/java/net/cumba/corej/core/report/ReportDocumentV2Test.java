@@ -129,7 +129,22 @@ class ReportDocumentV2Test
         Map<String, Object> v1 = writer.sections().toExportDocument();
         Map<String, Object> v2 = writer.sections().toCombinedExportDocument();
 
-        assertEquals(v1.get("Conformance_Details"), v2.get("Conformance_Details"));
+        // ⚠ Conformance_Details is the ONE shared section that is no longer byte-equal: D13 adds
+        // the run's effective numeric tolerance, and it is v2-ONLY because v1 is a frozen published
+        // consumer schema (owner rulings 2026-08-11 and 2026-09-15). Asserted as "differs by
+        // exactly that one key" rather than merely "differs", so this stays a pin: any OTHER drift
+        // between the two Conformance_Details still reds it.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> cd1 = new java.util.LinkedHashMap<>(
+                (Map<String, Object>) v1.get("Conformance_Details"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> cd2 = new java.util.LinkedHashMap<>(
+                (Map<String, Object>) v2.get("Conformance_Details"));
+        assertFalse(cd1.containsKey("Numeric_Tolerance_Digits"), "v1 is frozen");
+        assertTrue(cd2.containsKey("Numeric_Tolerance_Digits"), "D13: v2 records the tolerance");
+        cd2.remove("Numeric_Tolerance_Digits");
+        assertEquals(cd1, cd2, "apart from the v2-only tolerance key they must stay identical");
+
         assertEquals(v1.get("Dataset_Details"), v2.get("Dataset_Details"));
         assertEquals(v1.get("Issue_Summary"), v2.get("Issue_Summary"));
         assertEquals(v1.get("Rules_Report"), v2.get("Rules_Report"));

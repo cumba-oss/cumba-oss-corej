@@ -26,6 +26,16 @@ import org.junit.jupiter.api.Test;
  * </p>
  *
  * <p>
+ * ⚑ <b>{@code golden-v2.json} was regenerated once, on 2026-09-15</b>, by the owner decision this
+ * javadoc asks for: the v2 document gained {@code Numeric_Tolerance_Digits} in
+ * {@code Conformance_Details} (D13 of {@code PLAN-joined-column-typing}), so a finding can be
+ * reproduced from its own report. The diff was <b>exactly that one key</b>; everything else stayed
+ * byte-identical. ⭐ {@code golden-v1.json} did <b>not</b> move, which is the evidence that the v1
+ * freeze held — the key is stripped from the v1 projection, including on the round trip back
+ * through {@code fromExportDocument}.
+ * </p>
+ *
+ * <p>
  * ⚠ The fixture is driven through {@link ReportSections#fromExportDocument} rather than through the
  * assembler on purpose: it makes the input a fixed literal with no timestamp, no runtime and no
  * environment in it, so the comparison is a real byte comparison rather than a comparison of two

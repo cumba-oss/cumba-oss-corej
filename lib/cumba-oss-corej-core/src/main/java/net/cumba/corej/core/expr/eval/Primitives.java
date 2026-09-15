@@ -60,7 +60,15 @@ public final class Primitives
         {
             for (int r = 0; r < rowCount; r++)
             {
-                List<String> candidates = jc.candidates(r);
+                // Shape 3 (PLAN-joined-column-typing): typed candidates, so a joined numeric value
+                // used as the LHS reaches the row test as a number rather than as cleaned text.
+                // ⚠ The three-way VOTE CONTRACT is unchanged (D3): null => no vote at all; an empty
+                // list => one vote with a MISSING probe, so empty()/!=-vs-concrete still get a say;
+                // otherwise ANY-MATCH with a break. D3 also ruled the probe stays DataValues.of
+                // (null) rather than becoming a typed missing -- its type is immaterial to every
+                // consumer, because the only place a cell's type is read (isNumericType) sits
+                // behind a missing guard.
+                List<IDataValue> candidates = jc.candidateCells(r);
                 if (candidates == null)
                 {
                     continue; // no live lookup — no vote (legacy: empty BitSet)
@@ -73,9 +81,9 @@ public final class Primitives
                     }
                     continue;
                 }
-                for (String value : candidates)
+                for (IDataValue value : candidates)
                 {
-                    if (test.test(DataValues.of(value), r))
+                    if (test.test(value, r))
                     {
                         result.set(r);
                         break;
@@ -130,7 +138,7 @@ public final class Primitives
     {
         return scan(lhs, rowCount, (dv, r) ->
         {
-            Object rawTarget = rhs.resolvedObject(r);
+            Object rawTarget = rhs.comparisonOperand(r);
             boolean dvMissing = ScalarSemantics.isMissing(dv);
             boolean equal = ScalarSemantics.equalsNumericAware(dv, rawTarget, dvMissing,
                     caseInsensitive, typeInsensitive, forceNumeric);
@@ -157,17 +165,14 @@ public final class Primitives
             {
                 return false;
             }
-            Double targetVal = ScalarSemantics.comparisonTargetAsDouble(rhs.resolvedObject(r));
+            Double targetVal = ScalarSemantics.comparisonTargetAsDouble(rhs.comparisonOperand(r));
             if (targetVal == null)
             {
                 return false;
             }
-            int cmp = Double.compare(dvVal, targetVal);
-            if (direction > 0)
-            {
-                return orEqual ? cmp >= 0 : cmp > 0;
-            }
-            return orEqual ? cmp <= 0 : cmp < 0;
+            // Step C: the four order operators carry the same tolerance as equality, or a pair
+            // could be both "equal" and "less than" at once.
+            return ScalarSemantics.compareNumericTolerant(dvVal, targetVal, direction, orEqual);
         });
     }
 

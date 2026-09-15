@@ -106,6 +106,26 @@ public record ReportSections(Map<String, @Nullable Object> conformanceDetails,
     private static final String REPORT_VERSION_2 = "2.0";
 
     /**
+     * ⭐ <b>v2-only</b> key carrying the run's effective numeric-comparison tolerance (decision
+     * <b>D13</b> of {@code PLAN-joined-column-typing}).
+     *
+     * <p>
+     * Same study + same corpus + a different tolerance = different verdicts, so a finding that
+     * cannot be reproduced from its own report is a traceability defect in an engine whose output
+     * is evidence.
+     * </p>
+     *
+     * <p>
+     * ⛔ It is <b>v2-only by owner ruling, 2026-09-15</b>. {@code Conformance_Details} is otherwise
+     * shared between the two documents, and v1 is a FROZEN published consumer schema (owner ruling
+     * 2026-08-11, recorded at {@code ReportAssembler}'s {@code Issue_Limit_Per_Sheet}). A v1
+     * document must not gain this key by any route — including the round trip through
+     * {@link #fromExportDocument}, which is why {@link #toExportDocument} strips it.
+     * </p>
+     */
+    static final String NUMERIC_TOLERANCE_DIGITS = "Numeric_Tolerance_Digits";
+
+    /**
      * Projects these sections into the <b>v1</b> export document: the nested {@link LinkedHashMap}
      * whose key order <em>is</em> the published v1 schema
      * ({@code Conformance_Details, Dataset_Details, Issue_Summary, Issue_Details, Rules_Report,
@@ -125,7 +145,10 @@ public record ReportSections(Map<String, @Nullable Object> conformanceDetails,
     public Map<String, Object> toExportDocument()
     {
         Map<String, Object> root = new LinkedHashMap<>();
-        root.put(CONFORMANCE_DETAILS, conformanceDetails());
+        // ⛔ v1 is FROZEN. Strip the v2-only tolerance key rather than assuming it is absent: a
+        // document read back through fromExportDocument carries whatever its source had, so a v2
+        // report re-projected to v1 would otherwise smuggle the key into the frozen schema.
+        root.put(CONFORMANCE_DETAILS, withoutToleranceKey(conformanceDetails()));
         root.put(DATASET_DETAILS, datasetDetails());
         root.put(ISSUE_SUMMARY, issueSummary());
         root.put(ISSUE_DETAILS, issueDetails());
@@ -138,8 +161,22 @@ public record ReportSections(Map<String, @Nullable Object> conformanceDetails,
     /**
      * Projects these sections into the <b>v2</b> combined-finding export document: the flat
      * {@code Issue_Details} is replaced by the combined {@code Findings} array and a
-     * {@code Report_Version} discriminator leads the document. The four shared metadata sections
-     * come from the same assembly as v1, so they stay byte-identical to it.
+     * {@code Report_Version} discriminator leads the document. The shared metadata sections come
+     * from the same assembly as v1.
+     *
+     * <p>
+     * ⚠ {@code Conformance_Details} is the <b>one</b> section that is not byte-identical to v1: it
+     * keeps {@link #NUMERIC_TOLERANCE_DIGITS} (D13), which {@link #toExportDocument} strips. Every
+     * other shared section still is.
+     * </p>
+     *
+     * <p>
+     * ⚑ The key is put into the sections by {@code ReportAssembler}, <b>not</b> read from a static
+     * here (review finding F7). Reading the live setting during projection made the output depend
+     * on the JVM, which broke {@code JsonReportGoldenTest}'s deliberately environment-free fixture
+     * — it has "no timestamp, no runtime and no environment in it" precisely so the comparison is a
+     * real byte comparison. A document carries its own tolerance; the projection only routes it.
+     * </p>
      *
      * @return the v2 export document
      */
@@ -154,6 +191,20 @@ public record ReportSections(Map<String, @Nullable Object> conformanceDetails,
         root.put(RULES_REPORT, rulesReport());
         root.put(SKIPPED_RULES, skippedRules());
         return root;
+    }
+
+
+    /** {@code details} without the v2-only tolerance key, for the frozen v1 projection. */
+    private static Map<String, @Nullable Object> withoutToleranceKey(
+            Map<String, @Nullable Object> details)
+    {
+        if (!details.containsKey(NUMERIC_TOLERANCE_DIGITS))
+        {
+            return details;
+        }
+        Map<String, @Nullable Object> m = new LinkedHashMap<>(details);
+        m.remove(NUMERIC_TOLERANCE_DIGITS);
+        return m;
     }
 
 

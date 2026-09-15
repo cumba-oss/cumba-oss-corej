@@ -10,15 +10,18 @@ import org.jspecify.annotations.Nullable;
  * authoritative (R5) — no CDISC Library lookup is involved.
  *
  * <p>
- * <b>Eligibility (§10 F9):</b> a vector is gated only when it is a <em>named</em>
- * {@link ColumnVector} — an authored column name that resolved in the primary table. Everything
- * else passes untouched: an absent column (folded to an all-missing constant — EC-38), a
- * {@code $}-reference, a dotted / joined name ({@code ComputedVector} /
- * {@code JoinedCandidatesVector}), a literal, a computed value, a {@code num(...)} conversion
- * (which publishes {@link DataValueType#DOUBLE} and thereby <em>satisfies</em> the numeric
- * direction), and the {@code value()} cursor read of a per-variable rule (a {@code ColumnVector}
- * with a {@code null} name — the operand is not an authored column name, and erroring it would make
- * every generic wildcard rule unusable on the other type).
+ * <b>Eligibility (§10 F9, widened by J7 of {@code PLAN-joined-column-typing}):</b> a vector is
+ * gated when it reports a {@link Vector#gatedName()} — an authored column name that resolved to a
+ * real, typed column. ⭐ That now includes a <b>dotted joined reference</b> ({@code DM.AGE}), which
+ * was previously invisible to the gate because it is a {@link ComputedVector}: its declared type
+ * said {@code Char} whatever the foreign column really was, so the gate reasoned about a type the
+ * data did not have. ⚠ A {@code ${…}}-substituted operand stays OUT: it resolves its column name
+ * per row, so no single declared type is correct. Everything else passes untouched: an absent
+ * column (folded to an all-missing constant — EC-38), a {@code $}-reference, a literal, a computed
+ * value, a {@code num(...)} conversion (which publishes {@link DataValueType#DOUBLE} and thereby
+ * <em>satisfies</em> the numeric direction), and the {@code value()} cursor read of a per-variable
+ * rule (a {@code ColumnVector} with a {@code null} name — the operand is not an authored column
+ * name, and erroring it would make every generic wildcard rule unusable on the other type).
  * </p>
  *
  * <p>
@@ -64,16 +67,27 @@ public final class ColumnTypeGate
     }
 
 
-    /** The gated column behind {@code v}: a named {@link ColumnVector}, else {@code null}. */
-    private static @Nullable ColumnVector gatedColumn(@Nullable Vector v)
+    /**
+     * The gated operand behind {@code v}: any vector that names an authored column and carries a
+     * real declared type, else {@code null}.
+     *
+     * <p>
+     * <b>J7</b> ({@code PLAN-joined-column-typing}): this used to require a named
+     * {@link ColumnVector}, which left every <em>joined</em> reference un-gated however wrong its
+     * type was — a dotted {@code DM.AGE} is a {@link ComputedVector}. Eligibility is now "an
+     * authored column name that resolved to a real, typed column", expressed through
+     * {@link Vector#gatedName()}, so a vector opts in by naming itself rather than by its class.
+     * </p>
+     */
+    private static @Nullable Vector gatedColumn(@Nullable Vector v)
     {
-        return v instanceof ColumnVector cv && cv.name() != null ? cv : null;
+        return v != null && v.gatedName() != null ? v : null;
     }
 
 
-    private static String describe(ColumnVector cv)
+    private static String describe(Vector cv)
     {
-        return cv.name() + " is declared "
+        return cv.gatedName() + " is declared "
                 + (kindOf(cv.declaredType()) == Kind.CHARACTER ? "Char" : "Num") + " ("
                 + cv.declaredType() + ")";
     }
@@ -86,11 +100,11 @@ public final class ColumnTypeGate
      */
     public static void requireNumericRead(@Nullable Vector v, String context)
     {
-        ColumnVector cv = gatedColumn(v);
+        Vector cv = gatedColumn(v);
         if (cv != null && kindOf(cv.declaredType()) == Kind.CHARACTER)
         {
             throw new ColumnTypeMismatchException("column-type mismatch: " + describe(cv) + " but "
-                    + context + " expects a numeric value — author num(" + cv.name()
+                    + context + " expects a numeric value — author num(" + cv.gatedName()
                     + ") if the rule means a numeric read of its content");
         }
     }
@@ -103,7 +117,7 @@ public final class ColumnTypeGate
      */
     public static void requireCharacterRead(@Nullable Vector v, String context)
     {
-        ColumnVector cv = gatedColumn(v);
+        Vector cv = gatedColumn(v);
         if (cv != null && kindOf(cv.declaredType()) == Kind.NUMERIC)
         {
             throw new ColumnTypeMismatchException(
@@ -125,8 +139,8 @@ public final class ColumnTypeGate
     public static void requireAgreedEquality(@Nullable Vector lv, @Nullable Vector rv,
             @Nullable Kind lStatic, @Nullable Kind rStatic)
     {
-        ColumnVector lc = gatedColumn(lv);
-        ColumnVector rc = gatedColumn(rv);
+        Vector lc = gatedColumn(lv);
+        Vector rc = gatedColumn(rv);
         Kind lk = lc != null ? kindOf(lc.declaredType()) : lStatic;
         Kind rk = rc != null ? kindOf(rc.declaredType()) : rStatic;
         if (lk == null || rk == null || lk == rk || (lc == null && rc == null))
@@ -139,10 +153,10 @@ public final class ColumnTypeGate
         sb.append(" and ");
         sb.append(rc != null ? describe(rc)
                 : "the right operand is " + (rk == Kind.NUMERIC ? "numeric" : "character"));
-        ColumnVector charSide = lk == Kind.CHARACTER ? lc : rc;
+        Vector charSide = lk == Kind.CHARACTER ? lc : rc;
         if (charSide != null)
         {
-            sb.append(" — author num(").append(charSide.name())
+            sb.append(" — author num(").append(charSide.gatedName())
                     .append(") if the rule means a numeric comparison of its content");
         }
         else

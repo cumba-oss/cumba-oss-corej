@@ -55,4 +55,42 @@ public record ColumnVector(@Nullable String name, IDataTableColumn column,
         return ScalarSemantics.resolvedString(column, declaredType, row);
     }
 
+
+    /** {@inheritDoc} J7: a resolved primary column is gated under its authored name. */
+    @Override
+    public @Nullable String gatedName()
+    {
+        return name;
+    }
+
+
+    /**
+     * Step A of {@code PLAN-joined-column-typing}: for a <b>numeric</b> column hand the comparison
+     * the cell's own {@link IDataValue}, so the operand never passes through
+     * {@code getAsDoubleCleaned}'s 12-significant-digit rounding on its way to being text and back.
+     * Character columns, and any missing cell, resolve exactly as {@link #resolvedObject(int)}
+     * does.
+     *
+     * <p>
+     * ⚑ A missing cell falls through on purpose: {@code equalsNumericAware} and
+     * {@code comparisonTargetAsDouble} both treat a missing target as "no value", and
+     * {@link ScalarSemantics#resolvedString} already encodes the blank contract (a blank character
+     * cell reads {@code ""}, a blank numeric cell {@code null}). Routing missing cells through the
+     * typed branch would duplicate that contract in a second place.
+     * </p>
+     */
+    @Override
+    public @Nullable Object comparisonOperand(int row)
+    {
+        if (declaredType == DataValueType.LONG || declaredType == DataValueType.DOUBLE)
+        {
+            IDataValue dv = column.getDataValue(row);
+            if (!dv.isMissingOrInvalid())
+            {
+                return dv;
+            }
+        }
+        return resolvedObject(row);
+    }
+
 }

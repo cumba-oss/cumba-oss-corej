@@ -3797,13 +3797,34 @@ public final class ExprCompiler
         {
             EvaluationContext ctx = run.ctx();
             int rc = run.rowCount();
-            return new ComputedVector(rc, DataValueType.STRING,
-                    row -> substitutedScalarValue(scalar, ctx, row, namePosition));
+            // Shape 4 (PLAN-joined-column-typing): the CELLS carry the joined column's real type,
+            // so a substituted dotted operand (ADSL.AP${APERIOD:%02d}SDT and friends -- 44 Check
+            // occurrences across 33 rules, ADaM numeric dates among them) stops being rounded to
+            // 12 significant digits on its way through getValueAsString().
+            //
+            // ⚠ The DECLARED type stays STRING on purpose. This operand resolves its column name
+            // PER ROW, so different rows can resolve to different columns with different types and
+            // no single declared type is correct. STRING is the honest "not statically known", and
+            // it keeps this shape outside the J7 gate -- which is right, because a ${...}
+            // substitution is not an authored column name.
+            return ComputedVector.typed(rc, DataValueType.STRING,
+                    row -> substitutedScalarCell(scalar, ctx, row, namePosition));
         };
     }
 
 
-    private static @Nullable Object substitutedScalarValue(OperandSubstitutor.Scalar scalar,
+    /**
+     * Resolves a {@code ${…}}-substituted scalar operand to a <b>typed</b> cell.
+     *
+     * <p>
+     * A dotted target reads through {@link JoinLookup#lookupValue} so the cell keeps its own type;
+     * a primary column hands back its cell for a numeric declared type, consulting
+     * {@link ScalarSemantics#resolvedString} first so the blank contract is taken from there rather
+     * than re-derived; and an unqualified name absent from the primary resolves, in value position
+     * only, through {@link #firstJoinedCell}.
+     * </p>
+     */
+    private static @Nullable IDataValue substitutedScalarCell(OperandSubstitutor.Scalar scalar,
             EvaluationContext ctx, long row, boolean namePosition)
     {
         String name;
@@ -3813,31 +3834,52 @@ public final class ExprCompiler
         }
         catch (OperandSubstitutor.SubstitutionException _)
         {
-            // Fix #269 / EC-84: the row's drivers do not resolve, so there is no concrete column
-            // to read. Both positions answer with a missing cell -- the disposition an absent
-            // column has under the standing "absent column = all-missing column" policy, and the
-            // one an unresolvable target column already produced below.
             return null;
         }
         int dot = name.indexOf('.');
         if (dot > 0)
         {
-            String ds = name.substring(0, dot);
-            String col = name.substring(dot + 1);
-            JoinLookup lookup = ctx.getJoinedDatasets().get(ds);
-            return lookup == null ? null : lookup.lookup(ctx.getTable(), row, col);
+            JoinLookup lookup = ctx.getJoinedDatasets().get(name.substring(0, dot));
+            return lookup == null ? null
+                    : lookup.lookupValue(ctx.getTable(), row, name.substring(dot + 1));
         }
         DataTableMeta meta = ctx.getTable().getMetaData();
         int colIdx = meta.getColumnIndex(name);
         if (colIdx >= 0)
         {
-            // Blank resolves by the column's declared type — see ScalarSemantics.resolvedString.
-            return ScalarSemantics.resolvedString(ctx.getTable(), colIdx, row);
+            // A PRIMARY column: keep resolvedString's blank contract verbatim (a blank character
+            // cell reads "", a blank numeric cell null) rather than re-deriving it here.
+            String text = ScalarSemantics.resolvedString(ctx.getTable(), colIdx, row);
+            if (text == null)
+            {
+                return null;
+            }
+            DataValueType t = meta.getColumn(colIdx).getType();
+            return t == DataValueType.LONG || t == DataValueType.DOUBLE
+                    ? ctx.getTable().getColumn(colIdx).getDataValue(row)
+                    : DataValues.of(text);
         }
-        // Unqualified name absent from the primary table. The value position falls back to the
-        // first non-null value across all joins (resolveColumnValue → resolveFromJoinedDatasets);
-        // the name position does not (forEachSubstitutedValue reads the local column only).
-        return namePosition ? null : firstJoined(ctx, row, name);
+        // Reader 4: unqualified name absent from the primary, value position -- the first non-null
+        // across all joins, typed. The name position reads the local column only, as before.
+        return namePosition ? null : firstJoinedCell(ctx, row, name);
+    }
+
+
+    /** The typed sibling of {@link #firstJoined} (reader 4, shape 3's second reader). */
+    private static @Nullable IDataValue firstJoinedCell(EvaluationContext ctx, long row,
+            String name)
+    {
+        for (JoinLookup lookup : ctx.getJoinedDatasets().values())
+        {
+            for (IDataValue v : lookup.lookupAllValues(ctx.getTable(), row, name))
+            {
+                if (!v.isMissingOrInvalid())
+                {
+                    return v;
+                }
+            }
+        }
+        return null;
     }
 
 
@@ -5266,8 +5308,14 @@ public final class ExprCompiler
         {
             return ConstVector.of(null);
         }
-        return new ComputedVector(rowCount, DataValueType.STRING,
-                row -> lookup.lookup(ctx.getTable(), row, col));
+        // Shape 1 (PLAN-joined-column-typing): publish the foreign column's real declared type and
+        // resolve through the typed accessor. D1: the type comes from the JoinLookup's own foreign
+        // metadata, never from re-resolving the table -- SplitDomainResolution.resolveTableOrThrow
+        // THROWS on an un-unionable split domain, which would turn today's silent null into a rule
+        // ERROR on shipped data, and it is unnecessary because the join map was already built
+        // through that resolver.
+        return ComputedVector.typed(rowCount, lookup.declaredTypeOf(col),
+                row -> lookup.lookupValue(ctx.getTable(), row, col), name);
     }
 
 

@@ -1,6 +1,7 @@
 package net.cumba.corej.core.exec;
 
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -32,6 +33,69 @@ final class KeyMatchExpandedLookup implements JoinLookup
         this.datasetName = datasetName;
         this.child = child;
         this.boundRow = boundRow;
+    }
+
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>
+     * ⚠⚠ This override is <b>required</b>, not optional, because this class overrides
+     * {@link #declaredTypeOf}. Reporting a real {@code LONG}/{@code DOUBLE} type while leaving the
+     * values on {@code JoinLookup}'s default — which wraps {@link #lookup}'s cleaned text as
+     * {@code STRING} — publishes a vector whose meta and cells disagree. That is the same
+     * meta-vs-cell divergence J8 was built to avoid for the merged path, and it would have
+     * reintroduced the precision defect on this one: the value would still round-trip through
+     * {@code getAsDoubleCleaned}'s 12 significant digits.
+     * </p>
+     */
+    @Override
+    public @Nullable IDataValue lookupValue(IDataTable table, long row, String columnName)
+    {
+        long cr = boundChildRow(row);
+        if (cr < 0)
+        {
+            return null;
+        }
+        int colIdx = child.getMetaData().getColumnIndex(columnName);
+        if (colIdx < 0)
+        {
+            return null;
+        }
+        IDataValue dv = child.getColumn(colIdx).getDataValue(cr);
+        // Mirrors lookup()'s blank contract via resolvedString: a blank CHARACTER cell reads "",
+        // a blank NUMERIC cell reads null.
+        if (dv.isMissingOrInvalid())
+        {
+            return child.getMetaData().getColumn(colIdx)
+                    .getType() == net.cumba.datatable.values.DataValueType.STRING
+                            ? net.cumba.datatable.values.DataValueSupport.getAsDataValue("",
+                                    net.cumba.datatable.values.DataValueType.STRING)
+                            : null;
+        }
+        return dv;
+    }
+
+
+    /** The bound child row for {@code row}, or {@code -1} when there is none. */
+    private long boundChildRow(long row)
+    {
+        int r = (int) row;
+        if (r < 0 || r >= boundRow.length)
+        {
+            return -1;
+        }
+        return boundRow[r];
+    }
+
+
+    /** {@inheritDoc} Answered from the child table this lookup already holds. */
+    @Override
+    public net.cumba.datatable.values.DataValueType declaredTypeOf(String columnName)
+    {
+        int colIdx = child.getMetaData().getColumnIndex(columnName);
+        return colIdx < 0 ? net.cumba.datatable.values.DataValueType.MISSING
+                : child.getMetaData().getColumn(colIdx).getType();
     }
 
 

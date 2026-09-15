@@ -50,6 +50,208 @@ import org.jspecify.annotations.Nullable;
 public final class ScalarSemantics
 {
 
+    private static final System.Logger LOGGER = System.getLogger(ScalarSemantics.class.getName());
+
+    /**
+     * System property overriding {@link #DEFAULT_TOLERANCE_DIGITS} (decision <b>D12</b>).
+     *
+     * <p>
+     * ⛔ There is deliberately <b>no per-rule tolerance</b>. If one is ever wanted it arrives as an
+     * explicit function family taking ε as an argument, never as configuration, so the tolerance
+     * stays a property of the <em>run</em> — reproducible, and reported under <b>D13</b> — rather
+     * than something a corpus can silently encode.
+     * </p>
+     */
+    public static final String TOLERANCE_DIGITS_PROPERTY = "corej.numeric.tolerance.digits";
+
+    /**
+     * Significant digits at which two numbers are considered equal (decision <b>D12</b>).
+     *
+     * <p>
+     * ⭐ 12 matches {@code DataValueSupport.getAsDoubleCleaned}'s own precision, so the default is
+     * not a change from what the engine already treated as the significant part of a value — only
+     * from its previously <em>asymmetric</em> application, which rounded one operand and not the
+     * other.
+     * </p>
+     */
+    public static final int DEFAULT_TOLERANCE_DIGITS = 12;
+
+    /** The effective significant-digit setting for this JVM; reported under D13. */
+    private static final int TOLERANCE_DIGITS = resolveToleranceDigits();
+
+    private static int resolveToleranceDigits()
+    {
+        return parseToleranceDigits(System.getProperty(TOLERANCE_DIGITS_PROPERTY));
+    }
+
+
+    /**
+     * Parses the {@link #TOLERANCE_DIGITS_PROPERTY} value, falling back to
+     * {@link #DEFAULT_TOLERANCE_DIGITS}.
+     *
+     * <p>
+     * ⚑ Package-private and taking the raw text rather than reading the property itself, so the
+     * parsing is <b>testable</b>. {@link #TOLERANCE_DIGITS} is a {@code static final} resolved at
+     * class initialisation, which makes the effective setting impossible to exercise from a test
+     * without JVM games — review finding F6 noted that D12's override therefore shipped with
+     * nothing able to cover {@code N != 12}.
+     * </p>
+     *
+     * <p>
+     * ⚠⚠ An unusable value <b>warns</b> rather than falling back in silence. A silent fallback is
+     * the reason {@code -Dcorej.numeric.tolerance.digits=l2} (letter ell) ran at 12 and reported
+     * 12, which is indistinguishable from not having set it at all.
+     * </p>
+     *
+     * @param raw
+     *            the property's raw value, or {@code null} when unset.
+     * @return the configured digits, or {@link #DEFAULT_TOLERANCE_DIGITS}.
+     */
+    static int parseToleranceDigits(@Nullable String raw)
+    {
+        if (raw == null || raw.isBlank())
+        {
+            return DEFAULT_TOLERANCE_DIGITS;
+        }
+        int n;
+        try
+        {
+            n = Integer.parseInt(raw.trim());
+        }
+        catch (NumberFormatException _)
+        {
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "{0}=\"{1}\" is not an integer — using the default of {2} significant digits",
+                    TOLERANCE_DIGITS_PROPERTY, raw, DEFAULT_TOLERANCE_DIGITS);
+            return DEFAULT_TOLERANCE_DIGITS;
+        }
+        // 1..17: below 1 there are no significant digits to compare, and a double carries at most
+        // 17, beyond which the tolerance is narrower than the representation.
+        if (n < 1 || n > 17)
+        {
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "{0}={1} is outside 1..17 — using the default of {2} significant digits",
+                    TOLERANCE_DIGITS_PROPERTY, n, DEFAULT_TOLERANCE_DIGITS);
+            return DEFAULT_TOLERANCE_DIGITS;
+        }
+        return n;
+    }
+
+
+    /**
+     * The effective numeric-comparison tolerance in significant digits (D12/D13).
+     *
+     * @return the configured or default digit count.
+     */
+    public static int toleranceDigits()
+    {
+        return TOLERANCE_DIGITS;
+    }
+
+
+    /**
+     * The tolerance ε for comparing {@code a} and {@code b} — <b>purely relative</b>, with no
+     * absolute floor (decision <b>D8</b>).
+     *
+     * <p>
+     * ⭐ A consequence worth stating plainly: <b>nothing is approximately zero except zero.</b>
+     * {@code |x - 0| = |x|} can never be {@code <= |x| * 10^-(N-1)} unless {@code x} is {@code 0},
+     * so {@code x == 0} holds only for an exact zero. That is the desirable reading for shipped
+     * data — a genuine lab value of {@code 1e-15} correctly satisfies {@code > 0}, which an
+     * absolute floor would have broken by calling it equal to zero.
+     * </p>
+     *
+     * <p>
+     * ⚠ The residual, accepted: after <em>arithmetic</em>, catastrophic cancellation can leave a
+     * value that should be {@code 0} sitting at {@code 1e-18}, and a relative ε calls that
+     * non-zero. The engine mostly compares <em>stored</em> data; the residual is bounded to
+     * computed operands.
+     * </p>
+     *
+     * <p>
+     * ⚑ The scale is {@code max(|a|,|b|)}, never {@code |a|}: an asymmetric scale would let
+     * {@code a > b} and {@code b < a} disagree. ε underflows to {@code 0} at denormal scale, which
+     * degrades gracefully to exact comparison.
+     * </p>
+     *
+     * @param a
+     *            the left value.
+     * @param b
+     *            the right value.
+     * @return the tolerance, or {@code 0} when either value is not finite.
+     */
+    public static double tolerance(double a, double b)
+    {
+        if (!Double.isFinite(a) || !Double.isFinite(b))
+        {
+            return 0.0d;
+        }
+        return Math.max(Math.abs(a), Math.abs(b)) * Math.pow(10, -(TOLERANCE_DIGITS - 1));
+    }
+
+
+    /**
+     * Tolerant numeric equality (Step C): {@code |a-b| <= ε}.
+     *
+     * @param a
+     *            the left value.
+     * @param b
+     *            the right value.
+     * @return whether the two are equal within the configured tolerance.
+     */
+    public static boolean numericEquals(double a, double b)
+    {
+        return a == b || Math.abs(a - b) <= tolerance(a, b);
+    }
+
+
+    /**
+     * Tolerant numeric ordering (Step C), mirroring {@link #matchNumeric}'s shape so all five
+     * relations move together.
+     *
+     * <p>
+     * ⛔ They must: with ε applied to equality alone, {@code a == b} and {@code a < b} could both be
+     * true. Here exactly one of {@code <}, {@code ==}, {@code >} holds for any pair, and {@code <=}
+     * is {@code (< or ==)} by construction.
+     * </p>
+     *
+     * @param a
+     *            the left value.
+     * @param b
+     *            the right value.
+     * @param direction
+     *            positive for greater-than, negative for less-than.
+     * @param orEqual
+     *            whether the relation includes equality.
+     * @return the tolerant verdict.
+     */
+    public static boolean compareNumericTolerant(double a, double b, int direction, boolean orEqual)
+    {
+        // ⚠⚠ Every relation is derived from ONE difference, never from a shifted operand.
+        // `fl(a + eps) < b` is NOT the complement of `|a-b| <= eps`: the shift rounds while the
+        // difference does not, so when b-a exceeds eps by less than half an ulp of a+eps, the sum
+        // rounds up to exactly b and BOTH answer false. Measured: a = 5.002294452894392,
+        // b = 5.002294452944415 was neither <, nor ==, nor > — while <= and >= were both true, so
+        // <= was not (< or ==). A randomised sweep of 400 000 near-boundary pairs found ~22 000
+        // such pairs. Deriving from d makes trichotomy exact by construction, because the same d
+        // and eps decide all three.
+        if (Double.isNaN(a) || Double.isNaN(b))
+        {
+            // Pre-existing convention, preserved: a NaN operand answers false on all five, so only
+            // `!=` fires. Deriving `<=` as `!gt` without this guard would flip it to true.
+            return false;
+        }
+        double d = a - b;
+        double eps = tolerance(a, b);
+        boolean greater = d > eps;
+        boolean less = d < -eps;
+        if (direction > 0)
+        {
+            return orEqual ? !less : greater;
+        }
+        return orEqual ? !greater : less;
+    }
+
     /**
      * Floating-point tolerance for numeric date/datetime comparisons. {@code 1e-9} is well below
      * millisecond precision (1ms = 1e-3 in *DTM seconds), and well above the resolution of
@@ -301,11 +503,18 @@ public final class ScalarSemantics
             Double rhsD = comparisonTargetAsDouble(target);
             if (!Double.isNaN(lhsD) && rhsD != null)
             {
-                return lhsD == rhsD;
+                // Step C: tolerant equality. Exact `==` is kept as the fast path inside
+                // numericEquals, so an exact match never pays for the tolerance computation.
+                return numericEquals(lhsD, rhsD);
             }
         }
         String a = dvMissing ? "" : dv.getValueAsString();
-        String b = target == null ? "" : target.toString();
+        // ⚠ getValueAsString(), never toString(): a typed operand may be an IDataValue, and
+        // DataValueString.toString() QUOTES its value while the anonymous DataValues.of has no
+        // override at all. Folding either through toString() would silently change every textual
+        // verdict on this path.
+        String b = target == null ? ""
+                : target instanceof IDataValue tv ? tv.getValueAsString() : target.toString();
         return caseInsensitive ? a.equalsIgnoreCase(b) : a.equals(b);
     }
 
@@ -342,7 +551,23 @@ public final class ScalarSemantics
         {
             return false;
         }
-        return numericMembers.contains(probe);
+        // D9: `in` is "equals one of the following", so it carries the SAME tolerance as `==`.
+        // Without this, `AGE == 17` and `AGE in [17]` disagree for AGE = 16.99999999997 -- the same
+        // operand giving two answers, which is exactly what the ruling exists to prevent.
+        // ⚑ The exact `contains` stays as the fast path: an exact member hits the hash lookup and
+        // never pays for the scan.
+        if (numericMembers.contains(probe))
+        {
+            return true;
+        }
+        for (Double member : numericMembers)
+        {
+            if (member != null && numericEquals(probe, member))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
 
@@ -403,6 +628,20 @@ public final class ScalarSemantics
     }
 
 
+    /** {@code Double.parseDouble}, or {@code null} when the text is not a number. */
+    private static @Nullable Double parseOrNull(String text)
+    {
+        try
+        {
+            return Double.parseDouble(text);
+        }
+        catch (NumberFormatException _)
+        {
+            return null;
+        }
+    }
+
+
     /**
      * Coerces a resolved comparison target to a {@code Double}: directly for {@link Number}, parsed
      * via {@code Double.parseDouble(target.toString())} otherwise, {@code null} when missing or
@@ -419,6 +658,18 @@ public final class ScalarSemantics
         if (target instanceof Number n)
         {
             return n.doubleValue();
+        }
+        // Step A: a typed numeric operand (Vector.comparisonOperand) carries its exact value. Read
+        // it directly -- going through getValueAsString() would apply getAsDoubleCleaned's
+        // 12-significant-digit rounding and reintroduce the very defect this exists to remove.
+        if (target instanceof IDataValue v)
+        {
+            if (v.isMissingOrInvalid())
+            {
+                return null;
+            }
+            double d = v.getValueAsDouble();
+            return Double.isNaN(d) ? parseOrNull(v.getValueAsString()) : d;
         }
         try
         {

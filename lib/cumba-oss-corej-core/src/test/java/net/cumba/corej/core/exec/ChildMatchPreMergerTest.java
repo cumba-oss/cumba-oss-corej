@@ -722,6 +722,122 @@ class ChildMatchPreMergerTest
         assertEquals("MILD", suppMerged.getColumn(suppIdx).getDataValue(0).getValueAsString());
     }
 
+    // ----------------------------------------------------------------------------------------
+    // J8 (PLAN-joined-column-typing): the merged column reports the parent's declared type when
+    // every parent agrees, and STRING when they disagree.
+    // ----------------------------------------------------------------------------------------
+
+
+    @Test
+    void preMerge_singleParent_mergedColumnReportsParentType()
+    {
+        IDataTable primary = TableFixture.of("SUPPAE")//
+                .str("STUDYID", "S1").str("USUBJID", "U1")//
+                .str("IDVAR", "AESEQ").str("IDVARVAL", "5").str("RDOMAIN", "AE")//
+                .build();
+        IDataTable parent = TableFixture.of("AE")//
+                .str("STUDYID", "S1").str("USUBJID", "U1")//
+                .lng("AESEQ", 5L).lng("AESTDY", 7L).str("AETERM", "headache")//
+                .build();
+
+        IDataTable merged = ChildMatchPreMerger.preMerge(primary, List.of(md("AE", true)),
+                resolver("AE", parent), "CORE-J8-agree", null);
+        DataTableMeta meta = merged.getMetaData();
+
+        // The whole point: a numeric parent column is no longer flattened to Char.
+        assertEquals(DataValueType.LONG, meta.getColumn(meta.getColumnIndex("AESTDY")).getType());
+        assertEquals(DataValueType.STRING, meta.getColumn(meta.getColumnIndex("AETERM")).getType());
+        // ...and the cell agrees with the meta, which is what stops equalsNumericAware flipping.
+        assertEquals(DataValueType.LONG,
+                merged.getColumn(meta.getColumnIndex("AESTDY")).getDataValue(0).getType());
+    }
+
+
+    @Test
+    void preMerge_parentsDisagreeOnType_mergedColumnStaysString()
+    {
+        // A CO primary referencing two different parent domains per row: AE carries SEQNUM as LONG,
+        // CM carries it as a character column. There is no single correct type, so J8 keeps STRING
+        // -- exactly the pre-change behaviour. Nothing else in the suite would notice if this
+        // branch inverted, which is why it is pinned here.
+        IDataTable primary = TableFixture.of("CO")//
+                .str("STUDYID", "S1", "S1").str("USUBJID", "U1", "U1")//
+                .str("IDVAR", "SEQNUM", "SEQNUM").str("IDVARVAL", "1", "1")//
+                .str("RDOMAIN", "AE", "CM")//
+                .build();
+        IDataTable ae = TableFixture.of("AE")//
+                .str("STUDYID", "S1").str("USUBJID", "U1").lng("SEQNUM", 1L)//
+                .str("SHARED", "a")//
+                .build();
+        IDataTable cm = TableFixture.of("CM")//
+                .str("STUDYID", "S1").str("USUBJID", "U1").str("SEQNUM", "1")//
+                .str("SHARED", "b")//
+                .build();
+
+        IDataTable merged = ChildMatchPreMerger.preMerge(primary,
+                List.of(md("AE", true), md("CM", true)), multi(Map.of("AE", ae, "CM", cm)),
+                "CORE-J8-disagree", null);
+        DataTableMeta meta = merged.getMetaData();
+
+        int seq = meta.getColumnIndex("SEQNUM");
+        assertTrue(seq >= 0, "SEQNUM should be merged in from the parents");
+        assertEquals(DataValueType.STRING, meta.getColumn(seq).getType(),
+                "parents disagree (LONG vs STRING) -- J8 falls back to STRING");
+        // A column both parents agree on is unaffected by the disagreement of its neighbour.
+        assertEquals(DataValueType.STRING, meta.getColumn(meta.getColumnIndex("SHARED")).getType());
+    }
+
+
+    @Test
+    void preMerge_numericParentColumn_survivesWithoutPrecisionLoss()
+    {
+        // The §3.5 hazard, on the merged path: getAsDoubleCleaned rounds to 12 significant digits,
+        // so a 14-digit value used to lose its last digit on the way through getValueAsString().
+        IDataTable primary = TableFixture.of("SUPPAE")//
+                .str("STUDYID", "S1").str("USUBJID", "U1")//
+                .str("IDVAR", "AESEQ").str("IDVARVAL", "5").str("RDOMAIN", "AE")//
+                .build();
+        IDataTable parent = TableFixture.of("AE")//
+                .str("STUDYID", "S1").str("USUBJID", "U1").lng("AESEQ", 5L)//
+                .dbl("BIGVAL", 1.0E13 + 1)//
+                .build();
+
+        IDataTable merged = ChildMatchPreMerger.preMerge(primary, List.of(md("AE", true)),
+                resolver("AE", parent), "CORE-J8-precision", null);
+        DataTableMeta meta = merged.getMetaData();
+        int idx = meta.getColumnIndex("BIGVAL");
+
+        assertEquals(DataValueType.DOUBLE, meta.getColumn(idx).getType());
+        assertEquals(1.0E13 + 1, merged.getColumn(idx).getDataValue(0).getValueAsDouble(),
+                "the merged cell must carry the exact parent value, not a 12-digit rounding");
+    }
+
+
+    @Test
+    void preMerge_idvarvalIsPrimaryColumn_soItIsNeverAugmented()
+    {
+        // §1.1's key exemption, pinned at the invariant that actually protects it (review F10):
+        // IDVARVAL is a PRIMARY column, so it is never in augmentedCols and keeps the primary's
+        // own declared type. wrapWithCoercedIdvarval never sets a type at all.
+        IDataTable primary = TableFixture.of("SUPPAE")//
+                .str("STUDYID", "S1").str("USUBJID", "U1")//
+                .str("IDVAR", "AESEQ").str("IDVARVAL", "5").str("RDOMAIN", "AE")//
+                .build();
+        IDataTable parent = TableFixture.of("AE")//
+                .str("STUDYID", "S1").str("USUBJID", "U1").lng("AESEQ", 5L)//
+                .build();
+
+        IDataTable merged = ChildMatchPreMerger.preMerge(primary, List.of(md("AE", true)),
+                resolver("AE", parent), "CORE-J8-idvarval", null);
+        DataTableMeta meta = merged.getMetaData();
+
+        assertEquals(DataValueType.STRING,
+                meta.getColumn(meta.getColumnIndex("IDVARVAL")).getType(),
+                "IDVARVAL is a primary column and stays Char whatever the parent key type is");
+        // AESEQ is the parent's numeric key, merged in -- it does take the parent's type.
+        assertEquals(DataValueType.LONG, meta.getColumn(meta.getColumnIndex("AESEQ")).getType());
+    }
+
 
     private static MatchDataset md(String name, Boolean child)
     {
@@ -827,6 +943,15 @@ class ChildMatchPreMergerTest
         {
             colNames.add(aName);
             colTypes.add(DataValueType.LONG);
+            colData.add(aValues);
+            return this;
+        }
+
+
+        TableFixture dbl(String aName, Double... aValues)
+        {
+            colNames.add(aName);
+            colTypes.add(DataValueType.DOUBLE);
             colData.add(aValues);
             return this;
         }
