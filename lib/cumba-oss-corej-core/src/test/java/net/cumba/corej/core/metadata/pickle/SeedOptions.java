@@ -14,10 +14,11 @@ import java.util.Objects;
  * @param apiBaseUrl
  *            the effective CDISC Library base URL. Only its <em>path</em> matters: it becomes the
  *            cache-key prefix, so {@code https://api.library.cdisc.org/api/} makes
- *            {@code /mdr/sdtmig/3-4} land in {@code api_mdr_sdtmig_3-4%3Fexpand%3Dtrue.json.gz} —
- *            the encoded query is there because the seeder keys by the request CoreJ issues, not by
- *            the bare path the pickle was fetched under. Never hardcode the prefix — a different
- *            base URL must produce different file names.
+ *            {@code /mdr/sdtmig/3-4} land under the cache key
+ *            {@code /api/mdr/sdtmig/3-4?expand=true} — the query is part of the key because the
+ *            seeder keys by the request CoreJ issues, not by the bare path the pickle was fetched
+ *            under. How that key becomes a file name is {@code ApiCache}'s business. Never hardcode
+ *            the prefix — a different base URL must produce different file names.
  * @param overwriteExisting
  *            {@code false} (default) skips endpoints already present, so a seeded run never
  *            rewrites a real API response; {@code true} replaces them.

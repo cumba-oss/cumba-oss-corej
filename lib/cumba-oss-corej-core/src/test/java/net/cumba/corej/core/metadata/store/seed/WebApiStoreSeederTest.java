@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 import net.cumba.corej.core.metadata.store.MetadataStore;
 import net.cumba.corej.core.metadata.store.Presence;
+import net.cumba.web.api.cache.ApiCache;
 import net.cumba.web.api.cache.GzipFileApiCache;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -139,14 +140,25 @@ class WebApiStoreSeederTest
     void reseedCarriesPresentPackagesWithoutTouchingTheApi() throws IOException
     {
         seeder().seed(StoreSeedOptions.of(target));
+        // The prefix is asked of the encoder, not spelled out. It used to read
+        // "api_mdr_ct_packages_", which matched nothing once Q14 re-encoded cache file names —
+        // so the deletion below removed NOTHING and every assertion still passed, because the
+        // packages are carried from the store rather than the cache. The count assertion is what
+        // makes that impossible to repeat.
+        String packagePrefix = ApiCache.encodeKeyForFileName("/api/mdr/ct/packages/");
+        List<Path> recorded;
         try (Stream<Path> entries = Files.list(cacheDir))
         {
-            for (Path entry : entries
-                    .filter(p -> p.getFileName().toString().startsWith("api_mdr_ct_packages_"))
-                    .toList())
-            {
-                Files.delete(entry);
-            }
+            recorded = entries.filter(p -> p.getFileName().toString().startsWith(packagePrefix))
+                    .toList();
+        }
+        assertEquals(3,
+                recorded.stream().filter(p -> p.getFileName().toString().endsWith(".json.gz"))
+                        .count(),
+                "the three recorded CT package responses must be the ones being deleted");
+        for (Path entry : recorded)
+        {
+            Files.delete(entry);
         }
 
         StoreSeedReport report = seeder().seed(StoreSeedOptions.of(target));

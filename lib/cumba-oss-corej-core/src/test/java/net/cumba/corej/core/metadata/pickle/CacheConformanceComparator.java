@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,6 +14,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Stream;
+import net.cumba.web.api.cache.ApiCache;
 import net.cumba.web.api.cache.GzipFileApiCache;
 
 /**
@@ -150,12 +150,12 @@ final class CacheConformanceComparator
         {
             files.map(p -> p.getFileName().toString()).filter(n -> n.endsWith(".json.gz"))
                     .map(n -> n.substring(0, n.length() - ".json.gz".length()))
-                    // FileApiCache.toCacheFileName maps '/' to '_' and *then* URL-encodes, so the
-                    // inverse has to decode first. Since keys carry the query string, a name like
-                    // "api_mdr_ct_packages_sdtmct-2024-09-27%3Fexpand%3Dtrue" would otherwise be
-                    // handed back to the cache still encoded — which re-encodes it and misses.
-                    .map(n -> URLDecoder.decode(n, StandardCharsets.UTF_8))
-                    .map(n -> "/" + n.replace('_', '/'))
+                    // Ask the cache to invert its own naming. This used to be a hand-rolled
+                    // inverse — URL-decode, then '_' -> '/', then prepend the leading '/' the
+                    // encoder stripped — and it stopped being an inverse the moment Q14 changed
+                    // the encoding, while still producing plausible-looking endpoint strings that
+                    // were handed straight back to GzipFileApiCache.read.
+                    .map(ApiCache::decodeKeyFromFileName)
                     .filter(p -> aBasePathPrefix.isEmpty() || p.startsWith(aBasePathPrefix))
                     .forEach(out::add);
         }

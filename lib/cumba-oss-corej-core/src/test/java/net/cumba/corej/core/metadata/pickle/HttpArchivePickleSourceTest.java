@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 import java.util.zip.GZIPOutputStream;
 import net.cumba.corej.core.metadata.pickle.HttpArchivePickleSource.ExtractionLimits;
+import net.cumba.web.api.cache.GzipFileApiCache;
 import net.razorvine.pickle.Pickler;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -233,9 +234,11 @@ class HttpArchivePickleSourceTest
             assertEquals(1, report.ctPackagesWritten());
         }
         // The seeder keys by the request CoreJ issues, and CoreLibraryAccessImpl:201 fetches a CT
-        // package with expand=true — hence the encoded query in the file name.
-        assertTrue(Files.exists(
-                cache.resolve("api_mdr_ct_packages_sdtmct-2024-09-27%3Fexpand%3Dtrue.json.gz")));
+        // package with expand=true — so that is the key the entry has to be readable under. Asked
+        // of the cache rather than spelled out as an encoded file name: the encoding is
+        // cumba-web-api's to define (Q14 changed it), and this test is about the seeder's key.
+        assertTrue(new GzipFileApiCache(cache.toAbsolutePath(), ".json")
+                .read("/api/mdr/ct/packages/sdtmct-2024-09-27?expand=true").isPresent());
     }
 
 

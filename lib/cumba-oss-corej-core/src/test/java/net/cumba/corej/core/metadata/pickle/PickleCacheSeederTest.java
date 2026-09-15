@@ -44,12 +44,9 @@ class PickleCacheSeederTest
 
     /**
      * The query CoreJ appends to every seeded metadata endpoint except the CT package index. Part
-     * of the cache <b>key</b>, so it is part of the cache <b>file name</b> too — URL-encoded by
-     * {@code FileApiCache.toCacheFileName}, which is what {@code %3F} / {@code %3D} are.
+     * of the cache <b>key</b>, so it is part of the cache <b>file name</b> too.
      */
     private static final String EXPAND = "?expand=true";
-
-    private static final String EXPAND_ENCODED = "%3Fexpand%3Dtrue";
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -166,6 +163,46 @@ class PickleCacheSeederTest
     // ------------------------------------------------------------------
 
 
+    /**
+     * The file name {@link GzipFileApiCache} gives a cache key, asked of the cache rather than
+     * spelled out here.
+     *
+     * <p>
+     * These tests are about the <b>key</b> the seeder chose — expanded or bare, self-href or
+     * key-derived — not about the encoding that turns a key into a name. Spelling the encoded names
+     * out coupled the two, so a change to the encoding reddened every one of them and said nothing
+     * about the keys. The encoding itself is pinned once, by
+     * {@link #theEncodedNameIsTheOneTheCurrentEncodingProduces()}, and owned by
+     * {@code CacheKeyEncodingTest} in cumba-web-api.
+     * </p>
+     *
+     * @param aKey
+     *            the cache key, base path and query included.
+     * @return the file name the cache reads and writes it under.
+     */
+    private static String cacheFile(String aKey)
+    {
+        // The directory plays no part in the name; the extension does, and this is where the
+        // ".gz" comes from.
+        return new GzipFileApiCache(Path.of("."), ".json").toCacheFileName(aKey);
+    }
+
+
+    /**
+     * The one pinned literal: a change to the cache-key encoding must still fail something here,
+     * not silently move every derived expectation with it. Q14 (2026-09-11) is what these bytes are
+     * — lower-case hex escapes, a leading {@code _} for the leading slash, and no upper-case
+     * character anywhere, so a case-folding file system cannot collide two keys.
+     */
+    @Test
+    void theEncodedNameIsTheOneTheCurrentEncodingProduces()
+    {
+        assertEquals("_api_mdr_sdtmig_3-4%3fexpand%3dtrue.json.gz",
+                cacheFile("/api/mdr/sdtmig/3-4" + EXPAND));
+        assertEquals("_api_mdr_ct_packages.json.gz", cacheFile("/api/mdr/ct/packages"));
+    }
+
+
     @Test
     void writesTheExactFileNamesTheCacheReaderExpects(@TempDir Path root) throws IOException
     {
@@ -179,19 +216,23 @@ class PickleCacheSeederTest
             files.map(p -> p.getFileName().toString()).filter(n -> n.endsWith(".json.gz"))
                     .forEach(names::add);
         }
-        assertTrue(names.contains("api_mdr_sdtmig_3-4" + EXPAND_ENCODED + ".json.gz"),
-                names.toString());
-        assertTrue(names.contains("api_mdr_sdtm_2-0" + EXPAND_ENCODED + ".json.gz"),
-                names.toString());
-        assertTrue(
-                names.contains(
-                        "api_mdr_ct_packages_sdtmct-2024-09-27" + EXPAND_ENCODED + ".json.gz"),
+        assertTrue(names.contains(cacheFile("/api/mdr/sdtmig/3-4" + EXPAND)), names.toString());
+        assertTrue(names.contains(cacheFile("/api/mdr/sdtm/2-0" + EXPAND)), names.toString());
+        assertTrue(names.contains(cacheFile("/api/mdr/ct/packages/sdtmct-2024-09-27" + EXPAND)),
                 names.toString());
         // The CT package index is the one seeded endpoint CoreJ fetches unexpanded
         // (CoreLibraryAccessImpl:163 → getCtPackages()), so it keeps the bare name.
-        assertTrue(names.contains("api_mdr_ct_packages.json.gz"), names.toString());
-        assertFalse(names.contains("api_mdr_ct_packages" + EXPAND_ENCODED + ".json.gz"),
-                names.toString());
+        assertTrue(names.contains(cacheFile("/api/mdr/ct/packages")), names.toString());
+        assertFalse(names.contains(cacheFile("/api/mdr/ct/packages" + EXPAND)), names.toString());
+
+        // The names are only half the claim: what the reader expects is an entry it can actually
+        // fetch under that key. Asking the cache closes the loop end to end, so a future change to
+        // either side — the seeder's key or the cache's naming — fails here rather than agreeing
+        // with itself.
+        GzipFileApiCache reader = new GzipFileApiCache(cache.toAbsolutePath(), ".json");
+        assertTrue(reader.read("/api/mdr/sdtmig/3-4" + EXPAND).isPresent());
+        assertTrue(reader.read("/api/mdr/ct/packages/sdtmct-2024-09-27" + EXPAND).isPresent());
+        assertTrue(reader.read("/api/mdr/ct/packages").isPresent());
     }
 
 
@@ -208,10 +249,11 @@ class PickleCacheSeederTest
 
         seed(pickleDir(root), cache);
 
-        assertFalse(Files.exists(cache.resolve("api_mdr_sdtmig_3-4.json.gz")));
-        assertFalse(Files.exists(cache.resolve("api_mdr_sdtm_2-0.json.gz")));
-        assertFalse(Files.exists(cache.resolve("api_mdr_adam_adam-2-1.json.gz")));
-        assertFalse(Files.exists(cache.resolve("api_mdr_ct_packages_sdtmct-2024-09-27.json.gz")));
+        assertFalse(Files.exists(cache.resolve(cacheFile("/api/mdr/sdtmig/3-4"))));
+        assertFalse(Files.exists(cache.resolve(cacheFile("/api/mdr/sdtm/2-0"))));
+        assertFalse(Files.exists(cache.resolve(cacheFile("/api/mdr/adam/adam-2-1"))));
+        assertFalse(
+                Files.exists(cache.resolve(cacheFile("/api/mdr/ct/packages/sdtmct-2024-09-27"))));
     }
 
 
@@ -228,15 +270,14 @@ class PickleCacheSeederTest
 
         seed(pickleDir(root), cache);
 
-        assertTrue(
-                Files.exists(cache.resolve("api_mdr_adam_adam-2-1" + EXPAND_ENCODED + ".json.gz")));
-        assertFalse(Files.exists(cache.resolve("api_mdr_adam_2-1" + EXPAND_ENCODED + ".json.gz")));
+        assertTrue(Files.exists(cache.resolve(cacheFile("/api/mdr/adam/adam-2-1" + EXPAND))));
+        assertFalse(Files.exists(cache.resolve(cacheFile("/api/mdr/adam/2-1" + EXPAND))));
         // No CdiscLibraryClient method for /mdr/integrated/** takes an expand flag, so the TIG
         // substandards are fetched bare and must be seeded bare.
-        assertTrue(Files.exists(cache.resolve("api_mdr_integrated_tig_1-0_sdtm.json.gz")));
-        assertFalse(Files.exists(
-                cache.resolve("api_mdr_integrated_tig_1-0_sdtm" + EXPAND_ENCODED + ".json.gz")));
-        assertFalse(Files.exists(cache.resolve("api_mdr_tig_1-0_sdtm.json.gz")));
+        assertTrue(Files.exists(cache.resolve(cacheFile("/api/mdr/integrated/tig/1-0/sdtm"))));
+        assertFalse(Files
+                .exists(cache.resolve(cacheFile("/api/mdr/integrated/tig/1-0/sdtm" + EXPAND))));
+        assertFalse(Files.exists(cache.resolve(cacheFile("/api/mdr/tig/1-0/sdtm"))));
     }
 
 
@@ -247,11 +288,11 @@ class PickleCacheSeederTest
 
         Path lib = root.resolve("lib-cache");
         seed(pkl, lib, "https://example.org/lib/", false, false);
-        assertTrue(Files.exists(lib.resolve("lib_mdr_sdtmig_3-4" + EXPAND_ENCODED + ".json.gz")));
+        assertTrue(Files.exists(lib.resolve(cacheFile("/lib/mdr/sdtmig/3-4" + EXPAND))));
 
         Path bare = root.resolve("bare-cache");
         seed(pkl, bare, "https://example.org/", false, false);
-        assertTrue(Files.exists(bare.resolve("mdr_sdtmig_3-4" + EXPAND_ENCODED + ".json.gz")));
+        assertTrue(Files.exists(bare.resolve(cacheFile("/mdr/sdtmig/3-4" + EXPAND))));
     }
 
 
@@ -419,7 +460,7 @@ class PickleCacheSeederTest
 
         assertEquals(2, report.standardsWritten());
         assertEquals(7, report.written().size());
-        assertFalse(Files.exists(cache.resolve("api_mdr_sdtmig_3-4" + EXPAND_ENCODED + ".json.gz")),
+        assertFalse(Files.exists(cache.resolve(cacheFile("/api/mdr/sdtmig/3-4" + EXPAND))),
                 "a dry run must not touch the filesystem");
     }
 
@@ -464,7 +505,7 @@ class PickleCacheSeederTest
 
         seed(pickleDir(root), cache);
 
-        Path meta = cache.resolve("api_mdr_sdtmig_3-4" + EXPAND_ENCODED + ".json.gz.meta");
+        Path meta = cache.resolve(cacheFile("/api/mdr/sdtmig/3-4" + EXPAND) + ".meta");
         assertTrue(Files.exists(meta));
         JsonNode node = MAPPER.readTree(Files.readString(meta));
         assertEquals(200, node.path("statusCode").asInt());
@@ -525,7 +566,7 @@ class PickleCacheSeederTest
         SeedReport report = seed(dir, cache);
 
         assertEquals(1, report.standardsWritten());
-        assertTrue(Files.exists(cache.resolve("api_mdr_sdtmig_3-4" + EXPAND_ENCODED + ".json.gz")));
+        assertTrue(Files.exists(cache.resolve(cacheFile("/api/mdr/sdtmig/3-4" + EXPAND))));
     }
 
 
@@ -615,7 +656,7 @@ class PickleCacheSeederTest
         assertTrue(report.warnings().stream().anyMatch(w -> w.contains("not an absolute path")),
                 report.warnings().toString());
         // Falls back to key-derivation, which for a plain sdtmig key is correct.
-        assertTrue(Files.exists(cache.resolve("api_mdr_sdtmig_3-4" + EXPAND_ENCODED + ".json.gz")));
+        assertTrue(Files.exists(cache.resolve(cacheFile("/api/mdr/sdtmig/3-4" + EXPAND))));
     }
 
 

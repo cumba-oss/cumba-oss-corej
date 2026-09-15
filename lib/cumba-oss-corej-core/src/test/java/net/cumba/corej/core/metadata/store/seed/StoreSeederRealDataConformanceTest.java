@@ -15,6 +15,7 @@ import net.cumba.corej.core.metadata.pickle.SeedOptions;
 import net.cumba.corej.core.metadata.store.MetadataStore;
 import net.cumba.corej.core.metadata.store.RealCorpusLocator;
 import net.cumba.corej.core.metadata.store.StoreProvenance;
+import net.cumba.web.api.cache.GzipFileApiCache;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -39,7 +40,23 @@ class StoreSeederRealDataConformanceTest
 
     private static final Path REAL_WEB_CACHE = Path.of("/data/cdisc.metadata.library-cache");
 
-    private static final String PRODUCTS_ENTRY = "api_mdr_products.json.gz";
+    /** The one document in that cache this test needs; no pickle carries it. */
+    private static final String PRODUCTS_KEY = "/api/mdr/products";
+
+    /**
+     * The name the recorded cache holds {@link #PRODUCTS_KEY} under.
+     *
+     * <p>
+     * The recording predates Q14 (2026-09-11), which replaced the cache file-name encoding because
+     * the old one mapped {@code /a/b} and {@code /a_b} onto one file. The ruling waived backward
+     * compatibility for <em>caches</em> — they get refilled — but this directory is a frozen
+     * <em>fixture</em>: there is no API key here to re-record it with. So the historical name is
+     * named as history, and the copy is staged under whatever
+     * {@link GzipFileApiCache#toCacheFileName(String)} calls it today. Nothing here re-implements
+     * either encoding.
+     * </p>
+     */
+    private static final String LEGACY_PRODUCTS_ENTRY = "api_mdr_products.json.gz";
 
     private static final List<StoreProvenance> FIXED_PROVENANCE = List
             .of(new StoreProvenance("conformance", "real-corpus", "2026-09-08T00:00:00Z"));
@@ -56,7 +73,8 @@ class StoreSeederRealDataConformanceTest
         // fails loudly in the locator; only absent-everywhere skips, with the named message.
         assumeTrue(RealCorpusLocator.locate().isPresent(), RealCorpusLocator.ABSENT_MESSAGE);
         Path realPickles = RealCorpusLocator.locate().orElseThrow();
-        assumeTrue(Files.isRegularFile(REAL_WEB_CACHE.resolve(PRODUCTS_ENTRY)),
+        Path recordedProducts = recordedProductsEntry();
+        assumeTrue(recordedProducts != null,
                 "real web cache (for /mdr/products) not present - skipping");
 
         Path fromPickles = temp.resolve("from-pickles.zip");
@@ -67,7 +85,11 @@ class StoreSeederRealDataConformanceTest
         new PickleCacheSeeder().seed(SeedOptions
                 .builder(new LocalPickleSource(realPickles), webCache, SeedFixtures.BASE_URL)
                 .writeMeta(false).build());
-        Files.copy(REAL_WEB_CACHE.resolve(PRODUCTS_ENTRY), webCache.resolve(PRODUCTS_ENTRY),
+        // Staged under the name the cache reads it under today, whatever that is — the gzip bytes
+        // are copied as they are, so nothing is re-compressed.
+        Files.copy(recordedProducts,
+                webCache.resolve(new GzipFileApiCache(webCache.toAbsolutePath(), ".json")
+                        .toCacheFileName(PRODUCTS_KEY)),
                 StandardCopyOption.REPLACE_EXISTING);
 
         Path fromWebApi = temp.resolve("from-web-api.zip");
@@ -97,5 +119,30 @@ class StoreSeederRealDataConformanceTest
         // Surfaced in the test log for the phase report; the assertion above is the gate.
         System.out.printf("real-corpus store: %,d bytes; pickle seed: %s%n", size,
                 pickleReport.summary());
+    }
+
+
+    /**
+     * Locates {@code /mdr/products} in the recorded cache, under either the name the cache uses now
+     * or the pre-Q14 name the directory was recorded with.
+     *
+     * <p>
+     * Both are accepted on purpose. Looking only for the legacy name would turn a future
+     * re-recording into a silent skip — the test would stop running and say nothing — and looking
+     * only for the current name would skip on the directory that exists today.
+     * </p>
+     *
+     * @return the entry, or {@code null} when the recorded cache is not on this machine.
+     */
+    private static Path recordedProductsEntry()
+    {
+        Path current = REAL_WEB_CACHE.resolve(
+                new GzipFileApiCache(REAL_WEB_CACHE, ".json").toCacheFileName(PRODUCTS_KEY));
+        if (Files.isRegularFile(current))
+        {
+            return current;
+        }
+        Path legacy = REAL_WEB_CACHE.resolve(LEGACY_PRODUCTS_ENTRY);
+        return Files.isRegularFile(legacy) ? legacy : null;
     }
 }
