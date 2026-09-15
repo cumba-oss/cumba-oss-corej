@@ -17,7 +17,7 @@ import net.cumba.corej.core.expr.ast.Expr;
  * <p>
  * Stateless and thread-safe: the program cache is a {@link ConcurrentHashMap} and compiled programs
  * resolve columns against the live table at evaluation time, so a single program is safely shared
- * across the cohort fan-out and across datasets.
+ * across the rule fan-out and across datasets.
  * </p>
  */
 public final class NativeExprEvaluator

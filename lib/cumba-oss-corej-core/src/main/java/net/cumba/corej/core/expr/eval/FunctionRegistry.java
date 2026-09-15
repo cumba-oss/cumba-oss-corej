@@ -28,7 +28,7 @@ import org.jspecify.annotations.Nullable;
  * </ul>
  *
  * <p>
- * The map is a {@link ConcurrentHashMap}; lookups are lock-free and thread-safe under the cohort
+ * The map is a {@link ConcurrentHashMap}; lookups are lock-free and thread-safe under the rule
  * fan-out.
  * </p>
  */

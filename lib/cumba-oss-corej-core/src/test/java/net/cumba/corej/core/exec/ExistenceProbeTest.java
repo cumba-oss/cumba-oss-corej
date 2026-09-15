@@ -17,7 +17,8 @@ import org.junit.jupiter.api.Test;
  * Covers the name-existence and metadata probes that survived the removal of the legacy operator
  * engine — the exact entry points {@code ExprCompiler} calls when it compiles {@code var_exists} /
  * {@code ds_exists} / {@code var_is_null} / {@code max_value_length} plans, plus the two helpers
- * shared with {@link CohortRunner} and {@link ScopeVariableSource}.
+ * shared with {@link ScopeVariableSource} (a third sharer, {@code CohortRunner}, is retired —
+ * {@code PLAN-retire-cohort-runner.md}).
  *
  * <p>
  * These were previously exercised indirectly through the legacy operator leaves; with those gone

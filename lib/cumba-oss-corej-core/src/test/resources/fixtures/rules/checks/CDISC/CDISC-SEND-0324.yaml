@@ -28,7 +28,7 @@ Requirements:
     - "PCLLOQ"
 Check:
   expression: >-
-    PCORRES < PCLLOQ and PCSTRESC != "BLQ"
+    num(PCORRES) < PCLLOQ and PCSTRESC != "BLQ"
 Outcome:
   Message: "PCORRES is below the lower limit of quantitation but PCSTRESC does not\
     \ carry the 'BLQ' token."

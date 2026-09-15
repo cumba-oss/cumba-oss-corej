@@ -14,6 +14,7 @@ import net.cumba.corej.core.exec.VariableMetadataResult;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.BroadcastFold.Verdict;
+import net.cumba.datatable.testkit.SyntheticDataTable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -42,7 +43,7 @@ class BroadcastFoldSurvivorPinsTest
     private static EvaluationContext ctx(Map<String, Object> variables)
     {
         return EvaluationContext.builder()
-                .table(new SyntheticStringTable("AE", List.of("AETERM", "AESEV"), new String[]
+                .table(new SyntheticDataTable("AE", List.of("AETERM", "AESEV"), new String[]
                 {
                         "x"
                 }, 2)).variables(variables).domainPrefix("AE").build();
@@ -125,13 +126,13 @@ class BroadcastFoldSurvivorPinsTest
 
     private static EvaluationContext joinedCtx(List<String> joinedColumns, boolean withResolver)
     {
-        SyntheticStringTable ex = new SyntheticStringTable("EX", joinedColumns, new String[]
+        SyntheticDataTable ex = new SyntheticDataTable("EX", joinedColumns, new String[]
         {
                 "S1"
         }, 1);
         JoinLookup lookup = DatasetLookup.build("EX", ex, List.of("USUBJID"));
         EvaluationContext.EvaluationContextBuilder b = EvaluationContext.builder()
-                .table(new SyntheticStringTable("AE", List.of("USUBJID", "AETERM"), new String[]
+                .table(new SyntheticDataTable("AE", List.of("USUBJID", "AETERM"), new String[]
                 {
                         "S1"
                 }, 1)).joinedDatasets(Map.of("EX", lookup));

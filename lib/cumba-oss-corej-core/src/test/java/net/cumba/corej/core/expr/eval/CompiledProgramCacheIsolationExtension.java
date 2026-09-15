@@ -24,7 +24,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  *
  * <p>
  * The cache is correct and wanted in production — programs are immutable and resolve columns at
- * evaluation time, so sharing them across the cohort fan-out is the point. Only the cross-test
+ * evaluation time, so sharing them across the rule fan-out is the point. Only the cross-test
  * leakage is unwanted, which is why this is a test-side extension and not a production toggle. It
  * lives in {@code net.cumba.corej.core.expr.eval} so it can reach the package-private
  * {@code clearCacheForTesting()} hook, and applies module-wide regardless of a test's own package

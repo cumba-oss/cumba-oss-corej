@@ -1293,10 +1293,11 @@ public final class RuleRunner
      *
      * <p>
      * <b>Why a loop here rather than per-level threading inside the three entry points.</b>
-     * {@code executeUnified} / {@code evaluateVariableValueNative} / {@code executeGrouped} are
-     * hot, deeply woven and shared with {@link CohortRunner}; threading a level through them would
-     * make the single-level path a special case of new code. Looping here makes the single-level
-     * path <em>provably</em> the old code (see {@link #executeAgainst}) and each level's evaluation
+     * {@code executeUnified} / {@code evaluateVariableValueNative} / {@code executeGrouped} are hot
+     * and deeply woven — they were shared with {@code CohortRunner} too, before its retirement
+     * ({@code PLAN-retire-cohort-runner.md}); threading a level through them would make the
+     * single-level path a special case of new code. Looping here makes the single-level path
+     * <em>provably</em> the old code (see {@link #executeAgainst}) and each level's evaluation
      * exactly what a one-level rule with that Check would have produced.
      * </p>
      *
@@ -3421,12 +3422,13 @@ public final class RuleRunner
      *
      * <p>
      * ⚠ This is the ONE place the pair is computed. It was duplicated across
-     * {@link #executeUnified} and the grouped path, and {@link CohortRunner} carried neither half —
-     * so a fully-excluded rule projected {@code {}} on the cohort path and the exclusion-filtered
-     * inference on the per-rule path, breaking {@code CohortRunner}'s byte-identity contract (found
-     * by the {@code Fix #354} review, 2026-08-23). {@code check} must be the <em>resolved</em>
-     * check — post {@code --}-prefix substitution — or the inferred names are the unresolved
-     * wildcards.
+     * {@link #executeUnified} and the grouped path, and the retired {@code CohortRunner} carried
+     * neither half — so a fully-excluded rule projected {@code {}} on the cohort path and the
+     * exclusion-filtered inference on the per-rule path, breaking that runner's byte-identity
+     * contract (found by the {@code Fix #354} review, 2026-08-23). Keeping the single site is what
+     * made the divergence impossible rather than merely fixed. {@code check} must be the
+     * <em>resolved</em> check — post {@code --}-prefix substitution — or the inferred names are the
+     * unresolved wildcards.
      */
     static List<String> projectedOutputVariables(Rule rule, CheckCondition check,
             DataTableMeta meta)
@@ -3516,13 +3518,13 @@ public final class RuleRunner
      * {@code WildcardExpander}) — and it is deliberately NOT routed through
      * {@link net.cumba.corej.core.model.OutputVariableToken#mapName}, because an
      * {@code OutputVariableToken} can never reach here. Every list that arrives is a
-     * {@link #projectedOutputVariables} result (:1051, :2065, {@code CohortRunner#outputVarsOf}),
-     * i.e. either {@code Rule#effectiveOutputVariablesOrAuthored} — the derived list, whose
-     * authored half went through {@code OutputVariableToken.includes} and whose exclusions were
-     * subtracted, or the kill-switch fallback's {@code applyExclusions} — or the Fix #15 inference
-     * over Check leaf column names, also exclusion-filtered. Marker-bearing entries are gone before
-     * resolution, never after it. Re-verify this if a caller ever hands {@code extractOutputValues}
-     * a raw {@code Outcome.getOutputVariables()}.
+     * {@link #projectedOutputVariables} result (:1051, :2065), i.e. either
+     * {@code Rule#effectiveOutputVariablesOrAuthored} — the derived list, whose authored half went
+     * through {@code OutputVariableToken.includes} and whose exclusions were subtracted, or the
+     * kill-switch fallback's {@code applyExclusions} — or the Fix #15 inference over Check leaf
+     * column names, also exclusion-filtered. Marker-bearing entries are gone before resolution,
+     * never after it. Re-verify this if a caller ever hands {@code extractOutputValues} a raw
+     * {@code Outcome.getOutputVariables()}.
      * </p>
      */
     private static List<String> resolveOutputVarWildcards(List<String> outputVars,

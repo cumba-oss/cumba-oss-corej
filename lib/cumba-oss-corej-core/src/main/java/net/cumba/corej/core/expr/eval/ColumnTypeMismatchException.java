@@ -27,9 +27,35 @@ package net.cumba.corej.core.expr.eval;
  * ⚠ The gate deliberately fires <b>only</b> for an operand that is an authored column name resolved
  * in the primary table (a named {@link ColumnVector}) — never for an absent column (EC-38: an
  * absent column is an all-missing column, not a type error), a {@code $}-reference, a dotted /
- * joined name, a {@code value()} cursor read, or any computed operand (§10 F9). The cohort fast
- * path ({@code CohortRunner}) is structurally out of reach: its members' value side is always a
- * dotted foreign reference, which carries no declared type and so never sets an expectation.
+ * joined name, a {@code value()} cursor read, or any computed operand (§10 F9).
+ * </p>
+ *
+ * <h2>⚑ The cohort fast path, and why this section is now history</h2>
+ * <p>
+ * This javadoc used to carry four paragraphs about {@code CohortRunner}'s exposure to this
+ * exception. The cohort runner is <b>retired</b> ({@code PLAN-retire-cohort-runner.md}), so the
+ * mismatch now has exactly one path — {@code RuleRunner.execute}, which maps it to that rule's own
+ * {@code RuleExecutionStatus.ERROR} through the {@code __error__} channel. One lesson is worth
+ * carrying forward, because it generalises past the class that prompted it:
+ * </p>
+ * <p>
+ * ⛔ <b>A shared catch is only as correct as the invariant it rests on.</b> The retired runner
+ * caught {@code InvalidJoinedDomainException} for a whole cohort, which was sound because every
+ * member shared one {@code Match_Datasets} list — a grouper invariant. An earlier version of this
+ * javadoc proposed adding a parallel cohort-wide {@code catch} for <em>this</em> exception, and
+ * that would have been a defect: there was no comparable invariant for a column type, because the
+ * MEMBERSHIP {@code CohortKey} was the constant
+ * {@code (MEMBERSHIP, [], "is_not_contained_by", false, "")} and carried no column, so every
+ * membership-eligible rule on a dataset shared one cohort while each member resolved its own. The
+ * catch would have turned one rule's mistyped column into an ERROR for every bystander — a wrong
+ * verdict traded for a saved re-run. It was therefore caught per member instead.
+ * </p>
+ * <p>
+ * ⚠ And it was never reachable anyway: measured 2026-09-14, the authored corpus and all generated
+ * packages contain <b>zero</b> {@code is_not_contained_by} rules, so no MEMBERSHIP cohort ever
+ * existed on the shipped corpus. Re-measured 2026-09-15 from the other end, over a whole study run:
+ * 7 419 rule executions produced 7 419 single-member groups, no cohort of two or more ever formed,
+ * and the runner's hand-written row predicate was never once reached.
  * </p>
  */
 public final class ColumnTypeMismatchException extends RuntimeException

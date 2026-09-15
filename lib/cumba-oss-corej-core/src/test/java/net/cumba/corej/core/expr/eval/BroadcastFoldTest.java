@@ -13,6 +13,7 @@ import net.cumba.corej.core.exec.VariableMetadataResult;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.BroadcastFold.Verdict;
+import net.cumba.datatable.testkit.SyntheticDataTable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -47,7 +48,7 @@ class BroadcastFoldTest
     private static EvaluationContext ctx(Map<String, Object> variables)
     {
         return EvaluationContext.builder()
-                .table(new SyntheticStringTable("AE", List.of("AETERM", "AESEV"), new String[]
+                .table(new SyntheticDataTable("AE", List.of("AETERM", "AESEV"), new String[]
                 {
                         "x"
                 }, 2)).variables(variables).domainPrefix("AE").build();
@@ -255,14 +256,14 @@ class BroadcastFoldTest
     {
         // AEXX is absent from the primary table but present on a joined dataset — the legacy
         // fold leaves the leaf for row-level resolution, so the native fold must too.
-        SyntheticStringTable ex = new SyntheticStringTable("EX", List.of("USUBJID", "AEXX"),
+        SyntheticDataTable ex = new SyntheticDataTable("EX", List.of("USUBJID", "AEXX"),
                 new String[]
                 {
                         "S1"
                 }, 1);
         DatasetLookup lookup = DatasetLookup.build("EX", ex, List.of("USUBJID"));
         EvaluationContext joinedCtx = EvaluationContext.builder()
-                .table(new SyntheticStringTable("AE", List.of("USUBJID", "AETERM"), new String[]
+                .table(new SyntheticDataTable("AE", List.of("USUBJID", "AETERM"), new String[]
                 {
                         "S1"
                 }, 1)).joinedDatasets(Map.of("EX", lookup))

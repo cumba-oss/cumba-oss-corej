@@ -30,8 +30,8 @@ import org.junit.jupiter.api.Test;
  * Phase 1 isolation guarantee: a {@code taskDecorator} supplied to {@link LibraryValidator} must
  * run on the <em>submitting</em> thread and re-bind its captured context onto the worker that
  * executes each task — across <strong>both</strong> async submission points (the virtual-thread
- * dataset fan-out and the fixed-pool rule-cohort fan-out), including the nested case where a
- * dataset worker submits rule-cohort tasks.
+ * dataset fan-out and the fixed-pool rule fan-out), including the nested case where a dataset
+ * worker submits rule tasks.
  *
  * <p>
  * The proof uses a test-local {@link ThreadLocal} marker. The decorator snapshots the marker on the
@@ -97,7 +97,7 @@ class LibraryValidatorTaskDecoratorTest
         AtomicInteger ruleTasks = new AtomicInteger();
 
         // Record the marker seen on the dataset worker (the supplyAsync body) and on the rule-pool
-        // worker (the runtimeListener fires from inside the cohort task).
+        // worker (the runtimeListener fires from inside the rule task).
         LibraryValidator.RuntimeListener ruleProbe = _ ->
         {
             ruleObserved.add(String.valueOf(MARKER.get()));
@@ -129,11 +129,11 @@ class LibraryValidatorTaskDecoratorTest
         assertEquals(Set.of(KNOWN), datasetObserved,
                 "dataset workers must observe the decorator-bound marker only");
 
-        // The rule-cohort fan-out (fixed pool) ran tasks, nested inside the dataset worker, and the
+        // The rule fan-out (fixed pool) ran tasks, nested inside the dataset worker, and the
         // same marker propagated through the nesting.
         assertTrue(ruleTasks.get() >= 1, "expected >= 1 rule task, got " + ruleTasks);
         assertEquals(Set.of(KNOWN), ruleObserved,
-                "rule-cohort workers must observe the decorator-bound marker only (nested)");
+                "rule workers must observe the decorator-bound marker only (nested)");
     }
 
 
@@ -173,19 +173,23 @@ class LibraryValidatorTaskDecoratorTest
     }
 
     // ------------------------------------------------------------------
-    // Fixture: two datasets so the virtual-thread fan-out fires, and four selected rules in TWO
-    // Check shapes so RuleCohortGrouper forms more than one cohort and the rule-cohort pool submits
-    // more than one task per dataset at ruleThreads > 1.
+    // Fixture: two datasets so the virtual-thread fan-out fires, and four selected rules so the
+    // rule pool submits more than one task per dataset at ruleThreads > 1.
     // ⚑ Before Fix #366 the built-in templates supplied those rules from metadata; nothing is
-    // merged in behind the caller's back any more, so the fixture has to select them. One Check
-    // shape would collapse to a single cohort and leave the nesting proof at its floor.
+    // merged in behind the caller's back any more, so the fixture has to select them.
+    // ⚑ The two distinct Check shapes are a leftover requirement: they used to stop
+    // RuleCohortGrouper collapsing all four rules into ONE cohort, i.e. one task, which would have
+    // left the nesting proof at its floor. Since the cohort runner's retirement
+    // (PLAN-retire-cohort-runner.md) the rule IS the task, so four rules are four tasks whatever
+    // their shapes — the shapes are kept because varying them costs nothing and the fixture is
+    // then insensitive to how the pool batches work.
     // ------------------------------------------------------------------
 
 
     private static LibraryValidator.Builder buildValidator()
     {
         MetadataProvider provider = providerWithTwoDomains();
-        // ⚑ Fix #366: four selected rules, not an empty package. The rule-cohort fan-out this
+        // ⚑ Fix #366: four selected rules, not an empty package. The rule-level fan-out this
         // class exists to probe only runs if there are rules to run, and the generator no longer
         // supplies any of its own — with an empty package `ruleTasks` is 0 and the nesting half of
         // the proof never executes.
@@ -251,8 +255,9 @@ class LibraryValidatorTaskDecoratorTest
             core.setId(coreId);
             rule.setCore(core);
             rule.setSensitivity(Sensitivity.RECORD);
-            // Alternate the operator, not just the column: the cohort grouper keys on the Check
-            // shape, so four rules of one shape would be ONE cohort and ONE pool task.
+            // Alternate the operator, not just the column. ⚑ This mattered when the cohort
+            // grouper keyed on the Check shape and four rules of one shape became ONE pool task;
+            // it is now belt-and-braces (see the fixture note above).
             rule.setCheck(CheckConditionLeaf.builder().name(columns[i % columns.length])
                     .operator(i++ % 2 == 0 ? "empty" : "non_empty").build());
             Outcome outcome = new Outcome();

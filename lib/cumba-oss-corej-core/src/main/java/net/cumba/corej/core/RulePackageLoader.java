@@ -432,16 +432,21 @@ public class RulePackageLoader
      * precisely how {@code RuleCohortGrouper.equalityCohortKey}'s {@code getJoinType() != null}
      * rejection became unreachable for the corpus (EC-74) — while staying reachable for the
      * {@code CDISC-AD0591-<domain>-<var>} rules {@code RuleGenerator} built per dataset, which
-     * never come through here. The engine's {@code KeyMatchRowExpander} keeps {@code left} as a
-     * defensive fallback for exactly those loader-bypassing rules.
+     * never come through here. ⚑ That grouper is retired ({@code PLAN-retire-cohort-runner.md});
+     * the example stands as the clearest illustration of this pass's reach, and the reach itself is
+     * unchanged. The engine's {@code KeyMatchRowExpander} keeps {@code left} as a defensive
+     * fallback for exactly those loader-bypassing rules.
      * </p>
      *
      * <p>
      * ⚑ <b>Since Fix #366 that family no longer runs in production.</b> {@code LibraryValidator}
      * enables only {@code RuleCategory.corpusDeliveryOnly()}, so {@code CROSS_DATASET_METADATA} —
-     * the sole minter of those rules — never fires; the {@code getJoinType() != null} rejection and
-     * the {@code left} fallback are now unreachable outside tests. They stay because the generator
-     * code stays (disable now, delete later); both become deletable with it.
+     * the sole minter of those rules — never fires. The {@code left} fallback is therefore
+     * unreachable outside tests; it stays because the generator code stays (disable now, delete
+     * later) and becomes deletable with it. ⚑ Its former companion, the
+     * {@code getJoinType() != null} rejection, is already <b>deleted</b> rather than merely
+     * unreachable — it lived in the retired {@code RuleCohortGrouper}
+     * ({@code PLAN-retire-cohort-runner.md}).
      * </p>
      */
     private static void normalizeJoinTypes(RulePackage pkg)
@@ -1571,7 +1576,7 @@ public class RulePackageLoader
         catch (net.cumba.corej.core.expr.RuleDefinitionException ex)
         {
             // The expression is definitionally invalid (e.g. var_role at the DATA level): file
-            // it as a rule load error so the rule reports ERROR and never evaluates / cohorts.
+            // it as a rule load error so the rule reports ERROR and never evaluates.
             // (isSupported only swallows ExpressionException; a RuleDefinitionException — the
             // "rule is wrong" signal — propagates here.)
             rule.setLoadError(ex.getMessage());
@@ -1638,8 +1643,8 @@ public class RulePackageLoader
         // fall back to Outcome.Message (and the violation would carry no claiming level). The
         // test must NOT be `levels.size() > 1`: for a plain `Check:` the map here is the
         // synthesised single level, and installing it would route all ~3 804 shipped rules
-        // through executeLevels. Keep RuleCohortGrouper / AbsentDatasetSkip on the same
-        // declared-map test.
+        // through executeLevels. Keep AbsentDatasetSkip on the same declared-map test (a third
+        // site, RuleCohortGrouper, is retired — PLAN-retire-cohort-runner.md).
         SequencedMap<Severity, LevelCheck> declaredLevels = rule.getCheckLevels();
         if (declaredLevels != null && !declaredLevels.isEmpty())
         {
@@ -4274,10 +4279,12 @@ public class RulePackageLoader
      * ⚠⚠ <b>Absence is NOT a violation and must never become one.</b> {@code null} / blank means
      * "not authored": {@link #normalizeJoinTypes(Rule)} stamps {@code inner} onto it a few passes
      * later, and {@code RuleGenerator} — which never calls that method — relies on the null
-     * surviving, because a null {@code Join_Type} is what keeps {@code RuleCohortGrouper}'s
-     * equality-cohort path reachable for the generated {@code CDISC-AD0591-<domain>-<var>} family
-     * ({@code Fix #233} / EC-74). Rejecting {@code null} here would kill that optimisation
-     * outright.
+     * surviving. ⚑ Its original motive is gone: the null used to be what kept
+     * {@code RuleCohortGrouper}'s equality-cohort path reachable for the generated
+     * {@code CDISC-AD0591-<domain>-<var>} family ({@code Fix #233} / EC-74), and that grouper is
+     * retired ({@code PLAN-retire-cohort-runner.md}). The rule stands on its own terms: absence
+     * means "not authored", and {@code normalizeJoinTypes} is the only thing entitled to decide
+     * what it becomes.
      * </p>
      *
      * <p>

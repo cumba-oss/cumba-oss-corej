@@ -37,7 +37,7 @@ import org.junit.jupiter.api.Test;
  * {@code RuleRunner.buildJoinedDatasets} bind the same joined rows for the same entry;</li>
  * <li>ruling 1 — a split whose members clash on a column type reports
  * {@link RuleExecutionStatus#ERROR} with the {@code __error__} sentinel, on the key path, the Child
- * path and the cohort path alike.</li>
+ * path and the joined single-leaf equality shape alike.</li>
  * </ul>
  */
 class RuleRunnerSplitJoinTest
@@ -300,24 +300,31 @@ class RuleRunnerSplitJoinTest
     }
 
 
+    /**
+     * The joined single-leaf equality shape — {@code <col> != LB.<col>} over a key-based
+     * {@code Match_Datasets} — maps {@code InvalidJoinedDomainException} to that rule's own ERROR,
+     * with the same sentinel shape as the Child path above.
+     *
+     * <p>
+     * ⚑ This was a <em>cohort</em> test: it pinned that the exception produced one ERROR per member
+     * rather than one for the whole cohort (the hazard {@code ColumnTypeMismatchException}'s
+     * javadoc describes). With the cohort runner retired ({@code PLAN-retire-cohort-runner.md})
+     * per-rule is structural, so what survives is the shape's own ERROR mapping — which the
+     * Child-path test beside it does not cover.
+     * </p>
+     */
     @Test
-    void typeClashAcrossMembers_reportsRuleError_cohortPath()
+    void typeClashOnJoinedEqualityShape_reportsRuleErrorPerRule()
     {
-        // Two cohort-eligible rules sharing the LB join — CohortRunner's executeCohort must map
-        // the InvalidJoinedDomainException to one ERROR per member, same sentinel shape.
-        Rule a = cohortRule("TEST-CH-A", "LBSEQ");
-        Rule b = cohortRule("TEST-CH-B", "USUBJID");
-        RuleCohortGrouper.CohortKey key = RuleCohortGrouper.cohortKey(a);
-        assertNotNull(key, "fixture must stay cohort-eligible");
-        assertEquals(key, RuleCohortGrouper.cohortKey(b));
+        Rule a = joinedEqualityRule("TEST-CH-A", "LBSEQ");
+        Rule b = joinedEqualityRule("TEST-CH-B", "USUBJID");
 
         IDataTable primary = adlb();
-        List<RuleExecutionResult> results = CohortRunner.executeCohort(List.of(a, b), primary,
-                RealTables.inventoryOf(primary, lbchClash(), lbheClash()), null, null, null);
-        assertEquals(2, results.size());
-        for (RuleExecutionResult res : results)
+        DatasetResolver resolver = RealTables.inventoryOf(primary, lbchClash(), lbheClash());
+        for (Rule rule : List.of(a, b))
         {
-            assertEquals(RuleExecutionStatus.ERROR, res.getStatus());
+            RuleExecutionResult res = RuleRunner.execute(rule, primary, resolver, null, null);
+            assertEquals(RuleExecutionStatus.ERROR, res.getStatus(), rule.effectiveId());
             String sentinel = res.getViolations().get(0).getValues().get("__error__");
             assertNotNull(sentinel);
             assertTrue(sentinel.contains("LBSTRESN"), sentinel);
@@ -325,8 +332,8 @@ class RuleRunnerSplitJoinTest
     }
 
 
-    /** Single-leaf equality vs foreign dataset — the {@code RuleCohortGrouper} EQUALITY shape. */
-    private static Rule cohortRule(String id, String var)
+    /** Single-leaf equality vs a foreign dataset over a key-based join. */
+    private static Rule joinedEqualityRule(String id, String var)
     {
         Rule r = new Rule();
         r.setId(id);

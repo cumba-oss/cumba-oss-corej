@@ -265,29 +265,6 @@ class RuleCheckLevelsExecutionTest
                 "the rule's own Severity (Reject) does not label the WARNING row");
     }
 
-    // ------------------------------------------------------------------ cohorting (D9)
-
-
-    @Test
-    @DisplayName("a multi-level rule is never cohorted")
-    void multiLevelRuleIsNotCohorted() throws IOException
-    {
-        Rule single = rule("""
-                Check:
-                  expression: >-
-                    A == "a"
-                """);
-        Rule multi = entailedPair();
-
-        assertNull(RuleCohortGrouper.cohortKey(multi),
-                "a cohort shares ONE evaluation across its members; a multi-level rule needs one "
-                        + "per level plus the first-claim merge, which neither cohort path does");
-        assertEquals(
-                2, RuleCohortGrouper
-                        .group(List.of(single, multi), table().getMetaData(), _ -> false).size(),
-                "so it is demoted to a singleton and runs through RuleRunner");
-    }
-
     // ------------------------------------------------------------------ finding units (F1–F3)
 
 

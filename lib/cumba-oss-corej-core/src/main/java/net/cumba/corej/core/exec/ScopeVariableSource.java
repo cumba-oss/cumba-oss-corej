@@ -49,9 +49,12 @@ import org.jspecify.annotations.Nullable;
  * leg, where an unqualified sibling can still satisfy the leg on its own.
  * </p>
  *
- * <h2>Threading</h2> The production path validates cohorts in parallel, so both memos are
- * {@link ConcurrentHashMap}s. An instance is scoped to one primary dataset (the {@code --}
- * resolution is primary-dependent) and must not be shared across datasets.
+ * <h2>Threading</h2> The production path validates rules in parallel
+ * ({@code LibraryValidator.executeRulesInParallel}, one task per rule at {@code ruleThreads > 1}),
+ * so both memos are {@link ConcurrentHashMap}s — and they stay that way: the fan-out is real, only
+ * its unit of work changed when the cohort runner was retired
+ * ({@code PLAN-retire-cohort-runner.md}). An instance is scoped to one primary dataset (the
+ * {@code --} resolution is primary-dependent) and must not be shared across datasets.
  */
 public final class ScopeVariableSource
 {

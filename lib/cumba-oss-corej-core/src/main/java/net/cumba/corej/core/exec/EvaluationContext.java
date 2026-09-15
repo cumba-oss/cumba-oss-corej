@@ -213,10 +213,10 @@ public class EvaluationContext
      * <p>
      * It lives on the <em>context</em> rather than in the compiled plan for a load-bearing reason:
      * {@code NativeExprEvaluator} caches one {@code ExprProgram} per {@code Expr} in a static map
-     * shared across datasets and across the cohort fan-out, so a latch captured in the plan's
-     * closure would log the first dataset only <em>and</em> race. A context is per (rule, dataset),
-     * which is exactly the granularity the log wants. The set is concurrent because the cohort
-     * fan-out may evaluate rows on several threads against one context.
+     * shared across datasets and across the rule fan-out, so a latch captured in the plan's closure
+     * would log the first dataset only <em>and</em> race. A context is per (rule, dataset), which
+     * is exactly the granularity the log wants. The set is concurrent because the rule fan-out may
+     * evaluate rows on several threads against one context.
      * </p>
      */
     @Builder.Default

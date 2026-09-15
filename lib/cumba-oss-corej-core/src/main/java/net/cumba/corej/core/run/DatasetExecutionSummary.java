@@ -68,8 +68,9 @@ public record DatasetExecutionSummary(String domain, @Nullable String fileName, 
      * @param violations
      *            number of violations the rule reported for this dataset
      * @param runtimeMillis
-     *            this rule's execution time in milliseconds against this dataset (apportioned for a
-     *            cohort run); {@code -1} when not measured (e.g. skipped before execution)
+     *            this rule's own execution time in milliseconds against this dataset; {@code -1}
+     *            when not measured (e.g. skipped before execution). ⚑ No longer apportioned for a
+     *            cohort run — see {@code RuleExecutionResult#getRuntimeMillis}
      * @param expandedFor
      *            for a generated rule, the variable the template was expanded for (the primary
      *            wildcard column); {@code null} for non-generated rules

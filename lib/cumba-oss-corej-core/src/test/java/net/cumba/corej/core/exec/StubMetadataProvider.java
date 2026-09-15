@@ -27,6 +27,9 @@ import java.util.Map;
 public final class StubMetadataProvider implements MetadataProvider
 {
 
+    /** The reported standard; {@code sdtmig} unless {@link #standard(String)} says otherwise. */
+    private String standard = "sdtmig";
+
     private final Map<String, List<Map<String, String>>> domainVars = new LinkedHashMap<>();
 
     /**
@@ -437,7 +440,21 @@ public final class StubMetadataProvider implements MetadataProvider
     @Override
     public String getStandard()
     {
-        return "sdtmig";
+        return standard;
+    }
+
+
+    /**
+     * Overrides the reported standard, which defaults to {@code "sdtmig"}. ⚠ Some production code
+     * branches on it — {@code RuleGenerator.isAdamStandard} decides whether a generated rule gets
+     * its ADaM conformance CORE id ({@code CDISC-AD0591-<domain>-<var>}) or the generic
+     * {@code GEN-<code>-<domain>-<var>} one — so an ADaM generator test must set it, or it silently
+     * exercises the SDTM naming instead.
+     */
+    public StubMetadataProvider standard(String value)
+    {
+        standard = value;
+        return this;
     }
 
 

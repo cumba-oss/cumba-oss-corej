@@ -144,8 +144,35 @@ public final class XlsxReportWriter implements ReportWriter
      */
     public static @Nullable Integer resolveMaxRows(@Nullable Integer aArgMaxRows)
     {
+        return resolveMaxRows(aArgMaxRows, System.getenv(MAX_REPORT_ROWS_ENV));
+    }
+
+
+    /**
+     * The whole of {@link #resolveMaxRows(Integer)} with the environment read <b>passed in</b>
+     * rather than looked up.
+     *
+     * <p>
+     * ⚠ This seam exists for a reason worth stating: a Java test cannot set an environment variable
+     * in its own process, so with {@code System.getenv} called inline the entire environment branch
+     * — the blank check, the {@code NumberFormatException} fallback and the {@code Math.max}
+     * precedence rule — was <b>unreachable by any test</b>. Measured 2026-09-14: three of this
+     * module's mutants sat in exactly those lines and pitest reported them NO_COVERAGE, meaning the
+     * documented precedence ("the larger of the two wins") was asserted nowhere. Splitting the
+     * lookup from the decision is the smallest change that makes the decision testable; the public
+     * overload keeps the production behaviour identical.
+     * </p>
+     *
+     * @param aArgMaxRows
+     *            the caller-supplied limit, or {@code null} if not given.
+     * @param aRawEnv
+     *            the raw {@code MAX_REPORT_ROWS} value, or {@code null} when unset.
+     * @return the effective limit, or {@code null} for unlimited.
+     */
+    static @Nullable Integer resolveMaxRows(@Nullable Integer aArgMaxRows, @Nullable String aRawEnv)
+    {
         Integer env = null;
-        String raw = System.getenv(MAX_REPORT_ROWS_ENV);
+        String raw = aRawEnv;
         if (raw != null && !raw.isBlank())
         {
             try
@@ -220,8 +247,17 @@ public final class XlsxReportWriter implements ReportWriter
      * engine's resources, which have no skipped-rules sheet — rather than editing the binary
      * resource, this writer appends the sheet programmatically; a future template that ships the
      * sheet is used as-is.
+     *
+     * <p>
+     * ⚠ Package-private rather than private so a test can exercise the <em>reuse</em> branch. The
+     * shipped template has no such sheet, so every production call takes the create path and the
+     * early {@code return sheet} — the branch that implements "a future template that ships the
+     * sheet is used as-is" — was unreachable and untested (measured NO_COVERAGE, 2026-09-14). The
+     * cheapest honest way to reach it is to call this twice on one workbook, which is exactly what
+     * a template carrying the sheet would look like from here.
+     * </p>
      */
-    private static Sheet skippedRulesSheet(XSSFWorkbook aWorkbook)
+    static Sheet skippedRulesSheet(XSSFWorkbook aWorkbook)
     {
         Sheet sheet = aWorkbook.getSheet(SHEET_SKIPPED);
         if (sheet != null)
@@ -254,7 +290,14 @@ public final class XlsxReportWriter implements ReportWriter
     }
 
 
-    private void fillConformance(@Nullable Sheet aSheet, ReportSections aSections)
+    /**
+     * ⚠ Package-private rather than private for the same reason as {@link #skippedRulesSheet}: the
+     * shipped template carries Conformance rows 1–23 and {@link #CONFORMANCE_ROWS} maps every key
+     * into that range, so {@code createRow} — the branch that keeps this method working against a
+     * future template with a row missing — is unreachable through the public {@code write} path and
+     * measured NO_COVERAGE (2026-09-14). A test drives it with a sheet built without the row.
+     */
+    void fillConformance(@Nullable Sheet aSheet, ReportSections aSections)
     {
         if (aSheet == null)
         {

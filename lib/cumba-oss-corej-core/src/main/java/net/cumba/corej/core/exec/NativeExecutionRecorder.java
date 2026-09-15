@@ -12,11 +12,11 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * Off by default and zero-overhead when no session is active: the dispatch sites
- * ({@link RuleRunner} row-level + metadata-native paths, {@link CohortRunner}) call
- * {@link #record(String, Backend)} on every evaluation, but it is a no-op unless a test/diagnostic
- * program has called {@link #enable()}. The intended consumer is a test program that flips
- * {@code nativeEval} on, runs a validation, and asserts the rules it expects to run natively
- * actually did (and did not silently fall back to legacy).
+ * ({@link RuleRunner} row-level + metadata-native paths) call {@link #record(String, Backend)} on
+ * every evaluation, but it is a no-op unless a test/diagnostic program has called
+ * {@link #enable()}. The intended consumer is a test program that flips {@code nativeEval} on, runs
+ * a validation, and asserts the rules it expects to run natively actually did (and did not silently
+ * fall back to legacy).
  * </p>
  *
  * <p>
@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * Thread-safe: the active map is a {@link ConcurrentHashMap}, so cohort / parallel execution is
+ * Thread-safe: the active map is a {@link ConcurrentHashMap}, so parallel rule execution is
  * captured correctly.
  * </p>
  */

@@ -994,18 +994,20 @@ public final class Primitives
 
 
     /**
-     * {@code is_numeric(x)} — fires where the cell's string form is a finite decimal number under a
-     * hand-rolled character scan (no regex, no {@code Double.parseDouble}). A missing cell folds to
-     * {@code ""}, which is not numeric, so {@code is_numeric} stays {@code false} on a blank and
+     * {@code is_numeric(x)} — fires where the cell holds a finite numeric value: a numeric-typed
+     * cell always does, and a character cell does when its text parses as one. A missing cell folds
+     * to {@code ""}, which is not numeric, so {@code is_numeric} stays {@code false} on a blank and
      * the {@code negate} (i.e. {@code not is_numeric}) form fires on it.
      *
      * <p>
-     * The accepted grammar is an optional leading {@code -} followed by <b>either</b> one-or-more
-     * digits with an optional {@code .}digits fraction (e.g. {@code 0}, {@code -3}, {@code 3.5},
-     * {@code 007}) <b>or</b> a leading-dot fraction {@code .}digits (e.g. {@code .5}). A leading
-     * {@code +} ({@code +5}) is <b>rejected</b> — the legacy regexes this replaced are all
-     * {@code -?} — as are a lone {@code .}, a trailing dot ({@code 1.}), scientific notation
-     * ({@code 1e5}), surrounding whitespace ({@code " 1 "}), and the empty string.
+     * ⚠⚠ <b>This javadoc described the pre-{@code ef60470} grammar until 2026-09-14</b>, three
+     * lines above the {@link #isNumericCell} that had already replaced it — it still said a leading
+     * {@code +}, a trailing dot ({@code 1.}) and scientific notation ({@code 1e5}) were
+     * <em>rejected</em>, when all three are accepted. It is the javadoc a caller reads, and reading
+     * it is enough to conclude the predicate is still narrow and to mis-diagnose a corpus scenario
+     * on that basis. The accepted set is defined by {@link #isNumericCell} and stated there; do not
+     * restate it here, where it can drift again.
+     * </p>
      */
     public static BitSet isNumeric(Vector v, int rowCount, boolean negate)
     {

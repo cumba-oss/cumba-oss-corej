@@ -16,7 +16,7 @@ package net.cumba.corej.core.expr;
  * {@link net.cumba.corej.core.exec.RuleExecutionStatus#ERROR}. Because the offending
  * {@code (attribute, level)} pair is fully static (the level is a string literal and the attribute
  * is the function name), this is thrown at <em>compile</em> time and routed through the established
- * per-rule load-error channel ({@code Rule.loadError}) before any cohort is built.
+ * per-rule load-error channel ({@code Rule.loadError}) before execution is scheduled.
  * </p>
  */
 public class RuleDefinitionException extends RuntimeException

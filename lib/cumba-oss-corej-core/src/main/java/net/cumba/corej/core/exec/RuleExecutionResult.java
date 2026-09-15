@@ -44,9 +44,14 @@ public class RuleExecutionResult
 
     /**
      * Wall-clock execution time in milliseconds for this rule against one dataset, as measured by
-     * the orchestrator (apportioned evenly across members for a cohort run). Default {@code -1}
-     * means "not measured" (e.g. a rule skipped before execution); {@code 0} is a legitimately fast
-     * rule.
+     * the orchestrator — always this rule's own cost. Default {@code -1} means "not measured" (e.g.
+     * a rule skipped before execution); {@code 0} is a legitimately fast rule.
+     *
+     * <p>
+     * ⚑ It used to be apportioned evenly across a cohort's members
+     * ({@code cohortWallMs / cohortSize}); the cohort runner is retired
+     * ({@code PLAN-retire-cohort-runner.md}), so no value is an approximation any more.
+     * </p>
      */
     @Builder.Default
     long runtimeMillis = -1;

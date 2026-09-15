@@ -50,7 +50,16 @@ final class Varint
     static long readUnsigned(InputStream aIn) throws IOException
     {
         long value = 0;
-        for (int shift = 0; shift <= 63; shift += 7)
+        // ⚠⚠ The bound is 56, not 63, and the difference is a silent-corruption defect rather than
+        // an off-by-one of taste (found 2026-09-14 by a surviving ConditionalsBoundary mutant).
+        // Nine groups of seven bits cover bits 0..62, which is every non-negative long — 56 is the
+        // ninth group's shift. Allowing a TENTH group (shift 63) let a crafted or corrupt stream
+        // set the sign bit: ten bytes of 0x80… 0x01 decoded to Long.MIN_VALUE, which then PASSED
+        // readCount's `value > Integer.MAX_VALUE` guard (a negative is not greater than it),
+        // narrowed to int 0, and readString reads 0 as NULL. A corrupt ct/terms.bin therefore
+        // produced a null field instead of an error. The tenth byte now falls through to the
+        // "longer than 64 bits" IOException, which is what this loop always meant to say.
+        for (int shift = 0; shift <= 56; shift += 7)
         {
             int b = aIn.read();
             if (b < 0)

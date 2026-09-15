@@ -10,7 +10,7 @@ import java.util.BitSet;
  * {@link #evaluate(EvalRun)} which returns the violation {@link BitSet}.
  *
  * <p>
- * The plan is an immutable tree of closures and is therefore thread-safe: the cohort fan-out may
+ * The plan is an immutable tree of closures and is therefore thread-safe: the rule fan-out may
  * evaluate the same program on many datasets concurrently. Per-evaluation mutable scratch (computed
  * columns) lives in the {@link EvalRun} / {@link ComputedVector}s created during {@link #evaluate}.
  * </p>

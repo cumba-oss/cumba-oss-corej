@@ -26,9 +26,14 @@ import org.jspecify.annotations.Nullable;
  * <i>"not authored"</i>, which is the normal state of a generated rule:
  * {@code RulePackageLoader.normalizeJoinTypes} stamps {@code inner} onto a null/blank value at
  * load, but {@code RuleGenerator} <b>never calls it</b>, so the whole
- * {@code CDISC-AD0591-<domain>-<var>} family keeps a null {@code Join_Type} — and that null is
- * exactly what keeps {@code RuleCohortGrouper}'s equality-cohort path reachable ({@code Fix #233} /
- * EC-74). Validation therefore judges <b>the string when present</b>, never its absence.
+ * {@code CDISC-AD0591-<domain>-<var>} family keeps a null {@code Join_Type}. Validation therefore
+ * judges <b>the string when present</b>, never its absence.
+ *
+ * <p>
+ * ⚑ That null used to carry a second consequence — it was what kept {@code RuleCohortGrouper}'s
+ * equality-cohort path reachable ({@code Fix #233} / EC-74). The cohort runner is retired
+ * ({@code PLAN-retire-cohort-runner.md}), so the null now means only what it says.
+ * </p>
  *
  * <h2>Case sensitivity mirrors the engine, and trimming deliberately does not</h2>
  * {@link #fromJson} compares with {@code equalsIgnoreCase} and does <b>no trimming</b>, so it

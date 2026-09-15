@@ -235,9 +235,11 @@ public final class AbsentDatasetSkip
             return null;
         }
         // Plan C §3.3: a rule DECLARING A LEVEL MAP is never a bare presence rule — a one-entry
-        // map included, for consistency with RulePackageLoader.installCompiledLevels and
-        // RuleCohortGrouper (a declared map always takes the per-level machinery: level stamping,
-        // the level's own Message). With two levels the exclusion is also semantic: the strictest
+        // map included, for consistency with RulePackageLoader.installCompiledLevels (a declared
+        // map always takes the per-level machinery: level stamping, the level's own Message). ⚑ A
+        // third site used to share this test, RuleCohortGrouper, and is retired
+        // (PLAN-retire-cohort-runner.md). With two levels the exclusion is also semantic: the
+        // strictest
         // level could read `ds_not_exists(D)` while a weaker level says something else entirely,
         // so the rule does not report D's absence unconditionally — and this method's whole
         // contract is that it does. ⚑ Vacuous on the shipped corpus.

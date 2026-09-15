@@ -17,8 +17,9 @@ import org.jspecify.annotations.Nullable;
  * operators — the legacy per-row operator engine was removed once every shipped rule compiled to a
  * native {@code Expr}. What remains is the set of probes {@code ExprCompiler} calls when compiling
  * {@code exists} / {@code var_exists} / {@code ds_exists} / {@code var_is_null} /
- * {@code max_value_length} plans, plus two helpers shared with {@link CohortRunner} and
- * {@link ScopeVariableSource}. A rename is deliberately deferred.
+ * {@code max_value_length} plans, plus two helpers shared with {@link ScopeVariableSource} (a third
+ * sharer, {@code CohortRunner}, is gone — {@code PLAN-retire-cohort-runner.md}). A rename is
+ * deliberately deferred.
  * </p>
  */
 public final class OperatorRegistry

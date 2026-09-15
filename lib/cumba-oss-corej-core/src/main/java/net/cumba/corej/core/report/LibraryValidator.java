@@ -182,12 +182,16 @@ public final class LibraryValidator
      * {@code elapsedMillis} measures the rule's individual wall time. With
      * {@link Builder#ruleThreads(int) ruleThreads &gt; 1} rules within a dataset run concurrently
      * and the sum of {@code elapsedMillis} across an entire run can exceed the validator's wall
-     * time. For rules executed as part of a cohort (see
-     * {@link net.cumba.corej.core.exec.CohortRunner}), the cohort's wall time is apportioned evenly
-     * across its members — each member therefore reports an approximate
-     * {@code cohortWallMs / cohortSize} rather than its true individual cost. The sum of cohort
-     * members' {@code elapsedMillis} equals the cohort wall time. Use the validator's own elapsed
-     * time when you need exact wall-clock totals.
+     * time. Use the validator's own elapsed time when you need exact wall-clock totals.
+     *
+     * <p>
+     * ⭐ Every <em>executed</em> rule's value is its own measured cost; a rule skipped before it
+     * ever ran — a {@code SkippedSourceRule}, emitted a few hundred lines below — reports a
+     * hard-coded {@code 0}, which means "never ran" and not "instantaneous". Do not average over
+     * these rows without excluding the {@code SKIPPED} ones. ⚑ For a cohort-executed rule the value
+     * used to be an approximation as well — the cohort's wall time divided by its member count —
+     * and that is gone with the cohort runner ({@code PLAN-retire-cohort-runner.md}).
+     * </p>
      */
     public record RuntimeEntry(String domain, @Nullable String fileName, long rowCount,
             int columnCount, @Nullable String coreId, long elapsedMillis,
@@ -250,23 +254,6 @@ public final class LibraryValidator
      * {@code Warning}.
      */
     private final net.cumba.datatable.report.Severity severityThreshold;
-
-    /**
-     * Whether every check level {@code rule} declares sits below the run's
-     * {@link #severityThreshold} — i.e. the run did not ask for this rule at all (Plan C §3.4 step
-     * 2).
-     *
-     * <p>
-     * Used to demote such a rule out of cohorting so it takes {@code RuleRunner.execute}, which
-     * owns the SKIPPED-with-a-reason verdict. ⚑ Vacuous at the default threshold: every level any
-     * shipped rule declares is at or above {@code Warning}.
-     * </p>
-     */
-    private boolean belowSeverityThreshold(Rule rule)
-    {
-        return rule.effectiveCheckLevels().keySet().stream()
-                .noneMatch(level -> level.compareTo(severityThreshold) <= 0);
-    }
 
     /** Per-domain execution stats captured by the most recent {@link #validate()} (log-only). */
     private volatile List<DatasetExecutionSummary> executionSummaries = List.of();
@@ -1154,53 +1141,32 @@ public final class LibraryValidator
 
         List<Rule> generatedRules = pkg.getRules();
 
-        // Group rules into cohorts before scheduling. A cohort is a set of rules that share an
-        // identical Check shape modulo column names — they can be evaluated in a single shared
-        // row pass through the primary table. Length-1 groups (singletons or ineligible rules)
-        // run via the existing per-rule path; groups of size >= 2 go through CohortRunner.
-        // The grouper preserves input order, so when we drain results into dsResult below the
-        // sequence matches generatedRules iteration order — keeping report parity.
-        // Fix #222: a rule whose readings of an absent, already-reported dataset are suppressed
-        // must not be cohorted — CohortRunner's shared row pass reads Rule.getCheckExpr() directly
-        // and cannot honour the per-(rule, dataset) decision. Demoting routes it back through
-        // RuleRunner.execute, which owns it.
-        // Plan C §3.4: a rule whose EVERY declared level is below the run threshold must not be
-        // cohorted either — the cohort path has no threshold gate, so it would evaluate a rule the
-        // run did not ask for. Demoting routes it back through RuleRunner.execute, which reports
-        // the SKIPPED-with-a-reason the threshold demands. ⚑ Vacuous at the default threshold.
-        List<List<Rule>> cohorts = net.cumba.corej.core.exec.RuleCohortGrouper.group(generatedRules,
-                table.getMetaData(),
-                r -> belowSeverityThreshold(r) || AbsentDatasetSkip
-                        .decide(r, aResolver, presenceReportedDatasets, crossStandardDatasets,
-                                table.getMetaData().getName(), domainPrefix)
-                        .applies());
-
+        // One execution per rule, in the package's own order, so the sequence drained into
+        // dsResult matches generatedRules iteration order — keeping report parity.
+        //
+        // ⚑ The cohort runner that used to sit here is retired (PLAN-retire-cohort-runner.md). It
+        // evaluated same-shape rules in one shared row pass, which it achieved by re-implementing
+        // the engine's per-row equality predicate by hand; measurement showed that replica was
+        // never reached, and that no cohort of two or more members formed on a real study at all
+        // (7 419 rule executions, 7 419 singleton groups). Its two demotion predicates went with
+        // it — Fix #222's absent-dataset suppression and Plan C §3.4's severity threshold existed
+        // only to keep a rule OUT of the shared pass, and RuleRunner.execute, now the only path a
+        // rule can take, owns both decisions itself.
         if (ruleThreads <= 1 || generatedRules.size() < 2)
         {
-            // Sequential path — bit-identical to Phase 1 modulo cohort batching; zero fan-out.
-            for (List<Rule> cohort : cohorts)
+            // Sequential path — zero fan-out.
+            for (Rule rule : generatedRules)
             {
-                if (cohort.size() == 1)
-                {
-                    Rule rule = cohort.get(0);
-                    RuleExecutionResult result = executeRule(rule, table, aResolver, domainPrefix,
-                            joinCache, exprCache, domain, fileName);
-                    dsResult.addRuleResult(rule, result);
-                }
-                else
-                {
-                    executeAndRecordCohort(cohort, new CohortRunCtx(table, aResolver, domainPrefix,
-                            joinCache, exprCache, domain, fileName), dsResult);
-                }
+                RuleExecutionResult result = executeRule(rule, table, aResolver, domainPrefix,
+                        joinCache, exprCache, domain, fileName);
+                dsResult.addRuleResult(rule, result);
             }
         }
         else
         {
-            // Parallel path — submit one task per cohort (cohort = unit of work). Cohorts run in
-            // parallel; rules within a cohort still share their row pass.
-            RuleExecutionResult[] slots = executeCohortsInParallel(generatedRules, cohorts,
-                    new CohortRunCtx(table, aResolver, domainPrefix, joinCache, exprCache, domain,
-                            fileName));
+            // Parallel path — one task per rule (the rule is the unit of work).
+            RuleExecutionResult[] slots = executeRulesInParallel(generatedRules, new RuleRunCtx(
+                    table, aResolver, domainPrefix, joinCache, exprCache, domain, fileName));
             for (int i = 0; i < generatedRules.size(); i++)
             {
                 dsResult.addRuleResult(generatedRules.get(i), slots[i]);
@@ -1315,11 +1281,11 @@ public final class LibraryValidator
     }
 
     /**
-     * Per-dataset runtime context threaded through cohort execution. Bundles the 6 fields that stay
-     * constant for every cohort within one dataset's validation pass; saves passing them one-by-one
-     * through the sequential and parallel cohort runners.
+     * Per-dataset runtime context threaded through rule execution. Bundles the 6 fields that stay
+     * constant for every rule within one dataset's validation pass; saves passing them one-by-one
+     * through the parallel path.
      */
-    private record CohortRunCtx(IDataTable table, DatasetResolver resolver, String domainPrefix,
+    private record RuleRunCtx(IDataTable table, DatasetResolver resolver, String domainPrefix,
             net.cumba.corej.core.exec.JoinCache joinCache,
             net.cumba.corej.core.exec.@Nullable ExpressionResultCache exprCache, String domain,
             @Nullable String fileName)
@@ -1327,75 +1293,25 @@ public final class LibraryValidator
     }
 
     /**
-     * Sequential cohort execution helper — runs every rule in the cohort in one shared row pass and
-     * records each rule's result + runtime entry. Used by the single-threaded path.
-     */
-    private void executeAndRecordCohort(List<Rule> cohort, CohortRunCtx ctx, DatasetResult dsResult)
-    {
-        long start = System.currentTimeMillis();
-        List<RuleExecutionResult> results;
-        try
-        {
-            results = net.cumba.corej.core.exec.CohortRunner.executeCohort(cohort, ctx.table(),
-                    ctx.resolver(), ctx.domainPrefix(), provider, ctx.joinCache(), maxErrorsPerRule,
-                    ctx.exprCache());
-        }
-        catch (RuntimeException e)
-        {
-            // If the cohort path itself blows up (e.g. an assumption-violating rule slipped
-            // through the grouper), fall back to per-rule execution so the run completes.
-            LOGGER.log(Level.WARNING, "Cohort execution failed; falling back to per-rule. {0}",
-                    e.toString());
-            for (Rule rule : cohort)
-            {
-                RuleExecutionResult result = executeRule(rule, ctx.table(), ctx.resolver(),
-                        ctx.domainPrefix(), ctx.joinCache(), ctx.exprCache(), ctx.domain(),
-                        ctx.fileName());
-                dsResult.addRuleResult(rule, result);
-            }
-            return;
-        }
-        long elapsed = System.currentTimeMillis() - start;
-        // Apportion cohort wall time across members for per-rule profiling. Sum-of-elapsed across
-        // all RuntimeEntry rows still reflects total CPU work (the runtime-listener Javadoc
-        // already states sum may exceed wall time under any parallelism mode).
-        long perRuleMs = cohort.isEmpty() ? elapsed : elapsed / cohort.size();
-        for (int i = 0; i < cohort.size(); i++)
-        {
-            Rule rule = cohort.get(i);
-            RuleExecutionResult result = results.get(i).toBuilder().runtimeMillis(perRuleMs)
-                    .build();
-            dsResult.addRuleResult(rule, result);
-            logIfTruncated(rule, ctx.domain(), result);
-            if (runtimeListener != null)
-            {
-                runtimeListener.onRuleExecuted(new RuntimeEntry(ctx.domain(), ctx.fileName(),
-                        ctx.table().getRowCount(), ctx.table().getColumnCount(), rule.effectiveId(),
-                        perRuleMs, result.getStatus(), result.getViolationCount()));
-            }
-        }
-        LOGGER.log(Level.DEBUG, "Executed cohort of {0} rules on {1} in {2}ms.", cohort.size(),
-                ctx.table().getMetaData().getName(), elapsed);
-    }
-
-
-    /**
-     * Fans cohort execution out across a fixed-size pool of platform threads, returning per-rule
-     * results in submission order. Cohorts are the unit of work — within a cohort the row pass is
-     * shared (single-threaded over the rows for that cohort); across cohorts, work fans out.
+     * Fans rule execution out across a fixed-size pool of platform threads, returning per-rule
+     * results in submission order. The rule is the unit of work.
      * <p>
      * Platform (not virtual) threads: rule evaluation is CPU-bound (HashLookup probes against
      * in-heap data with no blocking I/O), so cache locality from a small fixed carrier set
      * outperforms virtual threads' scheduler hop. The pool is created and closed per dataset so
      * threads don't accumulate across the run.
+     * <p>
+     * ⚑ Fan-out is unchanged by the cohort runner's retirement: the grouper already returned a
+     * length-1 group for every ineligible rule, so this pool was always fed mostly singletons. What
+     * the retirement removed is co-iteration within a same-shape family, never parallelism
+     * ({@code PLAN-retire-cohort-runner.md} §2).
      */
-    private RuleExecutionResult[] executeCohortsInParallel(List<Rule> generatedRules,
-            List<List<Rule>> cohorts, CohortRunCtx ctx)
+    private RuleExecutionResult[] executeRulesInParallel(List<Rule> generatedRules, RuleRunCtx ctx)
     {
-        int n = Math.clamp(cohorts.size(), 1, ruleThreads);
+        int n = Math.clamp(generatedRules.size(), 1, ruleThreads);
         RuleExecutionResult[] slots = new RuleExecutionResult[generatedRules.size()];
 
-        // Build a rule -> slot index map once so each cohort's results land in the right place.
+        // Build a rule -> slot index map once so each result lands in the right place.
         IdentityHashMap<Rule, Integer> slotByRule = new IdentityHashMap<>(generatedRules.size());
         for (int i = 0; i < generatedRules.size(); i++)
         {
@@ -1410,12 +1326,12 @@ public final class LibraryValidator
         }))
         {
             Executor wrapped = decorated(pool);
-            List<CompletableFuture<Void>> futures = new ArrayList<>(cohorts.size());
-            for (List<Rule> cohort : cohorts)
+            List<CompletableFuture<Void>> futures = new ArrayList<>(generatedRules.size());
+            for (Rule rule : generatedRules)
             {
-                final List<Rule> finalCohort = cohort;
+                final Rule finalRule = rule;
                 futures.add(CompletableFuture.runAsync(
-                        () -> runCohortIntoSlots(finalCohort, ctx, slots, slotByRule), wrapped));
+                        () -> runRuleIntoSlot(finalRule, ctx, slots, slotByRule), wrapped));
             }
             for (CompletableFuture<Void> f : futures)
             {
@@ -1427,59 +1343,16 @@ public final class LibraryValidator
 
 
     /**
-     * Worker body called from {@link #executeCohortsInParallel}: executes one cohort (sequential
-     * row pass within the cohort) and stores each rule's result into its assigned slot. Distinct
-     * cohorts write to disjoint slot indices, so the slot array stays race-free.
+     * Worker body called from {@link #executeRulesInParallel}: executes one rule and stores its
+     * result in the rule's assigned slot. Distinct rules write to disjoint slot indices, so the
+     * slot array stays race-free.
      */
-    private void runCohortIntoSlots(List<Rule> cohort, CohortRunCtx ctx,
-            RuleExecutionResult[] slots, Map<Rule, Integer> slotByRule)
+    private void runRuleIntoSlot(Rule rule, RuleRunCtx ctx, RuleExecutionResult[] slots,
+            Map<Rule, Integer> slotByRule)
     {
-        if (cohort.size() == 1)
-        {
-            Rule rule = cohort.get(0);
-            slots[Objects.requireNonNull(slotByRule.get(rule))] = executeRule(rule, ctx.table(),
-                    ctx.resolver(), ctx.domainPrefix(), ctx.joinCache(), ctx.exprCache(),
-                    ctx.domain(), ctx.fileName());
-            return;
-        }
-        long start = System.currentTimeMillis();
-        List<RuleExecutionResult> results;
-        try
-        {
-            results = net.cumba.corej.core.exec.CohortRunner.executeCohort(cohort, ctx.table(),
-                    ctx.resolver(), ctx.domainPrefix(), provider, ctx.joinCache(), maxErrorsPerRule,
-                    ctx.exprCache());
-        }
-        catch (RuntimeException e)
-        {
-            LOGGER.log(Level.WARNING, "Cohort execution failed; falling back to per-rule. {0}",
-                    e.toString());
-            for (Rule rule : cohort)
-            {
-                slots[Objects.requireNonNull(slotByRule.get(rule))] = executeRule(rule, ctx.table(),
-                        ctx.resolver(), ctx.domainPrefix(), ctx.joinCache(), ctx.exprCache(),
-                        ctx.domain(), ctx.fileName());
-            }
-            return;
-        }
-        long elapsed = System.currentTimeMillis() - start;
-        long perRuleMs = cohort.isEmpty() ? elapsed : elapsed / cohort.size();
-        for (int i = 0; i < cohort.size(); i++)
-        {
-            Rule rule = cohort.get(i);
-            RuleExecutionResult result = results.get(i).toBuilder().runtimeMillis(perRuleMs)
-                    .build();
-            slots[Objects.requireNonNull(slotByRule.get(rule))] = result;
-            logIfTruncated(rule, ctx.domain(), result);
-            if (runtimeListener != null)
-            {
-                runtimeListener.onRuleExecuted(new RuntimeEntry(ctx.domain(), ctx.fileName(),
-                        ctx.table().getRowCount(), ctx.table().getColumnCount(), rule.effectiveId(),
-                        perRuleMs, result.getStatus(), result.getViolationCount()));
-            }
-        }
-        LOGGER.log(Level.DEBUG, "Executed cohort of {0} rules on {1} in {2}ms.", cohort.size(),
-                ctx.table().getMetaData().getName(), elapsed);
+        slots[Objects.requireNonNull(slotByRule.get(rule))] = executeRule(rule, ctx.table(),
+                ctx.resolver(), ctx.domainPrefix(), ctx.joinCache(), ctx.exprCache(), ctx.domain(),
+                ctx.fileName());
     }
 
 

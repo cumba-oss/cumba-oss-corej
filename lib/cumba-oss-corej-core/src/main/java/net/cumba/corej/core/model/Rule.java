@@ -167,7 +167,8 @@ public class Rule
      * reads it sees nothing of a weaker level, so a malformed operand, an undeclared provider
      * dependency or an unresolved wildcard sitting in an {@code INFO} level would load clean and
      * misbehave at runtime. Structural readers that genuinely want the rule's strongest statement
-     * (the cohort key, the {@code --}-expansion seam) keep reading {@code getCheck()} on purpose.
+     * (the {@code --}-expansion seam) keep reading {@code getCheck()} on purpose. ⚑ The other such
+     * reader was the retired cohort key ({@code PLAN-retire-cohort-runner.md}).
      * </p>
      *
      * @return the declared levels, strictest first; empty when the rule declares no Check

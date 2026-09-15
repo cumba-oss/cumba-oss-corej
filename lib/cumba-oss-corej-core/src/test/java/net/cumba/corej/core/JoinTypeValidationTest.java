@@ -29,10 +29,11 @@ import org.junit.jupiter.api.Test;
  * <p>
  * ⚠⚠ The hazard this class also has to pin is the <em>opposite</em> one: validation must <b>not</b>
  * reject {@code null}. {@code RuleGenerator} never calls {@code normalizeJoinTypes}, so its
- * generated rules keep a null {@code Join_Type} — and that null is what keeps
- * {@code RuleCohortGrouper}'s equality-cohort path reachable ({@code Fix #233} / EC-74). A
- * validation that treated absence as a violation would kill that optimisation while looking
- * correct.
+ * generated rules keep a null {@code Join_Type}, and a validation that treated absence as a
+ * violation would reject the whole {@code CDISC-AD0591-} family while looking correct. ⚑ That null
+ * also used to be what kept {@code RuleCohortGrouper}'s equality-cohort path reachable
+ * ({@code Fix #233} / EC-74); the cohort runner is retired ({@code PLAN-retire-cohort-runner.md})
+ * and the absence now means only "not authored".
  * </p>
  */
 class JoinTypeValidationTest
@@ -183,11 +184,10 @@ class JoinTypeValidationTest
      * ⚠⚠ The load-bearing half: the validator judges the <b>string when present</b> and never the
      * absence. A hand-built rule with a null {@code Join_Type} — the shape every
      * {@code RuleGenerator} rule has, since it bypasses {@code normalizeJoinTypes} — must pass the
-     * gate untouched. {@code RuleCohortGrouperTest} pins the consequence (the generated
-     * {@code CDISC-AD0591-} family still reaches the equality cohort); this pins the cause.
+     * gate untouched.
      */
     @Test
-    void aNullJoinTypeIsNeverRejected_soTheGeneratedCohortPathStaysReachable()
+    void aNullJoinTypeIsNeverRejected()
     {
         Rule rule = new Rule();
         MatchDataset md = new MatchDataset();
@@ -200,8 +200,8 @@ class JoinTypeValidationTest
 
         assertNull(rule.getLoadError(),
                 "a null Join_Type must never file a load error — RuleGenerator never calls "
-                        + "normalizeJoinTypes, and that null is what keeps the equality-cohort "
-                        + "path reachable (Fix #233 / EC-74)");
+                        + "normalizeJoinTypes, so rejecting the absence would reject the whole "
+                        + "CDISC-AD0591- family (Fix #233 / EC-74)");
         assertNull(md.getJoinType(), "validation must not write to the field either");
     }
 

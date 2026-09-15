@@ -13,9 +13,8 @@ import net.cumba.datatable.values.IDataValue;
  * evaluation / chunk; a fresh {@code ComputedVector} is built per evaluation.
  *
  * <p>
- * Not thread-safe: a single {@code ComputedVector} must not be shared across the cohort threads.
- * The native evaluator builds them inside the per-evaluation run state, never caching them across
- * runs.
+ * Not thread-safe: a single {@code ComputedVector} must not be shared across the rule threads. The
+ * native evaluator builds them inside the per-evaluation run state, never caching them across runs.
  * </p>
  */
 public final class ComputedVector implements Vector

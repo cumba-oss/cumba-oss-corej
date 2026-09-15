@@ -2,6 +2,7 @@ package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -110,13 +111,13 @@ class AbsentDatasetSkipCrossStandardTest
      * A genuinely cohort-eligible cross-standard rule.
      *
      * <p>
-     * ⚠⚠ The {@code Join_Type} clear is deliberate and is itself a measurement.
+     * ⚠⚠ The {@code Join_Type} clear was deliberate and was itself a measurement.
      * {@code RulePackageLoader.normalizeJoinTypes} stamps {@code "inner"} onto <b>every</b>
-     * {@code Match_Datasets} entry, and {@link RuleCohortGrouper}'s equality predicate rejects any
-     * entry with a non-null {@code Join_Type} — so as the corpus is loaded today <b>no</b>
-     * Match_Datasets rule can form an equality cohort at all. Clearing it here reconstructs the
-     * shape the grouper does cluster, so the demotion below is asserted against a real cohort
-     * rather than against a shape that was a singleton anyway (which would be vacuous).
+     * {@code Match_Datasets} entry, and the retired {@code RuleCohortGrouper}'s equality predicate
+     * rejected any entry with a non-null {@code Join_Type} — so as the corpus was loaded, <b>no</b>
+     * Match_Datasets rule could form an equality cohort at all. That is one of the findings that
+     * retired the cohort runner ({@code PLAN-retire-cohort-runner.md}); the clear is kept because
+     * it reconstructs the generator's own shape, which is what {@code PMDA-AD0204} really has.
      * </p>
      *
      * @param id
@@ -125,11 +126,11 @@ class AbsentDatasetSkipCrossStandardTest
      *            the primary column compared against {@code DM.<column>}
      * @return the loaded rule
      */
-    private static Rule cohortable(String id, String column) throws Exception
+    private static Rule joinedEquality(String id, String column) throws Exception
     {
-        // The single-leaf `<col> != DM.<col>` shape RuleCohortGrouper's EQUALITY arm clusters —
-        // PMDA-AD0204's pre-guard form. Inline rather than a constant: Error Prone's
-        // InlineFormatString rejects a single-use format-string constant.
+        // The single-leaf `<col> != DM.<col>` shape — PMDA-AD0204's pre-guard form. Inline rather
+        // than a constant: Error Prone's InlineFormatString rejects a single-use format-string
+        // constant.
         Rule rule = load("""
                 {"Core":{"Id":"%1$s"},"Sensitivity":"Record",
                  "Scope":{"Domains":{"Include":["ALL"]}},
@@ -410,39 +411,36 @@ class AbsentDatasetSkipCrossStandardTest
         assertFalse(d.applies());
     }
 
-    // ------------------------------------------------ the cohort path must honour the decision
+    // --------------------------------------------- the execution path must honour the decision
 
 
+    /**
+     * The unguarded single-leaf {@code <col> != DM.<col>} shape reports SKIPPED — never a vacuous
+     * PASS — when DM is absent AND cross-standard, with a control proving the same rule does fire
+     * when the fact is absent.
+     *
+     * <p>
+     * ⚑ This was a <em>cohort demotion</em> test: it asserted that {@code RuleCohortGrouper.group}
+     * pulled such a rule out of its cohort, because the shared row pass read
+     * {@code Rule.getCheckExpr()} directly and could not honour a per-(rule, dataset) decision (Fix
+     * #222). The cohort runner is retired ({@code PLAN-retire-cohort-runner.md}), so demotion is
+     * structural and what survives is the decision itself, asserted where it is now made.
+     * </p>
+     */
     @Test
-    void aCrossStandardRuleIsDemotedOutOfItsCohort() throws Exception
+    void aCrossStandardRuleOfTheJoinedEqualityShapeSkips() throws Exception
     {
-        // ⚠⚠ CohortRunner evaluates a cohort with a shared row pass that reads Rule.getCheckExpr()
-        // directly, so it cannot honour a per-(rule, dataset) decision. Leaving the grouper
-        // un-widened would let a cohorted cross-standard rule keep reporting PASS.
-        //
-        // ⚠ The two rules below are the single-leaf `<col> != DM.<col>` EQUALITY shape, which is
-        // what RuleCohortGrouper actually clusters — a two-leaf guarded rule is ineligible anyway,
-        // so asserting the demotion on one would be VACUOUS.
-        Rule a = cohortable("R-A", "AGE");
-        Rule b = cohortable("R-B", "SEX");
+        Rule a = joinedEquality("R-A", "AGE");
         IDataTable adsl = MockTable.of().name("ADSL").col("USUBJID", "S1").col("AGE", "31")
                 .col("SEX", "M").build();
         DatasetResolver noDm = resolverOf(Map.of("ADSL", adsl));
 
-        // CONTROL — no cross-standard fact: the two rules share ONE cohort.
-        List<List<Rule>> before = RuleCohortGrouper.group(List.of(a, b), adsl.getMetaData(),
-                r -> AbsentDatasetSkip.decide(r, noDm, Set.of(), Set.of(), "ADSL", "ADSL")
-                        .applies());
-        assertEquals(List.of(2), before.stream().map(List::size).toList(),
-                "control: the shape really does cohort, or the assertion below proves nothing");
+        // CONTROL — without the cross-standard fact the rule really does produce a verdict, or the
+        // SKIPPED below would prove nothing.
+        assertNotEquals(RuleExecutionStatus.SKIPPED,
+                run(a, adsl, noDm, Set.of(), Set.of()).getStatus(),
+                "control: the shape must reach a verdict when DM is not cross-standard");
 
-        // With the fact present BOTH are demoted to singletons and run through RuleRunner, which
-        // owns the decision — and there they report SKIPPED rather than a vacuous PASS.
-        List<List<Rule>> after = RuleCohortGrouper.group(List.of(a, b), adsl.getMetaData(),
-                r -> AbsentDatasetSkip.decide(r, noDm, Set.of(), Set.of("DM"), "ADSL", "ADSL")
-                        .applies());
-        assertEquals(List.of(1, 1), after.stream().map(List::size).toList(),
-                "every cross-standard rule must run through the per-rule path");
         assertEquals(RuleExecutionStatus.SKIPPED,
                 run(a, adsl, noDm, Set.of(), Set.of("DM")).getStatus());
     }

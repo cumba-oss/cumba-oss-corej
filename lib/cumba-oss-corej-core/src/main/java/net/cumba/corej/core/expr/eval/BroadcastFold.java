@@ -26,10 +26,30 @@ import org.jspecify.annotations.Nullable;
  * {@link GroupedResult} (per-row values) or — unless {@code allowVariableMetadata} — a
  * {@link VariableMetadataResult} (per-variable values) is {@link Verdict#UNKNOWN}, exactly where
  * the removed legacy leaf classifier classified the leaf ROW / VARIABLE and the legacy fold left it
- * undecided. Additionally the fold mirrors the legacy missing-column fold (Fix #40,
- * {@code CheckConditionOptimizer.tryFoldOnMissingColumn}): a non-{@code exists} leaf whose
- * name-side column is absent from the primary table and from every joined dataset is uniformly
- * {@code FALSE}.
+ * undecided.
+ * </p>
+ *
+ * <p>
+ * &#9888;&#9888; <b>The absent-column fold is NOT "uniformly FALSE" — corrected 2026-09-14.</b>
+ * This paragraph used to say that the fold mirrored the legacy missing-column fold (Fix #40,
+ * {@code CheckConditionOptimizer.tryFoldOnMissingColumn}) and made a non-{@code exists} leaf over
+ * an absent column uniformly {@code FALSE}. <b>EC-43 removed that</b>, and the code below has said
+ * so since: only {@code empty} / {@code is_missing} short-circuit here, and they fold to
+ * {@link Verdict#TRUE} (an absent column is empty for every row — their whole contract). <b>Every
+ * other leaf returns {@link Verdict#UNKNOWN} and falls through to the row path</b>, where the
+ * column reads all-missing and the operator computes its own polarity, so a negative leaf such as
+ * {@code --OCCUR != "N"} <i>fires</i> — it is not folded false. See the EC-43 comment at
+ * {@code foldLeaf}, which also records why: the two paths <b>report</b> differently (one
+ * dataset-level finding versus one per row), so short-circuiting would make an ABSENT column report
+ * once while a PRESENT-but-all-blank column reported per row, breaking the <i>absent == blank</i>
+ * contract EC-43 exists to establish. Measured there: spec {@code EC43-not-equal-absent} emitted 1
+ * violation against the control's 2.
+ * </p>
+ *
+ * <p>
+ * &#9873; The stale sentence is quoted here rather than deleted because it misled a design review
+ * in 2026-09 into reporting a contradiction between this class and {@code Primitives}' per-row
+ * <i>missing &rArr; negate</i>. There is none.
  * </p>
  *
  * <p>

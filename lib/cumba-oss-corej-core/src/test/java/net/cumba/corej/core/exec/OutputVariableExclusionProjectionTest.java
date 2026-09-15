@@ -20,9 +20,9 @@ import org.junit.jupiter.api.Test;
  * Ruling 5 of {@code PLAN-authoring-grammar-unique-set-and-output-exclusion} ({@code Fix #354}): an
  * excluded variable is <b>absent</b> on every projection path — no key at all, never a null-valued
  * key. One test per path ({@code T-OV-P1}…{@code T-OV-P5}, plus {@code P5b}/{@code P5c} for the
- * cohort path's two fallback halves), each asserting BOTH arms in the same violation: the excluded
- * name is not a key, a retained sibling is. A test that only asserted absence would pass a filter
- * that removed everything.
+ * fallback's two halves), each asserting BOTH arms in the same violation: the excluded name is not
+ * a key, a retained sibling is. A test that only asserted absence would pass a filter that removed
+ * everything.
  *
  * <p>
  * Paths 2, 3 and 4 are the ones that would have inherited the null-key policy
@@ -181,14 +181,18 @@ class OutputVariableExclusionProjectionTest
         assertEquals("abcdef", values.get("variable_value"));
     }
 
-    // ------------------------------------------------------------ T-OV-P5 CohortRunner
+    // ------------------------------------------------- T-OV-P5 single-leaf foreign-ref rules
 
 
     /**
-     * The cohort-eligible rule shape the {@code T-OV-P5} family shares, built exactly as
-     * {@code RuleCohortGrouperTest} builds it (a package-loaded rule carries a normalised
-     * {@code Join_Type}, which the grouper rejects): a single equality leaf against a foreign ref,
-     * key-based {@code Match_Datasets}, no operations / grouping / precondition.
+     * The rule shape the {@code T-OV-P5} family shares: a single equality leaf against a foreign
+     * ref, key-based {@code Match_Datasets}, no operations / grouping / precondition.
+     *
+     * <p>
+     * ⚑ This family used to assert cohort / per-rule projection parity; the cohort runner is
+     * retired ({@code PLAN-retire-cohort-runner.md}) so each case now pins the projection itself on
+     * the one surviving path. Every non-parity assertion, and both vacuity controls, are unchanged.
+     * </p>
      *
      * @param authoredOutputVariables
      *            the authored {@code Outcome.Output_Variables}
@@ -199,7 +203,8 @@ class OutputVariableExclusionProjectionTest
      *            single-leaf Check (with the derivation on, the derived list and the Fix #15
      *            inference read the same leaf, so they empty together)
      */
-    private static Rule cohortEligibleRule(List<String> authoredOutputVariables, boolean derive)
+    private static Rule singleLeafForeignRefRule(List<String> authoredOutputVariables,
+            boolean derive)
     {
         Rule rule = new Rule();
         rule.setId("R1");
@@ -226,7 +231,6 @@ class OutputVariableExclusionProjectionTest
             RulePackageLoader.deriveOutputVariables(rule);
         }
         assertNull(rule.getLoadError(), rule.getLoadError());
-        assertNotNull(RuleCohortGrouper.cohortKey(rule), "precondition: cohort-eligible");
         return rule;
     }
 
@@ -248,37 +252,33 @@ class OutputVariableExclusionProjectionTest
 
 
     @Test
-    void p5CohortProjectionMatchesThePerRulePathAndOmitsTheExcludedName()
+    void p5ProjectionOmitsTheExcludedName()
     {
         // TRTSDT is an authored context column, AGE is derived from the leaf, ADSL.AGE is derived
         // and excluded.
-        Rule rule = cohortEligibleRule(List.of("TRTSDT", "!ADSL.AGE"), true);
+        Rule rule = singleLeafForeignRefRule(List.of("TRTSDT", "!ADSL.AGE"), true);
         assertEquals(List.of("TRTSDT", "AGE"), rule.getEffectiveOutputVariables());
         IDataTable adlb = adlb();
         DatasetResolver resolver = adslResolver();
 
-        List<RuleExecutionResult> cohort = CohortRunner.executeCohort(List.of(rule), adlb, resolver,
-                "AD", null, new JoinCache(new JoinCache.SharedIndexCache()));
         RuleExecutionResult perRule = RuleRunner.execute(rule, adlb, resolver, "AD", null,
                 new JoinCache(new JoinCache.SharedIndexCache()));
 
-        assertEquals(1, cohort.size());
-        Map<String, String> cohortValues = singleViolationValues(cohort.get(0));
-        Map<String, String> perRuleValues = singleViolationValues(perRule);
-        assertFalse(cohortValues.containsKey("ADSL.AGE"), cohortValues.toString());
-        assertEquals("67", cohortValues.get("AGE"));
-        assertEquals("2020-01-01", cohortValues.get("TRTSDT"));
-        assertEquals(perRuleValues, cohortValues, "cohort / per-rule parity");
+        Map<String, String> values = singleViolationValues(perRule);
+        assertFalse(values.containsKey("ADSL.AGE"), values.toString());
+        assertEquals("67", values.get("AGE"));
+        assertEquals("2020-01-01", values.get("TRTSDT"));
     }
 
 
     @Test
-    void p5bCohortTakesTheFixFifteenFallbackExactlyAsThePerRulePathDoes()
+    void p5bFixFifteenFallbackProjectsTheCheckLeaf()
     {
-        // An EMPTY effective list. The per-rule path infers AGE from the Check leaf; CohortRunner
-        // carried no fallback at all and projected {} — a byte-identity break its own contract
-        // forbids, found by the Fix #354 review (2026-08-23).
-        Rule rule = cohortEligibleRule(List.of("!TRTSDT"), false);
+        // An EMPTY effective list: the execution path infers AGE from the Check leaf. ⚑ This case
+        // was born as a cohort/per-rule byte-identity break — CohortRunner carried no fallback at
+        // all and projected {} (Fix #354 review, 2026-08-23) — and survives as the pin on the
+        // fallback itself.
+        Rule rule = singleLeafForeignRefRule(List.of("!TRTSDT"), false);
         assertEquals(List.of(), rule.effectiveOutputVariablesOrAuthored());
         IDataTable adlb = adlb();
         DatasetResolver resolver = adslResolver();
@@ -286,27 +286,22 @@ class OutputVariableExclusionProjectionTest
         assertEquals(List.of("AGE"), List
                 .copyOf(RuleRunner.collectCheckLeafColumns(rule.getCheck(), adlb.getMetaData())));
 
-        List<RuleExecutionResult> cohort = CohortRunner.executeCohort(List.of(rule), adlb, resolver,
-                "AD", null, new JoinCache(new JoinCache.SharedIndexCache()));
         RuleExecutionResult perRule = RuleRunner.execute(rule, adlb, resolver, "AD", null,
                 new JoinCache(new JoinCache.SharedIndexCache()));
 
-        assertEquals(1, cohort.size());
-        Map<String, String> cohortValues = singleViolationValues(cohort.get(0));
-        assertEquals("67", cohortValues.get("AGE"), "the fallback projects the Check's leaf");
-        assertFalse(cohortValues.containsKey("TRTSDT"), cohortValues.toString());
-        assertEquals(singleViolationValues(perRule), cohortValues,
-                "cohort / per-rule parity on the Fix #15 fallback");
+        Map<String, String> values = singleViolationValues(perRule);
+        assertEquals("67", values.get("AGE"), "the fallback projects the Check's leaf");
+        assertFalse(values.containsKey("TRTSDT"), values.toString());
     }
 
 
     @Test
-    void p5cCohortFallbackHonoursTheExclusionsExactlyAsThePerRulePathDoes()
+    void p5cFallbackHonoursTheExclusions()
     {
         // The E-2 half of the same fallback: a list that is empty BECAUSE of `!X` must not be
         // re-populated by the inference. A fallback added WITHOUT the exclusion filter projects
-        // AGE here; both paths must project neither name.
-        Rule rule = cohortEligibleRule(List.of("!AGE"), false);
+        // AGE here; the run must project neither name.
+        Rule rule = singleLeafForeignRefRule(List.of("!AGE"), false);
         assertEquals(List.of(), rule.effectiveOutputVariablesOrAuthored());
         assertEquals(Set.of("AGE"), rule.excludedOutputVariablesOrAuthored());
         IDataTable adlb = adlb();
@@ -315,16 +310,11 @@ class OutputVariableExclusionProjectionTest
         assertEquals(List.of("AGE"), List
                 .copyOf(RuleRunner.collectCheckLeafColumns(rule.getCheck(), adlb.getMetaData())));
 
-        List<RuleExecutionResult> cohort = CohortRunner.executeCohort(List.of(rule), adlb, resolver,
-                "AD", null, new JoinCache(new JoinCache.SharedIndexCache()));
         RuleExecutionResult perRule = RuleRunner.execute(rule, adlb, resolver, "AD", null,
                 new JoinCache(new JoinCache.SharedIndexCache()));
 
-        assertEquals(1, cohort.size());
-        Map<String, String> cohortValues = singleViolationValues(cohort.get(0));
-        assertFalse(cohortValues.containsKey("AGE"), cohortValues.toString());
-        assertEquals(singleViolationValues(perRule), cohortValues,
-                "cohort / per-rule parity on the excluded fallback");
+        Map<String, String> values = singleViolationValues(perRule);
+        assertFalse(values.containsKey("AGE"), values.toString());
     }
 
     // ------------------------------------------------------------ the Fix #15 fallback

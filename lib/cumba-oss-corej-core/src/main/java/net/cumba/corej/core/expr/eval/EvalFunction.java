@@ -12,7 +12,7 @@ import net.cumba.corej.core.expr.ast.Expr;
  *
  * <p>
  * Implementations must be <b>pure</b> and side-effect free: the engine evaluates rules concurrently
- * across a cohort thread pool, so a function may run on many threads at once. They may inspect the
+ * across a rule thread pool, so a function may run on many threads at once. They may inspect the
  * {@link EvalRun} for the row range and the {@link net.cumba.corej.core.exec.EvaluationContext}.
  * </p>
  */
