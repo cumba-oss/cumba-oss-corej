@@ -2,6 +2,7 @@ package net.cumba.corej.define.conformance.ct;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -208,10 +209,14 @@ class CtKindsTest
 
 
     @Test
-    void ctKindWithoutRequiresDeclarationFailsLoudlyWithoutProvider()
+    void ctKindWithoutRequiresDeclarationIsRejectedAtLoadTime()
     {
-        // An authoring error (CT kind, no 'Requires: ct'): the gate does not skip, and the
-        // kind must fail loudly instead of silently passing.
+        // An authoring error (CT kind, no 'Requires: ct'). It is now refused when the corpus
+        // LOADS, which is the only place it can be caught reliably: at evaluation time the same
+        // rule behaves two different ways -- at a site with a CtProvider bound the gate never
+        // fires and the rule quietly runs ungated, and at a site without one the evaluator's
+        // orElseThrow escapes validate() and destroys the whole report. The folder- and
+        // library-backed kinds were already guarded here; CT was the odd one out.
         DocumentContext context = context(SEX_AND_UNIT, null);
         String rule = ctRule("EnumeratedItem", """
                 kind: "term_in_ct_codelist"
@@ -219,6 +224,9 @@ class CtKindsTest
         IllegalStateException failure = assertThrows(IllegalStateException.class,
                 () -> evaluate(rule, context));
         assertTrue(failure.getMessage().contains("Requires: ct"), failure.getMessage());
+        // ...and it is the loader, not the evaluator, that says so: parsing alone already throws.
+        assertThrows(IllegalStateException.class, () -> RuleRepository.parse(rule, "test"));
+        assertNotNull(context);
     }
 
     // ------------------------------------------------------------------

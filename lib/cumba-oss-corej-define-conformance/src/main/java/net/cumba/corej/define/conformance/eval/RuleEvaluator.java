@@ -1,6 +1,9 @@
 package net.cumba.corej.define.conformance.eval;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -412,6 +415,21 @@ public final class RuleEvaluator
      * folder. A {@code #fragment} is stripped first; a blank remainder is out of reach (presence is
      * a separate rule). A href escaping the folder (absolute or {@code ../}) can never satisfy a
      * referenced-file check — treated as missing rather than probing outside.
+     *
+     * <p>
+     * Two properties the naive form of this method does not have:
+     * </p>
+     * <ul>
+     * <li><b>A directory is not a file.</b> {@code Files.exists} answers true for a folder, so
+     * {@code xlink:href="tabulations"} — pointing at a directory rather than the dataset — passed
+     * silently. A referenced-file check that a directory satisfies is a check that stops
+     * checking.</li>
+     * <li><b>The href is an {@code xs:anyURI}</b> (ODM {@code xlink.xsd}), so a conformant
+     * submission writes a file named {@code blank forms.pdf} as {@code blank%20forms.pdf}. The raw
+     * spelling is tried first — a file literally containing a percent sign still resolves — and the
+     * percent-decoded spelling only as a fallback, so this can remove a false finding but never
+     * create a false clean.</li>
+     * </ul>
      */
     private static boolean hrefMissingInFolder(Path aFolder, String aHref)
     {
@@ -425,8 +443,49 @@ public final class RuleEvaluator
         {
             return false;
         }
-        Path resolved = aFolder.resolve(href.replace('\\', '/')).normalize();
-        return !resolved.startsWith(aFolder.normalize()) || !Files.exists(resolved);
+        if (!fileMissingInFolder(aFolder, href))
+        {
+            return false;
+        }
+        String decoded = percentDecodedPath(href);
+        return decoded == null || decoded.equals(href) || fileMissingInFolder(aFolder, decoded);
+    }
+
+
+    /** Whether one already-decoded relative spelling fails to name a file inside the folder. */
+    private static boolean fileMissingInFolder(Path aFolder, String aRelative)
+    {
+        if (aRelative.isBlank())
+        {
+            return true;
+        }
+        Path resolved;
+        try
+        {
+            resolved = aFolder.resolve(aRelative.replace('\\', '/')).normalize();
+        }
+        catch (InvalidPathException _)
+        {
+            // A spelling this filesystem cannot express names no file in the folder.
+            return true;
+        }
+        return !resolved.startsWith(aFolder.normalize()) || !Files.isRegularFile(resolved);
+    }
+
+
+    /**
+     * The href's percent-decoded path, or {@code null} when it is not a parseable URI reference.
+     */
+    private static @Nullable String percentDecodedPath(String aHref)
+    {
+        try
+        {
+            return new URI(aHref).getPath();
+        }
+        catch (URISyntaxException _)
+        {
+            return null;
+        }
     }
 
 

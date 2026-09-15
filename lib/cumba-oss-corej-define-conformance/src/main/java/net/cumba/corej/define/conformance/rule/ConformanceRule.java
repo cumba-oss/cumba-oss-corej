@@ -18,7 +18,8 @@ import org.jspecify.annotations.Nullable;
  * @param element
  *            the scoped element selector: a bare local name ({@code ItemRef}), a parent-qualified
  *            form ({@code ValueListDef/ItemRef} — the last segment scoped to elements whose
- *            ancestor chain matches), or {@code Document} for document-level rules
+ *            IMMEDIATE parents match, one segment per generation, never a loose ancestor chain), or
+ *            {@code Document} for document-level rules
  * @param attribute
  *            the attribute the rule is about, for reporting (the check body names its own operands)
  * @param applicableVersions
@@ -96,6 +97,21 @@ public record ConformanceRule(//
                 throw new IllegalStateException(
                         ruleId + ": stylesheet_file_exists must be scoped 'Element: Document'");
             }
+        }
+        // The CT twin of the folder and library guards below. Without it a corpus rule that
+        // forgets 'Requires: ct' behaves two different ways: at a site WITH a CtProvider the CT
+        // gate never fires and the rule runs anyway, and at a site WITHOUT one the evaluator's
+        // orElseThrow escapes validate() and destroys the whole report - pre-pass findings,
+        // ordering findings and every rule that had already passed. Both are authoring errors; only
+        // one of them is visible, and neither is visible in CI, where a provider is always bound.
+        boolean ctKind = check instanceof CheckDefinition.TermInCtCodelist
+                || check instanceof CheckDefinition.NciCodeKnown
+                || check instanceof CheckDefinition.TermMatchesNciCode
+                || check instanceof CheckDefinition.ExtendedValueMarking
+                || check instanceof CheckDefinition.NciAliasRequired;
+        if (ctKind && requires != Requires.CT)
+        {
+            throw new IllegalStateException(ruleId + ": CT-backed kinds require 'Requires: ct'");
         }
         boolean libraryKind = check instanceof CheckDefinition.LibraryDatasetLabelMatches
                 || check instanceof CheckDefinition.LibraryVariableLabelMatches

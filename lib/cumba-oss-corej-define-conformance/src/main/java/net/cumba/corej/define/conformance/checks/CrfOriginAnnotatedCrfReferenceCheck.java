@@ -21,8 +21,10 @@ import net.cumba.corej.define.conformance.tree.ElementNode;
  * first only), and the absent-DocumentRef shape — a qualifying Origin with <b>no</b> DocumentRef at
  * all cannot match the AnnotatedCRF and fires (this row owns that shape; DD0035 and DD0103 are
  * DocumentRef-scoped and can never reach it). A DocumentRef whose {@code leafID} is absent/blank is
- * ignored (the XSD requires leafID; schema defects are the pre-pass's beat). With no AnnotatedCRF
- * in reach the set is empty and every qualifying Origin fires — nothing to match, per the row.
+ * ignored (the XSD requires leafID; schema defects are the pre-pass's beat), and an Origin whose
+ * DocumentRefs are ALL ignored that way is satisfied rather than fired — it is indistinguishable
+ * from a document with no leafIDs to compare. With no AnnotatedCRF in reach the set is empty and
+ * every qualifying Origin carrying a usable leafID fires — nothing to match, per the row.
  * </p>
  */
 public final class CrfOriginAnnotatedCrfReferenceCheck implements CustomCheck

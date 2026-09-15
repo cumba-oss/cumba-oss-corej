@@ -64,6 +64,25 @@ public final class XsdValidator
     }
 
 
+    /**
+     * Test seam: drops the compiled-schema cache so the next {@link #schemaFor} call recompiles.
+     *
+     * <p>
+     * {@link #SCHEMAS} is a JVM-lifetime memo, which is correct in production (compiling the
+     * vendored package is expensive and the result is immutable and thread-safe) but makes
+     * {@link #loadSchema} and the resolver behind it run exactly <b>once</b> per JVM. Any test
+     * asserting how the schema package is loaded — that the resource resolver is wired, that
+     * external access stays disabled, that a missing resource fails loudly — would silently assert
+     * nothing on its second and later runs. Package-private and test-only; production code never
+     * calls it.
+     * </p>
+     */
+    static void resetSchemaCache()
+    {
+        SCHEMAS.clear();
+    }
+
+
     /** Convenience overload over {@link #validate(InputStream, DefineXmlConverter.Version)}. */
     public static List<SaxProblem> validate(byte[] aDocumentBytes,
             DefineXmlConverter.Version aVersion)

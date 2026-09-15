@@ -107,10 +107,40 @@ public sealed interface CheckDefinition
     }
 
 
-    /** At most {@code max} occurrences of the target child element under the scoped element. */
+    /**
+     * At most {@code max} occurrences of the target child element under the scoped element.
+     *
+     * <p>
+     * Both fields are validated at load, because both have a silent failure mode. {@code target}
+     * names a child ELEMENT — {@code RuleEvaluator} counts {@code node.children(target)} — so a
+     * rule authored with an attribute-style {@code "@Attr"} target counts zero children forever and
+     * is permanently inert: green, and never checking anything. And {@code max} is a primitive, so
+     * an omitted {@code max:} silently reads as {@code 0}, quietly turning the rule into
+     * {@code not_exists} and firing on every document that carries the child. A rule that means
+     * "none" says so with {@code not_exists}.
+     * </p>
+     */
     record CardinalityAtMost(String target, int max,
             @Nullable Condition when) implements CheckDefinition
     {
+
+        @Override
+        public void validate()
+        {
+            CheckDefinition.super.validate();
+            if (target.startsWith("@"))
+            {
+                throw new IllegalStateException(
+                        "cardinality_at_most target names a child element, not an attribute, got '"
+                                + target + "'");
+            }
+            if (max < 1)
+            {
+                throw new IllegalStateException(
+                        "cardinality_at_most max must be at least 1 (use not_exists for none), got "
+                                + max);
+            }
+        }
     }
 
 

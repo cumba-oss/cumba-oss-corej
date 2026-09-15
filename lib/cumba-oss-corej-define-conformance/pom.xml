@@ -69,7 +69,7 @@
             instrument for it". If the aggregate ever stops covering it, this number becomes a
             lie and the tests need to come back.
         -->
-        <jacoco.line.coverage>0.65</jacoco.line.coverage>
+        <jacoco.line.coverage>0.93</jacoco.line.coverage>
 
         <!--
             65, against a project default of 80. Owner decision 2026-09-02: the pitest
@@ -95,7 +95,9 @@
             ⛔ Never pass -Dpitest.coverage.threshold on the command line — a CLI -D clobbers
             every module's override at once.
         -->
-        <pitest.coverage.target>65</pitest.coverage.target>
+        <pitest.coverage.target>92</pitest.coverage.target>
+        <pitest.mutation.target>91</pitest.mutation.target>
+        <pitest.test.strength.target>93</pitest.test.strength.target>
     </properties>
 
     <dependencies>
