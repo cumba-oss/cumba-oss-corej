@@ -141,6 +141,9 @@ class DatasetLookupTypedValueTest
         assertEquals(DataValueType.MISSING, unmigrated.declaredTypeOf("ANY"));
     }
 
+    // A varargs carrier for the table builder below, never compared or hashed — the array-valued
+    // equals/hashCode this check guards against is unreachable here.
+    @SuppressWarnings("ArrayRecordComponent")
     private record Col(String name, DataValueType type, Object[] values)
     {
     }

@@ -22,9 +22,11 @@ import org.junit.jupiter.api.Test;
  * to the {@link RuleGenerationReport}.
  *
  * <p>
- * The generator is built with {@link RuleCategory#corpusDeliveryOnly()}, i.e. the exact category
- * set the single production construction site passes, so nothing here depends on a generator that
- * is dead in production.
+ * ⚑ The resolver is built exactly as the single production construction site builds it: from the
+ * metadata provider alone. This paragraph used to say {@code RuleCategory#corpusDeliveryOnly()} was
+ * passed — {@code plans/PLAN-remove-rule-generator.md} deleted that method along with the whole
+ * {@code EnumSet} gate, and {@link RuleCategory} is now only the provenance tag the assertions
+ * below read. (Error Prone [InvalidLink] is what caught the stale reference.)
  * </p>
  *
  * <p>

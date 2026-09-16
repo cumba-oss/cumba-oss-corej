@@ -24,7 +24,7 @@ public final class ComputedVector implements Vector
 
     private final DataValueType declaredType;
 
-    private final IntFunction<Object> producer;
+    private final IntFunction<@Nullable Object> producer;
 
     /**
      * Optional typed producer ({@code null} for an ordinary computed vector). When present the row
@@ -42,7 +42,14 @@ public final class ComputedVector implements Vector
     /** J7: the authored name this vector stands for, when it is a gated column reference. */
     private final @Nullable String gatedName;
 
-    private final Object[] valueCache;
+    /**
+     * ⚑ Nullable <b>elements</b>: {@code null} is this vector's own encoding of a missing row, both
+     * on the untyped path (the producer contract below) and on the typed one, where a {@code null}
+     * or missing/invalid cell resolves to a {@code null} text view. {@link Vector#resolvedObject}
+     * is {@code @Nullable} for exactly that reason. Declared non-null until NullAway was armed,
+     * which flagged the typed branch's literal {@code null} write.
+     */
+    private final @Nullable Object[] valueCache;
 
     private final IDataValue[] cellCache;
 
@@ -57,13 +64,15 @@ public final class ComputedVector implements Vector
      *            computes the value for a given 0-based row index; may return {@code null} to
      *            denote a missing result
      */
-    public ComputedVector(int rowCount, DataValueType declaredType, IntFunction<Object> producer)
+    public ComputedVector(int rowCount, DataValueType declaredType,
+            IntFunction<@Nullable Object> producer)
     {
         this(rowCount, declaredType, producer, null, null);
     }
 
 
-    private ComputedVector(int rowCount, DataValueType declaredType, IntFunction<Object> producer,
+    private ComputedVector(int rowCount, DataValueType declaredType,
+            IntFunction<@Nullable Object> producer,
             @Nullable IntFunction<@Nullable IDataValue> typedProducer, @Nullable String gatedName)
     {
         this.declaredType = declaredType;
@@ -140,7 +149,7 @@ public final class ComputedVector implements Vector
     }
 
 
-    private Object value(int row)
+    private @Nullable Object value(int row)
     {
         if (!computed[row])
         {
@@ -203,7 +212,7 @@ public final class ComputedVector implements Vector
 
 
     @Override
-    public Object resolvedObject(int row)
+    public @Nullable Object resolvedObject(int row)
     {
         return value(row);
     }

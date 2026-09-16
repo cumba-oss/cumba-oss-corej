@@ -304,7 +304,10 @@ class StoreFieldManifestTest
             return;
         }
         ObjectNode target = aRoot;
-        String[] segments = aPath.split("\\.");
+        // split(…, -1): the one-argument form drops trailing empty fields (Error Prone
+        // [StringSplitter]). No manifest path ends in a dot today; the limit keeps it that way
+        // rather than silently shortening such a path to its parent.
+        String[] segments = aPath.split("\\.", -1);
         for (int i = 0; i < segments.length - 1; i++)
         {
             JsonNode child = target.get(segments[i]);
@@ -351,7 +354,7 @@ class StoreFieldManifestTest
                             where + " was read from the wrong source key" + FIX);
                 }
             }
-            case "boolean" -> assertEquals(Boolean.TRUE, value,
+            case "boolean" -> assertEquals(true, value,
                     where + " did not survive as the source published it" + FIX);
             case "list" ->
             {

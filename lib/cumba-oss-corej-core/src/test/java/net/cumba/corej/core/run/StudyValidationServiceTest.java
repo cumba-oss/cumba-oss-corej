@@ -281,6 +281,44 @@ class StudyValidationServiceTest
                 .toList();
     }
 
+    // ------------------------------------------------------------------
+    // A manager that attaches no metadata library must be DIAGNOSED, not NPE
+    // ------------------------------------------------------------------
+
+
+    /**
+     * {@code IDataTableManager.getMetadataLibrary} is {@code @Nullable} by contract — its interface
+     * <b>default</b> returns {@code null}, so any manager that does not override it answers null
+     * for every library. {@code buildProvider} used to hand that straight to
+     * {@code MetadataLibraryProvider}, whose constructor ends in
+     * {@code Objects.requireNonNull(aLibrary, "library")}: the run died on a bare
+     * {@code NullPointerException: library}, naming neither the manager nor the study, from a frame
+     * three levels below the cause. NullAway flagged the pass; this pins the diagnosis.
+     *
+     * <p>
+     * ⚠ Reverting {@code requireMetadataLibrary} reds this test — the NPE is not an
+     * {@code IOException}, and the message assertions fail with it.
+     * </p>
+     */
+    @Test
+    void validate_managerWithoutMetadataLibraryFailsWithADiagnosis() throws IOException
+    {
+        IDataTableManager mgr = managerWith(dmTable());
+        // The interface default's answer, which is what a manager without metadata support gives.
+        when(mgr.getMetadataLibrary(any())).thenReturn(null);
+        Path rulesDir = writeFamilyRules("FDA");
+
+        StudyValidationParams params = StudyValidationParams.builder().manager(mgr)
+                .dataLibrary(tempDir.toString()).rulesDir(rulesDir.toString())
+                .rulesPackages(List.of("fda-custom-1-0")).metadataProducts(CUSTOM_PRODUCT).build();
+
+        IOException thrown = assertThrows(IOException.class,
+                () -> new StudyValidationService("0.0.0-test").validate(params),
+                "a manager that attaches no metadata library must fail the run explicitly");
+        assertTrue(thrown.getMessage().contains("attaches no metadata library"),
+                "the message must say what is missing, was: " + thrown.getMessage());
+    }
+
 
     @Test
     void validate_selectsOnlyTheRequestedPackage() throws IOException

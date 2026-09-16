@@ -174,6 +174,14 @@ class CtSelectionScenarioTest
         case SKIPPED -> assertEquals("SKIPPED", rule.status(),
                 aFile + ": a run with nothing named proceeds and the CT-dependent rule SKIPs "
                         + "visibly — specifically NOT an abort");
+        // ⚑ Was absent, and the switch had no default: a CT scenario declaring
+        // expect=executionError fell straight through and PASSED without its verdict ever being
+        // looked at. No scenario declares it today, which is why nothing was red. Error Prone
+        // [MissingCasesInEnumSwitch] is what found it; the arm below is the same contract
+        // ExecutionVerdictCheck enforces for the general harness.
+        case EXECUTION_ERROR -> assertEquals("EXECUTION_ERROR", rule.status(),
+                aFile + ": the scenario declares expect=executionError, so the rule must have"
+                        + " ERRORED — " + rule.notExecutedReason());
         }
         Integer expectCount = scenario.getExpectViolationCount();
         if (expectCount != null)

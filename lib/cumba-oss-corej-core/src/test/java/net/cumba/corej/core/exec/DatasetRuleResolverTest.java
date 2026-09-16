@@ -7,9 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
-import net.cumba.corej.core.gen.GeneratedRuleInfo;
 import net.cumba.corej.core.gen.GeneratedRulePackage;
-import net.cumba.corej.core.gen.RuleGenerationReport;
 import net.cumba.corej.core.gen.SkippedSourceRule;
 import net.cumba.corej.core.gen.WildcardExpander;
 import net.cumba.corej.core.model.CheckConditionLeaf;
@@ -53,14 +51,6 @@ class DatasetRuleResolverTest
     private GeneratedRulePackage gen(IDataTable table, String domain, String className)
     {
         return gen(generator, table, domain, className);
-    }
-
-
-    /** Helper: generate using an ADaM-standard generator (for ADaM-specific rules). */
-    private GeneratedRulePackage genAdam(IDataTable table, String domain, String className)
-    {
-        DatasetRuleResolver adamGen = new DatasetRuleResolver(new AdamMockLibraryProvider());
-        return gen(adamGen, table, domain, className);
     }
 
     // ---- Category 1: Variable Label ----
@@ -527,145 +517,13 @@ class DatasetRuleResolverTest
     // ⚑ noBuiltInRuleIsMergedIntoTheExecutedSet (above) is what replaces them: it asserts the
     // generator adds no id the caller did not hand it.
 
-    // ---- SMQzz indexed-variable family ----
-    //
-    // This family had no coverage at all: the word "SMQ" did not appear in this file, and
-    // mutation testing reported all 8 mutants of generateSmqZzRules surviving. Every branch
-    // below could have been deleted, or its guard inverted, without a red test. The negative
-    // cases carry as much weight as the positive ones — the NAM branch is conditional on the
-    // sibling CD column existing, and a lone CD column must generate nothing at all.
-
-
-    private List<Rule> smqRules(IDataTable table)
-    {
-        return gen(table, "AE", "EVENTS").getRules().stream()
-                .filter(r -> r.getCore().getId().contains("SMQ")).toList();
-    }
-
-
-    private static IDataTable aeWith(String... cols)
-    {
-        MockTable t = MockTable.of().name("AE").col("STUDYID", "S001");
-        for (String c : cols)
-        {
-            t = t.col(c, "X");
-        }
-        return t.build();
-    }
-
-
-    private static List<String> ruleIds(List<Rule> rules)
-    {
-        return rules.stream().map(r -> r.getCore().getId()).toList();
-    }
-
-
-    private static boolean anySmqId(List<Rule> rules, String fragment)
-    {
-        return rules.stream().anyMatch(r -> r.getCore().getId().contains(fragment));
-    }
-
-    // ---- CRITy indexed-variable family ----
-    //
-    // Only the "CRIT1FL present, CRIT1 missing" arm was pinned (testIndexedVar_critPairing);
-    // the CRITy->FL arm, the FN->FL arm and the FL<->FN 1:1 pairing were not, and each of the
-    // three `allCols.contains(...)` guards could be inverted without a red test.
-
-
-    private List<Rule> critRules(IDataTable table)
-    {
-        return gen(table, "ADVS", "BASIC DATA STRUCTURE").getRules().stream()
-                .filter(r -> r.getCore().getId().contains("CRIT")).toList();
-    }
-
-
-    private static IDataTable advsWith(String... cols)
-    {
-        MockTable t = MockTable.of().name("ADVS").col("STUDYID", "S001");
-        for (String c : cols)
-        {
-            t = t.col(c, "Y");
-        }
-        return t.build();
-    }
-
-    // ---- TRxx treatment-period date family ----
-    //
-    // generateTrXxDateRules had 3 mutants, all surviving: the start/end suffix mapping and the
-    // sibling-column guard were entirely unpinned.
-
-
-    private List<Rule> trDateRules(IDataTable table)
-    {
-        return gen(table, "ADSL", "SUBJECT LEVEL ANALYSIS DATASET").getRules().stream()
-                .filter(r -> r.getCore().getId().contains("TRDT")).toList();
-    }
-
-
-    private static IDataTable adslWith(String... cols)
-    {
-        MockTable t = MockTable.of().name("ADSL").col("STUDYID", "S001");
-        for (String c : cols)
-        {
-            t = t.col(c, "2024-01-01");
-        }
-        return t.build();
-    }
-
-    // ---- MedDRA / WHO Drug: which PAIR, not merely "a rule was made" ----
-    //
-    // testMedDRA_withDictionary and testWHODrug_withDictionary assert only that *some* rule
-    // carries "MED"/"WHO" in its id. That holds however many pairs fire and whichever columns
-    // they name, which is why 13/19 (MedDRA) and 12/17 (WHO Drug) mutants survived. These pin
-    // the per-pair guards: a pair fires only when BOTH its code and term columns exist.
-
-
-    private static IDataTable domainTable(String name, String... cols)
-    {
-        MockTable t = MockTable.of().name(name).col("STUDYID", "S001");
-        for (String c : cols)
-        {
-            t = t.col(c, "V");
-        }
-        return t.build();
-    }
-
-
-    /** Same, but through the plain generator the non-dictionary family tests above use. */
-    private List<GeneratedRuleInfo> generatedForPlain(IDataTable table, String domain,
-            String className, String idFragment)
-    {
-        return gen(table, domain, className).getReport().getGeneratedRules().stream()
-                .filter(g -> g.ruleId() != null && g.ruleId().contains(idFragment)).toList();
-    }
-
-    // ---- dictionary families: the column-index boundary ----
-    //
-    // Both generators probe columns with `meta.getColumnIndex(x) >= 0` (and one `< 0`). Every
-    // fixture above puts STUDYID first, so the probed column is always at index >= 1 and the
-    // `>= 0` / `> 0` boundary is unobservable — which is why six ConditionalsBoundary mutants
-    // survived across the two methods. These put the probed column AT INDEX 0, where the
-    // boundary decides the answer.
-
-
-    /** Like domainTable but with no leading STUDYID, so the first named column is index 0. */
-    private static IDataTable tableHeadedBy(String name, String... cols)
-    {
-        MockTable t = MockTable.of().name(name);
-        for (String c : cols)
-        {
-            t = t.col(c, "V");
-        }
-        return t.build();
-    }
-
-
-    private RuleGenerationReport reportWithoutDictionary(IDataTable table, String domain,
-            String className)
-    {
-        return gen(new DatasetRuleResolver(new ExtendedMockLibrary()), table, domain, className)
-                .getReport();
-    }
+    // ⚑ Dead scaffolding removed (Error Prone [UnusedMethod], 13 hits). The SMQzz, CRITy, TRxx,
+    // MedDRA/WHO-Drug and dictionary-column-index families this section introduced were generated
+    // in Java by the old rule generator; PLAN-remove-rule-generator deleted those generators and
+    // their tests, leaving these helpers and their rationale comments behind — comments that
+    // claimed to pin guards nothing pins any more. Identically dead in the internal tree
+    // (cumba-corej, same file, same 13 declarations with no call site), so this is leftover, not
+    // an unported caller. applyTemplatePostFilters below KEEPS its section: its two tests live.
 
     // ---- applyTemplatePostFilters: which expansions survive ----
     //
@@ -840,81 +698,6 @@ class DatasetRuleResolverTest
         public String getVersion()
         {
             return "3.4";
-        }
-    }
-
-
-    /**
-     * Extended mock that supports VS, AE, CM domains for testing additional categories.
-     */
-    private static class ExtendedMockLibrary extends MockLibraryProvider
-    {
-
-        @Override
-        public List<Map<String, String>> getDomainVariables(String domain)
-        {
-            if ("DM".equals(domain))
-            {
-                return super.getDomainVariables(domain);
-            }
-            if ("VS".equals(domain))
-            {
-                return List.of(
-                        Map.of("name", "STUDYID", "label", "Study Identifier", "simpleDatatype",
-                                "Char", "core", "Req"),
-                        Map.of("name", "USUBJID", "label", "Unique Subject Identifier",
-                                "simpleDatatype", "Char", "core", "Req"),
-                        Map.of("name", "VSTESTCD", "label", "Vital Signs Test Short Name",
-                                "simpleDatatype", "Char", "core", "Req", "codelist", "VSTESTCD"),
-                        Map.of("name", "VSORRES", "label", "Result or Finding in Original Units",
-                                "simpleDatatype", "Char", "core", "Exp"));
-            }
-            if ("AE".equals(domain))
-            {
-                return List.of(
-                        Map.of("name", "STUDYID", "label", "Study Identifier", "simpleDatatype",
-                                "Char", "core", "Req"),
-                        Map.of("name", "AEPTCD", "label", "Preferred Term Code", "simpleDatatype",
-                                "Num", "core", "Exp"),
-                        Map.of("name", "AEDECOD", "label", "Dictionary-Derived Term",
-                                "simpleDatatype", "Char", "core", "Exp"));
-            }
-            if ("CM".equals(domain))
-            {
-                return List.of(
-                        Map.of("name", "STUDYID", "label", "Study Identifier", "simpleDatatype",
-                                "Char", "core", "Req"),
-                        Map.of("name", "CMDECOD", "label", "Standardized Drug Name",
-                                "simpleDatatype", "Char", "core", "Exp"),
-                        Map.of("name", "CMCLASCD", "label", "Drug Class Code", "simpleDatatype",
-                                "Char", "core", "Perm"),
-                        Map.of("name", "CMCLAS", "label", "Drug Class", "simpleDatatype", "Char",
-                                "core", "Perm"));
-            }
-            return List.of();
-        }
-
-
-        @Override
-        public Map<String, String> getDatasetMetadata(String domain)
-        {
-            if ("VS".equals(domain))
-            {
-                return Map.of("label", "Vital Signs");
-            }
-            return Map.of();
-        }
-
-
-        @Override
-        public Map<String, String> getCodelistTermMappings(String cl)
-        {
-            if ("VSTESTCD".equals(cl))
-            {
-                return Map.of("SYSBP", "Systolic Blood Pressure", "DIABP",
-                        "Diastolic Blood Pressure", "HR", "Heart Rate");
-            }
-            return Map.of();
         }
     }
 

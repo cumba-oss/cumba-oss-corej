@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -222,17 +223,40 @@ final class ZipMetadataStore implements MetadataStore
     }
 
 
+    /**
+     * One of the four fixed CT parts, which {@link #verifyParts} has already proved present — every
+     * one of them is required to be declared in the manifest <em>and</em> every declared part is
+     * required to be in the zip, both on pain of {@link IOException}, before this class parses
+     * anything.
+     *
+     * <p>
+     * ⚠ Stated as an assertion rather than left to a bare map read: the invariant lives in
+     * {@link #verifyParts}, three call frames away, and a future part added to {@link StoreFormat}
+     * but not to that method's fixed list would otherwise reach the readers as a {@code null} byte
+     * array and surface as an unattributed {@code NullPointerException} deep in a binary decoder.
+     * NullAway flags exactly that gap.
+     * </p>
+     */
+    private static byte[] fixedPart(Map<String, byte[]> aEntries, String aName)
+    {
+        return Objects.requireNonNull(aEntries.get(aName),
+                () -> "metadata store part " + aName + " is missing after verifyParts accepted "
+                        + "the store; the fixed-part inventory and the readers disagree");
+    }
+
+
     /** Rebuilds every CT package from the four CT parts, materialising shared codelists once. */
     private static Map<String, StoredCtPackage> readCtPackages(Map<String, byte[]> aEntries)
         throws IOException
     {
-        StoredTerm[] terms = readTerms(aEntries.get(StoreFormat.ENTRY_CT_TERMS));
+        StoredTerm[] terms = readTerms(fixedPart(aEntries, StoreFormat.ENTRY_CT_TERMS));
         StoreFormat.CodelistsFile headers = StoreFormat.mapper().readValue(
-                aEntries.get(StoreFormat.ENTRY_CT_CODELISTS_JSON), StoreFormat.CodelistsFile.class);
-        StoredCodelist[] codelists = readCodelists(aEntries.get(StoreFormat.ENTRY_CT_CODELISTS_BIN),
-                headers, terms);
+                fixedPart(aEntries, StoreFormat.ENTRY_CT_CODELISTS_JSON),
+                StoreFormat.CodelistsFile.class);
+        StoredCodelist[] codelists = readCodelists(
+                fixedPart(aEntries, StoreFormat.ENTRY_CT_CODELISTS_BIN), headers, terms);
         StoreFormat.PackagesFile packagesFile = StoreFormat.mapper().readValue(
-                aEntries.get(StoreFormat.ENTRY_CT_PACKAGES), StoreFormat.PackagesFile.class);
+                fixedPart(aEntries, StoreFormat.ENTRY_CT_PACKAGES), StoreFormat.PackagesFile.class);
         Map<String, StoredCtPackage> packages = new HashMap<>();
         for (Map.Entry<String, List<Integer>> pkg : packagesFile.packages().entrySet())
         {

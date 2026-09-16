@@ -73,10 +73,8 @@ class WebApiStoreSeederTest
                     "/mdr/adam/adam-2-1 must land under models/adam/2-1");
             assertTrue(store.product(SeedFixtures.TIG_KEY).isPresent(),
                     "the TIG substandard is fetched bare and keyed under standards/tig/…");
-            assertEquals(
-                    Boolean.TRUE, store.ctPackage(SeedFixtures.PKG_2).orElseThrow().codelists()
-                            .get(1).extensible(),
-                    "the API's string \"true\" must land as a real Boolean");
+            assertEquals(true, store.ctPackage(SeedFixtures.PKG_2).orElseThrow().codelists().get(1)
+                    .extensible(), "the API's string \"true\" must land as a real Boolean");
             assertEquals(WebApiStoreSeeder.PROVENANCE_SOURCE,
                     store.manifest().provenance().get(0).source());
         }

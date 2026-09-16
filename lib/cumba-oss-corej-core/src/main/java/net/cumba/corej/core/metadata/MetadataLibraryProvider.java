@@ -717,8 +717,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * </p>
      *
      * <p>
-     * Ordering mirrors {@link CdiscLibraryMetadataLibrary#fromAdam}: variable sets flattened in
-     * declaration order, then sorted by ordinal, so a reported list reads in the standard's own
+     * Ordering mirrors {@link CdiscLibraryMetadataLibrary#fromStoredAdam}: variable sets flattened
+     * in declaration order, then sorted by ordinal, so a reported list reads in the standard's own
      * order — now tier by tier, the governing structure's names first. Duplicates are dropped,
      * first occurrence winning.
      * </p>
@@ -1699,8 +1699,12 @@ public final class MetadataLibraryProvider implements MetadataProvider
         // Step 6 — IG-override merge (Fix #42 Phase 2 step 3). Custom domains skip this step
         // (Python: `if is_custom: variables_metadata = model_variables`); their model-derived
         // list is the final answer.
-        boolean isCustom = !DOMAIN_SUPPQUAL.equals(effectiveDomain)
-                && !sdtmProductHasDomain(effectiveDomain);
+        // ⚠ This used to read `!DOMAIN_SUPPQUAL.equals(effectiveDomain) && …`. That guard predates
+        // Fix #61's SUPPQUAL short-circuit in step 2 above, which RETURNS for a SUPPQUAL effective
+        // domain, so the term was provably dead (Error Prone [AlreadyChecked]) and the value of
+        // `isCustom` is unchanged by dropping it. Restore the term only together with removing
+        // that early return.
+        boolean isCustom = !sdtmProductHasDomain(effectiveDomain);
         if (!isCustom)
         {
             StoredDataset igDataset = findStoredDatasetByDomain(effectiveDomain);
@@ -2569,9 +2573,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
     /**
      * Look up the IG-level {@link StoredDataset} owning the given domain, scanning every loaded
      * class. Returns {@code null} if the domain isn't in the product (custom domain). The returned
-     * dataset's {@link StoredDataset#datasetVariables()} is the source of IG-level variables for
-     * Fix #42 Phase 2's IG-override merge step (Python's
-     * {@code IG_domain_details["datasetVariables"]}).
+     * dataset's {@link StoredDataset#variables()} is the source of IG-level variables for Fix #42
+     * Phase 2's IG-override merge step (Python's {@code IG_domain_details["datasetVariables"]}).
      */
     private @Nullable StoredDataset findStoredDatasetByDomain(String aDomain)
     {

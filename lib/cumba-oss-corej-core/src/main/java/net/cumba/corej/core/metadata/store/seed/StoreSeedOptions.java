@@ -46,7 +46,7 @@ public record StoreSeedOptions(Path target, boolean refresh, String fetchedAt,
 
 
     /**
-     * Options with the defaults: no refresh, empty {@code fetchedAt}, seeder-derived provenance.
+     * Options with the defaults: no refresh, empty {@link #fetchedAt()}, seeder-derived provenance.
      *
      * @param aTarget
      *            the store file to (re)build
@@ -59,7 +59,7 @@ public record StoreSeedOptions(Path target, boolean refresh, String fetchedAt,
 
 
     /**
-     * These options with {@code refresh} replaced.
+     * These options with the {@link #refresh()} component replaced.
      *
      * @param aRefresh
      *            whether to ignore the existing store
@@ -72,7 +72,7 @@ public record StoreSeedOptions(Path target, boolean refresh, String fetchedAt,
 
 
     /**
-     * These options with {@code fetchedAt} replaced.
+     * These options with the {@link #fetchedAt()} component replaced.
      *
      * @param aFetchedAt
      *            the provenance timestamp display string

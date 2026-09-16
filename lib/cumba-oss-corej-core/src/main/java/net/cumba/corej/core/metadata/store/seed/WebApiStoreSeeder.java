@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
@@ -160,7 +161,7 @@ public final class WebApiStoreSeeder
     }
 
 
-    private static void collectIgHrefs(JsonNode aNode, TreeSet<String> aHrefs)
+    private static void collectIgHrefs(JsonNode aNode, Set<String> aHrefs)
     {
         if (aNode.isObject())
         {
@@ -308,7 +309,11 @@ public final class WebApiStoreSeeder
         {
             return null;
         }
-        String[] segments = aHref.substring(MDR_PREFIX.length()).split("/");
+        // ⚠ split(…, -1), not split(…): the one-argument form DROPS trailing empty fields, so
+        // "/mdr/sdtm/2-0/" split to exactly ["sdtm", "2-0"] and was accepted as the two-segment
+        // shape this method documents. The limit keeps the trailing empty, the length check then
+        // rejects it, and a genuine "/mdr/sdtm/2-0" is unaffected. (Error Prone [StringSplitter].)
+        String[] segments = aHref.substring(MDR_PREFIX.length()).split("/", -1);
         if (segments.length != 2 || segments[0].isEmpty() || segments[1].isEmpty())
         {
             return null;

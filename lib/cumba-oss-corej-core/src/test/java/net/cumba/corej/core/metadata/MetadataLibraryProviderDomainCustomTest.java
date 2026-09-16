@@ -28,8 +28,7 @@ class MetadataLibraryProviderDomainCustomTest
                                         .column(column("USUBJID", 0, DataValueType.STRING)
                                                 .label("Unique Subject Identifier").build())
                                         .build())
-                                .table(table("ZZFLAGGED")
-                                        .meta(MetadataKeys.IS_CUSTOM_DOMAIN, Boolean.TRUE)
+                                .table(table("ZZFLAGGED").meta(MetadataKeys.IS_CUSTOM_DOMAIN, true)
                                         .column(column("USUBJID", 0, DataValueType.STRING).build())
                                         .build())
                                 .build());

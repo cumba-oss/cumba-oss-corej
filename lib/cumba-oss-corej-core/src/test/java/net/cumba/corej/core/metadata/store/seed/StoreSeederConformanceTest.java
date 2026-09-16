@@ -109,7 +109,7 @@ class StoreSeederConformanceTest
 
             StoredCtPackage pkg = store.ctPackage(SeedFixtures.PKG_2).orElseThrow();
             StoredCodelist ny = codelist(pkg, "NY");
-            assertEquals(Boolean.FALSE, ny.extensible(),
+            assertEquals(false, ny.extensible(),
                     "extensible is a real Boolean regardless of the source's wire form");
             Optional<StoredCodelist> yesOnly = pkg.codelists().stream()
                     .filter(c -> "YESONLY".equals(c.submissionValue())).findFirst();

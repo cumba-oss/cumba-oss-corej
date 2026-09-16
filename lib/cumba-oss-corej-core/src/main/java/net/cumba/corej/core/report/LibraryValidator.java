@@ -1849,8 +1849,6 @@ public final class LibraryValidator
 
         final @Nullable String fileName;
 
-        final List<String> warnings = new ArrayList<>();
-
         final List<String> loadErrors = new ArrayList<>();
 
         final List<RuleResultEntry> ruleResults = new ArrayList<>();
@@ -1864,12 +1862,6 @@ public final class LibraryValidator
         {
             domain = aDomain;
             fileName = aFileName;
-        }
-
-
-        void addWarning(String aMessage)
-        {
-            warnings.add(aMessage);
         }
 
 
@@ -1888,10 +1880,6 @@ public final class LibraryValidator
         /** Replays this dataset's results into the given report builder. */
         void mergeInto(ValidationReportBuilder aBuilder)
         {
-            for (String w : warnings)
-            {
-                aBuilder.libraryWarning(w);
-            }
             for (String e : loadErrors)
             {
                 aBuilder.datasetLoadError(domain, fileName, e);

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Enumeration;
@@ -76,7 +77,7 @@ class MetadataStoreCorruptionTest
     {
         Path damaged = rewrite("extra.zip", entries ->
         {
-            entries.put("smuggled.txt", "boo".getBytes());
+            entries.put("smuggled.txt", "boo".getBytes(StandardCharsets.UTF_8));
             return entries;
         });
         IOException failure = assertThrows(IOException.class, () -> MetadataStore.open(damaged));
@@ -89,9 +90,11 @@ class MetadataStoreCorruptionTest
     {
         Path damaged = rewrite("future.zip", entries ->
         {
-            String manifest = new String(entries.get(StoreFormat.ENTRY_MANIFEST));
+            String manifest = new String(entries.get(StoreFormat.ENTRY_MANIFEST),
+                    StandardCharsets.UTF_8);
             entries.put(StoreFormat.ENTRY_MANIFEST,
-                    manifest.replace("\"formatVersion\" : 2", "\"formatVersion\" : 99").getBytes());
+                    manifest.replace("\"formatVersion\" : 2", "\"formatVersion\" : 99")
+                            .getBytes(StandardCharsets.UTF_8));
             return entries;
         });
         IOException failure = assertThrows(IOException.class, () -> MetadataStore.open(damaged));
@@ -106,7 +109,7 @@ class MetadataStoreCorruptionTest
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(damaged)))
         {
             zip.putNextEntry(new ZipEntry("readme.txt"));
-            zip.write("not a store".getBytes());
+            zip.write("not a store".getBytes(StandardCharsets.UTF_8));
             zip.closeEntry();
         }
         IOException failure = assertThrows(IOException.class, () -> MetadataStore.open(damaged));

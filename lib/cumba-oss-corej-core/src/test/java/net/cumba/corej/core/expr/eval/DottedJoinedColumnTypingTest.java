@@ -137,6 +137,9 @@ class DottedJoinedColumnTypingTest
         assertEquals(bits(0), eval("DM.ARM == \"PLACEBO\"", e));
     }
 
+    // A varargs carrier for the table builder below, never compared or hashed — the array-valued
+    // equals/hashCode this check guards against is unreachable here.
+    @SuppressWarnings("ArrayRecordComponent")
     private record Col(String name, DataValueType type, Object[] values)
     {
     }

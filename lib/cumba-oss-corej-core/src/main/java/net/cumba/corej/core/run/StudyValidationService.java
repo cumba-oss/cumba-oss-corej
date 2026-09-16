@@ -1206,15 +1206,15 @@ public final class StudyValidationService
                             + "Running without enrichment.",
                     runStandard.standard());
             return maybeWrapCompanion(
-                    new MetadataLibraryProvider(manager.getMetadataLibrary(library)), params, kind,
-                    effectiveProducts, null);
+                    new MetadataLibraryProvider(requireMetadataLibrary(manager, library)), params,
+                    kind, effectiveProducts, null);
         }
         // R2: no store configured, or the configured one cannot serve this run. Degrade loudly —
         // library-dependent rules SKIP with this cause — instead of falling back to the network
         // (the pre-P4 behaviour for exactly this situation was a doomed "dummy"-key API attempt
         // that ended in the same degraded provider, minus the honest message).
         MetadataProvider degraded = MetadataLibraryProvider.degraded(
-                manager.getMetadataLibrary(library),
+                requireMetadataLibrary(manager, library),
                 new IOException("No unified metadata store is available for "
                         + runStandard.standard() + " " + runStandard.version() + " (configure "
                         + net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory.STORE_ENV
@@ -1222,6 +1222,50 @@ public final class StudyValidationService
                         + net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory.STORE_PROPERTY
                         + " and seed it); library-dependent rules will SKIP"));
         return maybeWrapCompanion(degraded, params, kind, effectiveProducts, null);
+    }
+
+
+    /**
+     * The study's metadata library, or a diagnosis.
+     *
+     * <p>
+     * {@link IDataTableManager#getMetadataLibrary} is {@code @Nullable} by contract — the interface
+     * <em>default</em> returns {@code null} outright, and only a manager that overrides it answers
+     * at all. Both enrichment-free legs of {@link #buildProvider} fed the result straight into
+     * {@link MetadataLibraryProvider}, whose constructor ends in
+     * {@code Objects.requireNonNull(aLibrary, "library")} — so a manager without metadata support
+     * failed a clinical run with a bare {@code NullPointerException: library}, naming neither the
+     * manager nor the study. NullAway is what surfaced it.
+     * </p>
+     *
+     * <p>
+     * ⚠ Not a silent degrade: every query the engine makes about the study's own columns goes
+     * through this library, so a run without one cannot answer anything and must stop. The shipped
+     * {@code LocalDataTableManager} always has one (it falls back to a column-metadata adapter over
+     * the library itself), which is why the hole was latent rather than observed.
+     * </p>
+     *
+     * @param aManager
+     *            the manager serving the run
+     * @param aLibrary
+     *            the study library being validated
+     * @return the attached metadata library, never {@code null}
+     * @throws IOException
+     *             when the manager attaches none
+     */
+    private static net.cumba.datatable.metadata.IMetadataLibrary requireMetadataLibrary(
+            IDataTableManager aManager, IDataTableLibraryRef aLibrary)
+        throws IOException
+    {
+        net.cumba.datatable.metadata.IMetadataLibrary metadata = aManager
+                .getMetadataLibrary(aLibrary);
+        if (metadata == null)
+        {
+            throw new IOException("the data table manager " + aManager.getClass().getName()
+                    + " attaches no metadata library to this study; a validation run needs one "
+                    + "to read the study's own column metadata");
+        }
+        return metadata;
     }
 
 
