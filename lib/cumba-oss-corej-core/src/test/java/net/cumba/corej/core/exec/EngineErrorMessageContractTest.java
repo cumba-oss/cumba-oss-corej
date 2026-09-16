@@ -70,17 +70,42 @@ class EngineErrorMessageContractTest
     @Test
     void theEngineStillHasExactlySixErrorSites() throws IOException
     {
-        // The ErrorReason vocabulary is exhaustive only as long as RuleRunner has no seventh way to
-        // return ERROR. If this count changes, the classifier needs a new branch — otherwise the
-        // new site silently lands in OTHER. Site 5 is Fix #358's InvalidJoinedDomainException
+        // The ErrorReason vocabulary is exhaustive only as long as RuleRunner has no seventh way
+        // to return ERROR. If this count changes, the classifier needs a new branch — otherwise
+        // the new site silently lands in OTHER. Site 5 is Fix #358's InvalidJoinedDomainException
         // catch (split-domain union failure → INVALID_SPLIT_DOMAIN, matched by its fixed message
-        // tail; the same exception is also mapped in CohortRunner, which this RuleRunner-only
-        // count deliberately does not see — one vocabulary token covers both).
+        // tail; it used to be mapped in CohortRunner as well, which this RuleRunner-only count
+        // deliberately did not see — that second site is gone with the cohort runner,
+        // PLAN-retire-cohort-runner.md). Site 6 is PLAN-column-type-conformance Phase 3's
+        // ColumnTypeMismatchException catch — its messages all start with the fixed prefix
+        // "column-type mismatch: " (pinned below), which is the classifier's match key, and
+        // ViolationNormaliser in cumba-oss-corej-rules carries the matching COLUMN_TYPE_MISMATCH
+        // branch.
         long sites = source("RuleRunner.java").lines()
                 .filter(l -> l.contains("RuleExecutionStatus.ERROR")).count();
         Assertions.assertEquals(6, sites,
                 "RuleRunner's ERROR-producing sites changed. Re-derive the ErrorReason vocabulary "
                         + "in cumba-oss-corej-rules' ViolationNormaliser before accepting this.");
+    }
+
+
+    @Test
+    void theColumnTypeMismatchPrefixIsStillTheEngineSWording() throws IOException
+    {
+        // Phase 3's messages are built in ColumnTypeGate (expr/eval, not exec) and every one
+        // starts with this prefix — the stable key cumba-oss-corej-rules' ViolationNormaliser
+        // branch matches on. THREE builder sites, so the count closes the rewording-one-of-them
+        // hole.
+        Path gate = Path.of(System.getProperty("projectBasedir"), "src", "main", "java", "net",
+                "cumba", "corej", "core", "expr", "eval", "ColumnTypeGate.java");
+        Assertions.assertTrue(Files.isRegularFile(gate),
+                "ColumnTypeGate source not found at " + gate.toAbsolutePath());
+        String text = Files.readString(gate, StandardCharsets.UTF_8);
+        long count = text.lines().filter(l -> l.contains("\"column-type mismatch: \"")).count();
+        Assertions.assertEquals(3, count,
+                "the \"column-type mismatch: \" message prefix no longer appears at exactly the "
+                        + "three ColumnTypeGate builder sites — a reworded prefix would classify "
+                        + "every such ERROR as OTHER in cumba-oss-corej-rules");
     }
 
 
