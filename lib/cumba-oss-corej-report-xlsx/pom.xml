@@ -28,6 +28,41 @@
 
     <properties>
         <mockito.agent>-javaagent:${org.mockito:mockito-core:jar}</mockito.agent>
+
+        <!--
+            === Quality floors, armed 2026-09-16 ===
+
+            Measured cold IN THIS REPOSITORY (rm -rf ~/.pitest-history/cumba-oss-corej-report-xlsx)
+            after the XlsxReportWriterHardeningTest port: 82 mutants, 81 KILLED, 1 SURVIVED,
+            0 NO_COVERAGE, 0 TIMED_OUT, 0 RUN_ERROR -> mutation coverage 98.78 % (98.78 % counting
+            only KILLED, since nothing timed out here), test strength 98.78 % (81 killed over 82
+            covered), pitest line coverage over mutated classes 152/156 = 97 %, JaCoCo line
+            coverage 151/155 = 97.42 %.
+
+            ⭐ These are OSS numbers, not internal's. cumba-corej's twin measured 98 % JaCoCo lines
+            and sits at 0.96; this repository measures 97.42 %, so its jacoco floor is 0.95. Copying
+            the internal figure would have armed a gate this module does not clear.
+
+            Each floor is the measured figure minus about two points, per the campaign ratchet
+            (plans/PLAN-clinical-path-test-strength.md section 5.2). They replace the root pom's
+            inherited 55 / 80 / 0 and 0.80 - and note in particular that a test-strength floor of 0
+            cannot fail at any score, so this module had no strength gate at all before now.
+
+            The single survivor is EQUIVALENT, and provably so rather than by assertion:
+            resolveMaxRows' `if (result < 0)` (XlsxReportWriter.java:208) mutated to `<= 0`. The two
+            differ only at result == 0, and the `if (result == 0) return null;` immediately above it
+            returns for exactly that value, so no input can reach the mutated comparison with 0. No
+            test can kill it; do not chase it.
+
+            ⛔ A floor is never lowered. If a change drops this module below one of them, the change
+            is wrong or its tests are missing - do not re-base the number. Never pass
+            -Dpitest.mutation.threshold or -Djacoco.line.coverage on the command line either; a CLI
+            -D clobbers every module's value at once.
+        -->
+        <pitest.mutation.target>96</pitest.mutation.target>
+        <pitest.coverage.target>95</pitest.coverage.target>
+        <pitest.test.strength.target>96</pitest.test.strength.target>
+        <jacoco.line.coverage>0.95</jacoco.line.coverage>
     </properties>
 
     <dependencies>
