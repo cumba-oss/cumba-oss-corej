@@ -73,26 +73,6 @@
         <Bug pattern="DM_CONVERT_CASE" />
     </Match>
     <Match>
-        <Class name="net.cumba.corej.core.gen.RuleGenerator" />
-        <Method name="isAdamStandard" />
-        <Bug pattern="DM_CONVERT_CASE" />
-    </Match>
-    <Match>
-        <Class name="net.cumba.corej.core.gen.RuleGenerator" />
-        <Method name="mapComparator" />
-        <Bug pattern="DM_CONVERT_CASE" />
-    </Match>
-    <Match>
-        <Class name="net.cumba.corej.core.gen.RuleGenerator" />
-        <Method name="mapSimpleDatatype" />
-        <Bug pattern="DM_CONVERT_CASE" />
-    </Match>
-    <Match>
-        <Class name="net.cumba.corej.core.gen.RuleGenerator" />
-        <Method name="parseStructureKeys" />
-        <Bug pattern="DM_CONVERT_CASE" />
-    </Match>
-    <Match>
         <Class name="net.cumba.corej.core.report.ReportAssembler" />
         <Method name="buildConformanceDetails" />
         <Bug pattern="DM_CONVERT_CASE" />
@@ -285,11 +265,6 @@
     <Match>
         <Class name="net.cumba.corej.core.gen.GeneratedRulePackage" />
         <Field name="report" />
-        <Bug pattern="EI_EXPOSE_REP2" />
-    </Match>
-    <Match>
-        <Class name="net.cumba.corej.core.gen.RuleGenerator" />
-        <Field name="existingRuleIds" />
         <Bug pattern="EI_EXPOSE_REP2" />
     </Match>
     <Match>
@@ -533,9 +508,15 @@
     <!-- Rule.effectiveGroupingVariables (Grouping: block): the exact shape of the EC-37
          sibling suppressed immediately above — a resolver that returns either the block's
          list or the flat Grouping_Variables field, on the per-rule-execution path
-         (RuleRunner, RuleCohortGrouper, RuleClassifier). All 15 call sites read only:
-         they iterate it, addAll it, or pass it through Objects.requireNonNull; none
-         mutates. A defensive copy would be pure allocation churn on a hot path.
+         (RuleRunner x2, RuleClassifier, RulePackageLoader). EVERY call site reads only:
+         it iterates the list, addAll's it, or passes it through Objects.requireNonNull;
+         none mutates. A defensive copy would be pure allocation churn on a hot path.
+         Re-derive by grepping the tree for effectiveGroupingVariables() over the Java
+         sources and checking each hit is a read. The argument is "no caller mutates", so
+         it is the SHAPE of every call site that carries it, not their number. An exact count was
+         written here once ("all 15") and went stale the moment RuleCohortGrouper was
+         deleted (PLAN-retire-cohort-runner.md), leaving a suppression whose stated basis
+         no longer matched the tree.
          NOTE: unlike the EC-37 list, this one is NOT List.copyOf — it is Jackson's own
          list — so the contract here is read-only-by-convention, not immutability. -->
     <Match>
