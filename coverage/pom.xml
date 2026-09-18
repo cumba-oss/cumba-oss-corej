@@ -19,6 +19,9 @@
         artifact. Never publish it.
     -->
     <properties>
+        <!-- Repo-root anchor, depth 1 (see the root pom). -->
+        <repo.root.dir>${project.basedir}/..</repo.root.dir>
+
         <maven.deploy.skip>true</maven.deploy.skip>
     </properties>
 

@@ -27,6 +27,9 @@
     </description>
 
     <properties>
+        <!-- Repo-root anchor, depth 2 (see the root pom). -->
+        <repo.root.dir>${project.basedir}/../..</repo.root.dir>
+
         <mockito.agent>-javaagent:${org.mockito:mockito-core:jar}</mockito.agent>
         <pitest.excludedTestClasses>net.cumba.corej.core.exec.JoinCacheConcurrencyTest</pitest.excludedTestClasses>
         <!--

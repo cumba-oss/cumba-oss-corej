@@ -30,6 +30,9 @@
     </description>
 
     <properties>
+        <!-- Repo-root anchor, depth 2 (see the root pom). -->
+        <repo.root.dir>${project.basedir}/../..</repo.root.dir>
+
         <mockito.agent>-javaagent:${org.mockito:mockito-core:jar}</mockito.agent>
         <!--
             0.65, against a project default of 0.80.
