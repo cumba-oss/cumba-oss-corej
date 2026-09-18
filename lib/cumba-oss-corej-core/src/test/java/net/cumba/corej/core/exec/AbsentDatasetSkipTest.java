@@ -18,7 +18,7 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code Fix #222} — step 3 of {@code plans/PLAN-absent-required-dataset-skip.md}: an absent
+ * {@code Fix #222} — step 3 of {@code plans/done/PLAN-absent-required-dataset-skip.md}: an absent
  * dataset whose absence the run already reports must SILENCE its dependants, not flood them.
  *
  * <p>

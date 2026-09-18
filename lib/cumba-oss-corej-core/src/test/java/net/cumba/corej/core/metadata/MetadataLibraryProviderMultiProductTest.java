@@ -25,10 +25,10 @@ import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.Test;
 
 /**
- * Phase 2 of {@code plans/PLAN-metadata-product-selection.md} — {@link MetadataLibraryProvider}
- * holds an <b>ordered list</b> of declared ADaM products (ruling 1: first-match-wins on the user's
- * precedence order), and every structure-keyed answer is traceable to the product that supplied it
- * (provenance: the {@code standards/...} cache key).
+ * Phase 2 of {@code plans/done/PLAN-metadata-product-selection.md} —
+ * {@link MetadataLibraryProvider} holds an <b>ordered list</b> of declared ADaM products (ruling 1:
+ * first-match-wins on the user's precedence order), and every structure-keyed answer is traceable
+ * to the product that supplied it (provenance: the {@code standards/...} cache key).
  */
 class MetadataLibraryProviderMultiProductTest
 {

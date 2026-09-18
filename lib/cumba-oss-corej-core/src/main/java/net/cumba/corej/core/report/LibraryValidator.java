@@ -292,7 +292,7 @@ public final class LibraryValidator
 
     /**
      * {@code Fix #218} — the datasets belonging to a CDISC standard this run does <b>not</b>
-     * validate ({@code plans/PLAN-cross-standard-absence-skip.md}). Supplied by the run layer
+     * validate ({@code plans/done/PLAN-cross-standard-absence-skip.md}). Supplied by the run layer
      * ({@code StudyValidationService}) because it is a property of the <em>invocation</em>, not of
      * the rule package: {@link #presenceReportedDatasets} is package-scoped and structurally cannot
      * express a cross-standard dependency — no ADaM package reports {@code DM}, and per the owner's
@@ -1567,7 +1567,7 @@ public final class LibraryValidator
         /**
          * {@code Fix #218} — the run's <b>cross-standard coverage</b>: the dataset names belonging
          * to a CDISC standard this run does <b>not</b> validate
-         * ({@code plans/PLAN-cross-standard-absence-skip.md}).
+         * ({@code plans/done/PLAN-cross-standard-absence-skip.md}).
          *
          * <p>
          * On an ADaM-family run this is the companion SDTM domain catalogue, so a rule whose whole

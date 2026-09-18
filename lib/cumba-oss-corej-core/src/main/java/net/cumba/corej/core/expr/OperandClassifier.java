@@ -4,7 +4,7 @@ import java.util.regex.Pattern;
 
 /**
  * Classifies a bare (unquoted) expression operand token into its {@link OperandKind}. This is the
- * text-driven core of the 7-step classifier from {@code plans/PLAN-expression-rule-format.md}
+ * text-driven core of the 7-step classifier from {@code plans/done/PLAN-expression-rule-format.md}
  * (steps 1–4 plus the column fallback); steps 5–7 are operator-context / fixture rules used only by
  * the old→new converter, not by parsing fresh expression text where quoting already separates
  * literal from reference.

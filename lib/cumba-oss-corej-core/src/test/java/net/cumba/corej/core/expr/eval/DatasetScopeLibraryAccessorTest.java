@@ -297,7 +297,8 @@ class DatasetScopeLibraryAccessorTest
         //
         // ⭐⭐ This was filed as a deferral and has since been RULED. `Fix #370` shipped it as
         // "deferred to R2, a later ruling has a failing test to flip"; the owner's
-        // `plans/PLAN-metadata-product-selection.md` ruling 4 — **"No synthesis. The engine never
+        // `plans/done/PLAN-metadata-product-selection.md` ruling 4 — **"No synthesis. The engine
+        // never
         // invents metadata CDISC did not publish. ds_label(\"APAE\") stays null PERMANENTLY"** —
         // settles it the other way. ⇒ this is a guard to KEEP, not a gap to close: synthesising
         // "Associated Persons " + the parent label would be the engine inventing a convention

@@ -15,8 +15,8 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * §3 non-goal 1 of {@code plans/PLAN-metadata-product-selection.md} (ruling 7) — <b>Phase 3 must
- * not narrow scope.</b>
+ * §3 non-goal 1 of {@code plans/done/PLAN-metadata-product-selection.md} (ruling 7) — <b>Phase 3
+ * must not narrow scope.</b>
  *
  * <h2>The hazard being fenced off</h2>
  *

@@ -26,8 +26,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@code Requirements.Variables} — the {@code All} / {@code Any} / {@code None} legs of
- * {@code ScopeMatcher.describeVariablesMismatch} ({@code plans/PLAN-scope-requirements-split.md}
- * &#167;4.3).
+ * {@code ScopeMatcher.describeVariablesMismatch}
+ * ({@code plans/done/PLAN-scope-requirements-split.md} &#167;4.3).
  *
  * <p>
  * {@code All} and {@code None} are the former {@code Scope.Variables.Include} / {@code .Exclude}
@@ -247,7 +247,7 @@ class ScopeMatcherRequirementsTest
          * </p>
          *
          * <p>
-         * ⚠⚠ {@code plans/PLAN-scope-requirements-split.md} &#167;4.3 records this as <em>"an
+         * ⚠⚠ {@code plans/done/PLAN-scope-requirements-split.md} &#167;4.3 records this as <em>"an
          * {@code Any} list consisting <b>only</b> of qualified entries is vacuously
          * satisfied"</em>. <b>Measured: the "only" is too narrow.</b> {@code Any} is a disjunction
          * that short-circuits on the first satisfied entry, so <b>one</b> qualified entry anywhere

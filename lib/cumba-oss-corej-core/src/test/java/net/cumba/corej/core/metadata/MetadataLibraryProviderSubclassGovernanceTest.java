@@ -26,7 +26,7 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Phase 3 of {@code plans/PLAN-metadata-product-selection.md} (ruling 2) — the published
+ * Phase 3 of {@code plans/done/PLAN-metadata-product-selection.md} (ruling 2) — the published
  * {@code subClass} selects the <b>governing</b> ADaM data structure, and the unconditional
  * most-strict-wins union is gone.
  *

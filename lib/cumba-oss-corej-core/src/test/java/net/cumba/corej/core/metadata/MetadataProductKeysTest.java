@@ -10,9 +10,9 @@ import net.cumba.corej.core.metadata.MetadataProductKeys.SdtmLoader;
 import org.junit.jupiter.api.Test;
 
 /**
- * Phase 7 of {@code plans/PLAN-metadata-product-selection.md} — the shared key-family classifier.
- * Every shape asserted here is a <b>real cache key</b> (the pickle's {@code standards_details.pkl}
- * holds exactly the three shapes; §2.5 of the plan).
+ * Phase 7 of {@code plans/done/PLAN-metadata-product-selection.md} — the shared key-family
+ * classifier. Every shape asserted here is a <b>real cache key</b> (the pickle's
+ * {@code standards_details.pkl} holds exactly the three shapes; §2.5 of the plan).
  */
 class MetadataProductKeysTest
 {

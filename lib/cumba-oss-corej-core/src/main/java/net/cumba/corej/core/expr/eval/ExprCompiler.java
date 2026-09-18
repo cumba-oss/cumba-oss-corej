@@ -453,7 +453,7 @@ public final class ExprCompiler
      * ({@code var_exists(X)} / {@code var_exists("D.X")}, see
      * {@code plans/done/PLAN-variable-exists-cross-dataset.md}) and the operation exists to carry
      * the answer into {@code Output_Variables}
-     * ({@code plans/PLAN-retired-operators-as-operations.md}). The two agree by construction —
+     * ({@code plans/done/PLAN-retired-operators-as-operations.md}). The two agree by construction —
      * {@code OperationExecutor.evalVariableExists} reads the same facts — so an inline use here
      * cannot disagree with the function; it is merely a longer way to say the same thing.
      * </p>

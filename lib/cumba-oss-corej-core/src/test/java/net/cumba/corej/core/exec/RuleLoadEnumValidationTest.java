@@ -17,7 +17,7 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Phase 2 of {@code plans/PLAN-extend-expression-engine.md} — a rule whose {@code Rule_Type} /
+ * Phase 2 of {@code plans/done/PLAN-extend-expression-engine.md} — a rule whose {@code Rule_Type} /
  * {@code Sensitivity} / {@code Executability} carries a <b>present but unrecognized</b> string
  * fails at load time ({@link Rule#getLoadError()}) and executes as a rule ERROR via the existing
  * sentinel mechanism in {@link RuleRunner#execute}. An <b>absent</b> field stays legal (the

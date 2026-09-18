@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Lowering and round-trip tests for the exists family (Phase 1 of
- * {@code plans/PLAN-extend-expression-engine.md}): the four new operators lower to like-named
+ * {@code plans/done/PLAN-extend-expression-engine.md}): the four new operators lower to like-named
  * operator-leaves, string-literal arguments lower exactly like the bareword form, and the
  * {@code Check → Expr → text → Expr → Check} round-trip preserves names and operators.
  * <p>

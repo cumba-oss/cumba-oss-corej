@@ -146,7 +146,7 @@ public final class StudyRuleClassifier
         // this is a NEGATIVE predicate feeding a LOAD ERROR
         // (RulePackageLoader.checkStudySensitivityScope), so a facet it stops seeing makes rules
         // PASS a gate they should fail — nothing goes red, the weakening is silent. It no longer
-        // lives under Scope at all (plans/PLAN-scope-requirements-split.md phase 5), which is
+        // lives under Scope at all (plans/done/PLAN-scope-requirements-split.md phase 5), which is
         // exactly why it cannot be folded into the Scope walk below.
         if (hasEntries(rule.effectiveVariableRequirement()))
         {

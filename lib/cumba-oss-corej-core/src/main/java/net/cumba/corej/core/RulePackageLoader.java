@@ -421,7 +421,7 @@ public class RulePackageLoader
      * any more.</b> The behaviour is deliberately left unchanged, but it is now justified only by
      * compatibility with the findings the shipped corpus currently produces, not by parity. Whether
      * {@code inner} is the right default at all is an open behavioural question (triage finding S2,
-     * {@code plans/PLAN-expired-justifications-triage.md}, and
+     * {@code plans/done/PLAN-expired-justifications-triage.md}, and
      * {@code plans/done/PLAN-outer-join-type.md}).
      * </p>
      *
@@ -814,8 +814,8 @@ public class RulePackageLoader
 
     /**
      * Owner requirement #1 (2026-08-23,
-     * {@code plans/PLAN-authoring-grammar-unique-set-and-output-exclusion.md}): rejects, on the
-     * {@code loadError} channel, every spelling of {@code is_(not_)unique_set} other than the
+     * {@code plans/done/PLAN-authoring-grammar-unique-set-and-output-exclusion.md}): rejects, on
+     * the {@code loadError} channel, every spelling of {@code is_(not_)unique_set} other than the
      * canonical single list operand {@code f([A, B, …])} — the retired {@code f(A, keys=[…])} /
      * {@code f(A, B)} / {@code f(A)} forms (with the migration text) and the authored empty list
      * {@code f([])} (the degenerate all-members-drop tuple is a runtime contract, never an authored
@@ -1733,11 +1733,12 @@ public class RulePackageLoader
      *
      * <p>
      * ⭐ <b>This is the supported way to put a term on the {@code Precondition} tier, and since gate
-     * R8 it is the only one.</b> Owner ruling Q3 ({@code plans/PLAN-scope-requirements-split.md}
-     * &#167;4.2) retired {@code Precondition} as an <em>authoring</em> surface while keeping the
-     * tier itself untouched — the loader still writes it, {@code RuleRunner} still evaluates it at
-     * phase 2e. A field that only the engine may write needs an engine API to write it; before this
-     * method the only constructor was an authored document, which is precisely what R8 now rejects.
+     * R8 it is the only one.</b> Owner ruling Q3
+     * ({@code plans/done/PLAN-scope-requirements-split.md} &#167;4.2) retired {@code Precondition}
+     * as an <em>authoring</em> surface while keeping the tier itself untouched — the loader still
+     * writes it, {@code RuleRunner} still evaluates it at phase 2e. A field that only the engine
+     * may write needs an engine API to write it; before this method the only constructor was an
+     * authored document, which is precisely what R8 now rejects.
      * </p>
      *
      * <p>
@@ -2569,8 +2570,8 @@ public class RulePackageLoader
      * {@code Requirements.Variables} declared at once, because
      * {@link Rule#effectiveVariableRequirement()} would silently prefer the new block and the rule
      * would run on a requirement its author never sees. Since phase 5 of
-     * {@code plans/PLAN-scope-requirements-split.md} dropped the {@code Scope.Variables} binding
-     * that state is <em>unrepresentable</em>: the retired half binds to nothing and reaches
+     * {@code plans/done/PLAN-scope-requirements-split.md} dropped the {@code Scope.Variables}
+     * binding that state is <em>unrepresentable</em>: the retired half binds to nothing and reaches
      * {@link Scope#getUnknownKeys()}, so <b>R1</b> ({@link #validateRetiredScopeVariables})
      * diagnoses the rule and names the half to delete. Kept in this list, marked retired, so a
      * reader looking for the gate the specification once named finds where it went.</li>

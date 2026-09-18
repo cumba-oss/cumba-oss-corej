@@ -145,13 +145,14 @@ public final class AdamSubclassDetector
      *
      * <p>
      * ⚠⚠ <b>Why the declared tier needs this at all.</b> Until Phase 4 of
-     * {@code plans/PLAN-metadata-product-selection.md}, {@link #knownDeclaredTokens} accepted a
-     * declared {@code def:SubClass} on {@link #SUBCLASS_TOKENS} membership alone, with no structure
-     * check — and under the default {@code corej.defineFirst=true} it beats the heuristic. That was
-     * harmless while a subclass only gated rules (a bogus declaration cost the dataset some rules).
-     * Since Phase 3 the resolved subclass <b>selects the governing data structure and therefore the
-     * variable list</b>, so a declared {@code ADVERSE EVENT} on a BDS dataset would silently pick
-     * an occurrence structure's variables. The declaration is dropped with a WARN instead.
+     * {@code plans/done/PLAN-metadata-product-selection.md}, {@link #knownDeclaredTokens} accepted
+     * a declared {@code def:SubClass} on {@link #SUBCLASS_TOKENS} membership alone, with no
+     * structure check — and under the default {@code corej.defineFirst=true} it beats the
+     * heuristic. That was harmless while a subclass only gated rules (a bogus declaration cost the
+     * dataset some rules). Since Phase 3 the resolved subclass <b>selects the governing data
+     * structure and therefore the variable list</b>, so a declared {@code ADVERSE EVENT} on a BDS
+     * dataset would silently pick an occurrence structure's variables. The declaration is dropped
+     * with a WARN instead.
      * </p>
      */
     private static final Map<String, String> SUBCLASS_STRUCTURE_PRECONDITION = Map.of(//
@@ -292,7 +293,7 @@ public final class AdamSubclassDetector
      * <b>zero</b> rules in the shipped packages (the only {@code Scope.Subclasses} tokens in use
      * are {@code ADVERSE EVENT} 174, {@code NON-COMPARTMENTAL ANALYSIS} 68 and {@code POPULATION
      * PHARMACOKINETIC ANALYSIS} 6). Subclass is-a semantics are a separate plan — see
-     * {@code plans/PLAN-adam-structure-set-valued.md} §7 item 2.
+     * {@code plans/done/PLAN-adam-structure-set-valued.md} §7 item 2.
      * </p>
      *
      * <h4>⚠⚠ The branch order is DELIBERATE — and the tie-break is SPECIFICITY, not hit count</h4>

@@ -13,10 +13,10 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@code RulePackageLoader.validateInlineUniqueSetShape} — owner requirement #1 (2026-08-23,
- * {@code plans/PLAN-authoring-grammar-unique-set-and-output-exclusion.md} §3.5 D-3 / §3.9(e)): the
- * retired {@code is_(not_)unique_set(name, keys=[…])} / {@code f(A, B)} / {@code f(A)} spellings
- * and the authored empty list are LOAD errors carrying the migration text; the canonical single
- * list operand loads and compiles.
+ * {@code plans/done/PLAN-authoring-grammar-unique-set-and-output-exclusion.md} §3.5 D-3 / §3.9(e)):
+ * the retired {@code is_(not_)unique_set(name, keys=[…])} / {@code f(A, B)} / {@code f(A)}
+ * spellings and the authored empty list are LOAD errors carrying the migration text; the canonical
+ * single list operand loads and compiles.
  *
  * <p>
  * ⚠⚠ Both arms are asserted — accepting and rejecting — because a one-armed validator silently

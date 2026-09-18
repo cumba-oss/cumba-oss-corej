@@ -15,12 +15,12 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 /**
- * The load gates of {@code plans/PLAN-scope-requirements-split.md} &#167;4.7 — <b>R1</b> (retired
- * {@code Scope.Variables}), <b>R2</b> (unknown key under {@code Scope} / {@code Scope.Datasets} /
- * {@code Requirements} / {@code Requirements.Variables}), <b>R3</b> (empty entry), <b>R4</b>
- * (degenerate {@code Any}), <b>R5</b> (provider {@code declared ⇔ derived}), <b>R6</b> (expansion
- * token in a requirement), <b>R7</b> (undeclared {@code Match_Datasets} secondary) and <b>R8</b>
- * (authored {@code Precondition}).
+ * The load gates of {@code plans/done/PLAN-scope-requirements-split.md} &#167;4.7 — <b>R1</b>
+ * (retired {@code Scope.Variables}), <b>R2</b> (unknown key under {@code Scope} /
+ * {@code Scope.Datasets} / {@code Requirements} / {@code Requirements.Variables}), <b>R3</b> (empty
+ * entry), <b>R4</b> (degenerate {@code Any}), <b>R5</b> (provider {@code declared ⇔ derived}),
+ * <b>R6</b> (expansion token in a requirement), <b>R7</b> (undeclared {@code Match_Datasets}
+ * secondary) and <b>R8</b> (authored {@code Precondition}).
  *
  * <p>
  * Every case is driven through {@link RulePackageLoader#loadFromString} — the production path, both

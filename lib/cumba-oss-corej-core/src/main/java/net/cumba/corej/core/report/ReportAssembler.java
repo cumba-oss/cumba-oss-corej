@@ -973,8 +973,8 @@ public final class ReportAssembler
      * {@code ReleasedRuleIdColumnsTest} (in {@code cumba-oss-corej-rules}, which owns the corpus)
      * can assert that a released package and its authored source produce identical columns — the
      * whole justification for the §10 strip of
-     * {@code plans/PLAN-rules-corpus-build-integration.md}. Computing the columns a second way in
-     * the test would have guarded the copy, not the code.
+     * {@code plans/done/PLAN-rules-corpus-build-integration.md}. Computing the columns a second way
+     * in the test would have guarded the copy, not the code.
      * </p>
      *
      * @param rule

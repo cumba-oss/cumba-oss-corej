@@ -18,8 +18,9 @@ import net.cumba.corej.core.model.Rule;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Step 3 of {@code plans/PLAN-absent-required-dataset-skip.md} (`Fix #222`) — <b>an absent dataset
- * whose absence the run already reports must SILENCE its dependants instead of flooding.</b>
+ * Step 3 of {@code plans/done/PLAN-absent-required-dataset-skip.md} (`Fix #222`) — <b>an absent
+ * dataset whose absence the run already reports must SILENCE its dependants instead of
+ * flooding.</b>
  *
  * <h2>The ruling</h2> A rule that reads a foreign dataset <i>D</i> yields no finding from that
  * reading when <i>D</i> is absent — <b>iff the run already ships a rule whose whole Check is a bare
@@ -70,7 +71,7 @@ import org.jspecify.annotations.Nullable;
  * would destroy the finding. They are excluded wholesale; see {@link #INTENT_OPT_OUT_RULE_IDS}.
  *
  * <h2>{@code Fix #218} — the CROSS-STANDARD arm</h2>
- * {@code plans/PLAN-cross-standard-absence-skip.md}. The coverage precondition above is
+ * {@code plans/done/PLAN-cross-standard-absence-skip.md}. The coverage precondition above is
  * <b>package-scoped</b> and therefore structurally incapable of expressing a dependency on
  * <em>another CDISC standard</em>: no ADaM package reports {@code DM}, and per the owner's
  * invocation ruling (<i>"when ADaM is validated, SDTM is made available for the cross-standard

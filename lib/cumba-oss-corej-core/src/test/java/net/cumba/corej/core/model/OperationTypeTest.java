@@ -33,7 +33,7 @@ class OperationTypeTest
         assertNull(OperationType.fromJson("unknown"));
         assertNull(OperationType.fromJson(null));
         // split_by has no OperationType: it is a per-row value function (see SplitByInliner), and
-        // plans/PLAN-retired-operators-as-operations.md Phase 2 parked the operation shape.
+        // plans/done/PLAN-retired-operators-as-operations.md Phase 2 parked the operation shape.
         assertNull(OperationType.fromJson("split_by"));
     }
 
@@ -49,7 +49,7 @@ class OperationTypeTest
      * operator's <em>reporting</em> carriage, so a rule declaring {@code $X} in
      * {@code Outcome.Output_Variables} has a value to report (the {@code Fix #181} warrant applied
      * to the one operator it could not reach — see
-     * {@code plans/PLAN-retired-operators-as-operations.md}). Resolving here is precisely what
+     * {@code plans/done/PLAN-retired-operators-as-operations.md}). Resolving here is precisely what
      * stops a Form B {@code variable_exists("X")} declaration failing to load with
      * {@code unknown operation function}.
      * </p>

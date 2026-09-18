@@ -17,11 +17,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 /**
  * {@link GroupSemantics#uniqueSetViolations(IDataTable, int, List, String, boolean, GroupKeyPolicy)}
  * — the single-list primitive of owner requirement #1 (2026-08-23,
- * {@code plans/PLAN-authoring-grammar-unique-set-and-output-exclusion.md} §3.4 D-4 / §3.2 D-6).
- * <b>No member is privileged</b>: an absent member in any position is the same partition as its
- * removal; a {@code null} (unresolved) member drops instead of short-circuiting; when every member
- * drops the documented degenerate flood stands; and {@code regex=} normalises member 0 exactly as
- * it normalises member 2.
+ * {@code plans/done/PLAN-authoring-grammar-unique-set-and-output-exclusion.md} §3.4 D-4 / §3.2
+ * D-6). <b>No member is privileged</b>: an absent member in any position is the same partition as
+ * its removal; a {@code null} (unresolved) member drops instead of short-circuiting; when every
+ * member drops the documented degenerate flood stands; and {@code regex=} normalises member 0
+ * exactly as it normalises member 2.
  */
 @ExtendWith(MockitoExtension.class)
 class GroupSemanticsUniqueSetListTest

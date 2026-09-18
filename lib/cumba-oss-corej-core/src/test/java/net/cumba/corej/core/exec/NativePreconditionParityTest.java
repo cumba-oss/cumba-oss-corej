@@ -30,10 +30,10 @@ class NativePreconditionParityTest
      * <b>engine-internal</b> tier instead of authoring it.
      *
      * <p>
-     * ⭐ Owner ruling Q3 ({@code plans/PLAN-scope-requirements-split.md} &#167;4.2, gate R8) retired
-     * {@code Precondition} as an <em>authoring</em> surface while leaving the tier — its injection
-     * and its evaluation at {@code RuleRunner} phase 2e — untouched. A field only the engine may
-     * write needs an engine API to write it, so the supported constructor is now
+     * ⭐ Owner ruling Q3 ({@code plans/done/PLAN-scope-requirements-split.md} &#167;4.2, gate R8)
+     * retired {@code Precondition} as an <em>authoring</em> surface while leaving the tier — its
+     * injection and its evaluation at {@code RuleRunner} phase 2e — untouched. A field only the
+     * engine may write needs an engine API to write it, so the supported constructor is now
      * {@link RulePackageLoader#installEngineInternalPrecondition}, which runs the same raise
      * {@code finishLoad} does.
      * </p>

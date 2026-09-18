@@ -1518,7 +1518,7 @@ public final class OperationExecutor
      * Python reference: {@code operations/variable_value_count.py}, which takes
      * {@code Counter(series.unique())} per (split-concatenated) dataset and sums the counters — the
      * same dataset-presence semantics. The remaining deviations are recorded as EC-30 in
-     * {@code plans/PLAN-rule-review-engine-changes.md}:
+     * {@code plans/done/PLAN-rule-review-engine-changes.md}:
      * </p>
      * <ol>
      * <li><b>Family key (mirrored into the parity fork).</b> Families are keyed by

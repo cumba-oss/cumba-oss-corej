@@ -14,7 +14,7 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * D1 of {@code plans/PLAN-define-item-metadata-parity-929-1081.md}, re-keyed by phase 5 of
+ * D1 of {@code plans/done/PLAN-define-item-metadata-parity-929-1081.md}, re-keyed by phase 5 of
  * {@code PLAN-leaf-scope-domain-inference.md}: a rule declaring {@code Variable_Universe: Define}
  * (the successor of the {@code Define Item Metadata Check against Library Metadata} type) iterates
  * the define.xml ItemDefs (the define provider's variables, in ItemDef order), not the dataset

@@ -10,9 +10,9 @@ import net.cumba.corej.core.metadata.store.StoredDataStructure;
 import net.cumba.corej.core.metadata.store.StoredProduct;
 
 /**
- * Phase 7 of {@code plans/PLAN-metadata-product-selection.md} — <b>the single construction site</b>
- * that turns the run's declared metadata-product keys ({@code --metadata-products}, resolved to
- * verbatim {@code standards/...} cache keys) into the ordered
+ * Phase 7 of {@code plans/done/PLAN-metadata-product-selection.md} — <b>the single construction
+ * site</b> that turns the run's declared metadata-product keys ({@code --metadata-products},
+ * resolved to verbatim {@code standards/...} cache keys) into the ordered
  * {@link MetadataLibraryProvider.DeclaredAdamProduct} list the provider walks (ruling 1:
  * first-match-wins on the user's order).
  *

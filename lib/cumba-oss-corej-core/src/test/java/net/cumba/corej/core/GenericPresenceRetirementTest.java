@@ -71,8 +71,8 @@ class GenericPresenceRetirementTest
 
     /**
      * ⚠ The {@code Precondition} half of this fixture is installed on the <b>engine-internal</b>
-     * tier rather than authored: gate R8 ({@code plans/PLAN-scope-requirements-split.md} &#167;4.2,
-     * owner ruling Q3) closed the authoring surface, and
+     * tier rather than authored: gate R8 ({@code plans/done/PLAN-scope-requirements-split.md}
+     * &#167;4.2, owner ruling Q3) closed the authoring surface, and
      * {@link RulePackageLoader#installEngineInternalPrecondition} is the supported constructor. The
      * property under test — that the explicit {@code ds_exists} / {@code var_exists} spellings
      * raise cleanly on both surfaces — is unchanged.

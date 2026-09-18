@@ -71,7 +71,8 @@ class UnifiedBooleanSurfaceTest
         // The var_exists FUNCTION is a boolean callable usable in boolean position (bare and under
         // not). It is the surface that DECIDES column existence; the variable_exists operation was
         // retired from that role and has come back only as the reporting carriage of this function
-        // (plans/PLAN-retired-operators-as-operations.md), so this is still the form rules use.
+        // (plans/done/PLAN-retired-operators-as-operations.md), so this is still the form rules
+        // use.
         assertTrue(supported("var_exists(\"AETERM\")"));
         assertTrue(supported("not var_exists(\"AETERM\")"));
     }

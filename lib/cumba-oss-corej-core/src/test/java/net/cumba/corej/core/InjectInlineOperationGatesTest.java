@@ -111,8 +111,8 @@ class InjectInlineOperationGatesTest
 
     /**
      * ⚠⚠ <b>This arm is UNREACHABLE from the loader since gate R8, and is labelled rather than
-     * deleted.</b> Owner ruling Q3 ({@code plans/PLAN-scope-requirements-split.md} &#167;4.2) made
-     * an authored {@code Precondition} a load error unless it is an availability gate, so no
+     * deleted.</b> Owner ruling Q3 ({@code plans/done/PLAN-scope-requirements-split.md} &#167;4.2)
+     * made an authored {@code Precondition} a load error unless it is an availability gate, so no
      * cleanly-loading rule can arrive at {@code injectInlineOperationGates} carrying a
      * <em>foreign</em> precondition — the composition branch cannot fire through {@code finishLoad}
      * any more, for any provenance.

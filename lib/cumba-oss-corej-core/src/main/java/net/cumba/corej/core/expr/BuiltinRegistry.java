@@ -5,9 +5,9 @@ import java.util.Set;
 /**
  * The closed set of engine-provided built-in reference names recognised in expression operand
  * position. Seeded from a read-only audit of all 12 shipped rule packages (see
- * {@code plans/PLAN-expression-rule-format.md}, Appendix A): every {@code name}/{@code value} token
- * that is lowercase-leading or underscore-containing and is <em>not</em> a column/wildcard resolves
- * to one of these.
+ * {@code plans/done/PLAN-expression-rule-format.md}, Appendix A): every {@code name}/{@code value}
+ * token that is lowercase-leading or underscore-containing and is <em>not</em> a column/wildcard
+ * resolves to one of these.
  *
  * <p>
  * The registry is intentionally <em>closed</em>: an operand that looks built-in (lowercase or

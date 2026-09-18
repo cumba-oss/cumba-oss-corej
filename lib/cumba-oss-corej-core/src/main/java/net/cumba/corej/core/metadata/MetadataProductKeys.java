@@ -7,9 +7,9 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Phase 7 of {@code plans/PLAN-metadata-product-selection.md} — the <b>one</b> place a declared
- * metadata-product cache key ({@code standards/...}, the verbatim {@code PickleCache} key form that
- * {@code ProductKeyResolver} outputs) is classified by family.
+ * Phase 7 of {@code plans/done/PLAN-metadata-product-selection.md} — the <b>one</b> place a
+ * declared metadata-product cache key ({@code standards/...}, the verbatim {@code PickleCache} key
+ * form that {@code ProductKeyResolver} outputs) is classified by family.
  *
  * <p>
  * Three key shapes exist, and they are deliberately <b>not</b> parsed beyond family recognition

@@ -1270,8 +1270,8 @@ public final class StudyValidationService
 
 
     /**
-     * {@code Fix #218} ({@code plans/PLAN-cross-standard-absence-skip.md}) — the dataset names that
-     * belong to a CDISC standard <b>this run does not validate</b>.
+     * {@code Fix #218} ({@code plans/done/PLAN-cross-standard-absence-skip.md}) — the dataset names
+     * that belong to a CDISC standard <b>this run does not validate</b>.
      *
      * <p>
      * The owner's invocation ruling is that <i>"when ADaM is validated, SDTM is made available for

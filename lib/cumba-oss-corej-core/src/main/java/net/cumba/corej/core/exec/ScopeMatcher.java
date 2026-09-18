@@ -310,8 +310,8 @@ public final class ScopeMatcher
 
     /**
      * Reason-bearing {@code Scope.Datasets} matcher (owner requirement #5,
-     * {@code plans/PLAN-scope-requirements-split.md} &#167;4.6) — <b>{@code Scope.Domains} minus
-     * the split-base re-test</b>.
+     * {@code plans/done/PLAN-scope-requirements-split.md} &#167;4.6) — <b>{@code Scope.Domains}
+     * minus the split-base re-test</b>.
      *
      * <p>
      * ⚠⚠ The absence of that re-test <b>is</b> the feature, and it is the trap to document rather
@@ -845,9 +845,9 @@ public final class ScopeMatcher
      * {@code IGNORE}, {@link #describeIncludeEntry} answers "satisfied" for <em>every</em>
      * qualified entry. Because this leg is a disjunction that short-circuits, <b>one</b> qualified
      * entry anywhere in the list makes the whole leg vacuously satisfied there — not merely a
-     * qualified-only list, which is how {@code plans/PLAN-scope-requirements-split.md} &#167;4.3
-     * words it. ({@code All} does not widen the same way: it must satisfy every entry, so an
-     * unqualified sibling still decides it.) That is the same conservative direction {@code All}
+     * qualified-only list, which is how {@code plans/done/PLAN-scope-requirements-split.md}
+     * &#167;4.3 words it. ({@code All} does not widen the same way: it must satisfy every entry, so
+     * an unqualified sibling still decides it.) That is the same conservative direction {@code All}
      * takes and it is deliberate — it prevents generation-time skips — and none of the ten rules
      * adopting {@code Any} carries a qualified entry, so it is written down rather than discovered.
      * </p>

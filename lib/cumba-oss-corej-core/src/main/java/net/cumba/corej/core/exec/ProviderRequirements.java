@@ -20,7 +20,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * The <b>derived</b> provider dependencies of a rule — the single source of truth behind
  * {@code Requirements.Library} / {@code .Define} / {@code .Dictionary}
- * ({@code plans/PLAN-scope-requirements-split.md} &#167;4.5, owner ruling Q4 option (c)).
+ * ({@code plans/done/PLAN-scope-requirements-split.md} &#167;4.5, owner ruling Q4 option (c)).
  *
  * <p>
  * ⚠⚠ <b>Each provider has more than one surface, and a derivation that reads only one is wrong on

@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@code Scope.Datasets} — selection by the dataset NAME (owner requirement #5,
- * {@code plans/PLAN-scope-requirements-split.md} &#167;4.6).
+ * {@code plans/done/PLAN-scope-requirements-split.md} &#167;4.6).
  *
  * <p>
  * ⚠ <b>These are hand-authored gate tests by construction.</b> No shipped rule carries the axis

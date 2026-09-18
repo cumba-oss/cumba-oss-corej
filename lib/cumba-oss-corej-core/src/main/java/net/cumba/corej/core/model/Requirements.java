@@ -13,8 +13,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * What a rule needs in order to be able to answer at all — as opposed to {@link Scope}, which says
- * which datasets the rule is <em>about</em> ({@code plans/PLAN-scope-requirements-split.md}, owner
- * requirement #6).
+ * which datasets the rule is <em>about</em> ({@code plans/done/PLAN-scope-requirements-split.md},
+ * owner requirement #6).
  *
  * <p>
  * An unmet requirement yields {@code RuleExecutionStatus.SKIPPED} with a reason naming it; it is

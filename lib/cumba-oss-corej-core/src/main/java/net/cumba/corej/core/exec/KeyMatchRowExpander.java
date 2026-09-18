@@ -63,7 +63,7 @@ import org.jspecify.annotations.Nullable;
  * cannot reach) or {@code inner} (loader-faithful, but changing what several of them assert —
  * unmatched primary rows would be dropped rather than kept). That is a behavioural decision for the
  * owner, not a cleanup, and it is the same open question as triage finding {@code S2}
- * ({@code plans/PLAN-expired-justifications-triage.md}). <b>Settle S2 first; do not retry the
+ * ({@code plans/done/PLAN-expired-justifications-triage.md}). <b>Settle S2 first; do not retry the
  * deletion on its own.</b>
  * </p>
  * </p>
@@ -166,7 +166,7 @@ final class KeyMatchRowExpander
             // The corpus does author Join_Type, and every authored value is `left` — never
             // `inner` — which is why left is the safer fallback here. Whether the loader's `inner`
             // default should itself be `left` is an open behavioural question (triage finding S2,
-            // plans/PLAN-expired-justifications-triage.md), deliberately not settled here.
+            // plans/done/PLAN-expired-justifications-triage.md), deliberately not settled here.
             // Fix #236: same comparison, now sourced from the JoinType vocabulary so the constant
             // and the load-time gate cannot drift apart. Semantics for `inner` / `left` unchanged.
             boolean left = !JoinType.INNER.getJsonValue().equalsIgnoreCase(md.getJoinType());

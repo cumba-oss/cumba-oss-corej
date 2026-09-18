@@ -184,7 +184,7 @@ class AdamDataStructureDetectorTest
      * Fix #179: the medical-device names were previously folded away and therefore <b>not
      * authorable in {@code Scope.Data_Structures} at all</b>, which is why 345 of the corpus's 1394
      * ADaM scope entries live in {@code Scope.Classes} instead. Phase 6a of
-     * {@code plans/PLAN-metadata-product-selection.md} added the eighth token,
+     * {@code plans/done/PLAN-metadata-product-selection.md} added the eighth token,
      * {@code REFERENCE DATA STRUCTURE} — {@code tig/1-0/adam}'s {@code REFERENDS}, whose absence
      * was an oversight rather than a decision.
      */

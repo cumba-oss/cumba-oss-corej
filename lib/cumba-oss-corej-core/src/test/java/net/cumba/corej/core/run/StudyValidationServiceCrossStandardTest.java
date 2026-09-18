@@ -12,8 +12,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@code Fix #218} — the <b>run-level</b> half of
- * {@code plans/PLAN-cross-standard-absence-skip.md}: {@link StudyValidationService} decides which
- * dataset names belong to a CDISC standard this run does not validate.
+ * {@code plans/done/PLAN-cross-standard-absence-skip.md}: {@link StudyValidationService} decides
+ * which dataset names belong to a CDISC standard this run does not validate.
  *
  * <p>
  * ⚑ The decisive property is that the fact is derived from the {@link CompanionDomainsProvider}

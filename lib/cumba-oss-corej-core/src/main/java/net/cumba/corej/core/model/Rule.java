@@ -414,7 +414,7 @@ public class Rule
      *
      * <p>
      * This was the dual-read shim that carried the corpus across the {@code Scope.Variables} →
-     * {@code Requirements.Variables} migration ({@code plans/PLAN-scope-requirements-split.md}
+     * {@code Requirements.Variables} migration ({@code plans/done/PLAN-scope-requirements-split.md}
      * phase 1). Phase 5 dropped the legacy binding, so there is exactly one spelling left and this
      * is now a plain accessor. It is kept — rather than inlined at its ~20 call sites — for the
      * same reason {@link #effectiveGroupingVariables()} is: it is the single documented reader, and
@@ -576,7 +576,7 @@ public class Rule
 
     /**
      * What the rule needs in order to answer at all, as opposed to which datasets it is about
-     * ({@link Requirements}; {@code plans/PLAN-scope-requirements-split.md}).
+     * ({@link Requirements}; {@code plans/done/PLAN-scope-requirements-split.md}).
      */
     @JsonProperty("Requirements")
     private @Nullable Requirements requirements;
@@ -839,8 +839,8 @@ public class Rule
     /**
      * Loader gate <b>R7</b>'s channel: a {@code Match_Datasets[].Name} this rule joins against but
      * does not declare in {@code Requirements.Datasets}
-     * ({@code plans/PLAN-scope-requirements-split.md} &#167;4.4, owner ruling Q5). Advisory only —
-     * a missing secondary stays a DEBUG no-op at runtime and no promotion lane is scheduled.
+     * ({@code plans/done/PLAN-scope-requirements-split.md} &#167;4.4, owner ruling Q5). Advisory
+     * only — a missing secondary stays a DEBUG no-op at runtime and no promotion lane is scheduled.
      *
      * <p>
      * ⚠⚠ <b>Deliberately not {@link #loadWarning}.</b> R7 is loud by design — 251 authored rules

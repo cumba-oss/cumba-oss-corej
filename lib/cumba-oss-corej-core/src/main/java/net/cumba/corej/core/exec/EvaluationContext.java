@@ -145,7 +145,7 @@ public class EvaluationContext
     net.cumba.corej.core.expr.eval.@Nullable Domain evaluationDomain;
 
     /**
-     * {@code Fix #222} (step 3 of {@code plans/PLAN-absent-required-dataset-skip.md}) — the
+     * {@code Fix #222} (step 3 of {@code plans/done/PLAN-absent-required-dataset-skip.md}) — the
      * dependency-scoped rewrite of the rule's Check for <em>this</em> (rule, dataset) execution,
      * with every boolean leaf that reads an absent-and-already-reported foreign dataset folded to
      * {@code false}. Non-null only when {@link AbsentDatasetSkip#decide} actually suppressed

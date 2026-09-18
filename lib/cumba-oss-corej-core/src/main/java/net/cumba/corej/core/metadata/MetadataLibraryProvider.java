@@ -259,9 +259,9 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
     /**
      * Declared ADaM products, in the user's precedence order (ruling 1 of
-     * {@code plans/PLAN-metadata-product-selection.md}: first-match-wins). Never {@code null}; may
-     * be empty (an SDTM/Define-only provider). Each entry carries the {@code standards/...} cache
-     * key it was declared under, so every answer is traceable to the product that supplied it
+     * {@code plans/done/PLAN-metadata-product-selection.md}: first-match-wins). Never {@code null};
+     * may be empty (an SDTM/Define-only provider). Each entry carries the {@code standards/...}
+     * cache key it was declared under, so every answer is traceable to the product that supplied it
      * (provenance is not optional with N products).
      */
     private final List<DeclaredAdamProduct> adamProducts;
@@ -3392,7 +3392,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * <p>
      * ⚠ Unlike the class-keyed {@link #adamStructuresForClassName}, first-match-wins on the user's
      * declaration order is <b>correct</b> here and is ruling 1 of
-     * {@code plans/PLAN-metadata-product-selection.md}, not the Phase 8 defect: two products
+     * {@code plans/done/PLAN-metadata-product-selection.md}, not the Phase 8 defect: two products
      * publishing a structure of the same name are two equally specific descriptions of the same
      * thing, so there is no specificity with which to choose and the user's order decides. The
      * defect Phase 11's F1 fixed was order deciding between structures of <em>different</em>

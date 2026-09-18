@@ -28,12 +28,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Phase 7a of {@code plans/PLAN-metadata-product-selection.md}, carried onto the store path (cache
- * 8g — this file is the migrated {@code PickleMetadataProviderFactoryAdamTest}, its subject deleted
- * with the pickle read path): {@link StoreMetadataProviderFactory#forAdam} over stores seeded from
- * the same hermetic pickle fixtures, so ADaM runs work offline and the ordered declared-product
- * list goes through the <b>same</b> construction site ({@code DeclaredAdamProducts.assemble}) the
- * old paths shared.
+ * Phase 7a of {@code plans/done/PLAN-metadata-product-selection.md}, carried onto the store path
+ * (cache 8g — this file is the migrated {@code PickleMetadataProviderFactoryAdamTest}, its subject
+ * deleted with the pickle read path): {@link StoreMetadataProviderFactory#forAdam} over stores
+ * seeded from the same hermetic pickle fixtures, so ADaM runs work offline and the ordered
+ * declared-product list goes through the <b>same</b> construction site
+ * ({@code DeclaredAdamProducts.assemble}) the old paths shared.
  *
  * <h2>Why the two-product test is the load-bearing one</h2>
  *

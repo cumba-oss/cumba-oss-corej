@@ -33,7 +33,7 @@ import org.jspecify.annotations.Nullable;
  * {@code lib/cumba-oss-corej-core/dictionaries/} so the dictionary conformance rules execute and
  * the {@code .cdt} scenarios discriminate without any licensed dictionary data present; real
  * dictionary data is installed by the operator behind the same file format
- * ({@code plans/PLAN-dictionary-seeder.md}).
+ * ({@code plans/done/PLAN-dictionary-seeder.md}).
  * </p>
  *
  * <p>

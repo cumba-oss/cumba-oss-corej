@@ -22,9 +22,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * Native-compiler tests for the exists family modes (Phase 1 of
- * {@code plans/PLAN-extend-expression-engine.md}): {@code ds_exists}/{@code ds_not_exists} (dataset
- * presence), {@code var_exists}/{@code var_not_exists} (column presence), and the string-literal
- * argument form now accepted by all six exists-family functions.
+ * {@code plans/done/PLAN-extend-expression-engine.md}): {@code ds_exists}/{@code ds_not_exists}
+ * (dataset presence), {@code var_exists}/{@code var_not_exists} (column presence), and the
+ * string-literal argument form now accepted by all six exists-family functions.
  */
 @ExtendWith(MockitoExtension.class)
 class ExprCompilerExistsModesTest

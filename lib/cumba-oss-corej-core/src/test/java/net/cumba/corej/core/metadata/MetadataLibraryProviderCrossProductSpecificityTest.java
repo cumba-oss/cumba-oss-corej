@@ -30,7 +30,8 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Phase 8 of {@code plans/PLAN-metadata-product-selection.md} — <b>cross-product specificity</b>.
+ * Phase 8 of {@code plans/done/PLAN-metadata-product-selection.md} — <b>cross-product
+ * specificity</b>.
  *
  * <h2>What was wrong</h2>
  *

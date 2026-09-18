@@ -24,8 +24,8 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * See {@code plans/done/PLAN-derive-rule-type-sensitivity.md} — &sect;4.3 for the {@code Rule_Type}
  * cascade, &sect;4.4 for {@code Sensitivity}, &sect;4.9 for the {@code $}-only operation table —
- * and {@code plans/PLAN-classifier-redesign.md} for the grounding: the classifier reads the native
- * {@link Expr} every corpus form raises to ({@link #toExprOrNull}), plus an <b>id-free
+ * and {@code plans/done/PLAN-classifier-redesign.md} for the grounding: the classifier reads the
+ * native {@link Expr} every corpus form raises to ({@link #toExprOrNull}), plus an <b>id-free
  * operation-usage view</b> collected from both declared {@code Operations} entries and inlined
  * operation-operator calls, so the same rule derives identically as a {@code rules-src} leaf, a
  * {@code rules-legacy} lowered Check and a {@code rules/} inlined expression. The derivation

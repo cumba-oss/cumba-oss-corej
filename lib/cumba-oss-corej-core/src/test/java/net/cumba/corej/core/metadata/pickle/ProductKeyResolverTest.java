@@ -13,9 +13,10 @@ import net.cumba.corej.core.metadata.pickle.ProductKeyResolver.Result;
 import org.junit.jupiter.api.Test;
 
 /**
- * Phase 1a of {@code plans/PLAN-metadata-product-selection.md} — {@code --metadata-products} token
- * resolution by <b>unique-suffix match</b> against the cache's standard keys. Never a dash-split
- * heuristic and never a family table: an ambiguous or absent token errors instead of guessing.
+ * Phase 1a of {@code plans/done/PLAN-metadata-product-selection.md} — {@code --metadata-products}
+ * token resolution by <b>unique-suffix match</b> against the cache's standard keys. Never a
+ * dash-split heuristic and never a family table: an ambiguous or absent token errors instead of
+ * guessing.
  */
 class ProductKeyResolverTest
 {

@@ -14,7 +14,7 @@ import net.cumba.corej.core.model.Sensitivity;
 import org.junit.jupiter.api.Test;
 
 /**
- * Phase 2 of {@code plans/PLAN-extend-expression-engine.md} — serialization round-trip for the
+ * Phase 2 of {@code plans/done/PLAN-extend-expression-engine.md} — serialization round-trip for the
  * setter-based {@code Sensitivity} / {@code Executability} binding on {@link Rule}: valid values
  * serialize canonically, invalid raw strings round-trip verbatim, and the JSON carries exactly one
  * capitalized key per field (guarding the Lombok/Jackson duplicate-property hazard — without

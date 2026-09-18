@@ -14,7 +14,7 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * D4 of {@code plans/PLAN-define-item-metadata-parity-929-1081.md}: list-aware
+ * D4 of {@code plans/done/PLAN-define-item-metadata-parity-929-1081.md}: list-aware
  * {@code is_(not_)contained_by} for the {@code define_variable_codelist_coded_codes} operand. The
  * value is a list of every coded code in a variable's define codelist; membership must compare it
  * element-wise, mirroring the Python engine's {@code is_column_of_iterables(target)} branch

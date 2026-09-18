@@ -19,7 +19,7 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code dataset_domain} — {@code plans/PLAN-domain-expression-function.md}.
+ * {@code dataset_domain} — {@code plans/done/PLAN-domain-expression-function.md}.
  *
  * <p>
  * The fact is registered on three surfaces that must all resolve to the SAME value, the

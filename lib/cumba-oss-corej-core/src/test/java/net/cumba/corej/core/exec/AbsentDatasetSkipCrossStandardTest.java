@@ -27,8 +27,8 @@ import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code Fix #218} — {@code plans/PLAN-cross-standard-absence-skip.md}: a dependency on a dataset
- * belonging to a CDISC standard the run did not receive must report {@code SKIPPED}, never
+ * {@code Fix #218} — {@code plans/done/PLAN-cross-standard-absence-skip.md}: a dependency on a
+ * dataset belonging to a CDISC standard the run did not receive must report {@code SKIPPED}, never
  * {@code PASS}.
  *
  * <h2>Why this is a separate mechanism from {@code Fix #222}</h2> {@code Fix #222}'s precondition

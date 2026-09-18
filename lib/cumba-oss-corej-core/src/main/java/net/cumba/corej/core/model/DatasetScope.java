@@ -13,8 +13,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code Scope.Datasets} — selection by the <b>dataset name</b>
- * ({@code plans/PLAN-scope-requirements-split.md} &#167;4.6, owner requirement #5). Deliberately
- * <em>not</em> {@link DomainScope}: the two axes differ in exactly the two things
+ * ({@code plans/done/PLAN-scope-requirements-split.md} &#167;4.6, owner requirement #5).
+ * Deliberately <em>not</em> {@link DomainScope}: the two axes differ in exactly the two things
  * {@code DomainScope} carries.
  *
  * <ul>

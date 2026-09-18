@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Column-presence requirements — {@code Requirements.Variables}
- * ({@code plans/PLAN-scope-requirements-split.md} &#167;4.3). Successor of the retired
+ * ({@code plans/done/PLAN-scope-requirements-split.md} &#167;4.3). Successor of the retired
  * {@code Scope.Variables} block, which said the same thing in a field named for selection.
  *
  * <h2>Semantics</h2>

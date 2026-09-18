@@ -20,7 +20,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code Requirements.Datasets} at runtime ({@code plans/PLAN-scope-requirements-split.md}
+ * {@code Requirements.Datasets} at runtime ({@code plans/done/PLAN-scope-requirements-split.md}
  * &#167;4.4): a declared dataset the run does not ship makes the rule unanswerable, so it SKIPs
  * whole with a reason naming the requirement.
  *

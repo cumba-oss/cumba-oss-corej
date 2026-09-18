@@ -35,7 +35,7 @@ import org.junit.jupiter.api.Test;
  * rule, silently and with no warning — the exact failure class
  * {@code OperationFieldRegistrationTest} exists to prevent for {@code Operation} ("Fix #99 lost
  * {@code offset} exactly that way"). This test extends that guard's shape to the two classes
- * {@code plans/PLAN-scope-requirements-split.md} touches.
+ * {@code plans/done/PLAN-scope-requirements-split.md} touches.
  *
  * <h2>⚠⚠ Why both branches, and why that is not visible from the signature</h2>
  *

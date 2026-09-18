@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 /**
  * Tests for {@link ChildMatchPreMerger}. Covers the early-return guards (E1-E5, E7-E9) and the
  * dispatch-style merge behaviour for each edge case enumerated in
- * {@code plans/PLAN-update-core-preMerge.md} (E10-E20).
+ * {@code plans/done/PLAN-update-core-preMerge.md} (E10-E20).
  * <p>
  * Uses real {@link DataTableMeta} + {@link CachedDataTableColumn}-backed tables rather than Mockito
  * mocks because {@link net.cumba.datatable.impl.view.MergeDataTable#createMetaData} calls

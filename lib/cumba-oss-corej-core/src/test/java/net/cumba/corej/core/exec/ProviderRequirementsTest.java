@@ -13,7 +13,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@link ProviderRequirements} — the DERIVED {@code Library} / {@code Define} / {@code Dictionary}
- * dependencies behind loader gate R5 ({@code plans/PLAN-scope-requirements-split.md} &#167;4.5).
+ * dependencies behind loader gate R5 ({@code plans/done/PLAN-scope-requirements-split.md}
+ * &#167;4.5).
  *
  * <p>
  * ⚠⚠ The single most likely way to get &#167;4.5 wrong is to read <b>one</b> surface. Each provider

@@ -293,7 +293,7 @@ public final class RuleRunner
     /**
      * Terminal {@code execute} overload additionally carrying the run's <b>dataset-presence
      * coverage</b> — {@code Fix #222}, step 3 of
-     * {@code plans/PLAN-absent-required-dataset-skip.md}.
+     * {@code plans/done/PLAN-absent-required-dataset-skip.md}.
      *
      * <p>
      * {@code reportedDatasets} names the datasets whose absence <em>this run already reports</em>,
@@ -343,7 +343,7 @@ public final class RuleRunner
 
     /**
      * Terminal {@code execute} overload additionally carrying the run's <b>cross-standard
-     * coverage</b> — {@code Fix #218}, {@code plans/PLAN-cross-standard-absence-skip.md}.
+     * coverage</b> — {@code Fix #218}, {@code plans/done/PLAN-cross-standard-absence-skip.md}.
      *
      * <p>
      * {@code crossStandardDatasets} names the datasets belonging to a CDISC standard this run does
@@ -2034,8 +2034,8 @@ public final class RuleRunner
      * <p>
      * Package-private rather than private so {@link ProviderRequirements} can read the
      * <em>same</em> predicate for surface 2 of the {@code Requirements.Library} / {@code .Define}
-     * derivation ({@code plans/PLAN-scope-requirements-split.md} &#167;4.5). Copying it there would
-     * give the runtime arm and the declared-vs-derived gate two chances to disagree, which is
+     * derivation ({@code plans/done/PLAN-scope-requirements-split.md} &#167;4.5). Copying it there
+     * would give the runtime arm and the declared-vs-derived gate two chances to disagree, which is
      * exactly what gate R5 exists to prevent.
      * </p>
      */

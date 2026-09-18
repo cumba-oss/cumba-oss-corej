@@ -19,8 +19,8 @@ import net.cumba.corej.core.model.SubclassScope;
 import org.junit.jupiter.api.Test;
 
 /**
- * <b>Phase 4 of {@code plans/PLAN-metadata-product-selection.md} — ruling 5, the supertype chain on
- * the subclass axis</b>, plus the declared-tier structure check that had to land with it.
+ * <b>Phase 4 of {@code plans/done/PLAN-metadata-product-selection.md} — ruling 5, the supertype
+ * chain on the subclass axis</b>, plus the declared-tier structure check that had to land with it.
  *
  * <h2>What is being pinned, and why each half matters</h2>
  *

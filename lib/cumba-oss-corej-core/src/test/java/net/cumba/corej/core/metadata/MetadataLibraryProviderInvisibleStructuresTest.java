@@ -24,8 +24,8 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
- * <b>Phase 6a of {@code plans/PLAN-metadata-product-selection.md} — the three structures no token
- * could reach.</b>
+ * <b>Phase 6a of {@code plans/done/PLAN-metadata-product-selection.md} — the three structures no
+ * token could reach.</b>
  *
  * <p>
  * Verified against the pickle cache on 2026-08-27, {@code adamStructuresForToken} could address

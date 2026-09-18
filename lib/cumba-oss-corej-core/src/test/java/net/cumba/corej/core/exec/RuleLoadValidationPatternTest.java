@@ -19,9 +19,9 @@ import org.junit.jupiter.api.Test;
  * <p>
  * ⚠ The variable half moved with the field: {@code Scope.Variables} retired to
  * {@code Requirements.Variables} ({@code Include} → {@code All}, {@code Exclude} → {@code None},
- * {@code plans/PLAN-scope-requirements-split.md} phase 5), and authoring the old spelling is now a
- * load error in its own right (gate R1, {@code RequirementsLoadGateTest}) rather than a rule whose
- * pattern entries get validated.
+ * {@code plans/done/PLAN-scope-requirements-split.md} phase 5), and authoring the old spelling is
+ * now a load error in its own right (gate R1, {@code RequirementsLoadGateTest}) rather than a rule
+ * whose pattern entries get validated.
  * </p>
  *
  * <p>

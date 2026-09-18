@@ -21,10 +21,10 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * {@link #ruleIds} is the flat released form. The generator collapses the tree to
  * {@code {Organization, Rule_Ids}} when it writes a shipped package ({@code ReleaseShapeTrimmer},
- * {@code plans/PLAN-rules-corpus-build-integration.md} §10): it keeps exactly what the report reads
- * and drops 60.8 MiB of citation text that no {@code src/main} consumer touches. <b>Nothing is lost
- * from the authored source</b> — the tree stays in {@code rules-src/}, in git, and in the authoring
- * tools.
+ * {@code plans/done/PLAN-rules-corpus-build-integration.md} §10): it keeps exactly what the report
+ * reads and drops 60.8 MiB of citation text that no {@code src/main} consumer touches. <b>Nothing
+ * is lost from the authored source</b> — the tree stays in {@code rules-src/}, in git, and in the
+ * authoring tools.
  * </p>
  *
  * <p>
