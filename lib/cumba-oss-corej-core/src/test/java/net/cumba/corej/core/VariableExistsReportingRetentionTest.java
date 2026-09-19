@@ -54,7 +54,7 @@ class VariableExistsReportingRetentionTest
     }
 
 
-    /** The CORE-000291 shape in org form: {@code $X == true} plus a declared output variable. */
+    /** The CDISC-CG0105 shape in org form: {@code $X == true} plus a declared output variable. */
     private static String orgFormRule(String outputVariables)
     {
         return "{\"Core\":{\"Id\":\"X-1\"},"

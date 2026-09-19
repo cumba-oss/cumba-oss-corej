@@ -179,7 +179,7 @@ class VariableMetadataNativeParityTest
     @Test
     void variableNameAnchoredMembership_parity() throws Exception
     {
-        // P4b (ADAM-ADD-100029 / CORE-001079 class): a rule anchored ONLY on the variable_name
+        // P4b (ADAM-ADD-100029 / CDISC-CG0013 class): a rule anchored ONLY on the variable_name
         // operand (no var_* accessor, no varname()) iterates per variable on the native broadcast
         // path — the anchor resolves the same per-column cursor the loop sets.
         Rule rule = loadVmcRule(

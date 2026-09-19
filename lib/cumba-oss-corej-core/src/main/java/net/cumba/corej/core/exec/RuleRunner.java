@@ -395,16 +395,20 @@ public final class RuleRunner
      * <p>
      * &#9940;&#9940; <b>The shipped corpus is NOT threshold-invariant</b> — this paragraph asserted
      * the opposite until 2026-08-26, when it was measured. The default is
-     * {@link EngineLimits#DEFAULT_SEVERITY_THRESHOLD} = {@code WARNING}, and Plan C phase 5b
-     * authored <b>9</b> level-keyed rules ({@code CDISC-CG0078}, {@code CDISC-CG0218},
-     * {@code CDISC-CG0233}, {@code CDISC-CG0235}, {@code CDISC-SEND-0283}, {@code CORE-000097},
-     * {@code CORE-000250}, {@code CORE-000572}, {@code CORE-000710}) whose weaker rung is
-     * {@code INFO}. They expand to <b>33</b> shipped rule records, so a default run drops <b>33
-     * declared rungs</b> that an {@code Info} run evaluates. That is exactly &#167;3.4's specified
-     * behaviour and the deliberate reason {@code INFO} is out of the default (turning it on
-     * corpus-wide would be a finding-mover disguised as a default) &mdash; but any instrument that
-     * must see every declared level has to say so: {@code FindingsSnapshot} pins
-     * {@code severityThreshold = Info} for precisely this reason, and records it in its banner.
+     * {@link EngineLimits#DEFAULT_SEVERITY_THRESHOLD} = {@code WARNING}, and the corpus authors
+     * level-keyed rules whose weaker rung is {@code INFO}. Re-derived 2026-09-19 over
+     * {@code rules-src/checks}: <b>eight</b> of them — {@code CDISC-CG0078}, {@code CDISC-CG0218},
+     * {@code CDISC-CG0233}, {@code CDISC-CG0235}, {@code CDISC-SEND-0283} (Plan C phase 5b), plus
+     * {@code DRAFT-900044}, {@code FDA-SD1037} and {@code PMDA-SD1037} authored since — and
+     * <b>every</b> level-keyed rule of the corpus carries an {@code INFO} rung, so the two
+     * populations coincide. ⚠ The figure standing here was <b>9</b>, and four of the nine ids it
+     * named were CORE-family rules this corpus has never carried — that list was never true of this
+     * tree. Every {@code INFO} rung they declare is dropped by a default run and evaluated by an
+     * {@code Info} run. That is exactly &#167;3.4's specified behaviour and the deliberate reason
+     * {@code INFO} is out of the default (turning it on corpus-wide would be a finding-mover
+     * disguised as a default) &mdash; but any instrument that must see every declared level has to
+     * say so: {@code FindingsSnapshot} pins {@code severityThreshold = Info} for precisely this
+     * reason, and records it in its banner.
      * </p>
      *
      * @param severityThreshold
@@ -590,8 +594,9 @@ public final class RuleRunner
         // the prefix was unresolvable, but its predicate (RuleWildcardUsage) was hand-written
         // rather than derived from the resolvers, so it was wrong in BOTH directions: a `--`
         // inside a data literal ("DOSE NOT CHANGED--SEE CRF") or a dot-qualified `RELREC.**DECOD`
-        // made whole rules skip and DELETED genuine findings (CORE-000744, CDISC-CG0174,
-        // CG0601-0603), while `within` / array-valued `value` / Grouping_Variables were invisible
+        // made whole rules skip and DELETED genuine findings (CDISC-CG0174, CG0601-0603 — the
+        // corpus's four `RELREC.**` carriers, measured 2026-09-19), while `within` / array-valued
+        // `value` / Grouping_Variables were invisible
         // to it. Now that the prefix is anchored to the caller-supplied domain code it is null
         // only when there is no domain at all — a degraded or synthetic context — where the
         // callers already substitute nothing, exactly as before EC-36. Re-introducing a skip is a
@@ -765,7 +770,8 @@ public final class RuleRunner
 
         // Operand-based not-available gate (PLAN-coreJ-cdisc-provider). A rule whose Check
         // references define_* / library_* operands needs the matching provider. Operand-only rules
-        // (no library-dependent Operation, e.g. CORE-001081) are not caught by the operation-based
+        // (no library-dependent Operation, e.g. CDISC-CG0010) are not caught by the
+        // operation-based
         // probe below, so detect them here by scanning the Check tree and report SKIPPED when the
         // referenced level's provider is absent.
         // ⚑ Plan C §3.3: EVERY declared level. A define_*/library_* operand in a weaker level
@@ -809,7 +815,7 @@ public final class RuleRunner
         // rules_engine.py:377-378)
         // so an Operation that aggregates over the primary sees the merged/expanded row set.
 
-        // Phase 2a.5: Pre-merge Child:true parent columns (Fix #6 — CORE-000206 and siblings).
+        // Phase 2a.5: Pre-merge Child:true parent columns (Fix #6 — CDISC-CG0371 and siblings).
         // Every later phase uses the augmented evalTable so plain-name references in the Check can
         // reach parent columns.
         evalTable = ChildMatchPreMerger.preMerge(evalTable, rule.getMatchDatasets(), resolver,
@@ -1086,7 +1092,7 @@ public final class RuleRunner
             // mechanism (Fix #36) explicitly preserves the eager skip semantic for
             // library-dependent ops; this widens that gate from "no provider at all" to
             // "provider configured but returned no usable data for this domain", so a rule
-            // like CORE-000550 doesn't fan out one violation per column when the model
+            // like FDA-SD0058 doesn't fan out one violation per column when the model
             // metadata is missing. The full parity port (richer get_variables_metadata_from
             // _standard_model with model-class fallback) is tracked as Fix #42.
             if (libraryProvider != null)
@@ -2587,7 +2593,7 @@ public final class RuleRunner
         // _row_key_from_engine_error, which reports the first row's key); for RECORD-sensitivity
         // rules we keep the column index — it is out of the data-row range, so the canonical
         // row_key resolves to null on both engines. Using colIndex for the dataset case would read
-        // an out-of-range row and emit a spurious null row_key (CORE-000550).
+        // an out-of-range row and emit a spurious null row_key (FDA-SD0058).
         long violationRow = datasetSensitivity ? 0L : colIndex;
         Map<String, String> values = new LinkedHashMap<>();
         values.put(VARIABLE_NAME, colMeta.getName());
@@ -3733,7 +3739,7 @@ public final class RuleRunner
                 // violation reports on the variable identifier itself. Same handling for the
                 // filter form <DOMAIN>.<KEY>=<VALUE> (e.g., SUPPAE.QNAM=AETRTEM in
                 // CDISC-AD0640): the leaf identifier is its own "value". A {} rule keeps the
-                // pre-leaf-scope behaviour (no such output) — CORE-000292's rulespec pins it.
+                // pre-leaf-scope behaviour (no such output) — CDISC-CG0107's rulespec pins it.
                 // The running level's domain when a level plan is present (each rung's plan
                 // carries the levels' join), else the rule-level context domain — reading the
                 // context alone on a per-level execution would consult the rule's own cached
@@ -3967,7 +3973,7 @@ public final class RuleRunner
     // reproduce the Python engine's full list for parity and report fidelity — Python never
     // truncates. The cap exists only as an OOM backstop for pathological (multi-million-element)
     // collections; it is set far above any realistic list. get_codelist_attributes "Term CCODE"
-    // over a full CT package legitimately yields ~25k codes (CORE-001080: 25150 for
+    // over a full CT package legitimately yields ~25k codes (CDISC-CG0288: 25150 for
     // sdtmct-2024-09-27), so the cap is sized well above that while still bounding a runaway
     // collection.
     private static final int MAX_COLLECTION_RENDER_ELEMENTS = 1_000_000;

@@ -31,7 +31,7 @@ import org.junit.jupiter.api.Test;
  * sets are identical for BOTH the present and the absent dataset cases. Coverage spans a bare
  * {@code ds_not_exists}, a bare {@code ds_exists}, a two-clause
  * {@code ds_exists AND ds_not_exists}, and a {@code var_exists} column-presence clause guarding a
- * {@code ds_exists} dataset clause (the migrated CORE-000291 shape that replaced the retired
+ * {@code ds_exists} dataset clause (the migrated CDISC-CG0105 shape that replaced the retired
  * {@code variable_exists} operation).
  * </p>
  */
@@ -119,7 +119,7 @@ class DomainPresenceNativeParityTest
     @Test
     void bareExists_parity() throws Exception
     {
-        // CORE-000043: ds_exists(TP).
+        // CDISC-CG0648: ds_exists(TP).
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
                 + "\"Check\":{\"all\":[{\"name\":\"TP\",\"operator\":\"ds_exists\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
@@ -134,7 +134,7 @@ class DomainPresenceNativeParityTest
     @Test
     void existsAndNotExists_parity() throws Exception
     {
-        // CORE-000739: ds_exists(TA) and ds_not_exists(EX) — both the present and absent sides
+        // CDISC-CG0407: ds_exists(TA) and ds_not_exists(EX) — both the present and absent sides
         // exercised.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
                 + "\"Check\":{\"all\":[{\"name\":\"TA\",\"operator\":\"ds_exists\"},"
@@ -155,7 +155,7 @@ class DomainPresenceNativeParityTest
     @Test
     void varExistsGuarded_parity() throws Exception
     {
-        // Migrated CORE-000291 shape: var_exists(EXVAMT) and ds_exists(EC). The var_exists leaf is
+        // Migrated CDISC-CG0105 shape: var_exists(EXVAMT) and ds_exists(EC). The var_exists leaf is
         // column presence on the primary table; the generic ds_exists(EC) resolves to dataset
         // presence
         // for a Domain Presence Check — the two-clause native broadcast path end-to-end. (Replaces

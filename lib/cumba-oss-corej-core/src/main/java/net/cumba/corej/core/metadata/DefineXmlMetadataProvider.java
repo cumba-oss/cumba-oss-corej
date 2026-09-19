@@ -364,7 +364,8 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
     @Override
     public boolean isDomainCustom(String domain)
     {
-        // The define level alone cannot decide custom-vs-standard; CORE-000929's $domain_is_custom
+        // The define level alone cannot decide custom-vs-standard; CDISC-CG0001's
+        // $domain_is_custom
         // resolves against the LIBRARY provider, so this is never the deciding source here.
         return fallback != null && fallback.isDomainCustom(domain);
     }

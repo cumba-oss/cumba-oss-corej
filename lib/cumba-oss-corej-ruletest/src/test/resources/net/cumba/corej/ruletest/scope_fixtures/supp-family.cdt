@@ -57,8 +57,8 @@ CDISCPILOT01 | LB | 01-701-1023 | LBSEQ | 4 | LBFAST | Fasting Status | N | CRF 
 # expressible without any matcher change: `SUPPAPFA--` is prefix.length()+2 = 10 and matches
 # this dataset on the NAME leg. `firstMatchingDomainEntry` computes that for ANY prefix — there
 # is no closed list — so this was a MISSING TOKEN, never a missing mechanism. The four rules
-# whose Check is `dataset_name longer_than 8` (CDISC-CG0018, CORE-000357, CDISC-CG0205,
-# CORE-000293) now carry `SUPPAPFA--`, which restores the canonical target their own cited
+# whose Check is `dataset_name longer_than 8` (CDISC-CG0018, CDISC-CG0205) now carry
+# `SUPPAPFA--`, which restores the canonical target their own cited
 # guidance names and which Fix #170 had unmasked as unreachable. ⚠ Note this is NOT the family
 # wildcard returning: `SUPPAPFA--` matches ONLY 10-character names beginning SUPPAPFA.
 dataset SUPPAPFAMH label="Supplemental Qualifiers for APFA (Medical History)"

@@ -25,7 +25,7 @@ import org.jspecify.annotations.Nullable;
 public class RuleTestScenario
 {
 
-    /** Rule identifier from {@code #test}, e.g. {@code "CORE-000012"}. */
+    /** Rule identifier from {@code #test}, e.g. {@code "CDISC-CG0367"}. */
     String coreId;
 
     /** Expected verdict: {@link Verdict#VIOLATION} or {@link Verdict#NO_VIOLATION}. */

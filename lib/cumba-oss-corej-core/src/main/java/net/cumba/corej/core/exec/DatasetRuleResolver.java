@@ -521,13 +521,20 @@ public class DatasetRuleResolver
 
     // Categories 1-4 removed — handled by corpus rules:
     // Cat 1: retired with rules-templates.json (Fix #366)
-    // Cat 2: CORE-001082 (rules-sdtmig-3-4.json)
-    // Cat 3: CORE-000355 (rules-sdtmig-3-4.json)
-    // Cat 4: CORE-000334 (rules-sdtmig-3-4.json)
+    // Cat 2: CDISC-CG0012
+    // Cat 3: CDISC-CG0014
+    // Cat 4: CDISC-CG0016
 
-    // generateVariableOrderRule removed — handled by static rule CORE-000852
-    // (Operations: get_column_order_from_library + get_column_order_from_dataset,
-    // Check: is_not_ordered_subset_of)
+    // generateVariableOrderRule removed — handled by static rule CDISC-CG0330, which binds
+    // $model_column_order = get_model_column_order() and
+    // $column_order_from_dataset = get_column_order_from_dataset(), and checks
+    // not empty($model_column_order)
+    // and not is_ordered_subset_of($column_order_from_dataset, $model_column_order)
+    // ⚠ This comment used to name `get_column_order_from_library` and `is_not_ordered_subset_of`.
+    // Both operators are real — `get_column_order_from_library()` is bound by 20 rules (18
+    // CDISC-AD/SEND plus FDA/PMDA-SD1076) and `is_not_ordered_subset_of` is a live engine operator
+    // (GroupSemantics.isNotOrderedSubsetVerdict) — but neither is what CG0330
+    // authors. Corrected against rules-src/checks/CDISC/CDISC-CG0330.yaml, 2026-09-19.
 
     // Categories 7-9 (TESTCD/TEST, TSPARMCD/TSPARM, FL/FN) have no generator here; their
     // built-in template carriers were retired with rules-templates.json (Fix #366).
@@ -659,7 +666,7 @@ public class DatasetRuleResolver
             }
 
             // The per-domain expansion keeps the base rule's CORE id verbatim (e.g.
-            // CORE-000767) — base-rule-first, no GEN-EXP-<domain> prefix — so the IDs match the
+            // CDISC-CG0088) — base-rule-first, no GEN-EXP-<domain> prefix — so the IDs match the
             // Python CORE engine (which does not append the domain code) and the per-domain rows
             // roll up onto the one base id in the report. The id also tags any prefix-resolution
             // WARN (only fires when prefix is null/non-2-char on a wildcard-bearing Check).

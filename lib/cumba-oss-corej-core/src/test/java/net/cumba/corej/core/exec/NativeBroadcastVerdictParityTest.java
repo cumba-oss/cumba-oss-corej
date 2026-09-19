@@ -72,7 +72,7 @@ class NativeBroadcastVerdictParityTest
     @Test
     void vmcVariablePresence_existsFiresWhenColumnPresent() throws Exception
     {
-        // CORE-000012 shape: var_exists(AEOCCUR) on a VMC rule = COLUMN presence (not dataset
+        // CDISC-CG0040 shape: var_exists(AEOCCUR) on a VMC rule = COLUMN presence (not dataset
         // presence) — one dataset-level finding when the column is in the table.
         Rule rule = loadRule(VMC_EXISTS);
         assertNotNull(rule.getCheckExpr(), "presence VMC rule must retain a checkExpr");
@@ -121,7 +121,7 @@ class NativeBroadcastVerdictParityTest
     @Test
     void vmcConditionalPresence_existsAndNotExists() throws Exception
     {
-        // CORE-000193 shape: var_exists(A) && var_not_exists(B) — "if A is used, B must accompany
+        // CDISC-CG0503 shape: var_exists(A) && var_not_exists(B) — "if A is used, B must accompany
         // it".
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
                 + "\"Check\":{\"all\":[{\"name\":\"AESTDTC\",\"operator\":\"var_exists\"},"
@@ -142,7 +142,8 @@ class NativeBroadcastVerdictParityTest
     @Test
     void vmcDomainPrefixedPresence_resolvesPerRun() throws Exception
     {
-        // CORE-000026 shape: var_exists(--TPT) && var_not_exists(--TPTNUM) — the -- prefix resolves
+        // CDISC-CG0468 shape: var_exists(--TPT) && var_not_exists(--TPTNUM) — the -- prefix
+        // resolves
         // against the run's domain prefix inside the compiled closure (P3b), so the SAME loaded
         // rule serves any domain.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
@@ -178,7 +179,7 @@ class NativeBroadcastVerdictParityTest
     @Test
     void recordDataGroupOperatorAtDatasetSensitivity_collapsesIdentically() throws Exception
     {
-        // CORE-000212 class (3c): a Record-Data rule with Sensitivity=Dataset and a group
+        // CDISC-CG0535 class (3c): a Record-Data rule with Sensitivity=Dataset and a group
         // operator. rowBased=false → the relaxed gate evaluates the checkExpr natively and the
         // caller collapses the per-row bits to ONE violation — identically to legacy.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
@@ -207,7 +208,7 @@ class NativeBroadcastVerdictParityTest
     @Test
     void dollarComparisonBroadcast_viaRealOperation() throws Exception
     {
-        // CORE-000742 class: a Record-Data rule at Dataset sensitivity whose whole Check is a
+        // FDA-SD9744 class: a Record-Data rule at Dataset sensitivity whose whole Check is a
         // $-operation comparison. The $-var comes from a real record_count Operation, so this
         // exercises the operation-result branch of the broadcast path end-to-end. (The retired
         // variable_exists operation formerly played this role; record_count is a value-producing

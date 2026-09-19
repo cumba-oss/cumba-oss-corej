@@ -1385,7 +1385,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
         // Fix #59: resolve via the CDISC domain code (DOMAIN-column-first), not the file/
         // member name. Without this an LBHE-shaped split lookup would walk the product for an
         // "LBHE" class that doesn't exist in the SDTM Model and return empty — the
-        // CORE-000550-on-LBHE bug.
+        // allowed-variables-on-LBHE bug (the FDA-SD0058 / CDISC-CG0013 shape).
         String domain = CdiscDomainResolver.cdiscDomainOf(aTable);
         if (domain == null || domain.isEmpty())
         {

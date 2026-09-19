@@ -150,7 +150,7 @@ public final class BuiltinFunctions implements FunctionProvider
         // -- VALUE two-hop dereference (colref) ------------------------------
         // colref(X): the first-hop vector X yields, per row, a string that names a column; colref
         // reads that named column's value on the same row. Faithful port of the legacy
-        // value_is_reference:true two-hop ("Fix #6" — CORE-000206 et al.).
+        // value_is_reference:true two-hop ("Fix #6" — CDISC-CG0371 et al.).
         // The named column (e.g. a parent-domain key) is pre-merged into the evaluation table by
         // ChildMatchPreMerger before the EvaluationContext is built, so it is reachable here.
         value(fns, "colref", (run, args) ->
@@ -510,7 +510,10 @@ public final class BuiltinFunctions implements FunctionProvider
         // -- BOOLEAN has-letter / has-digit ----------------------------------
         // has_alpha(x): contains >= 1 ASCII letter [A-Za-z]. has_digit(x): contains >= 1 ASCII
         // digit [0-9]. Both mirror the legacy unanchored matches_regex ".*[a-zA-Z].*" / ".*[0-9].*"
-        // (CORE-000169); a missing/"" cell does not fire.
+        // a missing/"" cell does not fire. ⚠ No rule of this corpus authors either function or
+        // either regex (measured 2026-09-19: zero carriers of has_alpha, has_digit,
+        // ".*[a-zA-Z].*" and ".*[0-9].*" in rules-src/checks), so both are currently
+        // unexercised by the corpus.
         bool(fns, "has_alpha", 1, (run, args) -> Primitives.hasAlpha(args.get(0), run.rowCount()));
         bool(fns, "has_digit", 1, (run, args) -> Primitives.hasDigit(args.get(0), run.rowCount()));
 

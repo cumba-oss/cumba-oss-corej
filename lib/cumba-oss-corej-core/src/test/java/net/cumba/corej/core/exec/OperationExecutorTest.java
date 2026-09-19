@@ -809,7 +809,8 @@ class OperationExecutorTest
     @Test
     void testSplitSuppSelfReference_fallsBackToCurrentTable()
     {
-        // J7 part 2 (CORE-000712): on a SPLIT SUPP dataset (supplbch/he/ur) the value_is_reference
+        // J7 part 2 (CDISC-CG0370): on a SPLIT SUPP dataset (supplbch/he/ur) the
+        // value_is_reference
         // distinct's domain wildcard collapses to the unsplit family name ("SUPPLB"), which
         // resolves
         // to null because no standalone "SUPPLB" dataset exists. resolveTargetTable must fall back
@@ -939,7 +940,7 @@ class OperationExecutorTest
     @Test
     void testMinDate_grouped()
     {
-        // CORE-000239 pattern: min_date of EXSTDTC grouped by USUBJID
+        // CDISC-CG0148 pattern: min_date of EXSTDTC grouped by USUBJID
         IDataTable exTable = MockTable.of().col("USUBJID", "S01", "S01", "S02", "S02", "S01")
                 .col("EXSTDTC", "2024-03-01", "2024-01-15", "2024-06-01", "2024-02-10",
                         "2024-02-01")
@@ -1310,7 +1311,7 @@ class OperationExecutorTest
     }
 
     // -----------------------------------------------------------------------
-    // codelist_terms — codelist named via the `codelists` field (CORE-000929)
+    // codelist_terms — codelist named via the `codelists` field (CDISC-CG0001)
     // -----------------------------------------------------------------------
 
 

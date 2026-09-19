@@ -101,7 +101,7 @@ class AbsentDatasetSkipTest
     @Test
     void polarityIsRespected_aProhibitionIsNotAPresenceRule() throws Exception
     {
-        // CDISC-CG0647 / CORE-000042 shape: a bare ds_exists fires when the dataset IS present.
+        // CDISC-CG0647 shape: a bare ds_exists fires when the dataset IS present.
         // It reports nothing about absence; counting it would silence dependants on nothing.
         Rule prohibition = load("{\"Core\":{\"Id\":\"CDISC-CG0647\"},"
                 + "\"Sensitivity\":\"Study\"," + "\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
@@ -185,7 +185,7 @@ class AbsentDatasetSkipTest
     // ----------------------------------------------- K5b: scoped to the DEPENDENCY, not the rule
 
     /**
-     * The {@code CDISC-CG0007} / {@code FDA-SD1085} / {@code CORE-000138} shape:
+     * The {@code CDISC-CG0007} / {@code FDA-SD1085} shape:
      * {@code all[ any[ <local> , <reads DM> ] , <local> ]}. Rule-granular SKIP would delete the
      * purely-local finding — 25 rules / 27 (rule, dataset) pairs in Population B, 18 of the pairs
      * on DM.

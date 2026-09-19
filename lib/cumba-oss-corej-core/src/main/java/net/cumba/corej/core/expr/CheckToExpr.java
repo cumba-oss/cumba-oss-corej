@@ -1138,20 +1138,26 @@ public final class CheckToExpr
     {
         Expr exact = switch (pattern)
         {
-        // Leading-space (CORE-000867, ADAM-ADD-100024): flag a leading ASCII char <= space. The
-        // operand is the variable_value / value() cursor; ref already carries it.
+        // Leading-space (ADAM-ADD-100024): flag a leading ASCII char <= space. The operand is
+        // the variable_value / value() cursor; ref already carries it. ⚠ No rule of this corpus
+        // authors this pattern (measured 2026-09-19: zero `^\s` carriers in rules-src/checks);
+        // the surviving leading-space rules FDA-SD1021 / PMDA-SD1021 author
+        // `/^ |.*\r|^\.$/`, which this table does not recognise, so the entry is currently
+        // unexercised by the corpus.
         case "^\\s" -> new Expr.And(List.of(new Expr.Not(call("empty", ref)),
                 new Expr.Binary(Expr.BinOp.LE, call("char", ref), numLit(32))));
         case "^(.){9,}$" -> new Expr.Binary(Expr.BinOp.GT, call("len", ref), numLit(8));
         case "^(.){21,}$" -> new Expr.Binary(Expr.BinOp.GT, call("len", ref), numLit(20));
-        // CORE-000094's loose `^\d*\.?\d*$` is NOT recognised: it has no sign, so is_numeric
+        // CDISC-CG0112's loose `^\d*\.?\d*$` is NOT recognised: it has no sign, so is_numeric
         // would newly flag negatives and differs on `1.`/lone-dot — keep it as the regex.
         case "^-?(0|[1-9]\\d*)(\\.\\d+)?$" -> call("is_numeric", ref);
         case "(?i)(AM|PM)" -> new Expr.Or(
                 List.of(call("contains", call("upper", ref), strLit("AM")),
                         call("contains", call("upper", ref), strLit("PM"))));
         case "/" -> call("contains", ref, strLit("/"));
-        // Has-letter / has-digit (CORE-000169): unanchored find for a letter / a digit.
+        // Has-letter / has-digit: unanchored find for a letter / a digit. ⚠ Unexercised by this
+        // corpus — measured 2026-09-19, zero carriers of ".*[a-zA-Z].*", ".*[0-9].*", has_alpha
+        // or has_digit in rules-src/checks.
         case ".*[a-zA-Z].*" -> call("has_alpha", ref);
         case ".*[0-9].*" -> call("has_digit", ref);
         default -> null;
@@ -1231,16 +1237,20 @@ public final class CheckToExpr
     {
         return switch (pattern)
         {
-        // Valid test code (CORE-000220, 000541, 100005, 100009): first char [A-Za-z_], rest
-        // [A-Za-z0-9_], length 1..8 (mixed case).
+        // Valid test code: first char [A-Za-z_], rest [A-Za-z0-9_], length 1..8 (mixed case).
+        // ⚠ Unexercised by this corpus — measured 2026-09-19, zero carriers of either this regex
+        // or is_valid_testcd in rules-src/checks.
         case "^[a-zA-Z_][a-zA-Z0-9_]{0,7}$" -> new Expr.Not(call("is_valid_testcd", ref));
-        // Valid variable name (CORE-000221, 100007): first char [A-Z_], rest [A-Z0-9_], length
-        // 1..8 (uppercase only).
+        // Valid variable name: first char [A-Z_], rest [A-Z0-9_], length 1..8 (uppercase only).
+        // ⚑ The regex itself has no carrier in this corpus (measured 2026-09-19); its six live
+        // consumers author the function directly — CDISC-CG0417, FDA/PMDA-SD0018,
+        // FDA/PMDA-SD1022, PMDA-SD1474.
         case "^[A-Z_][A-Z0-9_]{0,7}$" -> new Expr.Not(call("is_valid_name", ref));
         case "^-?(0|[1-9]\\d*)(\\.\\d+)?$", "^-?(\\d+(\\.\\d+)?$)|(\\.\\d+$)" -> new Expr.Not(
                 call("is_numeric", ref));
-        // Whitespace-tolerant integer (CORE-DRAFT-900007): `^\s*[+-]?\d+\s*$` → `not
-        // is_integer(X)`.
+        // Whitespace-tolerant integer (DRAFT-900007): `^\s*[+-]?\d+\s*$` → `not
+        // is_integer(X)`. ⚠ The id was written `CORE-DRAFT-900007` here until 2026-09-19; the
+        // rule's actual id is `DRAFT-900007`, and it authors is_integer directly today.
         // OPT-IN (unlike the strict integer regexes below): this rule's intent IS the lenient,
         // whitespace-trimming is_integer check (a --SEQ IDVARVAL must be a valid integer), and the
         // `\s*` fences let the Python-portable regex agree with is_integer on every clean/padded
@@ -1254,8 +1264,11 @@ public final class CheckToExpr
         // The strict integer regexes (`^\d+$`, `^[1-9]\d*$`, `^(-?[1-9]\d*|0)$`,
         // `(-?[1-9]\d*|0)$`) are NOT recognised: is_integer is parseDouble-backed and lenient
         // (accepts `5.0`, `1e5`, `+5`, ` 5 `, `5d`, leading zeros) which the strict regexes
-        // reject — so these rules (CDISC-AD0169, CORE-000338/000340/000534/000587) keep the regex
-        // (FALSE-NEGATIVE risk otherwise, e.g. TAETORD="5.0" should fire but wouldn't).
+        // reject — so a rule authoring one keeps the regex (FALSE-NEGATIVE risk otherwise, e.g.
+        // TAETORD="5.0" should fire but wouldn't). Re-derived 2026-09-19: the corpus's strict
+        // carriers are CDISC-CG0440 and CDISC-CG0457, both `TSVAL !~ /^[1-9]\d*$/`. ⚠ The id list
+        // standing here also named CDISC-AD0169, which authors `is_integer(CNSR)` today and so
+        // keeps no regex at all.
         // First-letter (CDISC-AD0144). The broadcast varname() form (CDISC-AD0014, operand
         // variable_name) stays as regex (Phase 5 Cast) — return null to fall through.
         case "^[A-Z]" -> "variable_name"
@@ -1267,8 +1280,10 @@ public final class CheckToExpr
         // Positive-only ISO 8601 duration regex (no leading minus) ⇒ invalid_duration with
         // negative=false pinned. EC-20 flipped the invalid_duration absent-negative default to
         // true (accept the signed grammar), so this canonicalisation must state negative=false
-        // explicitly to keep rejecting signed values (e.g. CORE-000779 / CG0376: "TDSTOFF must be
-        // 0 or a positive ISO 8601 duration"). Relying on the default would silently accept -P1D.
+        // explicitly to keep rejecting signed values (e.g. CDISC-CG0376 / FDA-SD1301: "TDSTOFF
+        // must be 0 or a positive ISO 8601 duration"). Relying on the default would silently
+        // accept -P1D. ⚠ Both author `^P(?=\d+[YMWD]|T\d+[HMS])…`, one alternation wider than
+        // the case label below, so neither currently reaches this entry.
         case "^P(?=\\d+[YMWD])(\\d+Y)?(\\d+M)?(\\d+W)?(\\d+D)?(T(?=\\d+[HMS])(\\d+H)?(\\d+M)?"
                 + "(\\d+S)?)?$" -> new Expr.Call("invalid_duration", List.of(ref),
                         java.util.Map.of("negative", new Expr.Lit(Expr.LitKind.BOOL, false)));

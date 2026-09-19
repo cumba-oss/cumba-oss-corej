@@ -20,7 +20,7 @@ class ScopeMatcherTest
     @Test
     void testMatchesDomain_includeList()
     {
-        // CORE-000027: Domains.Include = ["TE"]
+        // CDISC-CG0328: Domains.Include = ["TE"]
         Rule rule = ruleWithDomainInclude("TE");
         assertTrue(ScopeMatcher.matchesDomain(rule, "TE"));
         assertFalse(ScopeMatcher.matchesDomain(rule, "DM"));
@@ -515,7 +515,7 @@ class ScopeMatcherTest
         assertFalse(ScopeMatcher.matchesDomain(rule, "SUPPDM"));
         // Was true before the conjunctive split gate: a split, but nothing in Include matches it.
         // This is
-        // the leg that made `Include: [AP--]` inert on CDISC-CG0650 / CORE-000778.
+        // the leg that made `Include: [AP--]` inert on CDISC-CG0650.
         assertFalse(ScopeMatcher.matchesDomain(rule, "LB1"));
         assertFalse(ScopeMatcher.matchesDomain(rule, "DM")); // non-split, misses Include
     }
@@ -534,7 +534,7 @@ class ScopeMatcherTest
         scope.setDomains(ds);
         rule.setScope(scope);
 
-        // Split of AE (the shape all three CORE-000778 fixtures had): misses Include.
+        // Split of AE (the shape all three CDISC-CG0650 fixtures had): misses Include.
         assertEquals("domain APTOOLONG not in Scope.Domains.Include [AP--]",
                 ScopeMatcher.describeDomainMismatch(rule, "APTOOLONG", "AE"));
         // Matches Include by name but is not a split.

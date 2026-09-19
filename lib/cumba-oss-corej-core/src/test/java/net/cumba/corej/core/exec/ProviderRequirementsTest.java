@@ -94,7 +94,7 @@ class ProviderRequirementsTest
         assertTrue(
                 of("\"Check\":{\"all\":[{\"name\":\"library_variable_role\","
                         + "\"operator\":\"equal_to\",\"value\":\"Topic\"}]}").library(),
-                "CORE-001081's shape: the dependency exists with no Operations entry at all");
+                "CDISC-CG0010's shape: the dependency exists with no Operations entry at all");
         assertTrue(of("\"Check\":{\"all\":[{\"name\":\"define_variable_name\","
                 + "\"operator\":\"non_empty\"}]}").define());
     }

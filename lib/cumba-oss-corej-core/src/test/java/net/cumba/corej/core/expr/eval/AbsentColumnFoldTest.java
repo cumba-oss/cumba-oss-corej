@@ -508,7 +508,7 @@ class AbsentColumnFoldTest
         // Without it, a metadata operand that the loader's canonicalization pass did not rewrite
         // into its var_*/ds_* accessor form — that pass runs for the metadata-check rule types only
         // (RulePackageLoader.installNativeExpr), so a mis-derived Rule_Type is enough — would be
-        // materialised as an absent COLUMN and `len(variable_label) > 40` (CORE-000019,
+        // materialised as an absent COLUMN and `len(variable_label) > 40` (CDISC-CG0311,
         // CDISC-CG0311, +26 more) would fire on every row of every dataset.
         assertEquals(new BitSet(), eval(expression, absent()),
                 () -> "engine meta is not a data column: " + expression);

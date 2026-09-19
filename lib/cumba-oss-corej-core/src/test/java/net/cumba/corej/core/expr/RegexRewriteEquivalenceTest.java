@@ -65,7 +65,7 @@ class RegexRewriteEquivalenceTest
     @Test
     void notIsNumericMatchesLborresRegex()
     {
-        // LBORRES laxer numeric regex (CORE-000289/290/298/299): /^-?(\d+(\.\d+)?$)|(\.\d+$)/.
+        // LBORRES laxer numeric regex (CDISC-CG0180..CG0183): /^-?(\d+(\.\d+)?$)|(\.\d+$)/.
         // is_numeric is a superset, so it accepts leading zeros ("007") where the regex still
         // fired (the LBORRES regex requires no leading zero before a multi-digit integer? — it
         // tolerates leading zeros, but rejects a bare lone-dot fractional differently). Assert the
@@ -113,8 +113,8 @@ class RegexRewriteEquivalenceTest
     @Test
     void strictIntegerRewriteIsNotEquivalentSoRulesKeepRegex()
     {
-        // REVIEW REVERT (FIX #1): the strict-integer regexes (CDISC-AD0169,
-        // CORE-000338/340/534/587)
+        // REVIEW REVERT (FIX #1): the strict-integer regexes (CDISC-CG0440, CDISC-CG0457 — the
+        // corpus's strict carriers, re-derived 2026-09-19)
         // were reverted to regex because `is_integer` = ScalarSemantics.isIntegerString is
         // Double.parseDouble-backed and LENIENT — it accepts forms the strict regexes reject
         // (`5.0`, `1e5`, `+5`, ` 5 `, leading zeros), which would cause FALSE NEGATIVES. This test
@@ -151,7 +151,7 @@ class RegexRewriteEquivalenceTest
                 .build();
         BitSet regex = eval("X !~ /" + re + "/", t);
         BitSet rewrite = eval("invalid_duration(X)", t);
-        // DOCUMENTED divergence (CORE-000779): the legacy regex's leading lookahead
+        // DOCUMENTED divergence (CDISC-CG0376): the legacy regex's leading lookahead
         // (?=\d+[YMWD]) requires a date component immediately after P, so it rejects a time-only
         // ISO-8601 duration such as "PT1H" (row 2) — firing the not_matches form. invalid_duration
         // correctly accepts "PT1H" as a valid duration, so it does not fire. Align the baseline.
@@ -164,7 +164,7 @@ class RegexRewriteEquivalenceTest
     @Test
     void core000779TimeOnlyDurationsAreIntendedDivergence()
     {
-        // CORE-000779 keeps invalid_duration(TDSTOFF), an INTENDED, MORE-CORRECT divergence: the
+        // CDISC-CG0376 keeps invalid_duration(TDSTOFF), an INTENDED, MORE-CORRECT divergence: the
         // legacy lookahead regex wrongly REJECTED valid ISO-8601 time-only / multi-component /
         // fractional durations (the leading lookahead requires a date component, and the time
         // lookahead `(?=\d+[HMS])` does not admit a fractional second). invalid_duration accepts
@@ -177,7 +177,7 @@ class RegexRewriteEquivalenceTest
         expected.set(3);
         expected.set(4);
         assertEquals(expected, rewrite,
-                "CORE-000779 invalid_duration — intended, more-correct divergence: time-only / "
+                "CDISC-CG0376 invalid_duration — intended, more-correct divergence: time-only / "
                         + "multi-component / fractional durations the legacy regex wrongly rejected");
     }
 
@@ -185,7 +185,7 @@ class RegexRewriteEquivalenceTest
     @Test
     void core000335RandqtRangeIsIntendedDivergence()
     {
-        // CORE-000335 (RANDQT quotient) — the curated rewrite is an INTENDED, MORE-CORRECT
+        // CDISC-CG0280 (RANDQT quotient) — the curated rewrite is an INTENDED, MORE-CORRECT
         // divergence from the buggy legacy regex pair `^(0.[0-9]+?)$` / `^[1]$` (unescaped `.`:
         // it matched "0a5"/"0X5" and excluded "1.0") — pinned here so the divergence is
         // asserted, not silent.
@@ -215,7 +215,7 @@ class RegexRewriteEquivalenceTest
         expected.set(6);
         expected.set(7);
         assertEquals(expected, rewrite,
-                "CORE-000335 RANDQT range rewrite — the converged D-TA-7c (0,1] shape "
+                "CDISC-CG0280 RANDQT range rewrite — the converged D-TA-7c (0,1] shape "
                         + "(0 fires; blank exempt; 0a5/0X5 fire as non-numeric)");
     }
 
@@ -273,7 +273,7 @@ class RegexRewriteEquivalenceTest
     void hasAlphaHasDigitMatchRegex()
     {
         // matches /.*[a-zA-Z].*/ == has_alpha(X); matches /.*[0-9].*/ == has_digit(X)
-        // (CORE-000169).
+        // (no shipped carrier: measured 2026-09-19).
         IDataTable t = MockTable.of().col("X", "Grade2", "abc", "123", "!?", "", null).build();
         assertEquals(eval("X =~ /.*[a-zA-Z].*/", t), eval("has_alpha(X)", t),
                 "has_alpha(X) vs .*[a-zA-Z].*");
@@ -352,7 +352,7 @@ class RegexRewriteEquivalenceTest
     @Test
     void prefixNotInMatchesAffixRegex()
     {
-        // CORE-000539: prefix(X,2) !~ /^(AP|FA)$/ vs prefix(X,2) not in ["AP","FA"]. The anchored
+        // CDISC-CG0332: prefix(X,2) !~ /^(AP|FA)$/ vs prefix(X,2) not in ["AP","FA"]. The anchored
         // affix regex matches exactly the 2-char prefix against "AP"/"FA", so negated membership is
         // equivalent.
         // ⚠ Both forms are case-SENSITIVE, so a lower-case-only column makes both sides all-true

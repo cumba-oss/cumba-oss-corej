@@ -339,10 +339,12 @@ class RuleRunnerEmptyDatasetTest
 
     /**
      * The unit-level pin of the 13 (ruling 6c-1): a {@code Dataset} × {@code {ROW}}
-     * {@code DOMAIN}-column rule — {@code len(DOMAIN) != 2}, the shape of {@code CORE-000180} and
-     * its twelve siblings — on a 0-row table that <em>declares</em> {@code DOMAIN}. Before
-     * {@code Fix #349} this fired once on every empty dataset: the synthetic substitute had no
-     * columns, {@code DOMAIN} folded absent and {@code len(absent) != 2} was true.
+     * {@code DOMAIN}-column rule — {@code len(DOMAIN) != 2}, the shape of {@code CDISC-CG0308} and
+     * its siblings ({@code CDISC-CG0309}, {@code FDA-SD1300}, {@code PMDA-SD1300}), which author it
+     * as {@code len(dataset_domain) != 2} today — on a 0-row table that <em>declares</em>
+     * {@code DOMAIN}. Before {@code Fix #349} this fired once on every empty dataset: the synthetic
+     * substitute had no columns, {@code DOMAIN} folded absent and {@code len(absent) != 2} was
+     * true.
      */
     @Test
     void rowReadingRule_emptyDataset_executedWithNoFindings()
@@ -406,10 +408,10 @@ class RuleRunnerEmptyDatasetTest
     /**
      * The twins' unit-level pin: {@code $records_in_dataset == 0} over a {@code record_count}
      * operation — the shape of {@code FDA-SD0001}, {@code PMDA-SD0001}, {@code CDISC-CG0408},
-     * {@code CDISC-SEND-0278}, {@code CORE-000579} and the minted {@code CDISC-AD9701} /
-     * {@code CORE-009706}. This is the one rule the whole policy routes the zero-row story through:
-     * it must fire exactly once on an empty dataset and not at all on a populated one. A failure
-     * here would mean the policy silenced the rule it reports empty datasets with.
+     * {@code CDISC-SEND-0278} and the minted {@code CDISC-AD9701}. This is the one rule the whole
+     * policy routes the zero-row story through: it must fire exactly once on an empty dataset and
+     * not at all on a populated one. A failure here would mean the policy silenced the rule it
+     * reports empty datasets with.
      */
     @Test
     void noRecordsTwin_emptyDataset_firesOnce() throws java.io.IOException

@@ -316,7 +316,8 @@ class NativeExprEvaluatorTest
     @Test
     void colrefTwoHopNativeMatchesLegacy()
     {
-        // CORE-000206: IDVARVAL not_equal_to IDVAR (type-insensitive, value_is_reference two-hop)
+        // CDISC-CG0371: IDVARVAL not_equal_to IDVAR (type-insensitive, value_is_reference
+        // two-hop)
         // ->
         // `str(IDVARVAL) != str(colref(IDVAR))`. IDVAR names a column; colref reads it on the same
         // row. AESEQ is the parent-domain column ChildMatchPreMerger pre-merges into the SUPP--

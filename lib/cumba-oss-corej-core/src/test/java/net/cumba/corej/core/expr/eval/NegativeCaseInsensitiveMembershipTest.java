@@ -98,7 +98,7 @@ class NegativeCaseInsensitiveMembershipTest
     /**
      * At the bare membership level a missing cell folds to {@code ""}, which is not in the list, so
      * the negated form fires it (the "empty-string literal" contract in
-     * {@code Primitives.membership}). In the real CORE-000041 rule the row is excluded by the
+     * {@code Primitives.membership}). In the real CDISC-CG0649 rule the row is excluded by the
      * separate {@code not empty(TSVAL)} AND-clause, not by this leaf — so this leaf must fire the
      * blank in isolation, mirroring the legacy operator's per-leaf behaviour.
      */

@@ -19,13 +19,16 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Fix #64 regression: CORE-000550 ({@code variable_name is_not_contained_by $allowed_variables})
- * must resolve {@code $allowed_variables} as a list (not the literal token) so a variable IN the
- * allowed list does not fire. Because CORE-000550 is a {@code Sensitivity.DATASET} Variable
+ * Fix #64 regression: a {@code variable_name is_not_contained_by $allowed_variables} rule must
+ * resolve {@code $allowed_variables} as a list (not the literal token) so a variable IN the allowed
+ * list does not fire. The rule built below is the shape {@code FDA-SD0058} ships (and its
+ * equivalence classmates {@code CDISC-CG0013} / {@code CDISC-CG0351} / {@code PMDA-SD0058}):
+ * {@code $allowed_variables = get_model_column_order()}, checked with
+ * {@code varname() not in $allowed_variables}. Because it is a {@code Sensitivity.DATASET} Variable
  * Metadata Check, the engine reports a single dataset-level violation — the FIRST variable not in
  * the allowed list (mirroring Python's {@code COREActions.generate_targeted_error_object}
- * {@code errors_df.iloc[0]}; see the matching {@code rulespec/specs/CORE-000550.yaml} oracle) — and
- * zero violations when every variable is allowed.
+ * {@code errors_df.iloc[0]}; see the matching {@code rulespec/specs/FDA-SD0058.yaml} drift guard in
+ * {@code cumba-oss-corej-rules}) — and zero violations when every variable is allowed.
  *
  * <p>
  * Pre-Fix-#64, the per-variable {@code partialEvaluateVariable} fold called
@@ -38,12 +41,12 @@ import org.junit.jupiter.api.Test;
  * {@code !targetStr.contains(metaStr)} returned true for every column — one violation per column,
  * regardless of whether the column was in the allowed list.
  */
-class Core000550RegressionTest
+class VariableMetadataOperandListResolutionTest
 {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private static Rule core000550()
+    private static Rule allowedVariablesRule()
     {
         // Operations: $allowed_variables = get_model_column_order
         Operation op = new Operation();
@@ -58,7 +61,7 @@ class Core000550RegressionTest
 
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
-        core.setId("CORE-000550");
+        core.setId("FDA-SD0058");
         rule.setCore(core);
         rule.setOperations(List.of(op));
         rule.setCheck(new CheckConditionAll(List.of(leaf)));
@@ -208,10 +211,10 @@ class Core000550RegressionTest
                 "AEENDTC");
         MetadataProvider provider = providerWithAllowed(allowed);
 
-        RuleExecutionResult result = RuleRunner.execute(core000550(), table, _ -> null, "AE",
-                provider);
+        RuleExecutionResult result = RuleRunner.execute(allowedVariablesRule(), table, _ -> null,
+                "AE", provider);
 
-        assertEquals("CORE-000550", result.getRuleId());
+        assertEquals("FDA-SD0058", result.getRuleId());
         assertEquals(0, result.getViolationCount(),
                 "all columns in allowed list → no violations; pre-Fix-#64 fired 4 spurious "
                         + "violations because $allowed_variables was treated as a literal string");
@@ -222,10 +225,9 @@ class Core000550RegressionTest
     void mixedColumns_onlyDisallowedVariablesFire()
     {
         // Two columns are in the list (STUDYID, USUBJID); two are not (AECUSTOM, AEEXTRA).
-        // CORE-000550 is a Sensitivity.DATASET Variable Metadata Check, so Python's
-        // COREActions.generate_targeted_error_object emits exactly ONE error (errors_df.iloc[0],
-        // the first failing variable in column order). The matching parity spec
-        // (rulespec/specs/CORE-000550.yaml) captures that single-violation oracle. The first
+        // A Sensitivity.DATASET Variable Metadata Check collapses to exactly ONE error
+        // (errors_df.iloc[0], the first failing variable in column order), which is what
+        // rulespec/specs/FDA-SD0058.yaml pins as a drift guard over the shipped rule. The first
         // disallowed column in iteration order is AECUSTOM.
         IDataTable table = MockTable.of().col("STUDYID", "S001").col("USUBJID", "U001")
                 .col("AECUSTOM", "X").col("AEEXTRA", "Y").build();
@@ -233,8 +235,8 @@ class Core000550RegressionTest
         List<String> allowed = List.of("STUDYID", "USUBJID", "AESEQ", "AETERM");
         MetadataProvider provider = providerWithAllowed(allowed);
 
-        RuleExecutionResult result = RuleRunner.execute(core000550(), table, _ -> null, "AE",
-                provider);
+        RuleExecutionResult result = RuleRunner.execute(allowedVariablesRule(), table, _ -> null,
+                "AE", provider);
 
         assertEquals(1, result.getViolationCount(),
                 "dataset-sensitivity collapse: only the first disallowed variable fires");
@@ -256,8 +258,8 @@ class Core000550RegressionTest
         List<String> allowed = List.of("OTHER_VAR");
         MetadataProvider provider = providerWithAllowed(allowed);
 
-        RuleExecutionResult result = RuleRunner.execute(core000550(), table, _ -> null, "AE",
-                provider);
+        RuleExecutionResult result = RuleRunner.execute(allowedVariablesRule(), table, _ -> null,
+                "AE", provider);
 
         assertEquals(1, result.getViolationCount());
         assertEquals("STUDYID", result.getViolations().get(0).getValues().get("variable_name"));
@@ -274,8 +276,8 @@ class Core000550RegressionTest
         IDataTable table = MockTable.of().col("STUDYID", "S001").build();
         MetadataProvider provider = providerWithAllowed(List.of());
 
-        RuleExecutionResult result = RuleRunner.execute(core000550(), table, _ -> null, "AE",
-                provider);
+        RuleExecutionResult result = RuleRunner.execute(allowedVariablesRule(), table, _ -> null,
+                "AE", provider);
 
         assertEquals(RuleExecutionStatus.SKIPPED, result.getStatus());
         assertTrue(result.getViolations().isEmpty());

@@ -1120,7 +1120,7 @@ public final class LibraryValidator
         // `prefixOf(domain)` returned "SU" for a SUPP dataset like "SUPPLB", so an operation with
         // `domain: "SUPP--"` was rewritten to "SUPPSU" (resolveOperationPrefix's SUPP-aware branch
         // only fires for a prefix starting with "SUPP"/"SQAP" of length > 4). resolve("SUPPSU")
-        // then missed and the operation result was absent — e.g. CORE-000712's $rdomain_variables.
+        // then missed and the operation result was absent.
         // cdiscDomain ("SUPPLB" here) feeds the SUPP-aware branch correctly, yielding "SUPPLB".
         String domainPrefix = cdiscDomain;
 

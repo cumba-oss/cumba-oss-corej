@@ -111,7 +111,8 @@ class RuleLoadValidationDatasetProviderOperandTest
     void datasetMetadataCheckUsage_staysValid() throws IOException
     {
         // The supported home of these operands: DATASET_METADATA_CHECK, where RuleRunner phase
-        // 2a2 injects the provider-backed values (e.g. CORE-001081-style three-level compares).
+        // 2a2 injects the provider-backed values (e.g. CDISC-CG0010-style three-level
+        // compares).
         String ruleJson = """
                 {
                   "Core": {"Id": "TEST-GR-C4"},

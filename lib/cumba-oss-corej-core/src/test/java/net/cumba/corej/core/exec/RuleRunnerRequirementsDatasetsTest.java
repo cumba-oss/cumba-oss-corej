@@ -177,7 +177,7 @@ class RuleRunnerRequirementsDatasetsTest
      * ⛔⭐ The exact-name half, and the reason the predicate cannot be one unconditional rule.
      *
      * <p>
-     * This is {@code CORE-000208}'s shape: the rule's <em>only</em> route to {@code TA} is an
+     * This is the exact-name shape: the rule's <em>only</em> route to {@code TA} is an
      * {@code Operations[].domain}, the one surface {@code AbsentDatasetSkip.splitWidenedCandidates}
      * deliberately excludes because operations still resolve by exact name downstream. If the
      * requirement gated on the widened fact the rule would run on a split submission and then

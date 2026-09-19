@@ -104,7 +104,7 @@ class RoundTripTest
     @Test
     void notEqualToTwoHopReference()
     {
-        // CORE-000206: type-insensitive not_equal_to with value_is_reference (two-hop). Emits
+        // CDISC-CG0371: type-insensitive not_equal_to with value_is_reference (two-hop). Emits
         // `str(IDVARVAL) != str(colref(IDVAR))`; must round-trip with valueIsReference preserved.
         assertLeafRoundTrips(CheckConditionLeaf.builder().name("IDVARVAL").operator("not_equal_to")
                 .typeInsensitive(true).value(N.textNode("IDVAR")).valueIsReference(true).build());

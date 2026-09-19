@@ -15,10 +15,10 @@ import org.junit.jupiter.api.Test;
 
 /**
  * R-P3 ({@code plans/done/PLAN-native-engine-residuals.md}) — the Tier-B define accessors
- * {@code var_ccode} / {@code var_codelist_coded_codes} (CORE-000929's {@code define_variable_ccode}
- * / {@code define_variable_codelist_coded_codes} operands). The legacy Step-3 cascade injects every
- * {@code define_variable_<key>} from the define provider's per-variable map
- * ({@code RuleRunner.buildVariableMetadata}); the accessors read the SAME map keys
+ * {@code var_ccode} / {@code var_codelist_coded_codes} (CDISC-CG0001's
+ * {@code define_variable_ccode} / {@code define_variable_codelist_coded_codes} operands). The
+ * legacy Step-3 cascade injects every {@code define_variable_<key>} from the define provider's
+ * per-variable map ({@code RuleRunner.buildVariableMetadata}); the accessors read the SAME map keys
  * ({@code ExprCompiler.readProviderLevel}), so native == legacy per variable by construction —
  * asserted here end-to-end with a provider that actually exposes the keys.
  */

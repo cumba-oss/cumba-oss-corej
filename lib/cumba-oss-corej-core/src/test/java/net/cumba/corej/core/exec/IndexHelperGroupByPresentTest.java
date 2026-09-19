@@ -222,7 +222,7 @@ class IndexHelperGroupByPresentTest
     @Test
     void recordCountGrouped_absentGroupColumn_countsTheWholeDataset()
     {
-        // CORE-000562's shape: record_count filtered to HLTSUBJI=N, grouped by the Perm TSGRPID,
+        // CDISC-CG0273's shape: record_count filtered to HLTSUBJI=N, grouped by the Perm TSGRPID,
         // on a TS dataset that does not carry TSGRPID.
         IDataTable t = MockTable.of().col("TSPARMCD", "HLTSUBJI", "TDIGRP", "TITLE")
                 .col("TSVAL", "N", "", "A Study").build();

@@ -154,7 +154,7 @@ class ScopeMatcherSuppApFamilyTest
     @Test
     void include_ap_dashdash_no_longer_includes_supp()
     {
-        // CDISC-CG0309 / CG0650 / CORE-000181 / CORE-000778 shape: AP---scoped rules were
+        // CDISC-CG0309 / CG0650 shape: AP---scoped rules were
         // firing on SUPPLB. CDISC-CG0309-absent-DOMAIN-SUPPLB.cdt pinned that bug.
         Rule r = withScope(List.of("AP--"), null);
         assertFalse(ScopeMatcher.matchesDomain(r, "SUPPLB"),
@@ -248,7 +248,7 @@ class ScopeMatcherSuppApFamilyTest
     @Test
     void core000510_style_scope_keeps_working_on_its_own_family()
     {
-        // CORE-000510 shape: include_split_datasets=true, Exclude=[SUPP--, AP--]. Both tokens
+        // CDISC-CG0017 shape: include_split_datasets=true, Exclude=[SUPP--, AP--]. Both tokens
         // are now present, so both families are excluded — explicitly, not by inference.
         Rule r = withSplitFilterAndExclude(true, List.of("SUPP--", "AP--"));
         assertNotNull(ScopeMatcher.describeDomainMismatch(r, "SUPPLBHM", "SUPPLB"));

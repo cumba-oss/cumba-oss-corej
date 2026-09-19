@@ -1001,9 +1001,11 @@ public final class GroupSemantics
      * where that shows most sharply: pooling the blank-keyed rows (all-{@code ""}, or
      * all-one-marker) fabricates a record chain, so one subject's last row is compared against
      * another subject's first and the operator reports a sort violation that the data never
-     * asserted. Six shipped rules reach this site ({@code CDISC-CG0620}, {@code CDISC-CG0662},
-     * {@code CDISC-SEND-0130}, {@code CDISC-SEND-0130.1}, {@code CDISC-SEND-0354},
-     * {@code CORE-000535}). Correcting them is an <b>authoring</b> change — declaring
+     * asserted. <b>Five</b> shipped rules reach this site ({@code CDISC-CG0620},
+     * {@code CDISC-CG0662}, {@code CDISC-SEND-0130}, {@code CDISC-SEND-0130.1},
+     * {@code CDISC-SEND-0354}) — re-derived 2026-09-19 as every rule of the corpus authoring an
+     * {@code is_sorted_by} call ({@code grep -rl sorted rules-src/checks} in
+     * {@code cumba-oss-corej-rules}). Correcting them is an <b>authoring</b> change — declaring
      * {@code keep_missings: false} — and is deliberately <em>not</em> done by changing this
      * default, so that the change is visible per rule and its finding delta attributable.
      * </p>
@@ -1311,9 +1313,13 @@ public final class GroupSemantics
      * Dropping it is therefore exact, not an approximation: it is the identical partition. Before
      * Fix #143 the first member ("target") answered absence with an empty {@code BitSet} for both
      * polarities ("not applicable"); that was the last surviving carve-out from the all-missing
-     * contract. The historical over-firing defects (CORE-000213, CORE-001034) do <b>not</b> return:
-     * those rules guard their member with {@code exists}, and the regrouped check flags a row only
-     * when some other row carries the same surviving key tuple.
+     * contract. The over-firing shape those historical defects were filed for does <b>not</b>
+     * return: the rules exposed to it are the corpus's {@code is_unique_set} carriers
+     * ({@code CDISC-CG0536}, {@code CDISC-CG0562} — the latter expression-identical to the rule one
+     * of the defects named, the former adding {@code DSCAT} to the key tuple), and each guards its
+     * member — {@code CG0536} with {@code var_exists("DSSCAT")}, {@code CG0562} with an
+     * {@code empty(--REPNUM)} disjunct — so the regrouped check flags a row only when some other
+     * row carries the same surviving key tuple.
      * </p>
      *
      * <p>

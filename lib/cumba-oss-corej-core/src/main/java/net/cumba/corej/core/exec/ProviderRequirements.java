@@ -33,7 +33,7 @@ import org.jspecify.annotations.Nullable;
  * <li>a metadata <b>operand</b> in the {@code Check} that resolves at a provider-backed level, with
  * no {@code Operations} entry at all. Two spellings, and <b>both</b> must be read: the bare
  * {@code library_*} / {@code define_*} operand prefix on the typed condition tree
- * ({@link RuleRunner#referencesOperandPrefix}; {@code CORE-001081} is the live instance), and the
+ * ({@link RuleRunner#referencesOperandPrefix}; {@code CDISC-CG0010} is the live instance), and the
  * level-naming accessor <b>call</b> {@code var_*(…, "LIBRARY")} / {@code vlm_*(…)}, which is the
  * corpus's dominant form and is read by delegating to
  * {@link MetadataExprScan#providerLevelsUsed};</li>

@@ -26,7 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
  * The load-bearing assertions are the two {@code PUBLISHED_CT_PACKAGES} ones: the store path must
  * answer the store's <b>whole</b> published enumeration — including a package the store does not
  * even hold, and on the ADaM family, where the retained api-model path still answers only the
- * requested ids (plan §1.1-1, the CORE-000761 / CDISC-CG0289 over-fire defect).
+ * requested ids (plan §1.1-1, the CDISC-CG0289 over-fire defect).
  * </p>
  */
 class StoreMetadataProviderFactoryTest

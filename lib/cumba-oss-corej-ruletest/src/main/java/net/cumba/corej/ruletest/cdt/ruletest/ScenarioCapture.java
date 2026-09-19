@@ -139,7 +139,7 @@ public final class ScenarioCapture
      * <li>If the resolver is an {@link OverridingResolver}, its explicit overrides become siblings
      * too, and its dropped names are excluded everywhere.</li>
      * <li>If the primary's dataset name is in the dropped set (e.g. a Domain Presence Check like
-     * CORE-000581 that simulates a missing DM), the primary is renamed to an "absent-proxy" so the
+     * FDA-SD1020 that simulates a missing DM), the primary is renamed to an "absent-proxy" so the
      * scenario resolver does not re-include it.</li>
      * </ul>
      */
@@ -187,7 +187,7 @@ public final class ScenarioCapture
 
         // The scenario's #test domain= directive selects the primary dataset AND is
         // passed as domainPrefix for `--` expansion. If Java's domainPrefix differs
-        // from the primary's declared name (e.g. CORE-000235 uses an APAE primary
+        // from the primary's declared name (e.g. CDISC-CG0367 uses an APAE primary
         // with domainPrefix="AP"), rename the primary so the directive matches.
         String effectiveDomain = aDomain;
         OverlayDataTable effectivePrimary = aPrimary;

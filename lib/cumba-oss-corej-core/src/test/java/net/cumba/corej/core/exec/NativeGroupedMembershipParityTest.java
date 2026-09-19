@@ -13,7 +13,7 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * P9 review finding 1 (BLOCKER) regression — CORE-000168's shape: a membership RHS {@code $}-ref
+ * P9 review finding 1 (BLOCKER) regression — CDISC-CG0034's shape: a membership RHS {@code $}-ref
  * whose Operation is GROUPED ({@code distinct(SV.VISITNUM, group=[USUBJID])}) resolves to a per-row
  * {@link GroupedResult}. Pre-fix the native membership plan threw an {@code ExpressionException} at
  * RUN time (the set was assumed broadcast-constant), which under the P7 no-fallback contract
@@ -26,7 +26,7 @@ class NativeGroupedMembershipParityTest
     @Test
     void groupedDollarMembershipMatchesLegacy() throws Exception
     {
-        // CORE-000168 verbatim shape.
+        // CDISC-CG0034 verbatim shape.
         String json = "{\"rules\":{\"R1\":{\"Core\":{\"Id\":\"R1\"},"
                 + "\"Sensitivity\":\"Record\","
                 + "\"Operations\":[{\"id\":\"$sv_visitnum\",\"operator\":\"distinct\","

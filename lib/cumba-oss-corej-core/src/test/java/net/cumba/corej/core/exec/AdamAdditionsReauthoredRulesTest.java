@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 /**
  * R-P4 ({@code plans/done/PLAN-native-engine-residuals.md}) — the re-authored ADaM additions
  * {@code ADAM-ADD-100025}/{@code 100026}: {@code $dataset_variables not_contains_all
- * $required_variables} (/{@code $expected_variables}), the fully-native CORE-000355 shape replacing
+ * $required_variables} (/{@code $expected_variables}), the fully-native FDA-SD0056 shape replacing
  * the degenerate {@code variable_name not_contains_all ["$-ref"]} form (whose {@code $}-ref sat
  * inside the keys array, where neither engine expands it). The intended verdict — "the dataset must
  * contain every required/expected variable" — is pinned here on both engines.

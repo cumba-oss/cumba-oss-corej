@@ -157,7 +157,7 @@ class BroadcastFoldTest
     @Test
     void scalarContextVarValueSideEvaluates_columnValueSideStaysUnknown()
     {
-        // CORE-000598 family: the VALUE side is the Fix #10 DOMAIN context variable (raised as a
+        // CDISC-CG0413 family: the VALUE side is the Fix #10 DOMAIN context variable (raised as a
         // bare COLUMN ref). With the var present, both engines read the VARIABLE — the leaf is
         // dataset-constant; without it, the fold must stay UNKNOWN (the literal/column fallbacks
         // are not provably aligned).

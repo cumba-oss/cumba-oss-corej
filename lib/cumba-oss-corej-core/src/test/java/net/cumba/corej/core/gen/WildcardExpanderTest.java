@@ -528,7 +528,7 @@ class WildcardExpanderTest
     @Test
     void expand_mixedGroups_TRxxPGy_and_TRTxxP()
     {
-        // CORE-000756 / CDISC-AD0756 shape: TRxxPGy (groups [xx, y]) +
+        // CDISC-AD0756 shape: TRxxPGy (groups [xx, y]) +
         // TRTxxP (groups [xx]). Pre-fix the expander rejected this rule
         // outright because group lists differed. Now: TRxxPGy seeds the
         // candidate tuples (it covers the union); TRTxxP's column per tuple
@@ -560,7 +560,7 @@ class WildcardExpanderTest
     @Test
     void expand_mixedGroups_partialPattern_noMatchingColumn_isComputed()
     {
-        // CORE-000368 / CDISC-AD0368 shape: TRxxPGy (groups [xx, y]) +
+        // CDISC-AD0368 shape: TRxxPGy (groups [xx, y]) +
         // TRTxxA (groups [xx]) + TRxxAGy (groups [xx, y]) — the rule fires
         // when TRxxAGy is *missing*. Dataset has TRxxPGy/TRTxxA columns but
         // no TRxxAGy. The expander must still produce one rule per (xx, y)

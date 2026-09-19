@@ -158,10 +158,10 @@ public final class ScopeMatcher
      * only"; absent means no split filtering. ⚠ This is a deliberate <b>java-only</b> divergence
      * from Python's {@code rule_processor._handle_split_domains}, which applies {@code true}
      * <em>additively</em>: there, a non-empty Include list is overridden for every split dataset in
-     * the study, so {@code Include: ["AP--"] + include_split_datasets: true} (CDISC-CG0650 /
-     * CORE-000778) makes the {@code AP--} token inert and runs the rule study-wide. Python's
-     * <em>no-Include</em> branch is already the conjunctive gate; the divergence is only that Java
-     * now applies the same gate when an Include list is present.
+     * the study, so {@code Include: ["AP--"] + include_split_datasets: true} (CDISC-CG0650) makes
+     * the {@code AP--} token inert and runs the rule study-wide. Python's <em>no-Include</em>
+     * branch is already the conjunctive gate; the divergence is only that Java now applies the same
+     * gate when an Include list is present.
      * </p>
      *
      * @param rule
@@ -213,7 +213,7 @@ public final class ScopeMatcher
         // ⚠ This is a deliberate JAVA-ONLY divergence from Python's
         // rule_processor._handle_split_domains, which applies `true` ADDITIVELY — there, a
         // non-empty Include list is overridden for every split dataset in the study, so
-        // `Include: [AP--] + include_split_datasets: true` (CDISC-CG0650 / CORE-000778) runs
+        // `Include: [AP--] + include_split_datasets: true` (CDISC-CG0650) runs
         // study-wide and the `AP--` token is inert. Java previously mirrored that; java-first
         // (2026-08-03) removed parity as a constraint. Two independent authorities settle the
         // reading: CDISC-CG0650's `Source` block carries `Class: "AP"` (the family restriction is

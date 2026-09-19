@@ -656,7 +656,7 @@ class RequirementsLoadGateTest
                     + "\"Check\":{\"all\":[{\"name\":\"library_variable_role\","
                     + "\"operator\":\"equal_to\",\"value\":\"Topic\"}]}";
             assertNull(errorOf(body),
-                    "CORE-001081's shape: the dependency exists with no Operations entry at all");
+                    "CDISC-CG0010's shape: the dependency exists with no Operations entry at all");
         }
 
 

@@ -100,7 +100,7 @@ public final class WildcardExpander
          * Rule has no real wildcard tokens in its Check (parsing showed every lowercase run was an
          * "unknown marker → literal"). The caller treats the rule as a normal concrete rule and
          * runs it as-is. This is the path for the literal-mixed-case false positives the legacy
-         * heuristic flagged (e.g. CORE-000115's {@code "Screen Failure"}, {@code "Char"}, regex
+         * heuristic flagged (e.g. CDISC-CG0570's {@code "Screen Failure"}, {@code "Char"}, regex
          * literals).
          */
         record NotApplicable() implements ExpansionResult

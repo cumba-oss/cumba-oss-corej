@@ -5,9 +5,10 @@ import org.jspecify.annotations.Nullable;
 /**
  * Resolves engine-wide execution limits from configuration. Currently the per-rule findings cap:
  * the maximum number of {@link Violation}s a single rule execution (per dataset) materialises into
- * its {@link RuleExecutionResult}. The cap bounds heap use on high-cardinality rules (e.g.
- * CORE-000867 — "text variable contains leading spaces" — flagging every char column of a large
- * {@code SUPPLB}); without it the unbounded {@code List<Violation>} can exhaust the JVM heap.
+ * its {@link RuleExecutionResult}. The cap bounds heap use on high-cardinality rules — a
+ * variable-level check with an {@code ALL}-domain scope flags one violation per char column of
+ * every dataset, so a large {@code SUPPLB} alone can produce tens of thousands; without the cap the
+ * unbounded {@code List<Violation>} can exhaust the JVM heap.
  *
  * <p>
  * The cap is resolved (highest precedence first):

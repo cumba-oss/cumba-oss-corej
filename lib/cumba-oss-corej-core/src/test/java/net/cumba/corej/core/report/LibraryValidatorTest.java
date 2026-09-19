@@ -234,7 +234,7 @@ class LibraryValidatorTest
     @Test
     void missingRequiredVariableProducesFinding()
     {
-        // Required-variable checking is handled by corpus rule CORE-000355 (required_variables
+        // Required-variable checking is handled by corpus rule FDA-SD0056 (required_variables
         // Operation + not_contains_all); the generator never produced per-variable GEN-REQ rules.
         // ⚑ Fix #366: the rule set must now be non-empty, because nothing is merged in behind the
         // caller's back — with zero selected rules the dataset is not validated and produces no

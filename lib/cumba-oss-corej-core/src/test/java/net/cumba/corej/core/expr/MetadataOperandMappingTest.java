@@ -41,7 +41,7 @@ class MetadataOperandMappingTest
     void forwardMapsFormerTierBOperands()
     {
         // R-P3 (PLAN-native-engine-residuals): the Tier-B define operands now map to their
-        // accessors (CORE-000929).
+        // accessors (CDISC-CG0001).
         assertEquals(CheckExpressionParser.parse("var_ccode(variable_name, \"DEFINE\")"),
                 MetadataOperandMapping.forwardOperand("define_variable_ccode"));
         assertEquals(

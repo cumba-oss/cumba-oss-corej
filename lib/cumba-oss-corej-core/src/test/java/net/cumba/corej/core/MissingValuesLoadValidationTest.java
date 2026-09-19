@@ -140,7 +140,7 @@ class MissingValuesLoadValidationTest
         // question. row_max / row_min: a blank horizontal cell (TRxxEDT) encodes "period not
         // used", so `indeterminate` would kill the rule (E0). max: the generic string fallback
         // also serves Char CATEGORY columns (ANRIND, ATOXGR) — a rule that wants date
-        // determinability authors max_date, as CORE-000717 was moved to do.
+        // determinability authors max_date, the form EC-46 OQ4 moved the corpus onto.
         for (String operator : new String[]
         {
                 "record_count", "distinct", "row_max", "row_min", "max", "variable_count", "dy"
@@ -459,8 +459,8 @@ class MissingValuesLoadValidationTest
      * {@code date(…)} / {@code num(…)} / {@code lowcase(…)} wrappers before naming it, so
      * {@code date($m) == X} means what {@code $m == X} means. A literal {@code instanceof Ref} test
      * judged the first and missed the second — the same rule text getting two verdicts depending on
-     * whether an unrelated sibling conjunct happened to block lowering. {@code CDISC-CG0143} /
-     * {@code CORE-000370} ship this shape.
+     * whether an unrelated sibling conjunct happened to block lowering. {@code CDISC-CG0143} ships
+     * this shape.
      */
     @Test
     void aWrappedReferenceIsStillRecognisedAsTheConsumer() throws IOException

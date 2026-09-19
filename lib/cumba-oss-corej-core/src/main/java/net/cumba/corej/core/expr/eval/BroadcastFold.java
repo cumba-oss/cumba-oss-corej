@@ -200,7 +200,7 @@ public final class BroadcastFold
         boolean shape = switch (e)
         {
         // The VALUE side may additionally be a bare reference resolved from the dataset-level
-        // context variables (e.g. the Fix #10 DOMAIN injection — CORE-000598's
+        // context variables (e.g. the Fix #10 DOMAIN injection — CDISC-CG0413's
         // `dataset_name prefix_not_equal_to 2 value "DOMAIN"`): the legacy fold resolves textual
         // values via metadata.containsKey BEFORE the literal fallback, and the compiled native
         // operand plans resolve variables before columns — both engines read the VARIABLE, so the
@@ -803,7 +803,8 @@ public final class BroadcastFold
      * every core designation:
      * </p>
      * <ul>
-     * <li><b>Required</b> — {@code CORE-000356} (<i>a Required variable is empty</i>)</li>
+     * <li><b>Required</b> — {@code CDISC-CG0014-B} / {@code FDA-SD0002} (<i>a Required variable is
+     * empty</i>)</li>
      * <li><b>Expected</b> — {@code FDA-SD1149} (<i>empty for all records in the dataset</i>)</li>
      * <li><b>Permissible</b> — {@code FDA-SD1078} / {@code PMDA-SD1078} (<i>present in the dataset
      * but empty for all records</i>) — ⚠ the PMDA twin is only <i>Partially Executable</i>, the one

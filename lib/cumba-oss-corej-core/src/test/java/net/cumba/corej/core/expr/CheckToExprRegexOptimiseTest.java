@@ -54,7 +54,7 @@ class CheckToExprRegexOptimiseTest
     @Test
     void looseNumericRegexStaysRegex()
     {
-        // CORE-000094's loose `^\d*\.?\d*$` is NOT rewritten — is_numeric (sign-aware, differs on
+        // CDISC-CG0112's loose `^\d*\.?\d*$` is NOT rewritten — is_numeric (sign-aware, differs on
         // `1.`/lone-dot) is not equivalent to the loose, sign-less regex (review revert FIX #2).
         // The printer doubles every backslash, so the regex literal reads `/^\\d*\\.?\\d*$/`.
         assertEquals("X =~ /^\\\\d*\\\\.?\\\\d*$/", lower("matches_regex", "X", "^\\d*\\.?\\d*$"));
@@ -131,7 +131,7 @@ class CheckToExprRegexOptimiseTest
                 + "(T(?=\\d+[HMS])(\\d+H)?(\\d+M)?(\\d+S)?)?$";
         // The positive-only ISO duration regex pins negative=false (EC-20): the invalid_duration
         // absent-negative default is now true (accept signed), so the canonicalisation must state
-        // negative=false to keep rejecting signed values (CORE-000779 / CG0376).
+        // negative=false to keep rejecting signed values (CDISC-CG0376 / FDA-SD1301).
         assertEquals("invalid_duration(TDSTOFF, negative=false)",
                 lower("not_matches_regex", "TDSTOFF", re));
     }
@@ -155,7 +155,8 @@ class CheckToExprRegexOptimiseTest
     @Test
     void testcdRegexLowersToIsValidTestcd()
     {
-        // CORE-000220/000541/100005/100009: --TESTCD/IETESTCD/ETCD.
+        // --TESTCD/IETESTCD/ETCD. ⚠ No rule of this corpus authors this regex or
+        // is_valid_testcd (measured 2026-09-19); the entry is unexercised by the corpus.
         assertEquals("not is_valid_testcd(--TESTCD)",
                 lower("not_matches_regex", "--TESTCD", "^[a-zA-Z_][a-zA-Z0-9_]{0,7}$"));
         assertEquals("not is_valid_testcd(ETCD)",
@@ -166,7 +167,8 @@ class CheckToExprRegexOptimiseTest
     @Test
     void nameRegexLowersToIsValidName()
     {
-        // CORE-000221/100007: QNAM.
+        // QNAM. The regex has no carrier in this corpus; CDISC-CG0417 / FDA-SD1022 /
+        // PMDA-SD1022 author is_valid_name directly.
         assertEquals("not is_valid_name(QNAM)",
                 lower("not_matches_regex", "QNAM", "^[A-Z_][A-Z0-9_]{0,7}$"));
     }
@@ -175,7 +177,8 @@ class CheckToExprRegexOptimiseTest
     @Test
     void hasAlphaHasDigitLowerToFunctions()
     {
-        // CORE-000169: LBTOXGR contains a letter AND a digit (each leaf recognised separately).
+        // LBTOXGR contains a letter AND a digit (each leaf recognised separately). ⚠ No rule of
+        // this corpus authors either regex or either function (measured 2026-09-19).
         assertEquals("has_alpha(LBTOXGR)", lower("matches_regex", "LBTOXGR", ".*[a-zA-Z].*"));
         assertEquals("has_digit(LBTOXGR)", lower("matches_regex", "LBTOXGR", ".*[0-9].*"));
     }

@@ -16,7 +16,7 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Parity guard for CORE-000712 ({@code IDVAR is_not_contained_by $rdomain_variables}, where
+ * Parity guard for CDISC-CG0370 ({@code IDVAR is_not_contained_by $rdomain_variables}, where
  * {@code $rdomain_variables} is a {@code distinct} operation with
  * {@code value_is_reference: true}).
  *

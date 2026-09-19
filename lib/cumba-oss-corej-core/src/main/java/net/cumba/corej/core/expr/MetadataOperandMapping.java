@@ -228,7 +228,9 @@ public final class MetadataOperandMapping
         {
             Expr left = canonicalizeMetadataOperands(b.left());
             Expr right = canonicalizeMetadataOperands(b.right());
-            // CORE-001079 class: in the metadata families a varname() comparison's textual RHS is
+            // The varname()-literal class (e.g. FDA-SD1322's `varname() == "COUNTRY"`,
+            // CDISC-AD0042's `varname() != "ARELTM"`): in the metadata families a varname()
+            // comparison's textual RHS is
             // ALWAYS a literal in the legacy per-variable cascade (evaluateLeafAgainstMetadata
             // resolves the value against the metadata map and otherwise falls back to the literal
             // string — it never reads a data column). A rule authored without value_is_literal

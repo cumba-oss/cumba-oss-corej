@@ -45,7 +45,7 @@ public enum MetadataAttribute
     /**
      * Tier-B codelist C-code (R-P3, {@code plans/done/PLAN-native-engine-residuals.md}): the define
      * provider's {@code ccode} key — the same map entry the legacy cascade injects as
-     * {@code define_variable_ccode} (CORE-000929). At {@code LIBRARY} the bound codelist's NCI
+     * {@code define_variable_ccode} (CDISC-CG0001). At {@code LIBRARY} the bound codelist's NCI
      * C-code ({@code MetadataKeys.CODELIST_CONCEPT_ID}), materialised by the library provider to
      * back {@code library_variable_ccode} (Java↔Python parity). Populated only by providers that
      * expose it.

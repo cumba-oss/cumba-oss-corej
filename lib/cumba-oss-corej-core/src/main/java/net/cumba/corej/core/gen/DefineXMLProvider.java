@@ -70,7 +70,7 @@ public interface DefineXMLProvider
      * {@code codelist_coded_codes} (a JSON array string of the codelist's coded codes, or
      * {@code "[]"} when none). The last two mirror the Python reference engine's
      * {@code define_variable_ccode} / {@code define_variable_codelist_coded_codes} and back
-     * CORE-000929. EC-19 adds {@code has_codelist} ({@code "true"}/{@code "false"} — whether the
+     * CDISC-CG0001. EC-19 adds {@code has_codelist} ({@code "true"}/{@code "false"} — whether the
      * {@code ItemDef} binds a {@code CodeListRef}) and {@code codelist_coded_values} (a JSON array
      * string of the codelist's enumerated submission values, or {@code "[]"} when none), mirroring
      * the Python {@code define_variable_has_codelist} /

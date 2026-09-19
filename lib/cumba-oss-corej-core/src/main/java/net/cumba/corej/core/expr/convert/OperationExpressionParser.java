@@ -383,7 +383,7 @@ public final class OperationExpressionParser
      * "period not used" is encoded, so {@code indeterminate} would kill the rule; and the generic
      * {@code max} string fallback also serves Char <em>category</em> columns ({@code ANRIND},
      * {@code ATOXGR}), where a blank is "not assessed". A rule that wants date determinability
-     * authors {@code max_date}, exactly as {@code CORE-000717} was moved to do by EC-46 OQ4.</li>
+     * authors {@code max_date} — the form EC-46 OQ4 moved the corpus's date extremes onto.</li>
      * <li><b>{@code date_diff_days} must be in Mode 2</b> — {@code domain} plus a non-empty
      * {@code group}. Only Mode 2's grouped subtrahend consumes the disposition; a Mode 1
      * same-record reference already yields no value when it is missing, so a declaration there

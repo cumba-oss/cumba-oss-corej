@@ -261,7 +261,7 @@ public final class OperationExecutor
         // Expand any {@code $-variable} references in the operation's group list using
         // results from prior operations. E.g. {@code group: [USUBJID, --TESTCD,
         // $TIMING_VARIABLES]} where {@code $TIMING_VARIABLES = [VSDTC]} becomes
-        // {@code [USUBJID, VSTESTCD, VSDTC]}. Necessary for rules like CORE-001034 that
+        // {@code [USUBJID, VSTESTCD, VSDTC]}. Necessary for rules like CDISC-CG0562 that
         // feed a {@code get_dataset_filtered_variables} result into {@code record_count}'s
         // grouping.
         Operation runOp = expandGroupRefs(op, priorResults);
@@ -642,9 +642,14 @@ public final class OperationExecutor
             // the SUPP/SQAP itself is split (supplbch/lbhe/lbur). Such an operation is
             // self-referential — it targets the SUPP/SQAP dataset being validated — so run it
             // against the current table when that table is a split member of the named family. This
-            // lets CORE-000712's value_is_reference distinct ($rdomain_variables) read its own
-            // RDOMAIN column instead of being skipped to an empty membership set (which fired every
-            // row). Restricted to SUPP/SQAP current tables so a literal cross-domain reference
+            // lets such a self-referential operation (the value_is_reference `distinct` over
+            // IDVAR/RDOMAIN is the shape) read its own RDOMAIN column instead of being skipped to
+            // an empty membership set (which fired every row). ⚠ No rule of this corpus authors a
+            // `--` family wildcard as an operation domain — measured 2026-09-19, zero
+            // `domain="…--"` in rules-src/checks (the only wildcard spelling present is
+            // `domain="*"`, which is not a family collapse) — so this branch is currently
+            // unexercised by the corpus; keep it, the grammar still allows it.
+            // Restricted to SUPP/SQAP current tables so a literal cross-domain reference
             // whose
             // name merely prefixes a split member (e.g. domain "LB" while validating "LBCH") is NOT
             // redirected and stays correctly skipped.
@@ -798,9 +803,11 @@ public final class OperationExecutor
      * it was scoped to fix. An earlier revision re-derived the prefix from the table's row-0
      * {@code DOMAIN} cell instead; that silently changed the answer for <em>every</em> dataset
      * whose {@code DOMAIN} value disagrees with its identity — precisely the corruption
-     * {@code CORE-000015} exists to detect — making rules resolve to columns that cannot exist and
-     * report "no finding". It failed <em>open</em>, and {@code SdtmAllRuleTest.CORE_000544_invalid}
-     * caught it.
+     * {@code CDISC-CG0413} exists to detect ({@code prefix(dataset_name, 2) != DOMAIN}) — making
+     * rules resolve to columns that cannot exist and report "no finding". It failed <em>open</em>,
+     * and a corpus rule-test scenario caught it. ⚠ The scenario class this sentence used to name
+     * ({@code SdtmAllRuleTest}) does not exist in {@code cumba-oss-corej-rules}, so it is not cited
+     * here.
      * </p>
      *
      * <p>
@@ -1233,7 +1240,7 @@ public final class OperationExecutor
             // mode); empty list when the resolver couldn't find allowed variables for this
             // domain. Both translate to LIBRARY_NOT_AVAILABLE so RuleRunner Phase 2a.1
             // reports the rule SKIPPED rather than fanning out per-column on an empty
-            // is_not_contained_by check (the CORE-000550 fan-out trigger).
+            // is_not_contained_by check (the FDA-SD0058 fan-out trigger).
             //
             // The Phase 1 empty-list defensive shim from Fix #55 stays as a backstop for
             // legacy code paths that still call getModelColumnOrder directly (e.g.
@@ -1714,7 +1721,7 @@ public final class OperationExecutor
             {
                 // Trailing prefix wildcard: "RACE&" or "RACE%" matches any value starting with
                 // "RACE". The corpus authors prefix filters with the SQL-LIKE-style "%" (e.g.
-                // CORE-000846 QNAM="RACE%"), which the vendored Python engine reads as a LIKE
+                // CDISC-CG0531 QNAM="RACE%"), which the vendored Python engine reads as a LIKE
                 // prefix; "&" is the engine's own historical marker. Accept both so the same
                 // filter evaluates identically across the offline corpus and both engines.
                 matches = colValue.startsWith(filterValue.substring(0, filterValue.length() - 1));
@@ -1826,9 +1833,9 @@ public final class OperationExecutor
      * model. Mirrors Python {@code operations/parent_library_model_column_order.py}: for a SUPP
      * dataset the parent is the domain named in {@code RDOMAIN} (e.g. {@code SUPPAE → AE}). Returns
      * a {@link GroupedResult} keyed by {@code RDOMAIN} so a downstream containment operator (e.g.
-     * CORE-000783's {@code QNAM is_contained_by $model_variables}) checks each row against
-     * <em>its</em> parent's model variables. When no parent could be resolved with library data,
-     * yields {@link #LIBRARY_NOT_AVAILABLE} so the rule is SKIPPED (the pre-fix behaviour for an
+     * CDISC-CG0314's {@code QNAM in $model_variables}) checks each row against <em>its</em>
+     * parent's model variables. When no parent could be resolved with library data, yields
+     * {@link #LIBRARY_NOT_AVAILABLE} so the rule is SKIPPED (the pre-fix behaviour for an
      * unconfigured library).
      */
     private static @Nullable Object evalParentModelColumnOrder(
@@ -3060,10 +3067,15 @@ public final class OperationExecutor
      * <p>
      * ⚠ <b>Known limit:</b> a genuine date column carrying a junk token ({@code UNK}) fails the
      * all-dates test and so keeps lexicographic treatment — Defect E is not caught on <i>this</i>
-     * path. That is acceptable because the generic operator has no date consumer left:
-     * {@code CORE-000717}, its only one, now authors {@code max_date} (EC-46 OQ4) and runs through
-     * {@link #evalDateExtreme}, where the rule applies in full. The routing here is
-     * forward-looking.
+     * path. That is acceptable because the generic operator has no date consumer left: <b>no</b>
+     * rule authors the generic {@code max()} over a date column. <b>The method, so the figure can
+     * be re-derived</b> — from {@code cumba-oss-corej-rules}, count occurrences of {@code max(} not
+     * preceded by an identifier character (which excludes {@code row_max} / {@code max_date}) under
+     * {@code rules-src/checks}: <b>22</b> occurrences in <b>22</b> files as of 2026-09-19, and
+     * every operand is {@code AVAL} / {@code ATOXGR} / {@code ANRIND} / {@code "AyIND"} (numeric or
+     * Char category) or {@code DSSTDY} (a numeric study day) — not one a date. Every date extreme
+     * authors {@code max_date} (EC-46 OQ4) and runs through {@link #evalDateExtreme}, where the
+     * rule applies in full. The routing here is forward-looking.
      * </p>
      */
     private static @Nullable String genericStringExtreme(List<String> candidates, boolean findMax)
@@ -4243,7 +4255,7 @@ public final class OperationExecutor
      * Resolves the value list for a {@code codelist_terms} / {@code get_codelist_attributes}
      * operation. The codelist(s) may be named via the {@code name} field
      * ({@code get_codelist_attributes}) or the {@code codelists} array ({@code codelist_terms} —
-     * e.g. CORE-000929's {@code "codelists":["DOMAIN"]}); the values are unioned across all named
+     * e.g. CDISC-CG0001's {@code "codelists":["DOMAIN"]}); the values are unioned across all named
      * codelists, preserving order and dropping duplicates.
      *
      * <p>
@@ -4395,17 +4407,17 @@ public final class OperationExecutor
 
 
     /**
-     * Resolves the {@code get_codelist_attributes} operation result (CORE-001080). Mirrors Python's
-     * {@code operations/get_codelist_attributes.py}: per row, derive a CT package id from two data
-     * columns — the target column ({@code op.getName()}, e.g. {@code TSVCDREF}) and the version
-     * column ({@code op.getVersion()}, e.g. {@code TSVCDVER}) — then extract
+     * Resolves the {@code get_codelist_attributes} operation result (CDISC-CG0288). Mirrors
+     * Python's {@code operations/get_codelist_attributes.py}: per row, derive a CT package id from
+     * two data columns — the target column ({@code op.getName()}, e.g. {@code TSVCDREF}) and the
+     * version column ({@code op.getVersion()}, e.g. {@code TSVCDVER}) — then extract
      * {@code op.getCtAttribute()} from each distinct resolved package, unioning the values
      * (order-preserving, deduped).
      *
      * <p>
      * The Java engine yields a single operation value broadcast to every row (it has no per-row
      * Series), so when distinct rows resolve to distinct packages the attribute sets are unioned.
-     * For CORE-001080 the single row resolves to {@code sdtmct-2024-09-27}, giving exactly that
+     * For CDISC-CG0288 the single row resolves to {@code sdtmct-2024-09-27}, giving exactly that
      * package's set.
      * </p>
      */

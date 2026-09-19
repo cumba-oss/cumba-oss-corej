@@ -204,7 +204,7 @@ class RelrecNativeEvalTest
     @Test
     void dottedStarStarResolvesNatively()
     {
-        // P5b (CORE-000744 mechanics): a dot-qualified ** reference (RELREC.**OBJ) resolves the
+        // P5b (CDISC-CG0174 mechanics): a dot-qualified ** reference (RELREC.**OBJ) resolves the
         // ** prefix per expanded row against the BOUND TARGET's domain (FA → FAOBJ) inside
         // RelrecExpandedLookup — previously a native decline (legacy-only), now routed through the
         // same dotted joined-lookup plan. Native must match legacy bit-for-bit.

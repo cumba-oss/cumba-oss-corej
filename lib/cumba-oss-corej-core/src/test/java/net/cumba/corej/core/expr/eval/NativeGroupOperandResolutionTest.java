@@ -67,7 +67,9 @@ class NativeGroupOperandResolutionTest
     @Test
     void notUniqueRelationshipWithDomainPrefix()
     {
-        // CORE-000303 shape: --TEST is_not_unique_relationship --TESTCD. AETEST "x" maps to both
+        // is_not_unique_relationship over a `--` pair, the FDA-SD9731 shape (authored there on
+        // --LLT/--LLTCD; no rule of this corpus authors the --TEST/--TESTCD pair). AETEST "x" maps
+        // to both
         // AETESTCD 1 and 2 -> rows {0,1}.
         IDataTable t = MockTable.of().col("AETEST", "x", "x", "y").col("AETESTCD", "1", "2", "3")
                 .build();
@@ -94,7 +96,7 @@ class NativeGroupOperandResolutionTest
     @Test
     void inconsistentAcrossDatasetWithDomainPrefixedKeys()
     {
-        // CORE-000689 shape: --TPT is_inconsistent_across_dataset [--TPTNUM]: TPTNUM 1 carries
+        // CDISC-CG0573 shape: --TPT is_inconsistent_across_dataset [--TPTNUM]: TPTNUM 1 carries
         // two distinct TPT values -> all 1-keyed rows {0,1}.
         IDataTable t = MockTable.of().col("AETPT", "A", "B", "C").col("AETPTNUM", "1", "1", "2")
                 .build();
@@ -108,7 +110,8 @@ class NativeGroupOperandResolutionTest
     @Test
     void targetIsNotSortedByWithDomainPrefixedDescriptors()
     {
-        // CORE-000535 shape: --SEQ target_is_not_sorted_by [{name: --STDTC, asc}] within USUBJID.
+        // CDISC-CG0662 shape: --SEQ target_is_not_sorted_by [{name: --STDTC, asc}] within
+        // USUBJID.
         // Within S1, SEQ ordered by STDTC is 2,1 -> not ascending -> both rows fire.
         IDataTable t = MockTable.of().col("AESEQ", "2", "1", "1")
                 .col("AESTDTC", "2024-01-01", "2024-02-01", "2024-01-01")
@@ -144,7 +147,7 @@ class NativeGroupOperandResolutionTest
     @Test
     void notContainsAllOperationListsMatchLegacy()
     {
-        // CORE-000355 shape: $dataset_variables not_contains_all $required_variables (both
+        // FDA-SD0056 shape: $dataset_variables not_contains_all $required_variables (both
         // $-operation lists; broadcast verdict).
         IDataTable t = MockTable.of().col("ANY", "r0", "r1").build();
         EvaluationContext c = EvaluationContext.builder().table(t)

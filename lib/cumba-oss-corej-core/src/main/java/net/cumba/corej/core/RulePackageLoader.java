@@ -3628,13 +3628,13 @@ public class RulePackageLoader
      * ExprLowering.UNIQUE_SET_OPERATORS} {@code functionLeaf} inlines the elements itself, into the
      * single list operand the 2026-08-23 grammar requires ({@code f([name, …value])}); every other
      * group operator still routes the array through {@code arrayOperand} into its {@code keys=}
-     * kwarg. ⚠ The five worked examples this bullet used to name — {@code CDISC-CG0562},
-     * {@code CORE-001034}, {@code FDA-SD1117}, {@code PMDA-SD1117}, {@code PMDA-SD1152} — are all
-     * uniqueness carriers authored as {@code Check.expression} today, so none of them reaches this
-     * leaf path at all, let alone {@code arrayOperand}; the position is validated for the leaf
-     * input shape, not for a shipped rule. Missing it is not a silent PASS but a silent <em>wrong
-     * answer</em>: {@code GroupSemantics.uniqueSetViolations} simply drops an unresolvable key
-     * column, so the uniqueness set gets coarser and the rule over-reports.</li>
+     * kwarg. ⚠ The four worked examples this bullet used to name — {@code CDISC-CG0562},
+     * {@code FDA-SD1117}, {@code PMDA-SD1117}, {@code PMDA-SD1152} — are all uniqueness carriers
+     * authored as {@code Check.expression} today, so none of them reaches this leaf path at all,
+     * let alone {@code arrayOperand}; the position is validated for the leaf input shape, not for a
+     * shipped rule. Missing it is not a silent PASS but a silent <em>wrong answer</em>:
+     * {@code GroupSemantics.uniqueSetViolations} simply drops an unresolvable key column, so the
+     * uniqueness set gets coarser and the rule over-reports.</li>
      * <li>{@code within} (raised entry-by-entry by {@code withinOperand}, including nested
      * coalesce-groups) and {@code ordering} ({@code ref(leaf.getOrdering())}). No shipped rule puts
      * a {@code $} there today; they are covered because the engine would resolve one.</li>

@@ -113,7 +113,8 @@ class ColumnTypeGateTest
         assertTrue(ex.getMessage().contains("DOSE"), ex.getMessage());
         assertTrue(ex.getMessage().contains("Num"), ex.getMessage());
         assertTrue(ex.getMessage().contains("Char"), ex.getMessage());
-        // The CORE-000542 authoring: num(--STRESC) != --STRESN. Rows 0/1 parse and agree (no
+        // The FDA-SD1212 / PMDA-SD1212 authoring: num(--STRESC) != --STRESN. Rows 0/1 parse and
+        // agree (no
         // fire); row 2's "abc" is missing → "" vs "1" → fires; row 3 is missing on BOTH sides →
         // "" == "" → no fire (the both-missing contract).
         assertEquals(bits(2), eval("num(DOSE) != AVAL", c));

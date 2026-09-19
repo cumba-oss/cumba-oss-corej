@@ -377,7 +377,7 @@ public final class ReportAssembler
         }
         // Two-pass roll-up for Python parity. Findings whose core_id is an SDTM `--`-prefix
         // expansion (in bundledCoreIds — one per domain, all sharing the base rule's bare CORE id,
-        // e.g. `CORE-000767`) collapse into one summary row keyed by (core_id, message), with the
+        // e.g. `CDISC-CG0088`) collapse into one summary row keyed by (core_id, message), with the
         // per-domain dataset names joined alphabetically into a single comma-separated string.
         // Every other id keeps its per-dataset rows. Issue_Details and Rules_Report are unaffected.
         Map<List<String>, BundleAccumulator> grouped = new LinkedHashMap<>();
@@ -914,10 +914,10 @@ public final class ReportAssembler
      *
      * <p>
      * Right-trim only: leading whitespace is intentional data and must be preserved in the report
-     * (rule {@code CORE-000867} flags text variables with leading spaces — without preserving them,
-     * every flagged value would render with the leading whitespace stripped and the finding would
-     * be useless to investigate). Trailing whitespace is fixed-width padding from the source format
-     * and is safe to strip for report-display purposes.
+     * ({@code FDA-SD1021} / {@code PMDA-SD1021} flag a character value with a leading space —
+     * without preserving them, every flagged value would render with the leading whitespace
+     * stripped and the finding would be useless to investigate). Trailing whitespace is fixed-width
+     * padding from the source format and is safe to strip for report-display purposes.
      * </p>
      */
     private static String processValue(@Nullable String value)

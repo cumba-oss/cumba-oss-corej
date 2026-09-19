@@ -548,7 +548,7 @@ public interface MetadataProvider
 
     /**
      * Returns the set of values for a given CT attribute across every codelist (and term) in the
-     * named CT package. Used by the {@code get_codelist_attributes} operation (CORE-001080), which
+     * named CT package. Used by the {@code get_codelist_attributes} operation (CDISC-CG0288), which
      * resolves a CT package id per-row from data columns and then extracts one of six attributes
      * from the package:
      *

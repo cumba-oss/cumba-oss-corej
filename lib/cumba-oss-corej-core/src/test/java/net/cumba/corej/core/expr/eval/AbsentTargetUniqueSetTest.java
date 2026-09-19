@@ -33,7 +33,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * </p>
  *
  * <p>
- * <b>Three answers, and why the fixtures pin exact rows.</b> On the CORE-000213 shape (rows 0/1
+ * <b>Three answers, and why the fixtures pin exact rows.</b> On the CDISC-CG0536 shape (rows 0/1
  * share the surviving key tuple, row 2 does not):
  * </p>
  *
@@ -46,17 +46,18 @@ import org.mockito.junit.jupiter.MockitoExtension;
  *
  * <p>
  * (b) is what a {@code flip(0, rowCount)} over (a)'s empty {@code BitSet} produced, and it is the
- * defect CORE-000213 / CORE-001034 were filed for. It flags a row that duplicates nothing.
- * Distinguishing (c) from (b) therefore needs the <b>exact</b> {@code BitSet} — never merely
- * "something fired" — so every assertion below names the rows.
+ * defect that {@code CDISC-CG0536} / {@code CDISC-CG0562} — the surviving {@code is_unique_set}
+ * carriers — were filed against. It flags a row that duplicates nothing. Distinguishing (c) from
+ * (b) therefore needs the <b>exact</b> {@code BitSet} — never merely "something fired" — so every
+ * assertion below names the rows.
  * </p>
  *
  * <p>
  * <b>The historical defects do not return on the shipped rules either</b>, for a second and
- * independent reason: both anchors guard their target. {@code CORE-000213} opens with {@code {name:
- * EPOCH, operator: exists}} and {@code CORE-001034} with {@code {name: --REPNUM, operator: exists}}
- * (its Description: <em>"when REPNUM is in the dataset"</em>). (c) is unobservable on them —
- * asserted directly by {@link #guardedRuleIsUnaffectedByTheChange()}.
+ * independent reason: both anchors guard their target. {@code CDISC-CG0536} opens with
+ * {@code {name: EPOCH, operator: exists}} and {@code CDISC-CG0562} with {@code {name: --REPNUM,
+ * operator: exists}} (its Description: <em>"when REPNUM is in the dataset"</em>). (c) is
+ * unobservable on them — asserted directly by {@link #guardedRuleIsUnaffectedByTheChange()}.
  * </p>
  *
  * <p>
@@ -71,7 +72,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class AbsentTargetUniqueSetTest
 {
 
-    /** CORE-000213: rows 0/1 share (USUBJID, DSSCAT); row 2 is distinct on both. */
+    /** CDISC-CG0536: rows 0/1 share (USUBJID, DSSCAT); row 2 is distinct on both. */
     private static final String CORE_000213 = "not is_unique_set([EPOCH, USUBJID, DSSCAT])";
 
     /** FDA-SD1060, the minimal single-key shape (two members). */
@@ -105,7 +106,7 @@ class AbsentTargetUniqueSetTest
     }
 
 
-    /** DS with EPOCH absent — the CORE-000213 over-firing shape. */
+    /** DS with EPOCH absent — the CDISC-CG0536 over-firing shape. */
     private static IDataTable dsWithoutEpoch()
     {
         return MockTable.of().name("DS").col("USUBJID", "S1", "S1", "S2")
@@ -143,7 +144,7 @@ class AbsentTargetUniqueSetTest
         assertEquals(bits(0, 1), nativeBits,
                 "EC-53: an absent TARGET is dropped and the check regroups on (USUBJID, DSSCAT) — "
                         + "rows 0/1 share that tuple. ROW 2 MUST NOT FIRE: it duplicates nothing, "
-                        + "and flagging it is exactly the over-firing defect (b) that CORE-000213 "
+                        + "and flagging it is exactly the over-firing defect (b) that CDISC-CG0536 "
                         + "was filed for");
         assertEquals(legacyPath(ds, "EPOCH", "USUBJID", "DSSCAT"), nativeBits,
                 "native must agree with the legacy is_not_unique_set leaf");
@@ -224,9 +225,9 @@ class AbsentTargetUniqueSetTest
     @Test
     void guardedRuleIsUnaffectedByTheChange()
     {
-        // CORE-000213 as it ships: the var_exists guards short-circuit the whole `and`, so the
+        // CDISC-CG0536 as it ships: the var_exists guards short-circuit the whole `and`, so the
         // historical over-firing shape still reports nothing under (c). Both anchors of the
-        // original defect are guarded this way — CORE-001034 opens with `--REPNUM exists`.
+        // original defect are guarded this way — CDISC-CG0562 opens with `--REPNUM exists`.
         String shipped = "var_exists(\"EPOCH\") and var_exists(\"DSCAT\") and "
                 + "DSCAT == \"DISPOSITION EVENT\" and var_exists(\"DSSCAT\") and " + CORE_000213;
         assertEquals(new BitSet(), nativePath(shipped, dsWithoutEpoch()));

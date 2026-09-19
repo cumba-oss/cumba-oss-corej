@@ -35,7 +35,7 @@ import org.jspecify.annotations.Nullable;
  * matching the Python reference engine (which never adds it implicitly).
  * </p>
  * <p>
- * Fix #6: Enables rules like CORE-000206 to do a two-hop value reference
+ * Fix #6: Enables rules like CDISC-CG0371 to do a two-hop value reference
  * ({@code IDVARVAL not_equal_to row[row.IDVAR]}) that otherwise would have no parent column on the
  * row to look up. Columns already present on the primary take precedence (child wins — matches
  * Python's {@code _find_parent_dataset} merge order for the specific columns the rule reads from

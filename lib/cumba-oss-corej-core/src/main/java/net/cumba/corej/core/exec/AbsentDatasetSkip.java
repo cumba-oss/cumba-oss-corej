@@ -46,7 +46,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <h2>⚠ SKIP is scoped to the DEPENDENCY, not to the rule (K5b)</h2> Skipping the whole rule would
  * discard branches that never touched the absent dataset. The worked example is
- * {@code CDISC-CG0007} / {@code FDA-SD1085} / {@code CORE-000138}:
+ * {@code CDISC-CG0007} / {@code FDA-SD1085}:
  *
  * <pre>
  * all[ any[ (--DTC incomplete) , (DM.RFSTDTC incomplete) ] , --DY non_empty ]
@@ -102,18 +102,28 @@ import org.jspecify.annotations.Nullable;
  * bounds the <em>kind</em> of finding removed, not the count.
  *
  * <p>
+ * ⚠ {@code rules-core-tig-1-0.json} is <b>not a package of this corpus</b> — it was the CORE
+ * family's TIG package, and the CORE family is externally sourced and is never redistributed here
+ * ({@code cumba-oss-corej-rules} has carried no {@code CORE} family since 2026-09). The figure
+ * above is kept as the dated measurement it was, taken against a tree that had it; it is <b>not</b>
+ * a statement about this corpus and cannot be re-run against it. What survives unchanged is the
+ * shape — {@code x not in $op(domain=D)} — which the live rules named below still carry.
+ * </p>
+ *
+ * <p>
  * <b>The theorem the code actually supports:</b> <i>the arm removes only <b>artefacts of
  * absence</b> — it converts a vacuous {@code PASS}, <b>or a flood</b>, into
  * {@link RuleExecutionStatus#SKIPPED}.</i> Because the whole Check must fold to {@code false},
  * every satisfying assignment necessarily required a leaf that <em>reads</em> the absent dataset.
  * All 19 collapse on the shape {@code x not in $op(domain=D)} with {@code D} absent, where <i>"not
  * in the empty set"</i> is vacuously TRUE ⇒ the direction is <b>flood → SKIPPED</b>, never <i>true
- * finding → silence</i>; supply {@code TA} and {@code CORE-000271}'s two findings vanish.
+ * finding → silence</i>; supply the absent dataset and the findings vanish.
  * </p>
  *
  * <p>
  * ⛔ <b>Do not narrow the arm to "guarded" shapes to make the old sentence true</b> — that would
- * restore the {@code CORE-000269}/{@code -000270}/{@code -000271} flood, un-fixing a real defect.
+ * restore the {@code CDISC-CG0031} / {@code CDISC-CG0033} / {@code CDISC-CG0009} flood (each
+ * {@code x not in $op(domain=TV|TA)}), un-fixing a real defect.
  * </p>
  */
 public final class AbsentDatasetSkip
@@ -213,9 +223,9 @@ public final class AbsentDatasetSkip
      * shapes are deliberately rejected, each of which a naive walker would accept:
      * </p>
      * <ul>
-     * <li>⚠ <b>polarity</b> — a bare {@code ds_exists("TT")} ({@code CDISC-CG0647},
-     * {@code CORE-000042}, …) is a <i>prohibition</i>: it fires when the dataset IS present. It
-     * reports nothing about absence and must never satisfy the precondition;</li>
+     * <li>⚠ <b>polarity</b> — a bare {@code ds_exists("TT")} ({@code CDISC-CG0647}, …) is a
+     * <i>prohibition</i>: it fires when the dataset IS present. It reports nothing about absence
+     * and must never satisfy the precondition;</li>
      * <li>⚠ <b>conditional</b> presence rules ({@code CG0407} — EX, but only when TA exists) do not
      * guarantee the run reports D's absence, so they cannot satisfy it either;</li>
      * <li>⚠ a <b>scoped</b> presence rule, which would only run on the datasets its scope names —
@@ -706,9 +716,15 @@ public final class AbsentDatasetSkip
      * submission and then evaluate against an empty operand — the {@code W34-C1} flood shape, which
      * is precisely what {@link #splitWidenedCandidates}' exclusion of {@code Operations[].domain}
      * exists to prevent ({@code Fix #358} / D7's one stated exception; see the class javadoc). The
-     * live instance is {@code CORE-000208}, whose entire {@code TA} dependency is
-     * {@code Operations[0].domain} and whose {@code distinct} operation still resolves {@code TA}
-     * exactly.
+     * shape is a rule that declares {@code Requirements.Datasets: [D]} while reaching {@code D}
+     * <em>only</em> through an {@code Operations[].domain} whose operation still resolves {@code D}
+     * exactly. ⚠ <b>No rule of this corpus has that shape</b> — measured 2026-09-19 over the eight
+     * rules that declare {@code Requirements.Datasets} ({@code CDISC-AD0061}, {@code CDISC-AD0365},
+     * {@code CDISC-CG0105}, {@code CDISC-CG0107}, {@code PMDA-AD0061}, {@code PMDA-AD0061A},
+     * {@code PMDA-SD1468}, {@code PMDA-SD1469}), <b>not one</b> names its declared dataset in an
+     * {@code Operations[].domain} at all, so the shape's precondition never holds, this partition
+     * is empty and the guard is untested by the corpus. Keep it: it is derived, not authored (see
+     * below).
      * </p>
      *
      * <p>

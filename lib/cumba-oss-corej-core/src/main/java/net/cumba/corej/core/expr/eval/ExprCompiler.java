@@ -401,7 +401,8 @@ public final class ExprCompiler
             // so the partition invariant this would otherwise depend on is a property of a
             // collaborator, not of a private contract. Removing it would trade a free branch for
             // a dependency on that invariant never regressing; a regression there reintroduces
-            // the whole-table over-firing shape CORE-000213 / CORE-001034 were filed for.
+            // the whole-table over-firing shape the corpus's is_unique_set carriers
+            // (CDISC-CG0536, CDISC-CG0562) are exposed to.
             if ("is_unique_set".equals(call.name()))
             {
                 return compileUniqueSet(call, true);
@@ -799,7 +800,7 @@ public final class ExprCompiler
             {
                 ColumnTypeGate.requireCharacterRead(v, "membership in a string list");
             }
-            // A $-reference may resolve to a per-row GroupedResult (e.g. CORE-000168's
+            // A $-reference may resolve to a per-row GroupedResult (e.g. CDISC-CG0034's
             // $sv_visitnum, a distinct-per-USUBJID operation). The legacy engine resolves the
             // membership set PER ROW (
             // GroupedResult.getForRow); mirror that with a per-row loop instead of the broadcast
@@ -2632,7 +2633,7 @@ public final class ExprCompiler
      * first, followed by the {@code keys=} list. Each must be a plain column or {@code --}-prefix
      * reference — or a {@code $}-operation reference, which is passed through RAW: the legacy Array
      * members stay literal (no {@code $}-expansion), so the downstream column lookup misses and
-     * {@code GroupSemantics} drops it exactly like an absent column (CORE-001034's
+     * {@code GroupSemantics} drops it exactly like an absent column (CDISC-CG0562's
      * {@code $TIMING_VARIABLES} key). Mirroring that drop keeps the verdict bit-identical.
      */
     private static List<String> keyColumns(Expr.Call c)
@@ -5461,8 +5462,8 @@ public final class ExprCompiler
             // elements, a non-grouped scalar a singleton, and a null / absent operation result the
             // EMPTY set — never a fatal "unsupported" throw. The empty-set case covers an
             // operation that produced no result, so the $-ref resolves to nothing — e.g.
-            // CORE-000712's value_is_reference `distinct` ($rdomain_variables) when its "SUPP--"
-            // target dataset does not resolve, or when the SUPP-- table has no RDOMAIN column.
+            // CDISC-CG0370's value_is_reference `distinct` ($rdomain_variables) when the SUPP--
+            // table it runs on has no RDOMAIN column.
             // Legacy then runs is_(not_)contained_by against an empty set, and so must the native
             // path. A GroupedResult never reaches here — compileMembership routes
             // GroupedResult-valued refs to groupedMembership before calling buildSet. The

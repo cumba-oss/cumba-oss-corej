@@ -28,8 +28,8 @@ import org.junit.jupiter.api.Test;
  *
  * <p>
  * This is the shape behind {@code CDISC-AD0204} / {@code PMDA-AD0204} ({@code AGE != DM.AGE}) and
- * {@code CDISC-CG0032} / {@code CORE-000249} ({@code VISITDY != TV.VISITDY}) — the four rules that
- * do a genuine typed comparison across a join.
+ * {@code CDISC-CG0032} ({@code VISITDY != TV.VISITDY}) — the four rules that do a genuine typed
+ * comparison across a join.
  * </p>
  *
  * <p>

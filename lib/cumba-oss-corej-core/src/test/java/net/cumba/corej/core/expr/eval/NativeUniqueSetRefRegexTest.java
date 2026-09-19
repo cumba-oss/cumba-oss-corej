@@ -16,7 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * Plan J6 / J6b — the native {@code is_(not_)unique_set} path on CORE-001034-shaped checks:
+ * Plan J6 / J6b — the native {@code is_(not_)unique_set} path on CDISC-CG0562-shaped checks:
  *
  * <ul>
  * <li><b>J6</b> — a {@code $}-reference key member (e.g. {@code $TIMING_VARIABLES} from
