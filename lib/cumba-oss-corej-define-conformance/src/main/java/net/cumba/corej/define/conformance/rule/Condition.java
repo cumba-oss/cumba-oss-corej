@@ -208,7 +208,7 @@ public final class Condition
         {
             String lastStep = clausePath.substring(clausePath.lastIndexOf('/') + 1);
             // Attribute existence mirrors the check kinds' presence semantics: a
-            // present-but-blank attribute counts as missing (review-batch-b N3).
+            // present-but-blank attribute counts as missing.
             boolean present = (lastStep.startsWith("@") || clausePath.contains("->"))
                     ? resolve(aContext, clausePath, aResolver).stream().anyMatch(v -> !v.isBlank())
                     : !PathResolver.nodes(aContext, clausePath).isEmpty();
