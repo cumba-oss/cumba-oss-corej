@@ -1,3 +1,8 @@
 # Built-in native-evaluator functions (Phase 2). Discovered by FunctionRegistry via the project
 # SPI (net.cumba.datatable.io.GenericServiceFactory).
 net.cumba.corej.core.expr.eval.spi.BuiltinFunctions
+# Phase 7 (D119h): declarations for the compiler-dispatched calls — the former
+# HARDCODED_BOOLEAN_CALLS, the two negation-dispatched group operators, and the
+# per-record metadata value calls (fn == null: they compile through dedicated
+# ExprCompiler plans; the descriptor carries the declared signature).
+net.cumba.corej.core.expr.eval.spi.CompilerDispatchedCalls

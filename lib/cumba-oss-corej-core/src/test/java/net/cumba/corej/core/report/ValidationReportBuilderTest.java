@@ -147,12 +147,12 @@ class ValidationReportBuilderTest
     void skippedRuleMethodRecordsGenerationTimeSkip()
     {
         ValidationReport report = new ValidationReportBuilder().skippedRule("EX", "ex.xpt",
-                rule("CORE-000351"), "domain EX not in Scope.Domains.Include [AE]").build();
+                rule("CDISC-CG0040"), "domain EX not in Scope.Domains.Include [AE]").build();
 
         assertEquals(List.of(), report.getMembers(), "skips are never findings");
         assertEquals(1, report.getSkippedRules().size());
         SkippedRuleEntry entry = report.getSkippedRules().get(0);
-        assertEquals("CORE-000351", entry.getCoreId());
+        assertEquals("CDISC-CG0040", entry.getCoreId());
         assertEquals("EX", entry.getDataset());
         assertEquals("domain EX not in Scope.Domains.Include [AE]", entry.getReason());
     }
@@ -545,14 +545,14 @@ class ValidationReportBuilderTest
     @Test
     void variableMetadataViolationsSplitPerColumn()
     {
-        RuleExecutionResult result = withViolations("CORE-000594",
+        RuleExecutionResult result = withViolations("CDISC-CG0359",
                 "Variable label is not in title case.",
                 List.of(v(0, "variable_name", "AGEGR1", "variable_label", "age group 1"),
                         v(0, "variable_name", "TRTPN", "variable_label", "trt n"),
                         v(0, "variable_name", "RACEN", "variable_label", "race n")));
 
         ValidationReport report = new ValidationReportBuilder()
-                .add("DM", "dm.xpt", rule("CORE-000594"), result).build();
+                .add("DM", "dm.xpt", rule("CDISC-CG0359"), result).build();
 
         List<ValidationFinding> findings = report.getMembers().get(0).getFindings();
         assertEquals(3, findings.size(), "one finding per column — dense schemas, no sparse union");
@@ -637,10 +637,10 @@ class ValidationReportBuilderTest
     @Test
     void executabilityIsRenderedAsPythonValueOnRuleViolation()
     {
-        Rule r = rule("CORE-000019");
+        Rule r = rule("CDISC-CG0311");
         r.setExecutability(Executability.PARTIALLY_EXECUTABLE_POSSIBLE_OVERREPORTING);
         ValidationReport report = new ValidationReportBuilder()
-                .add("DM", "dm.xpt", r, withViolations("CORE-000019", "fail", List.of(v(0))))
+                .add("DM", "dm.xpt", r, withViolations("CDISC-CG0311", "fail", List.of(v(0))))
                 .build();
         ValidationFinding f = report.getMembers().get(0).getFindings().get(0);
         assertEquals("partially executable - possible overreporting", f.getExecutability());
@@ -652,10 +652,10 @@ class ValidationReportBuilderTest
     {
         // Python-parity: Issue_Details rows for engine errors carry the rule's declared
         // executability (e.g. "fully executable") just like rule-violation rows.
-        Rule r = rule("CORE-000019");
+        Rule r = rule("CDISC-CG0311");
         r.setExecutability(Executability.FULLY_EXECUTABLE);
         ValidationReport report = new ValidationReportBuilder()
-                .add("AE", "ae.xpt", r, errorResult("CORE-000019", "boom")).build();
+                .add("AE", "ae.xpt", r, errorResult("CDISC-CG0311", "boom")).build();
         ValidationFinding f = report.getMembers().get(0).getFindings().get(0);
         assertEquals(FindingKind.ENGINE_ERROR, f.getKind());
         assertEquals("fully executable", f.getExecutability());
@@ -778,13 +778,17 @@ class ValidationReportBuilderTest
 
 
     @Test
-    void theExecutedSetDeduplicatesAcrossDatasets()
+    void theExecutedListRecordsOneEntryPerExecution()
     {
+        // ⭐ D65 deliberately REVERSED the old dedup this test used to pin: Rules_Report's
+        // per-rule `executed` count is the number of occurrences here, so a rule run on two
+        // datasets must appear twice. Consumers wanting set semantics wrap it in one
+        // (ReportAssembler.buildSkippedEverywhereCoreIds does).
         ValidationReport report = new ValidationReportBuilder()
                 .add("DM", "dm.xpt", rule("CORE-001"), cleanResult("CORE-001"))
                 .add("AE", "ae.xpt", rule("CORE-001"), cleanResult("CORE-001")).build();
 
-        assertEquals(List.of("CORE-001"), report.getExecutedCoreIds());
+        assertEquals(List.of("CORE-001", "CORE-001"), report.getExecutedCoreIds());
     }
 
 

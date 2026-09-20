@@ -293,7 +293,7 @@ class AbsentColumnFoldTest
     //
     // ⚠ EVERY test in this block is SYNTHETIC and was NEUTER-VERIFIED (the change reverted to the
     // hard-coded `false`, each test watched go red, then restored). It has to be: `num(` has ZERO
-    // occurrences in the shipped rule corpus (measured against the same
+    // occurrences in the shipped lib/corej-rules/rules/ corpus (measured against the same
     // grep that finds `prefix(` 77×, `suffix(` 52× and `date(` 1292×), so the corpus cannot reach
     // any of this and a green suite on its own would prove nothing.
 
@@ -478,16 +478,19 @@ class AbsentColumnFoldTest
 
 
     @Test
-    @DisplayName("a --prefix that cannot be resolved is NOT an absent column (EC-36)")
-    void unresolvedDomainWildcardIsNotFolded()
+    @DisplayName("a --prefix reaching the evaluator is an ERROR, never an absent column (D77b)")
+    void unresolvedDomainWildcardIsAnError()
     {
-        // No domainPrefix and no variableWildcardPrefix on the context, so `--TERM` never resolves.
+        // D77: specialisation resolves every `--` at bind time; one surviving to evaluation means
+        // the stage was bypassed or has a coverage gap. Folding (or silently missing) it is the
+        // old EC-36 contract this replaces.
         IDataTable table = MockTable.of().name("TS").col("TSPARMCD", "PLANSUB", "PLANSUB").build();
-        BitSet verdict = NativeExprEvaluator.evaluate(
-                CheckExpressionParser.parse("--TERM != \"X\""),
-                EvaluationContext.builder().table(table).build());
-        assertEquals(new BitSet(), verdict,
-                "the name was never resolved at all, so it is not a column that is absent");
+        EvaluationContext ctx = EvaluationContext.builder().table(table).build();
+        var expr = CheckExpressionParser.parse("--TERM != \"X\"");
+        net.cumba.corej.core.expr.ExpressionException ex = org.junit.jupiter.api.Assertions
+                .assertThrows(net.cumba.corej.core.expr.ExpressionException.class,
+                        () -> NativeExprEvaluator.evaluate(expr, ctx));
+        assertTrue(ex.getMessage().contains("--TERM"), ex.getMessage());
     }
 
 
@@ -508,8 +511,10 @@ class AbsentColumnFoldTest
         // Without it, a metadata operand that the loader's canonicalization pass did not rewrite
         // into its var_*/ds_* accessor form — that pass runs for the metadata-check rule types only
         // (RulePackageLoader.installNativeExpr), so a mis-derived Rule_Type is enough — would be
-        // materialised as an absent COLUMN and `len(variable_label) > 40` (CDISC-CG0311,
-        // CDISC-CG0311, +26 more) would fire on every row of every dataset.
+        // materialised as an absent COLUMN and `len(variable_label) > 40` (CDISC-CG0311 and
+        // four more rules-src rules, 18 instances across the generated packages — re-measured
+        // 2026-09-19; the "+26 more" that stood here was against the CORE-bearing corpus and is
+        // not re-derivable) would fire on every row of every dataset.
         assertEquals(new BitSet(), eval(expression, absent()),
                 () -> "engine meta is not a data column: " + expression);
     }

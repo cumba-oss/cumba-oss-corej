@@ -36,8 +36,8 @@ public record VersionInfo(String artifactId, String version, String gitCommitHas
      * when no match is found.
      *
      * @param anArtifactId
-     *            the Maven artifact id whose metadata to load (for example
-     *            {@code "cumba-oss-corej-core"})
+     *            the Maven artifact id whose metadata to load (for example this module's own
+     *            artifact id)
      * @return the matching metadata, or all-{@code "unknown"} when no jar on the classpath declares
      *         that artifact id
      */

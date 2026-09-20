@@ -83,6 +83,19 @@
       ]
     },
     {
+      "file": "rules-cdisc-sdtmig-3-4.json",
+      "family": "CDISC",
+      "standard": "SDTMIG",
+      "version": "3.4",
+      "ruleCount": 2,
+      "standards": [
+        {
+          "id": "sdtmig/3-4",
+          "role": "primary"
+        }
+      ]
+    },
+    {
       "file": "rules-draft-sdtmig-3-2.json",
       "family": "DRAFT",
       "standard": "SDTMIG",
@@ -113,7 +126,7 @@
       "family": "FDA",
       "standard": "SDTMIG",
       "version": "3.4",
-      "ruleCount": 4,
+      "ruleCount": 5,
       "standards": [
         {
           "id": "sdtmig/3-4",

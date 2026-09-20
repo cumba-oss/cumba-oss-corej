@@ -16,7 +16,6 @@ import net.cumba.corej.core.exec.OperationExecutor;
 import net.cumba.corej.core.exec.ScopeMatcher;
 import net.cumba.corej.core.gen.GeneratedRulePackage;
 import net.cumba.corej.core.gen.SkippedSourceRule;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.DomainScope;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
@@ -41,7 +40,7 @@ import org.junit.jupiter.params.provider.CsvSource;
  * strict. It shipped materially unexercised: {@code /data/testdata} carries <b>zero</b> {@code AP*}
  * and <b>zero</b> {@code SQ*} datasets (control: 24 {@code SUPP*}, including the split forms
  * {@code supplbch}/{@code supplbhe}/{@code supplbur}), and the existing unit coverage —
- * {@code ScopeMatcherSuppApFamilyTest} in {@code cumba-oss-corej-core} — hands
+ * {@code ScopeMatcherSuppApFamilyTest} in {@code corej-core} — hands
  * {@link ScopeMatcher#describeDomainMismatch(Rule, String, String)} its {@code unsplitName}
  * argument as a <em>string literal</em>. That pins the matcher but proves nothing about the step
  * before it: that a real {@code SUPPLBHM} dataset actually <em>yields</em> {@code SUPPLB} from its
@@ -137,7 +136,9 @@ class ApSqDomainScopeFromDataTest
         core.setId("TEST-APSQ-SCOPE");
         rule.setCore(core);
         rule.setDescription("STUDYID must be present");
-        rule.setCheck(CheckConditionLeaf.builder().name("STUDYID").operator("var_exists").build());
+        rule.setCheck(new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse("var_exists(\"STUDYID\")"),
+                "var_exists(\"STUDYID\")"));
         Outcome outcome = new Outcome();
         outcome.setMessage("STUDYID is missing");
         rule.setOutcome(outcome);

@@ -34,16 +34,15 @@ class GenericPresenceRetirementTest
 
 
     @Test
-    void aGenericLeafIsALoadErrorNamingTheReplacement() throws IOException
+    void aGenericLeafIsRejectedAsTheRetiredOperatorLeafForm()
     {
-        Rule r = load(rule("{\"all\":[{\"name\":\"AETERM\",\"operator\":\"exists\"},"
-                + "{\"name\":\"AETERM\",\"operator\":\"non_empty\"}]}", null));
-        assertNotNull(r.getLoadError());
-        assertTrue(r.getLoadError().contains("retired generic presence operator 'exists'"),
-                r.getLoadError());
-        assertTrue(r.getLoadError().contains("var_exists(X) / var_not_exists(X)"),
-                r.getLoadError());
-        assertTrue(r.getLoadError().contains("ds_exists(X) / ds_not_exists(X)"), r.getLoadError());
+        // Phase 7d (D121): the LEAF spelling of the generic presence operator is now doubly
+        // retired — the operator-leaf model itself rejects at bind time, before the
+        // generic-presence validation could even see an operator name.
+        Exception ex = org.junit.jupiter.api.Assertions.assertThrows(Exception.class,
+                () -> load(rule("{\"all\":[{\"name\":\"AETERM\",\"operator\":\"exists\"},"
+                        + "{\"expression\": \"not empty(AETERM)\"}]}", null)));
+        assertTrue(ex.getMessage().contains("operator-leaf Check form"), ex.getMessage());
     }
 
 

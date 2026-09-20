@@ -202,7 +202,7 @@ public final class ApiModelProjection
      *
      * <p>
      * ⚠⚠ Three fields the real payloads carry have <b>no typed accessor</b> on {@code SdtmVariable}
-     * ({@code cumba-cdisc}, another repository): {@code definition} (341 real occurrences),
+     * (in the cdisc repository, not this one): {@code definition} (341 real occurrences),
      * {@code variableCcode} (331) and {@code codelistSubmissionValues} (1 637). They are read here
      * through {@code ApiResource}'s untyped {@code getString} / {@code getStringList} — the same
      * JSON, one indirection lower — because the alternative is a provider that answers differently

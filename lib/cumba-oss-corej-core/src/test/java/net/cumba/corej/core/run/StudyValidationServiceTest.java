@@ -130,7 +130,7 @@ class StudyValidationServiceTest
                     "u1": {
                       "id": "u1",
                       "Core": {"Id": "%s"},
-                      "Check": {"name": "USUBJID", "operator": "var_exists"}
+                      "Check": {"expression": "var_exists(\\"USUBJID\\")"}
                     }
                   }
                 }
@@ -167,7 +167,7 @@ class StudyValidationServiceTest
                         "u1": {
                           "id": "u1",
                           "Core": {"Id": "%s-X-001"},
-                          "Check": {"name": "USUBJID", "operator": "var_exists"}
+                          "Check": {"expression": "var_exists(\\"USUBJID\\")"}
                         }
                       }
                     }
@@ -297,8 +297,11 @@ class StudyValidationServiceTest
      *
      * <p>
      * ⚠ Reverting {@code requireMetadataLibrary} reds this test — the NPE is not an
-     * {@code IOException}, and the message assertions fail with it.
+     * {@code IOException}, and the message assertion fails with it.
      * </p>
+     *
+     * @throws IOException
+     *             from the fixture plumbing
      */
     @Test
     void validate_managerWithoutMetadataLibraryFailsWithADiagnosis() throws IOException
@@ -914,7 +917,7 @@ class StudyValidationServiceTest
         Path rulesFile = tempDir.resolve("rules.json");
         Files.writeString(rulesFile, """
                 { "rules": { "u1": { "id":"u1","Core":{"Id":"CORE-X-010"},
-                  "Check":{"name":"USUBJID","operator":"var_exists"} } } }
+                  "Check":{"expression": "var_exists(\\"USUBJID\\")"} } } }
                 """);
 
         IDataTableManager mgr = mock(IDataTableManager.class);
@@ -995,7 +998,7 @@ class StudyValidationServiceTest
 
     // ------------------------------------------------------------------
     // Pickle-cache id helpers (pure logic; the pickle-cache-gated provider tests live in
-    // cumba-oss-corej-rules/StudyValidationServicePickleTest — PLAN-engine-rules-decoupling Q4)
+    // corej-rules/StudyValidationServicePickleTest — PLAN-engine-rules-decoupling Q4)
     // ------------------------------------------------------------------
 
 
@@ -1073,7 +1076,7 @@ class StudyValidationServiceTest
                         "u1": {
                           "id": "u1",
                           "Core": {"Id": "%s-X-001"},
-                          "Check": {"name": "USUBJID", "operator": "var_exists"}
+                          "Check": {"expression": "var_exists(\\"USUBJID\\")"}
                         }
                       }
                     }
@@ -1181,7 +1184,7 @@ class StudyValidationServiceTest
                     "s1": {
                       "id": "s1",
                       "Core": {"Id": "SPONSOR-X-001"},
-                      "Check": {"name": "USUBJID", "operator": "var_exists"}
+                      "Check": {"expression": "var_exists(\\"USUBJID\\")"}
                     }
                   }
                 }
@@ -1217,7 +1220,7 @@ class StudyValidationServiceTest
                     "u9": {
                       "id": "u9",
                       "Core": {"Id": "ALPHA-X-001"},
-                      "Check": {"name": "USUBJID", "operator": "var_exists"}
+                      "Check": {"expression": "var_exists(\\"USUBJID\\")"}
                     }
                   }
                 }

@@ -143,11 +143,20 @@ class ExprCompilerExistsModesTest
         assertTrue(NativeExprEvaluator.evaluate(parse("var_exists(AEENDTC)"), c).isEmpty(),
                 "AEENDTC missing → var_exists is false");
 
-        // `--SEQ` resolves against the context's domain prefix (AE → AESEQ).
-        assertEquals(allRows(2), NativeExprEvaluator.evaluate(parse("var_exists(--SEQ)"), c),
-                "--SEQ resolves to AESEQ via the AE domain prefix");
-        assertEquals(allRows(2), NativeExprEvaluator.evaluate(parse("var_not_exists(--ENDTC)"), c),
-                "--ENDTC resolves to AEENDTC, which is missing");
+        // D77: `--SEQ` is resolved by the specialisation stage (ExprPrefixResolver) before the
+        // evaluator ever sees it; a raw one reaching evaluation is an error.
+        assertEquals(allRows(2),
+                NativeExprEvaluator.evaluate(net.cumba.corej.core.exec.ExprPrefixResolver
+                        .resolve(parse("var_exists(--SEQ)"), "AE", "AE"), c),
+                "the specialised var_exists(AESEQ) fires every row");
+        assertEquals(allRows(2),
+                NativeExprEvaluator.evaluate(net.cumba.corej.core.exec.ExprPrefixResolver
+                        .resolve(parse("var_not_exists(--ENDTC)"), "AE", "AE"), c),
+                "the specialised var_not_exists(AEENDTC) fires — the column is missing");
+        org.junit.jupiter.api.Assertions.assertThrows(
+                net.cumba.corej.core.expr.ExpressionException.class,
+                () -> NativeExprEvaluator.evaluate(parse("var_exists(--SEQ)"), c),
+                "an unspecialised --SEQ reaching the evaluator is an error (D77b)");
     }
 
 

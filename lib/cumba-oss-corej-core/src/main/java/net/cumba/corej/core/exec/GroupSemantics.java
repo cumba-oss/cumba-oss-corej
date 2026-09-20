@@ -414,7 +414,7 @@ public final class GroupSemantics
             // MISSING_OR_EMPTY. ⛔ They still must NOT adopt COALESCE_COMPONENT's whitespace notion,
             // which is the coalesce branch's alone (EC-24 / FDA-SE2279).
             KeyPart part = policy.keyPart(table.getColumn(colIds[0]).getDataValue(r));
-            if (part instanceof KeyPart.Present)
+            if (part.present())
             {
                 return part;
             }
@@ -427,7 +427,8 @@ public final class GroupSemantics
         for (int cid : colIds)
         {
             IDataValue dv = table.getColumn(cid).getDataValue(r);
-            if (GroupKeyPolicy.COALESCE_COMPONENT.keyPart(dv) instanceof KeyPart.Present p)
+            KeyPart p = GroupKeyPolicy.COALESCE_COMPONENT.keyPart(dv);
+            if (p.present())
             {
                 return p;
             }
@@ -515,8 +516,7 @@ public final class GroupSemantics
         {
             long r = rowAt.applyAsInt(i);
             KeyPart key = keyPart(valueCol, r);
-            if (!includeEmpty && (!(key instanceof KeyPart.Present)
-                    || !(keyPart(nameCol, r) instanceof KeyPart.Present)))
+            if (!includeEmpty && (!key.present() || !keyPart(nameCol, r).present()))
             {
                 // D.13: a row with a blank key or dependent is excluded — it never fires. A TYPE
                 // test, not a rendering test (W38-A1): Empty and Missing are excluded, whatever
@@ -542,8 +542,7 @@ public final class GroupSemantics
             long r = rowAt.applyAsInt(i);
             KeyPart key = keyPart(valueCol, r);
             KeyPart dep = keyPart(nameCol, r);
-            if (!includeEmpty
-                    && (!(key instanceof KeyPart.Present) || !(dep instanceof KeyPart.Present)))
+            if (!includeEmpty && (!key.present() || !dep.present()))
             {
                 // D.13: a blank key or dependent never enters the functional dependency (type
                 // test — see hasMultipleValuesForRows).
@@ -650,9 +649,12 @@ public final class GroupSemantics
         {
             KeyPart v = keyComponent(table.getColumn(keyColIds[i]), r, policy);
             Pattern p = colPattern[i];
-            if (p != null && v instanceof KeyPart.Present(String s))
+            if (p != null && v.present())
             {
-                Matcher m = p.matcher(s);
+                // A regex-extracted key is a DERIVED text identity, for numeric components too —
+                // the pattern always matched the rendered text before D84a, and a computed key's
+                // drift is the author's problem (D64g).
+                Matcher m = p.matcher(v.reportingForm());
                 String g = m.find() ? m.group() : "";
                 v = g.isEmpty() ? KeyPart.EMPTY : new KeyPart.Present(g);
             }
@@ -702,12 +704,14 @@ public final class GroupSemantics
             IDataTableColumn col = table.getColumn(keyColIds[i]);
             for (int r = 0; r < rowCount; r++)
             {
-                if (keyPart(col, r) instanceof KeyPart.Present(String s))
+                KeyPart part = keyPart(col, r);
+                if (part.present())
                 {
                     // Gate on the first non-blank value only (Python's sample_value), matching
                     // the whole-column normalize-or-leave decision. A type test: a blank never
-                    // supplies the sample, whatever it would render as (W38-A1).
-                    if (p.matcher(s).find())
+                    // supplies the sample, whatever it would render as (W38-A1). The sample is
+                    // the rendered text either way — the pattern question is textual.
+                    if (p.matcher(part.reportingForm()).find())
                     {
                         out[i] = p;
                     }
@@ -1001,13 +1005,11 @@ public final class GroupSemantics
      * where that shows most sharply: pooling the blank-keyed rows (all-{@code ""}, or
      * all-one-marker) fabricates a record chain, so one subject's last row is compared against
      * another subject's first and the operator reports a sort violation that the data never
-     * asserted. <b>Five</b> shipped rules reach this site ({@code CDISC-CG0620},
-     * {@code CDISC-CG0662}, {@code CDISC-SEND-0130}, {@code CDISC-SEND-0130.1},
-     * {@code CDISC-SEND-0354}) — re-derived 2026-09-19 as every rule of the corpus authoring an
-     * {@code is_sorted_by} call ({@code grep -rl sorted rules-src/checks} in
-     * {@code cumba-oss-corej-rules}). Correcting them is an <b>authoring</b> change — declaring
-     * {@code keep_missings: false} — and is deliberately <em>not</em> done by changing this
-     * default, so that the change is visible per rule and its finding delta attributable.
+     * asserted. Five shipped rules reach this site ({@code CDISC-CG0620}, {@code CDISC-CG0662},
+     * {@code CDISC-SEND-0130}, {@code CDISC-SEND-0130.1}, {@code CDISC-SEND-0354}). Correcting them
+     * is an <b>authoring</b> change — declaring {@code keep_missings: false} — and is deliberately
+     * <em>not</em> done by changing this default, so that the change is visible per rule and its
+     * finding delta attributable.
      * </p>
      *
      * @param policy
@@ -1154,7 +1156,7 @@ public final class GroupSemantics
             // A blank cell is not a participant in the relationship — pairing it would make an
             // all-blank code column map its blank -> every term and flag every row. A TYPE test
             // (W38-A1): Empty and Missing are non-participants, whatever they render as.
-            participates[r] = a instanceof KeyPart.Present && b instanceof KeyPart.Present;
+            participates[r] = a.present() && b.present();
         }
         return relationshipNotUniqueCore(aVals, bVals, participates, rowCount);
     }
@@ -1225,7 +1227,7 @@ public final class GroupSemantics
         for (int r = 0; r < rowCount; r++)
         {
             KeyPart a = keyPart(nameCol, r);
-            boolean ok = a instanceof KeyPart.Present;
+            boolean ok = a.present();
             // The value tuple is the per-column KeyPart list — component-wise record equality, so
             // distinct tuples cannot collide by construction (W38-A1; the SOH-joined string this
             // replaces was collision-free only for folded cell text).
@@ -1233,7 +1235,7 @@ public final class GroupSemantics
             for (int i = 0; i < valueCols.size(); i++)
             {
                 KeyPart comp = keyPart(valueCols.get(i), r);
-                if (!(comp instanceof KeyPart.Present))
+                if (!comp.present())
                 {
                     ok = false;
                 }
@@ -1313,13 +1315,18 @@ public final class GroupSemantics
      * Dropping it is therefore exact, not an approximation: it is the identical partition. Before
      * Fix #143 the first member ("target") answered absence with an empty {@code BitSet} for both
      * polarities ("not applicable"); that was the last surviving carve-out from the all-missing
-     * contract. The over-firing shape those historical defects were filed for does <b>not</b>
-     * return: the rules exposed to it are the corpus's {@code is_unique_set} carriers
-     * ({@code CDISC-CG0536}, {@code CDISC-CG0562} — the latter expression-identical to the rule one
-     * of the defects named, the former adding {@code DSCAT} to the key tuple), and each guards its
-     * member — {@code CG0536} with {@code var_exists("DSSCAT")}, {@code CG0562} with an
-     * {@code empty(--REPNUM)} disjunct — so the regrouped check flags a row only when some other
-     * row carries the same surviving key tuple.
+     * contract. The over-firing shape those defects were filed for does <b>not</b> return: the
+     * rules exposed to it ({@code CDISC-CG0536}, {@code CDISC-CG0562} — the authority-successors of
+     * the rules the defects named) guard their member with {@code exists}, and the regrouped check
+     * flags a row only when some other row carries the same surviving key tuple. ⚠ "successor" does
+     * <em>not</em> mean "same expression" in both cases, and the asymmetry is disclosed here rather
+     * than glossed: {@code CDISC-CG0562}'s Check and Bindings are identical to
+     * {@code CORE-001034}'s ({@code CENSUS-core-rule-disposition.tsv}:
+     * {@code expression-identical}), but {@code CDISC-CG0536} is <b>not</b> {@code CORE-000213}'s
+     * expression — it adds a fourth key {@code DSCAT} to {@code [EPOCH, USUBJID, DSSCAT]} and
+     * declares a {@code Grouping.Variables} block the predecessor had none of (census:
+     * {@code C-authority-only}). What this paragraph actually relies on holds for both: each guards
+     * its member, {@code CG0536} with {@code var_exists("DSSCAT")}.
      * </p>
      *
      * <p>
@@ -1641,7 +1648,7 @@ public final class GroupSemantics
             boolean includeEmpty)
     {
         KeyPart v = keyPart(nameCol, r);
-        if (v instanceof KeyPart.Present(String s) && !s.strip().isEmpty())
+        if (v.present() && !v.reportingForm().strip().isEmpty())
         {
             return v;
         }

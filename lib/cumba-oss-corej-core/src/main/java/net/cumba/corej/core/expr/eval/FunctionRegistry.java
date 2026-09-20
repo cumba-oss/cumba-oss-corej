@@ -11,20 +11,21 @@ import net.cumba.datatable.io.GenericServiceFactory;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The {@code (name, arity) -> EvalFunction} registry. Built-in providers are discovered via the
+ * The {@code name -> FunctionDescriptor} registry. Built-in providers are discovered via the
  * project SPI ({@link GenericServiceFactory} over {@code META-INF/services/}) on class
  * initialisation; additional functions may be registered programmatically (for tests / embedding).
  *
  * <h2>Policies</h2>
  * <ul>
- * <li><b>Lookup</b> is by exact {@code (name, arity)}. An unknown pair raises an
- * {@link ExpressionException} at <i>compile</i> time (fail loudly, never silent).</li>
- * <li><b>Overloading</b> is by parameter count: the same name may be registered at several
- * arities.</li>
- * <li><b>Duplicate discovery</b> — two service-loaded providers contributing the same
- * {@code (name, arity)} is a configuration error and throws {@link IllegalStateException}.</li>
- * <li><b>Programmatic registration</b> replaces any existing entry for the pair (so embedders /
- * tests can override a built-in), and {@link #unregister(String, int)} removes one.</li>
+ * <li><b>Lookup</b> is by exact name. An unknown name raises an {@link ExpressionException} at
+ * <i>compile</i> time (fail loudly, never silent).</li>
+ * <li>⛔ <b>One descriptor per name</b> (phase 6b, D16/D17/D19a): the former {@code (name, arity)}
+ * overload key is retired — what used to be an arity overload is an optional {@link Parameter}, and
+ * {@link ArgumentBinder} binds arguments <em>before</em> resolution. Two service-loaded providers
+ * contributing the same name is a configuration error and throws
+ * {@link IllegalStateException}.</li>
+ * <li><b>Programmatic registration</b> replaces any existing entry for the name (so embedders /
+ * tests can override a built-in), and {@link #unregister(String)} removes one.</li>
  * </ul>
  *
  * <p>
@@ -35,11 +36,7 @@ import org.jspecify.annotations.Nullable;
 public final class FunctionRegistry
 {
 
-    private record Key(String name, int arity)
-    {
-    }
-
-    private static final ConcurrentMap<Key, FunctionDescriptor> REGISTRY = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<String, FunctionDescriptor> REGISTRY = new ConcurrentHashMap<>();
 
     static
     {
@@ -79,13 +76,12 @@ public final class FunctionRegistry
         {
             for (FunctionDescriptor descriptor : provider.functions())
             {
-                Key key = new Key(descriptor.name(), descriptor.arity());
-                FunctionDescriptor prev = REGISTRY.putIfAbsent(key, descriptor);
+                FunctionDescriptor prev = REGISTRY.putIfAbsent(descriptor.name(), descriptor);
                 if (prev != null && !prev.equals(descriptor))
                 {
-                    throw new IllegalStateException("Duplicate function registration for "
-                            + descriptor.name() + "/" + descriptor.arity() + " from provider "
-                            + provider.getClass().getName());
+                    throw new IllegalStateException(
+                            "Duplicate function registration for " + descriptor.name()
+                                    + " from provider " + provider.getClass().getName());
                 }
             }
         }
@@ -93,61 +89,84 @@ public final class FunctionRegistry
 
 
     /**
-     * Registers (or replaces) a function overload programmatically. Intended for tests and
+     * Registers (or replaces) a function descriptor programmatically. Intended for tests and
      * embedding scenarios that contribute functions without an SPI provider.
      */
     public static void register(FunctionDescriptor descriptor)
     {
-        REGISTRY.put(new Key(descriptor.name(), descriptor.arity()), descriptor);
+        REGISTRY.put(descriptor.name(), descriptor);
     }
 
 
-    /** Removes a programmatically-registered overload; used by tests to restore isolation. */
-    public static void unregister(String name, int arity)
+    /** Removes a programmatically-registered descriptor; used by tests to restore isolation. */
+    public static void unregister(String name)
     {
-        REGISTRY.remove(new Key(name, arity));
+        REGISTRY.remove(name);
     }
 
 
-    /** {@code true} iff a function is registered for the exact {@code (name, arity)}. */
-    public static boolean isRegistered(String name, int arity)
+    /** {@code true} iff a function is registered under the name. */
+    public static boolean isRegistered(String name)
     {
-        return REGISTRY.containsKey(new Key(name, arity));
+        return REGISTRY.containsKey(name);
     }
 
 
-    /** The descriptor for {@code (name, arity)}, or {@code null} if none is registered. */
-    public static @Nullable FunctionDescriptor descriptor(String name, int arity)
+    /** The descriptor for {@code name}, or {@code null} if none is registered. */
+    public static @Nullable FunctionDescriptor descriptor(String name)
     {
-        return REGISTRY.get(new Key(name, arity));
+        return REGISTRY.get(name);
     }
 
 
     /**
-     * Resolves the implementation for {@code (name, arity)}.
+     * The descriptor for {@code name} when a call carrying {@code positionalCount} positional
+     * arguments can bind against it — the arity-shaped probe the pre-6b {@code (name, arity)}
+     * lookup used to answer. {@code null} when the name is unknown <em>or</em> the count <b>exceeds
+     * {@code maxArity}</b>.
+     *
+     * <p>
+     * ⚠ Round 3: this said "falls outside {@code [minArity, maxArity]}". The body tests the upper
+     * bound only — an <em>under</em>-filled call keeps its descriptor here and is rejected by
+     * {@link ArgumentBinder}, the component that can also see the kwargs. No reaching caller
+     * depends on the lower bound being tested here, so the <b>doc</b> was corrected to the body
+     * rather than the body to the doc; tightening it is a behaviour change and would need its own
+     * decision.
+     * </p>
+     */
+    public static @Nullable FunctionDescriptor descriptorAccepting(String name, int positionalCount)
+    {
+        FunctionDescriptor d = REGISTRY.get(name);
+        if (d == null || positionalCount > d.maxArity())
+        {
+            return null;
+        }
+        return d;
+    }
+
+
+    /**
+     * Resolves the implementation for {@code name}.
      *
      * @throws ExpressionException
-     *             if no function is registered for the exact pair
+     *             if no function is registered for the name
      */
-    public static EvalFunction resolve(String name, int arity)
+    public static EvalFunction resolve(String name)
     {
-        FunctionDescriptor descriptor = REGISTRY.get(new Key(name, arity));
-        if (descriptor == null)
+        FunctionDescriptor descriptor = REGISTRY.get(name);
+        if (descriptor == null || descriptor.fn() == null)
         {
-            throw new ExpressionException(
-                    "No native function '" + name + "' with " + arity + " argument(s)");
+            throw new ExpressionException("No native function '" + name + "'");
         }
         return descriptor.fn();
     }
 
 
-    /** A stable, sorted snapshot of every registered descriptor (for docs / diagnostics). */
+    /** All registered descriptors, ordered by name (for diagnostics / docs). */
     public static List<FunctionDescriptor> all()
     {
-        List<FunctionDescriptor> out = new ArrayList<>(REGISTRY.values());
-        out.sort(Comparator.comparing(FunctionDescriptor::name)
-                .thenComparingInt(FunctionDescriptor::arity));
-        return out;
+        List<FunctionDescriptor> list = new ArrayList<>(REGISTRY.values());
+        list.sort(Comparator.comparing(FunctionDescriptor::name));
+        return list;
     }
-
 }

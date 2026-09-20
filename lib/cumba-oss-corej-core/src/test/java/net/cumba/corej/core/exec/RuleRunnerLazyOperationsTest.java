@@ -4,11 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
@@ -27,7 +25,12 @@ import org.junit.jupiter.api.Test;
 class RuleRunnerLazyOperationsTest
 {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
 
     /**
      * Test 1 — Fix #42 phase 1 (RuleRunner.java:315-340) eagerly force-loads every library-
@@ -54,16 +57,14 @@ class RuleRunnerLazyOperationsTest
         // Dataset-level guard that folds to FALSE so the surrounding all collapses before
         // the row-level $codelist_dates leaf is ever consulted by CheckEvaluator.
         // `dataset_name equal_to "ZZZ"` against this MockTable (no name set) is FALSE.
-        CheckConditionLeaf datasetGuard = CheckConditionLeaf.builder().name("dataset_name")
-                .operator("equal_to").value(MAPPER.valueToTree("ZZZ_NEVER_MATCHES"))
-                .valueIsLiteral(true).build();
+        net.cumba.corej.core.model.CheckConditionExpression datasetGuard = expr(
+                "ds_name(\"DATA\") == \"ZZZ_NEVER_MATCHES\"");
 
         // Row-level leaf referencing the Operation. Under Fix #36 alone the supplier would
         // stay cold; Fix #42 phase 1 forces it eagerly during the LIBRARY_NOT_AVAILABLE
         // probe regardless of the Check shape.
-        CheckConditionLeaf opLeaf = CheckConditionLeaf.builder().name("RFICDTC")
-                .operator("is_not_contained_by").value(MAPPER.valueToTree("$codelist_dates"))
-                .build();
+        net.cumba.corej.core.model.CheckConditionExpression opLeaf = expr(
+                "RFICDTC not in $codelist_dates");
 
         Rule rule = buildRule("CORE-LAZY-001", "library-dependent op force-loaded",
                 new CheckConditionAll(List.of(datasetGuard, opLeaf)), List.of("USUBJID"));
@@ -106,12 +107,10 @@ class RuleRunnerLazyOperationsTest
         op.setId("$codelist_dates");
         op.setOperator("valid_codelist_dates");
 
-        CheckConditionLeaf rficdtcLeaf = CheckConditionLeaf.builder().name("RFICDTC")
-                .operator("is_not_contained_by").value(MAPPER.valueToTree("$codelist_dates"))
-                .build();
-        CheckConditionLeaf dthdtcLeaf = CheckConditionLeaf.builder().name("DTHDTC")
-                .operator("is_not_contained_by").value(MAPPER.valueToTree("$codelist_dates"))
-                .build();
+        net.cumba.corej.core.model.CheckConditionExpression rficdtcLeaf = expr(
+                "RFICDTC not in $codelist_dates");
+        net.cumba.corej.core.model.CheckConditionExpression dthdtcLeaf = expr(
+                "DTHDTC not in $codelist_dates");
 
         Rule rule = buildRule("CORE-LAZY-002", "two consumers of the same op",
                 new CheckConditionAll(List.of(rficdtcLeaf, dthdtcLeaf)), List.of("USUBJID"));
@@ -144,9 +143,8 @@ class RuleRunnerLazyOperationsTest
         op.setId("$codelist_dates");
         op.setOperator("valid_codelist_dates");
 
-        CheckConditionLeaf opLeaf = CheckConditionLeaf.builder().name("RFICDTC")
-                .operator("is_not_contained_by").value(MAPPER.valueToTree("$codelist_dates"))
-                .build();
+        net.cumba.corej.core.model.CheckConditionExpression opLeaf = expr(
+                "RFICDTC not in $codelist_dates");
 
         Rule rule = buildRule("CORE-LAZY-003", "fresh op per rule run",
                 new CheckConditionAll(List.of(opLeaf)), List.of("USUBJID"));
@@ -200,11 +198,8 @@ class RuleRunnerLazyOperationsTest
     {
         IDataTable table = MockTable.of().col("SEX", "M", "X").build();
 
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("SEX")
-                .operator("is_not_contained_by").value(arrayNode("M", "F")).build();
-
-        Rule rule = buildRule("CORE-LAZY-NOOP", "no ops", new CheckConditionAll(List.of(leaf)),
-                List.of("SEX"));
+        Rule rule = buildRule("CORE-LAZY-NOOP", "no ops",
+                new CheckConditionAll(List.of(expr("SEX not in [\"M\", \"F\"]"))), List.of("SEX"));
 
         RuleExecutionResult result = RuleRunner.execute(rule, table);
         assertEquals(1, result.getViolationCount());
@@ -226,9 +221,8 @@ class RuleRunnerLazyOperationsTest
         op.setId("$codelist_dates");
         op.setOperator("valid_codelist_dates");
 
-        CheckConditionLeaf opLeaf = CheckConditionLeaf.builder().name("RFICDTC")
-                .operator("is_not_contained_by").value(MAPPER.valueToTree("$codelist_dates"))
-                .build();
+        net.cumba.corej.core.model.CheckConditionExpression opLeaf = expr(
+                "RFICDTC not in $codelist_dates");
 
         Rule rule = buildRule("CORE-LAZY-NOLIB", "library missing",
                 new CheckConditionAll(List.of(opLeaf)), List.of("USUBJID"));
@@ -258,17 +252,6 @@ class RuleRunnerLazyOperationsTest
         rule.setCheck(check);
         net.cumba.corej.core.RulePackageLoader.installNativeExpr(rule);
         return rule;
-    }
-
-
-    private static com.fasterxml.jackson.databind.node.ArrayNode arrayNode(String... values)
-    {
-        com.fasterxml.jackson.databind.node.ArrayNode arr = MAPPER.createArrayNode();
-        for (String v : values)
-        {
-            arr.add(v);
-        }
-        return arr;
     }
 
     /**

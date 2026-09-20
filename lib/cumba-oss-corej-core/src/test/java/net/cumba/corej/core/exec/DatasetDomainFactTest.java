@@ -54,17 +54,16 @@ class DatasetDomainFactTest
      */
     private static final String BAREWORD_LENGTH_RULE = "{\"Core\":{\"Id\":\"R1\"},"
             + "\"Sensitivity\":\"Record\"," + "\"Check\":{\"any\":["
-            + "{\"name\":\"dataset_domain\",\"operator\":\"longer_than\",\"value\":2},"
-            + "{\"name\":\"dataset_domain\",\"operator\":\"shorter_than\",\"value\":2}]},"
+            + "{\"expression\": \"len(dataset_domain) > 2\"},"
+            + "{\"expression\": \"len(dataset_domain) < 2\"}]},"
             + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"dataset_domain\"]}}";
 
     /** The same shape carried by the OPERATION, referenced through its {@code $}-id. */
     private static final String OPERATION_LENGTH_RULE = "{\"Core\":{\"Id\":\"R1\"},"
             + "\"Sensitivity\":\"Record\","
-            + "\"Operations\":[{\"id\":\"$dd\",\"operator\":\"dataset_domain\"}],"
-            + "\"Check\":{\"any\":["
-            + "{\"name\":\"$dd\",\"operator\":\"longer_than\",\"value\":2},"
-            + "{\"name\":\"$dd\",\"operator\":\"shorter_than\",\"value\":2}]},"
+            + "\"Bindings\":[{\"name\": \"$dd\", \"expression\": \"dataset_domain()\"}],"
+            + "\"Check\":{\"any\":[" + "{\"expression\": \"len($dd) > 2\"},"
+            + "{\"expression\": \"len($dd) < 2\"}]},"
             + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"$dd\"]}}";
 
     private static Rule loadRule(String ruleBody) throws Exception
@@ -101,10 +100,8 @@ class DatasetDomainFactTest
     {
         // An equality test of the fact against a literal — the probe for the four §3 value rows.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Record\","
-                + "\"Check\":{\"all\":[{\"name\":\"dataset_domain\","
-                + "\"operator\":\"equal_to\",\"value\":\"" + expected
-                + "\",\"value_is_literal\":true}]},"
-                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
+                + "\"Check\":{\"all\":[{\"expression\":\"dataset_domain == \\\"" + expected
+                + "\\\"\"}]}," + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         assertNotNull(rule.getCheckExpr(), "the equality rule must compile natively");
         return !findings(rule, table, domainPrefix).isEmpty();
     }
@@ -174,8 +171,7 @@ class DatasetDomainFactTest
     void theFactInValuePositionIsCanonicalisedUniformly() throws Exception
     {
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Record\","
-                + "\"Check\":{\"all\":[{\"name\":\"AETERM\",\"operator\":\"equal_to\","
-                + "\"value\":\"dataset_domain\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"AETERM == ds_domain(\\\"DATA\\\")\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         String printed = ExpressionPrinter.print(rule.getCheckExpr());
         assertTrue(printed.contains("ds_domain(\"DATA\")"),
@@ -202,8 +198,6 @@ class DatasetDomainFactTest
     void barewordFoldsToOneFindingPerDataset() throws Exception
     {
         Rule rule = loadRule(BAREWORD_LENGTH_RULE);
-        assertTrue(rule.isBroadcastCheckExpr(),
-                "a pure dataset-fact Check must be broadcast-flagged");
         IDataTable malformed = MockTable.of().name("AEX").col("DOMAIN", "AEX", "AEX", "AEX")
                 .col("AETERM", "a", "b", "c").build();
         assertEquals(1, findings(rule, malformed, "AE").size(),

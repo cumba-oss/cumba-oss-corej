@@ -61,6 +61,28 @@ class OperandClassifierTest
 
 
     @Test
+    void matchedFlag()
+    {
+        // Spec §3.3 / D88 (phase 5b-J): DATASET._matched_ is the join-match flag.
+        assertSame(OperandKind.MATCHED_FLAG, kind("AE._matched_"));
+        assertSame(OperandKind.MATCHED_FLAG, kind("DM._matched_"));
+        assertSame(OperandKind.MATCHED_FLAG, kind("SUPPAE._matched_"));
+    }
+
+
+    @Test
+    void matchedFlagNeedsTheExactSuffixAndAQualifier()
+    {
+        // A bare or malformed spelling is NOT the flag — and, carrying underscores, it must be a
+        // registered built-in, so the classifier throws rather than guessing.
+        assertThrows(ExpressionException.class, () -> kind("_matched_"));
+        assertThrows(ExpressionException.class, () -> kind("AE._matched"));
+        assertThrows(ExpressionException.class, () -> kind("AE._matched_x"));
+        assertThrows(ExpressionException.class, () -> kind("ae._matched_"));
+    }
+
+
+    @Test
     void builtinReference()
     {
         assertSame(OperandKind.BUILTIN, kind("variable_name"));

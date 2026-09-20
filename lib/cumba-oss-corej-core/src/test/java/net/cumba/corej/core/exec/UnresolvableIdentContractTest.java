@@ -3,11 +3,8 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.BitSet;
 import java.util.List;
-import net.cumba.corej.core.expr.CheckToExpr;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -24,7 +21,11 @@ import org.junit.jupiter.api.Test;
 class UnresolvableIdentContractTest
 {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
 
     private static final DatasetResolver NO_RESOLVER = _ -> null;
 
@@ -33,10 +34,9 @@ class UnresolvableIdentContractTest
      */
     private static Rule equalToLiteralRule()
     {
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("AETERM").operator("equal_to")
-                .value(MAPPER.valueToTree("PLACEBO")).build();
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr("AETERM == PLACEBO");
         Rule r = baseRule("R", leaf, "AETERM");
-        r.setCheckExpr(CheckToExpr.toExpr(leaf));
+        r.setCheckExpr(leaf.expr());
         return r;
     }
 

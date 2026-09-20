@@ -25,7 +25,7 @@ import org.jspecify.annotations.Nullable;
 public class RuleTestScenario
 {
 
-    /** Rule identifier from {@code #test}, e.g. {@code "CDISC-CG0367"}. */
+    /** Rule identifier from {@code #test}, e.g. {@code "CDISC-CG0040"}. */
     String coreId;
 
     /** Expected verdict: {@link Verdict#VIOLATION} or {@link Verdict#NO_VIOLATION}. */
@@ -103,7 +103,7 @@ public class RuleTestScenario
     /**
      * Value of the {@code #dictionaries} directive, or {@code null} when the scenario does not use
      * external dictionaries. The only accepted value today is {@code "dummy"} — the checked-in
-     * dummy dictionary bundle ({@code lib/cumba-oss-corej-core/dictionaries}); the scenario runner
+     * dummy dictionary bundle (the engine core module's {@code dictionaries}); the scenario runner
      * resolves it to a {@code RuntimeDictionaryProvider} and hands it to the engine. Without the
      * directive no provider is supplied, so a dictionary-dependent rule SKIPs — for the declared
      * ({@code $}-ref) form every shipped rule uses, via {@code RuleRunner}'s eager dictionary arm

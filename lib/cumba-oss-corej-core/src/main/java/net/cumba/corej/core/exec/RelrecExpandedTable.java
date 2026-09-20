@@ -7,8 +7,10 @@ import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Row-remapped view of a base table for forward RELREC expansion: expanded row {@code i} presents
- * the base table's row {@code rowMap[i]}. The column set and metadata are the base table's; row
+ * Row-remapped view of a base table: view row {@code i} presents the base table's row
+ * {@code rowMap[i]}. Built for forward RELREC expansion; since 5b-J also the row projection behind
+ * {@link MatchFilter} (a joined dataset restricted to its filter-passing rows — there the map is a
+ * subset in order rather than an expansion). The column set and metadata are the base table's; row
  * identity ({@link #getRealRowIndex}) maps through to the base so a violation on an expanded row is
  * reported against the originating primary record.
  *

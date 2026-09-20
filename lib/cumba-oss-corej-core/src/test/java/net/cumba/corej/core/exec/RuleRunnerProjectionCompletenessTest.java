@@ -111,8 +111,8 @@ class RuleRunnerProjectionCompletenessTest
                   "Core":{"Id":"R1"},
                   "Sensitivity":"Record",
                   "Check":{"all":[
-                    {"name":"variable_name","operator":"matches_regex","value":"^AETERM$"},
-                    {"name":"variable_format","operator":"empty"}
+                    {"expression": "ends_with(varname(), \\"AETERM\\")"},
+                    {"expression": "empty(var_format(\\"DATA\\"))"}
                   ]},
                   "Outcome":{"Message":"m","Output_Variables":[%s]}
                 }}}""".formatted(ov);

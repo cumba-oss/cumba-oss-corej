@@ -52,7 +52,7 @@ class RuleLoadValidationExpansionTest
                 {
                   "Core": {"Id": "TEST-146-OK"},
                   "Expansion": [{"token": "&VAR", "over": "shared_variables", "with": "ADSL"}],
-                  "Check": {"all": [{"name": "&VAR", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
                 }
                 """);
         assertNull(rule.getLoadError());
@@ -72,7 +72,7 @@ class RuleLoadValidationExpansionTest
                 {
                   "Core": {"Id": "TEST-146-OVER"},
                   "Expansion": [{"token": "&VAR", "over": "each_full_moon", "with": "ADSL"}],
-                  "Check": {"all": [{"name": "&VAR", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
                 }
                 """);
         assertTrue(error.contains("invalid 'over' value 'each_full_moon'"), error);
@@ -89,7 +89,7 @@ class RuleLoadValidationExpansionTest
                 {
                   "Core": {"Id": "TEST-146-SIGIL"},
                   "Expansion": [{"token": "VAR", "over": "shared_variables", "with": "ADSL"}],
-                  "Check": {"all": [{"name": "VAR", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty(VAR)"}]}
                 }
                 """);
         assertTrue(error.contains("carries no sigil"), error);
@@ -106,7 +106,7 @@ class RuleLoadValidationExpansionTest
                     {"token": "&D", "over": "domain_from_variable", "pattern": "&DSEQ"},
                     {"token": "&DS", "over": "domain_from_variable", "pattern": "&DSX"}
                   ],
-                  "Check": {"all": [{"name": "&DSEQ", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty(`&DSEQ`)"}]}
                 }
                 """);
         assertTrue(error.contains("occurs inside token"), error);
@@ -126,7 +126,7 @@ class RuleLoadValidationExpansionTest
                   "Core": {"Id": "TEST-146-SCOPE"},
                   "Requirements": {"Variables": {"All": ["&VAR"]}},
                   "Expansion": [{"token": "&VAR", "over": "shared_variables", "with": "ADSL"}],
-                  "Check": {"all": [{"name": "&VAR", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
                 }
                 """);
         assertTrue(error.contains("must not appear in Requirements.Variables.All"), error);
@@ -144,8 +144,8 @@ class RuleLoadValidationExpansionTest
                   "Core": {"Id": "TEST-146-MIX"},
                   "Expansion": [{"token": "&VAR", "over": "shared_variables", "with": "ADSL"}],
                   "Check": {"all": [
-                    {"name": "&VAR", "operator": "non_empty"},
-                    {"name": "TRTxxP", "operator": "var_exists"}
+                    {"expression": "not empty(`&VAR`)"},
+                    {"expression": "var_exists(\\"TRTxxP\\")"}
                   ]}
                 }
                 """);
@@ -166,7 +166,7 @@ class RuleLoadValidationExpansionTest
                   "Expansion": [
                     {"token": "--D", "over": "domain_from_variable", "pattern": "--DSEQ"}
                   ],
-                  "Check": {"all": [{"name": "--DSEQ", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty(--DSEQ)"}]}
                 }
                 """);
         assertTrue(error.contains("contains '--'"), error);
@@ -186,7 +186,7 @@ class RuleLoadValidationExpansionTest
                   "wildcardExclude": ["TRTPN"],
                   "skipIfLibraryDefined": true,
                   "Expansion": [{"token": "&VAR", "over": "shared_variables", "with": "ADSL"}],
-                  "Check": {"all": [{"name": "&VAR", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
                 }
                 """);
         assertTrue(error.contains("wildcard-mechanism directives"), error);
@@ -202,7 +202,7 @@ class RuleLoadValidationExpansionTest
                 {
                   "Core": {"Id": "TEST-146-WITH"},
                   "Expansion": [{"token": "&VAR", "over": "shared_variables"}],
-                  "Check": {"all": [{"name": "&VAR", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
                 }
                 """);
         assertTrue(error.contains("requires a 'with' dataset name"), error);
@@ -216,7 +216,7 @@ class RuleLoadValidationExpansionTest
                 {
                   "Core": {"Id": "TEST-146-PAT"},
                   "Expansion": [{"token": "&DOM", "over": "domain_from_variable"}],
-                  "Check": {"all": [{"name": "&DOMSEQ", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty(`&DOMSEQ`)"}]}
                 }
                 """);
         assertTrue(error.contains("requires a 'pattern'"), error);
@@ -233,7 +233,7 @@ class RuleLoadValidationExpansionTest
                   "Expansion": [
                     {"token": "&DOM", "over": "domain_from_variable", "pattern": "SOMESEQ"}
                   ],
-                  "Check": {"all": [{"name": "&DOMSEQ", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty(`&DOMSEQ`)"}]}
                 }
                 """);
         assertTrue(error.contains("does not contain its token"), error);
@@ -260,7 +260,7 @@ class RuleLoadValidationExpansionTest
                 {
                   "Core": {"Id": "TEST-146-NOTOKEN"},
                   "Expansion": [{"over": "shared_variables", "with": "ADSL"}],
-                  "Check": {"all": [{"name": "AGE", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty(AGE)"}]}
                 }
                 """);
         assertTrue(error.contains("no 'token'"), error);
@@ -273,7 +273,7 @@ class RuleLoadValidationExpansionTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-146-NONE"},
-                  "Check": {"all": [{"name": "TRTxxP", "operator": "var_exists"}]}
+                  "Check": {"all": [{"expression": "var_exists(\\"TRTxxP\\")"}]}
                 }
                 """);
         assertNull(rule.getLoadError(),

@@ -24,13 +24,14 @@ import org.junit.jupiter.api.Test;
 class DefineCodedCodesListMembershipTest
 {
 
-    /** Rule with a single list-LHS membership leaf against a literal published-code list. */
+    /** Rule with a single list-LHS membership condition against a literal published-code list. */
     private static Rule rule(String operator) throws Exception
     {
+        String membership = "is_not_contained_by".equals(operator) ? " not in " : " in ";
         String json = "{\"Core\":{\"Id\":\"R1\"}," + "\"Variable_Universe\":\"Define\","
                 + "\"Sensitivity\":\"Dataset\",\"Check\":{\"all\":["
-                + "{\"name\":\"define_variable_codelist_coded_codes\",\"operator\":\"" + operator
-                + "\",\"value\":[\"AE\",\"CM\",\"EX\"]}]},"
+                + "{\"expression\":\"define_variable_codelist_coded_codes" + membership
+                + "[\\\"AE\\\", \\\"CM\\\", \\\"EX\\\"]\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}";
         RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"R1\":" + json + "}}");
         Rule r = pkg.getRules().get("R1");

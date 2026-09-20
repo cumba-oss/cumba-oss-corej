@@ -177,7 +177,10 @@ class RuleRunnerRequirementsDatasetsTest
      * ⛔⭐ The exact-name half, and the reason the predicate cannot be one unconditional rule.
      *
      * <p>
-     * This is the exact-name shape: the rule's <em>only</em> route to {@code TA} is an
+     * ⚠ This shape has <b>no shipped carrier</b> since 2026-09-19: its sole instance was retired
+     * with the CORE family (see {@code AbsentDatasetSkip.splitWidenedCandidates}' javadoc, which
+     * records the same emptiness), so the rule below is synthetic and this is the only thing
+     * exercising the branch. The shape: the rule's <em>only</em> route to {@code TA} is an
      * {@code Operations[].domain}, the one surface {@code AbsentDatasetSkip.splitWidenedCandidates}
      * deliberately excludes because operations still resolve by exact name downstream. If the
      * requirement gated on the widened fact the rule would run on a split submission and then
@@ -191,8 +194,7 @@ class RuleRunnerRequirementsDatasetsTest
     {
         String pkg = "{\"rules\":{\"R1\":{\"Core\":{\"Id\":\"TEST-RD-TA\"},"
                 + "\"Sensitivity\":\"Record\","
-                + "\"Operations\":[{\"id\":\"$ta_armcd\",\"operator\":\"distinct\","
-                + "\"domain\":\"TA\",\"name\":\"ARMCD\"}],"
+                + "\"Bindings\":[{\"name\": \"$ta_armcd\", \"expression\": \"distinct(ARMCD, domain=\\\"TA\\\")\"}],"
                 + "\"Check\":{\"expression\":\"not empty(AETERM) and AETERM not in $ta_armcd\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}}}";
         Rule rule = RulePackageLoader.loadFromString(pkg).getRules().get("R1");
@@ -299,8 +301,7 @@ class RuleRunnerRequirementsDatasetsTest
     {
         String pkg = "{\"rules\":{\"R1\":{\"Core\":{\"Id\":\"TEST-RD-TA2\"},"
                 + "\"Sensitivity\":\"Record\","
-                + "\"Operations\":[{\"id\":\"$ta_armcd\",\"operator\":\"distinct\","
-                + "\"domain\":\"TA\",\"name\":\"ARMCD\"}],"
+                + "\"Bindings\":[{\"name\": \"$ta_armcd\", \"expression\": \"distinct(ARMCD, domain=\\\"TA\\\")\"}],"
                 + "\"Check\":{\"expression\":\"not empty(AETERM) and AETERM not in $ta_armcd\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}}}";
         Rule rule = RulePackageLoader.loadFromString(pkg).getRules().get("R1");

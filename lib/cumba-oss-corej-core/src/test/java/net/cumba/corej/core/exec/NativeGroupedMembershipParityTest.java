@@ -29,11 +29,9 @@ class NativeGroupedMembershipParityTest
         // CDISC-CG0034 verbatim shape.
         String json = "{\"rules\":{\"R1\":{\"Core\":{\"Id\":\"R1\"},"
                 + "\"Sensitivity\":\"Record\","
-                + "\"Operations\":[{\"id\":\"$sv_visitnum\",\"operator\":\"distinct\","
-                + "\"domain\":\"SV\",\"name\":\"VISITNUM\",\"group\":[\"USUBJID\"]}],"
-                + "\"Check\":{\"all\":[{\"name\":\"VISITNUM\",\"operator\":\"non_empty\"},"
-                + "{\"name\":\"VISITNUM\",\"operator\":\"is_not_contained_by\","
-                + "\"value\":\"$sv_visitnum\"}]},"
+                + "\"Bindings\":[{\"name\": \"$sv_visitnum\", \"expression\": \"distinct(VISITNUM, domain=\\\"SV\\\", group=[USUBJID])\"}],"
+                + "\"Check\":{\"all\":[{\"expression\": \"not empty(VISITNUM)\"},"
+                + "{\"expression\": \"VISITNUM not in $sv_visitnum\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"VISITNUM\"]}}}}";
         RulePackage pkg = RulePackageLoader.loadFromString(json);
         Rule rule = pkg.getRules().get("R1");

@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
@@ -43,7 +42,14 @@ import org.junit.jupiter.api.Test;
 class RuleRunnerSplitJoinTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
     // ------------------------------------------------------------------------------ fixtures
+
 
     private static IDataTable lbch()
     {
@@ -110,8 +116,7 @@ class RuleRunnerSplitJoinTest
         rule.setMatchDatasets(List.of(md(dom, "left", "USUBJID", seqVar)));
         String dotted = dom + "." + seqVar;
         rule.setCheck(new CheckConditionAll(
-                List.of(CheckConditionLeaf.builder().name(dotted).operator("var_exists").build(),
-                        CheckConditionLeaf.builder().name(dotted).operator("empty").build())));
+                List.of(expr("var_exists(" + dotted + ")"), expr("empty(" + dotted + ")"))));
         RulePackageLoader.installNativeExpr(rule);
         return rule;
     }
@@ -172,9 +177,8 @@ class RuleRunnerSplitJoinTest
         outcome.setOutputVariables(List.of("USUBJID"));
         rule.setOutcome(outcome);
         rule.setMatchDatasets(List.of(md("DM", "left", "USUBJID")));
-        rule.setCheck(new CheckConditionAll(
-                List.of(CheckConditionLeaf.builder().name("DM.ARM").operator("var_exists").build(),
-                        CheckConditionLeaf.builder().name("DM.ARM").operator("empty").build())));
+        rule.setCheck(
+                new CheckConditionAll(List.of(expr("var_exists(DM.ARM)"), expr("empty(DM.ARM)"))));
         RulePackageLoader.installNativeExpr(rule);
         // Same rule, same primary — once through the WithInventory resolver of a submission that
         // also splits LB, once through a plain exact-name lambda. Identical findings = the exact
@@ -287,8 +291,7 @@ class RuleRunnerSplitJoinTest
         outcome.setOutputVariables(List.of("USUBJID"));
         rule.setOutcome(outcome);
         rule.setMatchDatasets(List.of(child));
-        rule.setCheck(new CheckConditionAll(List
-                .of(CheckConditionLeaf.builder().name("IDVARVAL").operator("non_empty").build())));
+        rule.setCheck(new CheckConditionAll(List.of(expr("not empty(IDVARVAL)"))));
         RulePackageLoader.installNativeExpr(rule);
 
         RuleExecutionResult res = RuleRunner.execute(rule, supplbch,
@@ -344,10 +347,7 @@ class RuleRunnerSplitJoinTest
         outcome.setMessage("m " + id);
         outcome.setOutputVariables(List.of("USUBJID", var));
         r.setOutcome(outcome);
-        r.setCheck(new CheckConditionAll(
-                List.of(CheckConditionLeaf.builder().name(var).operator("not_equal_to")
-                        .value(com.fasterxml.jackson.databind.node.TextNode.valueOf("LB." + var))
-                        .build())));
+        r.setCheck(new CheckConditionAll(List.of(expr(var + " != LB." + var))));
         MatchDataset m = new MatchDataset();
         m.setName("LB");
         m.setKeys(List.of("USUBJID"));
@@ -409,8 +409,7 @@ class RuleRunnerSplitJoinTest
         outcome.setOutputVariables(List.of("USUBJID", "LB.TRT${*}PN"));
         rule.setOutcome(outcome);
         rule.setMatchDatasets(List.of(md("LB", "left", "USUBJID", "LBSEQ")));
-        rule.setCheck(new CheckConditionAll(List
-                .of(CheckConditionLeaf.builder().name("USUBJID").operator("non_empty").build())));
+        rule.setCheck(new CheckConditionAll(List.of(expr("not empty(USUBJID)"))));
         RulePackageLoader.installNativeExpr(rule);
 
         RuleExecutionResult res = RuleRunner.execute(rule, primary,
@@ -445,8 +444,7 @@ class RuleRunnerSplitJoinTest
         outcome.setOutputVariables(List.of("USUBJID"));
         rule.setOutcome(outcome);
         rule.setMatchDatasets(List.of(md("LB", "left", "USUBJID", "LBSEQ")));
-        rule.setCheck(new CheckConditionAll(
-                List.of(CheckConditionLeaf.builder().name("LBORRES").operator("empty").build())));
+        rule.setCheck(new CheckConditionAll(List.of(expr("empty(LBORRES)"))));
         RulePackageLoader.installNativeExpr(rule);
 
         RuleExecutionResult res = RuleRunner.execute(rule, primary,

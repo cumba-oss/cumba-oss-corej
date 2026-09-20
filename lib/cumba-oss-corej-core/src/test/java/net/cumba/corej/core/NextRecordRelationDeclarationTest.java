@@ -7,16 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import net.cumba.corej.core.expr.CheckExpressionParser;
-import net.cumba.corej.core.expr.CheckToExpr;
-import net.cumba.corej.core.expr.ExprLowering;
 import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.ast.Expr;
-import net.cumba.corej.core.model.CheckCondition;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.NextRecordRelation;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
@@ -39,12 +33,6 @@ class NextRecordRelationDeclarationTest
 
     private static final String SHIPPED = "not has_next_corresponding_record(SJENDTC, SJSTDTC, "
             + "keep_missings=false, ordering=SJSEQ, relation=\"<=\", within=USUBJID)";
-
-    private static JsonNode textNode(String s)
-    {
-        return JsonNodeFactory.instance.textNode(s);
-    }
-
 
     /** Loads a one-rule package through the production loader and returns the rule. */
     private static Rule load(String ruleJson)
@@ -88,78 +76,6 @@ class NextRecordRelationDeclarationTest
         assertTrue(NextRecordRelation.OPERATORS.contains("has_next_corresponding_record"));
         assertTrue(
                 NextRecordRelation.OPERATORS.contains("does_not_have_next_corresponding_record"));
-    }
-
-    // ------------------------------------------------------------------ the declared surface
-
-
-    @Test
-    void theNegatedTwinLeafRoundTripsTheRelation()
-    {
-        // ⚠⚠ The Q1 negation pair raises through the POSITIVE twin's name, so the allowlist must
-        // carry both names (the keep_missings lesson) — this is the declared form of every
-        // shipped carrier.
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("SJENDTC")
-                .operator("does_not_have_next_corresponding_record").value(textNode("SJSTDTC"))
-                .within(textNode("USUBJID")).ordering("SJSEQ").keepMissings(Boolean.FALSE)
-                .relation("<=").build();
-
-        Expr raised = CheckToExpr.toExpr(leaf);
-        String printed = ExpressionPrinter.print(raised);
-        assertEquals(SHIPPED, printed,
-                "the canonical text, kwargs in TreeMap order: keep_missings, ordering, relation, within");
-
-        CheckCondition lowered = ExprLowering.toCheckCondition(raised);
-        assertTrue(lowered instanceof CheckConditionLeaf, "expected a leaf, got " + lowered);
-        CheckConditionLeaf back = (CheckConditionLeaf) lowered;
-        assertEquals("does_not_have_next_corresponding_record", back.getOperator());
-        assertEquals("<=", back.getRelation(), "the round-trip must not lose the relation");
-        assertEquals(false, back.getKeepMissings());
-        assertEquals("SJSEQ", back.getOrdering());
-    }
-
-
-    @Test
-    void textParsesLowersAndPrintsBackToItself()
-    {
-        // text → Expr → leaf → Expr → text: the idempotence the corpus-drift guard relies on.
-        Expr parsed = CheckExpressionParser.parse(SHIPPED);
-        CheckCondition lowered = ExprLowering.toCheckCondition(parsed);
-        assertEquals("<=", ((CheckConditionLeaf) lowered).getRelation());
-        assertEquals(SHIPPED, ExpressionPrinter.print(CheckToExpr.toExpr(lowered)));
-    }
-
-
-    @Test
-    void aRelationOnANonNextRecordOperatorIsRejectedOnTheDeclaredSurface()
-    {
-        CheckConditionLeaf grouped = CheckConditionLeaf.builder().name("AVAL")
-                .operator("has_multiple_values_for").value(textNode("PARAMCD"))
-                .within(textNode("USUBJID")).relation("<=").build();
-        RuntimeException ex = assertThrows(RuntimeException.class,
-                () -> CheckToExpr.toExpr(grouped));
-        assertTrue(ex.getMessage().contains("does not support relation"),
-                "expected the relation rejection, got: " + ex.getMessage());
-
-        // A row-level operator is rejected by rejectGroupFields instead — either way, loudly.
-        CheckConditionLeaf rowLevel = CheckConditionLeaf.builder().name("AVAL").operator("equal_to")
-                .value(textNode("1")).relation("<=").build();
-        RuntimeException ex2 = assertThrows(RuntimeException.class,
-                () -> CheckToExpr.toExpr(rowLevel));
-        assertTrue(ex2.getMessage().contains("relation"),
-                "expected a relation rejection, got: " + ex2.getMessage());
-    }
-
-
-    @Test
-    void loweringRejectsANonStringRelation()
-    {
-        Expr parsed = CheckExpressionParser.parse("not has_next_corresponding_record(SJENDTC, "
-                + "SJSTDTC, ordering=SJSEQ, relation=1, within=USUBJID)");
-        RuntimeException ex = assertThrows(RuntimeException.class,
-                () -> ExprLowering.toCheckCondition(parsed));
-        assertTrue(ex.getMessage().contains("relation= must be a string literal"),
-                "got: " + ex.getMessage());
     }
 
     // ------------------------------------------------------------------ the inline surface
@@ -222,11 +138,11 @@ class NextRecordRelationDeclarationTest
 
 
     /**
-     * ⚠⚠ The deserializer lowers an authored expression to a {@code CheckConditionLeaf} whenever it
-     * can, so the tests above exercise the <b>leaf</b> arm of the load-time validation. A Check
-     * that cannot be lowered (here: a {@code length()} conjunct, which has no legacy leaf) stays a
-     * {@code CheckConditionExpression} and reaches the <b>inline</b> arm — which must reject the
-     * same three shapes with the same messages.
+     * Historically the deserializer lowered an authored expression to a leaf whenever it could, and
+     * the load-time validation had a leaf arm and an inline arm; a {@code length()} conjunct (no
+     * legacy leaf) forced the inline arm. The leaf arm is retired (phase 7d, D121) — every Check is
+     * a {@code CheckConditionExpression} now — but the fixture keeps its conjunct so the suite
+     * still covers a multi-conjunct Check beside the bare-call tests above.
      */
     @Test
     void theUnloweredInlineSurfaceRejectsTheSameThreeShapes()

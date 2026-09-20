@@ -3,6 +3,7 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Rule;
@@ -69,8 +70,8 @@ class NativePreconditionParityTest
 
     private static final String GUARDED_RULE = "{\"Core\":{\"Id\":\"R1\"},"
             + "\"Sensitivity\":\"Record\","
-            + "\"Precondition\":{\"all\":[{\"name\":\"AESTDY\",\"operator\":\"var_exists\"}]},"
-            + "\"Check\":{\"all\":[{\"name\":\"AETERM\",\"operator\":\"empty\"}]},"
+            + "\"Precondition\":{\"all\":[{\"expression\": \"var_exists(\\\"AESTDY\\\")\"}]},"
+            + "\"Check\":{\"all\":[{\"expression\": \"empty(AETERM)\"}]},"
             + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AETERM\"]}}";
 
     @Test
@@ -112,8 +113,8 @@ class NativePreconditionParityTest
         // --STDY in the precondition resolves against the run's domain prefix natively
         // (in-closure), exactly like the legacy phase-2c rewrite before the fold.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Record\","
-                + "\"Precondition\":{\"all\":[{\"name\":\"--STDY\",\"operator\":\"var_exists\"}]},"
-                + "\"Check\":{\"all\":[{\"name\":\"AETERM\",\"operator\":\"empty\"}]},"
+                + "\"Precondition\":{\"all\":[{\"expression\": \"var_exists(\\\"--STDY\\\")\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"empty(AETERM)\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         assertNotNull(rule.getPreconditionExpr());
         IDataTable without = MockTable.of().name("AE").col("AETERM", "").build();
@@ -133,9 +134,8 @@ class NativePreconditionParityTest
         // cannot decide it ("not fully resolvable ⇒ continue"), so preconditionExpr stays null
         // and BOTH engines continue with the main Check.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Record\","
-                + "\"Precondition\":{\"all\":[{\"name\":\"AETERM\",\"operator\":\"equal_to\","
-                + "\"value\":\"x\",\"value_is_literal\":true}]},"
-                + "\"Check\":{\"all\":[{\"name\":\"AETERM\",\"operator\":\"empty\"}]},"
+                + "\"Precondition\":{\"all\":[{\"expression\": \"AETERM == \\\"x\\\"\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"empty(AETERM)\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         assertNull(rule.getPreconditionExpr(),
                 "a row-level precondition must NOT raise a broadcast expression");
@@ -148,20 +148,16 @@ class NativePreconditionParityTest
         // Post-retirement: a preconditionExpr-less (row-level) precondition simply continues
         // with the main Check — the retired legacy fold could never decide it either — and the
         // whole execution is native.
-        NativeExecutionRecorder.enable();
-        run(rule, t);
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE,
-                NativeExecutionRecorder.disable().get("R1"),
-                "row-level precondition continues; the execution is fully native");
+        assertEquals(RuleExecutionStatus.EXECUTED, nativ.getStatus(),
+                "a row-level precondition continues into the main Check — the rule is NOT skipped");
     }
 
     /** Grouped-$ precondition shape (guard-residual S6). */
     private static final String GROUPED_PRE_RULE_TMPL = "{\"Core\":{\"Id\":\"R1\"},"
             + "\"Sensitivity\":\"Record\","
-            + "\"Operations\":[{\"id\":\"$g\",\"operator\":\"distinct\","
-            + "\"name\":\"VISITNUM\",\"group\":[\"USUBJID\"]}],"
-            + "\"Precondition\":{\"all\":[%s{\"name\":\"$g\",\"operator\":\"non_empty\"}]},"
-            + "\"Check\":{\"all\":[{\"name\":\"AETERM\",\"operator\":\"empty\"}]},"
+            + "\"Bindings\":[{\"name\": \"$g\", \"expression\": \"distinct(VISITNUM, group=[USUBJID])\"}],"
+            + "\"Precondition\":{\"all\":[%s{\"expression\": \"not empty($g)\"}]},"
+            + "\"Check\":{\"all\":[{\"expression\": \"empty(AETERM)\"}]},"
             + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}";
 
     @Test
@@ -189,7 +185,7 @@ class NativePreconditionParityTest
         // all[AEXX exists, $g …] with AEXX absent: the FALSE guard short-circuits the AND around
         // the undecidable grouped ref — skip on BOTH engines, decided natively.
         Rule rule = loadRule(String.format(GROUPED_PRE_RULE_TMPL,
-                "{\"name\":\"AEXX\",\"operator\":\"var_exists\"},"));
+                "{\"expression\": \"var_exists(\\\"AEXX\\\")\"},"));
         assertNotNull(rule.getPreconditionExpr());
         IDataTable t = MockTable.of().name("AE").col("USUBJID", "S1").col("VISITNUM", "1")
                 .col("AETERM", "").build();
@@ -199,10 +195,14 @@ class NativePreconditionParityTest
         assertEquals(legacy.getStatus(), nativ.getStatus());
         assertEquals(legacy.getStatusMessage(), nativ.getStatusMessage());
 
-        NativeExecutionRecorder.enable();
-        run(rule, t);
-        assertNull(NativeExecutionRecorder.disable().get("R1"),
-                "a natively-decided skip records nothing — no verdict was produced");
+        // ⚠ What is pinned here is the SKIPPED status above — that is the live claim. The old
+        // assertion pinned an EMPTY recorder entry, i.e. that the skip happened BEFORE dispatch;
+        // with the recorder retired that pre-/post-dispatch distinction is no longer OBSERVABLE
+        // from a RuleExecutionResult, and nothing replaces it. The emptiness check below is a
+        // backstop only: a SKIPPED result never carries violations, so it is implied by the status
+        // assertion rather than adding a claim of its own.
+        assertTrue(nativ.getViolations().isEmpty(),
+                "a SKIPPED result carries no violations (backstop — implied by the status above)");
     }
 
 }

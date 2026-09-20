@@ -58,8 +58,7 @@ class VariableExistsReportingRetentionTest
     private static String orgFormRule(String outputVariables)
     {
         return "{\"Core\":{\"Id\":\"X-1\"},"
-                + "\"Operations\":[{\"id\":\"$EXVAMT_EXISTS\",\"operator\":\"variable_exists\","
-                + "\"name\":\"EXVAMT\"}],"
+                + "\"Bindings\":[{\"name\": \"$EXVAMT_EXISTS\", \"expression\": \"variable_exists(EXVAMT)\"}],"
                 + "\"Check\":{\"expression\":\"$EXVAMT_EXISTS == true and ds_exists(\\\"EC\\\")\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":" + outputVariables + "}}";
     }
@@ -78,7 +77,7 @@ class VariableExistsReportingRetentionTest
     void formBVariableExistsOperationLoadsWithoutAnUnknownFunctionError()
     {
         Rule rule = load("{\"Core\":{\"Id\":\"X-1\"},"
-                + "\"Operations\":[{\"id\":\"$EXVAMT_EXISTS\","
+                + "\"Bindings\":[{\"name\":\"$EXVAMT_EXISTS\","
                 + "\"expression\":\"variable_exists(\\\"EXVAMT\\\")\"}],"
                 + "\"Check\":{\"expression\":\"var_exists(\\\"EXVAMT\\\") and "
                 + "ds_exists(\\\"EC\\\")\"},"

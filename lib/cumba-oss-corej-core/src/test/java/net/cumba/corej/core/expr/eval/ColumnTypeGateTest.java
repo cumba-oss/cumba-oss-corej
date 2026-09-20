@@ -79,10 +79,16 @@ class ColumnTypeGateTest
         assertTrue(ex.getMessage().contains("Char"), ex.getMessage());
         assertTrue(ex.getMessage().contains("numeric"), ex.getMessage());
         assertTrue(ex.getMessage().contains("num(DOSE)"), ex.getMessage());
-        // F1: num() parses per cell; the "abc" and blank cells are MISSING — no violation, and
-        // NEVER an escalation to a rule error.
+        // F1: num() parses per cell; the "abc" and blank cells are MISSING — and NEVER an
+        // escalation to a rule error.
         assertEquals(bits(1), eval("num(DOSE) > 10", c));
-        assertEquals(bits(0), eval("num(DOSE) <= 5 or num(DOSE) == 10", c));
+        // ⭐ Phase 6c (D117/D34 #5): a MissingValue sorts BELOW every non-missing value, so the
+        // two missing cells (rows 2 and 3) fire under `<= 5` where before the flip they were
+        // silent. Row 0 still comes from the `== 10` arm — equality is untouched by the order
+        // flip, which is what makes this expression a two-sided witness.
+        assertEquals(bits(0, 2, 3), eval("num(DOSE) <= 5 or num(DOSE) == 10", c));
+        assertEquals(bits(2, 3), eval("num(DOSE) <= 5", c), "the order arm alone");
+        assertEquals(bits(0), eval("num(DOSE) == 10", c), "the equality arm alone, unmoved");
     }
 
 
@@ -113,8 +119,8 @@ class ColumnTypeGateTest
         assertTrue(ex.getMessage().contains("DOSE"), ex.getMessage());
         assertTrue(ex.getMessage().contains("Num"), ex.getMessage());
         assertTrue(ex.getMessage().contains("Char"), ex.getMessage());
-        // The FDA-SD1212 / PMDA-SD1212 authoring: num(--STRESC) != --STRESN. Rows 0/1 parse and
-        // agree (no
+        // The num()-on-one-side authoring, `num(--STRESC) != --STRESN` (its shipped carrier was
+        // retired with the CORE family, 2026-09-19). Rows 0/1 parse and agree (no
         // fire); row 2's "abc" is missing → "" vs "1" → fires; row 3 is missing on BOTH sides →
         // "" == "" → no fire (the both-missing contract).
         assertEquals(bits(2), eval("num(DOSE) != AVAL", c));
@@ -140,8 +146,9 @@ class ColumnTypeGateTest
         EvaluationContext c = ctxOf(table());
         assertThrows(ColumnTypeMismatchException.class, () -> eval("abs(DOSE) == 10", c));
         assertThrows(ColumnTypeMismatchException.class, () -> eval("between(DOSE, 5, 30)", c));
-        // Only the != arithmetic shapes are native (compileArithmeticNotEqual); == falls back.
-        // All three operand positions gate — name, dividend, divisor.
+        // First-class arithmetic (phase 3d): every operand position gates — the compared
+        // column through the equality gate's static NUMERIC side, the dividend and divisor
+        // through the arithmetic plan's own numeric-read gate.
         assertThrows(ColumnTypeMismatchException.class, () -> eval("AVAL != BASE / DOSE", c));
         assertThrows(ColumnTypeMismatchException.class, () -> eval("AVAL != DOSE / BASE", c));
         assertThrows(ColumnTypeMismatchException.class, () -> eval("DOSE != BASE / AVAL", c));
@@ -151,8 +158,11 @@ class ColumnTypeGateTest
         assertEquals(bits(0, 1), eval("abs(num(DOSE)) >= 10", c));
         assertEquals(bits(0, 1), eval("between(num(DOSE), 5, 30)", c));
         // num() inside an arithmetic operand: rows 0/1 differ (10 != 10/10, 25 != 20/25) and
-        // fire; rows 2/3 have a missing term (num("abc"), missing AVAL) and are skipped.
-        assertEquals(bits(0, 1), eval("AVAL != BASE / num(DOSE)", c));
+        // fire. Row 2 fires since phase 3d: num("abc") is a computed missing that propagates
+        // into the quotient (D36 #8/D86a) and the present AVAL never equals it. Row 3 stays
+        // silent: AVAL and the num("")-poisoned quotient are BOTH missing, and the equality
+        // fold answers equal.
+        assertEquals(bits(0, 1, 2), eval("AVAL != BASE / num(DOSE)", c));
     }
 
     // ---- direction 2: Num where character is expected (R9/R12) ------------------
@@ -240,7 +250,10 @@ class ColumnTypeGateTest
         // type.
         EvaluationContext c = EvaluationContext.builder().table(table())
                 .variables(Map.of("variable_name", "AVAL")).build();
-        assertEquals(bits(0, 1, 2), eval("value() != \"\"", c));
+        // ⭐ Row 3 (AVAL's null LONG cell) joined the firing set with D12: `X != ""` is TRUE for a
+        // MissingValue, because a missing equals NO present value and "" is a present value. The
+        // gate question this test asks — does value() gate? — is unchanged; only the count moved.
+        assertEquals(bits(0, 1, 2, 3), eval("value() != \"\"", c));
     }
 
 
@@ -288,7 +301,7 @@ class ColumnTypeGateTest
         assertEquals(2.5, x.asDouble(1));
         assertTrue(x.isMissing(2), "non-numeric → missing (F1)");
         assertTrue(x.isMissing(3), "blank → missing");
-        assertEquals(10.0, x.resolvedObject(0), "value position resolves the parsed Double");
+        assertEquals(10.0, x.value(0).resolved(), "value position resolves the parsed Double");
         // Over an already-numeric column the conversion is a no-op value-wise.
         Vector n = Primitives
                 .numConversion(new ColumnVector("N", t.getColumn(1), DataValueType.LONG), 4);
@@ -344,14 +357,14 @@ class ColumnTypeGateTest
 
 
     @Test
-    @DisplayName("R10 mirror: a num() rule does not lower to v1 — it stays a native expression")
+    @DisplayName("R10 mirror: a num() rule stays a native expression")
     void numRuleStaysOnTheNativeEvaluator() throws Exception
     {
         Rule r = load("num(DOSE) > 5");
         assertNull(r.getLoadError());
         assertInstanceOf(CheckConditionExpression.class, r.getCheck(),
-                "ExprLowering must REJECT the conversion (no v1 surface) so the rule keeps its "
-                        + "native expression instead of silently stripping num()");
+                "the rule must keep its native expression — nothing may silently strip num()"
+                        + " (historically the v1 lowering refused it; the model is now retired)");
         IDataTable charDose = MockTable.of().name("EX").col("DOSE", "10", "3", "abc").build();
         RuleExecutionResult res = RuleRunner.execute(r, charDose, _ -> charDose);
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());

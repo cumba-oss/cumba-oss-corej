@@ -22,6 +22,13 @@ public final class OperandClassifier
     private static final Pattern DOTTED = Pattern.compile("^[A-Z][A-Z0-9]*\\.[A-Z][A-Z0-9_]*$");
 
     /**
+     * The join-match flag {@code <DATASET>._matched_} (spec §3.3, D88). Must be tested before the
+     * built-in test: the token contains {@code _}, so {@link #looksBuiltin} would otherwise demand
+     * a registry entry and throw.
+     */
+    private static final Pattern MATCHED_FLAG = Pattern.compile("^[A-Z][A-Z0-9]*\\._matched_$");
+
+    /**
      * ADaM capture-letter wildcard embedded in an otherwise upper-case name, e.g. {@code AyIND}.
      */
     private static final Pattern ADAM_WILDCARD = Pattern.compile("[A-Z](xx|zz|y|w)[A-Z0-9]");
@@ -59,7 +66,14 @@ public final class OperandClassifier
         {
             return OperandKind.OPERATION_REF;
         }
-        // 3. Plain dotted cross-dataset reference.
+        // 3. The join-match flag (spec §3.3, D88): DATASET._matched_. Before the dotted test for
+        // reading order (the DOTTED pattern requires an upper-case column start and cannot match),
+        // and necessarily before the built-in test, which would throw on the underscores.
+        if (MATCHED_FLAG.matcher(token).matches())
+        {
+            return OperandKind.MATCHED_FLAG;
+        }
+        // 3b. Plain dotted cross-dataset reference.
         if (DOTTED.matcher(token).matches())
         {
             return OperandKind.DOTTED_REF;

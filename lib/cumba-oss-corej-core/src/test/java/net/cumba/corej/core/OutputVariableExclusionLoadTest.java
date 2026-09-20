@@ -92,8 +92,8 @@ class OutputVariableExclusionLoadTest
         // removes the hoisted lead.
         Rule perVariable = load("""
                 {"Core":{"Id":"R1"},"Sensitivity":"Record",
-                 "Check":{"all":[{"name":"variable_name","operator":"matches_regex","value":"^AE"},
-                                 {"name":"variable_label","operator":"empty"}]},
+                 "Check":{"all":[{"expression": "varname() =~ /^AE/"},
+                                 {"expression": "empty(var_label(\\"DATA\\"))"}]},
                  "Outcome":{"Message":"m","Output_Variables":["!variable_name"]}}""");
         assertNull(perVariable.getLoadError(), perVariable.getLoadError());
         assertEquals(List.of("variable_label"), perVariable.getEffectiveOutputVariables());
@@ -250,7 +250,7 @@ class OutputVariableExclusionLoadTest
                 {"Core":{"Id":"R1"},"Sensitivity":"Record",
                  "Scope":{"Domains":{"Include":["AE"]}},
                  "Match_Datasets":[{"Name":"DM","Keys":["USUBJID"]}],
-                 "Operations":[{"id":"$n","operator":"record_count","domain":"DM"}],
+                 "Bindings":[{"name": "$n", "expression": "record_count(domain=\\"DM\\")"}],
                  "Check":{"expression":"not empty(AETERM) and DM.ARM != AETERM and $n > 1"},
                  "Outcome":{"Message":"m","Output_Variables":["AETERM","!DM.ARM","!$n"]}}""");
         assertNull(rule.getLoadError(), rule.getLoadError());
@@ -335,9 +335,9 @@ class OutputVariableExclusionLoadTest
         // NOT retain the operation the way a reported `$ae_present` would.
         Rule rule = load("""
                 {"Core":{"Id":"R1"},"Sensitivity":"Record",
-                 "Operations":[{"id":"$ae_present","operator":"variable_exists","name":"AETERM"}],
-                 "Check":{"all":[{"name":"$ae_present","operator":"equal_to","value":false},
-                                 {"name":"AESEV","operator":"empty"}]},
+                 "Bindings":[{"name": "$ae_present", "expression": "variable_exists(AETERM)"}],
+                 "Check":{"all":[{"expression": "$ae_present == false"},
+                                 {"expression": "empty(AESEV)"}]},
                  "Outcome":{"Message":"m","Output_Variables":["AESEV","!$ae_present"]}}""");
         assertNull(rule.getLoadError(), rule.getLoadError());
         assertNull(rule.getOperations(), "the inlined operation is dropped");
@@ -354,9 +354,9 @@ class OutputVariableExclusionLoadTest
         // the operation AND the entry are kept exactly as before.
         Rule rule = load("""
                 {"Core":{"Id":"R1"},"Sensitivity":"Record",
-                 "Operations":[{"id":"$ae_present","operator":"variable_exists","name":"AETERM"}],
-                 "Check":{"all":[{"name":"$ae_present","operator":"equal_to","value":false},
-                                 {"name":"AESEV","operator":"empty"}]},
+                 "Bindings":[{"name": "$ae_present", "expression": "variable_exists(AETERM)"}],
+                 "Check":{"all":[{"expression": "$ae_present == false"},
+                                 {"expression": "empty(AESEV)"}]},
                  "Outcome":{"Message":"m","Output_Variables":["AESEV","$ae_present"]}}""");
         assertNull(rule.getLoadError(), rule.getLoadError());
         assertNotNull(rule.getOperations(), "a reported operation is retained");
@@ -364,27 +364,35 @@ class OutputVariableExclusionLoadTest
     }
 
 
+    /**
+     * ⭐ Phase 7b changed this test's premise: a <b>declared</b> {@code split_by} binding is no
+     * longer authorable at all. {@code split_by} is not an operation ({@code OperationType} has no
+     * {@code SPLIT_BY} — a broadcast operation cannot produce a per-row list), so the only way the
+     * declared form ever loaded was the retired field form, which the loader's T9 inliner then
+     * lowered into the Check. With the field form gone, the sanctioned spelling is the inline value
+     * function in the Check — and a binding that tries to declare {@code split_by} fails LOUD as an
+     * unknown operation instead of relying on the inliner. The inliner's declared-operation arm
+     * keeps running as a safety net for programmatically constructed rules, but no authoring
+     * surface reaches it any more.
+     */
     @Test
-    void splitByInlinerDropsTheExclusionTokenWithItsOperation() throws Exception
+    void aDeclaredSplitByBindingIsALoadErrorAndTheInlineSpellingLoads() throws Exception
     {
-        Rule rule = load("""
+        Rule declared = load("""
                 {"Core":{"Id":"R1"},"Sensitivity":"Record",
-                 "Operations":[{"id":"$tok","operator":"split_by","name":"AESPEC","delimiter":"/"}],
-                 "Check":{"all":[{"name":"$tok","operator":"contains","value":"X"},
-                                 {"name":"AESEV","operator":"empty"}]},
+                 "Bindings":[{"name": "$tok", "expression": "split_by(AESPEC, delimiter=\\"/\\")"}],
+                 "Check":{"all":[{"expression": "contains($tok, \\"X\\")"},
+                                 {"expression": "empty(AESEV)"}]},
                  "Outcome":{"Message":"m","Output_Variables":["AESEV","!$tok"]}}""");
-        assertNull(rule.getLoadError(), rule.getLoadError());
-        assertNull(rule.getOperations(), "the inlined split_by operation is dropped");
-        assertEquals(List.of("AESEV"), rule.getOutcome().getOutputVariables(),
-                "the exclusion token follows the dropped operation");
-        // and the plain-entry arm is dropped the same way (today's behaviour, unchanged)
-        Rule plain = load("""
+        assertNotNull(declared.getLoadError(), "a declared split_by binding must fail loud");
+        assertTrue(declared.getLoadError().contains("split_by"), declared.getLoadError());
+
+        Rule inline = load("""
                 {"Core":{"Id":"R1"},"Sensitivity":"Record",
-                 "Operations":[{"id":"$tok","operator":"split_by","name":"AESPEC","delimiter":"/"}],
-                 "Check":{"all":[{"name":"$tok","operator":"contains","value":"X"},
-                                 {"name":"AESEV","operator":"empty"}]},
-                 "Outcome":{"Message":"m","Output_Variables":["AESEV","$tok"]}}""");
-        assertNull(plain.getLoadError(), plain.getLoadError());
-        assertEquals(List.of("AESEV"), plain.getOutcome().getOutputVariables());
+                 "Check":{"all":[{"expression": "contains(split_by(AESPEC, \\"/\\"), \\"X\\")"},
+                                 {"expression": "empty(AESEV)"}]},
+                 "Outcome":{"Message":"m","Output_Variables":["AESEV"]}}""");
+        assertNull(inline.getLoadError(), inline.getLoadError());
+        assertEquals(List.of("AESEV"), inline.getOutcome().getOutputVariables());
     }
 }

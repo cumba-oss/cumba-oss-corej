@@ -28,8 +28,8 @@ class DefineExtendedValuesVsLibraryTest
     {
         String json = "{\"Core\":{\"Id\":\"R1\"}," + "\"Variable_Universe\":\"Define\","
                 + "\"Sensitivity\":\"Dataset\",\"Check\":{\"all\":["
-                + "{\"name\":\"library_variable_codelist_extensible\",\"operator\":\"equal_to\",\"value\":false},"
-                + "{\"name\":\"define_variable_codelist_extended_values\",\"operator\":\"non_empty\"}]},"
+                + "{\"expression\": \"var_codelist_extensible(\\\"LIBRARY\\\") == false\"},"
+                + "{\"expression\": \"not empty(var_codelist_extended_values(\\\"DEFINE\\\"))\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":"
                 + "[\"define_variable_name\",\"define_variable_codelist_extended_values\"]}}";
         RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"R1\":" + json + "}}");

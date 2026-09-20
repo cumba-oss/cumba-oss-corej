@@ -5,8 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -21,7 +19,6 @@ import net.cumba.corej.core.metadata.DefineXmlMetadataProvider;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
 import net.cumba.corej.core.metadata.OdmDefineXMLProvider;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.DomainScope;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
@@ -67,14 +64,15 @@ import org.junit.jupiter.api.Test;
  * reject the same input on this path — {@code RuleRunner} SKIPs a {@code define_*} rule outright
  * when no Define provider is present, and all six shipped rules of the family additionally guard on
  * {@code non_empty(define_dataset_*)}. A fixture that gets either wrong yields a green that pins
- * nothing. The artefact used here is the <b>CDISC MSG v2.0 Define-XML v2.1 sample</b> (vendored
- * into this module at {@code src/test/resources/convert/define-v21-sdtm.xml},
- * {@code Originator="CDISC MSG Team"}), which declares the {@code QS} domain as two submitted files
- * — {@code IG.QSPH} / {@code IG.QSSL}, both {@code Domain="QS"}, each with its own
- * {@code def:leaf href} and, decisively for this test, its <b>own label</b>. The provider is
- * composed exactly as {@code StudyValidationService} composes it in production: the ODM-direct
- * {@link OdmDefineXMLProvider} over the datatable-backed {@link DefineMetadataLibrary} fallback,
- * which is the chain that actually serves {@code define_dataset_*}.
+ * nothing. The artefact used here is the <b>CDISC MSG v2.0 Define-XML v2.1 sample</b>
+ * ({@code src/test/resources/convert/define-v21-sdtm.xml}, carried over from the cdisc repository's
+ * {@code lib/net.cumba.cdisc.define}, {@code Originator="CDISC MSG Team"}), which declares the
+ * {@code QS} domain as two submitted files — {@code IG.QSPH} / {@code IG.QSSL}, both
+ * {@code Domain="QS"}, each with its own {@code def:leaf href} and, decisively for this test, its
+ * <b>own label</b>. The provider is composed exactly as {@code StudyValidationService} composes it
+ * in production: the ODM-direct {@link OdmDefineXMLProvider} over the datatable-backed
+ * {@link DefineMetadataLibrary} fallback, which is the chain that actually serves
+ * {@code define_dataset_*}.
  * </p>
  *
  * <p>
@@ -115,8 +113,6 @@ import org.junit.jupiter.api.Test;
 class DefineSplitDatasetContractTest
 {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
     /** The logical domain both parts belong to — a valid SCOPE key and an invalid DEFINE key. */
     private static final String BASE = "QS";
 
@@ -140,8 +136,13 @@ class DefineSplitDatasetContractTest
     @BeforeAll
     static void parseTheRealDefineXml() throws IOException
     {
-        // Module-local copy: the Define-XML model lives in a separate repository here, so this
-        // fixture is vendored into this module rather than reached for across the reactor.
+        // ⚠ In the coreJ monorepo this resolved a SIBLING MODULE's test resources
+        // (../corej-cdisc-define/...). The split has no such sibling: net.cumba.cdisc.define lives
+        // in the separate cdisc repository, and this repo's CI checks out only this repo, so a
+        // path across the submodule boundary would not exist at build time. The fixture is
+        // therefore carried here as a test resource -- byte-identical to the cdisc repository's
+        // copy of the CDISC MSG v2.0 sample. Keeping the "must be a real Define-XML" guard below
+        // matters more than avoiding the duplication.
         Path xml = Path.of(System.getProperty("projectBasedir"), "src", "test", "resources",
                 "convert", "define-v21-sdtm.xml").normalize();
         assertTrue(Files.isRegularFile(xml), "MSG Define-XML 2.1 sample not found at " + xml
@@ -192,15 +193,15 @@ class DefineSplitDatasetContractTest
     }
 
 
-    private static Rule datasetMetadataRule(String operand, String operator, JsonNode value)
+    private static Rule datasetMetadataRule(String source)
     {
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name(operand).operator(operator)
-                .value(value).valueIsLiteral(Boolean.TRUE).build();
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
         core.setId("TEST-SPLIT-DEFINE");
         rule.setCore(core);
-        rule.setCheck(new CheckConditionAll(List.of(leaf)));
+        rule.setCheck(new CheckConditionAll(
+                List.of(new net.cumba.corej.core.model.CheckConditionExpression(
+                        net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source))));
         Outcome outcome = new Outcome();
         outcome.setMessage("per-part Define contract");
         rule.setOutcome(outcome);
@@ -211,14 +212,13 @@ class DefineSplitDatasetContractTest
 
     private static Rule equalsLiteral(String operand, String literal)
     {
-        return datasetMetadataRule(operand, "equal_to", MAPPER.valueToTree(literal));
+        return datasetMetadataRule(operand + " == \"" + literal + "\"");
     }
 
 
     private static Rule countEquals(int expected)
     {
-        return datasetMetadataRule("record_count", "equal_to",
-                MAPPER.valueToTree(Integer.valueOf(expected)));
+        return datasetMetadataRule("record_count == " + expected);
     }
 
 

@@ -147,9 +147,7 @@ class RuleRunnerCarryOverWiringTest
     void nonCarryOverMetadataRuleNeverAsksForPublishedVariables() throws Exception
     {
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Record\","
-                + "\"Check\":{\"all\":[{\"name\":\"library_variable_role\","
-                + "\"operator\":\"equal_to\",\"value\":\"Identifier\","
-                + "\"value_is_literal\":true}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"var_role(\\\"LIBRARY\\\") == \\\"Identifier\\\"\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":"
                 + "[\"variable_name\",\"library_variable_role\"]}}");
 

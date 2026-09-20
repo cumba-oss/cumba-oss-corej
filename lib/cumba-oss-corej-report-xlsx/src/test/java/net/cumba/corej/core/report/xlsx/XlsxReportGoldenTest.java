@@ -41,6 +41,15 @@ import org.junit.jupiter.api.Test;
  * </p>
  *
  * <p>
+ * ⚠ <b>Regenerated a second time, deliberately, for D65 (phase 5b of
+ * {@code PLAN-typed-expression-engine.md})</b>: the {@code Rules Report} sheet gained the three
+ * programmatically appended count-column headers ({@code Executed} / {@code Skipped} /
+ * {@code Errored}). Verified cell-by-cell against the previous golden: exactly three resolved-value
+ * differences, all of them the new header cells — the fixture's rows carry no counts, so every data
+ * cell is unchanged. The ratchet resumes from here.
+ * </p>
+ *
+ * <p>
  * ⚠⚠ <b>Compared by per-entry content digest, never by file hash.</b> An XLSX is a zip, and a zip
  * carries a per-entry modification timestamp: two runs of <em>identical</em> code produce files
  * with different bytes and different SHA-256s. A file-hash comparison here would fail every time

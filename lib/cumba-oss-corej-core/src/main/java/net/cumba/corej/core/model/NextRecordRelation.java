@@ -9,7 +9,7 @@ import org.jspecify.annotations.Nullable;
  * EC-87 — the admitted spellings of the {@code relation=} kwarg on
  * {@code has_next_corresponding_record} / {@code does_not_have_next_corresponding_record}, shared
  * by every surface that reads it ({@code ExprCompiler}, {@code RulePackageLoader}'s inline
- * validator, {@code CheckToExpr}, {@code ExprLowering}) so the surfaces cannot drift apart.
+ * validator) so the surfaces cannot drift apart.
  *
  * <p>
  * The relation is applied <b>in disjunction with</b> the shipped {@code KeyPart}-identity

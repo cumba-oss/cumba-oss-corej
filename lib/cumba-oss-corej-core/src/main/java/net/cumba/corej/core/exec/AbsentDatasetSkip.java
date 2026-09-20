@@ -9,9 +9,6 @@ import java.util.Set;
 import java.util.TreeSet;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
-import net.cumba.corej.core.model.CheckCondition;
-import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Rule;
@@ -102,12 +99,13 @@ import org.jspecify.annotations.Nullable;
  * bounds the <em>kind</em> of finding removed, not the count.
  *
  * <p>
- * ⚠ {@code rules-core-tig-1-0.json} is <b>not a package of this corpus</b> — it was the CORE
- * family's TIG package, and the CORE family is externally sourced and is never redistributed here
- * ({@code cumba-oss-corej-rules} has carried no {@code CORE} family since 2026-09). The figure
- * above is kept as the dated measurement it was, taken against a tree that had it; it is <b>not</b>
- * a statement about this corpus and cannot be re-run against it. What survives unchanged is the
- * shape — {@code x not in $op(domain=D)} — which the live rules named below still carry.
+ * ⚠ {@code rules-core-tig-1-0.json} is a <b>retired package</b> — the CORE family's TIG package, no
+ * longer generated since that family was retired on 2026-09-19
+ * ({@code plans/done/PLAN-retire-core-family.md}, ruling {@code D1}: the TIG corpus goes, the TIG
+ * machinery stays). The figure above is kept as the dated measurement it was; it is <b>not</b> a
+ * statement about today's corpus, and the count has not been re-run against it. What survives
+ * unchanged is the shape — {@code x not in $op(domain=D)} — which the live rules named below still
+ * carry.
  * </p>
  *
  * <p>
@@ -147,8 +145,8 @@ public final class AbsentDatasetSkip
      *
      * <p>
      * ⚠ This is a <b>pinned id set, deliberately not a re-derived predicate</b>. {@code Fix #207}
-     * (step 1) ships the derivation as {@code IntentAbsenceOptOut} in
-     * {@code cumba-oss-corej-rules}'s test sources, with its population landed at
+     * (step 1) ships the derivation as {@code IntentAbsenceOptOut} in {@code corej-rules}'s test
+     * sources, with its population landed at
      * {@code documentation/derivation/intent-absence-opt-out.tsv} and asserted by
      * {@code IntentAbsenceOptOutLintTest} on every build. That predicate is <b>structural over the
      * AUTHORED view and is not implementable here</b>: the shipped corpus lowers {@code Check} to
@@ -170,8 +168,8 @@ public final class AbsentDatasetSkip
 
     /**
      * Calls whose first argument is a <em>name</em> (bareword or the equivalent string literal)
-     * rather than a value — so a dotted argument names a foreign dataset's column. Mirrors
-     * {@code ExprLowering.EXISTS_PREDICATES} minus the dataset-presence pair above.
+     * rather than a value — so a dotted argument names a foreign dataset's column. The
+     * exists-family predicates minus the dataset-presence pair above.
      */
     private static final Set<String> NAME_ARG_CALLS = Set.of("exists", "not_exists", "var_exists",
             "var_not_exists", "var_is_null");
@@ -258,16 +256,11 @@ public final class AbsentDatasetSkip
         {
             return null;
         }
+        // Phase 7d (D121): no leaf fallback — a rule that never acquired a native form has no
+        // evaluatable Check at all, so it cannot be relied on to report any dataset's absence.
+        // Returning null keeps the precondition strict, which errs towards MORE findings.
         Expr expr = rule.getCheckExpr();
-        if (expr != null)
-        {
-            return barePresenceDataset(expr);
-        }
-        // Fallback for a rule that never acquired a native form (externally supplied / synthetic):
-        // the authored operator leaf — only the unambiguous `ds_not_exists` counts (the generic
-        // `not_exists`, whose meaning the Rule_Type used to decide, is retired and rejected at
-        // load).
-        return barePresenceDataset(rule.getCheck());
+        return expr == null ? null : barePresenceDataset(expr);
     }
 
 
@@ -300,26 +293,6 @@ public final class AbsentDatasetSkip
             return null;
         }
         return upper(nameOfArg(call.args().get(0)));
-    }
-
-
-    private static @Nullable String barePresenceDataset(@Nullable CheckCondition check)
-    {
-        CheckCondition node = check;
-        if (node instanceof CheckConditionAll all && all.getConditions().size() == 1)
-        {
-            node = all.getConditions().get(0);
-        }
-        if (!(node instanceof CheckConditionLeaf leaf))
-        {
-            return null;
-        }
-        if (!"ds_not_exists".equals(leaf.getOperator()))
-        {
-            return null;
-        }
-        String name = leaf.getName();
-        return name == null || name.indexOf('.') >= 0 || name.startsWith("$") ? null : upper(name);
     }
 
     // ------------------------------------------------------------------- the per-rule decision
@@ -718,13 +691,9 @@ public final class AbsentDatasetSkip
      * exists to prevent ({@code Fix #358} / D7's one stated exception; see the class javadoc). The
      * shape is a rule that declares {@code Requirements.Datasets: [D]} while reaching {@code D}
      * <em>only</em> through an {@code Operations[].domain} whose operation still resolves {@code D}
-     * exactly. ⚠ <b>No rule of this corpus has that shape</b> — measured 2026-09-19 over the eight
-     * rules that declare {@code Requirements.Datasets} ({@code CDISC-AD0061}, {@code CDISC-AD0365},
-     * {@code CDISC-CG0105}, {@code CDISC-CG0107}, {@code PMDA-AD0061}, {@code PMDA-AD0061A},
-     * {@code PMDA-SD1468}, {@code PMDA-SD1469}), <b>not one</b> names its declared dataset in an
-     * {@code Operations[].domain} at all, so the shape's precondition never holds, this partition
-     * is empty and the guard is untested by the corpus. Keep it: it is derived, not authored (see
-     * below).
+     * exactly. ⚠ No shipped rule has that shape as of 2026-09-19 — the sole instance was retired
+     * with the CORE family — so this partition is currently empty and the guard is untested by the
+     * corpus. Keep it: it is derived, not authored (see below).
      * </p>
      *
      * <p>
@@ -861,7 +830,8 @@ public final class AbsentDatasetSkip
         }
         case Expr.Ref ref ->
         {
-            if (ref.kind() == OperandKind.DOTTED_REF)
+            // MATCHED_FLAG counts as a dotted read of its dataset — see refReads.
+            if (ref.kind() == OperandKind.DOTTED_REF || ref.kind() == OperandKind.MATCHED_FLAG)
             {
                 addDataset(out, qualifierOf(ref.name()));
             }
@@ -951,7 +921,11 @@ public final class AbsentDatasetSkip
     {
         return switch (ref.kind())
         {
-        case DOTTED_REF -> matches(datasets, qualifierOf(ref.name()));
+        // MATCHED_FLAG: the join-match flag (spec §3.3, D88) reads the joined dataset exactly as a
+        // dotted column reference does — `not AE._matched_` on an absent-and-reported AE must be
+        // suppressed like `empty(AE.AESEQ)` (K5b: `not` is atomic over a suppressed reader), or the
+        // inverted flag would fire on every row of every dependant.
+        case DOTTED_REF, MATCHED_FLAG -> matches(datasets, qualifierOf(ref.name()));
         case OPERATION_REF -> operationReads(ref.name(), rule, datasets, seen);
         case COLUMN, WILDCARD_COLUMN, BUILTIN -> false;
         };

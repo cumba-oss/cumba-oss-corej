@@ -18,8 +18,15 @@ import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionKind;
 import net.cumba.corej.core.expr.eval.FunctionProvider;
 import net.cumba.corej.core.expr.eval.IsoDateComparison;
+import net.cumba.corej.core.expr.eval.Parameter;
 import net.cumba.corej.core.expr.eval.Primitives;
+import net.cumba.corej.core.expr.eval.TemporalPredicates;
+import net.cumba.corej.core.expr.eval.TypedValue;
 import net.cumba.corej.core.expr.eval.Vector;
+import net.cumba.corej.core.expr.typed.ExprType;
+import net.cumba.corej.core.expr.typed.ExprType.ListOf;
+import net.cumba.corej.core.expr.typed.ExprType.Primitive;
+import net.cumba.corej.core.expr.typed.ExprType.Unknown;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.values.DataValueType;
 import org.jspecify.annotations.Nullable;
@@ -61,6 +68,18 @@ import org.jspecify.annotations.Nullable;
  * {@code exists}/{@code not_exists} (dataset/column existence facts that need the
  * {@link net.cumba.corej.core.exec.EvaluationContext} and the operand name, not its row values).
  * </p>
+ *
+ * <p>
+ * ⚑ TARGET-INVARIANT(null-free-value-channel) — <b>the per-operator notes below saying "a genuine
+ * missing folds to {@code ""}" describe TODAY'S engine truthfully, and each is an instance of the
+ * violation under repair.</b> The rule they violate, the three claims it must not be collapsed
+ * into, and the condition for promoting it to fact are stated <b>once</b>, in
+ * {@link net.cumba.corej.core.exec.ScalarSemantics#computedMissing()} — read it there rather than
+ * re-deriving it per function. ⛔ <b>Do not "correct" those notes to the target answer:</b> a
+ * comment claiming the rule over code that folds is exactly the shape that let this defect live for
+ * weeks, and flipping twenty descriptions is how a target silently becomes a false statement of
+ * fact. Change the fold, or leave the note.
+ * </p>
  */
 public final class BuiltinFunctions implements FunctionProvider
 {
@@ -80,10 +99,25 @@ public final class BuiltinFunctions implements FunctionProvider
         EvalFunction len = (run, args) ->
         {
             Vector x = args.get(0);
-            // len("") = 0 and len(«missing») = 0: a genuine missing folds to "" (length 0),
-            // matching Python (see function-examples.md "Length — len / length").
-            return new ComputedVector(run.rowCount(), DataValueType.LONG,
-                    row -> (long) (x.isMissing(row) ? "" : x.asString(row)).length());
+            // ⭐ D13 / SPEC §4(4)'s len limb: a genuine MissingValue HAS NO LENGTH, so
+            // len(«missing»)
+            // is MISSING, not 0 — the producer returns null and the carrier publishes D36 #8's
+            // computed missing. len("") is still 0: an empty string is a present value of length
+            // zero (D34 #1), and an ABSENT character column is all-"" (D76/D131a), so
+            // `len(ABSENT) == 0` and `len(BLANK) == 0` are both TRUE and the EC-43
+            // absent-equals-blank contract (D96a) holds. ⚠⚠ That equality is exactly what this
+            // limb was BLOCKED on: while nameRefPlan minted ALL_MISSING for a character-expected
+            // absent column, this change made `len(ABSENT) == 0` false while `len(BLANK) == 0`
+            // stayed true. It is free only because D131a closed that half first.
+            //
+            // ⚑ Free on the authored corpus for a second, independent reason: 81 of the 88 `len(`
+            // sites compare against a literal and NOT ONE is `== 0` or `!= 0`; every other literal
+            // answers the same under "length 0" and under D34 #5's "a missing sorts low".
+            return new ComputedVector(run.rowCount(), DataValueType.LONG, row ->
+            {
+                TypedValue tv = x.value(row);
+                return tv.missing() != null ? null : (long) tv.cell().getValueAsString().length();
+            });
         };
         value(fns, "len", len);
         value(fns, "length", len);
@@ -109,7 +143,7 @@ public final class BuiltinFunctions implements FunctionProvider
                 {
                     return 0L;
                 }
-                Object resolved = x.resolvedObject(row);
+                Object resolved = x.value(row).resolved();
                 return resolved instanceof Collection<?> c ? (long) c.size() : 1L;
             });
         };
@@ -159,7 +193,7 @@ public final class BuiltinFunctions implements FunctionProvider
             var ctx = run.ctx();
             return new ComputedVector(run.rowCount(), DataValueType.STRING, row ->
             {
-                Object name = firstHop.resolvedObject(row);
+                Object name = firstHop.value(row).resolved();
                 // Mirror ValueResolver: a non-string / empty first hop is returned as-is.
                 if (!(name instanceof String colName) || colName.isEmpty())
                 {
@@ -168,10 +202,28 @@ public final class BuiltinFunctions implements FunctionProvider
                 int colIdx = ctx.getTable().getMetaData().getColumnIndex(colName);
                 if (colIdx < 0)
                 {
-                    return null; // named column absent (e.g. parent col not pre-merged)
+                    // ⭐ D76 / D34 #3-#4 (PLAN-null-free-value-channel, Class A site 2): the
+                    // second-hop column is ABSENT from the evaluation table (e.g. a parent column
+                    // ChildMatchPreMerger did not merge), and an absent column is a
+                    // CONSTANT-VALUE column — character ⇒ "" (a present empty string), numeric ⇒
+                    // MissingValue.MIS. An absent column has no declared type of its own, so D76
+                    // reads the expectation off the RULE; a second hop resolved from DATA almost
+                    // never carries one, so "otherwise char" normally applies, exactly as it does
+                    // for DatasetLookup.lookupValue's absent-column arm.
+                    //
+                    // ⚠ The numeric arm must stay a `null` HERE and only here: this is the
+                    // UNTYPED ComputedVector(int, DataValueType, IntFunction<Object>) producer,
+                    // whose only spelling of a missing is a null payload —
+                    // TypedValue.resolved(type, MissingValue.MIS) would publish the marker as a
+                    // PRESENT value. The carrier folds the null to MissingValue.MIS, which is the
+                    // constant owed. ⛔ Do not "harden" it by handing back MIS; hardening this
+                    // channel needs a non-null @FunctionalInterface, not a value change (NullAway
+                    // cannot see a lambda's return against a generic type argument at all).
+                    return ctx.getNumericExpectedColumns().contains(colName) ? null : "";
                 }
-                // Blank resolves by the column's declared type — see
-                // ScalarSemantics.resolvedString.
+                // A blank resolves per ScalarSemantics.resolvedString — type-INDEPENDENT: a
+                // missing cell reads null whatever the column type (owner ruling 2026-09-18), a
+                // stored "" reads "".
                 return ScalarSemantics.resolvedString(ctx.getTable(), colIdx, row);
             });
         });
@@ -183,7 +235,7 @@ public final class BuiltinFunctions implements FunctionProvider
         // a broadcast scalar (one value per variable, constant across rows), so it mirrors the
         // standalone variable_name operand exactly (Expr.Ref("variable_name") resolves the same
         // cursor). Missing cursor ⇒ null.
-        fns.add(new FunctionDescriptor("varname", 0, FunctionKind.VALUE, (run, _) ->
+        fns.add(new FunctionDescriptor("varname", List.of(), FunctionKind.VALUE, (run, _) ->
         {
             Object name = run.ctx().resolveVariable("variable_name");
             return ConstVector.of(name);
@@ -192,14 +244,14 @@ public final class BuiltinFunctions implements FunctionProvider
         // dataset fold reads (CheckConditionOptimizer.evaluateDatasetLeaf, name "record_count").
         // Broadcast-constant and numeric; comparisons mirror the fold's compareNumeric, equality
         // the fold's string-equality (identical verdicts for the integral counts involved).
-        fns.add(new FunctionDescriptor("record_count", 0, FunctionKind.VALUE,
+        fns.add(new FunctionDescriptor("record_count", List.of(), FunctionKind.VALUE,
                 (run, _) -> ConstVector.of(run.ctx().getTable().getRowCount())));
         // value(): the per-row VALUE of the "current variable" — the cells of the column named by
         // the cursor (variables["variable_name"]). Mirrors the legacy variable_value operand, which
         // CheckConditionOptimizer.bindVariableValue rewrites to the current column. A missing
         // cursor
         // or an absent column ⇒ a broadcast null (no row fires), matching the legacy resolution.
-        fns.add(new FunctionDescriptor("value", 0, FunctionKind.VALUE, (run, _) ->
+        fns.add(new FunctionDescriptor("value", List.of(), FunctionKind.VALUE, (run, _) ->
         {
             EvaluationContext ctx = run.ctx();
             Object cursor = ctx.resolveVariable("variable_name");
@@ -238,54 +290,41 @@ public final class BuiltinFunctions implements FunctionProvider
             return new ComputedVector(run.rowCount(), DataValueType.STRING,
                     row -> (x.isMissing(row) ? "" : x.asString(row)).strip());
         });
-        // concat(a, b): string concatenation; a missing operand contributes the empty string, so
-        // the
-        // result is never missing (empty when both are). coalesce(a, b): the first non-missing
-        // operand's resolved value, else missing.
-        fns.add(new FunctionDescriptor("concat", 2, FunctionKind.VALUE, (run, args) ->
-        {
-            Vector a = args.get(0);
-            Vector b = args.get(1);
-            return new ComputedVector(run.rowCount(), DataValueType.STRING,
-                    row -> orEmpty(a, row) + orEmpty(b, row));
-        }));
-        fns.add(new FunctionDescriptor("coalesce", 2, FunctionKind.VALUE, (run, args) ->
-        {
-            Vector a = args.get(0);
-            Vector b = args.get(1);
-            return new ComputedVector(run.rowCount(), DataValueType.STRING,
-                    row -> !a.isMissing(row) ? a.resolvedObject(row)
-                            : b.isMissing(row) ? null : b.resolvedObject(row));
-        }));
-        // concat(a, b, c) / coalesce(a, b, c): arity-3 variants, same per-operand semantics as the
-        // arity-2 forms above (concat never missing; coalesce yields the first non-missing
-        // operand).
-        fns.add(new FunctionDescriptor("concat", 3, FunctionKind.VALUE, (run, args) ->
-        {
-            Vector a = args.get(0);
-            Vector b = args.get(1);
-            Vector c = args.get(2);
-            return new ComputedVector(run.rowCount(), DataValueType.STRING,
-                    row -> orEmpty(a, row) + orEmpty(b, row) + orEmpty(c, row));
-        }));
-        fns.add(new FunctionDescriptor("coalesce", 3, FunctionKind.VALUE, (run, args) ->
-        {
-            Vector a = args.get(0);
-            Vector b = args.get(1);
-            Vector c = args.get(2);
-            return new ComputedVector(run.rowCount(), DataValueType.STRING, row ->
-            {
-                if (!a.isMissing(row))
+        // concat(a, b[, c]): string concatenation; a missing operand contributes the empty string,
+        // so the result is never missing (empty when all are). coalesce(a, b[, c]): the first
+        // non-missing operand's resolved value, else missing. ⭐ Phase 6b (D19a/D59): the former
+        // arity-2/arity-3 overloads are ONE descriptor with an optional third parameter — an
+        // absent `c` is byte-identical to the retired arity-2 registration.
+        fns.add(new FunctionDescriptor("concat", List.of(p("a"), p("b"), opt("c", Unknown.UNKNOWN)),
+                FunctionKind.VALUE, (run, args) ->
                 {
-                    return a.resolvedObject(row);
-                }
-                if (!b.isMissing(row))
+                    Vector a = args.get(0);
+                    Vector b = args.get(1);
+                    Vector c = args.get(2);
+                    return new ComputedVector(run.rowCount(), DataValueType.STRING,
+                            row -> orEmpty(a, row) + orEmpty(b, row)
+                                    + (c == null ? "" : orEmpty(c, row)));
+                }));
+        fns.add(new FunctionDescriptor("coalesce",
+                List.of(p("a"), p("b"), opt("c", Unknown.UNKNOWN)), FunctionKind.VALUE,
+                (run, args) ->
                 {
-                    return b.resolvedObject(row);
-                }
-                return c.isMissing(row) ? null : c.resolvedObject(row);
-            });
-        }));
+                    Vector a = args.get(0);
+                    Vector b = args.get(1);
+                    Vector c = args.get(2);
+                    return new ComputedVector(run.rowCount(), DataValueType.STRING, row ->
+                    {
+                        if (!a.isMissing(row))
+                        {
+                            return a.value(row).resolved();
+                        }
+                        if (!b.isMissing(row))
+                        {
+                            return b.value(row).resolved();
+                        }
+                        return c == null || c.isMissing(row) ? null : c.value(row).resolved();
+                    });
+                }));
 
         // -- VALUE substring (native-only; 1-based start, SAS/CDISC convention) ---
         // substring(x, start): the suffix of x beginning at the 1-based character position `start`.
@@ -294,21 +333,16 @@ public final class BuiltinFunctions implements FunctionProvider
         // start < 1, or a start beyond x's length all
         // yield a MISSING result. A length <= 0 yields the empty string; a length running past the
         // end of x is clamped to x's end (no exception).
-        fns.add(new FunctionDescriptor("substring", 2, FunctionKind.VALUE, (run, args) ->
-        {
-            Vector x = args.get(0);
-            Vector start = args.get(1);
-            return new ComputedVector(run.rowCount(), DataValueType.STRING,
-                    row -> substring(x, start, null, row));
-        }));
-        fns.add(new FunctionDescriptor("substring", 3, FunctionKind.VALUE, (run, args) ->
-        {
-            Vector x = args.get(0);
-            Vector start = args.get(1);
-            Vector length = args.get(2);
-            return new ComputedVector(run.rowCount(), DataValueType.STRING,
-                    row -> substring(x, start, length, row));
-        }));
+        fns.add(new FunctionDescriptor("substring",
+                List.of(p("x"), p("start", Primitive.NUMBER), opt("length", Primitive.NUMBER)),
+                FunctionKind.VALUE, (run, args) ->
+                {
+                    Vector x = args.get(0);
+                    Vector start = args.get(1);
+                    Vector length = args.get(2);
+                    return new ComputedVector(run.rowCount(), DataValueType.STRING,
+                            row -> substring(x, start, length, row));
+                }));
 
         // -- VALUE delimiter split (T9; native-only) -------------------------
         // split_by(x, delimiter): the per-row token LIST produced by splitting x on the literal
@@ -320,13 +354,15 @@ public final class BuiltinFunctions implements FunctionProvider
         // ones a split rule targets (its non_empty Precondition gates blanks). This is the native
         // lowering of a split_by OPERATION (SplitByInliner): coreJ has no SPLIT_BY OperationType
         // because a broadcast operation cannot carry a per-row-varying list.
-        fns.add(new FunctionDescriptor("split_by", 2, FunctionKind.VALUE, (run, args) ->
-        {
-            Vector x = args.get(0);
-            String delimiter = constString(args.get(1));
-            return new ComputedVector(run.rowCount(), DataValueType.STRING,
-                    row -> splitBy(x, delimiter, row));
-        }));
+        fns.add(new FunctionDescriptor("split_by",
+                List.of(p("x"), p("delimiter", Primitive.STRING)), FunctionKind.VALUE,
+                (run, args) ->
+                {
+                    Vector x = args.get(0);
+                    String delimiter = constString(args.get(1));
+                    return new ComputedVector(run.rowCount(), DataValueType.STRING,
+                            row -> splitBy(x, delimiter, row));
+                }));
 
         // -- VALUE composite key (T3; native-only) ---------------------------
         // tuple(c1, c2, ...): the current row's composite key as a List<String> cell (one element
@@ -334,16 +370,17 @@ public final class BuiltinFunctions implements FunctionProvider
         // composite cross-dataset membership `tuple(c1, c2) [not] in distinct([c1, c2],
         // domain="D")`
         // — the row fires when its tuple is (not) a member of the reference dataset's distinct
-        // row-tuple set built by the list-target `distinct` operation. Registered per arity (the
-        // FunctionRegistry keys on exact (name, arity)); 2..6 columns cover every composite key in
-        // the corpus. The empty-string missing convention matches evalDistinctTuples so a row tuple
+        // row-tuple set built by the list-target `distinct` operation. ⭐ Phase 6b (D59/D91): the
+        // per-arity registrations (2..6, with 4..6 never used) are ONE descriptor whose trailing
+        // collector parameter is the `list<column-reference>` composite key — `tuple(A, B, …)`
+        // stays spellable as §1.5's sugar, and the two-column minimum is the leading required
+        // parameter. The empty-string missing convention matches evalDistinctTuples so a row tuple
         // and a reference tuple compare List-equal.
-        for (int arity = 2; arity <= 6; arity++)
-        {
-            fns.add(new FunctionDescriptor("tuple", arity, FunctionKind.VALUE,
-                    (run, args) -> new ComputedVector(run.rowCount(), DataValueType.STRING,
-                            row -> tupleKey(args, row))));
-        }
+        fns.add(new FunctionDescriptor("tuple",
+                List.of(p("c1", Primitive.COLUMN_REFERENCE), p("c2", Primitive.COLUMN_REFERENCE),
+                        Parameter.collector("columns", new ListOf(Primitive.COLUMN_REFERENCE))),
+                FunctionKind.VALUE, (run, args) -> new ComputedVector(run.rowCount(),
+                        DataValueType.STRING, row -> tupleKey(args, row))));
 
         // -- VALUE ISO-8601 date-component extraction (native-only) ----------
         // year(x) / month(x) / day(x): the requested component of an ISO-8601 date as a LONG. A
@@ -360,43 +397,46 @@ public final class BuiltinFunctions implements FunctionProvider
         // -- BOOLEAN range (native-only) -------------------------------------
         // between(x, lo, hi): fires where x is numeric and lo <= x <= hi (inclusive). lo/hi may be
         // literals or per-row columns; a missing/non-numeric x, lo, or hi never fires.
-        bool(fns, "between", 3, (run, args) ->
-        {
-            Vector x = args.get(0);
-            Vector lo = args.get(1);
-            Vector hi = args.get(2);
-            // ⭐ Gate hoisted out of numeric(): ColumnTypeGate.requireNumericRead is a pure
-            // function of the VECTOR, so asking it per row asked the same question rowCount times
-            // to get the same answer. Raised here, before the loop, so an operand of the wrong
-            // declared type still errors the rule exactly as before — just once.
-            net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(x,
-                    "a numeric function operand");
-            net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(lo,
-                    "a numeric function operand");
-            net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(hi,
-                    "a numeric function operand");
-            BitSet result = new BitSet(run.rowCount());
-            for (int row = 0; row < run.rowCount(); row++)
-            {
-                Double xv = numeric(x, row);
-                Double lov = numeric(lo, row);
-                Double hiv = numeric(hi, row);
-                if (xv != null && lov != null && hiv != null && xv >= lov && xv <= hiv)
+        bool(fns, "between", List.of(p("x", Primitive.NUMBER), p("lo", Primitive.NUMBER),
+                p("hi", Primitive.NUMBER)), (run, args) ->
                 {
-                    result.set(row);
-                }
-            }
-            return result;
-        });
+                    Vector x = args.get(0);
+                    Vector lo = args.get(1);
+                    Vector hi = args.get(2);
+                    // ⭐ Gate hoisted out of numeric(): ColumnTypeGate.requireNumericRead is a pure
+                    // function of the VECTOR, so asking it per row asked the same question rowCount
+                    // times
+                    // to get the same answer. Raised here, before the loop, so an operand of the
+                    // wrong
+                    // declared type still errors the rule exactly as before — just once.
+                    net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(x,
+                            "a numeric function operand");
+                    net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(lo,
+                            "a numeric function operand");
+                    net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(hi,
+                            "a numeric function operand");
+                    BitSet result = new BitSet(run.rowCount());
+                    for (int row = 0; row < run.rowCount(); row++)
+                    {
+                        Double xv = numeric(x, row);
+                        Double lov = numeric(lo, row);
+                        Double hiv = numeric(hi, row);
+                        if (xv != null && lov != null && hiv != null && xv >= lov && xv <= hiv)
+                        {
+                            result.set(row);
+                        }
+                    }
+                    return result;
+                });
 
         // -- BOOLEAN presence ------------------------------------------------
         EvalFunction empty = (run, args) -> Primitives.empty(args.get(0), run.rowCount());
-        bool(fns, "empty", 1, empty);
-        bool(fns, "is_missing", 1, empty);
+        bool(fns, "empty", List.of(p("x")), empty);
+        bool(fns, "is_missing", List.of(p("x")), empty);
         EvalFunction nonEmpty = (run, args) -> Primitives.nonEmpty(args.get(0), run.rowCount());
-        bool(fns, "non_empty", 1, nonEmpty);
-        bool(fns, "present", 1, nonEmpty);
-        bool(fns, "is_present", 1, nonEmpty);
+        bool(fns, "non_empty", List.of(p("x")), nonEmpty);
+        bool(fns, "present", List.of(p("x")), nonEmpty);
+        bool(fns, "is_present", List.of(p("x")), nonEmpty);
 
         // -- BOOLEAN library skip-gate (§9.C) --------------------------------
         // library_available(): true iff a Library MetadataProvider is configured AND — Fix #369 —
@@ -411,56 +451,52 @@ public final class BuiltinFunctions implements FunctionProvider
         // Precondition so an inlined library operation SKIPS the rule (rather than passing) when
         // the
         // Library cannot answer, mirroring the legacy $-ref + Operations early-skip.
-        bool(fns, "library_available", 0, (run, _) -> allRows(run.rowCount(),
+        bool(fns, "library_available", List.of(), (run, _) -> allRows(run.rowCount(),
                 OperationExecutor.libraryAnswerable(run.ctx().getLibraryProvider())));
-        bool(fns, "available", 1, (run, args) -> allRows(run.rowCount(),
-                OperationExecutor.isResultAvailable(args.get(0).resolvedObject(0))));
+        bool(fns, "available", List.of(p("x")), (run, args) -> allRows(run.rowCount(),
+                OperationExecutor.isResultAvailable(args.get(0).value(0).resolved())));
         // T1: dictionary_available(<type>): true iff a dictionary of the named type is loaded into
         // the runtime dictionary provider. Injected as a Precondition gate for every inlined
         // external-dictionary operation so the rule SKIPs (rather than false-passes) when no
         // dictionary of that type is supplied.
-        bool(fns, "dictionary_available", 1,
+        bool(fns, "dictionary_available", List.of(p("type", Primitive.STRING)),
                 (run, args) -> allRows(run.rowCount(),
                         run.ctx().getDictionaryProvider() != null && run.ctx()
                                 .getDictionaryProvider().isAvailable(constString(args.get(0)))));
 
         // -- BOOLEAN substring -----------------------------------------------
-        bool(fns, "contains", 2, (run, args) -> Primitives.contains(args.get(0), args.get(1),
-                run.rowCount(), false));
-        bool(fns, "does_not_contain", 2,
+        bool(fns, "contains", List.of(p("x"), p("value")), (run, args) -> Primitives
+                .contains(args.get(0), args.get(1), run.rowCount(), false));
+        bool(fns, "does_not_contain", List.of(p("x"), p("value")),
                 (run, args) -> Primitives.contains(args.get(0), args.get(1), run.rowCount(), true));
-        bool(fns, "starts_with", 2,
+        bool(fns, "starts_with", List.of(p("x"), p("value")),
                 (run, args) -> Primitives.startsWith(args.get(0), args.get(1), run.rowCount()));
-        bool(fns, "ends_with", 2,
+        bool(fns, "ends_with", List.of(p("x"), p("value")),
                 (run, args) -> Primitives.endsWith(args.get(0), args.get(1), run.rowCount()));
 
         // -- BOOLEAN case-insensitive equality -------------------------------
-        bool(fns, "equalsIgnoreCase", 2, (run, args) -> Primitives.equality(args.get(0),
-                args.get(1), run.rowCount(), false, true, false, false));
+        bool(fns, "equalsIgnoreCase", List.of(p("a"), p("b")), (run, args) -> Primitives
+                .equality(args.get(0), args.get(1), run.rowCount(), false, true, false, false));
 
-        // -- BOOLEAN affix regex (anchored full-match on whole operand) ------
-        bool(fns, "prefix_matches", 2,
-                (run, args) -> Primitives.affixRegex(args.get(0),
-                        Pattern.compile(constString(args.get(1))), run.rowCount(), true,
-                        (Integer) null, false));
-        bool(fns, "suffix_matches", 2,
-                (run, args) -> Primitives.affixRegex(args.get(0),
-                        Pattern.compile(constString(args.get(1))), run.rowCount(), false,
-                        (Integer) null, false));
-
-        // -- BOOLEAN affix regex, length-bounded (anchored full-match on the n-char affix) ---
-        // prefix_matches(x, /re/, n) / suffix_matches(x, /re/, n): the 3-arg forms raised from a
-        // (not_)(prefix|suffix)_matches_regex leaf carrying a prefix/suffix length. The regex is
-        // matched (anchored) against the first/last n characters; a value shorter than n (or a
-        // non-integral n) uses the whole string.
-        bool(fns, "prefix_matches", 3,
-                (run, args) -> Primitives.affixRegex(args.get(0),
-                        Pattern.compile(constString(args.get(1))), run.rowCount(), true,
-                        args.get(2), false));
-        bool(fns, "suffix_matches", 3,
-                (run, args) -> Primitives.affixRegex(args.get(0),
-                        Pattern.compile(constString(args.get(1))), run.rowCount(), false,
-                        args.get(2), false));
+        // -- BOOLEAN affix regex (anchored full-match) -----------------------
+        // prefix_matches(x, /re/[, n]) / suffix_matches(x, /re/[, n]): anchored full-match on the
+        // whole operand, or — when the optional n (raised from a (not_)(prefix|suffix)_
+        // matches_regex leaf carrying an affix length) is bound — on the first/last n characters
+        // (a value shorter than n, or a non-integral n, uses the whole string). ⭐ Phase 6b
+        // (D19a/D59): the former arity-2/arity-3 overloads are ONE descriptor with `n` optional;
+        // an absent n is byte-identical to the retired arity-2 registration.
+        List<Parameter> affixParams = List.of(p("x"), p("pattern", Primitive.REGEX),
+                opt("n", Primitive.NUMBER));
+        bool(fns, "prefix_matches", affixParams, (run, args) -> args.get(2) == null
+                ? Primitives.affixRegex(args.get(0), Pattern.compile(constString(args.get(1))),
+                        run.rowCount(), true, (Integer) null, false)
+                : Primitives.affixRegex(args.get(0), Pattern.compile(constString(args.get(1))),
+                        run.rowCount(), true, args.get(2), false));
+        bool(fns, "suffix_matches", affixParams, (run, args) -> args.get(2) == null
+                ? Primitives.affixRegex(args.get(0), Pattern.compile(constString(args.get(1))),
+                        run.rowCount(), false, (Integer) null, false)
+                : Primitives.affixRegex(args.get(0), Pattern.compile(constString(args.get(1))),
+                        run.rowCount(), false, args.get(2), false));
 
         // -- VALUE affix substrings (prefix / suffix) -------------------------
         // prefix(x, n) / suffix(x, n): the first/last n characters of x, raised from the legacy
@@ -469,9 +505,11 @@ public final class BuiltinFunctions implements FunctionProvider
         // non-positive / non-integral n) yields the WHOLE string; a missing x folds to "" (see
         // affixValue) — matching the legacy missing→"" fold so an affix compare agrees across
         // lanes.
-        fns.add(new FunctionDescriptor("prefix", 2, FunctionKind.VALUE,
+        fns.add(new FunctionDescriptor("prefix", List.of(p("x"), p("n", Primitive.NUMBER)),
+                FunctionKind.VALUE,
                 (run, args) -> affixValue(run.rowCount(), args.get(0), args.get(1), true)));
-        fns.add(new FunctionDescriptor("suffix", 2, FunctionKind.VALUE,
+        fns.add(new FunctionDescriptor("suffix", List.of(p("x"), p("n", Primitive.NUMBER)),
+                FunctionKind.VALUE,
                 (run, args) -> affixValue(run.rowCount(), args.get(0), args.get(1), false)));
 
         // -- BOOLEAN case-insensitive regex search (native-only) -------------
@@ -479,21 +517,21 @@ public final class BuiltinFunctions implements FunctionProvider
         // Pattern.CASE_INSENSITIVE), mirroring the `=~` operator's find() semantics. A missing x
         // never fires. The 2nd arg is a /regex/ literal bound to a broadcast const string (see
         // ExprCompiler.LITERAL_ARG1).
-        bool(fns, "imatches", 2,
+        bool(fns, "imatches", List.of(p("x"), p("pattern", Primitive.REGEX)),
                 (run, args) -> Primitives.regexFind(args.get(0),
                         Pattern.compile(constString(args.get(1)), Pattern.CASE_INSENSITIVE),
                         run.rowCount(), false));
 
         // -- BOOLEAN integer -------------------------------------------------
-        bool(fns, "is_integer", 1,
+        bool(fns, "is_integer", List.of(p("x")),
                 (run, args) -> Primitives.isInteger(args.get(0), run.rowCount(), false));
-        bool(fns, "is_not_integer", 1,
+        bool(fns, "is_not_integer", List.of(p("x")),
                 (run, args) -> Primitives.isInteger(args.get(0), run.rowCount(), true));
 
         // -- BOOLEAN numeric -------------------------------------------------
         // is_numeric(x): finite-decimal hand-rolled scan; the negated form is written
         // `not is_numeric(X)`, so no is_not_numeric is registered.
-        bool(fns, "is_numeric", 1,
+        bool(fns, "is_numeric", List.of(p("x")),
                 (run, args) -> Primitives.isNumeric(args.get(0), run.rowCount(), false));
 
         // -- BOOLEAN valid test code / variable name -------------------------
@@ -502,20 +540,20 @@ public final class BuiltinFunctions implements FunctionProvider
         // first char [A-Z_], rest [A-Z0-9_], length 1..8 (uppercase only). Both are hand-rolled
         // scans (no regex); a missing/"" cell does not fire (so `not is_valid_*` fires on a blank,
         // matching the legacy not_matches_regex).
-        bool(fns, "is_valid_testcd", 1,
+        bool(fns, "is_valid_testcd", List.of(p("x")),
                 (run, args) -> Primitives.isValidTestcd(args.get(0), run.rowCount()));
-        bool(fns, "is_valid_name", 1,
+        bool(fns, "is_valid_name", List.of(p("x")),
                 (run, args) -> Primitives.isValidName(args.get(0), run.rowCount()));
 
         // -- BOOLEAN has-letter / has-digit ----------------------------------
         // has_alpha(x): contains >= 1 ASCII letter [A-Za-z]. has_digit(x): contains >= 1 ASCII
         // digit [0-9]. Both mirror the legacy unanchored matches_regex ".*[a-zA-Z].*" / ".*[0-9].*"
-        // a missing/"" cell does not fire. ⚠ No rule of this corpus authors either function or
-        // either regex (measured 2026-09-19: zero carriers of has_alpha, has_digit,
-        // ".*[a-zA-Z].*" and ".*[0-9].*" in rules-src/checks), so both are currently
-        // unexercised by the corpus.
-        bool(fns, "has_alpha", 1, (run, args) -> Primitives.hasAlpha(args.get(0), run.rowCount()));
-        bool(fns, "has_digit", 1, (run, args) -> Primitives.hasDigit(args.get(0), run.rowCount()));
+        // a missing/"" cell does not fire. (No shipped rule authors either as of 2026-09-19 —
+        // the sole consumer went with the CORE family; the twin authors a regex instead.)
+        bool(fns, "has_alpha", List.of(p("x")),
+                (run, args) -> Primitives.hasAlpha(args.get(0), run.rowCount()));
+        bool(fns, "has_digit", List.of(p("x")),
+                (run, args) -> Primitives.hasDigit(args.get(0), run.rowCount()));
 
         // -- BOOLEAN duration ------------------------------------------------
         // EC-20/EC-22: absent negative= defaults to true (accept the signed grammar), matching the
@@ -523,25 +561,33 @@ public final class BuiltinFunctions implements FunctionProvider
         // for a bare invalid_duration(X); ExprCompiler.compileBoolCall intercepts the
         // kwarg-carrying
         // form and passes the parsed negative= flag through explicitly.
-        bool(fns, "invalid_duration", 1,
-                (run, args) -> Primitives.invalidDuration(args.get(0), run.rowCount(), true));
-        bool(fns, "is_valid_duration", 1, (run, args) -> Primitives.stringPredicate(args.get(0),
-                run.rowCount(), s -> !ScalarSemantics.isInvalidDuration(s, false)));
+        // invalid_duration(x[, negative=]): the compiler intercepts the kwarg-carrying arity-1
+        // form (EC-22) and routes the parsed flag explicitly; this registered fn consumes a BOUND
+        // negative argument too (a positional/named boolean literal compiled to a broadcast
+        // constant), so both spellings share one default (DEFAULT_NEGATIVE = accept the signed
+        // grammar, EC-20 alignment).
+        bool(fns, "invalid_duration", List.of(p("x"), opt("negative", Primitive.BOOLEAN)),
+                (run, args) -> Primitives.invalidDuration(args.get(0), run.rowCount(),
+                        args.get(1) == null
+                                || !(args.get(1).value(0).resolved() instanceof Boolean b) || b));
+        bool(fns, "is_valid_duration", List.of(p("x")),
+                (run, args) -> Primitives.stringPredicate(args.get(0), run.rowCount(),
+                        s -> !ScalarSemantics.isInvalidDuration(s, false)));
 
         // -- BOOLEAN date validity (calendar-validating, decision #4) --------
-        bool(fns, "is_valid_date", 1, (run, args) -> Primitives.stringPredicate(args.get(0),
-                run.rowCount(), CalendarDates::isValidDate));
-        bool(fns, "is_complete_date", 1, (run, args) -> Primitives.stringPredicate(args.get(0),
-                run.rowCount(), CalendarDates::isCompleteDate));
+        bool(fns, "is_valid_date", List.of(p("x", Primitive.STRING)), (run, args) -> Primitives
+                .stringPredicate(args.get(0), run.rowCount(), CalendarDates::isValidDate));
+        bool(fns, "is_complete_date", List.of(p("x", Primitive.STRING)), (run, args) -> Primitives
+                .stringPredicate(args.get(0), run.rowCount(), CalendarDates::isCompleteDate));
         EvalFunction partialDate = (run, args) -> Primitives.stringPredicate(args.get(0),
                 run.rowCount(), CalendarDates::isPartialDate);
-        bool(fns, "is_partial_date", 1, partialDate);
-        bool(fns, "is_incomplete_date", 1, partialDate);
+        bool(fns, "is_partial_date", List.of(p("x", Primitive.STRING)), partialDate);
+        bool(fns, "is_incomplete_date", List.of(p("x", Primitive.STRING)), partialDate);
         // invalid_date: calendar-validating AND firing on a missing/blank cell. The previous
         // stringPredicate wiring carried a !isMissing guard that silently SUPPRESSED the blank case
         // (a blank is not a valid date, so it must be reported — never hidden); invalidDateCalendar
         // drops that guard while keeping calendar validation (decision in BuiltinFunctionsTest).
-        bool(fns, "invalid_date", 1,
+        bool(fns, "invalid_date", List.of(p("x", Primitive.STRING)),
                 (run, args) -> Primitives.invalidDateCalendar(args.get(0), run.rowCount()));
         // is_complete_date_part(x) / is_not_complete_date_part(x) — Fix #157. Judges ONLY the
         // leading YYYY-MM-DD date portion, so a truncated time ("2020-01-01T10") is complete here
@@ -550,9 +596,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // (not a complete date part), so the negative form fires on a blank — mirrors
         // is_integer/is_not_integer, NOT the is_complete_date/is_incomplete_date pair (which is
         // deliberately non-exhaustive: an invalid date is neither).
-        bool(fns, "is_complete_date_part", 1,
+        bool(fns, "is_complete_date_part", List.of(p("x", Primitive.STRING)),
                 (run, args) -> Primitives.isCompleteDatePart(args.get(0), run.rowCount(), false));
-        bool(fns, "is_not_complete_date_part", 1,
+        bool(fns, "is_not_complete_date_part", List.of(p("x", Primitive.STRING)),
                 (run, args) -> Primitives.isCompleteDatePart(args.get(0), run.rowCount(), true));
 
         // -- VALUE date hull bounds (earliest_possible / latest_possible) -----
@@ -579,10 +625,35 @@ public final class BuiltinFunctions implements FunctionProvider
         // A cell that cannot be positioned (blank, junk, calendar-impossible, year-masked) yields
         // a MISSING result rather than a saturated sentinel: "the earliest date this could be" has
         // no answer, and 9999-12-31 is a real clinical value that must never be manufactured.
-        fns.add(new FunctionDescriptor("earliest_possible", 1, FunctionKind.VALUE,
+        fns.add(new FunctionDescriptor("earliest_possible", List.of(p("x")), FunctionKind.VALUE,
                 (run, args) -> hullBound(run.rowCount(), args.get(0), false)));
-        fns.add(new FunctionDescriptor("latest_possible", 1, FunctionKind.VALUE,
+        fns.add(new FunctionDescriptor("latest_possible", List.of(p("x")), FunctionKind.VALUE,
                 (run, args) -> hullBound(run.rowCount(), args.get(0), true)));
+
+        // -- BOOLEAN interval predicates (SPEC §5.3, D27 — phase 3b) ---------
+        // Container-first, matching contains(haystack, needle). date_overlaps is by construction
+        // the negation of the date operator's `!=`, so `not date_overlaps(A, B)` IS today's `!=`
+        // — the identity Review 0's 21 KEEP decisions rest on; see TemporalPredicates for the
+        // three stated consequences (junk overlaps everything, missing overlaps nothing, and
+        // contains is deliberately conservative-false rather than the mirror). A null second
+        // operand (an unresolvable reference) yields the empty verdict, exactly as the compiled
+        // comparison's null-plan short-circuit does.
+        bool(fns, "date_contains", List.of(p("outer", Primitive.DATE), p("inner", Primitive.DATE)),
+                (run, args) -> args.get(1) == null ? new BitSet()
+                        : TemporalPredicates.dateContains(args.get(0), args.get(1),
+                                run.rowCount()));
+        bool(fns, "date_overlaps", List.of(p("a", Primitive.DATE), p("b", Primitive.DATE)),
+                (run, args) -> args.get(1) == null ? new BitSet()
+                        : TemporalPredicates.dateOverlaps(args.get(0), args.get(1),
+                                run.rowCount()));
+        bool(fns, "time_contains", List.of(p("outer", Primitive.TIME), p("inner", Primitive.TIME)),
+                (run, args) -> args.get(1) == null ? new BitSet()
+                        : TemporalPredicates.timeContains(args.get(0), args.get(1),
+                                run.rowCount()));
+        bool(fns, "time_overlaps", List.of(p("a", Primitive.TIME), p("b", Primitive.TIME)),
+                (run, args) -> args.get(1) == null ? new BitSet()
+                        : TemporalPredicates.timeOverlaps(args.get(0), args.get(1),
+                                run.rowCount()));
 
         return fns;
     }
@@ -864,13 +935,13 @@ public final class BuiltinFunctions implements FunctionProvider
         return new ComputedVector(rowCount, DataValueType.STRING, row ->
         {
             // EC-28(a) / Fix #131: a COLLECTION-valued operand is folded ELEMENT-WISE and stays a
-            // collection. The case-insensitive contains twins lower to
-            // `contains(upper(ref), upper(lit))` (CheckToExpr:276-279), so without this the
+            // collection. The case-insensitive contains twins are spelled
+            // `contains(upper(ref), upper(lit))`, so without this the
             // set would be flattened to its toString() here and `contains` could only ever do a
             // substring probe on the rendered list — the very defect EC-28 fixes for the
             // case-sensitive pair. Keeping it a collection lets the membership branch in
             // Primitives.substring see it, giving case-insensitive EXACT membership.
-            Object raw = x.resolvedObject(row);
+            Object raw = x.value(row).resolved();
             if (raw instanceof Collection<?> col)
             {
                 List<String> folded = new ArrayList<>(col.size());
@@ -897,20 +968,42 @@ public final class BuiltinFunctions implements FunctionProvider
      */
     private static String constString(Vector v)
     {
-        Object o = v.resolvedObject(0);
+        Object o = v.value(0).resolved();
         return o != null ? o.toString() : "";
     }
 
 
     private static void value(List<FunctionDescriptor> fns, String name, EvalFunction fn)
     {
-        fns.add(new FunctionDescriptor(name, 1, FunctionKind.VALUE, fn));
+        fns.add(new FunctionDescriptor(name, List.of(p("x")), FunctionKind.VALUE, fn));
     }
 
 
-    private static void bool(List<FunctionDescriptor> fns, String name, int arity, EvalFunction fn)
+    private static void bool(List<FunctionDescriptor> fns, String name, List<Parameter> params,
+            EvalFunction fn)
     {
-        fns.add(new FunctionDescriptor(name, arity, FunctionKind.BOOLEAN, fn));
+        fns.add(new FunctionDescriptor(name, params, FunctionKind.BOOLEAN, fn));
+    }
+
+
+    /** A required parameter of unspecified type (stage B / the element table decide). */
+    private static Parameter p(String name)
+    {
+        return Parameter.required(name, Unknown.UNKNOWN);
+    }
+
+
+    /** A required parameter of the given declared type. */
+    private static Parameter p(String name, ExprType type)
+    {
+        return Parameter.required(name, type);
+    }
+
+
+    /** An optional parameter of the given declared type. */
+    private static Parameter opt(String name, ExprType type)
+    {
+        return Parameter.optional(name, type);
     }
 
 

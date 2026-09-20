@@ -27,8 +27,9 @@ import org.jspecify.annotations.Nullable;
  * <li>{@code issueDetails} — {@code Issue_Details} rows ({@code core_id, message, executability,
  * dataset, USUBJID, row, SEQ, variables, values}); {@code variables}/{@code values} are
  * {@code List<String>}.</li>
- * <li>{@code rulesReport} — {@code Rules_Report} rows
- * ({@code core_id, version, cdisc_rule_id, fda_rule_id, message, status}).</li>
+ * <li>{@code rulesReport} — {@code Rules_Report} rows ({@code core_id, version, cdisc_rule_id,
+ * fda_rule_id, message, status, runtime_ms}, plus the v2-only D65 counts
+ * {@code executed, skipped, errored} — see {@link #RULES_EXECUTED_COUNT}).</li>
  * <li>{@code skippedRules} — {@code Skipped_Rules} rows ({@code core_id, dataset, reason}); a Java
  * extension without a Python counterpart.</li>
  * <li>{@code combinedFindings} — the v2 {@code Findings} rows
@@ -126,6 +127,28 @@ public record ReportSections(Map<String, @Nullable Object> conformanceDetails,
     static final String NUMERIC_TOLERANCE_DIGITS = "Numeric_Tolerance_Digits";
 
     /**
+     * ⭐ <b>v2-only</b> {@code Rules_Report} row keys carrying the D65 execution counts — how often
+     * the rule <b>executed</b> successfully, was <b>skipped</b>, and <b>errored</b>, each per (rule
+     * × dataset).
+     *
+     * <p>
+     * ⛔ v2-only for the same reason as {@link #NUMERIC_TOLERANCE_DIGITS}: v1 is a FROZEN published
+     * consumer schema (owner ruling 2026-08-11), and D57 rules that per-binding / per-execution
+     * detail lands in v2 or a new section, <b>never by widening v1</b>. The assembler puts the keys
+     * into the shared {@code rulesReport} rows; {@link #toExportDocument} strips them so no v1
+     * document — freshly assembled or round-tripped through {@link #fromExportDocument} — ever
+     * carries them.
+     * </p>
+     */
+    static final String RULES_EXECUTED_COUNT = "executed";
+
+    /** See {@link #RULES_EXECUTED_COUNT}. */
+    static final String RULES_SKIPPED_COUNT = "skipped";
+
+    /** See {@link #RULES_EXECUTED_COUNT}. */
+    static final String RULES_ERRORED_COUNT = "errored";
+
+    /**
      * Projects these sections into the <b>v1</b> export document: the nested {@link LinkedHashMap}
      * whose key order <em>is</em> the published v1 schema
      * ({@code Conformance_Details, Dataset_Details, Issue_Summary, Issue_Details, Rules_Report,
@@ -152,7 +175,7 @@ public record ReportSections(Map<String, @Nullable Object> conformanceDetails,
         root.put(DATASET_DETAILS, datasetDetails());
         root.put(ISSUE_SUMMARY, issueSummary());
         root.put(ISSUE_DETAILS, issueDetails());
-        root.put(RULES_REPORT, rulesReport());
+        root.put(RULES_REPORT, withoutExecutionCountKeys(rulesReport()));
         root.put(SKIPPED_RULES, skippedRules());
         return root;
     }
@@ -205,6 +228,42 @@ public record ReportSections(Map<String, @Nullable Object> conformanceDetails,
         Map<String, @Nullable Object> m = new LinkedHashMap<>(details);
         m.remove(NUMERIC_TOLERANCE_DIGITS);
         return m;
+    }
+
+
+    /**
+     * {@code rows} without the v2-only D65 execution-count keys, for the frozen v1 projection.
+     * Stripped rather than assumed absent, for the same round-trip reason as
+     * {@link #withoutToleranceKey}: a document read back through {@link #fromExportDocument}
+     * carries whatever its source had.
+     */
+    private static List<Map<String, Object>> withoutExecutionCountKeys(
+            List<Map<String, Object>> rows)
+    {
+        boolean any = false;
+        for (Map<String, Object> row : rows)
+        {
+            if (row.containsKey(RULES_EXECUTED_COUNT) || row.containsKey(RULES_SKIPPED_COUNT)
+                    || row.containsKey(RULES_ERRORED_COUNT))
+            {
+                any = true;
+                break;
+            }
+        }
+        if (!any)
+        {
+            return rows;
+        }
+        List<Map<String, Object>> out = new ArrayList<>(rows.size());
+        for (Map<String, Object> row : rows)
+        {
+            Map<String, Object> m = new LinkedHashMap<>(row);
+            m.remove(RULES_EXECUTED_COUNT);
+            m.remove(RULES_SKIPPED_COUNT);
+            m.remove(RULES_ERRORED_COUNT);
+            out.add(m);
+        }
+        return out;
     }
 
 

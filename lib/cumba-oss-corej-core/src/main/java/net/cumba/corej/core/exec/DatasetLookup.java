@@ -247,9 +247,13 @@ public class DatasetLookup implements JoinLookup
         {
             return null;
         }
-        // Blank resolves by the column's declared type (ScalarSemantics.resolvedString): a blank
-        // character cell reads "" whether the file wrote an empty string or an explicit null, so a
-        // joined character value is blind to the difference; a blank numeric cell still reads null.
+        // A blank resolves per ScalarSemantics.resolvedString, which is type-INDEPENDENT.
+        // ⭐ CORRECTED (owner ruling, 2026-09-18): this comment used to say a blank character cell
+        // "reads '' whether the file wrote an empty string or an explicit null, so a joined
+        // character value is blind to the difference". That blindness is exactly what the ruling
+        // retired as dangerous. A MISSING char cell — marker or raw null (the datatable
+        // repository's d4edd59) — now reads null here, like a blank numeric one; only a stored ""
+        // reads "".
         return ScalarSemantics.resolvedString(dataset.getColumn(colIdx),
                 datasetMeta.getColumn(colIdx).getType(), joinedRow);
     }
@@ -316,31 +320,47 @@ public class DatasetLookup implements JoinLookup
      * </p>
      */
     @Override
-    public @Nullable IDataValue lookupValue(IDataTable primaryTable, long row, String columnName)
+    public IDataValue lookupValue(IDataTable primaryTable, long row, String columnName,
+            boolean numericExpected)
     {
+        int colIdx = datasetMeta.getColumnIndex(columnName);
+        if (colIdx < 0)
+        {
+            // ⭐⭐ §9c DOTTED PARITY (owner ruling, 2026-09-18): the column is absent from the
+            // joined dataset ENTIRELY, and a joined variable behaves like a first-class primary
+            // one in every respect but the dotted access form. So it takes the RULE's expected
+            // default exactly as an absent primary column does (D72/D76/§1b): numeric ->
+            // MissingValue.MIS, otherwise the CONSTANT "" — a present empty string, never a
+            // computed MIS for a char read (the D96a absent-vs-blank regression, where a MIS was
+            // sorted below every value by phase 6c's D34 #5 order arm).
+            //
+            // ⚑ Until 2026-09-18 this answered "" UNCONDITIONALLY, and the recorded reason was
+            // that the expectation is UNREADABLE FROM HERE — JoinLookup.lookupValue was handed no
+            // EvaluationContext. §9c makes that a reason to CHANGE THE CHANNEL rather than accept
+            // the answer, which is what the numericExpected parameter is. ⛔ Do not re-derive the
+            // flag here or read a declared type for it: an absent column HAS no declared type, so
+            // the expectation is a property of the RULE and can only arrive from the call site.
+            //
+            // ⚠ computedMissing() is the engine's single spelling of MissingValue.MIS (its own
+            // javadoc), and is byte-identical to what ExprCompiler.dottedNotSuppliedDefault
+            // answers for the sibling "no such joined dataset" case — the two must not drift.
+            return numericExpected ? ScalarSemantics.computedMissing()
+                    : DataValueSupport.defaultForType(DataValueType.STRING);
+        }
         ensureJoinMap(primaryTable);
         long joinedRow = Objects.requireNonNull(joinMap, "joinMap set by ensureJoinMap")
                 .getValueAsLong((int) row);
         if (joinedRow < 0)
         {
-            return null;
+            // ⭐ D72/D72a-1: an unmatched join row yields the column's TYPE default — a merged
+            // column behaves like a primary column, and a primary char column never has "no
+            // value": char -> "", numeric -> MissingValue.MIS (D34 #3/#4).
+            return DataValueSupport.defaultForType(datasetMeta.getColumn(colIdx).getType());
         }
-        int colIdx = datasetMeta.getColumnIndex(columnName);
-        if (colIdx < 0)
-        {
-            return null;
-        }
-        IDataValue dv = dataset.getColumn(colIdx).getDataValue(joinedRow);
-        // ⚑ Mirrors lookup()'s blank contract rather than inventing one: resolvedString maps a
-        // blank NUMERIC cell to null (no value) and a blank CHARACTER cell to "". A missing cell in
-        // a character column must therefore still produce a value, not a null.
-        if (dv.isMissingOrInvalid())
-        {
-            return datasetMeta.getColumn(colIdx).getType() == DataValueType.STRING
-                    ? DataValueSupport.getAsDataValue("", DataValueType.STRING)
-                    : null;
-        }
-        return dv;
+        // ⛔ D75a case 4 rides here too: a matched parent cell that is a genuine MissingValue is a
+        // SUPPLIED value, distinct from "" (D11/D12), and passes through unchanged. (Until D72 a
+        // missing char cell here was rewritten to "" and a missing numeric one to null.)
+        return dataset.getColumn(colIdx).getDataValue(joinedRow);
     }
 
 
@@ -380,6 +400,26 @@ public class DatasetLookup implements JoinLookup
             }
         }
         return out;
+    }
+
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>
+     * Answered from the per-primary-row join map this lookup already builds (and caches) for
+     * {@link #lookup} — the BitSet-shaped by-product D88 §3.3 asks for: one build pass per (primary
+     * table, joined dataset), then an O(1) array read per row. First-wins index semantics are
+     * irrelevant here: the map holds <em>a</em> partner row iff at least one exists, which is
+     * exactly the flag's contract.
+     * </p>
+     */
+    @Override
+    public boolean matchedRow(IDataTable primaryTable, long row)
+    {
+        ensureJoinMap(primaryTable);
+        return Objects.requireNonNull(joinMap, "joinMap set by ensureJoinMap")
+                .getValueAsLong((int) row) >= 0;
     }
 
 

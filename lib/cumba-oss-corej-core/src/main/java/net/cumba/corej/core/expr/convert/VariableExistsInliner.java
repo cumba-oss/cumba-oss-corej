@@ -194,7 +194,7 @@ public final class VariableExistsInliner
         }
         Map<String, Expr> calls = new HashMap<>();
         // Phase 5 (plan unified-callable-surface): a plain name is emitted in the generator's
-        // preferred quoted form, matching CheckToExpr.nameOperand; structured names (dotted
+        // preferred quoted form; structured names (dotted
         // cross-dataset refs) keep the bare spelling whose OperandKind encodes the structure.
         eligibleColumns
                 .forEach((id, col) -> calls.put(id,

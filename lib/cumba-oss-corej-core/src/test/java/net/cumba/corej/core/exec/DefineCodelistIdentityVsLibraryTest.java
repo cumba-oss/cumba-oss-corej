@@ -28,10 +28,9 @@ class DefineCodelistIdentityVsLibraryTest
     {
         String json = "{\"Core\":{\"Id\":\"R1\"}," + "\"Variable_Universe\":\"Define\","
                 + "\"Sensitivity\":\"Dataset\",\"Check\":{\"all\":["
-                + "{\"name\":\"library_variable_ccode\",\"operator\":\"non_empty\"},"
-                + "{\"name\":\"define_variable_ccode\",\"operator\":\"non_empty\"},"
-                + "{\"name\":\"define_variable_ccode\",\"operator\":\"not_equal_to\","
-                + "\"value\":\"library_variable_ccode\"}]},"
+                + "{\"expression\": \"not empty(var_ccode(\\\"LIBRARY\\\"))\"},"
+                + "{\"expression\": \"not empty(var_ccode(\\\"DEFINE\\\"))\"},"
+                + "{\"expression\": \"var_ccode(\\\"DEFINE\\\") != var_ccode(\\\"LIBRARY\\\")\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":"
                 + "[\"define_variable_name\",\"define_variable_ccode\",\"library_variable_ccode\"]}}";
         RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"R1\":" + json + "}}");

@@ -8,7 +8,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.GroupingSpec;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Operation;
@@ -42,6 +41,12 @@ import org.junit.jupiter.api.Test;
  */
 class WildcardExpansionRuleFieldsTest
 {
+
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
 
     private static final String TEMPLATE_ID = "WCF-1";
 
@@ -90,7 +95,7 @@ class WildcardExpansionRuleFieldsTest
         core.setStatus("Published");
         core.setVersion("7");
         rule.setCore(core);
-        rule.setCheck(CheckConditionLeaf.builder().name("TRTxxP").operator("non_empty").build());
+        rule.setCheck(expr("not empty(TRTxxP)"));
         rule.setDescription("TRTxxP must agree with TRTxxPN");
         rule.setSensitivity(Sensitivity.DATASET);
         rule.setVariableUniverse(VariableUniverse.DATA);
@@ -277,7 +282,7 @@ class WildcardExpansionRuleFieldsTest
         assertNotNull(vars);
         assertEquals(List.of("ADSL.TRT01PN"), vars.getAll(),
                 "the qualified entry binds the SAME xx the Check got");
-        assertNull(vars.getAny(),
+        assertNull(vars.getAnyGroups(),
                 "the template authored no Any facet; an empty list is an authored statement and "
                         + "would change what the gate asserts");
         assertNull(vars.getNone(), "…and likewise for None");

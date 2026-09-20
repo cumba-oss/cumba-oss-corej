@@ -3,7 +3,6 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -88,7 +87,6 @@ class VarExistsEqTrueAlignmentTest
     {
         Rule rule = loadRule("var_exists(AEOCCUR)");
         assertNotNull(rule.getCheckExpr(), "bare var_exists must retain a checkExpr");
-        assertTrue(rule.isBroadcastCheckExpr(), "bare var_exists must be broadcast-flagged");
         assertEquals(1, parity(rule, present()).size(), "present → one dataset finding");
         assertEquals(Map.of(), parity(rule, absent()), "absent → no finding");
     }
@@ -99,7 +97,6 @@ class VarExistsEqTrueAlignmentTest
     {
         Rule rule = loadRule("var_exists(AEOCCUR) == true");
         assertNotNull(rule.getCheckExpr(), "var_exists == true must retain a checkExpr");
-        assertTrue(rule.isBroadcastCheckExpr(), "var_exists == true must be broadcast-flagged");
 
         Rule bare = loadRule("var_exists(AEOCCUR)");
         assertEquals(parity(bare, present()), parity(rule, present()),
@@ -113,7 +110,6 @@ class VarExistsEqTrueAlignmentTest
     {
         Rule rule = loadRule("var_exists(AEOCCUR) != false");
         assertNotNull(rule.getCheckExpr());
-        assertTrue(rule.isBroadcastCheckExpr());
         Rule bare = loadRule("var_exists(AEOCCUR)");
         assertEquals(parity(bare, present()), parity(rule, present()), "!= false matches bare");
         assertEquals(parity(bare, absent()), parity(rule, absent()), "!= false matches bare");
@@ -125,7 +121,6 @@ class VarExistsEqTrueAlignmentTest
     {
         Rule rule = loadRule("var_exists(AEOCCUR) == false");
         assertNotNull(rule.getCheckExpr(), "var_exists == false must retain a checkExpr");
-        assertTrue(rule.isBroadcastCheckExpr(), "var_exists == false must be broadcast-flagged");
         // negation: fires when the column is ABSENT, silent when present.
         assertEquals(Map.of(), parity(rule, present()), "== false silent when present");
         assertEquals(1, parity(rule, absent()).size(), "== false fires when absent");
@@ -137,7 +132,6 @@ class VarExistsEqTrueAlignmentTest
     {
         Rule rule = loadRule("var_exists(AEOCCUR) != true");
         assertNotNull(rule.getCheckExpr());
-        assertTrue(rule.isBroadcastCheckExpr());
         assertEquals(Map.of(), parity(rule, present()), "!= true silent when present");
         assertEquals(1, parity(rule, absent()).size(), "!= true fires when absent");
     }
@@ -147,10 +141,9 @@ class VarExistsEqTrueAlignmentTest
     void eqTrue_runsOnNativeBackend() throws Exception
     {
         Rule rule = loadRule("var_exists(AEOCCUR) == true");
-        NativeExecutionRecorder.enable();
-        RuleRunner.execute(rule, present(), NO_RESOLVER, "AE", null, null, null);
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE,
-                NativeExecutionRecorder.disable().get("R1"),
-                "var_exists == true must record the NATIVE backend");
+        RuleExecutionResult ran = RuleRunner.execute(rule, present(), NO_RESOLVER, "AE", null, null,
+                null);
+        assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
+                "var_exists == true must reach dispatch and come back EXECUTED");
     }
 }

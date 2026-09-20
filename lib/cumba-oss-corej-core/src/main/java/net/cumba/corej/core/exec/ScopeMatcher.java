@@ -1,8 +1,6 @@
 package net.cumba.corej.core.exec;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -164,13 +162,30 @@ public final class ScopeMatcher
      * gate when an Include list is present.
      * </p>
      *
+     * <p>
+     * ⛔⛔ <b>The two arguments must come from two DIFFERENT derivations, or this method is
+     * inert.</b> {@code isSplit} is {@code !domainName.equals(unsplitName)} and nothing else, so a
+     * caller that resolves one name and passes it twice gets {@code isSplit == false} for every
+     * dataset — silently, with every test still green, because the split legs simply never run.
+     * {@code DatasetRuleResolver} did exactly that until 2026-09-17: it passed
+     * {@code LibraryValidator}'s {@code CdiscDomainResolver.cdiscDomainOf(table)}, and that
+     * resolver and {@code OperationExecutor.unsplitNameFromData} <b>both read the row-0
+     * {@code DOMAIN} cell first</b>. ⇒ {@code domainName} is the <b>member</b> name
+     * ({@code meta.getName()}), {@code unsplitName} the data-derived base. See D125 in
+     * {@code plans/PLAN-typed-expression-engine.md} and the guard
+     * {@code net.cumba.corej.core.report.SplitScopeProductionPathTest}, which exercises this method
+     * only through its production caller.
+     * </p>
+     *
      * @param rule
      *            the rule to check
      * @param domainName
-     *            the dataset name (e.g. "DM", "FAAE")
+     *            the dataset's MEMBER name (e.g. "DM", "FAAE") — never the CDISC domain code when a
+     *            member name is available; see the warning above
      * @param unsplitName
-     *            the dataset's canonical base name (e.g. "FA" for "FAAE"); when {@code null} the
-     *            dataset is treated as not a split
+     *            the dataset's canonical base name (e.g. "FA" for "FAAE"), derived from the data by
+     *            {@link OperationExecutor#unsplitNameFromData}; when {@code null} the dataset is
+     *            treated as not a split
      * @return {@code null} when matching, otherwise the mismatch description
      */
     public static @Nullable String describeDomainMismatch(Rule rule, String domainName,
@@ -289,22 +304,6 @@ public final class ScopeMatcher
         }
         // Included and not excluded
         return null;
-    }
-
-
-    /**
-     * Returns {@code true} if the rule's {@code Scope.Datasets} admits this dataset name. See
-     * {@link #describeDatasetMismatch}.
-     *
-     * @param rule
-     *            the rule to check
-     * @param datasetName
-     *            the MEMBER dataset name (the file), not the domain code
-     * @return whether the rule is in scope for this dataset name
-     */
-    public static boolean matchesDatasets(Rule rule, @Nullable String datasetName)
-    {
-        return describeDatasetMismatch(rule, datasetName) == null;
     }
 
 
@@ -515,42 +514,6 @@ public final class ScopeMatcher
         }
         return Arrays.stream(scope.getUseCase().split(",")).map(String::trim)
                 .anyMatch(useCase::equalsIgnoreCase);
-    }
-
-
-    /**
-     * Filters a collection of rules to those applicable to the given use case. Intended to be
-     * invoked at the application boundary (the caller of
-     * {@link RuleRunner#execute(Rule, net.cumba.datatable.IDataTable, DatasetResolver, String, MetadataProvider)}),
-     * not inside {@code RuleRunner} itself — keeps use- case selection in the scope layer where it
-     * belongs. A {@code null} {@code useCase} returns all rules unchanged.
-     * <p>
-     * Fix #9.a.
-     * </p>
-     *
-     * @param rules
-     *            the rules to filter (not {@code null})
-     * @param useCase
-     *            the selected use case (e.g. {@code "INDH"}, {@code "PROD"}, {@code "NONCLIN"}), or
-     *            {@code null} to disable use-case filtering
-     * @return rules whose {@code Use_Case} includes {@code useCase} (case-insensitive), or all
-     *         rules unchanged when {@code useCase} is {@code null}
-     */
-    public static List<Rule> filterByUseCase(Collection<Rule> rules, String useCase)
-    {
-        if (useCase == null)
-        {
-            return new ArrayList<>(rules);
-        }
-        List<Rule> out = new ArrayList<>(rules.size());
-        for (Rule rule : rules)
-        {
-            if (matchesUseCase(rule, useCase))
-            {
-                out.add(rule);
-            }
-        }
-        return out;
     }
 
 
@@ -794,13 +757,20 @@ public final class ScopeMatcher
                 }
             }
         }
-        List<String> any = required.getAny();
-        if (any != null && !any.isEmpty())
+        List<List<String>> anyGroups = required.getAnyGroups();
+        if (anyGroups != null && !anyGroups.isEmpty())
         {
-            String reason = describeAnyLeg(any, meta, domainPrefix, foreign, policy);
-            if (reason != null)
+            // The groups are ANDed; each group is its own disjunction. D5: the FIRST unmet
+            // group's reason is returned — later groups are not even inspected, exactly as the
+            // first unmet All entry wins above.
+            for (int g = 0; g < anyGroups.size(); g++)
             {
-                return reason;
+                String reason = describeAnyLeg(anyGroups.get(g), g + 1, meta, domainPrefix, foreign,
+                        policy);
+                if (reason != null)
+                {
+                    return reason;
+                }
             }
         }
         List<String> none = required.getNone();
@@ -820,8 +790,11 @@ public final class ScopeMatcher
 
 
     /**
-     * {@code Any} leg: satisfied as soon as ONE entry is present. Returns a mismatch description
-     * only when EVERY entry is absent — no single entry is at fault, so the message names the list.
+     * ONE {@code Any} group: satisfied as soon as ONE of its entries is present. Returns a mismatch
+     * description only when EVERY entry of the group is absent — no single entry is at fault, so
+     * the message names the group's list <b>and its 1-based index</b>: the caller iterates the
+     * groups and returns the first unmet one (D5), and without the index a reader of a per-group
+     * message could not tell group 2's mismatch from group 1's when both print similar entries.
      *
      * <p>
      * Entry disposition is {@link #describeIncludeEntry}'s, <b>unchanged</b>: {@code Any} and
@@ -832,42 +805,50 @@ public final class ScopeMatcher
      * </p>
      *
      * <p>
-     * ⚠ It <b>short-circuits</b> on the first satisfied entry rather than counting nulls. The
-     * difference is not stylistic: a two-entry {@code Any} whose FIRST entry is absent must still
-     * be satisfied by the second, so a fixture that only ever removes the second entry cannot tell
-     * a correct implementation from one that answers on entry 1 — the mirror image of
-     * {@code M3-J.5}'s conjunction trap, and both fixtures are written.
+     * ⚠ It <b>short-circuits</b> on the first satisfied entry <em>within the group</em> rather than
+     * counting nulls. The difference is not stylistic: a two-entry group whose FIRST entry is
+     * absent must still be satisfied by the second, so a fixture that only ever removes the second
+     * entry cannot tell a correct implementation from one that answers on entry 1 — the mirror
+     * image of {@code M3-J.5}'s conjunction trap. <b>With groups the trap gains a second axis</b>:
+     * the groups are ANDed by the caller, so a fixture that only ever empties group 1 cannot tell a
+     * correct implementation from one that answers on group 1 alone. All four fixtures are written
+     * ({@code ScopeMatcherRequirementsTest}, {@code ScopeMatcherAnyGroupsTest} — the group-2-unmet
+     * fixture is the load-bearing one).
      * </p>
      *
      * <p>
      * ⭐ <b>The one residual, stated because it has zero carriers today — and since 2026-09-10 it
      * holds under {@link QualifiedEntryPolicy#IGNORE} ONLY.</b> Under {@code foreign == null} with
      * {@code IGNORE}, {@link #describeIncludeEntry} answers "satisfied" for <em>every</em>
-     * qualified entry. Because this leg is a disjunction that short-circuits, <b>one</b> qualified
-     * entry anywhere in the list makes the whole leg vacuously satisfied there — not merely a
-     * qualified-only list, which is how {@code plans/done/PLAN-scope-requirements-split.md}
-     * &#167;4.3 words it. ({@code All} does not widen the same way: it must satisfy every entry, so
-     * an unqualified sibling still decides it.) That is the same conservative direction {@code All}
-     * takes and it is deliberate — it prevents generation-time skips — and none of the ten rules
-     * adopting {@code Any} carries a qualified entry, so it is written down rather than discovered.
+     * qualified entry. Because a group is a disjunction that short-circuits, <b>one</b> qualified
+     * entry anywhere in a group makes <em>that group</em> vacuously satisfied there — since the
+     * groups split, this is a genuine <b>narrowing</b> of the pre-groups residual: it no longer
+     * spreads to the whole facet, and an all-unqualified sibling group still decides for itself.
+     * ({@code All} does not widen the same way: it must satisfy every entry, so an unqualified
+     * sibling still decides it.) That is the same conservative direction {@code All} takes and it
+     * is deliberate — it prevents generation-time skips — and none of the rules adopting
+     * {@code Any} carries a qualified entry, so it is written down rather than discovered.
      * </p>
      */
-    private static @Nullable String describeAnyLeg(List<String> any, DataTableMeta meta,
-            @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign,
-            QualifiedEntryPolicy policy)
+    private static @Nullable String describeAnyLeg(List<String> group, int groupIndex,
+            DataTableMeta meta, @Nullable String domainPrefix,
+            @Nullable ScopeVariableSource foreign, QualifiedEntryPolicy policy)
     {
         // ⚠ Under SKIP an undecidable qualified entry is a mismatch like any other, so it no longer
-        // satisfies the leg vacuously (the residual the javadoc above records). The leg must then
-        // NOT report "no variable present" — that would say "absent" where the truth is "could not
-        // be decided" — so the undecidable reason is remembered and reported instead.
+        // satisfies the group vacuously (the residual the javadoc above records). The group must
+        // then NOT report "no variable present" — that would say "absent" where the truth is
+        // "could not be decided" — so the undecidable reason is remembered and reported instead.
+        // ⚠⚠ The memory is PER GROUP by construction (one call per group, one local): an
+        // undecidable entry in group 1 must never decorate group 2's genuinely-absent answer, and
+        // an undecidable group must never be reported as merely absent.
         String undecidable = null;
-        for (String varName : any)
+        for (String varName : group)
         {
             String reason = describeIncludeEntry(varName, meta, domainPrefix, foreign, policy,
                     "Any");
             if (reason == null)
             {
-                return null; // short-circuit: one present entry satisfies the whole leg
+                return null; // short-circuit: one present entry satisfies the whole group
             }
             if (undecidable == null && isUndecidableQualifiedEntry(varName, foreign, policy))
             {
@@ -875,7 +856,8 @@ public final class ScopeMatcher
             }
         }
         return undecidable != null ? undecidable
-                : "no variable of Requirements.Variables.Any " + any + " present in dataset";
+                : "no variable of Requirements.Variables.Any group " + groupIndex + " " + group
+                        + " present in dataset";
     }
 
 
@@ -942,7 +924,7 @@ public final class ScopeMatcher
         }
         // All THREE facets, or the lazy ScopeVariableSource is not built for a rule that needs it
         // and every qualified entry in the unscanned facet silently answers "satisfied".
-        return anyQualified(required.getAll()) || anyQualified(required.getAny())
+        return anyQualified(required.getAll()) || anyQualified(required.anyUnion())
                 || anyQualified(required.getNone());
     }
 
@@ -1308,16 +1290,6 @@ public final class ScopeMatcher
         }
         return mostSpecific + " (also "
                 + String.join(", ", detectedStructures.subList(1, detectedStructures.size())) + ")";
-    }
-
-
-    /**
-     * Returns {@code true} if the rule applies to a dataset with the given detected ADaM subclass.
-     * See {@link #describeSubclassMismatch}.
-     */
-    public static boolean matchesSubclass(Rule rule, @Nullable String detectedSubclass)
-    {
-        return describeSubclassMismatch(rule, detectedSubclass) == null;
     }
 
 

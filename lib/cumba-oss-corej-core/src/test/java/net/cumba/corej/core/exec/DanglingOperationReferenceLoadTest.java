@@ -60,7 +60,7 @@ class DanglingOperationReferenceLoadTest
                 {
                   "Core": {"Id": "TEST-DOR-1"},
                   "Executability": "Fully Executable",
-                  "Check": {"all": [{"name": "$never_defined", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty($never_defined)"}]}
                 }
                 """);
         assertNotNull(rule.getLoadError(), "an executable rule must fail loud");
@@ -87,7 +87,7 @@ class DanglingOperationReferenceLoadTest
                 {"rules": {"rule-1": {
                   "Core": {"Id": "TEST-DOR-2"},
                   "Executability": "Not Executable",
-                  "Check": {"all": [{"name": "$never_defined", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty($never_defined)"}]}
                 }}}
                 """);
         assertTrue(pkg.getRules().isEmpty(),
@@ -103,7 +103,7 @@ class DanglingOperationReferenceLoadTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-3"},
-                  "Check": {"all": [{"name": "$never_defined", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty($never_defined)"}]}
                 }
                 """);
         assertNull(rule.getExecutability());
@@ -122,7 +122,7 @@ class DanglingOperationReferenceLoadTest
                 {
                   "Core": {"Id": "TEST-DOR-4"},
                   "Executability": "Partially Executable",
-                  "Check": {"all": [{"name": "$never_defined", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty($never_defined)"}]}
                 }
                 """);
         assertNotNull(rule.getLoadError());
@@ -140,8 +140,8 @@ class DanglingOperationReferenceLoadTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-5"},
-                  "Operations": [{"id": "$n", "operator": "record_count", "group": ["USUBJID"]}],
-                  "Check": {"all": [{"name": "$n", "operator": "equal_to", "value": 1}]}
+                  "Bindings": [{"name": "$n", "expression": "record_count(group=[USUBJID])"}],
+                  "Check": {"all": [{"expression": "$n == 1"}]}
                 }
                 """);
         assertNull(rule.getLoadError());
@@ -155,7 +155,7 @@ class DanglingOperationReferenceLoadTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-6"},
-                  "Check": {"all": [{"name": "AETERM", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty(AETERM)"}]}
                 }
                 """);
         assertNull(rule.getLoadError());
@@ -175,9 +175,8 @@ class DanglingOperationReferenceLoadTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-7"},
-                  "Operations": [{"id": "$n", "operator": "record_count", "group": ["USUBJID"]}],
-                  "Check": {"all": [{"name": "$n", "operator": "not_equal_to",
-                                     "value": "$never_defined"}]}
+                  "Bindings": [{"name": "$n", "expression": "record_count(group=[USUBJID])"}],
+                  "Check": {"all": [{"expression": "$n != $never_defined"}]}
                 }
                 """);
         assertNotNull(rule.getLoadError());
@@ -193,8 +192,8 @@ class DanglingOperationReferenceLoadTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-8"},
-                  "Check": {"all": [{"names": ["VISIT", "$never_defined"],
-                                     "operator": "is_not_contained_by", "value": "$keys"}]}
+                  "Check": {"all": [{"expression":
+                                     "tuple(VISIT, $never_defined) not in $keys"}]}
                 }
                 """);
         assertNotNull(rule.getLoadError());
@@ -216,8 +215,8 @@ class DanglingOperationReferenceLoadTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-21"},
-                  "Check": {"all": [{"name": "USUBJID", "operator": "is_not_unique_set",
-                                     "value": ["AETESTCD", "$never_defined"]}]}
+                  "Check": {"all": [{"expression":
+                                     "not is_unique_set([USUBJID, AETESTCD, $never_defined])"}]}
                 }
                 """);
         assertNotNull(rule.getLoadError());
@@ -232,9 +231,9 @@ class DanglingOperationReferenceLoadTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-22"},
-                  "Operations": [{"id": "$natural_key", "operator": "natural_key_variables"}],
-                  "Check": {"all": [{"name": "USUBJID", "operator": "is_not_unique_set",
-                                     "value": ["AETESTCD", "$natural_key"]}]}
+                  "Bindings": [{"name": "$natural_key", "expression": "natural_key_variables()"}],
+                  "Check": {"all": [{"expression":
+                                     "not is_unique_set([USUBJID, AETESTCD, $natural_key])"}]}
                 }
                 """);
         assertNull(rule.getLoadError());
@@ -248,35 +247,38 @@ class DanglingOperationReferenceLoadTest
         // CheckToExpr.functionLeaf raises `within` entry-by-entry (withinOperand) and `ordering`
         // (ref(...)) as references. No shipped rule puts a `$` there — these are covered because
         // the engine would resolve one if it did.
-        Rule within = load("""
-                {
-                  "Core": {"Id": "TEST-DOR-23"},
-                  "Check": {"all": [{"name": "AEDECOD", "operator": "has_multiple_values_for",
-                                     "within": ["USUBJID", "$never_defined"]}]}
-                }
-                """);
+        Rule within = load(
+                """
+                        {
+                          "Core": {"Id": "TEST-DOR-23"},
+                          "Check": {"all": [{"expression":
+                                             "has_multiple_values_for(AEDECOD, within=[USUBJID, $never_defined])"}]}
+                        }
+                        """);
         assertNotNull(within.getLoadError(), "within is a reference position");
         assertTrue(within.getLoadError().contains("$never_defined"), within.getLoadError());
 
         // ⚠ withinOperand accepts a NESTED list (a coalesce-group) and raises each member with
         // ref(...) too, so the walk has to recurse rather than scan one level.
-        Rule nested = load("""
-                {
-                  "Core": {"Id": "TEST-DOR-23N"},
-                  "Check": {"all": [{"name": "AEDECOD", "operator": "has_multiple_values_for",
-                                     "within": ["USUBJID", ["VISIT", "$never_defined"]]}]}
-                }
-                """);
+        Rule nested = load(
+                """
+                        {
+                          "Core": {"Id": "TEST-DOR-23N"},
+                          "Check": {"all": [{"expression":
+                                             "has_multiple_values_for(AEDECOD, within=[USUBJID, [VISIT, $never_defined]])"}]}
+                        }
+                        """);
         assertNotNull(nested.getLoadError(), "a nested within coalesce-group is walked too");
         assertTrue(nested.getLoadError().contains("$never_defined"), nested.getLoadError());
 
-        Rule ordering = load("""
-                {
-                  "Core": {"Id": "TEST-DOR-24"},
-                  "Check": {"all": [{"name": "AESEQ", "operator": "is_not_ordered_subset_of",
-                                     "value": "AE", "ordering": "$never_defined"}]}
-                }
-                """);
+        Rule ordering = load(
+                """
+                        {
+                          "Core": {"Id": "TEST-DOR-24"},
+                          "Check": {"all": [{"expression":
+                                             "not is_ordered_subset_of(AESEQ, AE, ordering=$never_defined)"}]}
+                        }
+                        """);
         assertNotNull(ordering.getLoadError(), "ordering is a reference position");
         assertTrue(ordering.getLoadError().contains("$never_defined"), ordering.getLoadError());
     }
@@ -285,24 +287,24 @@ class DanglingOperationReferenceLoadTest
     @Test
     void aDollarValueOnASubstringOrRegexOperator_isNotCaught() throws IOException
     {
-        // CheckToExpr emits these operands as literals REGARDLESS of value_is_literal
-        // (substringValue / regex / affixMatches / lengthValue), so a leading `$` is a character
-        // in a substring or pattern — never an operation id. Reporting it would reject a rule
-        // matching a literal dollar amount.
-        for (String operator : new String[]
+        // A `$` inside a STRING LITERAL is a character in a substring or pattern — never an
+        // operation id (collectOperandRefs never descends into scalar literals). Reporting it
+        // would reject a rule matching a literal dollar amount.
+        for (String expression : new String[]
         {
-                "contains", "starts_with", "ends_with", "does_not_contain", "matches_regex",
-                "not_matches_regex"
+                "contains(AECOST, \\\"$50\\\")", "starts_with(AECOST, \\\"$50\\\")",
+                "ends_with(AECOST, \\\"$50\\\")", "not contains(AECOST, \\\"$50\\\")",
+                "AECOST =~ /[$]50/", "AECOST !~ /[$]50/"
         })
         {
             Rule rule = load("""
                     {
                       "Core": {"Id": "TEST-DOR-25"},
-                      "Check": {"all": [{"name": "AECOST", "operator": "%s", "value": "$50"}]}
+                      "Check": {"all": [{"expression": "%s"}]}
                     }
-                    """.formatted(operator));
-            assertNull(rule.getLoadError(), operator + " reads its value as a literal");
-            assertNull(rule.getLoadWarning(), operator + " reads its value as a literal");
+                    """.formatted(expression));
+            assertNull(rule.getLoadError(), expression + " reads its value as a literal");
+            assertNull(rule.getLoadWarning(), expression + " reads its value as a literal");
         }
     }
 
@@ -315,8 +317,8 @@ class DanglingOperationReferenceLoadTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-9"},
-                  "Precondition": {"all": [{"name": "$never_defined", "operator": "non_empty"}]},
-                  "Check": {"all": [{"name": "AETERM", "operator": "non_empty"}]}
+                  "Precondition": {"all": [{"expression": "not empty($never_defined)"}]},
+                  "Check": {"all": [{"expression": "not empty(AETERM)"}]}
                 }
                 """);
         assertNotNull(rule.getLoadError());
@@ -334,8 +336,8 @@ class DanglingOperationReferenceLoadTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-26"},
-                  "Precondition": {"all": [{"name": "$gate_op", "operator": "non_empty"}]},
-                  "Check": {"all": [{"name": "$check_op", "operator": "non_empty"}]}
+                  "Precondition": {"all": [{"expression": "not empty($gate_op)"}]},
+                  "Check": {"all": [{"expression": "not empty($check_op)"}]}
                 }
                 """);
         assertNotNull(rule.getLoadError());
@@ -352,9 +354,8 @@ class DanglingOperationReferenceLoadTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-10"},
-                  "Check": {"all": [{"name": "$adsl_value", "operator": "non_empty"},
-                                    {"name": "$current_value", "operator": "not_equal_to",
-                                     "value": "$adsl_value"}]}
+                  "Check": {"all": [{"expression": "not empty($adsl_value)"},
+                                    {"expression": "$current_value != $adsl_value"}]}
                 }
                 """);
         assertNotNull(rule.getLoadError());
@@ -413,8 +414,7 @@ class DanglingOperationReferenceLoadTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-12"},
-                  "Check": {"all": [{"name": "AETERM", "operator": "equal_to",
-                                     "value": "$notanop", "value_is_literal": true}]}
+                  "Check": {"all": [{"expression": "AETERM == \\"$notanop\\""}]}
                 }
                 """);
         assertNull(rule.getLoadError());
@@ -431,7 +431,7 @@ class DanglingOperationReferenceLoadTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-13"},
-                  "Check": {"all": [{"name": "TRT${APERIOD:%02d}P", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty(TRT${APERIOD:%02d}P)"}]}
                 }
                 """);
         assertNull(rule.getLoadError());
@@ -448,7 +448,7 @@ class DanglingOperationReferenceLoadTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-19"},
-                  "Check": {"all": [{"name": "${APERIOD:%02d}", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty(${APERIOD:%02d})"}]}
                 }
                 """);
         assertNull(rule.getLoadError());
@@ -509,8 +509,8 @@ class DanglingOperationReferenceLoadTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-16"},
-                  "Check": {"all": [{"name": "PH${*}SDT", "operator": "equal_to", "value": "X"},
-                                    {"name": "$never_defined", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "PH${*}SDT == X"},
+                                    {"expression": "not empty($never_defined)"}]}
                 }
                 """);
         assertNotNull(rule.getLoadError());
@@ -538,8 +538,8 @@ class DanglingOperationReferenceLoadTest
                 {
                   "Core": {"Id": "TEST-DOR-17"},
                   "Scope": {"Domains": {"Include": ["AE--"]}},
-                  "Check": {"all": [{"name": "AETERM", "operator": "empty"},
-                                    {"name": "$never_defined", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "empty(AETERM)"},
+                                    {"expression": "not empty($never_defined)"}]}
                 }
                 """);
         assertNotNull(rule.getLoadWarning());
@@ -570,10 +570,8 @@ class DanglingOperationReferenceLoadTest
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-DOR-18"},
-                  "Operations": [{"id": "$ae_present", "operator": "variable_exists",
-                                  "name": "AETERM"}],
-                  "Check": {"all": [{"name": "$ae_present", "operator": "equal_to",
-                                     "value": false}]}
+                  "Bindings": [{"name": "$ae_present", "expression": "variable_exists(AETERM)"}],
+                  "Check": {"all": [{"expression": "$ae_present == false"}]}
                 }
                 """);
         assertNull(rule.getOperations(), "the inlined operation is dropped");

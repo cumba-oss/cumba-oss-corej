@@ -160,16 +160,16 @@ class DateComparisonPartialSemanticsTest
             {
                     // ⚠⚠ THE BLOCKING DEFECT: the pre-Q16 engine answered "equal" to a blank, so
                     // every date_*_or_equal_to fired on every row.
-                    "B1 blank right operand", "2026-01-17", "", "FFFFFF", "TFFTFT"
+                    "B1 blank right operand", "2026-01-17", "", "FTFFFF", "TFFTFT"
             },
             {
-                    "B2 junk right operand", "2026-01-17", "UNKNOWN", "FFFFFF", "FTFFTT"
+                    "B2 junk right operand", "2026-01-17", "UNKNOWN", "FTFFFF", "FTFFTT"
             },
             {
-                    "B3 year-masked right operand", "2026-01-17", "----06-15", "FFFFFF", "FTTTFF"
+                    "B3 year-masked right operand", "2026-01-17", "----06-15", "FTFFFF", "FTTTFF"
             },
             {
-                    "B4 calendar-impossible right operand", "2026-01-17", "2026-02-30", "FFFFFF",
+                    "B4 calendar-impossible right operand", "2026-01-17", "2026-02-30", "FTFFFF",
                     "FTFFTT"
             },
             {
@@ -178,7 +178,7 @@ class DateComparisonPartialSemanticsTest
                     "B5 blank left operand", "", "2026-01-17", "FTFFFF", "FTFFFF"
             },
             {
-                    "B6 junk left operand", "UNKNOWN", "2026-01-17", "FFFFFF", "FTTTFF"
+                    "B6 junk left operand", "UNKNOWN", "2026-01-17", "FTFFFF", "FTTTFF"
             },
     };
 
@@ -267,11 +267,16 @@ class DateComparisonPartialSemanticsTest
             assertEquals(fires(a, b, 4), !fires(a, b, 3), "< / >= complement for " + a + "," + b);
         }
 
-        // ⚠ Intended: you cannot compare against a value you do not have, so BOTH halves of every
-        // pair are false. Documented in §2.3 as a deliberate consequence of saturation.
+        // ⚠ Intended: you cannot compare against a value you do not have, so both halves of every
+        // ORDER pair are false. Documented in §2.3 as a deliberate consequence of saturation.
+        // ⭐ H1b (owner, 2026-09-17) restored the EQUALITY half: the six PREDICATES are still false,
+        // but `negate` flips the != operator, so `!=` fires and `==` does not — which is what an
+        // unpositionable LEFT operand always did (row B5). Complementarity is therefore broken for
+        // the four order operators only.
         for (int op = 0; op < OPS.length; op++)
         {
-            assertFalse(fires("2026-01-17", "", op), "blank comparand, operator " + OP_NAMES[op]);
+            assertEquals(OP_NAMES[op].equals("!="), fires("2026-01-17", "", op),
+                    "blank comparand, operator " + OP_NAMES[op]);
         }
     }
 
@@ -297,7 +302,9 @@ class DateComparisonPartialSemanticsTest
             assertNull(IsoDateBounds.upper(junk), "unbounded hull: " + junk);
             for (int op = 0; op < OPS.length; op++)
             {
-                assertFalse(fires("2026-01-17", junk, op),
+                // H1b: the unbounded-hull branch answers `negate`, so != fires and the other five
+                // stay false. The filter under test is unchanged — only the verdict it returns.
+                assertEquals(OP_NAMES[op].equals("!="), fires("2026-01-17", junk, op),
                         "'" + junk + "' as comparand, operator " + OP_NAMES[op]);
             }
         }
@@ -480,15 +487,19 @@ class DateComparisonPartialSemanticsTest
     }
 
 
-    /** An unpositionable interval saturates exactly like any other unbounded value. */
+    /**
+     * An unpositionable interval saturates exactly like any other unbounded value — five predicates
+     * false, {@code !=} firing (H1b).
+     */
     @Test
-    void anUnpositionableIntervalMakesEverySixOperatorFalse()
+    void anUnpositionableIntervalSaturatesLikeAnyOtherUnboundedValue()
     {
         for (int op = 0; op < OPS.length; op++)
         {
-            assertFalse(fires("2003-12-15", "2003/2004/2005", op),
+            boolean ne = OP_NAMES[op].equals("!=");
+            assertEquals(ne, fires("2003-12-15", "2003/2004/2005", op),
                     OP_NAMES[op] + " on a multi-solidus operand");
-            assertFalse(fires("2003-12-15", "2003-12-15T10:00/P1D", op),
+            assertEquals(ne, fires("2003-12-15", "2003-12-15T10:00/P1D", op),
                     OP_NAMES[op] + " on a <datetime>/<duration> operand");
         }
         assertNull(IsoDateComparison.bound("2003/2004/2005", false));

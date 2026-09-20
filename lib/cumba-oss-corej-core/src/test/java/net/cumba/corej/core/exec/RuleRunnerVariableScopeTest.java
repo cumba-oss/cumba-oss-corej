@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Requirements;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -25,6 +24,13 @@ import org.junit.jupiter.api.Test;
 class RuleRunnerVariableScopeTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
     /**
      * A trivial single-leaf rule ({@code AESTDY exists}) carrying the given variable requirement.
      */
@@ -34,7 +40,7 @@ class RuleRunnerVariableScopeTest
         RuleCore core = new RuleCore();
         core.setId("TEST-VARSCOPE");
         rule.setCore(core);
-        rule.setCheck(CheckConditionLeaf.builder().name("AESTDY").operator("var_exists").build());
+        rule.setCheck(expr("var_exists(\"AESTDY\")"));
         VariableRequirement vr = new VariableRequirement();
         vr.setAll(all);
         vr.setNone(none);
@@ -123,7 +129,7 @@ class RuleRunnerVariableScopeTest
         RuleCore core = new RuleCore();
         core.setId("TEST-NOSCOPE");
         rule.setCore(core);
-        rule.setCheck(CheckConditionLeaf.builder().name("AESTDY").operator("var_exists").build());
+        rule.setCheck(expr("var_exists(\"AESTDY\")"));
         IDataTable table = aeTable("USUBJID", "AESTDY");
         RuleExecutionResult result = RuleRunner.execute(rule, table);
         assertNotEquals(RuleExecutionStatus.SKIPPED, result.getStatus(),

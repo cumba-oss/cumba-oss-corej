@@ -153,6 +153,36 @@ class XlsxReportWriterHardeningTest
 
 
     @Test
+    void rulesReportSheetHandlesEveryTemplateShape()
+    {
+        // A workbook without the sheet at all (a torn-down template): null, no throw.
+        try (XSSFWorkbook empty = new XSSFWorkbook())
+        {
+            assertNull(XlsxReportWriter.rulesReportSheet(empty));
+
+            // A sheet with NO header row (row 0 absent): the row is created and headed.
+            empty.createSheet("Rules Report");
+            Sheet headed = XlsxReportWriter.rulesReportSheet(empty);
+            assertNotNull(headed);
+            assertEquals("Executed", headed.getRow(0).getCell(6).getStringCellValue());
+
+            // Second call: the headers are already present (non-blank string value), so the
+            // sheet is used as-is — the branch a future template shipping the headers takes.
+            // ⚠ This is the guard that regressed once: the shipped template carries
+            // styled-but-EMPTY placeholder cells beyond the six real headers, and a
+            // cell-non-null presence check skipped the append silently.
+            Sheet again = XlsxReportWriter.rulesReportSheet(empty);
+            assertSame(headed, again);
+            assertEquals("Executed", again.getRow(0).getCell(6).getStringCellValue());
+        }
+        catch (java.io.IOException e)
+        {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+
+    @Test
     void rowsAreTruncatedToTheCapAndTheDropIsLogged()
     {
         List<String> warnings = capturingXlsxWarnings(() ->

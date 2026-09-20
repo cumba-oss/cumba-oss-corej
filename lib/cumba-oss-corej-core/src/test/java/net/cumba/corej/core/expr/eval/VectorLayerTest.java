@@ -39,12 +39,15 @@ class VectorLayerTest
         // null cell counts as missing
         assertTrue(v.isMissing(2));
         // resolvedObject: present -> string; a present empty string -> ""; missing/invalid ->
-        // null. ⚠ The blank-character-cell case (row 2) is DELIBERATELY still null and not "":
-        // making it "" is the blindness step, and it is blocked on the date_* defect recorded in
-        // ScalarSemantics.resolvedString's javadoc.
-        assertEquals("abc", v.resolvedObject(0));
-        assertEquals("", v.resolvedObject(1));
-        assertNull(v.resolvedObject(2));
+        // null. ⭐⭐ Rows 1 and 2 together ARE the distinction the owner ruling of 2026-09-18
+        // protects, in the value channel: a stored "" (row 1) stays a present "" and a null char
+        // cell (row 2) is missing and answers null. ⛔ This comment used to call row 2 "deliberately
+        // still null", with making it "" a pending blindness step blocked on a date_* defect. That
+        // step is RETIRED — "missing is not empty string" — so row 2 is settled, and row 1 is the
+        // half that must never collapse onto it.
+        assertEquals("abc", v.value(0).resolved());
+        assertEquals("", v.value(1).resolved());
+        assertNull(v.value(2).resolved());
     }
 
 
@@ -76,14 +79,14 @@ class VectorLayerTest
     void constVector_broadcastsAndCachesCell()
     {
         ConstVector v = ConstVector.of("M");
-        assertEquals("M", v.resolvedObject(0));
-        assertEquals("M", v.resolvedObject(99));
-        assertSame(v.dataValue(0), v.dataValue(7), "broadcast cell should be cached");
+        assertEquals("M", v.value(0).resolved());
+        assertEquals("M", v.value(99).resolved());
+        assertSame(v.value(0).cell(), v.value(7).cell(), "broadcast cell should be cached");
         assertFalse(v.isMissing(0));
 
         ConstVector missing = ConstVector.of(null);
         assertTrue(missing.isMissing(0));
-        assertNull(missing.resolvedObject(0));
+        assertNull(missing.value(0).resolved());
     }
 
 
@@ -96,10 +99,10 @@ class VectorLayerTest
             calls.incrementAndGet();
             return row == 1 ? null : "v" + row;
         });
-        assertEquals("v0", v.resolvedObject(0));
-        assertEquals("v0", v.resolvedObject(0));
+        assertEquals("v0", v.value(0).resolved());
+        assertEquals("v0", v.value(0).resolved());
         assertEquals(1, calls.get(), "producer memoised per row");
-        assertSame(v.dataValue(0), v.dataValue(0), "cell wrapper cached");
+        assertSame(v.value(0).cell(), v.value(0).cell(), "cell wrapper cached");
         assertTrue(v.isMissing(1));
         assertEquals(DataValueType.STRING, v.declaredType());
         assertEquals(2, calls.get(), "rows 0 and 1 computed exactly once each");

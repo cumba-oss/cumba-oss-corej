@@ -51,6 +51,70 @@ public class MatchDataset
     private @Nullable String joinType;
 
     /**
+     * The pre-merge filter (phase 5b-J — spec §3.3 / D88c, {@code PLAN-join-match-flag.md} §8): a
+     * {@code boolean}-typed expression evaluated against the joined dataset's <b>own</b> rows,
+     * <b>before</b> the key index is built. Rows failing it can never become a join partner, so
+     * {@code Filter: 'AEOUT == "FATAL"'} + {@code AE._matched_} asks <i>"does this subject have a
+     * fatal AE?"</i> without depending on which AE row survives the join collapse.
+     *
+     * <p>
+     * Right-side columns only (a left-side or {@code $}-reference is a stage-A load error — spec
+     * §3.3's SPEC CHOICE: a correlated sub-join is a different feature); an unresolvable filter
+     * column is a bind error unless declared in {@code Requirements.Variables}, which skips cleanly
+     * (D89/D89a). JSON key {@code "Filter"}.
+     * </p>
+     */
+    @JsonProperty("Filter")
+    private @Nullable String filter;
+
+    /**
+     * Memoised parse of {@link #filter} — computed on first use, shared safely across threads
+     * (parsing is deterministic, so a rare double parse is harmless). Never serialised; survives
+     * {@code RuleSpecialiser}'s reflective shallow copy (the filter text is never specialised, so
+     * the cached tree stays valid). Excluded from equals/hashCode/toString: it is derived state.
+     */
+    @JsonIgnore
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
+    private transient net.cumba.corej.core.expr.ast.@Nullable Expr filterExprCache;
+
+    /** Replaces the Lombok setter: a new filter text must drop the memoised parse. */
+    public void setFilter(@Nullable String filter)
+    {
+        this.filter = filter;
+        this.filterExprCache = null;
+    }
+
+
+    /**
+     * The parsed {@link #filter} expression, or {@code null} when the entry declares none.
+     *
+     * @throws net.cumba.corej.core.expr.ExpressionException
+     *             if the filter text does not parse — the loader's stage-A pass converts this into
+     *             a load error ({@code FILTER_INVALID}), so a malformed filter parks the rule
+     *             rather than silently filtering nothing or everything
+     */
+    @JsonIgnore
+    public net.cumba.corej.core.expr.ast.@Nullable Expr filterExpr()
+    {
+        String text = filter;
+        if (text == null || text.isBlank())
+        {
+            return null;
+        }
+        net.cumba.corej.core.expr.ast.Expr cached = filterExprCache;
+        if (cached == null)
+        {
+            cached = net.cumba.corej.core.expr.CheckExpressionParser.parse(text);
+            filterExprCache = cached;
+        }
+        return cached;
+    }
+
+
+    /**
      * Left/primary-side join key names. A bare-string entry contributes its own name; a sided
      * {@code {left, right}} entry contributes its {@code left} name. Returns {@code null} when no
      * keys are declared, matching the historical field accessor so existing callers

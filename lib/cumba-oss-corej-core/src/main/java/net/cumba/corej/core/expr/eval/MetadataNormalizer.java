@@ -41,9 +41,9 @@ public final class MetadataNormalizer
         /**
          * Boolean folded to lower-case {@code true} / {@code false} so the accessor compares
          * correctly against a {@code true} / {@code false} literal (which stringifies to the same
-         * lower-case token via {@code Boolean.toString}; see
-         * {@code ScalarSemantics.equalsNumericAware}). A missing / unknown value normalizes to
-         * {@code null} (treated as missing — D4).
+         * lower-case token via {@code Boolean.toString}; see {@code Primitives.equalsTypedAware},
+         * the equality anchor since D121 retired {@code ScalarSemantics.equalsNumericAware}). A
+         * missing / unknown value normalizes to {@code null} (treated as missing — D4).
          */
         BOOLEAN
     }

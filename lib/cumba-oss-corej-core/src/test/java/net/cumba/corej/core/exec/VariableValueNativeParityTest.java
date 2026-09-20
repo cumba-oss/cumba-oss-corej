@@ -108,9 +108,7 @@ class VariableValueNativeParityTest
         // VCVM: variable_value longer_than 200, guarded by a variable_name regex matching DESC.
         // The long DESC cell fires; short cells do not. Per-(variable, row) findings.
         assertNativeMatchesLegacy(
-                "{\"all\":[{\"name\":\"variable_name\",\"operator\":\"matches_regex\","
-                        + "\"value\":\"^DESC$\"},{\"name\":\"variable_value\","
-                        + "\"operator\":\"longer_than\",\"value\":200}]}");
+                "{\"all\":[{\"expression\": \"ends_with(varname(), \\\"DESC\\\")\"},{\"expression\": \"len(value()) > 200\"}]}");
     }
 
 
@@ -118,9 +116,7 @@ class VariableValueNativeParityTest
     void varnameOnlyRule_parity() throws Exception
     {
         // varname()-only broadcast: one finding per variable whose NAME ends in FL.
-        assertNativeMatchesLegacy(
-                "{\"all\":[{\"name\":\"variable_name\",\"operator\":\"matches_regex\","
-                        + "\"value\":\"^.+FL$\"}]}");
+        assertNativeMatchesLegacy("{\"all\":[{\"expression\": \"varname() =~ /^.+FL$/\"}]}");
     }
 
 
@@ -130,10 +126,7 @@ class VariableValueNativeParityTest
         // CDISC-AD0005-shaped: a *FL variable whose value is non-empty and not in {Y,N} fires
         // per-row. TRTPFL="X" (row 1) fires; "Y" (row 0) and "" (row 2) do not.
         assertNativeMatchesLegacy(
-                "{\"all\":[{\"name\":\"variable_name\",\"operator\":\"matches_regex\","
-                        + "\"value\":\"^.+FL$\"},{\"name\":\"variable_value\","
-                        + "\"operator\":\"non_empty\"},{\"name\":\"variable_value\","
-                        + "\"operator\":\"is_not_contained_by\",\"value\":[\"Y\",\"N\"]}]}");
+                "{\"all\":[{\"expression\": \"varname() =~ /^.+FL$/\"},{\"expression\": \"not empty(value())\"},{\"expression\": \"value() not in [\\\"Y\\\", \\\"N\\\"]\"}]}");
     }
 
 
@@ -142,9 +135,9 @@ class VariableValueNativeParityTest
     {
         // The guard matches NO column (regex ^NOSUCH$), so the value() predicate is never reached
         // for any variable — zero findings on both backends.
-        Rule rule = loadRule("{\"all\":[{\"name\":\"variable_name\",\"operator\":\"matches_regex\","
-                + "\"value\":\"^NOSUCH$\"},{\"name\":\"variable_value\","
-                + "\"operator\":\"non_empty\"}]}", "variable_name", "variable_value");
+        Rule rule = loadRule(
+                "{\"all\":[{\"expression\": \"ends_with(varname(), \\\"NOSUCH\\\")\"},{\"expression\": \"not empty(value())\"}]}",
+                "variable_name", "variable_value");
         assertNotNull(rule.getCheckExpr());
         IDataTable table = adslTable();
         assertTrue(findings(rule, table).isEmpty(), "native: guard fails ⇒ no findings");
@@ -163,8 +156,8 @@ class VariableValueNativeParityTest
         // per-variable loop via the referencesVariableValue entry gate. The 185-char DESC cell
         // (row 1) is the only over-length value in adslTable(), so exactly one (variable, row)
         // finding fires — proving the per-variable iteration reaches every column.
-        Rule rule = loadRule("{\"all\":[{\"name\":\"variable_value\",\"operator\":\"longer_than\","
-                + "\"value\":100}]}", "variable_name", "variable_value");
+        Rule rule = loadRule("{\"all\":[{\"expression\": \"len(value()) > 100\"}]}",
+                "variable_name", "variable_value");
         // (a) the guard-less value() rule now retains a native checkExpr (does not decline).
         assertNotNull(rule.getCheckExpr(),
                 "guard-less value() rule must now retain a native checkExpr");
@@ -191,10 +184,7 @@ class VariableValueNativeParityTest
         // identical
         // between backends, not just the row set.
         Rule rule = loadRule(
-                "{\"all\":[{\"name\":\"variable_name\",\"operator\":\"matches_regex\","
-                        + "\"value\":\"^.+FL$\"},{\"name\":\"variable_value\","
-                        + "\"operator\":\"non_empty\"},{\"name\":\"variable_value\","
-                        + "\"operator\":\"is_not_contained_by\",\"value\":[\"Y\",\"N\"]}]}",
+                "{\"all\":[{\"expression\": \"varname() =~ /^.+FL$/\"},{\"expression\": \"not empty(value())\"},{\"expression\": \"value() not in [\\\"Y\\\", \\\"N\\\"]\"}]}",
                 "variable_name", "variable_value");
         IDataTable table = adslTable();
         List<Violation> nativeV = RuleRunner
@@ -217,10 +207,8 @@ class VariableValueNativeParityTest
         // variable_name/variable_label/variable_value projection branch. Native must still match
         // the
         // legacy cascade exactly (row set + every projected field).
-        Rule rule = loadRule("{\"all\":[{\"name\":\"variable_name\",\"operator\":\"matches_regex\","
-                + "\"value\":\"^.+FL$\"},{\"name\":\"variable_value\","
-                + "\"operator\":\"non_empty\"},{\"name\":\"variable_value\","
-                + "\"operator\":\"is_not_contained_by\",\"value\":[\"Y\",\"N\"]}]}");
+        Rule rule = loadRule(
+                "{\"all\":[{\"expression\": \"varname() =~ /^.+FL$/\"},{\"expression\": \"not empty(value())\"},{\"expression\": \"value() not in [\\\"Y\\\", \\\"N\\\"]\"}]}");
         assertNotNull(rule.getCheckExpr());
         IDataTable table = adslTable();
         List<Violation> nativeV = RuleRunner

@@ -3,6 +3,7 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,7 +16,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * R-P3 ({@code plans/done/PLAN-native-engine-residuals.md}) — the Tier-B define accessors
- * {@code var_ccode} / {@code var_codelist_coded_codes} (CDISC-CG0001's
+ * {@code var_ccode} / {@code var_codelist_coded_codes} ({@code CDISC-CG0001}'s
  * {@code define_variable_ccode} / {@code define_variable_codelist_coded_codes} operands). The
  * legacy Step-3 cascade injects every {@code define_variable_<key>} from the define provider's
  * per-variable map ({@code RuleRunner.buildVariableMetadata}); the accessors read the SAME map keys
@@ -129,10 +130,8 @@ class TierBDefineAccessorParityTest
     private static final String RULE = "{\"Core\":{\"Id\":\"R1\"},"
             + "\"Variable_Universe\":\"Define\"," + "\"Sensitivity\":\"Dataset\","
             + "\"Check\":{\"all\":["
-            + "{\"name\":\"define_variable_ccode\",\"operator\":\"equal_to\","
-            + "\"value\":\"C66734\",\"value_is_literal\":true},"
-            + "{\"name\":\"define_variable_codelist_coded_codes\","
-            + "\"operator\":\"is_not_contained_by\",\"value\":[\"C12345\",\"C67890\"]}]},"
+            + "{\"expression\": \"var_ccode(\\\"DEFINE\\\") == \\\"C66734\\\"\"},"
+            + "{\"expression\": \"var_codelist_coded_codes(\\\"DEFINE\\\") not in [\\\"C12345\\\", \\\"C67890\\\"]\"}]},"
             + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}";
 
     private static Rule loadRule() throws Exception
@@ -187,10 +186,22 @@ class TierBDefineAccessorParityTest
         Rule rule = loadRule();
         IDataTable ae = MockTable.of().name("AE").col("AEACN", "x").build();
 
-        NativeExecutionRecorder.enable();
-        RuleRunner.execute(rule, ae, _ -> null, "AE", null, null, DEFINE);
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE,
-                NativeExecutionRecorder.disable().get("R1"),
+        RuleExecutionResult ran = RuleRunner.execute(rule, ae, _ -> null, "AE", null, null, DEFINE);
+        assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "the Tier-B rule must evaluate on the NATIVE backend");
+    }
+
+
+    @Test
+    void cdiscCg0001RetainsNativeExprFromTheCorpus() throws Exception
+    {
+        RulePackage pkg = RulePackageLoader
+                .loadCombined(Path.of(System.getProperty("projectBasedir"),
+                        "src/test/resources/fixtures/rules/packages", "rules-sdtmig-3-4.json"));
+        Rule rule = pkg.getRules().values().stream().filter(
+                r -> r != null && r.getCore() != null && "CDISC-CG0001".equals(r.getCore().getId()))
+                .findFirst().orElseThrow(() -> new AssertionError("CDISC-CG0001 not in package"));
+        assertEquals(null, rule.getLoadError());
+        assertNotNull(rule.getCheckExpr(), "CDISC-CG0001 must be native after R-P3");
     }
 }

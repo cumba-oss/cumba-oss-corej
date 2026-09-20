@@ -19,8 +19,20 @@ import org.junit.jupiter.api.Test;
  * fixture tree under {@code src/test/resources/fixtures/rules/} must stay in lockstep with its
  * generated {@code manifest.json} — no orphan fixture files, no manifest id without a fixture, and
  * every trimmed package entry backed by a real file whose rules are declared. The fixtures are
- * (re)built from the corpus by {@code cumba-oss-corej-rules/scripts/build-core-fixtures.py};
- * byte-level sync with the corpus is asserted on the corpus side ({@code RulesFixtureSyncTest}).
+ * (re)built from the corpus by the rules repository's {@code scripts/build-core-fixtures.py}.
+ *
+ * <p>
+ * ⛔⛔ <b>This gate does NOT see corpus drift, and nothing else does either.</b> It compares the
+ * fixture tree against its own manifest, so a fixture that has gone stale against the live corpus
+ * passes here forever. Byte-level sync used to be asserted on the corpus side by
+ * {@code RulesFixtureSyncTest}, which the monorepo split RETIRED (see the rules repository's
+ * {@code src/test/java/net/cumba/corej/core/RETIRED-CROSS-REPO-GUARDS.md}) — it read
+ * {@code ../corej-core}, a sibling that exists only in the monorepo. ⚠ Measured 2026-09-12:
+ * {@code CDISC-SEND-0324} was still pinning the pre-split rule, and the hoist wave had turned seven
+ * assertions in {@code CdiscAd0640To0646IntegrationTest} into vacuous zeros. Until a two-repo check
+ * exists (the meta repo is the only place both trees are checked out), a corpus change that touches
+ * a fixture id must be followed by a manual rebuild.
+ * </p>
  */
 class FixtureCorpusIntegrityTest
 {
@@ -48,7 +60,7 @@ class FixtureCorpusIntegrityTest
         }
         assertEquals(declared, present,
                 "fixtures/rules/checks must hold exactly the manifest's b1_ids — rebuild via"
-                        + " cumba-oss-corej-rules/scripts/build-core-fixtures.py");
+                        + " the rules repository's scripts/build-core-fixtures.py");
     }
 
 

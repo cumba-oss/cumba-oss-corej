@@ -47,42 +47,39 @@ class RulePackageLoaderTest
         assertEquals(7, rulePackage.getRules().size());
     }
 
-    private static final String CORE_000351_ID = "0066ab1c-982c-42e6-96f8-e7cbec162a91";
+    private static final String CDISC_CG0151_ID = "0066ab1c-982c-42e6-96f8-e7cbec162a91";
 
-    private static Rule core000351()
+    private static Rule cdiscCg0151()
     {
-        Rule rule = rulePackage.getRules().get(CORE_000351_ID);
-        assertNotNull(rule, "Rule CORE-000351 (" + CORE_000351_ID + ") should exist");
+        Rule rule = rulePackage.getRules().get(CDISC_CG0151_ID);
+        assertNotNull(rule, "Rule CDISC-CG0151 (" + CDISC_CG0151_ID + ") should exist");
         return rule;
     }
 
 
-    private static CheckConditionLeaf core000351Leaf()
+    private static net.cumba.corej.core.model.CheckConditionExpression cdiscCg0151Check()
     {
-        Rule rule = core000351();
-        assertInstanceOf(CheckConditionAll.class, rule.getCheck());
-        CheckConditionAll all = (CheckConditionAll) rule.getCheck();
-        assertEquals(1, all.getConditions().size());
-        assertInstanceOf(CheckConditionLeaf.class, all.getConditions().get(0));
-        return (CheckConditionLeaf) all.getConditions().get(0);
+        Rule rule = cdiscCg0151();
+        return assertInstanceOf(net.cumba.corej.core.model.CheckConditionExpression.class,
+                rule.getCheck());
     }
 
 
     @Test
     void testKnownRule_CORE000351_coreFields()
     {
-        Rule rule = core000351();
-        assertEquals("CORE-000351", rule.getCore().getId());
+        Rule rule = cdiscCg0151();
+        assertEquals("CDISC-CG0151", rule.getCore().getId());
         assertEquals("Published", rule.getCore().getStatus());
         assertEquals("1", rule.getCore().getVersion());
-        assertEquals(CORE_000351_ID, rule.getId());
+        assertEquals(CDISC_CG0151_ID, rule.getId());
     }
 
 
     @Test
     void testKnownRule_CORE000351_typeSensitivityExecutability()
     {
-        Rule rule = core000351();
+        Rule rule = cdiscCg0151();
         assertEquals(Sensitivity.RECORD, rule.getSensitivity());
         assertEquals(Executability.PARTIALLY_EXECUTABLE, rule.getExecutability());
     }
@@ -91,7 +88,7 @@ class RulePackageLoaderTest
     @Test
     void testKnownRule_CORE000351_outcome()
     {
-        Rule rule = core000351();
+        Rule rule = cdiscCg0151();
         assertEquals("USUBJID is not unique within study", rule.getOutcome().getMessage());
         assertEquals(1, rule.getOutcome().getOutputVariables().size());
         assertEquals("USUBJID", rule.getOutcome().getOutputVariables().get(0));
@@ -101,7 +98,7 @@ class RulePackageLoaderTest
     @Test
     void testKnownRule_CORE000351_scope()
     {
-        Rule rule = core000351();
+        Rule rule = cdiscCg0151();
         assertNotNull(rule.getScope());
         assertNotNull(rule.getScope().getClasses());
         assertEquals(1, rule.getScope().getClasses().getInclude().size());
@@ -115,17 +112,16 @@ class RulePackageLoaderTest
     @Test
     void testKnownRule_CORE000351_checkLeaf()
     {
-        CheckConditionLeaf leaf = core000351Leaf();
-        assertEquals("USUBJID", leaf.getName());
-        assertEquals("is_not_unique_set", leaf.getOperator());
-        assertEquals(CheckOperator.IS_NOT_UNIQUE_SET, leaf.getCheckOperator());
+        net.cumba.corej.core.model.CheckConditionExpression check = cdiscCg0151Check();
+        assertEquals("not is_unique_set([USUBJID, DOMAIN])", check.source());
+        assertNotNull(check.expr());
     }
 
 
     @Test
     void testKnownRule_CORE000351_authorities()
     {
-        Rule rule = core000351();
+        Rule rule = cdiscCg0151();
         assertNotNull(rule.getAuthorities());
         assertFalse(rule.getAuthorities().isEmpty());
         assertEquals("CDISC", rule.getAuthorities().get(0).getOrganization());
@@ -167,10 +163,10 @@ class RulePackageLoaderTest
     @Test
     void testRuleWithOperationDomain()
     {
-        // CORE-000885 has an operation with domain "EX"
+        // CDISC-CG0148 has an operation with domain "EX"
         Rule rule = rulePackage.getRules().get("4162b46f-9e19-41ff-ab42-9a26ee5b37f9");
-        assertNotNull(rule, "CORE-000885 should exist");
-        assertEquals("CORE-000885", rule.getCore().getId());
+        assertNotNull(rule, "CDISC-CG0148 should exist");
+        assertEquals("CDISC-CG0148", rule.getCore().getId());
         assertNotNull(rule.getOperations());
         assertEquals(1, rule.getOperations().size());
 
@@ -264,32 +260,44 @@ class RulePackageLoaderTest
 
 
     /**
-     * A JSON-null element inside a Check {@code all}/{@code any} array must be dropped by the
-     * deserializer (not retained as a null condition), so no downstream walker ever sees one.
+     * A JSON-null element inside a Check {@code all}/{@code any} array is dropped by the
+     * deserializer (not retained as a null condition), so no downstream walker ever sees one —
+     * pinned here on the sibling case, where a real condition survives beside the dropped null.
+     *
+     * <p>
+     * ⚠ <b>RE-EXPECTED under D121 (H3, 2026-09-17) — this test used to pin {@code all:[null]}
+     * loading CLEAN into an EMPTY composite.</b> That empty {@code all} compiles to the vacuous
+     * truth and fires on every row, which is exactly the silent over-reporting the composite
+     * grammar now rejects at load ({@code CheckConditionDeserializer.compositeList}). The null-DROP
+     * half of the old pin survives above; the empty-RESULT half was the defect.
+     * </p>
      */
     @Test
-    void testNullCheckConditionElementIsDropped() throws Exception
+    void testNullCheckConditionElementIsDroppedBesideItsSiblings() throws Exception
     {
-        RulePackage pkg = assertDoesNotThrow(() -> RulePackageLoader
-                .loadFromString("{\"rules\":{\"x\":{\"Check\":{\"all\":[null]}}}}"));
+        RulePackage pkg = assertDoesNotThrow(() -> RulePackageLoader.loadFromString(
+                "{\"rules\":{\"x\":{\"Check\":{\"all\":[null,{\"expression\":\"AGE > 18\"}]}}}}"));
         Rule rule = pkg.getRules().get("x");
         assertInstanceOf(CheckConditionAll.class, rule.getCheck());
-        assertTrue(((CheckConditionAll) rule.getCheck()).getConditions().isEmpty());
+        assertEquals(1, ((CheckConditionAll) rule.getCheck()).getConditions().size(),
+                "the null element is dropped, the real condition survives");
     }
 
 
-    /** Nested null elements (a null beside a nested {@code all:[null]}) must also be dropped. */
+    /** The all-null composite itself is a LOUD load error now, never an empty vacuous truth. */
     @Test
-    void testNestedNullCheckConditionElementsAreDropped() throws Exception
+    void testAllNullCheckCompositeIsRejectedLoudly()
     {
-        RulePackage pkg = assertDoesNotThrow(() -> RulePackageLoader.loadFromString(
+        Exception ex = assertThrows(Exception.class, () -> RulePackageLoader
+                .loadFromString("{\"rules\":{\"x\":{\"Check\":{\"all\":[null]}}}}"));
+        assertTrue(ex.getMessage().contains("holds no conditions"),
+                "an all-null `all:` empties to the vacuous truth and must be rejected: "
+                        + ex.getMessage());
+
+        Exception nested = assertThrows(Exception.class, () -> RulePackageLoader.loadFromString(
                 "{\"rules\":{\"x\":{\"Check\":{\"any\":[null,{\"all\":[null]}]}}}}"));
-        Rule rule = pkg.getRules().get("x");
-        assertInstanceOf(CheckConditionAny.class, rule.getCheck());
-        CheckConditionAny any = (CheckConditionAny) rule.getCheck();
-        assertEquals(1, any.getConditions().size());
-        assertInstanceOf(CheckConditionAll.class, any.getConditions().get(0));
-        assertTrue(((CheckConditionAll) any.getConditions().get(0)).getConditions().isEmpty());
+        assertTrue(nested.getMessage().contains("holds no conditions"),
+                "a nested empty composite is rejected the same way: " + nested.getMessage());
     }
 
 

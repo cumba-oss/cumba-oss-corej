@@ -809,8 +809,7 @@ class OperationExecutorTest
     @Test
     void testSplitSuppSelfReference_fallsBackToCurrentTable()
     {
-        // J7 part 2 (CDISC-CG0370): on a SPLIT SUPP dataset (supplbch/he/ur) the
-        // value_is_reference
+        // J7 part 2: on a SPLIT SUPP dataset (supplbch/he/ur) the value_is_reference
         // distinct's domain wildcard collapses to the unsplit family name ("SUPPLB"), which
         // resolves
         // to null because no standalone "SUPPLB" dataset exists. resolveTargetTable must fall back

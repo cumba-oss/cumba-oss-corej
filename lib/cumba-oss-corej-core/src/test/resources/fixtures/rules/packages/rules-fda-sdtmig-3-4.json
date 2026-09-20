@@ -6,6 +6,55 @@
     }
   ],
   "rules": {
+    "FDA-SD0007": {
+      "Authorities": [
+        {
+          "Organization": "FDA",
+          "Rule_Ids": [
+            "SD0007",
+            "FDAB030"
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "FDA-SD0007",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when Standard Units (--STRESU) are inconsistent across records that share the same --TESTCD, --OBJ, --TSTDTL, --CAT, --SCAT, --SPEC and --METHOD values.",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Classes": {
+          "Include": [
+            "FINDINGS",
+            "FINDINGS ABOUT"
+          ]
+        }
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "--STRESU"
+          ]
+        }
+      },
+      "Check": {
+        "expression": "is_inconsistent_across_dataset(--STRESU, keys=[--TESTCD, --OBJ, --TSTDTL, --CAT, --SCAT, --SPEC, --METHOD])"
+      },
+      "Outcome": {
+        "Message": "Standard Units (--STRESU) are inconsistent across records with the same --TESTCD, --OBJ, --TSTDTL, --CAT, --SCAT, --SPEC and --METHOD.",
+        "Output_Variables": [
+          "--TESTCD",
+          "--OBJ",
+          "--TSTDTL",
+          "--CAT",
+          "--SCAT",
+          "--SPEC",
+          "--METHOD",
+          "--STRESU"
+        ]
+      }
+    },
     "FDA-SD0054": {
       "Authorities": [
         {
@@ -29,17 +78,17 @@
           ]
         }
       },
-      "Operations": [
+      "Bindings": [
         {
-          "id": "$dataset_variables",
+          "name": "$dataset_variables",
           "expression": "get_column_order_from_dataset()"
         },
         {
-          "id": "$define_variables",
+          "name": "$define_variables",
           "expression": "define_variable_names()"
         },
         {
-          "id": "$missing_define_variables",
+          "name": "$missing_define_variables",
           "expression": "minus($define_variables, subtract=$dataset_variables)"
         }
       ],

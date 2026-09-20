@@ -23,9 +23,10 @@ import org.jspecify.annotations.Nullable;
  * own declared type</em> when every parent that exposes the name agrees on it, and
  * {@link DataValueType#STRING} when they disagree. {@code ChildMatchPreMerger} computes that once
  * and passes it here <b>and</b> to the augmented meta, so the declared type and the cells can never
- * diverge — {@code ScalarSemantics.equalsNumericAware} branches on the <em>cell's</em> type rather
- * than the declared one, so a mismatch would silently flip {@code AESEQ == "3"} between textual and
- * numeric equality.
+ * diverge — {@code Primitives.equalsTypedAware} (D121 retired
+ * {@code ScalarSemantics.equalsNumericAware}) branches on the <em>cell's</em> type rather than the
+ * declared one, so a mismatch would silently flip {@code AESEQ == "3"} between textual and numeric
+ * equality.
  * </p>
  * <p>
  * When the type is {@code STRING} the read path keeps the historical stringify-and-retype exactly,
@@ -35,21 +36,19 @@ import org.jspecify.annotations.Nullable;
  * {@code DataValueSupport.getAsDoubleCleaned}'s 12-significant-digit rounding.
  * </p>
  * <p>
- * {@link DataValueType#MISSING} is returned when:
+ * <b>Unsupplied values take the column's TYPE DEFAULT (D72/D72a-1/D75a):</b> a merged column
+ * behaves in every respect like a primary column, so where no value was supplied — no parent
+ * resolved for the primary row, no parent row matched on the join key, or the matched parent lacks
+ * this column (D75a cases 1–3) — the cell is {@code ""} for a {@code STRING} column and
+ * {@code MissingValue.MIS} for a numeric one (D34 #3/#4). ⛔ The fourth case is different: a matched
+ * parent cell that is itself a genuine {@code MissingValue} (a Dataset-JSON / Parquet null, D46)
+ * passes through <b>unchanged</b>, identity and all — D11/D12 make it a value distinct from
+ * {@code ""}, and collapsing it into the default would be wrong invisibly (D80c). Until D72 all
+ * four cases shared one {@code MISSING} sentinel.
  * </p>
- * <ul>
- * <li>no parent was resolved for the primary row,</li>
- * <li>no parent row matched on the join key,</li>
- * <li>the matched parent lacks this column, or</li>
- * <li>the parent cell itself is missing/invalid.</li>
- * </ul>
  */
 final class PolymorphicMergedColumn extends AbstractDataTableColumn
 {
-
-    /** Shared MISSING sentinel returned when {@link #readParentDataValue} resolves to no value. */
-    private static final IDataValue MISSING_VALUE = DataValueSupport.getAsDataValue(null,
-            DataValueType.MISSING);
 
     private final byte[] perRowParentIdx;
 
@@ -94,19 +93,63 @@ final class PolymorphicMergedColumn extends AbstractDataTableColumn
     }
 
 
+    /**
+     * ⚑ <b>TARGET-INVARIANT(null-free-value-channel) — this method is the intended per-component
+     * shape, and it is one of only two places in the stack that answer null-free
+     * <em>unprompted</em>.</b>
+     *
+     * <p>
+     * The declared return type is {@code @Nullable} because
+     * {@link net.cumba.datatable.IDataTableColumn#getValue(long)} is {@code @Nullable} <b>by
+     * contract</b> — the raw {@code getValue} family across the data-table layer may answer
+     * {@code null}, and that is not a defect to be swept here. This override nevertheless
+     * <b>never</b> answers {@code null}: all three of its arms end in a real value or a
+     * {@link net.cumba.datatable.values.MissingValue}.
+     * </p>
+     * <ol>
+     * <li>no parent value supplied ⇒ {@code DataValueSupport.defaultForType(declaredType)} —
+     * {@code ""} for {@code STRING}, {@code MissingValue.MIS} otherwise;</li>
+     * <li>a genuine missing ⇒ the parent's own {@code MissingValue}, passed through;</li>
+     * <li>a populated cell ⇒ the parent's value (text form on {@code STRING}).</li>
+     * </ol>
+     * <p>
+     * Arms 2 and 3 are null-free because {@link net.cumba.datatable.values.IDataValue#getValue()}
+     * is itself contractually non-null (<i>"This is NOT allowed to be null. Null values must be
+     * mapped to {@code MissingValue} …"</i>), and {@code getValueAsString()} answers a string in
+     * every case.
+     * </p>
+     * <p>
+     * ⭐ <b>Why the shape is here and not central.</b> The owner's standing preference is
+     * <b>explicit per-component implementations, never a central choke point, overlay or manager
+     * hook</b>. Making the raw {@code getValue} family null-free at <em>buffer</em> level was
+     * additionally <b>rejected on measurement</b>: a buffer carries no declared type, so
+     * {@code getValue(int)} cannot apply the type-dependent default at all. ⇒ Each component that
+     * knows its type answers null-free itself, as this one does. The other such component is
+     * {@code ReportTable.nullToMissing} in the datatable repository, noted there.
+     * </p>
+     * <p>
+     * ⛔ Stated as the <b>target</b> invariant, not as a property of the whole channel: null is
+     * still reachable elsewhere in the value path, which is what the invariant is being driven
+     * towards eliminating. This method is a component that already satisfies it.
+     * </p>
+     */
     @Override
     public @Nullable Object getValue(long aRow)
     {
         IDataValue dv = readParentDataValue(aRow);
-        // IDataTableColumn#getValue is @Nullable in this module's datatable, so a miss returns a
-        // bare null (the pre-existing behaviour) rather than the MISSING sentinel.
-        if (dv == null || dv.isMissingOrInvalid())
+        if (dv == null)
         {
-            return null;
+            // D72a-1 cases 1-3: no value was supplied, so the cell IS the column's type default.
+            return DataValueSupport.defaultForType(declaredType).getValue();
+        }
+        if (dv.isMissingOrInvalid())
+        {
+            // D75a case 4: the parent supplied a genuine MissingValue — pass it through
+            // unchanged (D11/D12 make it a value distinct from "").
+            return dv.getValue();
         }
         // J8: a STRING column (character parent, or parents that disagree) keeps the historical
-        // text form. Otherwise hand back the parent's own value object, so ScalarSemantics
-        // .resolvedString's `raw instanceof String` fast path misses and its fallback reads the
+        // text form. Otherwise hand back the parent's own value object, so the carrier reads the
         // parent IDataValue directly -- identical text, no cleaning on the numeric path.
         return declaredType == DataValueType.STRING ? dv.getValueAsString() : dv.getValue();
     }
@@ -116,15 +159,29 @@ final class PolymorphicMergedColumn extends AbstractDataTableColumn
     public IDataValue getDataValue(long aRow)
     {
         IDataValue dv = readParentDataValue(aRow);
-        if (dv == null || dv.isMissingOrInvalid())
+        if (dv == null)
         {
-            return MISSING_VALUE;
+            // ⭐ D72/D72a-1 (with D73/D80): a merged column behaves in EVERY respect like a
+            // primary column, and the default is a property of the column's TYPE, applied
+            // wherever a value is not supplied — no parent resolved, no parent row matched, or
+            // the matched parent lacks the column (D75a cases 1-3). Char -> "", numeric ->
+            // MissingValue.MIS (D34 #3/#4). WHY the value is missing does not change the value.
+            return DataValueSupport.defaultForType(declaredType);
+        }
+        if (dv.isMissingOrInvalid())
+        {
+            // ⛔ D75a case 4 — THREE cases into one default, NOT four: here a value WAS supplied
+            // and is a genuine MissingValue (a Dataset-JSON / Parquet null per D46), which
+            // D11/D12 make a value distinct from "". It passes through unchanged, identity and
+            // all — rewriting it to the type default would be wrong invisibly (D80c: both
+            // readings render as "the merged column is blank").
+            return dv;
         }
         // J8: STRING means a character parent or parents that disagree -- keep the historical
         // stringify-and-retype so that case is byte-identical to the pre-change engine. Otherwise
         // forward the parent's own IDataValue (J2 Option A): the cell keeps its real type, so
-        // equalsNumericAware takes its numeric branch on a real value instead of on text that
-        // getAsDoubleCleaned has already rounded to 12 significant digits.
+        // Primitives.equalsTypedAware takes its numeric branch on a real value instead of on
+        // text that getAsDoubleCleaned has already rounded to 12 significant digits.
         //
         // NB the E17 citation that used to justify the unconditional STRING coercion was a
         // misattribution: E17 is the numeric-IDVAR *join key* coercion (ChildMatchPreMerger

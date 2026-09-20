@@ -280,11 +280,20 @@ class HullBoundsBareOperandProbeTest
                 ">", List.of("R0", "R5"), //
                 "<=", List.of("R1", "R2", "R3"), //
                 "<", List.of("R1"));
+        // ⭐ Phase 6c (D117/D34 #5) moved the two low-side rows of the `<`/`<=` INFO legs, and
+        // this test is the unit-level witness of Review 1b's D96b. `earliest_possible(X)` is the
+        // CONVERSION that turns an unpositionable string into a genuine MissingValue
+        // (BuiltinFunctions.hullBound -> null), so on R6 (blank) and R8 (junk) the INFO leg's LHS
+        // is missing — and a missing sorts BELOW everything, so `<`/`<=` fire where they were
+        // silent. `>`/`>=` are unmoved for the same reason, from the other side.
+        // ⚠ The ERROR legs do NOT move: their low operand is the raw character cell, which is a
+        // present-but-unpositionable STRING, not a MissingValue — D96c's boundary, and exactly why
+        // 41 of Review 1b's 60 sites needed no guard while these 19 did.
         Map<String, List<String>> info = Map.of( //
                 ">=", List.of("R0", "R2", "R3", "R4", "R5", "R7"), //
                 ">", List.of("R0", "R4", "R5", "R7"), //
-                "<=", List.of("R1", "R2", "R3", "R4", "R7"), //
-                "<", List.of("R1", "R4"));
+                "<=", List.of("R1", "R2", "R3", "R4", "R6", "R7", "R8"), //
+                "<", List.of("R1", "R4", "R6", "R8"));
         for (String op : List.of(">=", ">", "<=", "<"))
         {
             List<String> errorRows = firedRows("date(MHENDTC) " + op + " RFSTDTC");

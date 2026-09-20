@@ -154,6 +154,11 @@ final class KeyMatchRowExpander
                 // Python: related dataset not found -> skip the merge (leave bindings unchanged).
                 continue;
             }
+            // 5b-J: the pre-merge Filter (spec §3.3) restricts the child BEFORE the key index is
+            // built — a dropped row can never become a join partner, and an unmatched-by-filter
+            // primary row reads exactly like an unmatched-by-key one (left keeps it null-bound,
+            // inner drops it, D._matched_ reads false).
+            child = Objects.requireNonNull(MatchFilter.apply(md, child, ruleId));
             resolvedChildren.put(ei, child);
             List<String> keys = Objects.requireNonNull(md.getKeys());
             // Default LEFT, honoring an explicit join_type=inner. Left preserves the engine's
@@ -299,7 +304,80 @@ final class KeyMatchRowExpander
     }
 
 
-    /** Composite key string for a row, or {@code null} when any key column is absent or missing. */
+    /**
+     * Composite key string for a row, or {@code null} when any key column is absent or its cell is
+     * missing.
+     *
+     * <p>
+     * ⭐⭐ <b>The RULED semantics: a {@code MissingValue} is a NORMAL value, and it CAN be a join
+     * key</b> (⚑ TARGET-INVARIANT(null-free-value-channel); owner, 2026-09-19, recorded with its
+     * derivation in {@code PLAN-null-free-value-channel} §9j). Verbatim: <i>"MissingValue can be a
+     * join key. We have ruled, that a general flag is available if missing values (incl "") are
+     * considered on a join / grouping, but if they are in, then different missing values are
+     * different keys."</i> and <i>"a missing value is not something special at all … So a Missing
+     * and a "" are expected values and should be treated as such."</i> Every part of that was
+     * already ruled elsewhere: a {@code MissingValue} is <i>"a value with meaning, expected in any
+     * column or expression result — not a special case"</i> ({@code D34 #2}); <i>"two missings are
+     * equal iff they are the same missing"</i> ({@code D34 #5-2}) is the equality that <i>different
+     * missings are different keys</i> rests on, and it is taken EXACTLY rather than tolerantly
+     * because keys are <i>"ASSIGNED values, not calculated ones"</i> and <i>"key identity always
+     * exact"</i> ({@code D64f}/{@code D64h}); and an empty string is a PRESENT value, not a missing
+     * one ({@code D34 #1}/{@code #3}) — it appears in the ruling only because it is governed by the
+     * same flag ({@code D34 #6}).
+     * </p>
+     *
+     * <p>
+     * ⛔⛔ <b>What THIS implementation does today is NOT that, and the paragraph above must not be
+     * read as a description of the code below.</b> Every row whose key tuple has a missing — or
+     * absent — component is DROPPED from the join: {@link #buildChildIndex} does not index such a
+     * child row, and the primary loop treats it as matching nothing (kept unbound under
+     * {@code left}, dropped under {@code inner}). That holds on both sides of the join and under
+     * both join types. It is the <i>missings-excluded</i> setting of the ruled flag, <b>hard-coded
+     * here rather than authored</b>: {@link MatchDataset} declares {@code Name}, {@code Keys},
+     * {@code Wildcard}, {@code Child}, {@code Join_Type} and {@code Filter} — there is <b>no
+     * {@code keep_missings} channel on the join surface at all</b>. The two grouping surfaces do
+     * have the authored flag and differ only in their DEFAULT: Check-level {@code Grouping:}
+     * defaults to {@code GroupKeyPolicy.DROP_MISSING_KEYS} ({@code RuleRunner}), Operation-level
+     * {@code group:} to {@code GroupKeyPolicy.KEEP_MISSING_KEYS} ({@code OperationExecutor}), each
+     * overridable per rule. ⇒ The join surface's default is therefore genuinely <b>UNRULED</b>, and
+     * nothing here may be read as having chosen it.
+     * </p>
+     *
+     * <p>
+     * ⚑ <b>The gap is known and tracked</b> — {@code PLAN-null-free-value-channel} §9j. Open work:
+     * wire the general include/exclude flag through {@code Match_Datasets}, and with it
+     * {@code KeyHashing.anyKeyMissing}, which has zero callers and is therefore the flag-OFF path
+     * of an unfinished feature rather than a guard nobody hooked up; the default that flag takes
+     * here is an owner decision. ⚠ One consequence recorded there rather than left to be
+     * rediscovered: for a KEY, "normal value" carries a fan-out that a compared variable does not —
+     * {@code k} primary and {@code m} joined rows sharing one missing key pair {@code k×m}, where
+     * grouping would make one group of {@code k+m}. That is what the flag is <i>for</i>, not an
+     * exception to the ruling.
+     * </p>
+     *
+     * <p>
+     * ⚠⚠ <b>A real join behaviour MOVED underneath this guard on 2026-09-18 and nothing recorded
+     * it.</b> The {@code isMissingOrInvalid()} test has been here since the initial commit, but
+     * what a raw {@code null} CHARACTER cell wraps to changed in the datatable repository's {@code
+     * d4edd59} ("a null character cell is {@code MissingValue.MIS}, on both wrap paths"). Before
+     * it, such a cell arrived as {@code DataValueString("")} — {@code isMissingOrInvalid() ==
+     * false} — so the key was built with an EMPTY SEGMENT and <b>two rows with a null key joined
+     * each other</b>. At HEAD they do not join at all. ⇒ The composition changed even though this
+     * file did not. ⭐ Reachable on real data: an {@code .rds} dataset whose join-key character
+     * column carries an R {@code NA} ({@code factor(..., exclude = NULL)}, stored as an explicit
+     * null level by {@code RdataTableProvider.copyFactorData}).
+     * </p>
+     *
+     * <p>
+     * ⛔ <b>The behaviour below is UNCHANGED by this correction — only the doctrine sentence was
+     * wrong.</b> {@code KeyMatchMissingJoinKeyTest} pins it from both join types plus a fixture
+     * control, and removing the guard reds that class; what it pins is <b>what the engine does</b>
+     * — one hard-coded setting of the flag — and not the ruled semantics. ⚠ That class' own javadoc
+     * still asserts the retired claim and needs the same correction. The mechanical note this
+     * file's model cites survives either reading: <i>pandas drops NaN keys</i>
+     * ({@link #buildChildIndex}).
+     * </p>
+     */
     private static @Nullable String tuple(IDataTable t, int[] colIds, long row)
     {
         StringBuilder sb = new StringBuilder();

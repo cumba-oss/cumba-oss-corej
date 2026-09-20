@@ -2,14 +2,12 @@ package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
-import net.cumba.corej.core.expr.CheckToExpr;
+import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.NativeExprEvaluator;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
@@ -33,8 +31,6 @@ import org.junit.jupiter.api.Test;
 class NativeMembershipNullRefParityTest
 {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
     private static Operation distinctVariableNamesOp()
     {
         Operation op = new Operation();
@@ -46,10 +42,9 @@ class NativeMembershipNullRefParityTest
     }
 
 
-    private static CheckConditionLeaf membershipLeaf()
+    private static Expr membershipExpr()
     {
-        return CheckConditionLeaf.builder().name("IDVAR").operator("is_not_contained_by")
-                .value(MAPPER.getNodeFactory().textNode("$rdomain_variables")).build();
+        return CheckExpressionParser.parse("IDVAR not in $rdomain_variables");
     }
 
 
@@ -67,9 +62,8 @@ class NativeMembershipNullRefParityTest
         Map<String, Object> vars = OperationExecutor.execute(List.of(distinctVariableNamesOp()),
                 supp, resolver);
 
-        CheckConditionLeaf leaf = membershipLeaf();
         EvaluationContext ctx = EvaluationContext.builder().table(supp).variables(vars).build();
-        BitSet nativ = NativeExprEvaluator.evaluate(CheckToExpr.toExpr(leaf), ctx);
+        BitSet nativ = NativeExprEvaluator.evaluate(membershipExpr(), ctx);
         assertEquals(bits(1), nativ, "AEBOGUS is not an AE column -> row 1 fires");
     }
 
@@ -85,8 +79,7 @@ class NativeMembershipNullRefParityTest
         Map<String, Object> vars = OperationExecutor.execute(List.of(distinctVariableNamesOp()),
                 supp, resolver);
 
-        CheckConditionLeaf leaf = membershipLeaf();
-        Expr e = CheckToExpr.toExpr(leaf);
+        Expr e = membershipExpr();
         EvaluationContext ctx = EvaluationContext.builder().table(supp).variables(vars).build();
         BitSet nativ = NativeExprEvaluator.evaluate(e, ctx);
         assertEquals(bits(0, 1), nativ, "empty membership set -> every non-missing IDVAR fires");

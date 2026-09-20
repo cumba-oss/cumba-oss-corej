@@ -23,8 +23,8 @@ class RulePackageLoaderDeriveOutputVariablesTest
               "Core": {"Id": "TEST-OV"},
               "Sensitivity": "Record",
               "Check": {"all": [
-                {"name": "AESTDTC", "operator": "non_empty"},
-                {"name": "AEENDTC", "operator": "non_empty"}
+                {"expression": "not empty(AESTDTC)"},
+                {"expression": "not empty(AEENDTC)"}
               ]},
               "Outcome": {"Message": "m", "Output_Variables": ["AESTDTC"]}
             }}}""";
@@ -72,7 +72,7 @@ class RulePackageLoaderDeriveOutputVariablesTest
                 {"rules": {"TEST-NODELTA": {
                   "Core": {"Id": "TEST-NODELTA"},
                   "Sensitivity": "Record",
-                  "Check": {"all": [{"name": "AETERM", "operator": "empty"}]},
+                  "Check": {"all": [{"expression": "empty(AETERM)"}]},
                   "Outcome": {"Message": "m", "Output_Variables": ["AETERM"]}
                 }}}""";
         Rule rule = RulePackageLoader.loadFromString(pkg).getRules().get("TEST-NODELTA");

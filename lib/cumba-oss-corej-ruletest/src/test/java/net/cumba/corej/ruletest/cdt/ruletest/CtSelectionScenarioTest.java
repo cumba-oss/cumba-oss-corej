@@ -179,7 +179,11 @@ class CtSelectionScenarioTest
         // looked at. No scenario declares it today, which is why nothing was red. Error Prone
         // [MissingCasesInEnumSwitch] is what found it; the arm below is the same contract
         // ExecutionVerdictCheck enforces for the general harness.
-        case EXECUTION_ERROR -> assertEquals("EXECUTION_ERROR", rule.status(),
+        // ⚠ The status string is "ERROR", not "EXECUTION_ERROR": DatasetExecutionSummary.
+        // RuleExecution#status is documented as EXECUTED / SKIPPED / ERROR, and LibraryValidator
+        // builds it as `res.isError() ? "ERROR" : …`. Asserting the enum's own name here would
+        // have failed every correctly-erroring scenario.
+        case EXECUTION_ERROR -> assertEquals("ERROR", rule.status(),
                 aFile + ": the scenario declares expect=executionError, so the rule must have"
                         + " ERRORED — " + rule.notExecutedReason());
         }
@@ -240,13 +244,10 @@ class CtSelectionScenarioTest
                       "Core": {"Id": "%s"},
                       "Sensitivity": "Record",
                       "Check": {"all": [
-                        {"name": "library_variable_codelist_extensible", "operator": "equal_to",
-                         "value": false},
-                        {"name": "library_variable_codelist_coded_values",
-                         "operator": "non_empty"},
-                        {"name": "variable_value", "operator": "non_empty"},
-                        {"name": "variable_value", "operator": "is_not_contained_by",
-                         "value": "library_variable_codelist_coded_values"}
+                        {"expression": "var_codelist_extensible(\\"LIBRARY\\") == false"},
+                        {"expression": "not empty(var_codelist_coded_values(\\"LIBRARY\\"))"},
+                        {"expression": "not empty(value())"},
+                        {"expression": "value() not in var_codelist_coded_values(\\"LIBRARY\\")"}
                       ]},
                       "Outcome": {"Message": "value outside non-extensible codelist",
                                   "Output_Variables": ["variable_name", "variable_value"]}

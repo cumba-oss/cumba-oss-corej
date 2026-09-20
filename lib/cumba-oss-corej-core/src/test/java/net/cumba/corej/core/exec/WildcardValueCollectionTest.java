@@ -92,10 +92,11 @@ class WildcardValueCollectionTest
     @Test
     void localTableWildcardSkipsBlankCells()
     {
-        // A blank cell contributes no value, whatever the column type. ⚠ For a CHARACTER column
-        // this is the case the blindness step would change (a blank would contribute "", as a
-        // PRESENT empty string already does); it is blocked on the date_* defect recorded in
-        // ScalarSemantics.resolvedString.
+        // A MISSING cell contributes no value, whatever the column type — and since the owner
+        // ruling of 2026-09-18 that is the SETTLED contract for a character column too, not an
+        // interim state. ⛔ This comment used to call the "a blank char cell contributes ''"
+        // variant a pending blindness step blocked on a date_* defect; that step is retired.
+        // ⚑ A stored "" is a different cell: a PRESENT value, and it does contribute "".
         IDataTable chars = MockTable.of().col("TRT01PN", "1").col("TRT02PN", (String) null).build();
         assertEquals(List.of("1"),
                 ValueResolver.resolveWildcardValues(wildcard("TRT${*}PN"), null,

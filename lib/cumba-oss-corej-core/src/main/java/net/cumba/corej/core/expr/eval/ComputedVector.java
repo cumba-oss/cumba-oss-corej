@@ -2,7 +2,6 @@ package net.cumba.corej.core.expr.eval;
 
 import java.util.function.IntFunction;
 
-import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
@@ -24,12 +23,12 @@ public final class ComputedVector implements Vector
 
     private final DataValueType declaredType;
 
-    private final IntFunction<@Nullable Object> producer;
+    private final IntFunction<Object> producer;
 
     /**
      * Optional typed producer ({@code null} for an ordinary computed vector). When present the row
-     * is produced as an {@link IDataValue} that keeps its own type, and {@link #resolvedObject} is
-     * derived from it as text rather than the other way round.
+     * is produced as an {@link IDataValue} that keeps its own type, and the carrier's resolved
+     * channel is derived from it as text rather than the other way round.
      *
      * <p>
      * Step B of {@code PLAN-joined-column-typing}. A dotted joined reference used to publish
@@ -37,23 +36,16 @@ public final class ComputedVector implements Vector
      * numeric value through {@code getAsDoubleCleaned}'s 12-significant-digit rounding.
      * </p>
      */
-    private final @Nullable IntFunction<@Nullable IDataValue> typedProducer;
+    private final @Nullable IntFunction<IDataValue> typedProducer;
 
     /** J7: the authored name this vector stands for, when it is a gated column reference. */
     private final @Nullable String gatedName;
 
     /**
-     * ⚑ Nullable <b>elements</b>: {@code null} is this vector's own encoding of a missing row, both
-     * on the untyped path (the producer contract below) and on the typed one, where a {@code null}
-     * or missing/invalid cell resolves to a {@code null} text view. {@link Vector#resolvedObject}
-     * is {@code @Nullable} for exactly that reason. Declared non-null until NullAway was armed,
-     * which flagged the typed branch's literal {@code null} write.
+     * Per-row memo of the produced carrier — one producer call per row, however many channels of
+     * the {@link TypedValue} are read (F9: produce ONCE, derive every view from the result).
      */
-    private final @Nullable Object[] valueCache;
-
-    private final IDataValue[] cellCache;
-
-    private final boolean[] computed;
+    private final @Nullable TypedValue[] rowCache;
 
     /**
      * @param rowCount
@@ -61,19 +53,31 @@ public final class ComputedVector implements Vector
      * @param declaredType
      *            the statically-declared result type (for operand-homogeneity checks)
      * @param producer
-     *            computes the value for a given 0-based row index; may return {@code null} to
-     *            denote a missing result
+     *            computes the value for a given 0-based row index.
+     *            <p>
+     *            ⚑ TARGET-INVARIANT(null-free-value-channel) — <b>NOT YET ENFORCED ON THIS
+     *            CONSTRUCTOR.</b> A row value is owed as a real value or a
+     *            {@link net.cumba.datatable.values.MissingValue} and never {@code null}
+     *            ({@link net.cumba.corej.core.exec.ScalarSemantics#computedMissing()} carries the
+     *            rule and the promotion condition), and this is the channel every VALUE builtin
+     *            produces through — so it is the widest surface on which the rule is still
+     *            violated. Today a {@code null} here is tolerated and
+     *            {@link TypedValue#resolved(DataValueType, Object)} folds it to
+     *            {@code MissingValue.MIS}. It is tolerated only because {@code IntFunction<Object>}
+     *            is a GENERIC type argument, whose lambda return NullAway does not check — not
+     *            because {@code null} is legitimate. ⛔ Do not add a new {@code null}-returning
+     *            producer here; hand back {@code ScalarSemantics.computedMissing()} instead, so the
+     *            day this channel is hardened is a signature change and not a sweep.
+     *            </p>
      */
-    public ComputedVector(int rowCount, DataValueType declaredType,
-            IntFunction<@Nullable Object> producer)
+    public ComputedVector(int rowCount, DataValueType declaredType, IntFunction<Object> producer)
     {
         this(rowCount, declaredType, producer, null, null);
     }
 
 
-    private ComputedVector(int rowCount, DataValueType declaredType,
-            IntFunction<@Nullable Object> producer,
-            @Nullable IntFunction<@Nullable IDataValue> typedProducer, @Nullable String gatedName)
+    private ComputedVector(int rowCount, DataValueType declaredType, IntFunction<Object> producer,
+            @Nullable IntFunction<IDataValue> typedProducer, @Nullable String gatedName)
     {
         this.declaredType = declaredType;
         this.producer = producer;
@@ -81,9 +85,7 @@ public final class ComputedVector implements Vector
         // F8: final and constructor-set. This field decides whether the vector is gated at all, so
         // an unsafely-published instance reading null would silently exit the column-type gate.
         this.gatedName = gatedName;
-        this.valueCache = new Object[rowCount];
-        this.cellCache = new IDataValue[rowCount];
-        this.computed = new boolean[rowCount];
+        this.rowCache = new TypedValue[rowCount];
     }
 
 
@@ -91,12 +93,13 @@ public final class ComputedVector implements Vector
      * A vector whose rows are produced as <b>typed</b> {@link IDataValue}s.
      *
      * <p>
-     * ⭐ {@link #resolvedObject} is derived from the produced cell's {@code getValueAsString()}, so
-     * every textual consumer — membership needles, {@code str()} surfaces, report text — sees
-     * exactly the text the untyped vector produced. Only {@link #dataValue} and
-     * {@link #comparisonOperand} expose the type. That containment is deliberate: roughly thirty
-     * call sites consume {@code resolvedObject} and the textual ones fold via {@code toString()},
-     * which quotes on {@code DataValueString} and is unoverridden on {@code DataValues.of}.
+     * ⭐ The carrier's resolved channel derives from the produced cell's {@code getValueAsString()},
+     * so every textual consumer — membership needles, {@code str()} surfaces, report text — sees
+     * exactly the text the untyped vector produced. Only the cell channel (and the typed reads the
+     * comparison primitives take from it since phase 3d) exposes the type
+     * ({@link TypedValue#typedCell}). That containment is deliberate: roughly thirty call sites
+     * consume the resolved channel and the textual ones fold via {@code toString()}, which quotes
+     * on {@code DataValueString} and is unoverridden on {@code DataValues.of}.
      * </p>
      *
      * @param rowCount
@@ -104,11 +107,17 @@ public final class ComputedVector implements Vector
      * @param declaredType
      *            the joined column's declared type
      * @param typedProducer
-     *            computes the row's typed value, {@code null} for a missing result
+     *            computes the row's typed value. ⭐ <b>Never {@code null}</b> — and, unlike the
+     *            untyped constructor above, that is <b>enforced</b>: the {@code @Nullable} is gone
+     *            from this type argument, so NullAway (ERROR, JSpecify mode, main sources) rejects
+     *            a {@code null}-returning producer at compile time. A producer with no result hands
+     *            back {@link net.cumba.corej.core.exec.ScalarSemantics#computedMissing()}; one
+     *            carrying a specific missing identity hands the identity-bearing cell through; an
+     *            absent column hands back its type-derived constant
      * @return the typed vector
      */
     public static ComputedVector typed(int rowCount, DataValueType declaredType,
-            IntFunction<@Nullable IDataValue> typedProducer)
+            IntFunction<IDataValue> typedProducer)
     {
         return typedInternal(rowCount, declaredType, typedProducer, null);
     }
@@ -123,20 +132,21 @@ public final class ComputedVector implements Vector
      * @param declaredType
      *            the joined column's declared type
      * @param typedProducer
-     *            computes the row's typed value, {@code null} for a missing result
+     *            computes the row's typed value; never {@code null} (see
+     *            {@link #typed(int, DataValueType, IntFunction)})
      * @param gatedName
      *            the authored name, or {@code null} to stay outside the gate
      * @return the typed vector
      */
     public static ComputedVector typed(int rowCount, DataValueType declaredType,
-            IntFunction<@Nullable IDataValue> typedProducer, @Nullable String gatedName)
+            IntFunction<IDataValue> typedProducer, @Nullable String gatedName)
     {
         return typedInternal(rowCount, declaredType, typedProducer, gatedName);
     }
 
 
     private static ComputedVector typedInternal(int rowCount, DataValueType declaredType,
-            IntFunction<@Nullable IDataValue> typedProducer, @Nullable String gatedName)
+            IntFunction<IDataValue> typedProducer, @Nullable String gatedName)
     {
         // ⚑ The untyped producer is never invoked for a typed vector (value() branches on
         // typedProducer), so it is a guard rather than a code path: if the branching is ever
@@ -149,72 +159,18 @@ public final class ComputedVector implements Vector
     }
 
 
-    private @Nullable Object value(int row)
-    {
-        if (!computed[row])
-        {
-            if (typedProducer != null)
-            {
-                // F9: produce ONCE and derive both views from the result. The typed path used to
-                // call the producer from here (through a text-converting wrapper) and AGAIN from
-                // dataValue, so a row whose text and typed forms were both read cost two
-                // lookupValue calls -- or two full lookupAllValues scans for a candidates vector.
-                IDataValue cell = typedProducer.apply(row);
-                cellCache[row] = cell == null
-                        ? DataValueSupport.getAsDataValue(null, DataValueType.MISSING)
-                        : cell;
-                valueCache[row] = cell == null || cell.isMissingOrInvalid() ? null
-                        : cell.getValueAsString();
-            }
-            else
-            {
-                valueCache[row] = producer.apply(row);
-            }
-            computed[row] = true;
-        }
-        return valueCache[row];
-    }
-
-
     @Override
-    public IDataValue dataValue(int row)
+    public TypedValue value(int row)
     {
-        if (typedProducer != null)
+        TypedValue tv = rowCache[row];
+        if (tv == null)
         {
-            // value() populates cellCache for the typed path -- one producer call, both views.
-            value(row);
-            return cellCache[row];
+            tv = typedProducer != null
+                    ? TypedValue.typedCell(declaredType, typedProducer.apply(row))
+                    : TypedValue.resolved(declaredType, producer.apply(row));
+            rowCache[row] = tv;
         }
-        IDataValue cell = cellCache[row];
-        if (cell == null)
-        {
-            cell = DataValues.of(value(row));
-            cellCache[row] = cell;
-        }
-        return cell;
-    }
-
-
-    /**
-     * {@inheritDoc} For a typed vector this is the produced cell, so a numeric joined operand
-     * reaches the comparison as a value rather than as rounded text.
-     */
-    @Override
-    public @Nullable Object comparisonOperand(int row)
-    {
-        if (typedProducer != null)
-        {
-            IDataValue cell = dataValue(row);
-            return cell.isMissingOrInvalid() ? resolvedObject(row) : cell;
-        }
-        return resolvedObject(row);
-    }
-
-
-    @Override
-    public @Nullable Object resolvedObject(int row)
-    {
-        return value(row);
+        return tv;
     }
 
 

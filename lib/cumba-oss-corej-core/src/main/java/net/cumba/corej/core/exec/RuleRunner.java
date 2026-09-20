@@ -22,7 +22,6 @@ import net.cumba.corej.core.metadata.VlmResolver;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionAny;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.CheckConditionNot;
 import net.cumba.corej.core.model.LevelCheck;
 import net.cumba.corej.core.model.MatchDataset;
@@ -395,20 +394,17 @@ public final class RuleRunner
      * <p>
      * &#9940;&#9940; <b>The shipped corpus is NOT threshold-invariant</b> — this paragraph asserted
      * the opposite until 2026-08-26, when it was measured. The default is
-     * {@link EngineLimits#DEFAULT_SEVERITY_THRESHOLD} = {@code WARNING}, and the corpus authors
-     * level-keyed rules whose weaker rung is {@code INFO}. Re-derived 2026-09-19 over
-     * {@code rules-src/checks}: <b>eight</b> of them — {@code CDISC-CG0078}, {@code CDISC-CG0218},
-     * {@code CDISC-CG0233}, {@code CDISC-CG0235}, {@code CDISC-SEND-0283} (Plan C phase 5b), plus
-     * {@code DRAFT-900044}, {@code FDA-SD1037} and {@code PMDA-SD1037} authored since — and
-     * <b>every</b> level-keyed rule of the corpus carries an {@code INFO} rung, so the two
-     * populations coincide. ⚠ The figure standing here was <b>9</b>, and four of the nine ids it
-     * named were CORE-family rules this corpus has never carried — that list was never true of this
-     * tree. Every {@code INFO} rung they declare is dropped by a default run and evaluated by an
-     * {@code Info} run. That is exactly &#167;3.4's specified behaviour and the deliberate reason
-     * {@code INFO} is out of the default (turning it on corpus-wide would be a finding-mover
-     * disguised as a default) &mdash; but any instrument that must see every declared level has to
-     * say so: {@code FindingsSnapshot} pins {@code severityThreshold = Info} for precisely this
-     * reason, and records it in its banner.
+     * {@link EngineLimits#DEFAULT_SEVERITY_THRESHOLD} = {@code WARNING}, and Plan C phase 5b
+     * authored level-keyed rules whose weaker rung is {@code INFO}; <b>5</b> of them survive the
+     * CORE-family retirement ({@code CDISC-CG0078}, {@code CDISC-CG0218}, {@code CDISC-CG0233},
+     * {@code CDISC-CG0235}, {@code CDISC-SEND-0283}), and the corpus carries further ones authored
+     * since ({@code DRAFT-900044}, {@code FDA-SD1037}, {@code PMDA-SD1037}). Every {@code INFO}
+     * rung they declare is dropped by a default run and evaluated by an {@code Info} run. That is
+     * exactly &#167;3.4's specified behaviour and the deliberate reason {@code INFO} is out of the
+     * default (turning it on corpus-wide would be a finding-mover disguised as a default) &mdash;
+     * but any instrument that must see every declared level has to say so: {@code FindingsSnapshot}
+     * pins {@code severityThreshold = Info} for precisely this reason, and records it in its
+     * banner.
      * </p>
      *
      * @param severityThreshold
@@ -527,6 +523,20 @@ public final class RuleRunner
                     .violations(List.of()).totalRows(table.getRowCount()).build();
         }
 
+        // D77 — the bind-time specialisation stage. Everything decidable from (rule × dataset
+        // metadata) is resolved HERE, in one pass under one prefix policy (D77c), before any
+        // execution machinery runs: the Check tree and every level, the Precondition, the native
+        // expressions, Operations, non-Child Match_Datasets, Grouping and the Output_Variables.
+        // Rules arriving from DatasetRuleResolver.generate are already concrete, so this is a
+        // cheap identity pass for them; rules handed in directly (the .cdt harness, suites,
+        // embedders) are specialised at this boundary. Beyond this line the engine ASSERTS
+        // concreteness instead of resolving — an unresolved `--` reaching the evaluator is an
+        // error (ExprCompiler.resolveDomainPrefix), never a substitution (D77b).
+        // requireNonNull, not a null check: specialise answers null only for a null rule (its
+        // @return), and `rule` is non-null here — the engine asserts the contract instead of
+        // growing a branch for a state that cannot arise.
+        rule = Objects.requireNonNull(RuleSpecialiser.specialise(rule, table, domainPrefix));
+
         // Plan C §3.4 step 2 — the run's severity threshold. A rule whose EVERY declared level is
         // below it was not asked, so it reports SKIPPED with a stated reason rather than EXECUTED
         // with zero violations: a rule that reports PASS when it was never evaluated is a false
@@ -594,13 +604,12 @@ public final class RuleRunner
         // the prefix was unresolvable, but its predicate (RuleWildcardUsage) was hand-written
         // rather than derived from the resolvers, so it was wrong in BOTH directions: a `--`
         // inside a data literal ("DOSE NOT CHANGED--SEE CRF") or a dot-qualified `RELREC.**DECOD`
-        // made whole rules skip and DELETED genuine findings (CDISC-CG0174, CG0601-0603 — the
-        // corpus's four `RELREC.**` carriers, measured 2026-09-19), while `within` / array-valued
-        // `value` / Grouping_Variables were invisible
-        // to it. Now that the prefix is anchored to the caller-supplied domain code it is null
-        // only when there is no domain at all — a degraded or synthetic context — where the
-        // callers already substitute nothing, exactly as before EC-36. Re-introducing a skip is a
-        // separate change and needs a predicate DERIVED from the resolvers; see the plan's §10.4.
+        // made whole rules skip and DELETED genuine findings (CDISC-CG0174, CG0601-0603), while
+        // `within` / array-valued `value` / Grouping_Variables were invisible to it. Now that the
+        // prefix is anchored to the caller-supplied domain code it is null only when there is no
+        // domain at all — a degraded or synthetic context — where the callers already substitute
+        // nothing, exactly as before EC-36. Re-introducing a skip is a separate change and needs a
+        // predicate DERIVED from the resolvers; see the plan's §10.4.
 
         // ⭐ SKIP, not IGNORE (owner ruling 2026-09-10, disposition (b) of
         // plans/PLAN-qualified-requirements-cross-standard.md §8.4): when `scopeForeign` is null
@@ -760,9 +769,10 @@ public final class RuleRunner
         // row-expanded `evalTable` (every later phase uses `evalTable`, not `table`). These run
         // BEFORE Operations, mirroring Python (preprocess precedes perform_rule_operations), so an
         // Operation aggregating over the primary sees the expanded row set.
-        // 2a — Execute Operations (Fix #1 stashes `originalName` during resolveOperationPrefix)
+        // 2a — Execute Operations (already `--`-concrete: RuleSpecialiser resolved them at the
+        // top of this method, stashing `originalName` — Fix #1 / D92a)
         // 2b — Build Match_Datasets join lookups (Fix #7 multi-row, Fix #5 per-row RELREC)
-        // 2c — CheckConditionTransformer resolves `--` prefixes (Fix #5 preserves `**`)
+        // (2c is gone — D77: the Check tree arrives concrete from the specialisation stage)
         // 2e — Evaluate Rule.Precondition (Fix #13 — currently deferred per OQ#4)
         // 3 — Check evaluation
         // -----------------------------------------------------------------------
@@ -770,8 +780,7 @@ public final class RuleRunner
 
         // Operand-based not-available gate (PLAN-coreJ-cdisc-provider). A rule whose Check
         // references define_* / library_* operands needs the matching provider. Operand-only rules
-        // (no library-dependent Operation, e.g. CDISC-CG0010) are not caught by the
-        // operation-based
+        // (no library-dependent Operation, e.g. CDISC-CG0010) are not caught by the operation-based
         // probe below, so detect them here by scanning the Check tree and report SKIPPED when the
         // referenced level's provider is absent.
         // ⚑ Plan C §3.3: EVERY declared level. A define_*/library_* operand in a weaker level
@@ -808,6 +817,35 @@ public final class RuleRunner
                                         + "(rule requires library_* operands)")
                         .build();
             }
+        }
+
+        // Phase 4 of PLAN-typed-expression-engine.md: the stage-B checker (spec §2) runs here —
+        // once per (rule × dataset), on the SPECIALISED rule, after every declared-skip gate
+        // (Scope/Requirements/providers keep precedence: "cannot run" beats "is wrong", D40) and
+        // before any execution machinery. A declared-skip from the checker (D89a's filter
+        // declaration) reports SKIPPED with its reason; an ARMED finding is a bind error — ERROR
+        // for this (rule, dataset), per binding, naming the variable (D41), on the same
+        // "__error__" sentinel channel the column-type gate uses. Every armed kind is measured at
+        // ZERO over the shipped corpus runs AND the rules-repo build (D102c's two populations),
+        // so this changes no production verdict; observe-only findings are logged and offered to
+        // the measurement observer. The armed column-type check deliberately stays the
+        // ColumnTypeGate exception path below (D15 — absorbed, not duplicated).
+        // 5b-J widens the seam (D104d): the gate now also sees the run's foreign-dataset
+        // inventory and which datasets the AbsentDatasetSkip decision(s) above already
+        // suppressed, so the Filter (D89) and _matched_ rows of spec §9 can be decided here.
+        Set<String> stageBSuppressed = new LinkedHashSet<>(absentSkip.suppressedDatasets());
+        if (levelSkips != null)
+        {
+            for (AbsentDatasetSkip.Decision levelDecision : levelSkips.values())
+            {
+                stageBSuppressed.addAll(levelDecision.suppressedDatasets());
+            }
+        }
+        RuleExecutionResult stageBOutcome = stageBGate(rule, table, varWildcardPrefix != null,
+                ruleId, message, foreignInventory(resolver, ruleId), stageBSuppressed);
+        if (stageBOutcome != null)
+        {
+            return stageBOutcome;
         }
 
         // Phase 2a.5–2a.7: dataset merges / row expansions run BEFORE Operations, mirroring Python
@@ -890,13 +928,10 @@ public final class RuleRunner
         Map<String, Object> variables = Map.of();
         if (rule.getOperations() != null && !rule.getOperations().isEmpty())
         {
+            // D77: the `--` prefixes were resolved by the specialisation stage at the top of this
+            // method (RuleSpecialiser, which stashes each Operation's originalName so the D92a
+            // inventory folds keep their template) — the operations arrive concrete.
             List<net.cumba.corej.core.model.Operation> resolvedOps = rule.getOperations();
-            if (domainPrefix != null)
-            {
-                resolvedOps = resolvedOps.stream()
-                        .map(op -> resolveOperationPrefix(op, domainPrefix, varWildcardPrefix))
-                        .toList();
-            }
             if (libraryProvider == null)
             {
                 for (net.cumba.corej.core.model.Operation op : resolvedOps)
@@ -1192,23 +1227,15 @@ public final class RuleRunner
             joinedDatasets.putAll(keyExpansion.lookups());
         }
 
-        // Phase 2c: Resolve -- prefix in Check conditions. EC-36: Check leaves are variable names,
-        // so this is job (b) and takes varWildcardPrefix (Python's wildcard_replacement) — NOT
-        // domainPrefix. For an AP dataset that means --TERM -> MHTERM (not APMHTERM), and for a
-        // SUPP dataset --QNAM -> QNAM. A null prefix means there is no domain code at all
-        // (degraded / synthetic context); resolvePrefixes then returns the tree untouched,
-        // exactly as before EC-36.
+        // Phase 2c is gone (D77): the Check tree — every level of it — was resolved by the
+        // specialisation stage at the top of this method, under the same EC-36 policy this site
+        // used to apply per execution. The tree read here is already concrete.
         CheckCondition check = rule.getCheck();
-        if (varWildcardPrefix != null)
-        {
-            check = CheckConditionTransformer.resolvePrefixes(check, varWildcardPrefix,
-                    domainPrefix, ruleId);
-        }
 
         EvaluationContext ctx = EvaluationContext.builder().table(evalTable).variables(variables)
-                .defineProvider(defineProvider).vlmResolver(vlmResolver).ruleId(ruleId)
-                .datasetResolver(resolver).domainPrefix(domainPrefix)
-                .variableWildcardPrefix(varWildcardPrefix)
+                .numericExpectedColumns(numericExpectedColumns(rule)).defineProvider(defineProvider)
+                .vlmResolver(vlmResolver).ruleId(ruleId).datasetResolver(resolver)
+                .domainPrefix(domainPrefix).variableWildcardPrefix(varWildcardPrefix)
                 .domainName(evalTable.getMetaData().getName()).joinedDatasets(joinedDatasets)
                 .evaluationDomain(rule.getEvaluationDomain()).maxErrorsPerRule(maxErrorsPerRule)
                 .libraryProvider(libraryProvider).dictionaryProvider(dictionaryProvider)
@@ -1219,8 +1246,7 @@ public final class RuleRunner
             // ⭐ `null` for every single-level rule — the entire shipped corpus — so executeAgainst
             // takes the same branch, with the same arguments, that it took before this plan.
             List<CheckLevelPlan> levels = levelSkips == null ? null
-                    : buildLevelPlans(rule, runnableLevels, declaredLevels, levelSkips, check,
-                            varWildcardPrefix, domainPrefix, ruleId, ctx);
+                    : buildLevelPlans(rule, runnableLevels, declaredLevels, levelSkips, check, ctx);
             return executeAgainst(rule, ruleId, message, check, ctx, levels);
         }
         finally
@@ -1258,14 +1284,31 @@ public final class RuleRunner
         // precondition as non-broadcast (row-level): the retired legacy fold could never decide
         // those either ("not fully resolvable ⇒ continue"), so continuing with the main Check
         // preserves the exact pre-retirement (and Python) semantics.
-        if (rule.getPrecondition() != null && rule.getPreconditionExpr() != null
-                && net.cumba.corej.core.expr.eval.BroadcastFold.fold(rule.getPreconditionExpr(),
-                        ctx, false) == net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.FALSE)
+        if (rule.getPrecondition() != null && rule.getPreconditionExpr() != null)
         {
-            return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                    .violations(List.of()).totalRows(evalTable.getRowCount())
-                    .status(RuleExecutionStatus.SKIPPED)
-                    .statusMessage("Rule skipped — precondition not met").build();
+            net.cumba.corej.core.expr.eval.BroadcastFold.Verdict pre = net.cumba.corej.core.expr.eval.BroadcastFold
+                    .fold(rule.getPreconditionExpr(), ctx, false);
+            // Phase 5 (typed-expression plan): compare the static level against the runtime fold
+            // verdict. Observation only — the runtime verdict decides, exactly as before.
+            LevelInstrument.onFold(rule, ctx, rule.getPreconditionExpr(), "precondition", pre);
+            if (pre == net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.FALSE)
+            {
+                return RuleExecutionResult.builder().ruleId(ruleId).message(message)
+                        .violations(List.of()).totalRows(evalTable.getRowCount())
+                        .status(RuleExecutionStatus.SKIPPED)
+                        .statusMessage("Rule skipped — precondition not met").build();
+            }
+        }
+
+        // Phase 5 (SPEC §8): derive the effective granularity of this (rule, dataset) — the
+        // declared Sensitivity as the maximum, the bind-time level as the derivation (D39b-REV).
+        // Still observation-only HERE. The D39 fold itself landed in phase 7 (D111): the
+        // absent-column leaf folds inside BroadcastFold (bindColumnLevel), so the all-absent
+        // check reports one dataset-level finding without this observation routing anything.
+        net.cumba.corej.core.expr.ast.Expr granularityExpr = checkExprOf(rule, ctx);
+        if (granularityExpr != null)
+        {
+            LevelInstrument.onEffectiveGranularity(rule, ctx, granularityExpr);
         }
 
         // Group sensitivity is orthogonal — handle separately.
@@ -1573,26 +1616,18 @@ public final class RuleRunner
     private static List<CheckLevelPlan> buildLevelPlans(Rule rule, List<Severity> runnable,
             SequencedMap<Severity, LevelCheck> declared,
             Map<Severity, AbsentDatasetSkip.Decision> skips, CheckCondition strictestResolved,
-            @Nullable String varWildcardPrefix, @Nullable String domainPrefix,
-            @Nullable String ruleId, EvaluationContext ctx)
+            EvaluationContext ctx)
     {
         Severity strictest = declared.firstEntry().getKey();
         Map<Severity, CheckCondition> conditions = new LinkedHashMap<>();
         Map<Severity, net.cumba.corej.core.expr.ast.Expr> effective = new LinkedHashMap<>();
         for (Severity level : runnable)
         {
-            CheckCondition condition = levelOf(declared, level).condition();
-            if (level == strictest)
-            {
-                // Already resolved by the caller — reuse it rather than resolve the same tree
-                // twice.
-                condition = strictestResolved;
-            }
-            else if (varWildcardPrefix != null)
-            {
-                condition = CheckConditionTransformer.resolvePrefixes(condition, varWildcardPrefix,
-                        domainPrefix, ruleId);
-            }
+            // D77: every level's condition was resolved by the specialisation stage, so the
+            // declared tree IS the concrete tree; the strictest entry reuses the caller's
+            // reference for identity with the main-path Check.
+            CheckCondition condition = level == strictest ? strictestResolved
+                    : levelOf(declared, level).condition();
             conditions.put(level, condition);
             AbsentDatasetSkip.Decision decision = decisionOf(skips, level);
             net.cumba.corej.core.expr.ast.Expr override = decision.effectiveCheckExpr();
@@ -1620,15 +1655,13 @@ public final class RuleRunner
             domain = domain == null ? levelDomain : domain.join(levelDomain);
         }
 
-        Set<Severity> broadcast = rule.getBroadcastCheckLevels() == null ? Set.of()
-                : rule.getBroadcastCheckLevels();
         List<CheckLevelPlan> plans = new ArrayList<>(runnable.size());
         for (Severity level : runnable)
         {
             plans.add(new CheckLevelPlan(level,
                     Objects.requireNonNull(conditions.get(level), "resolved condition"),
                     Objects.requireNonNull(effective.get(level), "effective expression"),
-                    broadcast.contains(level), decisionOf(skips, level).collapsed(),
+                    decisionOf(skips, level).collapsed(),
                     Objects.requireNonNull(domain, "at least one runnable level"), outputVars,
                     levelOf(declared, level).message()));
         }
@@ -1670,31 +1703,6 @@ public final class RuleRunner
     {
         net.cumba.corej.core.expr.ast.Expr override = ctx.getCheckExprOverride();
         return override != null ? override : rule.getCheckExpr();
-    }
-
-
-    /**
-     * Whether the expression <em>this</em> execution evaluates is a fold-equivalent broadcast
-     * verdict: the running level's flag on a multi-level rule (Plan C &#167;3.3), else the rule's
-     * own {@link Rule#isBroadcastCheckExpr()}.
-     */
-    private static boolean broadcastOf(Rule rule, EvaluationContext ctx)
-    {
-        CheckLevelPlan plan = ctx.getLevelPlan();
-        return plan != null ? plan.broadcast() : rule.isBroadcastCheckExpr();
-    }
-
-
-    /**
-     * The <b>authored</b> Check condition this execution evaluates — the running level's on a
-     * multi-level rule, else {@link Rule#getCheck()}. Read where the shape of the authored tree
-     * decides routing (the {@code CheckConditionExpression} carve-out in the dataset-level fold),
-     * never where the compiled form is wanted; that is {@link #checkExprOf}.
-     */
-    private static @Nullable CheckCondition authoredCheckOf(Rule rule, EvaluationContext ctx)
-    {
-        CheckLevelPlan plan = ctx.getLevelPlan();
-        return plan != null ? plan.condition() : rule.getCheck();
     }
 
 
@@ -1753,7 +1761,6 @@ public final class RuleRunner
         BitSet bits = net.cumba.corej.core.expr.eval.NativeExprEvaluator
                 .evaluate(Objects.requireNonNull(checkExprOf(rule, evalCtx),
                         "checkExpr (guarded by executeUnified)"), evalCtx);
-        NativeExecutionRecorder.record(evalCtx.getRuleId(), NativeExecutionRecorder.Backend.NATIVE);
         return bits;
     }
 
@@ -1768,21 +1775,33 @@ public final class RuleRunner
         // Guard-residual D2/D2b — the general native dataset-level fold, the native sibling of
         // the legacy Step-1 partialEvaluateDataset fold-to-constant return below. The tri-state
         // BroadcastFold evaluates dataset-constant leaves (presence facts, dataset facts,
-        // runtime-scalar $-comparisons) natively, applies the legacy missing-column fold mirror,
-        // and short-circuits with exact Kleene logic — so it DECIDES precisely where the legacy
-        // fold decides (one dataset-level violation on TRUE, none on FALSE), even around a
-        // runtime GroupedResult/VariableMetadataResult $-ref it cannot evaluate (UNKNOWN). On
-        // UNKNOWN the regular dispatch continues: the row / per-variable native paths evaluate
-        // the same full checkExpr (per-row GroupedResult resolution included). Native-authored
-        // CheckConditionExpression checks are folded only when broadcast-flagged: the legacy
-        // fold treats them as opaque (no Step-1 fold), so general folding would change their
-        // documented per-variable semantics. Honoured only when the nativeEval flag is on;
-        // otherwise the rule takes the legacy path verbatim.
-        if (checkExprOf(rule, ctx) != null && (broadcastOf(rule, ctx) || !(authoredCheckOf(rule,
-                ctx) instanceof net.cumba.corej.core.model.CheckConditionExpression)))
+        // runtime-scalar $-comparisons, and — since D111 — leaves dataset-level by ABSENCE) and
+        // short-circuits with exact Kleene logic (one dataset-level violation on TRUE, none on
+        // FALSE), even around a runtime GroupedResult/VariableMetadataResult $-ref it cannot
+        // evaluate (UNKNOWN). On UNKNOWN the regular dispatch continues: the row / per-variable
+        // native paths evaluate the same full checkExpr (per-row GroupedResult resolution
+        // included).
+        //
+        // ⭐⭐ THE FOLD IS UNCONDITIONAL (owner, 2026-09-16, phase 7). It used to be gated on
+        // whether the LEGACY engine could also have seen this Check — first by reading the
+        // authored tree's shape (`!(authored instanceof CheckConditionExpression)`), then, when
+        // phase 7 made that true of every rule at once, by a load-time flag computed with
+        // ExprLowering. Both spellings asked the same question — "would the retired engine have
+        // folded this?" — and the owner ruled that question out of the engine along with the
+        // representation behind it: no pre-expression, leaf-based engine code remains, so there is
+        // nothing left for a carve-out to be faithful to. Every rule with a compiled expression
+        // now folds, and the fold's own tri-state Kleene logic decides — which is the boundary
+        // that was always doing the real work.
+        if (checkExprOf(rule, ctx) != null)
         {
+            net.cumba.corej.core.expr.ast.Expr foldExpr = Objects
+                    .requireNonNull(checkExprOf(rule, ctx));
             net.cumba.corej.core.expr.eval.BroadcastFold.Verdict v = net.cumba.corej.core.expr.eval.BroadcastFold
-                    .fold(Objects.requireNonNull(checkExprOf(rule, ctx)), ctx, false);
+                    .fold(foldExpr, ctx, false);
+            // Phase 5 (typed-expression plan): compare the static level against the runtime fold
+            // verdict. Observation only — the runtime verdict decides, exactly as before; the
+            // disagreement classes are the phase's finding (see LevelInstrument).
+            LevelInstrument.onFold(rule, ctx, foldExpr, "check", v);
             if (v != net.cumba.corej.core.expr.eval.BroadcastFold.Verdict.UNKNOWN)
             {
                 return datasetBroadcastResult(ruleId, message, outputVars, ctx,
@@ -1790,7 +1809,8 @@ public final class RuleRunner
             }
         }
 
-        // Leaf-scope dispatch (PLAN-leaf-scope-domain-inference.md §3.2, phase 4): the rule's
+        // Leaf-scope dispatch (PLAN-leaf-scope-domain-inference.md §3.2, phase 4; formalised as
+        // BindingScope in phase 6 of PLAN-typed-expression-engine.md, D8/D41a/D74a): the rule's
         // evaluation domain — the join of its Check leaves' cursor demands, cached at load — picks
         // the native loop. {VAR,ROW} ⇒ per-(variable, row); {VAR} ⇒ per variable; {} ⇒ one
         // broadcast verdict; {ROW} ⇒ the row path below. The retired Rule_Type gates
@@ -1798,35 +1818,32 @@ public final class RuleRunner
         // were all restatements of exactly this: value() is the cell cursor, a var_* accessor /
         // varname() / the variable_name anchor / a VariableMetadataResult $-ref is the variable
         // cursor, a column / dotted / GroupedResult read is the row cursor (DomainScan, with
-        // OperationKinds mirroring BroadcastFold's runtime instanceof tests).
+        // OperationKinds mirroring BroadcastFold's runtime instanceof tests). This is the SOLE
+        // dispatch; BindingScope.of holds the derivation, and its ROW_PATH case falls through to
+        // the row evaluation below.
         net.cumba.corej.core.expr.ast.Expr checkExpr = checkExprOf(rule, ctx);
         net.cumba.corej.core.expr.eval.Domain domain = checkExpr == null ? null
                 : domainOf(rule, ctx, checkExpr);
         if (checkExpr != null && domain != null)
         {
-            if (domain.varCursor() && domain.rowCursor())
+            switch (BindingScope.of(domain, checkExpr))
             {
-                NativeExecutionRecorder.record(ruleId, NativeExecutionRecorder.Backend.NATIVE);
+            case PER_VARIABLE_ROW ->
+            {
                 return evaluateVariableValueNative(rule, ruleId, message, outputVars, ctx, meta);
             }
-            if (domain.varCursor())
+            case PER_VARIABLE ->
             {
-                NativeExecutionRecorder.record(ruleId, NativeExecutionRecorder.Backend.NATIVE);
                 return evaluateMetadataNative(rule, ruleId, message, outputVars, ctx, meta, true);
             }
-            // {} — a dataset-level verdict the fold above could not decide: a metadata-accessor
-            // Check evaluates once (evaluateBroadcast); a Check with row-operand whole-column
-            // verdicts or $-set operators takes the row path and collapses below — exactly the
-            // two paths the retired type gates routed these shapes to.
-            if (domain.isBroadcast() && (net.cumba.corej.core.expr.eval.MetadataExprScan
-                    .containsMetadataFunction(checkExpr)
-                    || net.cumba.corej.core.expr.eval.MetadataExprScan.containsVarname(checkExpr)
-                    || net.cumba.corej.core.expr.eval.MetadataExprScan
-                            .containsVariableNameAnchor(checkExpr))
-                    && net.cumba.corej.core.expr.eval.MetadataExprScan.isPureMetadata(checkExpr))
+            case BROADCAST_METADATA ->
             {
-                NativeExecutionRecorder.record(ruleId, NativeExecutionRecorder.Backend.NATIVE);
                 return evaluateMetadataNative(rule, ruleId, message, outputVars, ctx, meta, false);
+            }
+            case ROW_PATH ->
+            {
+                // fall through to the row evaluation below
+            }
             }
         }
 
@@ -1872,9 +1889,10 @@ public final class RuleRunner
         // count alone: "row-reading" is a structural property of having got here, not a fact to
         // re-derive from the domain or an enumerated id set.
 
-        // Backend selection: a rule that retained a native-supported Expr evaluates on the native
-        // backend when the flag is on; else the legacy engine. There is NO runtime fallback (P7,
-        // decision 2) — a native error propagates and surfaces as the rule's ERROR result.
+        // The row path: the rule's retained native Expr evaluates over the run's row range. The
+        // native evaluator is the ONLY backend — the legacy CheckEvaluator is retired — and there
+        // is NO runtime fallback (P7, decision 2): a native error propagates and surfaces as the
+        // rule's ERROR result.
         BitSet violationBits = evaluateRowLevel(rule, ctx);
 
         // EC-40: resolved once for the dataset, reused for every violating row (D8). Only the
@@ -1930,6 +1948,113 @@ public final class RuleRunner
 
 
     /**
+     * The stage-B bind gate (phase 4 of {@code PLAN-typed-expression-engine.md}): runs the
+     * {@link net.cumba.corej.core.expr.typed.StageBChecker} on the specialised (rule × dataset) and
+     * maps its outcome — a declared skip (D89a) to {@code SKIPPED} with the reason, an armed
+     * finding to a bind {@code ERROR} per (rule, dataset) with the per-binding messages naming each
+     * variable (D41), on the same {@code "__error__"} sentinel channel the column-type gate uses.
+     * Returns {@code null} when execution should proceed. Every armed kind is measured at zero over
+     * the shipped corpus runs and the rules-repo build (D102c's two populations), so in production
+     * this gate is live machinery with an empty population; the armed column-type check
+     * deliberately stays the {@code ColumnTypeGate} exception path (D15 — absorbed, not
+     * duplicated).
+     */
+    static @Nullable RuleExecutionResult stageBGate(Rule rule, IDataTable table,
+            boolean concreteContract, @Nullable String ruleId, @Nullable String message)
+    {
+        return stageBGate(rule, table, concreteContract, ruleId, message, null, Set.of());
+    }
+
+
+    /**
+     * The widened seam of phase 5b-J (D104d): the same gate, additionally carrying the run's
+     * foreign-dataset inventory (answered through the very {@link SplitDomainResolution} the join
+     * build uses, so stage B and the join hold one idea of "resolvable") and the datasets
+     * {@code AbsentDatasetSkip} already suppressed for this execution — the inputs the
+     * {@code Filter} (D89) and {@code _matched_} rows of spec §9 need.
+     */
+    static @Nullable RuleExecutionResult stageBGate(Rule rule, IDataTable table,
+            boolean concreteContract, @Nullable String ruleId, @Nullable String message,
+            net.cumba.corej.core.expr.typed.@Nullable ForeignDatasetInventory foreignInventory,
+            Set<String> suppressedDatasets)
+    {
+        return mapStageBReport(
+                net.cumba.corej.core.expr.typed.StageBChecker.runAndApply(rule, table,
+                        concreteContract, foreignInventory, suppressedDatasets),
+                table, ruleId, message);
+    }
+
+
+    /**
+     * The production {@link net.cumba.corej.core.expr.typed.ForeignDatasetInventory}: a foreign
+     * dataset's column names via {@link SplitDomainResolution#resolveTableOrThrow} — exact name
+     * first, else the split-domain union — with an un-unionable split reported as unresolvable (the
+     * join build would throw on it later anyway; stage B naming it earlier only moves the same
+     * error forward).
+     */
+    private static net.cumba.corej.core.expr.typed.ForeignDatasetInventory foreignInventory(
+            DatasetResolver resolver, @Nullable String ruleId)
+    {
+        return datasetName ->
+        {
+            IDataTable foreign;
+            try
+            {
+                foreign = SplitDomainResolution.resolveTableOrThrow(resolver, datasetName, ruleId);
+            }
+            catch (RuntimeException ex)
+            {
+                return null;
+            }
+            if (foreign == null)
+            {
+                return null;
+            }
+            DataTableMeta meta = foreign.getMetaData();
+            Set<String> columns = new LinkedHashSet<>();
+            for (int i = 0; i < meta.getColumnCount(); i++)
+            {
+                columns.add(meta.getColumn(i).getName());
+            }
+            return columns;
+        };
+    }
+
+
+    /**
+     * The outcome mapping of {@link #stageBGate}, separated so the {@code SKIPPED} branch —
+     * production-unreachable until 5b-J lands the {@code Filter} field — stays provably correct
+     * rather than dead.
+     */
+    static @Nullable RuleExecutionResult mapStageBReport(
+            net.cumba.corej.core.expr.typed.StageBReport stageB, IDataTable table,
+            @Nullable String ruleId, @Nullable String message)
+    {
+        if (!stageB.skips().isEmpty())
+        {
+            String reason = String.join("; ", stageB.skips());
+            LOGGER.log(System.Logger.Level.DEBUG, "[{0}] {1}", ruleId != null ? ruleId : "?",
+                    reason);
+            return RuleExecutionResult.builder().ruleId(ruleId).message(message)
+                    .violations(List.of()).totalRows(table.getRowCount())
+                    .status(RuleExecutionStatus.SKIPPED).statusMessage(reason).build();
+        }
+        if (!stageB.armedFindings().isEmpty())
+        {
+            String errorMsg = "stage B: " + String.join("; ",
+                    stageB.armedFindings().stream().map(Object::toString).toList());
+            LOGGER.log(System.Logger.Level.WARNING, "[{0}] {1}", ruleId != null ? ruleId : "?",
+                    errorMsg);
+            Violation sentinel = new Violation(0, Map.of("__error__", errorMsg));
+            return RuleExecutionResult.builder().ruleId(ruleId).message(message)
+                    .violations(List.of(sentinel)).totalRows(table.getRowCount())
+                    .status(RuleExecutionStatus.ERROR).statusMessage(errorMsg).build();
+        }
+        return null;
+    }
+
+
+    /**
      * EC-43 visibility: emit <b>exactly one</b> aggregated INFO line naming the rule, the dataset
      * and every column this execution folded to all-missing because the dataset does not carry it.
      * Absence is legitimate — the operator computes its own polarity over the folded column, which
@@ -1961,9 +2086,26 @@ public final class RuleRunner
         List<String> columns = new ArrayList<>(folded);
         Collections.sort(columns);
         LOGGER.log(System.Logger.Level.INFO,
-                "[{0}] column(s) {1} absent from dataset {2} — evaluated as all-missing (EC-43);"
+                "[{0}] column(s) {1} absent from dataset {2} — evaluated as the type-derived"
+                        + " default (EC-43/D76: all-\"\", or all-missing where numeric-expected);"
                         + " a leaf that must not fire there needs a guard",
                 ruleId != null ? ruleId : "?", columns, evalTable.getMetaData().getName());
+    }
+
+
+    /**
+     * D76 — the columns whose absent-column default is <b>numeric</b> under this rule's own
+     * expectations, computed over the same specialised expression roots stage B walks
+     * ({@code StageBChecker.expressionRoots}), so the checker's report of the default and the
+     * engine's application of it cannot disagree. A rule with no native form yields the empty set,
+     * which is the "no expectation ⇒ char" disposition (D76a).
+     */
+    private static Set<String> numericExpectedColumns(Rule rule)
+    {
+        var roots = net.cumba.corej.core.expr.typed.StageBChecker.expressionRoots(rule);
+        return roots.isEmpty() ? Set.of()
+                : net.cumba.corej.core.expr.typed.TypeExpectations.of(roots)
+                        .numericDefaultColumns();
     }
 
 
@@ -2054,26 +2196,68 @@ public final class RuleRunner
         case CheckConditionAny any -> any.getConditions().stream()
                 .anyMatch(c -> referencesOperandPrefix(c, prefix));
         case CheckConditionNot not -> referencesOperandPrefix(not.getCondition(), prefix);
-        case CheckConditionLeaf leaf -> leafReferencesPrefix(leaf, prefix);
-        default -> false;
+        // ⭐ Phase 7d (D121): with the operator-leaf model retired, the whole corpus reaches this
+        // walker as CheckConditionExpression — and until this arm existed the walker answered
+        // FALSE for every expression Check, which silently disarmed the operand gate above for
+        // every shipped rule (vacuous since phase 7a took the lowering off the load path; masked
+        // at study level by StudyValidationService's SkipForecast, which derives the same fact
+        // from ProviderRequirements). ⚠ Deliberately BARE REFERENCES ONLY, exactly the retired
+        // leaf gate's surface: an accessor CALL (var_role("LIBRARY") …) is the metadata-broadcast
+        // path's own gate ({@code evaluateMetadataNative} via MetadataExprScan), and widening
+        // this arm to calls swaps which gate — and which skip message — a pure-accessor rule
+        // reports through.
+        case net.cumba.corej.core.model.CheckConditionExpression expression -> exprReferencesPrefix(
+                expression.expr(), prefix);
+        // ⭐ NO `default` ARM (terminal review L5, 2026-09-17). CheckCondition is sealed and
+        // CheckConditionConstant is gone, so the four arms above ARE the type: a FIFTH
+        // implementor now fails to compile here instead of silently answering false — which is
+        // exactly how this walker's expression gap went unnoticed until phase 7d (D122b #5).
+        // (Round 3: this sentence said "the four arms above ARE the type: a sixth ...", which
+        // contradicts itself inside one sentence, and the wording was copied to three other
+        // walkers before anyone read it twice.)
         };
     }
 
 
-    private static boolean leafReferencesPrefix(CheckConditionLeaf leaf, String prefix)
+    /** The expression twin of the retired leaf scan: a bare {@code Expr.Ref} with the prefix. */
+    private static boolean exprReferencesPrefix(net.cumba.corej.core.expr.ast.Expr expr,
+            String prefix)
     {
-        String name = leaf.getName();
-        if (name != null && name.startsWith(prefix))
+        return switch (expr)
         {
-            return true;
+        case net.cumba.corej.core.expr.ast.Expr.Ref ref -> ref.name().startsWith(prefix);
+        case net.cumba.corej.core.expr.ast.Expr.And and -> and.parts().stream()
+                .anyMatch(part -> exprReferencesPrefix(part, prefix));
+        case net.cumba.corej.core.expr.ast.Expr.Or or -> or.parts().stream()
+                .anyMatch(part -> exprReferencesPrefix(part, prefix));
+        case net.cumba.corej.core.expr.ast.Expr.Not not -> exprReferencesPrefix(not.inner(),
+                prefix);
+        case net.cumba.corej.core.expr.ast.Expr.Binary binary -> exprReferencesPrefix(binary.left(),
+                prefix) || exprReferencesPrefix(binary.right(), prefix);
+        case net.cumba.corej.core.expr.ast.Expr.Call call -> call.args().stream()
+                .anyMatch(arg -> exprReferencesPrefix(arg, prefix))
+                || call.kwargs().values().stream()
+                        .anyMatch(value -> exprReferencesPrefix(value, prefix));
+        case net.cumba.corej.core.expr.ast.Expr.Lit lit -> lit
+                .kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST
+                && listElements(lit).stream()
+                        .anyMatch(element -> exprReferencesPrefix(element, prefix));
+        };
+    }
+
+
+    private static List<net.cumba.corej.core.expr.ast.Expr> listElements(
+            net.cumba.corej.core.expr.ast.Expr.Lit lit)
+    {
+        List<net.cumba.corej.core.expr.ast.Expr> out = new ArrayList<>();
+        for (Object element : (List<?>) lit.value())
+        {
+            if (element instanceof net.cumba.corej.core.expr.ast.Expr child)
+            {
+                out.add(child);
+            }
         }
-        // The value side can carry a builtin operand (e.g. value: "library_variable_role"), but
-        // only when it is NOT a string literal — a genuine literal that happens to start with the
-        // prefix must not trip the gate (mirrors the operand-vs-literal guard in
-        // CheckConditionOptimizer.evaluateLeafAgainstMetadata).
-        var value = leaf.getValue();
-        return value != null && value.isTextual() && !Boolean.TRUE.equals(leaf.getValueIsLiteral())
-                && value.asText().startsWith(prefix);
+        return out;
     }
 
 
@@ -2117,6 +2301,11 @@ public final class RuleRunner
         }
 
         List<Violation> violations = new ArrayList<>();
+        // Phase 6 (D8/D41/D41b): the per-binding ledger of the variable-cursor loop — one visited
+        // tick per iterated variable, one outcome per firing one. Attached only on the
+        // per-variable branch; the broadcast branch's single dataset binding is carried by the
+        // result itself.
+        BindingLedger.Builder bindings = new BindingLedger.Builder();
         if (perVariable)
         {
             // §3.3: finding enrichment with the library / define variable metadata is keyed on
@@ -2162,12 +2351,14 @@ public final class RuleRunner
                         defineIndex++;
                         continue;
                     }
+                    bindings.visited();
                     Map<String, Object> perColVars = projectVariablesForColumn(ctx.getVariables(),
                             varName);
                     EvaluationContext colCtx = ctx.toBuilder().variables(perColVars).build();
                     if (net.cumba.corej.core.expr.eval.NativeExprEvaluator
                             .evaluateBroadcast(checkExpr, colCtx))
                     {
+                        bindings.note(BindingOutcome.fired(varName, 1));
                         violations.add(buildDefineVariableViolation(defineIndex, varName,
                                 outputVars, libProvider, defProvider, domainName,
                                 ctx.getVariables(), datasetSensitivity, ctx, derivedOutputVars,
@@ -2192,6 +2383,7 @@ public final class RuleRunner
                 for (int c = 0; c < colCount; c++)
                 {
                     DataTableColumnMeta colMeta = meta.getColumn(c);
+                    bindings.visited();
                     Map<String, Object> perColVars = projectVariablesForColumn(ctx.getVariables(),
                             colMeta.getName());
                     if (carryOver && libProvider != null && domainName != null)
@@ -2203,6 +2395,7 @@ public final class RuleRunner
                     if (net.cumba.corej.core.expr.eval.NativeExprEvaluator
                             .evaluateBroadcast(checkExpr, colCtx))
                     {
+                        bindings.note(BindingOutcome.fired(colMeta.getName(), 1));
                         Map<String, Object> varMeta = buildVariableMetadata(colMeta,
                                 isMetadataCheck, libProvider, defProvider, domainName,
                                 ctx.getTable());
@@ -2226,7 +2419,8 @@ public final class RuleRunner
                     stamp(ctx, () -> Violation.Unit.DATASET)));
         }
         return RuleExecutionResult.builder().ruleId(ruleId).message(message).violations(violations)
-                .totalRows(ctx.getTable().getRowCount()).build();
+                .totalRows(ctx.getTable().getRowCount())
+                .bindings(perVariable ? bindings.build() : null).build();
     }
 
 
@@ -2244,7 +2438,6 @@ public final class RuleRunner
             @Nullable String message, List<String> outputVars, EvaluationContext ctx,
             boolean verdict)
     {
-        NativeExecutionRecorder.record(ruleId, NativeExecutionRecorder.Backend.NATIVE);
         List<Violation> violations = new ArrayList<>();
         if (verdict)
         {
@@ -2287,6 +2480,39 @@ public final class RuleRunner
         }
         perColVars.put(VARIABLE_NAME, colName);
         return perColVars;
+    }
+
+
+    /**
+     * Phase 6 hoisting ({@code PLAN-typed-expression-engine.md}, D8/D92e): arms the binding-hoist
+     * memo on the context a variable-cursor binding loop will iterate with, so the maximal
+     * <b>pure</b> subtrees of the Check ({@code DatasetExpressionCache.isPure} — table-column reads
+     * only, no cursor by construction) evaluate once for the loop instead of once per binding.
+     * Soundness rests on the loop's per-binding contexts differing ONLY in the variable-cursor
+     * entries, which a pure subtree cannot read — with two cheap guards for the pathological
+     * shadowing cases, declining the memo (never wrongly keeping it):
+     * <ol>
+     * <li>a dataset column literally named {@code variable_name} would be shadowed by the injected
+     * cursor key and read differently per binding;</li>
+     * <li>a context-variable key without the {@code $} prefix could collide with a column name —
+     * the shipped corpus has none (1 013 of 1 013 operation ids carry {@code $}), so the guard is a
+     * belt, not a path.</li>
+     * </ol>
+     */
+    static EvaluationContext armBindingHoist(EvaluationContext ctx)
+    {
+        if (ctx.getTable().getMetaData().getColumnIndex(VARIABLE_NAME) >= 0)
+        {
+            return ctx;
+        }
+        for (String key : ctx.getVariables().keySet())
+        {
+            if (key == null || !key.startsWith("$"))
+            {
+                return ctx;
+            }
+        }
+        return ctx.toBuilder().bindingHoist(new ExpressionResultCache()).build();
     }
 
 
@@ -2972,9 +3198,18 @@ public final class RuleRunner
         Set<String> excludedOutputVars = rule.excludedOutputVariablesOrAuthored();
         boolean datasetSensitivity = rule.getSensitivity() == Sensitivity.DATASET;
         int colCount = meta.getColumnCount();
+        // Phase 6 (D8/D41/D41b): the per-binding ledger — a binding is a variable here too; its
+        // per-row verdicts are the violations it contributes.
+        BindingLedger.Builder bindings = new BindingLedger.Builder();
+        // Phase 6 hoisting (D92e): arm the binding-hoist memo for the loop, so a pure
+        // (cursor-free) subtree — `TRTEMFL != "Y"` beside a `value()` read, the AD0647 family —
+        // evaluates over the rows ONCE instead of once per column. The per-binding contexts below
+        // inherit the armed memo through toBuilder.
+        EvaluationContext loopCtx = armBindingHoist(ctx);
         for (int c = 0; c < colCount; c++)
         {
             DataTableColumnMeta colMeta = meta.getColumn(c);
+            bindings.visited();
             Map<String, Object> perColVars;
             if (projectVmr)
             {
@@ -2985,7 +3220,7 @@ public final class RuleRunner
                 perColVars = new LinkedHashMap<>(ctx.getVariables());
                 perColVars.put(VARIABLE_NAME, colMeta.getName());
             }
-            EvaluationContext colCtx = ctx.toBuilder().variables(perColVars).build();
+            EvaluationContext colCtx = loopCtx.toBuilder().variables(perColVars).build();
             BitSet rowBits = net.cumba.corej.core.expr.eval.NativeExprEvaluator.evaluate(checkExpr,
                     colCtx);
             if (rowBits.isEmpty())
@@ -3004,6 +3239,7 @@ public final class RuleRunner
             Map<String, Object> varMeta = buildVariableMetadata(colMeta, isMetadataCheck,
                     libProvider, defProvider, domainName, ctx.getTable());
             int colIdx = meta.getColumnIndex(colMeta.getName());
+            bindings.note(BindingOutcome.fired(colMeta.getName(), rowBits.cardinality()));
             addVariableRowViolations(violations, rowBits, colMeta, colIdx, varMeta, outputVars, ctx,
                     derivedOutputVars, excludedOutputVars);
             if (datasetSensitivity)
@@ -3013,7 +3249,7 @@ public final class RuleRunner
         }
         return RuleExecutionResult.builder().ruleId(ruleId).message(message)
                 .violations(violations.stored()).totalViolationCount(violations.total())
-                .totalRows(ctx.getTable().getRowCount()).build();
+                .totalRows(ctx.getTable().getRowCount()).bindings(bindings.build()).build();
     }
 
 
@@ -3079,6 +3315,13 @@ public final class RuleRunner
         RecordKeyResolver.RowKeySpec keySpec = result.isEmpty() ? RecordKeyResolver.RowKeySpec.NONE
                 : keySpecFor(ctx);
 
+        // D94c (Review 2): a group finding's plain-column output values are computed OVER THE
+        // BLOCK's flagged rows, degenerating to the single value when constant — never by reading
+        // the anchor row as such. Rendered output is identical while the value is constant (the
+        // 20 NO-CHANGE rules); a non-constant set renders as the distinct set (phase 5b's report
+        // shape, D58) and is recorded here as the GROUP-VALUE population.
+        Set<String> nonConstantOutputs = new LinkedHashSet<>();
+
         if (presentGroupVars.isEmpty())
         {
             // No grouping column present: the entire dataset is a single group. A group must
@@ -3090,7 +3333,12 @@ public final class RuleRunner
             if (rowCount > 0 && flagged >= 0)
             {
                 storeGroupedViolation(table, ctx, outputVars, flagged, violations, keySpec,
-                        groupUnitOf(ctx, table, null, flagged));
+                        groupUnitOf(ctx, table, null, flagged), Map.of(),
+                        () -> result.stream().asLongStream().iterator(), nonConstantOutputs);
+            }
+            if (!nonConstantOutputs.isEmpty())
+            {
+                LevelInstrument.onGroupOutputs(ctx, nonConstantOutputs);
             }
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
                     .violations(violations.stored()).totalViolationCount(violations.total())
@@ -3133,13 +3381,21 @@ public final class RuleRunner
                 long row = block.getRealRow(table, i);
                 if (result.get((int) row))
                 {
+                    net.cumba.datatable.view.IDataTableView flaggedBlock = block;
                     storeGroupedViolation(table, ctx, outputVars, row, violations, keySpec,
-                            groupUnitOf(ctx, table, keyColIndices, row));
+                            groupUnitOf(ctx, table, keyColIndices, row),
+                            groupKeyOf(table, presentGroupVars, keyColIndices, row),
+                            () -> blockFlaggedIterator(table, flaggedBlock, blockRows, result),
+                            nonConstantOutputs);
                     break;
                 }
             }
         }
 
+        if (!nonConstantOutputs.isEmpty())
+        {
+            LevelInstrument.onGroupOutputs(ctx, nonConstantOutputs);
+        }
         return RuleExecutionResult.builder().ruleId(ruleId).message(message)
                 .violations(violations.stored()).totalViolationCount(violations.total())
                 .totalRows(rowCount).keySource(keySpec.source()).build();
@@ -3157,22 +3413,175 @@ public final class RuleRunner
      * the anchor is the running level's first flagged row, so two levels flagging different rows of
      * one group would key the same group twice.
      * </p>
+     *
+     * <p>
+     * D94c: the output values are {@linkplain #extractGroupOutputValues computed over the block's
+     * flagged rows}, not read off the anchor row — {@code flagged} supplies those rows (the anchor
+     * among them), {@code nonConstant} collects the variables whose value-set did not degenerate.
+     * </p>
      */
     private static void storeGroupedViolation(IDataTable table, EvaluationContext ctx,
             List<String> outputVars, long row, ViolationSink violations,
-            RecordKeyResolver.RowKeySpec keySpec, Violation.@Nullable Unit unit)
+            RecordKeyResolver.RowKeySpec keySpec, Violation.@Nullable Unit unit,
+            Map<String, String> groupKey, FlaggedRows flagged, Set<String> nonConstant)
     {
         if (violations.wantsMore())
         {
-            Map<String, String> values = extractOutputValues(table, ctx, outputVars, row);
+            Map<String, String> values = extractGroupOutputValues(table, ctx, outputVars, row,
+                    flagged, nonConstant);
             RowIdentity ri = readRowIdentity(table, ctx.getDomainName(), row);
             violations.store(new Violation(table.getRealRowIndex(row), values, ri.usubjid(),
-                    ri.seq(), RecordKeyResolver.readRowKeys(table, keySpec, row), null, unit));
+                    ri.seq(), RecordKeyResolver.readRowKeys(table, keySpec, row), null, unit,
+                    groupKey));
         }
         else
         {
             violations.recordSkipped(1);
         }
+    }
+
+
+    /**
+     * D29 — the grouping key of the block containing {@code row}, as an ordered
+     * {@code grouping variable -> block value} map ({@code null} values for missing key cells; the
+     * key columns are constant across a block, so any row of the block yields the block's key).
+     * Empty when no grouping column is present and the whole dataset is one group. Stamped on every
+     * grouped violation — unlike {@link #groupUnitOf}, which stamps only on the per-level path —
+     * because the report keys a group finding by its group variables on the shipped single-level
+     * path too (D66a).
+     */
+    private static Map<String, String> groupKeyOf(IDataTable table, List<String> groupVars,
+            int @Nullable [] keyColIndices, long row)
+    {
+        if (keyColIndices == null || keyColIndices.length == 0)
+        {
+            return Map.of();
+        }
+        Map<String, String> key = LinkedHashMap.newLinkedHashMap(keyColIndices.length);
+        for (int i = 0; i < keyColIndices.length; i++)
+        {
+            IDataValue dv = table.getColumn(keyColIndices[i]).getDataValue(row);
+            key.put(groupVars.get(i), dv.isMissingOrInvalid() ? null : dv.getValueAsString());
+        }
+        return key;
+    }
+
+    /** The flagged rows of one grouping block, iterable more than once (one pass per column). */
+    @FunctionalInterface
+    private interface FlaggedRows
+    {
+
+        java.util.PrimitiveIterator.OfLong iterator();
+
+    }
+
+    /** The flagged rows of {@code block}, in block order, as real row indices. */
+    private static java.util.PrimitiveIterator.OfLong blockFlaggedIterator(IDataTable table,
+            net.cumba.datatable.view.IDataTableView block, long blockRows, BitSet result)
+    {
+        return new java.util.PrimitiveIterator.OfLong()
+        {
+
+            private long i;
+
+            private long next = -1;
+
+            @Override
+            public boolean hasNext()
+            {
+                while (next < 0 && i < blockRows)
+                {
+                    long row = block.getRealRow(table, i++);
+                    if (result.get((int) row))
+                    {
+                        next = row;
+                    }
+                }
+                return next >= 0;
+            }
+
+
+            @Override
+            public long nextLong()
+            {
+                if (!hasNext())
+                {
+                    throw new java.util.NoSuchElementException();
+                }
+                long row = next;
+                next = -1;
+                return row;
+            }
+        };
+    }
+
+
+    /**
+     * D94c (Review 2) — the group-finding output projection, computed <b>over the block</b>: for
+     * every projected {@code Output_Variables} entry that is a plain primary-table column, the
+     * value is the block's flagged rows' <b>distinct set</b>, which <i>"degenerates to the single
+     * value when the variable is in fact constant"</i> (D94b) — never a plain read of the anchor
+     * row. The rendered output is identical to the anchor read while the value is constant across
+     * the violating rows, which D94a measures true of the 20 NO-CHANGE rules; a NON-constant set
+     * renders as the distinct set itself (<b>phase 5b's report shape</b>, D58 — {@code "[a, b]"},
+     * the same {@code scalarToString} form a $-operation's collection result uses) and the variable
+     * is recorded in {@code nonConstant} — the GROUP-VALUE population, observed by
+     * {@link LevelInstrument#onGroupOutputs}.
+     *
+     * <p>
+     * Deliberately untouched, with their anchor-row semantics: {@code $}-operation references
+     * (group-constant or wider for every corpus output — D94 (iii)), dotted joined references and
+     * unqualified joined fallbacks (per-row join reads), and the dataset-scope virtuals
+     * ({@code record_count}, {@code ds_*} facts), which are row-independent anyway.
+     * </p>
+     */
+    private static Map<String, String> extractGroupOutputValues(IDataTable table,
+            EvaluationContext ctx, List<String> outputVars, long anchorRow, FlaggedRows flagged,
+            Set<String> nonConstant)
+    {
+        Map<String, String> values = extractOutputValues(table, ctx, outputVars, anchorRow);
+        DataTableMeta meta = table.getMetaData();
+        for (Map.Entry<String, String> entry : values.entrySet())
+        {
+            String name = entry.getKey();
+            // Mirror extractOutputValues' resolution order: names it resolved as $-refs,
+            // dataset-scope virtuals, or dotted joins never read the primary column here either.
+            if (name.startsWith("$") || name.indexOf('.') >= 0 || "record_count".equals(name)
+                    || ExprCompiler.datasetScopeOperandValue(ctx, name) != null)
+            {
+                continue;
+            }
+            int col = meta.getColumnIndex(name);
+            if (col < 0)
+            {
+                continue;
+            }
+            // First-seen (block) order — stable and matching the data. A LinkedHashSet is the
+            // distinct set D94b's Shape A describes.
+            Set<String> distinct = new LinkedHashSet<>();
+            for (java.util.PrimitiveIterator.OfLong it = flagged.iterator(); it.hasNext();)
+            {
+                long row = it.nextLong();
+                IDataValue dv = table.getColumn(col).getDataValue(row);
+                distinct.add(dv.isMissingOrInvalid() ? "" : dv.getValueAsString());
+            }
+            if (distinct.size() > 1)
+            {
+                // D58 / phase 5b: the distinct-set report shape. A group finding carries only
+                // group-constant values, and for a genuinely varying variable the group-constant
+                // value IS the distinct set over the violating rows — rendered exactly like a
+                // $-operation's collection result ("[a, b]", scalarToString), so one finding
+                // renders multi-valued facts one way. Strictly more informative than the anchor
+                // value it replaces, which was an arbitrary representative (D94b, D106f(ii)).
+                nonConstant.add(name);
+                entry.setValue(scalarToString(distinct));
+            }
+            else if (!distinct.isEmpty())
+            {
+                entry.setValue(distinct.iterator().next());
+            }
+        }
+        return values;
     }
 
 
@@ -3240,36 +3649,6 @@ public final class RuleRunner
 
 
     /**
-     * Resolves {@code --} prefix wildcards in an {@link net.cumba.corej.core.model.Operation}'s
-     * {@code name}, {@code domain}, and {@code group} fields. For example, if the domain prefix is
-     * {@code "AE"}, {@code "--DTC"} becomes {@code "AEDTC"}.
-     * <p>
-     * Only the {@code --} SDTM prefix is resolved here — any {@code **} wildcard (used for per-row
-     * cross-dataset column references in Match_Datasets contexts, see Fix #5) is deliberately
-     * preserved so that downstream per-row resolvers can finish the substitution against the paired
-     * dataset at evaluation time.
-     * </p>
-     * <p>
-     * When rewriting occurs, the pre-resolution {@code name} is stashed on the returned operation's
-     * {@link net.cumba.corej.core.model.Operation#getOriginalName() originalName} field so
-     * study-wide operations (e.g. {@code variable_count}, {@code variable_value_count}) can
-     * re-resolve the template per iterated dataset.
-     * </p>
-     * <p>
-     * Returns the same operation if no {@code --} wildcards are present.
-     * </p>
-     */
-    private static net.cumba.corej.core.model.Operation resolveOperationPrefix(
-            net.cumba.corej.core.model.Operation op, String prefix, @Nullable String variablePrefix)
-    {
-        // Delegates to the shared resolver so the legacy operation path and the native
-        // inline-operation path (ExprCompiler.inlineOperationResult) apply identical
-        // `--`-resolution semantics (including the SUPP/SQAP parent-prefix nuance).
-        return OperationExecutor.resolvePrefixes(op, prefix, variablePrefix);
-    }
-
-
-    /**
      * Backwards-compatible overload — see
      * {@link #buildJoinedDatasets(List, IDataTable, DatasetResolver, JoinCache, String)}.
      * {@code ruleId} defaults to {@code null}; per-Match_Dataset DEBUG logs render with {@code [?]}
@@ -3323,6 +3702,33 @@ public final class RuleRunner
                 LOGGER.log(System.Logger.Level.DEBUG,
                         "[{0}] Match_Dataset {1} has no join keys, skipping",
                         ruleId != null ? ruleId : "?", dsName);
+                continue;
+            }
+
+            // 5b-J: an entry carrying a pre-merge Filter (spec §3.3) resolves, FILTERS, then
+            // builds a fresh lookup — before the key index, so a dropped row can never become a
+            // partner, and BYPASSING the JoinCache on purpose: a filtered index is per-rule
+            // state, and sharing it with an unfiltered join of the same dataset (or a join with
+            // a different filter) would silently cross-contaminate their partner sets.
+            if (md.getFilter() != null && !md.getFilter().isBlank())
+            {
+                IDataTable joined = MatchFilter.apply(md,
+                        SplitDomainResolution.resolveTableOrThrow(resolver, dsName, ruleId),
+                        ruleId);
+                if (joined == null)
+                {
+                    LOGGER.log(System.Logger.Level.DEBUG,
+                            "[{0}] Match_Dataset {1} not available (filtered join)",
+                            ruleId != null ? ruleId : "?", dsName);
+                    continue;
+                }
+                List<String> rightKeys = md.hasSidedKeys() ? md.getRightKeys() : md.getKeys();
+                DatasetLookup lookup = rightKeys == null ? null
+                        : DatasetLookup.build(dsName, joined, md.getKeys(), rightKeys);
+                if (lookup != null)
+                {
+                    result.put(resultKey, lookup);
+                }
                 continue;
             }
 
@@ -3472,30 +3878,124 @@ public final class RuleRunner
         }
         case CheckConditionNot not -> collectCheckLeafColumnsRecursive(not.getCondition(), meta,
                 out);
-        case CheckConditionLeaf leaf -> collectLeafTarget(leaf, meta, out);
+        case net.cumba.corej.core.model.CheckConditionExpression expression -> collectExprLeafTargets(
+                expression.expr(), meta, out);
+        // No `default`: CheckCondition is sealed and these four arms are the whole type (L5).
+        }
+    }
+
+
+    /**
+     * The Fix #15 per-leaf projection rule read off an {@link net.cumba.corej.core.expr.ast.Expr}
+     * instead of the retired {@code CheckConditionLeaf} — phase 7 of
+     * {@code PLAN-typed-expression-engine}.
+     *
+     * <p>
+     * ⚠⚠ <b>Why this exists at all.</b> Before phase 7 an expression Check was lowered to the v1
+     * leaf AST at load, so this Fix #15 fallback walked leaves for every rule. Taking the lowering
+     * off the load path left {@code CheckConditionExpression} in the {@code default} arm, where it
+     * contributes <b>nothing</b> — and the inference silently returns an empty list rather than
+     * failing. It was caught by the <em>vacuity control</em> inside
+     * {@code OutputVariableExclusionProjectionTest}, not by its assertion: the assertion (an
+     * excluded name must not be re-projected) keeps passing when there is nothing to project.
+     * </p>
+     *
+     * <p>
+     * ⚑ It was <b>already</b> true of the 68 corpus expressions that never lowered, so this repairs
+     * a latent gap rather than only one the phase opened. Measured zero movement on the shipped
+     * corpus either way — the load-time {@link OutputVariableDeriver} derivation has been
+     * {@code Expr}-based for every rule all along, and this fallback fires only where that
+     * derivation leaves the effective list empty.
+     * </p>
+     *
+     * <p>
+     * The selection rule is the leaf walker's, transcribed: the <b>left</b> operand of a comparison
+     * and a predicate call's <b>first</b> argument are the leaf's {@code name} slot; the existence
+     * predicates whose name is not a projectable column are skipped; and
+     * {@code additional_columns_*} keeps its numeric-suffix expansion against the table metadata,
+     * which is the whole reason EC-37 left this inference at runtime.
+     * </p>
+     */
+    private static void collectExprLeafTargets(net.cumba.corej.core.expr.ast.@Nullable Expr expr,
+            DataTableMeta meta, java.util.SequencedSet<String> out)
+    {
+        switch (expr)
+        {
+        case null ->
+        {
+            // no expression surface
+        }
+        case net.cumba.corej.core.expr.ast.Expr.And and ->
+        {
+            for (var part : and.parts())
+            {
+                collectExprLeafTargets(part, meta, out);
+            }
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Or or ->
+        {
+            for (var part : or.parts())
+            {
+                collectExprLeafTargets(part, meta, out);
+            }
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Not not -> collectExprLeafTargets(not.inner(), meta,
+                out);
+        case net.cumba.corej.core.expr.ast.Expr.Binary binary -> addExprTarget(binary.left(), meta,
+                null, out);
+        case net.cumba.corej.core.expr.ast.Expr.Call call ->
+        {
+            if (!call.args().isEmpty())
+            {
+                addExprTarget(call.args().get(0), meta, call.name(), out);
+            }
+        }
         default ->
-        { // CheckConditionConstant — no column reference
+        { // Lit / bare Ref at the root — no leaf target to project
         }
         }
     }
 
 
-    /** Per-leaf inferred-output-variable contribution; see {@link #collectCheckLeafColumns}. */
-    private static void collectLeafTarget(CheckConditionLeaf leaf, DataTableMeta meta,
-            java.util.SequencedSet<String> out)
+    /**
+     * Contributes one operand's column name under {@link #collectExprLeafTargets}' rules.
+     *
+     * @param operand
+     *            the leaf's {@code name}-slot operand
+     * @param meta
+     *            the table metadata, for the {@code additional_columns_*} suffix expansion
+     * @param operator
+     *            the predicate call's name, or {@code null} for a comparison
+     * @param out
+     *            the accumulating projection
+     */
+    private static void addExprTarget(net.cumba.corej.core.expr.ast.Expr operand,
+            DataTableMeta meta, @Nullable String operator, java.util.SequencedSet<String> out)
     {
-        String name = leaf.getName();
+        if ("var_not_exists".equals(operator) || "ds_not_exists".equals(operator)
+                || "ds_exists".equals(operator))
+        {
+            return;
+        }
+        // The target may sit under a conversion or affix wrapper (date(X), num(X), len(X)); the
+        // leaf form carried the bare name, so unwrap to the same place.
+        net.cumba.corej.core.expr.ast.Expr inner = operand;
+        while (inner instanceof net.cumba.corej.core.expr.ast.Expr.Call wrapper
+                && wrapper.args().size() == 1 && wrapper.kwargs().isEmpty())
+        {
+            inner = wrapper.args().get(0);
+        }
+        if (!(inner instanceof net.cumba.corej.core.expr.ast.Expr.Ref ref))
+        {
+            return;
+        }
+        String name = ref.name();
         if (name == null || name.isEmpty())
         {
             return;
         }
-        String op = leaf.getOperator();
-        if ("var_not_exists".equals(op) || "ds_not_exists".equals(op) || "ds_exists".equals(op))
-        {
-            return;
-        }
-        if (("additional_columns_empty".equals(op) || "additional_columns_not_empty".equals(op))
-                && meta != null)
+        if (("additional_columns_empty".equals(operator)
+                || "additional_columns_not_empty".equals(operator)) && meta != null)
         {
             Pattern pat = Pattern.compile("^" + Pattern.quote(name) + "\\d+$");
             for (int i = 0; i < meta.getColumnCount(); i++)
@@ -3521,7 +4021,7 @@ public final class RuleRunner
      *
      * <p>
      * ⚠ This is the raw-entry shape {@code Fix #356} fixed at the three <em>generation</em> sites
-     * ({@code DatasetRuleResolver#expandSdtmPrefixRules}, {@code TokenExpander},
+     * ({@code DatasetRuleResolver#specialiseStaticRules}, {@code TokenExpander},
      * {@code WildcardExpander}) — and it is deliberately NOT routed through
      * {@link net.cumba.corej.core.model.OutputVariableToken#mapName}, because an
      * {@code OutputVariableToken} can never reach here. Every list that arrives is a

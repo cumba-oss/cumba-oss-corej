@@ -303,17 +303,29 @@ public final class WebApiStoreSeeder
      * repeats the group and the pickle keys strip it). {@code null} when the href is not the
      * two-segment shape every foundational model uses.
      */
-    private static @Nullable String modelKeyFor(String aHref)
+    // Package-private for WebApiStoreSeederTest: the trailing-slash acceptance this method
+    // decides is the difference between seeding the foundational SDTM model and silently
+    // seeding IG-only, and it had no test in either direction (review N1, 2026-09-17).
+    static @Nullable String modelKeyFor(String aHref)
     {
         if (!aHref.startsWith(MDR_PREFIX))
         {
             return null;
         }
-        // ⚠ split(…, -1), not split(…): the one-argument form DROPS trailing empty fields, so
-        // "/mdr/sdtm/2-0/" split to exactly ["sdtm", "2-0"] and was accepted as the two-segment
-        // shape this method documents. The limit keeps the trailing empty, the length check then
-        // rejects it, and a genuine "/mdr/sdtm/2-0" is unaffected. (Error Prone [StringSplitter].)
-        String[] segments = aHref.substring(MDR_PREFIX.length()).split("/", -1);
+        // ⚠ split(…, -1), not split(…): the one-argument form DROPS trailing empty fields.
+        // (Error Prone [StringSplitter].)
+        //
+        // ⛔⛔ But the limit ALONE changes what this method accepts, and that is not hygiene.
+        // "/mdr/sdtm/2-0/" used to split to exactly ["sdtm", "2-0"] and resolve; with the limit it
+        // becomes ["sdtm", "2-0", ""], fails the length check, returns null — and projectProducts
+        // then warns and CONTINUES, so the store is seeded **without the foundational SDTM model**
+        // and every model-tier resolution in buildResolvedSdtm steps 3–5 runs IG-only. A trailing
+        // slash is an ordinary URL variation a proxy, mirror or endpoint revision can introduce.
+        // ⇒ strip trailing slashes FIRST, so the previously-accepted shape keeps working, and the
+        // limit then only does what [StringSplitter] wants. Both shapes are pinned by
+        // WebApiStoreSeederTest#modelKeyForAcceptsAHrefWithOrWithoutATrailingSlash.
+        String[] segments = aHref.substring(MDR_PREFIX.length()).replaceAll("/+$", "").split("/",
+                -1);
         if (segments.length != 2 || segments[0].isEmpty() || segments[1].isEmpty())
         {
             return null;

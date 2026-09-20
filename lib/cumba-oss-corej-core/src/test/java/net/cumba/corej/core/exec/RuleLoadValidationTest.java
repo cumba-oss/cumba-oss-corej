@@ -43,11 +43,7 @@ class RuleLoadValidationTest
         String ruleJson = """
                 {
                   "Core": {"Id": "TEST-001"},
-                  "Check": {
-                    "name": "PH${*}SDT",
-                    "operator": "equal_to",
-                    "value": "X"
-                  }
+                  "Check": {"expression": "PH${*}SDT == X"}
                 }
                 """;
         RulePackage pkg = RulePackageLoader.loadFromString(packageOf(ruleJson));
@@ -68,10 +64,7 @@ class RuleLoadValidationTest
         String ruleJson = """
                 {
                   "Core": {"Id": "TEST-002"},
-                  "Check": {
-                    "name": "${*}${*}SDT",
-                    "operator": "var_exists"
-                  }
+                  "Check": {"expression": "var_exists(${*}${*}SDT)"}
                 }
                 """;
         RulePackage pkg = RulePackageLoader.loadFromString(packageOf(ruleJson));
@@ -89,10 +82,7 @@ class RuleLoadValidationTest
         String ruleJson = """
                 {
                   "Core": {"Id": "TEST-003"},
-                  "Check": {
-                    "name": "AP${APERIOD:%02d}SDT",
-                    "operator": "var_exists"
-                  }
+                  "Check": {"expression": "var_exists(AP${APERIOD:%02d}SDT)"}
                 }
                 """;
         RulePackage pkg = RulePackageLoader.loadFromString(packageOf(ruleJson));
@@ -110,8 +100,8 @@ class RuleLoadValidationTest
                   "Core": {"Id": "TEST-004"},
                   "Check": {
                     "all": [
-                      {"name": "PH${*}SDT", "operator": "equal_to", "value": "X"},
-                      {"name": "${*}${*}SDT", "operator": "var_exists"}
+                      {"expression": "PH${*}SDT == X"},
+                      {"expression": "var_exists(${*}${*}SDT)"}
                     ]
                   }
                 }
@@ -134,10 +124,7 @@ class RuleLoadValidationTest
         String ruleJson = """
                 {
                   "Core": {"Id": "TEST-005"},
-                  "Check": {
-                    "name": "AESTDY",
-                    "operator": "non_empty"
-                  }
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """;
         RulePackage pkg = RulePackageLoader.loadFromString(packageOf(ruleJson));
@@ -151,11 +138,7 @@ class RuleLoadValidationTest
         String ruleJson = """
                 {
                   "Core": {"Id": "TEST-006"},
-                  "Check": {
-                    "name": "PHSDT",
-                    "operator": "equal_to",
-                    "value": "ADSL.PH${*}SDT"
-                  }
+                  "Check": {"expression": "PHSDT == ADSL.PH${*}SDT"}
                 }
                 """;
         RulePackage pkg = RulePackageLoader.loadFromString(packageOf(ruleJson));
@@ -175,7 +158,7 @@ class RuleLoadValidationTest
                 {
                   "Core": {"Id": "TEST-DS1"},
                   "Scope": {"Data_Structures": {"Include": ["BASIC DATA STRUCTUR"]}},
-                  "Check": {"name": "STUDYID", "operator": "empty"}
+                  "Check": {"expression": "empty(STUDYID)"}
                 }
                 """;
         Rule rule = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));
@@ -192,7 +175,7 @@ class RuleLoadValidationTest
                 {
                   "Core": {"Id": "TEST-SC1"},
                   "Scope": {"Subclasses": {"Exclude": ["TIME TO EVENTS"]}},
-                  "Check": {"name": "STUDYID", "operator": "empty"}
+                  "Check": {"expression": "empty(STUDYID)"}
                 }
                 """;
         Rule rule = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));
@@ -212,7 +195,7 @@ class RuleLoadValidationTest
                     "Data_Structures": {"Include": ["ALL"], "Exclude": ["ADAM OTHER"]},
                     "Subclasses": {"Include": ["TIME-TO-EVENT", "ADVERSE EVENT"]}
                   },
-                  "Check": {"name": "STUDYID", "operator": "empty"}
+                  "Check": {"expression": "empty(STUDYID)"}
                 }
                 """;
         Rule rule = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));
@@ -238,7 +221,7 @@ class RuleLoadValidationTest
                     {
                       "Core": {"Id": "TEST-DS3"},
                       "Scope": {"Data_Structures": {"Include": ["%s"]}},
-                      "Check": {"name": "STUDYID", "operator": "empty"}
+                      "Check": {"expression": "empty(STUDYID)"}
                     }
                     """.formatted(token);
             Rule rule = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));
@@ -250,7 +233,7 @@ class RuleLoadValidationTest
                 {
                   "Core": {"Id": "TEST-DS4"},
                   "Scope": {"Data_Structures": {"Include": ["Medical Device Basic Data Structure"]}},
-                  "Check": {"name": "STUDYID", "operator": "empty"}
+                  "Check": {"expression": "empty(STUDYID)"}
                 }
                 """;
         Rule bad = onlyRule(RulePackageLoader.loadFromString(packageOf(badJson)));

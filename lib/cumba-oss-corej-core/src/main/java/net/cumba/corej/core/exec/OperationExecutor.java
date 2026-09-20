@@ -258,13 +258,30 @@ public final class OperationExecutor
                 return OperationType.emptyValueOf(type);
             }
         }
+        // ⭐ Phase 6b (D3/D14 — R11): a COMPUTED target expression materialises into a synthetic
+        // column appended to the resolved target table, and the operation dispatches over that
+        // column — the domain logic below is untouched. An unresolvable column inside the
+        // expression answers the operation's own EmptyResult, exactly like an absent target
+        // column.
+        Operation effective = op;
+        if (op.getNameExpr() != null)
+        {
+            TargetExpressionMaterializer.Materialized m = TargetExpressionMaterializer
+                    .materialize(op, targetTable, priorResults);
+            if (m == null)
+            {
+                return OperationType.emptyValueOf(type);
+            }
+            targetTable = m.table();
+            effective = m.op();
+        }
         // Expand any {@code $-variable} references in the operation's group list using
         // results from prior operations. E.g. {@code group: [USUBJID, --TESTCD,
         // $TIMING_VARIABLES]} where {@code $TIMING_VARIABLES = [VSDTC]} becomes
         // {@code [USUBJID, VSTESTCD, VSDTC]}. Necessary for rules like CDISC-CG0562 that
         // feed a {@code get_dataset_filtered_variables} result into {@code record_count}'s
         // grouping.
-        Operation runOp = expandGroupRefs(op, priorResults);
+        Operation runOp = expandGroupRefs(effective, priorResults);
         return dispatch(type, runOp, targetTable, resolver, libraryProvider, ruleId,
                 dictionaryProvider, defineProvider);
     }
@@ -572,6 +589,7 @@ public final class OperationExecutor
         copy.setOperator(op.getOperator());
         copy.setExpression(op.getExpression());
         copy.setName(op.getName());
+        copy.setNameExpr(op.getNameExpr());
         copy.setNames(op.getNames());
         copy.setSubtract(op.getSubtract());
         copy.setValue(op.getValue());
@@ -644,11 +662,9 @@ public final class OperationExecutor
             // against the current table when that table is a split member of the named family. This
             // lets such a self-referential operation (the value_is_reference `distinct` over
             // IDVAR/RDOMAIN is the shape) read its own RDOMAIN column instead of being skipped to
-            // an empty membership set (which fired every row). ⚠ No rule of this corpus authors a
-            // `--` family wildcard as an operation domain — measured 2026-09-19, zero
-            // `domain="…--"` in rules-src/checks (the only wildcard spelling present is
-            // `domain="*"`, which is not a family collapse) — so this branch is currently
-            // unexercised by the corpus; keep it, the grammar still allows it.
+            // an empty membership set (which fired every row). No shipped rule authors a wildcard
+            // operation domain as of 2026-09-19 — the sole one went with the CORE family — so this
+            // branch is currently unexercised by the corpus; keep it, the grammar still allows it.
             // Restricted to SUPP/SQAP current tables so a literal cross-domain reference
             // whose
             // name merely prefixes a split member (e.g. domain "LB" while validating "LBCH") is NOT
@@ -803,11 +819,21 @@ public final class OperationExecutor
      * it was scoped to fix. An earlier revision re-derived the prefix from the table's row-0
      * {@code DOMAIN} cell instead; that silently changed the answer for <em>every</em> dataset
      * whose {@code DOMAIN} value disagrees with its identity — precisely the corruption
-     * {@code CDISC-CG0413} exists to detect ({@code prefix(dataset_name, 2) != DOMAIN}) — making
-     * rules resolve to columns that cannot exist and report "no finding". It failed <em>open</em>,
-     * and a corpus rule-test scenario caught it. ⚠ The scenario class this sentence used to name
-     * ({@code SdtmAllRuleTest}) does not exist in {@code cumba-oss-corej-rules}, so it is not cited
-     * here.
+     * {@code CDISC-CG0413} exists to detect — making rules resolve to columns that cannot exist and
+     * report "no finding". It failed <em>open</em>, and
+     * {@code SdtmAllRuleTest.CDISC_CG0028_invalid} caught it.
+     * </p>
+     *
+     * <p>
+     * ⚑ <b>The citation deliberately departs from the census.</b> This sentence used to name
+     * {@code CORE-000015}, and {@code plans/findings/CENSUS-core-rule-disposition.tsv} maps that id
+     * to {@code CDISC-CG0088} — so a census-driven rewrite would have written {@code CG0088} here.
+     * It would be wrong: {@code CORE-000015} was
+     * {@code not var_exists("--PRESP") and var_exists("--OCCUR")}, which has nothing to do with the
+     * DOMAIN-versus-dataset-name corruption this paragraph describes. The rule that does is
+     * {@code CORE-000598} ({@code prefix(dataset_name, 2) != DOMAIN}), whose census successor is
+     * {@code CDISC-CG0413}. The old id was a mis-citation; the census faithfully carries it
+     * forward, and the fix is to cite the right rule rather than the mapped one.
      * </p>
      *
      * <p>
@@ -1053,6 +1079,8 @@ public final class OperationExecutor
         resolved.setId(op.getId());
         resolved.setOperator(op.getOperator());
         resolved.setName(name != null ? name.replace("--", varPrefix) : null);
+        // a computed target carries no `--` (rejected at load, phase 6b); pass it through
+        resolved.setNameExpr(op.getNameExpr());
         resolved.setOriginalName(name);
         List<String> names = op.getNames();
         resolved.setNames(names != null ? names.stream()
@@ -1833,9 +1861,9 @@ public final class OperationExecutor
      * model. Mirrors Python {@code operations/parent_library_model_column_order.py}: for a SUPP
      * dataset the parent is the domain named in {@code RDOMAIN} (e.g. {@code SUPPAE → AE}). Returns
      * a {@link GroupedResult} keyed by {@code RDOMAIN} so a downstream containment operator (e.g.
-     * CDISC-CG0314's {@code QNAM in $model_variables}) checks each row against <em>its</em>
-     * parent's model variables. When no parent could be resolved with library data, yields
-     * {@link #LIBRARY_NOT_AVAILABLE} so the rule is SKIPPED (the pre-fix behaviour for an
+     * CDISC-CG0314's {@code QNAM is_contained_by $model_variables}) checks each row against
+     * <em>its</em> parent's model variables. When no parent could be resolved with library data,
+     * yields {@link #LIBRARY_NOT_AVAILABLE} so the rule is SKIPPED (the pre-fix behaviour for an
      * unconfigured library).
      */
     private static @Nullable Object evalParentModelColumnOrder(
@@ -3067,15 +3095,11 @@ public final class OperationExecutor
      * <p>
      * ⚠ <b>Known limit:</b> a genuine date column carrying a junk token ({@code UNK}) fails the
      * all-dates test and so keeps lexicographic treatment — Defect E is not caught on <i>this</i>
-     * path. That is acceptable because the generic operator has no date consumer left: <b>no</b>
-     * rule authors the generic {@code max()} over a date column. <b>The method, so the figure can
-     * be re-derived</b> — from {@code cumba-oss-corej-rules}, count occurrences of {@code max(} not
-     * preceded by an identifier character (which excludes {@code row_max} / {@code max_date}) under
-     * {@code rules-src/checks}: <b>22</b> occurrences in <b>22</b> files as of 2026-09-19, and
-     * every operand is {@code AVAL} / {@code ATOXGR} / {@code ANRIND} / {@code "AyIND"} (numeric or
-     * Char category) or {@code DSSTDY} (a numeric study day) — not one a date. Every date extreme
-     * authors {@code max_date} (EC-46 OQ4) and runs through {@link #evalDateExtreme}, where the
-     * rule applies in full. The routing here is forward-looking.
+     * path. That is acceptable because the generic operator has no date consumer left: measured
+     * over the shipped corpus, <b>no</b> rule authors the generic {@code max()} over a date column
+     * — every date extreme authors {@code max_date} (EC-46 OQ4) and runs through
+     * {@link #evalDateExtreme}, where the rule applies in full. The routing here is
+     * forward-looking.
      * </p>
      */
     private static @Nullable String genericStringExtreme(List<String> candidates, boolean findMax)

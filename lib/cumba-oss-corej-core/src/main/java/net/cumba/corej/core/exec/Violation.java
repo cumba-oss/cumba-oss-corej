@@ -101,6 +101,29 @@ public class Violation
     Unit unit;
 
     /**
+     * <b>D29 / D66a (phase 5b)</b> — the grouping key of the block this violation reports on:
+     * ordered {@code grouping variable -> block value} ({@code null} values for missing key cells),
+     * <b>empty</b> when the whole dataset is one group (no grouping column present), and
+     * {@code null} on every non-grouped path.
+     *
+     * <p>
+     * D29 rules that a Group-sensitivity finding is <em>located by its group variables</em>, not by
+     * the anchor row's record key — the anchor row is a per-level accident (see
+     * {@link Unit.Group}). {@code ValidationReportBuilder} prefers this over the EC-40 record key
+     * for the finding's key channel, with key source {@code GROUP}; the <b>v2</b> report then keys
+     * the group finding by its group variables while <b>v1</b> keeps anchoring at the first flagged
+     * row (D66/D66a — v1 is frozen and never reads the key channel).
+     * </p>
+     *
+     * <p>
+     * &#9888; Like {@link #keys}, {@link #level} and {@link #unit}, this rides as a sibling field
+     * and is <b>never merged into {@link #values}</b> — that map is the rulespec contract.
+     * </p>
+     */
+    @Nullable
+    Map<String, String> groupKey;
+
+    /**
      * The finding-unit discriminator (Plan C &#167;3.4 step 4). Each variant identifies one unit of
      * one (rule, dataset) execution; two violations report the same unit iff their stamps are
      * equal. The variants are disjoint types, so a dataset verdict can never collide with a row
@@ -197,7 +220,16 @@ public class Violation
     public Violation(long row, Map<String, String> values, @Nullable String usubjid,
             @Nullable String seq, Map<String, String> keys, @Nullable Severity level)
     {
-        this(row, values, usubjid, seq, keys, level, null);
+        this(row, values, usubjid, seq, keys, level, null, null);
+    }
+
+
+    /** Compatibility constructor for sites that stamp a unit but no group key (row paths). */
+    public Violation(long row, Map<String, String> values, @Nullable String usubjid,
+            @Nullable String seq, Map<String, String> keys, @Nullable Severity level,
+            @Nullable Unit unit)
+    {
+        this(row, values, usubjid, seq, keys, level, unit, null);
     }
 
 

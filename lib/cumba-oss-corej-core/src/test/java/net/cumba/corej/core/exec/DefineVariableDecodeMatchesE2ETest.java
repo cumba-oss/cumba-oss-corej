@@ -55,9 +55,8 @@ class DefineVariableDecodeMatchesE2ETest
 
     private static Rule draft900025() throws IOException
     {
-        String checkJson = "{\"all\":[{\"name\":\"variable_value\",\"operator\":\"non_empty\"},"
-                + "{\"name\":\"define_variable_decode_matches\",\"operator\":\"equal_to\","
-                + "\"value\":false,\"value_is_literal\":true}]}";
+        String checkJson = "{\"all\":[{\"expression\": \"not empty(value())\"},"
+                + "{\"expression\": \"define_variable_decode_matches(variable_name) == false\"}]}";
         String json = "{\"Core\":{\"Id\":\"DRAFT-900025\"}," + ""
                 + "\"Sensitivity\":\"Record\",\"Check\":" + checkJson + ","
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_name\",\"variable_value\"]}}";

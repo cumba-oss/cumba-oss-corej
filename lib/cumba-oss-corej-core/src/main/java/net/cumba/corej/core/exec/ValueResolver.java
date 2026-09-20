@@ -59,6 +59,12 @@ public final class ValueResolver
             JoinLookup lookup = ctx.getJoinedDatasets().get(foreign);
             if (lookup == null)
             {
+                // ⚠ This wording is matched from ANOTHER repository — the sibling rules
+                // repository's NativeCorpusFullCoverageTest allow-lists the three shipped
+                // CDISC-AD0720 rules by a String.contains on "requires a JoinLookup for foreign
+                // dataset" (KNOWN_UNDISPATCHABLE). Reword it and that gate reds over there, naming
+                // nothing here. EngineErrorMessageContractTest pins the fragment so you find out
+                // in this build instead; change all three in one wave.
                 throw new OperandSubstitutor.SubstitutionException(
                         "wildcard operand requires a JoinLookup for foreign dataset `" + foreign
                                 + "` but none was provided (Match_Datasets missing?)");
@@ -96,10 +102,13 @@ public final class ValueResolver
         List<String> result = new ArrayList<>(matchingColIdx.length);
         for (int c : matchingColIdx)
         {
-            // Blank resolves by the column's declared type — see ScalarSemantics.resolvedString.
-            // A blank character cell therefore still contributes "" (as it does today), whether
-            // the file wrote an empty string or an explicit null; a blank numeric cell still
-            // contributes nothing.
+            // A blank resolves per ScalarSemantics.resolvedString, which is type-INDEPENDENT.
+            // ⭐ CORRECTED (owner ruling, 2026-09-18): this comment used to say a blank character
+            // cell "still contributes '' … whether the file wrote an empty string or an explicit
+            // null". The explicit-null half is now false — a null char cell is MissingValue.MIS
+            // (the datatable repository's d4edd59) and contributes nothing, exactly like a blank
+            // numeric cell. A genuinely STORED "" is still a present value and still contributes
+            // "".
             String v = ScalarSemantics.resolvedString(localTable, c, row);
             if (v != null)
             {

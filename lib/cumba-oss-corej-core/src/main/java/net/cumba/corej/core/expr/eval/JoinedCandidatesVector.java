@@ -17,9 +17,9 @@ import org.jspecify.annotations.Nullable;
  * engine has:
  *
  * <ul>
- * <li><b>Scalar view</b> ({@link #dataValue}/{@link #resolvedObject}) — the first non-null value
- * across all {@link JoinLookup#lookupAll} matches, scanning every join: bit-for-bit the legacy
- * VALUE-position contract. Used wherever the vector is consumed as a plain operand.</li>
+ * <li><b>Scalar view</b> ({@link #value}) — the first non-null value across all
+ * {@link JoinLookup#lookupAll} matches, scanning every join: bit-for-bit the legacy VALUE-position
+ * contract. Used wherever the vector is consumed as a plain operand.</li>
  * <li><b>Candidates view</b> ({@link #candidates}) — the row's full match list from the single
  * <em>live</em> lookup: per the NAME-position contract the live lookup is the FIRST joined lookup
  * (in registration order) with at least one matched row anywhere in the table — the legacy
@@ -197,8 +197,23 @@ public final class JoinedCandidatesVector implements Vector
     }
 
 
-    /** {@link #firstNonNull} over typed cells — the value-position contract, untransformed. */
-    private @Nullable IDataValue firstNonNullCell(int row)
+    /**
+     * {@link #firstNonNull} over typed cells — the value-position contract, untransformed.
+     *
+     * <p>
+     * ⚠ <b>The exhausted-scan case is a computed MIS on purpose.</b> The scan spans every join and
+     * every candidate, so where no candidate is non-missing there is neither one foreign column to
+     * take a declared type from (this vector's {@code declaredType} is {@code STRING} by
+     * construction, not the foreign column's own type) nor one cell to take a missing identity
+     * from. {@code MissingValue.MIS} is therefore the honest answer (D36 #8) and it is
+     * behaviour-identical to the {@code null} this used to return, which
+     * {@link TypedValue#typedCell} minted into exactly that. ⚑ What it does NOT express is the
+     * absent/unmatched distinction: a row with no matched partner owes the foreign column's
+     * type-derived constant (D72/D72a-1), and reaching that from here needs the real foreign type —
+     * recorded as a residue rather than guessed at.
+     * </p>
+     */
+    private IDataValue firstNonNullCell(int row)
     {
         for (JoinLookup lookup : ctx.getJoinedDatasets().values())
         {
@@ -210,7 +225,7 @@ public final class JoinedCandidatesVector implements Vector
                 }
             }
         }
-        return null;
+        return net.cumba.corej.core.exec.ScalarSemantics.computedMissing();
     }
 
 
@@ -232,16 +247,9 @@ public final class JoinedCandidatesVector implements Vector
 
 
     @Override
-    public IDataValue dataValue(int row)
+    public TypedValue value(int row)
     {
-        return scalar.dataValue(row);
-    }
-
-
-    @Override
-    public @Nullable Object resolvedObject(int row)
-    {
-        return scalar.resolvedObject(row);
+        return scalar.value(row);
     }
 
 

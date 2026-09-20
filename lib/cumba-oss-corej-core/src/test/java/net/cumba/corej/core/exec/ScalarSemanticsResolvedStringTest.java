@@ -2,6 +2,7 @@ package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -19,17 +20,31 @@ import org.junit.jupiter.api.Test;
  * {@link ScalarSemantics#resolvedString} — the one place that decides how a blank cell resolves.
  *
  * <p>
- * ⚠⚠ <b>Read {@code resolvedString}'s javadoc before changing anything here.</b> The settled design
- * wants a blank CHARACTER cell to resolve to {@code ""} so the engine cannot tell a source
- * {@code null} from an empty string. That step is <b>deliberately not taken yet</b>, and these
- * tests pin the <em>current</em> contract: a blank resolves to {@code null}.
+ * ⚠⚠ <b>Read {@code resolvedString}'s javadoc before changing anything here.</b>
  * </p>
  * <p>
- * ⚑ <b>The stated blocker is gone.</b> It used to be a pre-existing {@code date_*} defect — an
- * empty operand truncated the other to nothing and compared <em>equal to every date</em>, so every
- * {@code date_*_or_equal_to} fired. Q16 removed it at the operator layer (see the last test). What
- * remains is a wider question than {@code date_*}: resolving a blank to {@code ""} changes what
- * <b>every</b> operator sees, so it keeps its own acceptance criteria and its own decision
+ * ⭐⭐ <b>Owner ruling, 2026-09-18 — these tests were RE-BASED onto it, not deleted.</b> <i>"'the
+ * engine treats a missing character cell exactly like an empty string' is not required anymore and
+ * now even dangerous. An <b>absent column</b> gets empty string. A <b>present column can be
+ * missing</b>, and <b>missing is not empty string</b>."</i> The step this class used to describe as
+ * "deliberately not taken yet" — resolving a blank CHARACTER cell to {@code ""} so the engine could
+ * not tell a source {@code null} from an empty string — is therefore <b>retired, not pending</b>,
+ * and what these tests now pin is the <em>distinction</em>: on a column that exists, missing
+ * answers {@code null} and only a stored empty string answers {@code ""}.
+ * </p>
+ * <p>
+ * ⚑ Two assertions moved with the ruling rather than being dropped, because deleting them would
+ * have left the new contract unpinned — the same reason {@code Fix #161}'s two guards were
+ * re-based. The row-3 assertion in {@link #aBlankCellResolvesToNull} flipped from {@code ""} to
+ * {@code null} (a raw {@code null} in a STRING buffer is a {@code MissingValue.MIS} since the
+ * datatable repository's {@code d4edd59}), and the final test's closing paragraph no longer argues
+ * that the flip is a live option.
+ * </p>
+ * <p>
+ * ⛔ <b>Out of scope, and pinned as unchanged:</b> the {@code empty()} / {@code non_empty} fold,
+ * where {@code null}, a {@code MissingValue} and {@code ""} are all one "blank" answer. Whether
+ * <em>that</em> must also change under this ruling is a separate owner question, open as of
+ * 2026-09-18 — see {@link #theBlankFoldBehindEmptyIsUnchanged}.
  * </p>
  */
 class ScalarSemanticsResolvedStringTest
@@ -70,30 +85,114 @@ class ScalarSemanticsResolvedStringTest
 
 
     /**
-     * The current contract: a blank resolves to {@code null} — "no comparand" — whatever the column
-     * type. ⚠ Row 1 (a {@code MissingValue} in a character column) is exactly the cell the
-     * blindness step would change to {@code ""}.
+     * The contract, and since the 2026-09-18 ruling the <em>settled</em> one rather than an interim
+     * step: a missing cell resolves to {@code null} — "no comparand" — whatever the column type,
+     * <b>character columns included</b>. ⚠ Row 1 is a {@code MissingValue} in a character column
+     * and row 3 a raw {@code null} in one; under the ruling both are missing, so both answer
+     * {@code null}.
      */
     @Test
     void aBlankCellResolvesToNull()
     {
         CachedDataTableColumn chars = charColumn();
         assertNull(ScalarSemantics.resolvedString(chars, DataValueType.STRING, 1),
-                "a MissingValue in a character column resolves to null today");
+                "a MissingValue in a character column resolves to null — missing is not \"\"");
 
-        // ⚑ A bare null stored in a STRING buffer is NOT a missing marker: Fix #161's mapping is
-        // still live in AbstractDataBuffer.createDataValue ("for STRING we map from null to empty
-        // string"), so the cell reads as a present empty string. That is why the loaders had to
-        // store MissingValue.MIS explicitly to express a source null at all — storing null would
-        // have been indistinguishable from "".
-        assertEquals("", ScalarSemantics.resolvedString(chars, DataValueType.STRING, 3),
-                "a bare null in a STRING buffer is Fix #161's empty string, not a missing marker");
+        // ⭐ RE-BASED (owner ruling, 2026-09-18). This assertion read assertEquals("", …) with the
+        // message "a bare null in a STRING buffer is Fix #161's empty string, not a missing
+        // marker". That was true of the shipped engine: AbstractDataBuffer.createDataValue's STRING
+        // arm mapped a null to DataValueString(""). The datatable repository's d4edd59 makes it
+        // MissingValue.MIS — "a null char cell is MissingValue.MIS" — so the cell is now missing
+        // and resolves to null. ⚑ Flipped rather than deleted: the same cell, opposite polarity, is
+        // what proves the ruling reaches this channel.
+        assertNull(ScalarSemantics.resolvedString(chars, DataValueType.STRING, 3),
+                "a raw null in a STRING buffer is a MissingValue.MIS (d4edd59), so it has no "
+                        + "comparand — it must NOT resolve to the empty string");
 
         CachedDataTableColumn nums = new CachedDataTableColumn(1, DataValueType.DOUBLE);
         nums.addElement(1.5d);
         nums.addElement(MissingValue.MIS);
         assertEquals("1.5", ScalarSemantics.resolvedString(nums, DataValueType.DOUBLE, 0));
         assertNull(ScalarSemantics.resolvedString(nums, DataValueType.DOUBLE, 1));
+    }
+
+
+    /**
+     * ⭐⭐ <b>The property the 2026-09-18 ruling exists to protect, and which nothing pinned before
+     * it.</b> On a column that exists, {@code resolvedString} must let a caller tell a
+     * <em>missing</em> character cell from a <em>stored empty string</em>. Both directions are
+     * asserted, and the two answers are asserted to differ — a one-sided test would stay green if
+     * the retired step were ever re-applied, since it would make every blank {@code ""}.
+     *
+     * <p>
+     * ⚠ {@code charColumn()} carries all three spellings of "blank" a character column can hold: a
+     * {@code MissingValue} (row 1), a stored {@code ""} (row 2) and a raw {@code null} (row 3).
+     * Only row 2 is a value.
+     * </p>
+     */
+    @Test
+    void missingAndEmptyStringStayDistinguishable()
+    {
+        CachedDataTableColumn chars = charColumn();
+
+        String stored = ScalarSemantics.resolvedString(chars, DataValueType.STRING, 2);
+        String marker = ScalarSemantics.resolvedString(chars, DataValueType.STRING, 1);
+        String bareNull = ScalarSemantics.resolvedString(chars, DataValueType.STRING, 3);
+
+        // Direction 1 — a stored empty string is a PRESENT value and stays "".
+        assertEquals("", stored, "a stored \"\" is a value: it must resolve to \"\", never null");
+
+        // Direction 2 — a missing cell, however it is spelled, is NOT the empty string.
+        assertNull(marker, "a MissingValue in a character column must not resolve to \"\"");
+        assertNull(bareNull, "a raw null in a character column must not resolve to \"\"");
+
+        // …and the two must be TELLABLE APART, which is the ruling's own wording: "missing is not
+        // empty string". This is the assertion that reds if the retired blindness step is ever
+        // re-applied (aDeclaredType == STRING ? "" : null), because it would collapse both to "".
+        assertNotEquals(stored, marker,
+                "missing and the empty string must stay distinguishable in the text channel");
+        assertNotEquals(stored, bareNull, "…for a raw null too");
+    }
+
+
+    /**
+     * ⛔⛔ <b>A deliberate NON-change, pinned so a later ruling on it is an act and not a drift.</b>
+     *
+     * <p>
+     * {@code Primitives.empty} / {@code non_empty} route through {@link ScalarSemantics#isMissing}
+     * → {@code DataValueSupport.isEmptyOrMissing}, which folds {@code null}, a {@code MissingValue}
+     * <b>and</b> {@code ""} into one "blank" answer — so a rule written {@code empty(X)} cannot
+     * tell them apart. The 2026-09-18 ruling ("missing is not empty string") is about
+     * {@link ScalarSemantics#resolvedString}'s text channel and says nothing about this fold;
+     * whether it must change too is a <b>separate owner question, open</b>.
+     * </p>
+     * <p>
+     * ⇒ This test asserts the fold is <b>exactly as it was</b>: all three blank spellings fire
+     * {@code empty()}, and only a real value does not. If a later change narrows
+     * {@code isEmptyOrMissing} this reds, which is the point — the narrowing must be a ruling, not
+     * a side effect of some other edit.
+     * </p>
+     */
+    @Test
+    void theBlankFoldBehindEmptyIsUnchanged()
+    {
+        CachedDataTableColumn chars = charColumn();
+        ColumnVector v = new ColumnVector("C", chars, DataValueType.STRING);
+
+        BitSet empty = Primitives.empty(v, 4);
+        assertFalse(empty.get(0), "\"A\" is a value — empty() must not fire");
+        assertTrue(empty.get(1), "a MissingValue is blank under empty() — unchanged");
+        assertTrue(empty.get(2), "a stored \"\" is blank under empty() — unchanged, and this is "
+                + "exactly the fold the 2026-09-18 ruling does NOT touch");
+        assertTrue(empty.get(3), "a raw null is blank under empty() — unchanged");
+
+        // non_empty is the exact complement, and stays so.
+        BitSet nonEmpty = Primitives.nonEmpty(v, 4);
+        for (int r = 0; r < 4; r++)
+        {
+            assertEquals(!empty.get(r), nonEmpty.get(r),
+                    "non_empty must stay the complement of empty at row " + r);
+        }
     }
 
 
@@ -139,9 +238,11 @@ class ScalarSemanticsResolvedStringTest
      * both-complete gate, or the blank defect returns by the same route it left.
      * </p>
      * <p>
-     * ⚠⚠ It does <b>not</b> follow that {@code resolvedString}'s blank branch can now become
-     * {@code aDeclaredType == STRING ? "" : null}. That flip changes what <em>every</em> operator
-     * sees, not just {@code date_*}, and it is Q5's decision with its own acceptance criteria.
+     * ⛔ <b>RETIRED (owner, 2026-09-18).</b> This paragraph used to warn that Q16 clearing the
+     * {@code date_*} blocker did not license flipping {@code resolvedString}'s blank branch to
+     * {@code aDeclaredType == STRING ? "" : null}, that being Q5's decision. Q5 has now been
+     * decided <b>against</b> the flip — "missing is not empty string" — so there is no pending
+     * option left to warn about. What this test still pins is the <b>split</b> above.
      * </p>
      */
     @Test

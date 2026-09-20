@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Requirements;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -30,13 +29,20 @@ import org.junit.jupiter.api.Test;
 class WildcardExpanderQualifiedScopeTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
     private static Rule template(List<String> include, @Nullable List<String> exclude)
     {
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
         core.setId("TEST-124-WC");
         rule.setCore(core);
-        rule.setCheck(CheckConditionLeaf.builder().name("TRTxxP").operator("non_empty").build());
+        rule.setCheck(expr("not empty(TRTxxP)"));
         VariableRequirement vr = new VariableRequirement();
         vr.setAll(include);
         vr.setNone(exclude);
@@ -102,7 +108,9 @@ class WildcardExpanderQualifiedScopeTest
         for (Rule rule : expanded)
         {
             // The Check name and the scope entry must agree on the index — that IS the pairing.
-            String checkName = ((CheckConditionLeaf) rule.getCheck()).getName();
+            String printed = net.cumba.corej.core.expr.ExpressionPrinter.print(
+                    ((net.cumba.corej.core.model.CheckConditionExpression) rule.getCheck()).expr());
+            String checkName = printed.substring("not empty(".length(), printed.length() - 1);
             assertNotNull(checkName);
             String index = checkName.substring("TRT".length(), "TRT".length() + 2);
             assertEquals(List.of("ADSL.TRT" + index + "PN"), includesOf(rule),
@@ -212,7 +220,7 @@ class WildcardExpanderQualifiedScopeTest
         RuleCore core = new RuleCore();
         core.setId("TEST-124-STAR");
         rule.setCore(core);
-        rule.setCheck(CheckConditionLeaf.builder().name("*DTC").operator("non_empty").build());
+        rule.setCheck(expr("not empty(*DTC)"));
         VariableRequirement vr = new VariableRequirement();
         vr.setAll(include);
         Requirements req = new Requirements();

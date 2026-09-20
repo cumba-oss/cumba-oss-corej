@@ -25,8 +25,8 @@ import org.junit.jupiter.api.Test;
  * 97/98/99, 263).
  *
  * <p>
- * ⭐ Before this class the whole family executed only from {@code cumba-corej-rules}' corpus tests,
- * so every one of its "no finding" branches was unmeasured here. That matters more than a coverage
+ * ⭐ Before this class the whole family executed only from the rules repository's corpus tests, so
+ * every one of its "no finding" branches was unmeasured here. That matters more than a coverage
  * number: each of these kinds decides when NOT to raise a finding, and a library-backed rule that
  * silently reaches "out of the rule's reach" reports a clean define.xml to the reviewer. Every test
  * below therefore asserts the exact finding list, not merely that it is non-empty.

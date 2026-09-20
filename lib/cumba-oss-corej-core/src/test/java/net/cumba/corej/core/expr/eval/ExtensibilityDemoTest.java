@@ -1,15 +1,12 @@
 package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.BitSet;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.EvaluationContext;
-import net.cumba.corej.core.expr.ExprLowering;
-import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.ast.Expr.BinOp;
@@ -22,9 +19,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 /**
  * Phase 6 — the extensibility demonstration. A construct with <b>no operator-leaf equivalent</b> is
  * added end-to-end and evaluated by the native backend, touching only a {@link FunctionProvider}
- * (or the existing parser/value-function machinery) and <b>never</b> {@code OperatorRegistry} or
- * {@code CheckEvaluator}. The same construct is (correctly) rejected by {@link ExprLowering} with a
- * "needs the native evaluator" error — demonstrating the strangler boundary moving outward.
+ * (or the existing parser/value-function machinery) and <b>never</b> an engine change —
+ * demonstrating the extension boundary the retired leaf vocabulary could not offer.
  */
 @ExtendWith(MockitoExtension.class)
 class ExtensibilityDemoTest
@@ -49,8 +45,10 @@ class ExtensibilityDemoTest
         {
             EvalFunction palindrome = (run, args) -> Primitives.stringPredicate(args.get(0),
                     run.rowCount(), DemoFunctions::isPalindrome);
-            return List.of(
-                    new FunctionDescriptor("is_palindrome", 1, FunctionKind.BOOLEAN, palindrome));
+            return List.of(new FunctionDescriptor("is_palindrome",
+                    List.of(Parameter.required("x",
+                            net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN)),
+                    FunctionKind.BOOLEAN, palindrome));
         }
 
 
@@ -78,12 +76,10 @@ class ExtensibilityDemoTest
             expected.set(0);
             assertEquals(expected, NativeExprEvaluator.evaluate(call, ctx));
 
-            // The v1 lowering has no operator for it — it stays a native-only construct.
-            assertThrows(ExpressionException.class, () -> ExprLowering.toCheckCondition(call));
         }
         finally
         {
-            FunctionRegistry.unregister("is_palindrome", 1);
+            FunctionRegistry.unregister("is_palindrome");
         }
     }
 
@@ -91,9 +87,8 @@ class ExtensibilityDemoTest
     @Test
     void oneSidedLowerIsNativeOnly()
     {
-        // lower(X) == "abc" applies the transform to a single operand — the symmetric
-        // equal_to_case_insensitive operator cannot express it, so v1 lowering rejects it; the
-        // native backend evaluates it directly.
+        // lower(X) == "abc" applies the transform to a single operand — a construct the retired
+        // v1 vocabulary could not express; the native backend evaluates it directly.
         IDataTable t = MockTable.of().col("X", "ABC", "abc", "XYZ").build();
         EvaluationContext ctx = EvaluationContext.builder().table(t).build();
         Expr e = new Expr.Binary(BinOp.EQ, new Expr.Call("lower", List.of(ref("X")), Map.of()),
@@ -103,7 +98,6 @@ class ExtensibilityDemoTest
         expected.set(0);
         expected.set(1);
         assertEquals(expected, NativeExprEvaluator.evaluate(e, ctx));
-        assertThrows(ExpressionException.class, () -> ExprLowering.toCheckCondition(e));
     }
 
 }

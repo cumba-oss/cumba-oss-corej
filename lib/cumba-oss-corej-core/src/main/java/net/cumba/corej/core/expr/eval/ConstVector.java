@@ -1,13 +1,12 @@
 package net.cumba.corej.core.expr.eval;
 
 import net.cumba.datatable.values.DataValueType;
-import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
 /**
  * A broadcast {@link Vector}: the same resolved value for every row. Used for literals,
  * run-constant lists, and pre-resolved {@code $}-operation scalar results. The wrapping
- * {@link IDataValue} is computed once at construction (the value is row-independent), so per-row
+ * {@link TypedValue} is computed once at construction (the value is row-independent), so per-row
  * reads allocate nothing.
  *
  * @param value
@@ -15,17 +14,18 @@ import org.jspecify.annotations.Nullable;
  *            {@code null})
  * @param declaredType
  *            the statically-declared type for operand-homogeneity checks
- * @param cell
- *            the cached {@link IDataValue} wrapper for {@code value}
+ * @param typed
+ *            the cached {@link TypedValue} carrier for {@code value}
  */
 public record ConstVector(@Nullable Object value, DataValueType declaredType,
-        IDataValue cell) implements Vector
+        TypedValue typed) implements Vector
 {
 
     /** Builds a {@code ConstVector} for {@code value}, deriving its declared type. */
     public static ConstVector of(@Nullable Object value)
     {
-        return new ConstVector(value, typeOf(value), DataValues.of(value));
+        DataValueType type = typeOf(value);
+        return new ConstVector(value, type, TypedValue.resolved(type, value));
     }
 
 
@@ -52,16 +52,9 @@ public record ConstVector(@Nullable Object value, DataValueType declaredType,
 
 
     @Override
-    public IDataValue dataValue(int row)
+    public TypedValue value(int row)
     {
-        return cell;
-    }
-
-
-    @Override
-    public @Nullable Object resolvedObject(int row)
-    {
-        return value;
+        return typed;
     }
 
 }

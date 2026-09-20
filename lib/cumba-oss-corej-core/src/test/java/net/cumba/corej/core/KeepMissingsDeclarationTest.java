@@ -2,6 +2,7 @@ package net.cumba.corej.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -9,14 +10,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import net.cumba.corej.core.exec.GroupKeyPolicy;
-import net.cumba.corej.core.expr.CheckToExpr;
-import net.cumba.corej.core.expr.ExprLowering;
-import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.convert.OperationExpressionParser;
-import net.cumba.corej.core.model.CheckCondition;
-import net.cumba.corej.core.model.CheckConditionLeaf;
+import net.cumba.corej.core.model.CheckConditionExpression;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
@@ -202,8 +199,7 @@ class KeepMissingsDeclarationTest
         // A FIELD-FORM operation never passes through fromCall, so Jackson would bind the parameter
         // on a non-consuming operator without complaint if the loader did not re-run the guard.
         Rule rule = load("{\"Core\":{\"Id\":\"X-1\"},"
-                + "\"Operations\":[{\"id\":\"o1\",\"operator\":\"variable_count\","
-                + "\"name\":\"AVAL\",\"keep_missings\":true}],"
+                + "\"Bindings\":[{\"name\": \"o1\", \"expression\": \"variable_count(AVAL, keep_missings=true)\"}],"
                 + "\"Check\":{\"expression\":\"AVAL > 1\"}}");
         assertNotNull(rule.getLoadError(),
                 "the field form must reach the same rejection as the call form");
@@ -212,84 +208,10 @@ class KeepMissingsDeclarationTest
     }
 
     // ------------------------------------------------------------------
-    // Surfaces 3 and 4 — the Check leaf (within: and the array value:)
+    // The inline Check surface (the one shipped rules execute through) —
+    // the retired declared-leaf surface's tests went with the leaf model
+    // (phase 7d, D121).
     // ------------------------------------------------------------------
-
-
-    @Test
-    void theCheckLeafRoundTripsTheDisposition()
-    {
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("AVAL")
-                .operator("has_multiple_values_for").value(textNode("PARAMCD"))
-                .within(textNode("USUBJID")).keepMissings(Boolean.FALSE).build();
-
-        Expr raised = CheckToExpr.toExpr(leaf);
-        String printed = ExpressionPrinter.print(raised);
-        assertTrue(printed.contains("keep_missings=false"),
-                "the declared surface must emit the kwarg, got: " + printed);
-
-        CheckCondition lowered = ExprLowering.toCheckCondition(raised);
-        assertTrue(lowered instanceof CheckConditionLeaf, "expected a leaf, got " + lowered);
-        assertEquals(false, ((CheckConditionLeaf) lowered).getKeepMissings(),
-                "the round-trip must not lose the disposition");
-    }
-
-
-    @Test
-    void theSortedByLeafRoundTripsTheDisposition()
-    {
-        // target_is_not_sorted_by travels its own raise/lower path, so it needs its own pin.
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("LBSEQ")
-                .operator("target_is_not_sorted_by").value(sortDescriptors())
-                .within(textNode("USUBJID")).keepMissings(Boolean.FALSE).build();
-
-        Expr raised = CheckToExpr.toExpr(leaf);
-        assertTrue(ExpressionPrinter.print(raised).contains("keep_missings=false"),
-                "the ordering operator must emit the kwarg too");
-        CheckCondition lowered = ExprLowering.toCheckCondition(raised);
-        assertEquals(false, ((CheckConditionLeaf) lowered).getKeepMissings());
-    }
-
-
-    @Test
-    void theNegatedTwinLeafRoundTripsTheDisposition()
-    {
-        // ⚠⚠ The Q1 negation pairs raise through their POSITIVE twin's name —
-        // does_not_have_next_corresponding_record calls
-        // functionLeaf("has_next_corresponding_record", …) — and functionLeaf's allowlist guard
-        // tests the name it was CALLED WITH. Listing only the negative name made this valid
-        // declaration throw "operator 'has_next_corresponding_record' does not support
-        // keep_missings", naming an operator the rule author never wrote, and left the parameter
-        // unauthorable on the six shipped rules that use this operator.
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("SEENDTC")
-                .operator("does_not_have_next_corresponding_record").value(textNode("SESTDTC"))
-                .within(textNode("USUBJID")).ordering("SESEQ").keepMissings(Boolean.FALSE).build();
-
-        Expr raised = CheckToExpr.toExpr(leaf);
-        assertTrue(ExpressionPrinter.print(raised).contains("keep_missings=false"),
-                "the negated twin must emit the kwarg, got: " + ExpressionPrinter.print(raised));
-
-        CheckCondition lowered = ExprLowering.toCheckCondition(raised);
-        assertTrue(lowered instanceof CheckConditionLeaf, "expected a leaf, got " + lowered);
-        assertEquals("does_not_have_next_corresponding_record",
-                ((CheckConditionLeaf) lowered).getOperator(),
-                "the round-trip must restore the NEGATIVE operator, not the positive twin");
-        assertEquals(false, ((CheckConditionLeaf) lowered).getKeepMissings(),
-                "the round-trip must not lose the disposition");
-    }
-
-
-    @Test
-    void aDispositionOnANonGroupingOperatorIsRejectedOnTheDeclaredSurface()
-    {
-        // ⚠ `equal_to` is a row-level operator, so it is rejected by rejectGroupFields rather than
-        // by the functionLeaf allowlist — either way it must not load silently.
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("AVAL").operator("equal_to")
-                .value(textNode("1")).keepMissings(Boolean.TRUE).build();
-        RuntimeException ex = assertThrows(RuntimeException.class, () -> CheckToExpr.toExpr(leaf));
-        assertTrue(ex.getMessage().contains("keep_missings"),
-                "expected a keep_missings rejection, got: " + ex.getMessage());
-    }
 
 
     @Test
@@ -340,16 +262,23 @@ class KeepMissingsDeclarationTest
         assertNull(rule.getLoadError(),
                 "a valid Check-operator keep_missings must load cleanly, not be routed through the"
                         + " operation parser: " + rule.getLoadError());
-        // ⚠ The load-error assertion alone is WEAK here and was measured to be so: a valid
-        // expression is lowered to a leaf before the inline walk runs, so the misrouting branch is
-        // never reached on this input and the assertion passes either way. The misrouting itself is
-        // pinned by the two rejection tests above (they would report "unknown operation function"
-        // instead of a keep_missings message). What this test adds is the end-to-end survival of
-        // the declaration through the real loader:
-        assertTrue(rule.getCheck() instanceof CheckConditionLeaf,
-                "the valid form must lower to a leaf, got: " + rule.getCheck());
-        assertEquals(false, ((CheckConditionLeaf) rule.getCheck()).getKeepMissings(),
-                "the disposition must survive the loader's expression lowering");
+        // ⚠ The load-error assertion alone is WEAK here and was measured to be so: on this input
+        // the misrouting branch is never reached, so the assertion passes either way. The
+        // misrouting itself is pinned by the two rejection tests above (they would report "unknown
+        // operation function" instead of a keep_missings message). What this test adds is the
+        // end-to-end survival of the declaration through the real loader:
+        //
+        // ⭐ Phase 7 (PLAN-typed-expression-engine): this used to assert the Check had been LOWERED
+        // to a CheckConditionLeaf and read the disposition off the leaf's getKeepMissings(). The
+        // lowering is gone, so the assertion is re-pointed at the property rather than the
+        // representation (D109a): the Check keeps its expression, and the disposition rides in the
+        // call's kwargs — which is where the compiler reads it from, and always was.
+        CheckConditionExpression check = assertInstanceOf(CheckConditionExpression.class,
+                rule.getCheck(), "the valid form keeps its expression");
+        Expr.Call call = assertInstanceOf(Expr.Call.class, check.expr(),
+                "the whole Check is a call");
+        assertEquals(new Expr.Lit(Expr.LitKind.BOOL, false), call.kwargs().get("keep_missings"),
+                "the disposition must survive the loader");
     }
 
 
@@ -362,35 +291,6 @@ class KeepMissingsDeclarationTest
                 "a valid inline operation keep_missings must load: " + rule.getLoadError());
     }
 
-
-    /**
-     * ⚠⚠ The declaration must survive a leaf <b>rebuild</b>. {@code CheckConditionTransformer}
-     * reconstructs a leaf field-by-field whenever a {@code --} wildcard in the name or value needs
-     * resolving, and a field it forgets is erased silently — no error, no log, just a rule running
-     * under a disposition its author did not choose.
-     *
-     * <p>
-     * ⚠ The fixture forces the rebuild: the name carries {@code --} so the early "no change" return
-     * cannot be taken. Without that this test would pass on the identity path and prove nothing.
-     * </p>
-     */
-    @Test
-    void theDispositionSurvivesWildcardResolution()
-    {
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("--TESTCD")
-                .operator("has_multiple_values_for").value(textNode("PARAMCD"))
-                .within(textNode("USUBJID")).keepMissings(Boolean.FALSE).build();
-
-        CheckCondition resolved = net.cumba.corej.core.exec.CheckConditionTransformer
-                .resolvePrefixes(leaf, "LB");
-
-        assertTrue(resolved instanceof CheckConditionLeaf, "expected a leaf, got " + resolved);
-        CheckConditionLeaf out = (CheckConditionLeaf) resolved;
-        assertEquals("LBTESTCD", out.getName(), "the fixture must actually trigger the rebuild");
-        assertEquals(false, out.getKeepMissings(),
-                "the grouping-key disposition must survive the field-by-field rebuild");
-    }
-
     // ------------------------------------------------------------------
     // helpers
     // ------------------------------------------------------------------
@@ -399,26 +299,6 @@ class KeepMissingsDeclarationTest
     private static Expr parse(String expression)
     {
         return net.cumba.corej.core.expr.CheckExpressionParser.parse(expression);
-    }
-
-
-    private static com.fasterxml.jackson.databind.JsonNode textNode(String v)
-    {
-        return com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.textNode(v);
-    }
-
-
-    private static com.fasterxml.jackson.databind.JsonNode sortDescriptors()
-    {
-        com.fasterxml.jackson.databind.node.ArrayNode arr = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance
-                .arrayNode();
-        com.fasterxml.jackson.databind.node.ObjectNode o = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance
-                .objectNode();
-        o.put("name", "LBSEQ");
-        o.put("sort_order", "asc");
-        o.put("null_position", "last");
-        arr.add(o);
-        return arr;
     }
 
 }

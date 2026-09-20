@@ -8,7 +8,6 @@ import net.cumba.corej.core.exec.DatasetRuleResolver;
 import net.cumba.corej.core.exec.StubMetadataProvider;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
 import net.cumba.datatable.IDataTable;
@@ -22,11 +21,11 @@ import org.junit.jupiter.api.Test;
  * to the {@link RuleGenerationReport}.
  *
  * <p>
- * ⚑ The resolver is built exactly as the single production construction site builds it: from the
- * metadata provider alone. This paragraph used to say {@code RuleCategory#corpusDeliveryOnly()} was
- * passed — {@code plans/PLAN-remove-rule-generator.md} deleted that method along with the whole
- * {@code EnumSet} gate, and {@link RuleCategory} is now only the provenance tag the assertions
- * below read. (Error Prone [InvalidLink] is what caught the stale reference.)
+ * The resolver is built exactly as production builds it — {@code new DatasetRuleResolver(provider)}
+ * — so nothing here depends on a construction the engine does not use. (This paragraph used to
+ * describe a {@code RuleCategory.corpusDeliveryOnly()} category gate; that EnumSet, and the
+ * generators it steered, were deleted by {@code PLAN-remove-rule-generator}, leaving the text
+ * describing a construction that no longer happens. Error Prone's [InvalidLink] is what caught it.)
  * </p>
  *
  * <p>
@@ -39,9 +38,16 @@ import org.junit.jupiter.api.Test;
 class WildcardExpansionPostFilterTest
 {
 
-    private static CheckConditionLeaf leaf(String name)
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
     {
-        return CheckConditionLeaf.builder().name(name).operator("non_empty").build();
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
+    private static net.cumba.corej.core.model.CheckConditionExpression leaf(String name)
+    {
+        return expr("not empty(" + name + ")");
     }
 
 

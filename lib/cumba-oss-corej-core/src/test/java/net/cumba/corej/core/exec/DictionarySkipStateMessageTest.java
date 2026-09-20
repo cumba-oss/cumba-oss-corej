@@ -45,8 +45,8 @@ class DictionarySkipStateMessageTest
                 {"rules": {"TEST-SKIP-1": {
                   "Core": {"Id": "TEST-SKIP-1"},
                   "Executability": "Fully Executable",
-                  "Operations": [{"id": "$terms", "expression": "%s"}],
-                  "Check": {"all": [{"name": "$terms", "operator": "non_empty"}]}
+                  "Bindings": [{"name": "$terms", "expression": "%s"}],
+                  "Check": {"all": [{"expression": "not empty($terms)"}]}
                 }}}
                 """.formatted(opExpression)).getRules().values().iterator().next();
         assertNull(rule.getLoadError(), "precondition: the probe rule loads clean");
@@ -144,11 +144,11 @@ class DictionarySkipStateMessageTest
                                 {"rules": {"TEST-SKIP-2": {
                                   "Core": {"Id": "TEST-SKIP-2"},
                                   "Executability": "Fully Executable",
-                                  "Operations": [
-                                    {"id": "$a", "expression": "valid_external_dictionary_value(AEDECOD, external_dictionary_type=\\"meddra\\", dictionary_term_type=\\"PT\\")"},
-                                    {"id": "$b", "expression": "valid_external_dictionary_value(AEDECOD, external_dictionary_type=\\"unii\\", dictionary_term_type=\\"SRS\\")"}],
-                                  "Check": {"all": [{"name": "$a", "operator": "non_empty"},
-                                                    {"name": "$b", "operator": "non_empty"}]}
+                                  "Bindings": [
+                                    {"name": "$a", "expression": "valid_external_dictionary_value(AEDECOD, external_dictionary_type=\\"meddra\\", dictionary_term_type=\\"PT\\")"},
+                                    {"name": "$b", "expression": "valid_external_dictionary_value(AEDECOD, external_dictionary_type=\\"unii\\", dictionary_term_type=\\"SRS\\")"}],
+                                  "Check": {"all": [{"expression": "not empty($a)"},
+                                                    {"expression": "not empty($b)"}]}
                                 }}}
                                 """)
                 .getRules().values().iterator().next();

@@ -10,7 +10,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Requirements;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -45,9 +44,16 @@ import org.junit.jupiter.api.Test;
 class ScopeVariablesQualifiedCombinationTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
     // ------------------------------------------------------------------
     // fixtures
     // ------------------------------------------------------------------
+
 
     /** A trivial single-leaf rule ({@code AESTDY exists}) carrying the given variable scope. */
     private static Rule rule(@Nullable List<String> include, @Nullable List<String> exclude)
@@ -56,7 +62,7 @@ class ScopeVariablesQualifiedCombinationTest
         RuleCore core = new RuleCore();
         core.setId("TEST-QUALCOMBO");
         r.setCore(core);
-        r.setCheck(CheckConditionLeaf.builder().name("AESTDY").operator("var_exists").build());
+        r.setCheck(expr("var_exists(\"AESTDY\")"));
         VariableRequirement vr = new VariableRequirement();
         vr.setAll(include);
         vr.setNone(exclude);

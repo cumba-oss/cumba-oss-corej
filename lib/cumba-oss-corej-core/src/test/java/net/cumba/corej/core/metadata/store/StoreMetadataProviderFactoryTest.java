@@ -20,7 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
  * the P3 gate. (Its other half, the retired {@code StoreVsPickleProviderEquivalenceTest}, compared
  * this factory against the pickle-backed one over the real corpus; the pickle factory is deleted —
  * cache 8g — so the real-corpus leg now lives in {@code StoreMetadataProviderFactoryAdamTest}'s
- * integration tests and, at run scale, in {@code cumba-corej-rules}' store-backed suites.)
+ * integration tests and, at run scale, in the rules repository's store-backed suites.)
  *
  * <p>
  * The load-bearing assertions are the two {@code PUBLISHED_CT_PACKAGES} ones: the store path must

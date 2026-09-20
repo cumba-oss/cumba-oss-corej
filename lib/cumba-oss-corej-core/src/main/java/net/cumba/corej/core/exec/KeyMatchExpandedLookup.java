@@ -13,9 +13,12 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * The {@code table} argument is ignored — the expanded row index alone selects the bound child row.
- * A {@code -1} binding (a {@code left}-only row with no matching child) resolves every column to
- * {@code null}, while {@link #hasColumn} still reports the child's schema (present-but-null,
- * matching Python's {@code left_only} columns set to {@code None}).
+ * On a {@code -1} binding (a {@code left}-only row with no matching child) the <b>text</b>
+ * {@link #lookup} still resolves every column to {@code null} (matching Python's {@code left_only}
+ * columns set to {@code None}), while the <b>typed</b> {@link #lookupValue} answers the column's
+ * type default per D72/D72a-1 — {@code ""} char, {@code MissingValue.MIS} numeric — because a
+ * merged column behaves like a primary column at the value layer; {@link #hasColumn} still reports
+ * the child's schema.
  * </p>
  */
 final class KeyMatchExpandedLookup implements JoinLookup
@@ -50,30 +53,45 @@ final class KeyMatchExpandedLookup implements JoinLookup
      * </p>
      */
     @Override
-    public @Nullable IDataValue lookupValue(IDataTable table, long row, String columnName)
+    public IDataValue lookupValue(IDataTable table, long row, String columnName,
+            boolean numericExpected)
     {
-        long cr = boundChildRow(row);
-        if (cr < 0)
-        {
-            return null;
-        }
         int colIdx = child.getMetaData().getColumnIndex(columnName);
         if (colIdx < 0)
         {
-            return null;
+            // ⭐⭐ §9c DOTTED PARITY (owner ruling, 2026-09-18): the column is absent from the child
+            // ENTIRELY, so it takes the RULE's expected default exactly as an absent primary column
+            // does (D72/D76/§1b): numeric -> MissingValue.MIS, otherwise the CONSTANT "" (D34 #3) —
+            // a present empty string, never a computed MIS for a char read (the D96a order-arm
+            // regression). Identical to DatasetLookup.lookupValue's arm, deliberately.
+            //
+            // ⚠ THIS SITE WAS MISSED TWICE: it is the THIRD production implementation of this arm,
+            // and the plan's §9c names only two (DatasetLookup and RelrecExpandedLookup). A fix
+            // applied to the two named ones would have left this one — the corpus path for plain
+            // named Match_Dataset entries — answering the old unconditional "". ⛔ When this arm
+            // changes again, change all three or none.
+            //
+            // ⚑ The previous rationale — "the expectation is UNREADABLE FROM HERE, lookupValue is
+            // handed no EvaluationContext" — was correct about the mechanism and wrong about the
+            // conclusion: §9c makes it a reason to change the channel, which the numericExpected
+            // parameter is.
+            return numericExpected ? ScalarSemantics.computedMissing()
+                    : net.cumba.datatable.values.DataValueSupport
+                            .defaultForType(net.cumba.datatable.values.DataValueType.STRING);
         }
-        IDataValue dv = child.getColumn(colIdx).getDataValue(cr);
-        // Mirrors lookup()'s blank contract via resolvedString: a blank CHARACTER cell reads "",
-        // a blank NUMERIC cell reads null.
-        if (dv.isMissingOrInvalid())
+        long cr = boundChildRow(row);
+        if (cr < 0)
         {
-            return child.getMetaData().getColumn(colIdx)
-                    .getType() == net.cumba.datatable.values.DataValueType.STRING
-                            ? net.cumba.datatable.values.DataValueSupport.getAsDataValue("",
-                                    net.cumba.datatable.values.DataValueType.STRING)
-                            : null;
+            // ⭐ D72/D72a-1: a left-join row with no match yields the column's TYPE default —
+            // char -> "", numeric -> MissingValue.MIS (D34 #3/#4) — exactly as a primary column
+            // with no value would read.
+            return net.cumba.datatable.values.DataValueSupport
+                    .defaultForType(child.getMetaData().getColumn(colIdx).getType());
         }
-        return dv;
+        // ⛔ D75a case 4: a bound child cell that is a genuine MissingValue is a SUPPLIED value,
+        // distinct from "" (D11/D12), and passes through unchanged. (Until D72 a missing char
+        // cell was rewritten to "" and a missing numeric one to null.)
+        return child.getColumn(colIdx).getDataValue(cr);
     }
 
 
@@ -121,7 +139,8 @@ final class KeyMatchExpandedLookup implements JoinLookup
         {
             return null;
         }
-        // Blank resolves by the column's declared type — see ScalarSemantics.resolvedString.
+        // A blank resolves per ScalarSemantics.resolvedString — type-INDEPENDENT: a missing cell
+        // reads null whatever the column type (owner ruling 2026-09-18), a stored "" reads "".
         return ScalarSemantics.resolvedString(child, colIdx, cr);
     }
 
@@ -130,6 +149,21 @@ final class KeyMatchExpandedLookup implements JoinLookup
     public boolean hasColumn(IDataTable table, long row, String columnName)
     {
         return columnName != null && child.getMetaData().getColumnIndex(columnName) >= 0;
+    }
+
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>
+     * Answered from the bound-row array the expansion already built (D88 §3.3): an expanded row
+     * bound to {@code -1} is a {@code left}-join row that found no matching child.
+     * </p>
+     */
+    @Override
+    public boolean matchedRow(IDataTable table, long row)
+    {
+        return boundChildRow(row) >= 0;
     }
 
 

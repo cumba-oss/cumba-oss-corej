@@ -40,6 +40,7 @@ import net.cumba.datatable.manager.IDataTableLibraryRef;
 import net.cumba.datatable.manager.IDataTableManager;
 import net.cumba.datatable.manager.IDataTableRef;
 import net.cumba.datatable.manager.ILibraryMemberRef;
+import net.cumba.datatable.metadata.IMetadataLibrary;
 import net.cumba.datatable.report.ValidationReport;
 import org.jspecify.annotations.Nullable;
 
@@ -247,8 +248,7 @@ public final class StudyValidationService
         {
             // The datatable-backed define provider serves dataset-level define metadata for every
             // define rule type (the fallback below).
-            net.cumba.datatable.metadata.IMetadataLibrary defineMeta = manager
-                    .getMetadataLibrary(metadataLibrary);
+            IMetadataLibrary defineMeta = manager.getMetadataLibrary(metadataLibrary);
             MetadataProvider datatableDefine = defineMeta != null
                     ? MetadataLibraryProvider.forDefine(defineMeta)
                     : null;
@@ -1195,10 +1195,10 @@ public final class StudyValidationService
             return maybeWrapCompanion(stored, params, kind, effectiveProducts, null);
         }
         // The offline pickle leg that used to sit here (tryPickleProvider) was deleted by cache
-        // 8g, once cumba-corej-rules' harness moved onto the store: the unified metadata store is
-        // the ONE metadata source of a validation run. A pickle-configured deployment migrates by
-        // seeding a store from its pickle directory (PickleStoreSeeder — the seeding surfaces are
-        // P4b's cross-repo work).
+        // 8g, once the rules repository's harness moved onto the store: the unified metadata store
+        // is the ONE metadata source of a validation run. A pickle-configured deployment migrates
+        // by seeding a store from its pickle directory (PickleStoreSeeder — the seeding surfaces
+        // are P4b's cross-repo work).
         if (kind == StandardKind.UNKNOWN)
         {
             LOGGER.log(System.Logger.Level.WARNING,
@@ -1253,17 +1253,20 @@ public final class StudyValidationService
      * @throws IOException
      *             when the manager attaches none
      */
-    private static net.cumba.datatable.metadata.IMetadataLibrary requireMetadataLibrary(
-            IDataTableManager aManager, IDataTableLibraryRef aLibrary)
+    private static IMetadataLibrary requireMetadataLibrary(IDataTableManager aManager,
+            IDataTableLibraryRef aLibrary)
         throws IOException
     {
-        net.cumba.datatable.metadata.IMetadataLibrary metadata = aManager
-                .getMetadataLibrary(aLibrary);
+        IMetadataLibrary metadata = aManager.getMetadataLibrary(aLibrary);
         if (metadata == null)
         {
+            // ⚠ Name BOTH the manager and the library ref. The NPE this replaced named
+            // neither, and the first version of this message named only the manager — which is
+            // the same gap one level up, and the guard test's substring assertion did not catch
+            // it (review N2, 2026-09-17).
             throw new IOException("the data table manager " + aManager.getClass().getName()
-                    + " attaches no metadata library to this study; a validation run needs one "
-                    + "to read the study's own column metadata");
+                    + " attaches no metadata library to the study " + aLibrary
+                    + "; a validation run needs one to read the study's own column metadata");
         }
         return metadata;
     }
@@ -1349,8 +1352,8 @@ public final class StudyValidationService
      * @param apiLoader
      *            extra fallback companion loader consulted after the store leg; {@code null} in
      *            production since cache P4 cut the CDISC Library API path (the parameter survives
-     *            as the injection seam existing tests — including {@code cumba-corej-rules}'
-     *            companion test — drive this method through).
+     *            as the injection seam existing tests — including the rules repository's companion
+     *            test — drive this method through).
      * @return {@code base}, or a {@link CompanionDomainsProvider} wrapping it.
      */
     static MetadataProvider maybeWrapCompanion(MetadataProvider base, StudyValidationParams params,
@@ -1521,7 +1524,7 @@ public final class StudyValidationService
             StandardKind kind, List<String> effectiveProducts, RunStandard runStandard)
     {
         // The pre-P4 (define-ct) entry point: the CT selection is the user's field alone. Kept
-        // delegating — cumba-corej-rules' test tree (read-only to this lane) calls this shape.
+        // delegating — the rules repository's test tree (read-only to this lane) calls this shape.
         return tryStoreProvider(params, kind, effectiveProducts, runStandard,
                 CtSelection.resolve(params.controlledTerminologyPackages(), List.of()));
     }

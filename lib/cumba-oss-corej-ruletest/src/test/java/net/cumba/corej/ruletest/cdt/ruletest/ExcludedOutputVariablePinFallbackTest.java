@@ -104,7 +104,7 @@ class ExcludedOutputVariablePinFallbackTest
                 {"rules":{"TEST-OV-EXCL":{
                   "Core":{"Id":"TEST-OV-EXCL"},"Sensitivity":"Record",
                   "Scope":{"Domains":{"Include":["AE"]}},
-                  "Operations":[{"id":"$n","operator":"record_count"}],
+                  "Bindings":[{"name": "$n", "expression": "record_count()"}],
                   "Check":{"expression":"AESEV == \\"SEVERE\\" and $n > 1"},
                   "Outcome":{"Message":"m","Output_Variables":[%s]}}}}"""
                 .formatted(outputVariables);

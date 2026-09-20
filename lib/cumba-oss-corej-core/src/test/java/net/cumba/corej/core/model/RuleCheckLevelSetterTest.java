@@ -30,9 +30,11 @@ import org.junit.jupiter.api.Test;
 class RuleCheckLevelSetterTest
 {
 
-    private static CheckConditionLeaf leaf(String aName, String aOperator)
+    private static CheckConditionExpression cond(String aName)
     {
-        return CheckConditionLeaf.builder().name(aName).operator(aOperator).build();
+        String source = "not empty(" + aName + ")";
+        return new CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
     }
 
 
@@ -42,11 +44,11 @@ class RuleCheckLevelSetterTest
     {
         Rule r = new Rule();
         SequencedMap<Severity, LevelCheck> levels = new LinkedHashMap<>();
-        levels.put(Severity.ERROR, new LevelCheck(leaf("A", "non_empty"), "strict message"));
-        levels.put(Severity.INFO, new LevelCheck(leaf("B", "non_empty"), null));
+        levels.put(Severity.ERROR, new LevelCheck(cond("A"), "strict message"));
+        levels.put(Severity.INFO, new LevelCheck(cond("B"), null));
         r.setCheckLevels(levels);
 
-        CheckCondition rewritten = leaf("A2", "non_empty");
+        CheckCondition rewritten = cond("A2");
         assertDoesNotThrow(() -> r.setCheck(rewritten),
                 "⛔ setCheck must REBUILD the (unmodifiable) level map, never mutate it in place");
 
@@ -59,7 +61,7 @@ class RuleCheckLevelSetterTest
         assertEquals("strict message", got.get(Severity.ERROR).message(),
                 "the strictest level's own Message survives the rebuild");
         assertSame(rewritten, r.getCheck(), "check IS the strictest entry");
-        assertEquals(leaf("B", "non_empty"), got.get(Severity.INFO).condition(),
+        assertEquals(cond("B"), got.get(Severity.INFO).condition(),
                 "the weaker level is untouched");
 
         // And clearing still clears both sides.
@@ -77,9 +79,9 @@ class RuleCheckLevelSetterTest
         // Weakest-first on purpose — the shape only a programmatic caller can produce, since the
         // deserialiser already sorts.
         SequencedMap<Severity, LevelCheck> unsorted = new LinkedHashMap<>();
-        unsorted.put(Severity.INFO, new LevelCheck(leaf("B", "non_empty"), null));
-        unsorted.put(Severity.WARNING, new LevelCheck(leaf("C", "non_empty"), "warn message"));
-        unsorted.put(Severity.ERROR, new LevelCheck(leaf("A", "non_empty"), null));
+        unsorted.put(Severity.INFO, new LevelCheck(cond("B"), null));
+        unsorted.put(Severity.WARNING, new LevelCheck(cond("C"), "warn message"));
+        unsorted.put(Severity.ERROR, new LevelCheck(cond("A"), null));
         r.setCheckLevels(unsorted);
 
         SequencedMap<Severity, LevelCheck> got = r.getCheckLevels();
@@ -88,7 +90,7 @@ class RuleCheckLevelSetterTest
                 List.copyOf(got.keySet()),
                 "⛔ evaluation iterates this map in order — unsorted, the WEAKEST rung would claim "
                         + "every unit first and nothing would notice");
-        assertEquals(leaf("A", "non_empty"), r.getCheck(),
+        assertEquals(cond("A"), r.getCheck(),
                 "check is the STRICTEST entry of the normalised map, not the caller's first entry");
         assertEquals("warn message", got.get(Severity.WARNING).message(),
                 "each level's Message rides through the normalisation");

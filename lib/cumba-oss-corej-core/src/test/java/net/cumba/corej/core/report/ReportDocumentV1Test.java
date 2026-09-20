@@ -376,14 +376,14 @@ class ReportDocumentV1Test
     @Test
     void summaryBundlesGenExpRulesByOriginalCoreId()
     {
-        // Fix #53 — the AE and CM `--` expansions of CORE-000767 now share the bare base id
-        // `CORE-000767` (matching Python). Listing that id in bundledCoreIds collapses their
+        // Fix #53 — the AE and CM `--` expansions of CDISC-CG0468 now share the bare base id
+        // `CDISC-CG0468` (matching Python). Listing that id in bundledCoreIds collapses their
         // per-domain rows into one summary row, with both dataset names joined alphabetically and
         // issue counts summed.
-        ValidationFinding aeFinding = bundleFinding("CORE-000767",
-                "Parent --DECOD differs from FAOBJ.", 100);
-        ValidationFinding cmFinding = bundleFinding("CORE-000767",
-                "Parent --DECOD differs from FAOBJ.", 250);
+        ValidationFinding aeFinding = bundleFinding("CDISC-CG0468",
+                "--TPT is present without --TPTNUM.", 100);
+        ValidationFinding cmFinding = bundleFinding("CDISC-CG0468",
+                "--TPT is present without --TPTNUM.", 250);
         ValidationReport report = ValidationReport.builder()
                 .members(List.of(
                         ValidationReportMember.builder().domain("AE").fileName("ae.xpt")
@@ -393,20 +393,20 @@ class ReportDocumentV1Test
                 .build();
 
         Map<String, Object> export = new ReportAssembler().report(report).rules(List.of())
-                .bundledCoreIds(Set.of("CORE-000767")).sections().toExportDocument();
+                .bundledCoreIds(Set.of("CDISC-CG0468")).sections().toExportDocument();
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> summary = (List<Map<String, Object>>) export.get("Issue_Summary");
         assertEquals(1, summary.size(), "two per-domain expansions collapse into one summary row");
-        assertEquals("CORE-000767", summary.get(0).get("core_id"));
+        assertEquals("CDISC-CG0468", summary.get(0).get("core_id"));
         assertEquals("ae.xpt, cm.xpt", summary.get(0).get("dataset"));
         assertEquals(350, summary.get(0).get("issues"));
 
         // Issue_Details is per-row by design (Python parity: one entry per actual violation row);
         // bundling only collapses the Issue_Summary view. With 100 + 250 slab rows we expect 350
-        // detail entries, every one carrying the shared bare id CORE-000767.
+        // detail entries, every one carrying the shared bare id CDISC-CG0468.
         List<Map<String, Object>> details = section(export, "Issue_Details");
         assertEquals(350, details.size(), "Issue_Details emits one entry per slab row");
-        assertTrue(details.stream().allMatch(d -> "CORE-000767".equals(d.get("core_id"))));
+        assertTrue(details.stream().allMatch(d -> "CDISC-CG0468".equals(d.get("core_id"))));
     }
 
 
@@ -416,17 +416,16 @@ class ReportDocumentV1Test
         // Members fed in non-alphabetical order (MH, AE, CM) — the joined dataset string must
         // still come out alphabetical: ae.xpt, cm.xpt, mh.xpt. Deterministic regardless of run
         // order.
-        ValidationReport report = ValidationReport.builder()
-                .members(List.of(
-                        ValidationReportMember.builder().domain("MH").fileName("mh.xpt")
-                                .findings(List.of(bundleFinding("CORE-000767", "msg", 1))).build(),
-                        ValidationReportMember.builder().domain("AE").fileName("ae.xpt")
-                                .findings(List.of(bundleFinding("CORE-000767", "msg", 1))).build(),
-                        ValidationReportMember.builder().domain("CM").fileName("cm.xpt")
-                                .findings(List.of(bundleFinding("CORE-000767", "msg", 1))).build()))
+        ValidationReport report = ValidationReport.builder().members(List.of(
+                ValidationReportMember.builder().domain("MH").fileName("mh.xpt")
+                        .findings(List.of(bundleFinding("CDISC-CG0468", "msg", 1))).build(),
+                ValidationReportMember.builder().domain("AE").fileName("ae.xpt")
+                        .findings(List.of(bundleFinding("CDISC-CG0468", "msg", 1))).build(),
+                ValidationReportMember.builder().domain("CM").fileName("cm.xpt")
+                        .findings(List.of(bundleFinding("CDISC-CG0468", "msg", 1))).build()))
                 .build();
         Map<String, Object> export = new ReportAssembler().report(report).rules(List.of())
-                .bundledCoreIds(Set.of("CORE-000767")).sections().toExportDocument();
+                .bundledCoreIds(Set.of("CDISC-CG0468")).sections().toExportDocument();
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> summary = (List<Map<String, Object>>) export.get("Issue_Summary");
         assertEquals(1, summary.size());
@@ -465,9 +464,9 @@ class ReportDocumentV1Test
     void summaryBundlesOnSameMessageOnly()
     {
         // Same bundled core_id, different messages (the message is part of the bundling key) → two
-        // summary rows, not one — even though both share CORE-000767 and it is in bundledCoreIds.
-        ValidationFinding ae = bundleFinding("CORE-000767", "AE-flavoured message", 5);
-        ValidationFinding cm = bundleFinding("CORE-000767", "CM-flavoured message", 7);
+        // summary rows, not one — even though both share CDISC-CG0468 and it is in bundledCoreIds.
+        ValidationFinding ae = bundleFinding("CDISC-CG0468", "AE-flavoured message", 5);
+        ValidationFinding cm = bundleFinding("CDISC-CG0468", "CM-flavoured message", 7);
         ValidationReport report = ValidationReport.builder()
                 .members(List.of(
                         ValidationReportMember.builder().domain("AE").fileName("ae.xpt")
@@ -476,7 +475,7 @@ class ReportDocumentV1Test
                                 .findings(List.of(cm)).build()))
                 .build();
         Map<String, Object> export = new ReportAssembler().report(report).rules(List.of())
-                .bundledCoreIds(Set.of("CORE-000767")).sections().toExportDocument();
+                .bundledCoreIds(Set.of("CDISC-CG0468")).sections().toExportDocument();
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> summary = (List<Map<String, Object>>) export.get("Issue_Summary");
         assertEquals(2, summary.size(), "different messages → bundling key differs → two rows");
@@ -488,9 +487,9 @@ class ReportDocumentV1Test
     {
         // An ordinary (non-expanded) CORE rule firing in two datasets is NOT in bundledCoreIds — so
         // its per-dataset rows survive even with an identical message. Bundling is reserved for the
-        // SDTM `--` expansions named in the set, not every shared CORE id.
-        ValidationFinding ae = bundleFinding("CORE-000050", "same message", 3);
-        ValidationFinding cm = bundleFinding("CORE-000050", "same message", 4);
+        // SDTM `--` expansions named in the set, not every shared rule id.
+        ValidationFinding ae = bundleFinding("CDISC-CG0623", "same message", 3);
+        ValidationFinding cm = bundleFinding("CDISC-CG0623", "same message", 4);
         ValidationReport report = ValidationReport.builder()
                 .members(List.of(
                         ValidationReportMember.builder().domain("AE").fileName("ae.xpt")
@@ -499,11 +498,11 @@ class ReportDocumentV1Test
                                 .findings(List.of(cm)).build()))
                 .build();
         Map<String, Object> export = new ReportAssembler().report(report).rules(List.of())
-                .bundledCoreIds(Set.of("CORE-000767")).sections().toExportDocument();
+                .bundledCoreIds(Set.of("CDISC-CG0468")).sections().toExportDocument();
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> summary = (List<Map<String, Object>>) export.get("Issue_Summary");
         assertEquals(2, summary.size(),
-                "ordinary CORE id absent from bundledCoreIds keeps per-dataset rows");
+                "an ordinary rule id absent from bundledCoreIds keeps per-dataset rows");
         assertEquals("ae.xpt", summary.get(0).get("dataset"));
         assertEquals("cm.xpt", summary.get(1).get("dataset"));
     }
@@ -574,10 +573,10 @@ class ReportDocumentV1Test
     {
         ValidationReport report = ValidationReport.builder().members(List.of())
                 .skippedRules(List.of(
-                        net.cumba.datatable.report.SkippedRuleEntry.builder().coreId("CORE-000351")
+                        net.cumba.datatable.report.SkippedRuleEntry.builder().coreId("CDISC-CG0040")
                                 .dataset("EX").reason("domain EX not in Scope.Domains.Include [AE]")
                                 .build(),
-                        net.cumba.datatable.report.SkippedRuleEntry.builder().coreId("CORE-000351")
+                        net.cumba.datatable.report.SkippedRuleEntry.builder().coreId("CDISC-CG0040")
                                 .dataset("SUPPEX")
                                 .reason("domain SUPPEX not in Scope.Domains.Include [AE]").build()))
                 .build();
@@ -593,7 +592,7 @@ class ReportDocumentV1Test
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> skipped = (List<Map<String, Object>>) export.get("Skipped_Rules");
         assertEquals(2, skipped.size());
-        assertEquals("CORE-000351", skipped.get(0).get("core_id"));
+        assertEquals("CDISC-CG0040", skipped.get(0).get("core_id"));
         assertEquals("EX", skipped.get(0).get("dataset"));
         assertEquals("domain EX not in Scope.Domains.Include [AE]", skipped.get(0).get("reason"));
         assertEquals("SUPPEX", skipped.get(1).get("dataset"));

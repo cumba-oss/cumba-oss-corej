@@ -28,8 +28,10 @@ import org.junit.jupiter.api.Test;
  *
  * <p>
  * This is the shape behind {@code CDISC-AD0204} / {@code PMDA-AD0204} ({@code AGE != DM.AGE}) and
- * {@code CDISC-CG0032} ({@code VISITDY != TV.VISITDY}) — the four rules that do a genuine typed
- * comparison across a join.
+ * {@code CDISC-CG0032} ({@code VISITDY != TV.VISITDY}) — the shipped rules that do a genuine typed
+ * comparison across a join. (The count that stood here, "four", included a CORE twin retired
+ * 2026-09-19; it is not restated because "a genuine typed comparison across a join" has no
+ * mechanical spelling to re-derive it from.)
  * </p>
  *
  * <p>
@@ -137,8 +139,10 @@ class DottedJoinedColumnTypingTest
         assertEquals(bits(0), eval("DM.ARM == \"PLACEBO\"", e));
     }
 
-    // A varargs carrier for the table builder below, never compared or hashed — the array-valued
-    // equals/hashCode this check guards against is unreachable here.
+    // [ArrayRecordComponent] suppressed: a private fixture carrier that only ferries a varargs
+    // cell list from the factory below into the table builder. It is never compared, hashed or
+    // put in a collection, so the record's identity-based array equals/hashCode is unobservable —
+    // the only thing a defensive copy would buy here is the copy.
     @SuppressWarnings("ArrayRecordComponent")
     private record Col(String name, DataValueType type, Object[] values)
     {

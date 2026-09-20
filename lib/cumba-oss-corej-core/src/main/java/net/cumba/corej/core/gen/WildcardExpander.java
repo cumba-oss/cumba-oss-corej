@@ -1,7 +1,5 @@
 package net.cumba.corej.core.gen;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.TextNode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -21,9 +19,7 @@ import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionAny;
-import net.cumba.corej.core.model.CheckConditionConstant;
 import net.cumba.corej.core.model.CheckConditionExpression;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.CheckConditionNot;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
@@ -687,10 +683,8 @@ public final class WildcardExpander
         case CheckConditionAny any -> any.getConditions().stream()
                 .anyMatch(WildcardExpander::hasNamePositionBareStar);
         case CheckConditionNot not -> hasNamePositionBareStar(not.getCondition());
-        case CheckConditionLeaf leaf -> "*".equals(leaf.getName());
         case CheckConditionExpression expr -> exprHasNamePositionBareStar(expr.expr());
         case null -> false;
-        case CheckConditionConstant _ -> false;
         };
     }
 
@@ -768,43 +762,9 @@ public final class WildcardExpander
         case CheckConditionAny any -> any.getConditions()
                 .forEach(c -> collectWildcardNamesRecursive(c, names));
         case CheckConditionNot not -> collectWildcardNamesRecursive(not.getCondition(), names);
-        case CheckConditionLeaf leaf ->
-        {
-            String leafName = leaf.getName();
-            if (leafName != null && isWildcard(leafName))
-            {
-                names.add(leafName);
-            }
-            // Also check value field for wildcard references (unless literal)
-            if (!Boolean.TRUE.equals(leaf.getValueIsLiteral()) && leaf.getValue() != null)
-            {
-                if (leaf.getValue().isTextual())
-                {
-                    String valText = leaf.getValue().asText();
-                    if (isWildcard(valText))
-                    {
-                        names.add(valText);
-                    }
-                }
-                else if (leaf.getValue().isArray())
-                {
-                    for (JsonNode element : leaf.getValue())
-                    {
-                        if (element.isTextual() && isWildcard(element.asText()))
-                        {
-                            names.add(element.asText());
-                        }
-                    }
-                }
-            }
-        }
         case null ->
         {
             // null tree — nothing to collect
-        }
-        case CheckConditionConstant _ ->
-        {
-            // constants have no wildcard names to collect
         }
         case CheckConditionExpression expr -> collectWildcardNamesFromExpr(expr.expr(), names);
         }
@@ -1314,6 +1274,7 @@ public final class WildcardExpander
         Operation copy = new Operation();
         // --- column positions: rewritten ---
         copy.setName(renameOne(op.getName(), rename));
+        copy.setNameExpr(op.getNameExpr());
         copy.setNames(renameEach(op.getNames(), rename));
         copy.setGroup(renameEach(op.getGroup(), rename));
         copy.setReference(renameOne(op.getReference(), rename));
@@ -1419,7 +1380,7 @@ public final class WildcardExpander
             return null;
         }
         net.cumba.corej.core.model.VariableRequirement variables = template.getVariables();
-        if (variables == null || (variables.getAll() == null && variables.getAny() == null
+        if (variables == null || (variables.getAll() == null && variables.getAnyGroups() == null
                 && variables.getNone() == null))
         {
             return template;
@@ -1431,10 +1392,40 @@ public final class WildcardExpander
         copy.setDictionary(template.getDictionary());
         net.cumba.corej.core.model.VariableRequirement expanded = new net.cumba.corej.core.model.VariableRequirement();
         expanded.setAll(substituteNameList(variables.getAll(), wildcardToColumn, tuple));
-        expanded.setAny(substituteNameList(variables.getAny(), wildcardToColumn, tuple));
+        expanded.setAnyGroups(
+                substituteNameGroups(variables.getAnyGroups(), wildcardToColumn, tuple));
         expanded.setNone(substituteNameList(variables.getNone(), wildcardToColumn, tuple));
         copy.setVariables(expanded);
         return copy;
+    }
+
+
+    /**
+     * {@link #substituteNameList} mapped over {@code Any}'s groups, <b>preserving the grouping</b>.
+     *
+     * <p>
+     * ⚠⚠ Never flatten here: this method both reads and writes the facet back, so substituting over
+     * {@code anyUnion()} would silently collapse {@code [[A,B],[C,D]]} — "one of each" — into
+     * {@code [A,B,C,D]} — "one of the four" — for <b>every</b> wildcard-expanded rule, with
+     * everything still compiling and every entry still substituted (§D7's second silently-wrong
+     * site; negative control N4).
+     * </p>
+     */
+    private static @Nullable List<List<String>> substituteNameGroups(
+            @Nullable List<List<String>> groups, Map<String, String> wildcardToColumn,
+            Map<String, String> tuple)
+    {
+        if (groups == null)
+        {
+            return null;
+        }
+        List<List<String>> out = new ArrayList<>(groups.size());
+        for (List<String> group : groups)
+        {
+            List<String> substituted = substituteNameList(group, wildcardToColumn, tuple);
+            out.add(substituted == null ? group : substituted);
+        }
+        return out;
     }
 
 
@@ -1554,8 +1545,6 @@ public final class WildcardExpander
                 any.getConditions().stream().map(c -> substituteNames(c, rename)).toList());
         case CheckConditionNot not -> new CheckConditionNot(
                 substituteNames(not.getCondition(), rename));
-        case CheckConditionLeaf leaf -> substituteLeaf(leaf, rename);
-        case CheckConditionConstant c -> c;
         case CheckConditionExpression e ->
         {
             Expr substituted = substituteExpr(e.expr(), rename);
@@ -1663,99 +1652,6 @@ public final class WildcardExpander
             newKwargs = rebuilt;
         }
         return new Expr.Call(c.name(), newArgs, newKwargs);
-    }
-
-
-    // identity check intentional — substituteLeafValue returns the same node when nothing changed
-    @SuppressWarnings("ReferenceEquality")
-    private static CheckConditionLeaf substituteLeaf(CheckConditionLeaf leaf,
-            java.util.function.UnaryOperator<String> rename)
-    {
-        String originalName = leaf.getName();
-        String newName = originalName != null ? rename.apply(originalName) : null;
-
-        JsonNode newValue = substituteLeafValue(leaf, rename);
-
-        if (Objects.equals(newName, leaf.getName()) && newValue == leaf.getValue())
-        {
-            return leaf;
-        }
-        return CheckConditionLeaf.builder().name(newName).operator(leaf.getOperator())
-                .value(newValue).valueIsLiteral(leaf.getValueIsLiteral())
-                .valueIsReference(leaf.getValueIsReference())
-                .typeInsensitive(leaf.getTypeInsensitive()).negative(leaf.getNegative())
-                .regex(leaf.getRegex()).prefix(leaf.getPrefix()).suffix(leaf.getSuffix())
-                .within(leaf.getWithin()).ordering(leaf.getOrdering())
-                // ⚠ The grouping-key disposition must survive the rebuild, or a rule declaring
-                // keep_missings silently loses it the moment its name needs resolving — the exact
-                // silent-loss failure mode the parameter's validation exists to prevent.
-                .keepMissings(leaf.getKeepMissings())
-                // Fix #121's include_empty has exactly that shape and was dropped here until now:
-                // an authored `include_empty` was silently lost the moment the leaf's name needed
-                // resolving, so the expanded rule judged blanks differently from the rule its
-                // author reviewed — invisible downstream, because the rule still ran and still
-                // reported.
-                .includeEmpty(leaf.getIncludeEmpty())
-                // The composite tuple-membership target (T3) is the same shape again. A `names`
-                // leaf carries a null `name`, so it only reaches this rebuild when its VALUE holds
-                // a wildcard — and dropping `names` would leave the leaf with no target at all.
-                .names(leaf.getNames())
-                // EC-87: the next-record comparison relation has the same silent-loss shape.
-                .relation(leaf.getRelation()).build();
-    }
-
-
-    /**
-     * Substitutes wildcards inside the {@code value} of a check leaf when the value is not flagged
-     * as a literal. Handles both textual and array shapes; returns the original node when nothing
-     * changes.
-     */
-    private static @Nullable JsonNode substituteLeafValue(CheckConditionLeaf leaf,
-            java.util.function.UnaryOperator<String> rename)
-    {
-        JsonNode newValue = leaf.getValue();
-        if (Boolean.TRUE.equals(leaf.getValueIsLiteral()) || newValue == null)
-        {
-            return newValue;
-        }
-        if (newValue.isTextual())
-        {
-            String mapped = rename.apply(newValue.asText());
-            if (mapped != null && !mapped.equals(newValue.asText()))
-            {
-                return new TextNode(mapped);
-            }
-            return newValue;
-        }
-        if (newValue.isArray())
-        {
-            return substituteLeafArrayValue(newValue, rename);
-        }
-        return newValue;
-    }
-
-
-    private static JsonNode substituteLeafArrayValue(JsonNode aArray,
-            java.util.function.UnaryOperator<String> rename)
-    {
-        // Expand wildcards inside array elements
-        boolean changed = false;
-        var arr = new com.fasterxml.jackson.databind.ObjectMapper().createArrayNode();
-        for (JsonNode element : aArray)
-        {
-            if (element.isTextual())
-            {
-                String mapped = rename.apply(element.asText());
-                if (mapped != null && !mapped.equals(element.asText()))
-                {
-                    arr.add(mapped);
-                    changed = true;
-                    continue;
-                }
-            }
-            arr.add(element);
-        }
-        return changed ? arr : aArray;
     }
 
 

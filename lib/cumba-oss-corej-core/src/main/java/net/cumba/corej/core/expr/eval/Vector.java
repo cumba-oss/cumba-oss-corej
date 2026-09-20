@@ -2,26 +2,21 @@ package net.cumba.corej.core.expr.eval;
 
 import net.cumba.corej.core.exec.ScalarSemantics;
 import net.cumba.datatable.values.DataValueType;
-import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
 /**
  * The value layer of the native evaluator: a column-wide, row-addressable operand.
  *
  * <p>
- * A {@code Vector} exposes a cell two ways, mirroring how the legacy engine splits operand
- * resolution between the left-hand "name" position and the right-hand "value" position:
+ * A {@code Vector} resolves a row to <b>one</b> {@link TypedValue} — {@code (type,
+ * value-or-missing)} — whichever side of an operator it stands on. The former split into a
+ * {@code dataValue} (LHS "name" position) and a {@code resolvedObject} (RHS "value" position,
+ * {@code @Nullable Object}) is gone: a {@code column-reference} is a <b>type</b>, not a position
+ * (SPEC §1.1). Phase 3d retired the last per-position derivation
+ * ({@code TypedValue.comparisonOperand()}) — the scalar comparison primitives read the carrier's
+ * typed channels directly; {@link TypedValue#resolved()} remains as the untyped transport of the
+ * SPI/collection/temporal surfaces until the typed descriptor model (phases 6b/7).
  * </p>
- * <ul>
- * <li>{@link #dataValue(int)} — the typed {@link IDataValue} for the row, used where the legacy
- * engine reads the <i>name</i> column (LHS). Carries the declared {@link DataValueType} so the
- * polymorphic date comparison can decide numeric-vs-ISO exactly as the legacy operators do.</li>
- * <li>{@link #resolvedObject(int)} — the plain {@code Object} for the row, used where the legacy
- * engine resolves the <i>value</i> operand (RHS) via {@code ValueResolver}. A column reference
- * resolves to its cell's string (or {@code null} when missing/invalid), a literal to its boxed
- * value. This keeps {@code A == B}, {@code date(A) > date(B)}, etc. bit-for-bit aligned with the
- * legacy {@code resolve} path.</li>
- * </ul>
  *
  * <p>
  * Implementations are pure with respect to the underlying table and may be shared across threads
@@ -37,17 +32,8 @@ public sealed interface Vector
         JoinedCandidatesVector
 {
 
-    /** The typed value at {@code row} (LHS-style access). Never {@code null}. */
-    IDataValue dataValue(int row);
-
-
-    /**
-     * The resolved operand at {@code row} (RHS-style access), mirroring {@code ValueResolver}:
-     * {@code null} when missing/invalid, a {@link String} for a column reference, or the boxed
-     * literal value.
-     */
-    @Nullable
-    Object resolvedObject(int row);
+    /** The row's operand as the uniform typed carrier. Never {@code null}. */
+    TypedValue value(int row);
 
 
     /**
@@ -65,7 +51,7 @@ public sealed interface Vector
      *
      * <p>
      * ⛔ Returning {@code null} keeps a vector OUT of the gate, and several do so deliberately: the
-     * {@code value()} cursor of a per-variable rule (an unnamed {@code ColumnVector}), an absent
+     * {@code value()} cursor of a per-variable rule (an unnamed {@link ColumnVector}), an absent
      * column folded to an all-missing constant, and a {@code ${…}}-substituted operand, whose
      * column name resolves per row so no single declared type is correct.
      * </p>
@@ -79,71 +65,42 @@ public sealed interface Vector
 
 
     /**
-     * The row's right-hand operand for a <b>plain numeric comparison</b> ({@code ==}/{@code !=} via
-     * {@link Primitives#equality} and the four order operators via {@link Primitives#comparison}).
-     *
-     * <p>
-     * Defaults to {@link #resolvedObject(int)} and is overridden only by {@link ColumnVector},
-     * which returns the cell's {@link net.cumba.datatable.values.IDataValue} for a numeric column
-     * instead of its text. That is the whole of Step A of {@code PLAN-joined-column-typing}:
-     * resolving a numeric operand as text routes it through
-     * {@code DataValueSupport.getAsDoubleCleaned}'s <b>12-significant-digit rounding</b>, so two
-     * identical {@code DOUBLE} columns holding {@code 10000000000001} compared as {@code A != B}
-     * answered TRUE — the engine reporting identical values as different.
-     * </p>
-     *
-     * <p>
-     * ⚠⚠ This exists as a <b>separate</b> accessor rather than as a change to
-     * {@link #resolvedObject(int)} for a measured reason: roughly thirty call sites consume
-     * {@code resolvedObject}, and the textual ones fold via {@code toString()}, not
-     * {@code getValueAsString()}. {@code DataValueString.toString()} <b>quotes</b> its value and
-     * the anonymous {@code DataValues.of} carries no {@code toString()} override at all, so
-     * widening {@code resolvedObject} would corrupt membership needles, {@code str()} comparisons
-     * and report text. Confining the typed operand to the two consumers that need the exact value
-     * keeps every other surface byte-identical <b>by construction</b>.
-     * </p>
-     *
-     * <p>
-     * ⛔ The {@code date}/{@code date_part}/{@code time_part} family deliberately does NOT use this
-     * (decision D11): those comparisons carry their own {@code DATE_EPSILON} tolerance over SAS day
-     * numbers and keep resolving through {@link #resolvedObject(int)}.
-     * </p>
-     *
-     * @param row
-     *            the 0-based row index.
-     * @return the typed operand where one is available, else exactly {@link #resolvedObject(int)}.
-     */
-    default @Nullable Object comparisonOperand(int row)
-    {
-        return resolvedObject(row);
-    }
-
-
-    /**
      * The statically-declared type of this vector, used by the compiler's operand-homogeneity check
      * (decision #15) and by callers that need a type hint without reading a cell.
      */
     DataValueType declaredType();
 
 
-    /** Missing per F3: {@code null}, invalid, or empty string. */
+    /**
+     * Missing per F3: {@code null}, invalid, or empty string. ⚠ Deliberately wider than
+     * {@link TypedValue#isMissing()} — the F3 fold treats {@code ""} as blank, which D34 #1 keeps
+     * apart from a genuine {@link net.cumba.datatable.values.MissingValue}. Phase 3d moved the
+     * scalar comparisons onto the typed carrier but deliberately kept their <em>verdicts</em> on
+     * this fold; the D34 #5 total order (a missing low operand fires {@code <}/{@code <=}) is a
+     * ruled change no phase row owns yet — see the phase-3d report.
+     */
     default boolean isMissing(int row)
     {
-        return ScalarSemantics.isMissing(dataValue(row));
+        return ScalarSemantics.isMissing(value(row).cell());
     }
 
 
     /** The string form of the cell at {@code row}. */
     default String asString(int row)
     {
-        return dataValue(row).getValueAsString();
+        return value(row).cell().getValueAsString();
     }
 
 
-    /** The double form of the cell at {@code row} ({@code NaN} if non-numeric). */
+    /**
+     * The double form of the cell at {@code row}. ⚠ A raw read <b>below</b> the D85a carrier
+     * boundary: a missing or non-numeric cell answers the carrier {@code NaN}, which never leaves
+     * the guarded call sites as a result — callers test {@link #isMissing(int)} /
+     * {@link TypedValue#isMissing()} first.
+     */
     default double asDouble(int row)
     {
-        return dataValue(row).getValueAsDouble();
+        return value(row).cell().getValueAsDouble();
     }
 
 }

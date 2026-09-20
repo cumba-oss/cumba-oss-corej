@@ -5,13 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.node.TextNode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
@@ -44,6 +42,13 @@ import org.junit.jupiter.api.Test;
 class WildcardExpanderOperationNamesTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
     /** The AD0353 shape: a Check over {@code ByIND}, an operation over {@code AyIND}. */
     private static Rule baselineIndicatorTemplate()
     {
@@ -54,9 +59,7 @@ class WildcardExpanderOperationNamesTest
         rule.setDescription("ByIND is not equal to AyIND where ABLFL is equal to Y");
 
         rule.setCheck(new CheckConditionAll(
-                List.of(CheckConditionLeaf.builder().name("ByIND").operator("non_empty").build(),
-                        CheckConditionLeaf.builder().name("ByIND").operator("not_equal_to")
-                                .value(new TextNode("$baseline_ayind")).build())));
+                List.of(expr("not empty(ByIND)"), expr("ByIND != $baseline_ayind"))));
 
         Operation op = new Operation();
         op.setId("$baseline_ayind");
@@ -120,8 +123,12 @@ class WildcardExpanderOperationNamesTest
         {
             CheckConditionAll all = (CheckConditionAll) r.getCheck();
             assertNotNull(all);
-            CheckConditionLeaf first = (CheckConditionLeaf) all.getConditions().get(0);
-            checkToOp.put(first.getName(), onlyOperation(r).getName());
+            // "not empty(B1IND)" -> B1IND
+            String printed = net.cumba.corej.core.expr.ExpressionPrinter
+                    .print(((net.cumba.corej.core.model.CheckConditionExpression) all
+                            .getConditions().get(0)).expr());
+            String name = printed.substring("not empty(".length(), printed.length() - 1);
+            checkToOp.put(name, onlyOperation(r).getName());
         }
         assertEquals(Map.of("B1IND", "A1IND", "B2IND", "A2IND"), checkToOp,
                 "each expansion pairs its own y — B2IND must never be compared against A1IND");

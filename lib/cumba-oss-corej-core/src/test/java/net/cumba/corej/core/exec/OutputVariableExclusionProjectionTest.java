@@ -34,6 +34,13 @@ import org.junit.jupiter.api.Test;
 class OutputVariableExclusionProjectionTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
     private static Rule load(String body) throws Exception
     {
         RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"R1\":" + body + "}}");
@@ -85,8 +92,8 @@ class OutputVariableExclusionProjectionTest
         Rule rule = load(
                 """
                         {"Core":{"Id":"R1"},"Sensitivity":"Record",
-                         "Check":{"all":[{"name":"variable_name","operator":"matches_regex","value":"^AETERM$"},
-                                         {"name":"variable_format","operator":"empty"}]},
+                         "Check":{"all":[{"expression": "ends_with(varname(), \\"AETERM\\")"},
+                                         {"expression": "empty(var_format(\\"DATA\\"))"}]},
                          "Outcome":{"Message":"m","Output_Variables":["variable_name","variable_label","!variable_format"]}}""");
         assertEquals(List.of("variable_name", "variable_label"),
                 rule.getEffectiveOutputVariables());
@@ -109,8 +116,8 @@ class OutputVariableExclusionProjectionTest
         Rule rule = load(
                 """
                         {"Core":{"Id":"R1"},"Sensitivity":"Record",
-                         "Check":{"all":[{"name":"variable_name","operator":"matches_regex","value":"^AETERM$"},
-                                         {"name":"variable_format","operator":"empty"}]},
+                         "Check":{"all":[{"expression": "ends_with(varname(), \\"AETERM\\")"},
+                                         {"expression": "empty(var_format(\\"DATA\\"))"}]},
                          "Outcome":{"Message":"m","Output_Variables":["variable_name","variable_format"]}}""");
         IDataTable table = MockTable.of().name("AE").col("AETERM", "X", "Y").build();
 
@@ -130,8 +137,7 @@ class OutputVariableExclusionProjectionTest
         Rule rule = load(
                 """
                         {"Core":{"Id":"R1"},"Variable_Universe":"Define","Sensitivity":"Dataset",
-                         "Check":{"all":[{"name":"define_variable_role","operator":"not_equal_to",
-                                          "value":"library_variable_role"}]},
+                         "Check":{"all":[{"expression": "var_role(\\"DEFINE\\") != var_role(\\"LIBRARY\\")"}]},
                          "Outcome":{"Message":"m","Output_Variables":["define_variable_name","!library_variable_role"]}}""");
         assertTrue(rule.getEffectiveOutputVariables().contains("define_variable_role"),
                 "precondition: define_variable_role is derived: "
@@ -164,9 +170,9 @@ class OutputVariableExclusionProjectionTest
         Rule rule = load(
                 """
                         {"Core":{"Id":"R1"},"Sensitivity":"Record",
-                         "Check":{"all":[{"name":"variable_name","operator":"matches_regex","value":"^DESC$"},
-                                         {"name":"variable_value","operator":"longer_than","value":3},
-                                         {"name":"variable_label","operator":"empty"}]},
+                         "Check":{"all":[{"expression": "ends_with(varname(), \\"DESC\\")"},
+                                         {"expression": "len(value()) > 3"},
+                                         {"expression": "empty(var_label(\\"DATA\\"))"}]},
                          "Outcome":{"Message":"m","Output_Variables":["variable_name","variable_value","!variable_label"]}}""");
         assertEquals(List.of("variable_name", "variable_value"),
                 rule.getEffectiveOutputVariables());
@@ -215,11 +221,8 @@ class OutputVariableExclusionProjectionTest
         outcome.setMessage("m");
         outcome.setOutputVariables(authoredOutputVariables);
         rule.setOutcome(outcome);
-        rule.setCheck(new net.cumba.corej.core.model.CheckConditionAll(
-                List.of(net.cumba.corej.core.model.CheckConditionLeaf.builder().name("AGE")
-                        .operator("not_equal_to")
-                        .value(com.fasterxml.jackson.databind.node.TextNode.valueOf("ADSL.AGE"))
-                        .build())));
+        rule.setCheck(
+                new net.cumba.corej.core.model.CheckConditionAll(List.of(expr("AGE != ADSL.AGE"))));
         net.cumba.corej.core.model.MatchDataset md = new net.cumba.corej.core.model.MatchDataset();
         md.setName("ADSL");
         md.setKeys(new java.util.ArrayList<>(List.of("USUBJID")));
@@ -355,8 +358,8 @@ class OutputVariableExclusionProjectionTest
         Rule rule = load(
                 """
                         {"Core":{"Id":"R1"},"Sensitivity":"Record",
-                         "Check":{"all":[{"name":"variable_name","operator":"matches_regex","value":"^AETERM$"},
-                                         {"name":"variable_label","operator":"empty"}]},
+                         "Check":{"all":[{"expression": "ends_with(varname(), \\"AETERM\\")"},
+                                         {"expression": "empty(var_label(\\"DATA\\"))"}]},
                          "Outcome":{"Message":"m","Output_Variables":["!variable_name","!variable_label"]}}""");
         assertEquals(List.of(), rule.getEffectiveOutputVariables());
         IDataTable table = MockTable.of().name("AE").col("AETERM", "X").build();
@@ -377,8 +380,8 @@ class OutputVariableExclusionProjectionTest
         Rule rule = load(
                 """
                         {"Core":{"Id":"R1"},"Sensitivity":"Record",
-                         "Check":{"all":[{"name":"variable_name","operator":"matches_regex","value":"^DESC$"},
-                                         {"name":"variable_value","operator":"longer_than","value":3}]},
+                         "Check":{"all":[{"expression": "ends_with(varname(), \\"DESC\\")"},
+                                         {"expression": "len(value()) > 3"}]},
                          "Outcome":{"Message":"m","Output_Variables":["!variable_name","!variable_value"]}}""");
         assertEquals(List.of(), rule.getEffectiveOutputVariables());
         IDataTable table = MockTable.of().name("ADSL").col("USUBJID", "S1", "S2")

@@ -48,10 +48,7 @@ class RuleLoadValidationEmptyIncludeTest
                       "Include": [""]
                     }
                   },
-                  "Check": {
-                    "name": "AESTDY",
-                    "operator": "non_empty"
-                  }
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """;
         RulePackage pkg = RulePackageLoader.loadFromString(packageOf(ruleJson));
@@ -77,10 +74,7 @@ class RuleLoadValidationEmptyIncludeTest
                       "Include": ["", "ADAE"]
                     }
                   },
-                  "Check": {
-                    "name": "AESTDY",
-                    "operator": "non_empty"
-                  }
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """;
         RulePackage pkg = RulePackageLoader.loadFromString(packageOf(ruleJson));
@@ -105,10 +99,7 @@ class RuleLoadValidationEmptyIncludeTest
                       "Exclude": [""]
                     }
                   },
-                  "Check": {
-                    "name": "AESTDY",
-                    "operator": "non_empty"
-                  }
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """;
         RulePackage pkg = RulePackageLoader.loadFromString(packageOf(ruleJson));
@@ -134,10 +125,7 @@ class RuleLoadValidationEmptyIncludeTest
                       "Include": ["ADAE"]
                     }
                   },
-                  "Check": {
-                    "name": "AESTDY",
-                    "operator": "non_empty"
-                  }
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """;
         RulePackage pkg = RulePackageLoader.loadFromString(packageOf(ruleJson));

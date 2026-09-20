@@ -32,7 +32,7 @@ class ExecutionVerdictCheckTest
     {
         return """
                 #!RuleTest
-                #test CORE-000012 expect=%s domain=AE
+                #test CDISC-CG0040 expect=%s domain=AE
                 %s
                 dataset AE
                 col STUDYID type=Char
@@ -53,7 +53,7 @@ class ExecutionVerdictCheckTest
     /** The engine's shape for an errored rule: ERROR status plus the {@code __error__} sentinel. */
     private static Outcome errored(String aMessage)
     {
-        return ExecutionVerdictCheck.outcomeOf(RuleExecutionResult.builder().ruleId("CORE-000012")
+        return ExecutionVerdictCheck.outcomeOf(RuleExecutionResult.builder().ruleId("CDISC-CG0040")
                 .violations(List.of(new Violation(0, Map.of("__error__", aMessage)))).totalRows(1)
                 .status(RuleExecutionStatus.ERROR).statusMessage(aMessage).build());
     }
@@ -345,7 +345,7 @@ class ExecutionVerdictCheckTest
     void outcomeOf_readsACleanRun()
     {
         Outcome o = ExecutionVerdictCheck.outcomeOf(RuleExecutionResult.builder()
-                .ruleId("CORE-000012").violations(List.of()).totalRows(1).build());
+                .ruleId("CDISC-CG0040").violations(List.of()).totalRows(1).build());
         assertTrue(o.executed());
         assertFalse(o.errored());
         assertFalse(o.violated());

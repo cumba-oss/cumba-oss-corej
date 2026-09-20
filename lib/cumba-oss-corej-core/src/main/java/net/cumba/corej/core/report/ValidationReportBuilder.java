@@ -79,18 +79,26 @@ public final class ValidationReportBuilder
     private final List<SkippedRuleEntry> skippedRules = new ArrayList<>();
 
     /**
-     * CORE ids of the rules that recorded at least one <em>non-skipped</em> execution, in
-     * first-seen order.
+     * CORE ids of the rules' <em>non-skipped</em> executions, <b>one entry per (rule × dataset)
+     * execution</b>, in execution order — a multiset, not a set.
      *
      * <p>
      * A clean execution produces no finding and therefore leaves no other trace on the report, so
-     * without this set a consumer cannot tell <em>"skipped on every dataset"</em> from <em>"ran and
-     * found nothing"</em>. Recording the executed side (rather than inferring it from the absence
-     * of findings) is what keeps a <em>partially</em> skipped rule out of the skipped bucket: it
-     * really did run somewhere.
+     * without this record a consumer cannot tell <em>"skipped on every dataset"</em> from <em>"ran
+     * and found nothing"</em>. Recording the executed side (rather than inferring it from the
+     * absence of findings) is what keeps a <em>partially</em> skipped rule out of the skipped
+     * bucket: it really did run somewhere.
+     * </p>
+     *
+     * <p>
+     * ⭐ Duplicates are kept <b>on purpose</b> (D65 of {@code PLAN-typed-expression-engine.md}):
+     * {@code Rules_Report}'s per-rule <em>executed</em> count is the number of occurrences here
+     * minus the rule's engine-error findings. This deliberately reverses the pre-D65 dedup —
+     * {@code ValidationReport.getExecutedCoreIds()} is a {@link List} and every consumer that wants
+     * the old set semantics wraps it in one ({@code ReportAssembler} does).
      * </p>
      */
-    private final Set<String> executedCoreIds = new LinkedHashSet<>();
+    private final List<String> executedCoreIds = new ArrayList<>();
 
     private @Nullable String libraryUri;
 
@@ -281,9 +289,28 @@ public final class ValidationReportBuilder
                 slabBuilder.addRow(Math.toIntExact(v.getRow()), values);
             }
 
-            // EC-40 record key: schema from the group's violations, values in a parallel slab so
-            // the reported variable = value pairs above stay exactly the rule's Output_Variables.
-            List<String> keyNames = withoutAllEmptyColumns(keyNamesOf(group), group);
+            // The finding's key channel. D29 (phase 5b): a Group-sensitivity finding is LOCATED
+            // BY ITS GROUP VARIABLES — the grouping key stamped on the violation wins over the
+            // EC-40 record key, which describes the anchor row (a per-level accident) rather
+            // than the group the finding is about. The group key is kept in full (no all-empty
+            // drop — the key IS the finding's identity), with key source GROUP. Non-grouped
+            // findings keep the EC-40 path unchanged.
+            // ⚑ The branch decides `groupKeyed` and `keyNames` together instead of deriving the
+            // second from the first: a separate boolean hides the null check from every reader
+            // (NullAway included) that has to re-derive why groupKey.keySet() is safe here.
+            Map<String, String> groupKey = firstGroupKeyOf(group);
+            boolean groupKeyed;
+            List<String> keyNames;
+            if (groupKey != null && !groupKey.isEmpty())
+            {
+                groupKeyed = true;
+                keyNames = List.copyOf(groupKey.keySet());
+            }
+            else
+            {
+                groupKeyed = false;
+                keyNames = withoutAllEmptyColumns(keyNamesOf(group), group);
+            }
             RowFindingSlab keySlab = RowFindingSlab.EMPTY;
             if (!keyNames.isEmpty())
             {
@@ -292,7 +319,7 @@ public final class ValidationReportBuilder
                 {
                     @Nullable
                     String[] keyValues = new String[keyNames.size()];
-                    Map<String, String> vKeys = v.getKeys();
+                    Map<String, String> vKeys = groupKeyed ? v.getGroupKey() : v.getKeys();
                     for (int i = 0; i < keyNames.size(); i++)
                     {
                         keyValues[i] = vKeys == null ? null : vKeys.get(keyNames.get(i));
@@ -317,7 +344,9 @@ public final class ValidationReportBuilder
             ValidationFindingLocation location = ValidationFindingLocation.builder()
                     .dataset(aDomain)
                     .variableNames(FindingLocations.columnsFor(scope, flagged, List.of(), Set.of()))
-                    .keyVariableNames(keyNames).keySource(keySourceOf(aResult, keyNames)).build();
+                    .keyVariableNames(keyNames)
+                    .keySource(groupKeyed ? GROUP_KEY_SOURCE : keySourceOf(aResult, keyNames))
+                    .build();
 
             out.add(ValidationFinding.builder().source(SOURCE).ruleId(coreIdOf(aRule))
                     .kind(FindingKind.RULE_VIOLATION)
@@ -420,6 +449,32 @@ public final class ValidationReportBuilder
             return aResult.getSeverity();
         }
         return aRule.effectiveSeverity();
+    }
+
+    /**
+     * D29's key source label: the finding is keyed by its grouping variables, not by any
+     * {@link RecordKeyResolver.KeySource} tier — deliberately a distinct label so a report consumer
+     * can tell a group-keyed finding from a record-keyed one.
+     */
+    private static final String GROUP_KEY_SOURCE = "GROUP";
+
+    /**
+     * The first non-null grouping key stamped on the group's violations, or {@code null} when none
+     * carries one (every non-grouped execution). Every violation of one finding group comes from
+     * the same rule × dataset, so the key <em>names</em> are identical across the group;
+     * per-violation <em>values</em> are read in the slab loop.
+     */
+    private static @Nullable Map<String, String> firstGroupKeyOf(List<Violation> aGroup)
+    {
+        for (Violation v : aGroup)
+        {
+            Map<String, String> key = v.getGroupKey();
+            if (key != null && !key.isEmpty())
+            {
+                return key;
+            }
+        }
+        return null;
     }
 
 

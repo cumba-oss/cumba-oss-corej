@@ -8,6 +8,17 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
+/**
+ * The executor's internal bound-argument record — <b>not an authoring surface</b>. Since phase 7b
+ * of {@code PLAN-typed-expression-engine.md} (owner rulings 2026-09-17) a rule authors its
+ * operation bindings ONLY as {@code Bindings:} entries ({@code name:} + {@code expression:}, bound
+ * by {@link Binding}); {@code RulePackageLoader.normalizeOperations} parses each {@code expression}
+ * INTO this field form for {@link net.cumba.corej.core.exec.OperationExecutor} to consume.
+ * {@code Rule.operations} is {@code @JsonIgnore}, so nothing here binds from or serialises to a
+ * rule package any more — the {@code @JsonProperty} spellings below survive only as the historical
+ * field-form keys and as the authored KEYWORD names of the expression grammar (see
+ * {@code OperationExpressionParser.FIELD_READERS}, which keys every parameter by them).
+ */
 @Data
 @NoArgsConstructor
 public class Operation
@@ -19,6 +30,10 @@ public class Operation
     /** {@link #missingValues}: a missing candidate makes the extreme undeterminable. */
     public static final String MISSING_VALUES_INDETERMINATE = "indeterminate";
 
+    /**
+     * The {@code $}-variable this record computes — the authored binding's {@code name:}
+     * ({@link Binding#getName()}), carried under its historical internal name.
+     */
     private @Nullable String id;
 
     private @Nullable String operator;
@@ -402,6 +417,21 @@ public class Operation
      */
     @JsonIgnore
     private @Nullable String originalName;
+
+    /**
+     * ⭐ Phase 6b (D3/D14 — R11 closed by construction): a COMPUTED target expression. When the sole
+     * positional argument of a Form-B / inline operation call is an expression rather than a bare
+     * name — {@code max(num(WEIGHT), group=[USUBJID])},
+     * {@code date_diff_days(date_part(AESTDTC), …)} — the parsed
+     * {@link net.cumba.corej.core.expr.ast.Expr} lands here and {@link #name} stays {@code null}.
+     * {@code OperationExecutor} materialises it against the resolved target table
+     * ({@code TargetExpressionMaterializer}) into a synthetic appended column and dispatches the
+     * operation over that column, so the operation's own domain logic is untouched (plan §5) while
+     * its target accepts any expression of the right type. Never part of the JSON rule contract —
+     * populated only by {@code OperationExpressionParser.fromCall}.
+     */
+    @JsonIgnore
+    private transient net.cumba.corej.core.expr.ast.@Nullable Expr nameExpr;
 
     @JsonIgnore
     public @Nullable OperationType getOperationType()

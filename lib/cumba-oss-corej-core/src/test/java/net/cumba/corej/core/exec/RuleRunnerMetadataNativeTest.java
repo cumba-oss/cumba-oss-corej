@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
-import net.cumba.corej.core.model.CheckConditionConstant;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.IMetadataLibrary;
@@ -47,8 +46,11 @@ class RuleRunnerMetadataNativeTest
     {
         Rule rule = new Rule();
         rule.setVariableUniverse(net.cumba.corej.core.model.VariableUniverse.DEFINE);
-        rule.setCheck(CheckConditionConstant.FALSE); // dummy non-null legacy check (unused
-                                                     // natively)
+        // A dummy non-null Check: the native path reads checkExpr, and the legacy Check is only
+        // required to be present. Was CheckConditionConstant.FALSE until that type was deleted
+        // (terminal review L5) — an expression Check is the only shape the model still has.
+        rule.setCheck(new net.cumba.corej.core.model.CheckConditionExpression(
+                CheckExpressionParser.parse("1 == 2"), "1 == 2"));
         rule.setCheckExpr(CheckExpressionParser.parse(
                 "var_role(variable_name, \"DEFINE\") != var_role(variable_name, \"LIBRARY\")"));
         return rule;

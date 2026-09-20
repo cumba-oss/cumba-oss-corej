@@ -99,7 +99,7 @@ public final class GlobalElementOrderingCheck
      * </p>
      *
      * <p>
-     * NOTE {@code Step20To21.MDV_ORDER} (in {@code lib/cumba-oss-cdisc-define}, package-private)
+     * NOTE {@code Step20To21.MDV_ORDER} (in the cdisc repository's define module, package-private)
      * keeps a partial table for the same purpose, but its values do NOT match the XSD — it lists
      * {@code Include}/{@code Protocol} before {@code def:Standards}, whereas the foundation places
      * the {@code MetaDataVersionPreIncludeElementExtension} group (which the 2.1 extension fills

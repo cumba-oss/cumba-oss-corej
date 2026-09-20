@@ -6,11 +6,9 @@ import static net.cumba.datatable.testkit.TestMetadataFixtures.table;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -30,14 +28,18 @@ import org.junit.jupiter.api.Test;
 class RuleRunnerDatasetLevelTest
 {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
 
     /** A {@code DATASET_METADATA_CHECK}: {@code define_dataset_label != library_dataset_label}. */
     private static Rule defineVsLibraryLabelRule()
     {
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("define_dataset_label")
-                .operator("not_equal_to").value(MAPPER.valueToTree("library_dataset_label"))
-                .build();
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr(
+                "ds_label(\"DEFINE\") != ds_label(\"LIBRARY\")");
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
         core.setId("TEST-DATASET-LABEL");

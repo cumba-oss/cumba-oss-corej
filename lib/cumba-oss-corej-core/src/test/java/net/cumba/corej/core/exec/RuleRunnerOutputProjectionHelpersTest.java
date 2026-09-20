@@ -27,6 +27,13 @@ import org.junit.jupiter.api.Test;
 class RuleRunnerOutputProjectionHelpersTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
     private static EvaluationContext ctx(IDataTable table)
     {
         return EvaluationContext.builder().table(table).build();
@@ -428,15 +435,12 @@ class RuleRunnerOutputProjectionHelpersTest
     void inferenceDescendsAnyAndNotBranches()
     {
         var anyCheck = new net.cumba.corej.core.model.CheckConditionAny(
-                List.of(net.cumba.corej.core.model.CheckConditionLeaf.builder().name("AESEV")
-                        .operator("non_empty").build()));
+                List.of(expr("not empty(AESEV)")));
         var meta = MockTable.of().name("AE").col("AESEV", "x").build().getMetaData();
         assertEquals(List.of("AESEV"),
                 List.copyOf(RuleRunner.collectCheckLeafColumns(anyCheck, meta)));
 
-        var notCheck = new net.cumba.corej.core.model.CheckConditionNot(
-                net.cumba.corej.core.model.CheckConditionLeaf.builder().name("AESEV")
-                        .operator("non_empty").build());
+        var notCheck = new net.cumba.corej.core.model.CheckConditionNot(expr("not empty(AESEV)"));
         assertEquals(List.of("AESEV"),
                 List.copyOf(RuleRunner.collectCheckLeafColumns(notCheck, meta)));
     }

@@ -42,10 +42,11 @@ class RuleLoadValidationNonExecutableOperatorTest
 
 
     @Test
-    void nonExecutableOperator_tagsLoadError() throws IOException
+    void nonExecutableOperator_isNowTheRetiredLeafRejection()
     {
-        // prefix_is_contained_by remains non-executable (no engine implements it) — it must still
-        // surface as a load error.
+        // Phase 7d (D121): P1b's leaf-only operator validation retired WITH the leaf model — a
+        // rule spelling ANY operator leaf (executable or not) now fails its load at bind time,
+        // one stage earlier and for the whole package.
         String ruleJson = """
                 {
                   "Core": {"Id": "TEST-P1B-A"},
@@ -58,28 +59,24 @@ class RuleLoadValidationNonExecutableOperatorTest
                   }
                 }
                 """;
-        RulePackage pkg = RulePackageLoader.loadFromString(packageOf(ruleJson));
-        Rule rule = onlyRule(pkg);
-        assertNotNull(rule.getLoadError(), "non-executable operator must tag a loadError");
-        assertTrue(rule.getLoadError().contains("prefix_is_contained_by"),
-                "loadError must name the operator: " + rule.getLoadError());
-        assertNull(rule.getCheckExpr(), "a loadError rule never retains a native checkExpr");
+        Exception ex = org.junit.jupiter.api.Assertions.assertThrows(Exception.class,
+                () -> RulePackageLoader.loadFromString(packageOf(ruleJson)));
+        assertTrue(ex.getMessage().contains("operator-leaf Check form"), ex.getMessage());
     }
 
 
     @Test
     void caseInsensitiveNegativeMembership_staysClean() throws IOException
     {
-        // is_not_contained_by_case_insensitive is now implemented on both engines (case-insensitive
-        // negative membership) — it must NOT be tagged as a load error.
+        // is_not_contained_by_case_insensitive's expression spelling is implemented — it must NOT
+        // be tagged as a load error.
         String ruleJson = """
                 {
                   "Core": {"Id": "TEST-P1B-CI"},
                   "Sensitivity": "Record",
                   "Check": {
                     "all": [
-                      {"name": "DSDECOD", "operator": "is_not_contained_by_case_insensitive",
-                       "value": ["COMPLETED"]}
+                      {"expression": "upper(DSDECOD) not in [\\"COMPLETED\\"]"}
                     ]
                   }
                 }
@@ -93,16 +90,14 @@ class RuleLoadValidationNonExecutableOperatorTest
     @Test
     void implementedCaseInsensitiveOperator_staysClean() throws IOException
     {
-        // The POSITIVE is_contained_by_case_insensitive IS implemented (legacy + native) — it must
-        // not be affected by the non-executable tagging.
+        // The POSITIVE case-insensitive membership is implemented — it must load clean too.
         String ruleJson = """
                 {
                   "Core": {"Id": "TEST-P1B-B"},
                   "Sensitivity": "Record",
                   "Check": {
                     "all": [
-                      {"name": "DSDECOD", "operator": "is_contained_by_case_insensitive",
-                       "value": ["COMPLETED"]}
+                      {"expression": "upper(DSDECOD) in [\\"COMPLETED\\"]"}
                     ]
                   }
                 }
@@ -124,7 +119,7 @@ class RuleLoadValidationNonExecutableOperatorTest
                   "Sensitivity": "Dataset",
                   "Check": {
                     "all": [
-                      {"name": "dataset_metadata", "operator": "empty"}
+                      {"expression": "empty(dataset_metadata)"}
                     ]
                   }
                 }

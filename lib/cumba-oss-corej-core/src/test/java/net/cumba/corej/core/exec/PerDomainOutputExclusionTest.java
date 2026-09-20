@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@code Fix #356} — the per-domain {@code --} expansion
- * ({@link DatasetRuleResolver#expandSdtmPrefixRules}) must resolve the wildcard <em>inside</em> an
+ * ({@link DatasetRuleResolver#specialiseStaticRules}) must resolve the wildcard <em>inside</em> an
  * {@code Outcome.Output_Variables} exclusion token
  * ({@link net.cumba.corej.core.model.OutputVariableToken}).
  *
@@ -59,7 +59,7 @@ class PerDomainOutputExclusionTest
                 {"rules":{"R1":{
                   "Core":{"Id":"T-OVX"},
                   "Sensitivity":"Record",
-                  "Check":{"name":"--ORRES","operator":"empty"},
+                  "Check":{"expression": "empty(--ORRES)"},
                   "Outcome":{"Message":"m","Output_Variables":["--STRESC","!--ORRES"]}}}}""";
         RulePackage loaded = RulePackageLoader.loadFromString(pkg);
         Rule rule = loaded.getRules().get("R1");
@@ -196,7 +196,7 @@ class PerDomainOutputExclusionTest
                 {"rules":{"R1":{
                   "Core":{"Id":"T-OVY"},
                   "Sensitivity":"Record",
-                  "Check":{"name":"--ORRES","operator":"empty"},
+                  "Check":{"expression": "empty(--ORRES)"},
                   "Outcome":{"Message":"m","Output_Variables":["--ORRES","--STRESC"]}}}}""";
         Rule template = RulePackageLoader.loadFromString(pkg).getRules().get("R1");
         assertNotNull(template);

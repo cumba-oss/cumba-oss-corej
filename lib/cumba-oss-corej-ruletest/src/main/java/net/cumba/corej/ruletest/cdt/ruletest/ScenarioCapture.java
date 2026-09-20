@@ -20,10 +20,10 @@ import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleRunner;
 import net.cumba.corej.core.exec.Violation;
+import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionAny;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.CheckConditionNot;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Operation;
@@ -51,13 +51,16 @@ import org.jspecify.annotations.Nullable;
  * {@code workingDirectory} it resolved beneath {@code target/test-cwd/}. Captured scenarios
  * therefore landed somewhere nothing reads, silently &mdash; the regenerate-with
  * {@code -Dgenerate.scenarios=true} procedure that ~23 suite javadocs describe was writing into the
- * void. The identical pair of bugs was fixed in the sibling {@code ScenarioTrimmer} during the
- * coreJ restructure, which left this one.
+ * void. The identical pair of bugs was fixed in the sibling {@code ScenarioTrimmer} by
+ * {@code plans/done/PLAN-corej-restructure.md} §1, which left this one. (⚠ {@code @code}, not
+ * {@code @link}: the split moved that class to the rules repository, so it is no longer on this
+ * module's javadoc classpath and a link would fail the javadoc gate.)
  * </p>
  *
  * <p>
- * This implements runtime capture — the simpler of the two approaches considered, the other being
- * static generation from the existing Java tests.
+ * Plan reference: see §6 (Generator to migrate existing Java tests) of
+ * {@code cdt-test-file-plan.md}. This implements Option A (runtime capture) — the simpler of the
+ * two approaches the plan lays out.
  * </p>
  */
 // Test fixture / helper exposing LinkedHashMap/LinkedHashSet for ordered iteration.
@@ -73,7 +76,7 @@ public final class ScenarioCapture
      * Path.of(null, ...) throws — which in a static initialiser would be an
      * ExceptionInInitializerError for every suite that merely calls isEnabled(), i.e. all of them.
      * The property names the MODULE being built, which for a capture run is always the module
-     * holding the suites (cumba-oss-corej-rules), so this lands in that module's own corpus.
+     * holding the suites (corej-rules), so this lands in that module's own corpus.
      */
     private static Path resourceRoot()
     {
@@ -82,8 +85,9 @@ public final class ScenarioCapture
         {
             throw new IllegalStateException("The 'projectBasedir' system property is not set. "
                     + "Scenario capture writes into the running module's own test resources; "
-                    + "surefire sets this property, a bare IDE run does not. Run capture under "
-                    + "surefire, or set -DprojectBasedir=<module dir> explicitly.");
+                    + "surefire sets this property, a bare IDE run does not. Run capture with: "
+                    + "mvn test -Dgenerate.scenarios=true, from the root of the "
+                    + "rules repository.");
         }
         return Path.of(base, "src/test/resources/net/cumba/corej/core/ruletestsuites");
     }
@@ -139,7 +143,7 @@ public final class ScenarioCapture
      * <li>If the resolver is an {@link OverridingResolver}, its explicit overrides become siblings
      * too, and its dropped names are excluded everywhere.</li>
      * <li>If the primary's dataset name is in the dropped set (e.g. a Domain Presence Check like
-     * FDA-SD1020 that simulates a missing DM), the primary is renamed to an "absent-proxy" so the
+     * CDISC-CG0368 that simulates a missing DM), the primary is renamed to an "absent-proxy" so the
      * scenario resolver does not re-include it.</li>
      * </ul>
      */
@@ -356,10 +360,10 @@ public final class ScenarioCapture
             aOut.put(nameUpper, asOverlayDataTable(live, nameUpper));
         }
 
-        // 4) Dataset presence — walk the Check tree for ds_exists/ds_not_exists leaves. Each
+        // 4) Dataset presence — walk the Check for ds_exists/ds_not_exists calls. Each
         // name found becomes either a stub sibling (if the resolver has it) or is simply omitted
         // (if resolver returns null — i.e. test expects absent). Since the leaf-scope plan no
-        // rule type gates this: any rule may carry a presence leaf, and a name already served
+        // rule type gates this: any rule may carry a presence call, and a name already served
         // as a data sibling above is skipped.
         {
             Set<String> presenceNames = new LinkedHashSet<>();
@@ -402,32 +406,82 @@ public final class ScenarioCapture
     }
 
 
-    /** Walk Check tree collecting every leaf name whose operator is ds_exists/ds_not_exists. */
+    /**
+     * Walk the Check collecting every dataset name a {@code ds_exists} / {@code ds_not_exists} call
+     * tests.
+     *
+     * <p>
+     * ⭐ Phase 7d (D121): re-pointed from the retired operator-leaf tree at the compiled expression.
+     * The leaf walker had been silently vacuous since the lowering left the load path — every
+     * rule's Check is a {@code CheckConditionExpression}, whose presence calls the old walker could
+     * not see, so captured scenarios stopped stubbing presence siblings with nothing red.
+     * </p>
+     */
     private static void collectDomainPresenceNames(@Nullable CheckCondition aCond, Set<String> aOut)
     {
         if (aCond == null) return;
-        if (aCond instanceof CheckConditionAll all)
+        // ⛔ R2-7 (review round 2): an EXHAUSTIVE pattern switch over the sealed CheckCondition,
+        // not an `instanceof` chain. This walker is the one phase 7d already paid for once (see
+        // the javadoc above): a shape it cannot see costs nothing loudly, it just stops stubbing
+        // presence siblings. With no `default` arm a FIFTH implementor fails to COMPILE here
+        // (CheckCondition permits four: All, Any, Not, Expression).
+        switch (aCond)
+        {
+        case CheckConditionAll all ->
         {
             for (CheckCondition c : all.getConditions())
                 collectDomainPresenceNames(c, aOut);
         }
-        else if (aCond instanceof CheckConditionAny any)
+        case CheckConditionAny any ->
         {
             for (CheckCondition c : any.getConditions())
                 collectDomainPresenceNames(c, aOut);
         }
-        else if (aCond instanceof CheckConditionNot not)
-        {
-            collectDomainPresenceNames(not.getCondition(), aOut);
+        case CheckConditionNot not -> collectDomainPresenceNames(not.getCondition(), aOut);
+        case net.cumba.corej.core.model.CheckConditionExpression expression -> collectDomainPresenceNames(
+                expression.expr(), aOut);
         }
-        else if (aCond instanceof CheckConditionLeaf leaf)
+    }
+
+
+    /** The {@link Expr} arm of {@link #collectDomainPresenceNames(CheckCondition, Set)}. */
+    private static void collectDomainPresenceNames(Expr aExpr, Set<String> aOut)
+    {
+        switch (aExpr)
         {
-            String op = leaf.getOperator();
-            String name = leaf.getName();
-            if (name != null && ("ds_exists".equals(op) || "ds_not_exists".equals(op)))
+        case Expr.And and -> and.parts().forEach(part -> collectDomainPresenceNames(part, aOut));
+        case Expr.Or or -> or.parts().forEach(part -> collectDomainPresenceNames(part, aOut));
+        case Expr.Not not -> collectDomainPresenceNames(not.inner(), aOut);
+        case Expr.Binary binary ->
+        {
+            collectDomainPresenceNames(binary.left(), aOut);
+            collectDomainPresenceNames(binary.right(), aOut);
+        }
+        case Expr.Call call ->
+        {
+            if (("ds_exists".equals(call.name()) || "ds_not_exists".equals(call.name()))
+                    && !call.args().isEmpty())
             {
-                aOut.add(name.toUpperCase(Locale.ROOT));
+                // The name operand is a bare reference or the equivalent string literal
+                // (the two spellings the compiler accepts for a dataset-presence test).
+                String name = switch (call.args().get(0))
+                {
+                case Expr.Ref ref -> ref.name();
+                case Expr.Lit lit when lit.kind() == Expr.LitKind.STRING -> (String) lit.value();
+                default -> null;
+                };
+                if (name != null)
+                {
+                    aOut.add(name.toUpperCase(Locale.ROOT));
+                }
             }
+            call.args().forEach(arg -> collectDomainPresenceNames(arg, aOut));
+            call.kwargs().values().forEach(value -> collectDomainPresenceNames(value, aOut));
+        }
+        case Expr.Ref _,Expr.Lit _ ->
+        {
+            // no presence call here
+        }
         }
     }
 

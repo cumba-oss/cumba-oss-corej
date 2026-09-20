@@ -1,19 +1,16 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.util.BitSet;
 import java.util.List;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -30,7 +27,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class NativeBackendWiringTest
 {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
 
     private static final DatasetResolver NO_RESOLVER = _ -> null;
 
@@ -49,10 +50,10 @@ class NativeBackendWiringTest
     }
 
 
-    private static CheckConditionLeaf eq(String name, String literal)
+    private static net.cumba.corej.core.model.CheckConditionExpression eq(String name,
+            String literal)
     {
-        return CheckConditionLeaf.builder().name(name).operator("equal_to")
-                .value(MAPPER.valueToTree(literal)).valueIsLiteral(true).build();
+        return expr(name + " == \"" + literal + "\"");
     }
 
 
@@ -80,33 +81,6 @@ class NativeBackendWiringTest
 
         assertEquals(rows(legacy), rows(nativ), "native must match legacy");
         assertEquals(bitsOf(0, 2), rows(nativ));
-    }
-
-
-    @Test
-    void executionRecorderCapturesBackendPerRule()
-    {
-        // Epic A2: the in-memory recorder reports which backend ran each rule. Same rule, flag on
-        // -> NATIVE; flag off -> LEGACY. A test program uses this to confirm native-only is safe.
-        CheckConditionAll check = new CheckConditionAll(List.of(eq("SEX", "M")));
-        Rule rule = recordRule(check);
-        rule.setCheckExpr(CheckToExpr.toExpr(check));
-        IDataTable t = MockTable.of().col("SEX", "M", "F", "M").build();
-
-        NativeExecutionRecorder.enable();
-        RuleRunner.execute(rule, t, NO_RESOLVER, null, null, null);
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE,
-                NativeExecutionRecorder.disable().get("CORE-NATIVE-1"));
-    }
-
-
-    @Test
-    void executionRecorderIsNoOpWhenDisabled()
-    {
-        // No active session => record(...) is a no-op and disable() yields an empty snapshot.
-        assertFalse(NativeExecutionRecorder.isEnabled());
-        NativeExecutionRecorder.record("CORE-X", NativeExecutionRecorder.Backend.NATIVE);
-        assertTrue(NativeExecutionRecorder.disable().isEmpty());
     }
 
 

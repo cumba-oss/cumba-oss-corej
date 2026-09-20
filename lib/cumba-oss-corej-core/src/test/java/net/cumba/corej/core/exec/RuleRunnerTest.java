@@ -2,10 +2,8 @@ package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
@@ -20,7 +18,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class RuleRunnerTest
 {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
 
     @Test
     void testExecute_simpleRule_withViolations()
@@ -29,15 +32,13 @@ class RuleRunnerTest
         IDataTable table = MockTable.of().col("USUBJID", "SUBJ01", "SUBJ02", "SUBJ03")
                 .col("SEX", "M", "U", "F").build();
 
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("SEX")
-                .operator("is_not_contained_by").value(arrayNode("M", "F")).build();
-
-        Rule rule = buildRule("CORE-000001", "SEX not in codelist",
-                new CheckConditionAll(List.of(leaf)), List.of("USUBJID", "SEX"));
+        Rule rule = buildRule("CDISC-CG0176", "SEX not in codelist",
+                new CheckConditionAll(List.of(expr("SEX not in [\"M\", \"F\"]"))),
+                List.of("USUBJID", "SEX"));
 
         RuleExecutionResult result = RuleRunner.execute(rule, table);
 
-        assertEquals("CORE-000001", result.getRuleId());
+        assertEquals("CDISC-CG0176", result.getRuleId());
         assertEquals("SEX not in codelist", result.getMessage());
         assertEquals(3, result.getTotalRows());
         assertTrue(result.hasViolations());
@@ -56,11 +57,8 @@ class RuleRunnerTest
     {
         IDataTable table = MockTable.of().col("SEX", "M", "F").build();
 
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("SEX")
-                .operator("is_not_contained_by").value(arrayNode("M", "F")).build();
-
-        Rule rule = buildRule("CORE-000002", "SEX must be M or F",
-                new CheckConditionAll(List.of(leaf)), List.of("SEX"));
+        Rule rule = buildRule("CDISC-CG0208", "SEX must be M or F",
+                new CheckConditionAll(List.of(expr("SEX not in [\"M\", \"F\"]"))), List.of("SEX"));
 
         RuleExecutionResult result = RuleRunner.execute(rule, table);
 
@@ -77,13 +75,9 @@ class RuleRunnerTest
         IDataTable table = MockTable.of().col("DOMAIN", "AE", "AE", "DM")
                 .col("AETERM", "Headache", "", "N/A").build();
 
-        CheckConditionLeaf nonEmpty = CheckConditionLeaf.builder().name("AETERM")
-                .operator("non_empty").build();
-        CheckConditionLeaf domainAE = CheckConditionLeaf.builder().name("DOMAIN")
-                .operator("equal_to").value(MAPPER.valueToTree("AE")).valueIsLiteral(true).build();
-
-        CheckConditionAll all = new CheckConditionAll(List.of(nonEmpty, domainAE));
-        Rule rule = buildRule("CORE-000003", "Non-empty AETERM in AE domain", all,
+        CheckConditionAll all = new CheckConditionAll(
+                List.of(expr("not empty(AETERM)"), expr("DOMAIN == \"AE\"")));
+        Rule rule = buildRule("CDISC-CG0299", "Non-empty AETERM in AE domain", all,
                 List.of("AETERM"));
 
         RuleExecutionResult result = RuleRunner.execute(rule, table);
@@ -98,11 +92,8 @@ class RuleRunnerTest
     {
         IDataTable table = MockTable.of().col("USUBJID", "S1", "S2").build();
 
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("NONEXISTENT")
-                .operator("non_empty").build();
-
-        Rule rule = buildRule("CORE-000004", "test", new CheckConditionAll(List.of(leaf)),
-                List.of());
+        Rule rule = buildRule("CDISC-CG0101", "test",
+                new CheckConditionAll(List.of(expr("not empty(NONEXISTENT)"))), List.of());
 
         RuleExecutionResult result = RuleRunner.execute(rule, table);
         assertFalse(result.hasViolations());
@@ -128,11 +119,9 @@ class RuleRunnerTest
         op.setName("USUBJID");
         op.setDomain("DM");
 
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("USUBJID")
-                .operator("is_not_contained_by").value(MAPPER.valueToTree("$dm_usubjid")).build();
-
         Rule rule = buildRule("CORE-OP-001", "USUBJID not in DM",
-                new CheckConditionAll(List.of(leaf)), List.of("USUBJID"));
+                new CheckConditionAll(List.of(expr("USUBJID not in $dm_usubjid"))),
+                List.of("USUBJID"));
         rule.setOperations(List.of(op));
 
         DatasetResolver resolver = name -> "DM".equals(name) ? dmTable : null;
@@ -156,11 +145,8 @@ class RuleRunnerTest
         op.setOperator("variable_count");
 
         // $VARIABLE_COUNT (=2) greater_than 3 → false → no violations
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("$VARIABLE_COUNT")
-                .operator("greater_than").value(MAPPER.valueToTree(3)).build();
-
         Rule rule = buildRule("CORE-OP-002", "Too many variables",
-                new CheckConditionAll(List.of(leaf)), List.of());
+                new CheckConditionAll(List.of(expr("$VARIABLE_COUNT > 3"))), List.of());
         rule.setOperations(List.of(op));
 
         RuleExecutionResult result = RuleRunner.execute(rule, table);
@@ -181,11 +167,8 @@ class RuleRunnerTest
         op.setId("$VARIABLE_COUNT");
         op.setOperator("variable_count");
 
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("$VARIABLE_COUNT")
-                .operator("greater_than").value(MAPPER.valueToTree(3)).build();
-
         Rule rule = buildRule("CORE-OP-003", "Too many variables",
-                new CheckConditionAll(List.of(leaf)), List.of());
+                new CheckConditionAll(List.of(expr("$VARIABLE_COUNT > 3"))), List.of());
         rule.setOperations(List.of(op));
 
         RuleExecutionResult result = RuleRunner.execute(rule, table);
@@ -201,11 +184,8 @@ class RuleRunnerTest
         // Verify the no-operations path works unchanged
         IDataTable table = MockTable.of().col("SEX", "M", "X").build();
 
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("SEX")
-                .operator("is_not_contained_by").value(arrayNode("M", "F")).build();
-
-        Rule rule = buildRule("CORE-000005", "Bad SEX", new CheckConditionAll(List.of(leaf)),
-                List.of("SEX"));
+        Rule rule = buildRule("CDISC-CG0102", "Bad SEX",
+                new CheckConditionAll(List.of(expr("SEX not in [\"M\", \"F\"]"))), List.of("SEX"));
 
         RuleExecutionResult result = RuleRunner.execute(rule, table);
         assertEquals(1, result.getViolationCount());
@@ -213,14 +193,14 @@ class RuleRunnerTest
     }
 
     // -----------------------------------------------------------------------
-    // Integration test: grouped operation (CORE-000239 pattern)
+    // Integration test: grouped operation (CDISC-CG0148 pattern)
     // -----------------------------------------------------------------------
 
 
     @Test
     void testExecute_groupedOperation_perSubjectMinDate()
     {
-        // CORE-000239: RFXSTDTC should equal earliest EX.EXSTDTC per subject
+        // CDISC-CG0148: RFXSTDTC should equal earliest EX.EXSTDTC per subject
         IDataTable dmTable = MockTable.of().col("USUBJID", "S01", "S02", "S03")
                 .col("RFXSTDTC", "2024-01-15", "2024-03-01", "2024-05-01").build();
 
@@ -245,13 +225,9 @@ class RuleRunnerTest
         op2.setGroup(List.of("USUBJID"));
 
         // Check: USUBJID in $ex_usubjid AND RFXSTDTC != $min_ex_exstdtc
-        CheckConditionLeaf inSubjects = CheckConditionLeaf.builder().name("USUBJID")
-                .operator("is_contained_by").value(MAPPER.valueToTree("$ex_usubjid")).build();
-        CheckConditionLeaf rfxMismatch = CheckConditionLeaf.builder().name("RFXSTDTC")
-                .operator("not_equal_to").value(MAPPER.valueToTree("$min_ex_exstdtc")).build();
-
-        CheckConditionAll check = new CheckConditionAll(List.of(inSubjects, rfxMismatch));
-        Rule rule = buildRule("CORE-000239",
+        CheckConditionAll check = new CheckConditionAll(
+                List.of(expr("USUBJID in $ex_usubjid"), expr("RFXSTDTC != $min_ex_exstdtc")));
+        Rule rule = buildRule("CDISC-CG0148",
                 "RFXSTDTC does not equal the earliest value of EX.EXSTDTC", check,
                 List.of("USUBJID", "RFXSTDTC"));
         rule.setOperations(List.of(op1, op2));
@@ -286,17 +262,6 @@ class RuleRunnerTest
         rule.setCheck(check);
         net.cumba.corej.core.RulePackageLoader.installNativeExpr(rule);
         return rule;
-    }
-
-
-    private static com.fasterxml.jackson.databind.node.ArrayNode arrayNode(String... values)
-    {
-        com.fasterxml.jackson.databind.node.ArrayNode arr = MAPPER.createArrayNode();
-        for (String v : values)
-        {
-            arr.add(v);
-        }
-        return arr;
     }
 
 }

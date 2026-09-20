@@ -81,6 +81,16 @@ public class RuleExecutionResult
     @Nullable
     Severity severity = null;
 
+    /**
+     * Phase 6 ({@code PLAN-typed-expression-engine.md}, D8/D41/D41b) — the per-binding record of a
+     * variable-cursor execution: bindings iterated, plus one {@link BindingOutcome} per noteworthy
+     * binding. {@code null} on every non-variable-cursor path (broadcast, row, grouped, skips and
+     * errors), where the per-(rule, dataset) result is itself the binding carrier. Never rendered
+     * into JSON report v1 (D57 — frozen).
+     */
+    @Nullable
+    BindingLedger bindings;
+
     public int getViolationCount()
     {
         if (totalViolationCount >= 0)

@@ -26,6 +26,13 @@ import org.junit.jupiter.api.Test;
 class RuleRunnerGatesGroupedAndLevelsTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
     private static Rule load(String ruleJson) throws Exception
     {
         RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"R1\":" + ruleJson + "}}");
@@ -57,8 +64,7 @@ class RuleRunnerGatesGroupedAndLevelsTest
     void libraryOperandGateSkipsWithExactMessageAndSparesLiterals() throws Exception
     {
         Rule operand = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Record\","
-                + "\"Check\":{\"any\":[{\"name\":\"AESEV\",\"operator\":\"equal_to\","
-                + "\"value\":\"library_variable_role\"}]},"
+                + "\"Check\":{\"any\":[{\"expression\": \"AESEV == library_variable_role\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEV\"]}}");
         IDataTable ae = MockTable.of().name("AE").col("AESEV", "library_variable_role", "OK")
                 .build();
@@ -80,8 +86,7 @@ class RuleRunnerGatesGroupedAndLevelsTest
                 degradedRun.getStatusMessage());
 
         Rule literal = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Record\","
-                + "\"Check\":{\"any\":[{\"name\":\"AESEV\",\"operator\":\"equal_to\","
-                + "\"value\":\"library_variable_role\",\"value_is_literal\":true}]},"
+                + "\"Check\":{\"any\":[{\"expression\": \"AESEV == \\\"library_variable_role\\\"\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEV\"]}}");
         RuleExecutionResult literalRun = RuleRunner.execute(literal, ae, _ -> null, "AE", null,
                 null, null);
@@ -137,8 +142,7 @@ class RuleRunnerGatesGroupedAndLevelsTest
     void everyResultCarriesTheRulesEffectiveSeverity() throws Exception
     {
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Record\","
-                + "\"Check\":{\"all\":[{\"name\":\"AESEV\",\"operator\":\"equal_to\","
-                + "\"value\":\"BAD\",\"value_is_literal\":true}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"AESEV == \\\"BAD\\\"\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEV\"]}}");
         IDataTable ae = MockTable.of().name("AE").col("AESEV", "BAD").build();
 
@@ -159,8 +163,7 @@ class RuleRunnerGatesGroupedAndLevelsTest
         net.cumba.corej.core.model.RuleCore core = new net.cumba.corej.core.model.RuleCore();
         core.setId("TEST-INVALID");
         rule.setCore(core);
-        rule.setCheck(net.cumba.corej.core.model.CheckConditionLeaf.builder().name("AESEV")
-                .operator("non_empty").build());
+        rule.setCheck(expr("not empty(AESEV)"));
         rule.setLoadError("boom");
         IDataTable ae = MockTable.of().name("AE").col("AESEV", "a", "b", "c").build();
 
@@ -187,8 +190,7 @@ class RuleRunnerGatesGroupedAndLevelsTest
     {
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Group\","
                 + "\"Grouping_Variables\":[\"GRP\"],"
-                + "\"Check\":{\"all\":[{\"name\":\"VAL\",\"operator\":\"equal_to\","
-                + "\"value\":\"BAD\",\"value_is_literal\":true}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"VAL == \\\"BAD\\\"\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"GRP\",\"VAL\"]}}");
         // GRP at column index 0. Groups: A rows 0-1 (row 1 fires), B rows 2-3 (none),
         // C row 4 (fires), "" row 5 (fires but the missing key drops the group).
@@ -219,8 +221,7 @@ class RuleRunnerGatesGroupedAndLevelsTest
     {
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Group\","
                 + "\"Grouping\":{\"Variables\":[\"GRP\"],\"keep_missings\":true},"
-                + "\"Check\":{\"all\":[{\"name\":\"VAL\",\"operator\":\"equal_to\","
-                + "\"value\":\"BAD\",\"value_is_literal\":true}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"VAL == \\\"BAD\\\"\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"VAL\"]}}");
         IDataTable t = MockTable.of().name("AE").col("GRP", "A", "").col("VAL", "BAD", "BAD")
                 .build();

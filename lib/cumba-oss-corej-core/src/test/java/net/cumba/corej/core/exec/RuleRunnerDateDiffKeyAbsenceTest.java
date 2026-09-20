@@ -3,14 +3,12 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.node.TextNode;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
@@ -68,6 +66,13 @@ import org.junit.jupiter.api.Test;
 class RuleRunnerDateDiffKeyAbsenceTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
     /** The shipped CDISC-SEND-0202 shape, parameterised only by the group key list. */
     private static Rule send0202(List<String> group)
     {
@@ -100,11 +105,8 @@ class RuleRunnerDateDiffKeyAbsenceTest
         op.setReference("EXSTDTC");
         rule.setOperations(List.of(op));
 
-        rule.setCheck(new CheckConditionAll(List.of(
-                CheckConditionLeaf.builder().name("--DTC").operator("is_complete_date").build(),
-                CheckConditionLeaf.builder().name("TFDETECT").operator("non_empty").build(),
-                CheckConditionLeaf.builder().name("TFDETECT").operator("not_equal_to")
-                        .value(TextNode.valueOf("$days_from_first_dose")).build())));
+        rule.setCheck(new CheckConditionAll(List.of(expr("is_complete_date(--DTC)"),
+                expr("not empty(TFDETECT)"), expr("TFDETECT != $days_from_first_dose"))));
         // The legacy evaluator is retired; the native path is the only path. RulePackageLoader
         // installs this at load time — a hand-built Rule has to do it explicitly.
         rule.setCheckExpr(CheckToExpr.toExpr(rule.getCheck()));

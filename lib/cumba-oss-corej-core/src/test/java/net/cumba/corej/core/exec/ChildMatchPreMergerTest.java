@@ -19,6 +19,7 @@ import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.impl.CachedDataTableColumn;
 import net.cumba.datatable.impl.ColumnCachedDataTable;
 import net.cumba.datatable.values.DataValueType;
+import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -165,7 +166,7 @@ class ChildMatchPreMergerTest
     }
 
     // ----------------------------------------------------------------------------------------
-    // J7 part 2 / Fix #358 (CORE-000206): split parent domain ("LB" → lbch/lbhe/lbur, no
+    // J7 part 2 / Fix #358 (CDISC-CG0371): split parent domain ("LB" → lbch/lbhe/lbur, no
     // standalone "LB"). The pre-merge resolves the parent to the row-stacked UNION of the
     // members (SplitDomainResolution), so every SUPP row can reach its own parent record —
     // orphan findings appear only where NO member matches. The earlier first-member-only
@@ -200,7 +201,7 @@ class ChildMatchPreMergerTest
 
         IDataTable result = ChildMatchPreMerger.preMerge(primary,
                 List.of(md("SUPP--", true, "USUBJID", "IDVAR", "IDVARVAL")),
-                inventoryResolver(Map.of("LBCH", lbch, "LBHE", lbhe)), "CORE-000206", null);
+                inventoryResolver(Map.of("LBCH", lbch, "LBHE", lbhe)), "CDISC-CG0371", null);
 
         assertNotSame(primary, result);
         int lborresIdx = result.getMetaData().getColumnIndex("LBORRES");
@@ -228,15 +229,16 @@ class ChildMatchPreMergerTest
 
         IDataTable result = ChildMatchPreMerger.preMerge(primary,
                 List.of(md("SUPP--", true, "USUBJID", "IDVAR", "IDVARVAL")),
-                inventoryResolver(Map.of("LBCH", lbch, "LBHE", lbhe, "LBUR", lbur)), "CORE-000206",
+                inventoryResolver(Map.of("LBCH", lbch, "LBHE", lbhe, "LBUR", lbur)), "CDISC-CG0371",
                 null);
 
         int lborresIdx = result.getMetaData().getColumnIndex("LBORRES");
         assertEquals("res-ch", result.getColumn(lborresIdx).getDataValue(0).getValueAsString());
         assertEquals("res-he", result.getColumn(lborresIdx).getDataValue(1).getValueAsString());
         assertEquals("res-ur", result.getColumn(lborresIdx).getDataValue(2).getValueAsString());
-        // Row 3 (IDVARVAL=77) matches NO member — the genuine orphan stays missing.
-        assertTrue(result.getColumn(lborresIdx).getDataValue(3).isMissingOrInvalid());
+        // Row 3 (IDVARVAL=77) matches NO member — D72a-1: the genuine orphan reads the char
+        // type default "", exactly as an absent primary char column would (D34 #3).
+        assertEquals("", result.getColumn(lborresIdx).getDataValue(3).getValueAsString());
     }
 
 
@@ -258,12 +260,13 @@ class ChildMatchPreMergerTest
 
         IDataTable result = ChildMatchPreMerger.preMerge(primary,
                 List.of(md("SUPP--", true, "USUBJID", "IDVAR", "IDVARVAL")),
-                inventoryResolver(Map.of("LBCH", lbch, "LBUR", lbur)), "CORE-000206", null);
+                inventoryResolver(Map.of("LBCH", lbch, "LBUR", lbur)), "CDISC-CG0371", null);
 
         int lborresIdx = result.getMetaData().getColumnIndex("LBORRES");
         assertEquals("res-ch", result.getColumn(lborresIdx).getDataValue(0).getValueAsString());
-        assertTrue(result.getColumn(lborresIdx).getDataValue(1).isMissingOrInvalid(),
-                "a member lacking the IDVAR column contributes missing cells, not a failure");
+        assertEquals("", result.getColumn(lborresIdx).getDataValue(1).getValueAsString(),
+                "a member lacking the IDVAR column contributes the \"\" char default (D72a-1),"
+                        + " not a failure");
     }
 
 
@@ -288,7 +291,7 @@ class ChildMatchPreMergerTest
         DatasetResolver resolver = inventoryResolver(Map.of("LBCH", lbch, "LBHE", lbhe));
         InvalidJoinedDomainException ex = org.junit.jupiter.api.Assertions.assertThrows(
                 InvalidJoinedDomainException.class,
-                () -> ChildMatchPreMerger.preMerge(primary, mds, resolver, "CORE-000206", null));
+                () -> ChildMatchPreMerger.preMerge(primary, mds, resolver, "CDISC-CG0371", null));
         assertTrue(ex.getMessage().contains("LBSTRESN"), ex.getMessage());
     }
 
@@ -327,8 +330,8 @@ class ChildMatchPreMergerTest
 
         int aetermIdx = result.getMetaData().getColumnIndex("AETERM");
         assertEquals("headache", result.getColumn(aetermIdx).getDataValue(0).getValueAsString());
-        assertTrue(result.getColumn(aetermIdx).getDataValue(1).isMissingOrInvalid(),
-                "row 1 points to CM which lacks AETERM — must be MISSING");
+        assertEquals("", result.getColumn(aetermIdx).getDataValue(1).getValueAsString(),
+                "row 1 points to CM which lacks AETERM — the \"\" char default (D72a-1 case 3)");
     }
 
     // ----------------------------------------------------------------------------------------
@@ -418,8 +421,9 @@ class ChildMatchPreMergerTest
                 resolver("AE", parent), "CORE-E16-studyid-declared", null);
 
         int aetermIdx = result.getMetaData().getColumnIndex("AETERM");
-        assertTrue(result.getColumn(aetermIdx).getDataValue(0).isMissingOrInvalid(),
-                "declared STUDYID must be honored — differing STUDYID blocks the match");
+        assertEquals("", result.getColumn(aetermIdx).getDataValue(0).getValueAsString(),
+                "declared STUDYID must be honored — differing STUDYID blocks the match, and the"
+                        + " unmatched row reads the \"\" char default (D72a-1)");
     }
 
 
@@ -448,8 +452,8 @@ class ChildMatchPreMergerTest
         int aetermIdx = result.getMetaData().getColumnIndex("AETERM");
         assertEquals("headache", result.getColumn(aetermIdx).getDataValue(0).getValueAsString(),
                 "row with POOLID=P1 matches the parent on POOLID");
-        assertTrue(result.getColumn(aetermIdx).getDataValue(1).isMissingOrInvalid(),
-                "row with POOLID=P2 has no parent on POOLID — must be MISSING");
+        assertEquals("", result.getColumn(aetermIdx).getDataValue(1).getValueAsString(),
+                "row with POOLID=P2 has no parent on POOLID — the \"\" char default (D72a-1)");
     }
 
 
@@ -595,12 +599,12 @@ class ChildMatchPreMergerTest
         int cmtrtIdx = result.getMetaData().getColumnIndex("CMTRT");
         // Row 0 → AE → AETERM populated, CMTRT MISSING.
         assertEquals("headache", result.getColumn(aetermIdx).getDataValue(0).getValueAsString());
-        assertTrue(result.getColumn(cmtrtIdx).getDataValue(0).isMissingOrInvalid(),
-                "row 0 hits AE which lacks CMTRT");
+        assertEquals("", result.getColumn(cmtrtIdx).getDataValue(0).getValueAsString(),
+                "row 0 hits AE which lacks CMTRT — the \"\" char default (D72a-1 case 3)");
         // Row 1 → CM → CMTRT populated, AETERM MISSING.
         assertEquals("aspirin", result.getColumn(cmtrtIdx).getDataValue(1).getValueAsString());
-        assertTrue(result.getColumn(aetermIdx).getDataValue(1).isMissingOrInvalid(),
-                "row 1 hits CM which lacks AETERM");
+        assertEquals("", result.getColumn(aetermIdx).getDataValue(1).getValueAsString(),
+                "row 1 hits CM which lacks AETERM — the \"\" char default (D72a-1 case 3)");
     }
 
     // ----------------------------------------------------------------------------------------
@@ -810,6 +814,59 @@ class ChildMatchPreMergerTest
         assertEquals(DataValueType.DOUBLE, meta.getColumn(idx).getType());
         assertEquals(1.0E13 + 1, merged.getColumn(idx).getDataValue(0).getValueAsDouble(),
                 "the merged cell must carry the exact parent value, not a 12-digit rounding");
+    }
+
+
+    @Test
+    void preMerge_d72Defaults_threeCasesIntoOneDefault_notFour()
+    {
+        // D72/D72a-1/D75a on the numeric merged path. Row 0 matches a parent whose cell is a
+        // GENUINE missing (a NaN-encoded numeric missing) — case 4, passed through unchanged.
+        // Row 1 matches no parent row at all — cases 1-3, the numeric type default (MIS).
+        // ⛔ Both rows READ as blank; the distinction is that case 4 carries the parent's own
+        // missing, which is exactly why collapsing all four would be wrong invisibly (D80c).
+        IDataTable primary = TableFixture.of("SUPPAE")//
+                .str("STUDYID", "S1", "S1").str("USUBJID", "U1", "U9")//
+                .str("IDVAR", "AESEQ", "AESEQ").str("IDVARVAL", "5", "5")//
+                .str("RDOMAIN", "AE", "AE")//
+                .build();
+        IDataTable parent = TableFixture.of("AE")//
+                .str("STUDYID", "S1").str("USUBJID", "U1").lng("AESEQ", 5L)//
+                .dbl("AESTDY", Double.NaN)//
+                .str("AETERM", "headache")//
+                .build();
+
+        IDataTable merged = ChildMatchPreMerger.preMerge(primary, List.of(md("AE", true)),
+                resolver("AE", parent), "CORE-D72-defaults", null);
+        DataTableMeta meta = merged.getMetaData();
+        int idx = meta.getColumnIndex("AESTDY");
+
+        IDataValue case4 = merged.getColumn(idx).getDataValue(0);
+        assertTrue(case4.isMissingOrInvalid(),
+                "a supplied numeric missing passes through unchanged (D75a case 4)");
+        assertTrue(Double.isNaN(case4.getValueAsDouble()),
+                "the parent's own carrier encoding survives — nothing is rewritten");
+        IDataValue unmatched = merged.getColumn(idx).getDataValue(1);
+        assertTrue(unmatched.isMissingOrInvalid(),
+                "an unmatched row reads the numeric type default MIS (D72a-1)");
+
+        // The raw-object channel agrees with the cell channel, case by case: pass-through keeps
+        // the parent's stored object (the carrier NaN), the default IS the type default's value.
+        Object rawCase4 = merged.getColumn(idx).getValue(0);
+        assertEquals(
+                parent.getColumn(parent.getMetaData().getColumnIndex("AESTDY")).getDataValue(0)
+                        .getValue(),
+                rawCase4, "getValue passes the parent's own cell value through (case 4)");
+        assertEquals(net.cumba.datatable.values.MissingValue.MIS, merged.getColumn(idx).getValue(1),
+                "getValue reads the numeric type default for an unmatched row (D72a-1)");
+        // And on a present numeric parent cell the value object is forwarded untouched.
+        int seqIdx = meta.getColumnIndex("AESEQ");
+        assertEquals(5L, ((Number) merged.getColumn(seqIdx).getValue(0)).longValue());
+        // A char merged column: the historical text form when matched, "" when unmatched.
+        int termIdx = meta.getColumnIndex("AETERM");
+        assertEquals("headache", merged.getColumn(termIdx).getValue(0));
+        assertEquals("", merged.getColumn(termIdx).getValue(1),
+                "getValue reads the char type default for an unmatched row (D72a-1)");
     }
 
 

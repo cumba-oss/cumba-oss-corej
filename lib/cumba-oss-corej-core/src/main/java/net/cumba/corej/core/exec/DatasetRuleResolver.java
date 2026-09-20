@@ -1,13 +1,11 @@
 package net.cumba.corej.core.exec;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
 import lombok.CustomLog;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.gen.GeneratedRuleInfo;
@@ -17,14 +15,8 @@ import net.cumba.corej.core.gen.RuleGenerationReport;
 import net.cumba.corej.core.gen.SkippedSourceRule;
 import net.cumba.corej.core.gen.TokenExpander;
 import net.cumba.corej.core.gen.WildcardExpander;
-import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
-import net.cumba.corej.core.model.Outcome;
-import net.cumba.corej.core.model.OutputVariableToken;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
-import net.cumba.corej.core.model.Scope;
-import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import org.jspecify.annotations.Nullable;
@@ -37,9 +29,9 @@ import org.jspecify.annotations.Nullable;
  * ⚠⚠ <b>Despite the name, this class generates nothing.</b> It is the <i>delivery</i> path for
  * rules the user selected: it gates each loaded rule against the dataset's domain / class /
  * variables ({@link #describeScopeSkip}), expands wildcard templates through
- * {@link WildcardExpander}, substitutes the SDTM {@code --} domain prefix
- * ({@link #expandSdtmPrefixRules}), and records everything it dropped as a
- * {@link SkippedSourceRule}. Every rule it returns traces back to a rule the caller handed it in
+ * {@link WildcardExpander}, specialises the SDTM {@code --} domain prefix
+ * ({@link #specialiseStaticRules} → {@link RuleSpecialiser}), and records everything it dropped as
+ * a {@link SkippedSourceRule}. Every rule it returns traces back to a rule the caller handed it in
  * {@link #setStaticRules}.
  * </p>
  *
@@ -218,8 +210,9 @@ public class DatasetRuleResolver
         // Data-driven canonical base name for split detection in domain scope matching (mirrors
         // Python SDTMDatasetMetadata.unsplit_name): reads the DOMAIN/RDOMAIN columns so a dataset
         // named FAAE carrying DOMAIN=FA is recognised as a split of FA — which a name-only
-        // heuristic
-        // misses. Passed into ScopeMatcher.describeDomainMismatch below.
+        // heuristic misses. Passed into ScopeMatcher.describeDomainMismatch below as the BASE,
+        // against the MEMBER name — see the D125 note in describeScopeSkip for why that pairing is
+        // load-bearing and what it cost while the member name never reached the matcher.
         String scopeUnsplitName = OperationExecutor.unsplitNameFromData(table);
 
         // Fix #117/#118/#119: per-dataset ADaM data-structure + subclass determination for the
@@ -473,7 +466,7 @@ public class DatasetRuleResolver
 
         // ⭐ NOTHING IS GENERATED HERE ANY MORE. Every rule in the returned package came from a
         // package the caller selected: `templateExpansions` holds the wildcard children of those
-        // rules, and expandSdtmPrefixRules passes the scoped static rules through, `--`-substituted
+        // rules, and specialiseStaticRules passes the scoped static rules through, `--`-substituted
         // or unchanged.
         //
         // The twenty in-Java generators that used to run at this point — codelist, pair-one-to-one,
@@ -490,10 +483,10 @@ public class DatasetRuleResolver
         // Issue_Summary bundling reads that relative order.
         rules.addAll(templateExpansions);
 
-        // SDTM `--` prefix expansion, and the pass-through that puts every scoped static rule into
-        // the executed set — expanded or unchanged. ⚠ This call IS the corpus delivery path; if it
-        // stops running, no rule executes at all.
-        expandSdtmPrefixRules(meta, domName, scopedStaticRules, rules, report);
+        // SDTM `--` specialisation (D77), and the pass-through that puts every scoped static rule
+        // into the executed set — specialised or unchanged. ⚠ This call IS the corpus delivery
+        // path; if it stops running, no rule executes at all.
+        specialiseStaticRules(table, domName, scopedStaticRules, rules, report);
 
         // P5 (PLAN-native-engine-full-coverage): every concrete rule this generator produced —
         // wildcard-template expansions, placeholder substitutions, SDTM-prefix copies —
@@ -531,10 +524,10 @@ public class DatasetRuleResolver
     // not empty($model_column_order)
     // and not is_ordered_subset_of($column_order_from_dataset, $model_column_order)
     // ⚠ This comment used to name `get_column_order_from_library` and `is_not_ordered_subset_of`.
-    // Both operators are real — `get_column_order_from_library()` is bound by 20 rules (18
-    // CDISC-AD/SEND plus FDA/PMDA-SD1076) and `is_not_ordered_subset_of` is a live engine operator
-    // (GroupSemantics.isNotOrderedSubsetVerdict) — but neither is what CG0330
-    // authors. Corrected against rules-src/checks/CDISC/CDISC-CG0330.yaml, 2026-09-19.
+    // Both operators are real — `get_column_order_from_library()` is bound by ~20 CDISC-AD/SEND
+    // rules and `is_not_ordered_subset_of` is a live engine operator (probed by
+    // CompilerDispatchDriftGateTest) — but neither is what CG0330 authors. Corrected against
+    // rules-src/checks/CDISC/CDISC-CG0330.yaml, 2026-09-19.
 
     // Categories 7-9 (TESTCD/TEST, TSPARMCD/TSPARM, FL/FN) have no generator here; their
     // built-in template carriers were retired with rules-templates.json (Fix #366).
@@ -621,15 +614,24 @@ public class DatasetRuleResolver
 
 
     /**
-     * Expands static rules that contain {@code --} prefix patterns into concrete rules for the
-     * given domain. For example, a rule checking {@code --DTC} becomes a rule checking
-     * {@code AEDTC} when the domain is {@code AE}.
+     * The bind-time specialisation pass (D77) over the scoped static rules — the corpus delivery
+     * path. Every rule is handed to {@link RuleSpecialiser#specialise}, which resolves everything
+     * decidable from (rule &times; dataset metadata) under the single D77c prefix policy: the Check
+     * tree and every declared level, the Precondition, the native expressions, Operations,
+     * non-{@code Child} {@code Match_Datasets}, {@code Grouping} and the {@code Output_Variables}.
+     * Rules that need nothing pass through as the very same instance.
+     *
      * <p>
-     * Only rules whose Check condition tree contains {@code --} prefixed variable names are
-     * expanded. Rules without {@code --} are skipped (they don't need expansion).
+     * &#9888; The former in-house expansion here computed its prefix as
+     * {@code domain.substring(0, 2)} while the runtime correction used the EC-36
+     * {@code variableWildcardPrefix} — and because this pass ran first and left no {@code --}
+     * behind, the correction could never fire (F1 / D77f: {@code APQS} datasets resolved
+     * {@code --DTC} to {@code APDTC} instead of {@code QSDTC}). Delegating to the one authority
+     * deletes that weaker policy; the {@code LibraryValidator} Fix #59 record documents the same
+     * mistake being fixed for Operations.
      * </p>
      */
-    void expandSdtmPrefixRules(DataTableMeta meta, String domain, List<Rule> scopedStaticRules,
+    void specialiseStaticRules(IDataTable table, String domain, List<Rule> scopedStaticRules,
             List<Rule> rules, RuleGenerationReport report)
     {
         if (scopedStaticRules.isEmpty() || domain == null || domain.isEmpty())
@@ -637,13 +639,11 @@ public class DatasetRuleResolver
             return;
         }
 
-        String prefix = domain.length() >= 2 ? domain.substring(0, 2) : domain;
-
         for (Rule staticRule : scopedStaticRules)
         {
-            // Review F4: never rewrite a load-error-tagged rule — the `--` expansion below
-            // builds a fresh Rule and would drop the loadError. Pass it through unmodified
-            // (even with a null Check) so RuleRunner.execute emits its ERROR sentinel.
+            // Review F4: never rewrite a load-error-tagged rule — a specialised copy would be a
+            // fresh object and the ERROR sentinel contract wants the tagged instance itself.
+            // (RuleSpecialiser also guards this; the explicit branch keeps the audit readable.)
             if (staticRule.getLoadError() != null)
             {
                 rules.add(staticRule);
@@ -654,169 +654,27 @@ public class DatasetRuleResolver
                 continue;
             }
 
-            // Rules without -- patterns pass through unchanged.
-            // ⚑ Plan C §3.3: a `--` in ANY declared level makes the rule expandable — the
-            // expansion below resolves every level, so the detection must span every level too, or
-            // a weaker level ships the literal "--DTC" and matches no column.
-            if (staticRule.checkConditions().stream()
-                    .noneMatch(DatasetRuleResolver::containsDashPrefix))
+            // specialise answers null only for a null rule (its @return); staticRule is not one.
+            Rule specialised = Objects
+                    .requireNonNull(RuleSpecialiser.specialise(staticRule, table, domain));
+            rules.add(specialised);
+            if (specialised != staticRule)
             {
-                rules.add(staticRule);
-                continue;
+                // Derive whatever the source rule left out (PLAN-derive-rule-type-sensitivity
+                // phase 7) — a no-op for loader-loaded rules, whose omitted fields were already
+                // derived at load and rode over on the copy, but a hand-built or foreign source
+                // rule still gets the classifier instead of a blanket default.
+                RulePackageLoader.deriveOmittedFields(specialised);
+                // The per-domain concrete rule keeps the base rule's CORE id verbatim
+                // (base-rule-first, no per-domain suffix) so the IDs match the Python CORE engine
+                // and per-domain rows roll up onto the one base id in the report.
+                report.addGenerated(new GeneratedRuleInfo(specialised.effectiveId(),
+                        RuleCategory.SDTM_PREFIX_EXPANSION, null,
+                        specialised.getDescription() != null ? specialised.getDescription()
+                                : specialised.effectiveId(),
+                        "Specialised from " + staticRule.effectiveId() + " for domain " + domain));
             }
-
-            // The per-domain expansion keeps the base rule's CORE id verbatim (e.g.
-            // CDISC-CG0088) — base-rule-first, no GEN-EXP-<domain> prefix — so the IDs match the
-            // Python CORE engine (which does not append the domain code) and the per-domain rows
-            // roll up onto the one base id in the report. The id also tags any prefix-resolution
-            // WARN (only fires when prefix is null/non-2-char on a wildcard-bearing Check).
-            String origCoreId = staticRule.effectiveId();
-            String expandedCoreId = origCoreId;
-
-            // Expand the Check condition tree
-            net.cumba.corej.core.model.CheckCondition expandedCheck = CheckConditionTransformer
-                    .resolvePrefixes(staticRule.getCheck(), prefix, expandedCoreId);
-
-            // Outcome message and description are kept domain-neutral (the `--` token is NOT
-            // substituted) so the single retained Rules_Report instance and the per-domain finding
-            // text read uniformly across domains and bundle cleanly. Only the output variables are
-            // substituted — they must name the concrete column whose values the finding surfaces.
-            String message = staticRule.getOutcome() != null ? staticRule.getOutcome().getMessage()
-                    : null;
-            List<String> outputVars = staticRule.getOutcome() != null
-                    ? staticRule.getOutcome().getOutputVariables()
-                    : null;
-            if (outputVars != null)
-            {
-                // Fix #356: resolve the wildcard INSIDE the token. This map used to test the raw
-                // entry (`v.startsWith("--")`), so a `!--X` exclusion — whose first character is
-                // the `!` marker, not `-` — passed through UNRESOLVED while the Check above was
-                // resolved. The `RulePackageLoader.deriveOutputVariables` pass that generate()
-                // runs over every produced rule then failed E-3 check 1 on the stale `!--X`
-                // ("names nothing the rule derives" — judged against the RESOLVED derived set),
-                // tagged a loadError, and the rule reported ENGINE_ERROR on every dataset it
-                // targeted.
-                outputVars = outputVars.stream()
-                        .map(v -> OutputVariableToken.mapName(v,
-                                name -> name.startsWith("--") ? prefix + name.substring(2) : name))
-                        .toList();
-            }
-
-            // Description kept verbatim (domain-neutral, `--` preserved)
-            String desc = staticRule.getDescription() != null ? staticRule.getDescription()
-                    : origCoreId;
-
-            // buildRule needs the field non-null, so seed it and clear again below when the
-            // source rule did not actually author it — the derivation then supplies it.
-            Rule expanded = buildRule(expandedCoreId, desc,
-                    staticRule.getSensitivity() != null ? staticRule.getSensitivity()
-                            : Sensitivity.RECORD,
-                    expandedCheck, message, outputVars, domain);
-            expanded.setVariableUniverse(staticRule.getVariableUniverse());
-            // ⚠⚠ Plan C: the SOURCE rule's Severity must ride onto the expanded child. `buildRule`
-            // starts from a fresh `new Rule()`, so any top-level field not named in this block is
-            // SILENTLY DROPPED from every `--`-prefix expansion — and the drop is invisible to the
-            // loader, both schemas and the writer, because the SOURCE rule still carries the field.
-            // Measured when this line was missing: 15 rules / 944 finding rows reported ERROR while
-            // the authored rule said Warning. ⇒ a new top-level Rule field must be added HERE as
-            // well as at the registration surfaces.
-            expanded.setSeverity(staticRule.getSeverity());
-            // ⚠⚠ Plan C: and the level-keyed Check with it. `buildRule` above installed only the
-            // strictest level's expanded condition; a level map left un-expanded would carry the
-            // template's unresolved `--` names into the concrete rule, and — like the Severity drop
-            // this comment's neighbour records — the loss is INVISIBLE to the loader, both schemas
-            // and the writer, because the SOURCE rule still carries the field. `setCheckLevels`
-            // re-derives `check` from the strictest entry, so the two cannot disagree.
-            expanded.setCheckLevels(net.cumba.corej.core.model.LevelCheck.mapConditions(
-                    staticRule.getCheckLevels(),
-                    c -> CheckConditionTransformer.resolvePrefixes(c, prefix, expandedCoreId)));
-
-            // Copy Operations if any
-            expanded.setOperations(staticRule.getOperations());
-            expanded.setMatchDatasets(staticRule.getMatchDatasets());
-            expanded.setGroupingVariables(staticRule.getGroupingVariables());
-            expanded.setGrouping(staticRule.getGrouping());
-            // Derive whatever the source rule left out, instead of the old blanket
-            // Record Data / Record fallback (PLAN-derive-rule-type-sensitivity phase 7). Run after
-            // the Operations and Grouping_Variables are attached: both feed the derivation —
-            // Grouping_Variables decides `Group`, and a grouped operation makes the rule
-            // record-scoped.
-            if (staticRule.getSensitivity() == null)
-            {
-                expanded.setSensitivity(null);
-            }
-            RulePackageLoader.deriveOmittedFields(expanded);
-
-            rules.add(expanded);
-            report.addGenerated(
-                    new GeneratedRuleInfo(expandedCoreId, RuleCategory.SDTM_PREFIX_EXPANSION, null,
-                            desc, "Expanded from " + origCoreId + " with prefix " + prefix));
         }
-    }
-
-
-    /**
-     * Returns {@code true} if the Check condition tree contains any {@code --} prefixed variable
-     * names.
-     */
-    private static boolean containsDashPrefix(net.cumba.corej.core.model.CheckCondition condition)
-    {
-        return switch (condition)
-        {
-        case CheckConditionAll all -> all.getConditions().stream()
-                .anyMatch(DatasetRuleResolver::containsDashPrefix);
-        case net.cumba.corej.core.model.CheckConditionAny any -> any.getConditions().stream()
-                .anyMatch(DatasetRuleResolver::containsDashPrefix);
-        case net.cumba.corej.core.model.CheckConditionNot not -> containsDashPrefix(
-                not.getCondition());
-        case CheckConditionLeaf leaf -> (leaf.getName() != null && leaf.getName().startsWith("--"))
-                || (leaf.getValue() != null && leaf.getValue().isTextual()
-                        && leaf.getValue().asText().contains("--"));
-        case net.cumba.corej.core.model.CheckConditionConstant _ -> false;
-        case net.cumba.corej.core.model.CheckConditionExpression _ -> false;
-        };
-    }
-
-    // ---- Define-XML categories 15-23 ----
-
-    // ---- Rule builders ----
-
-
-    Rule buildRule(@Nullable String coreId, @Nullable String description, Sensitivity sensitivity,
-            net.cumba.corej.core.model.CheckCondition check, @Nullable String outcomeMessage,
-            @Nullable List<String> outputVars, @Nullable String domain)
-    {
-        Rule rule = new Rule();
-        rule.setId(coreId != null ? deterministicUuid(coreId) : null);
-
-        RuleCore core = new RuleCore();
-        core.setId(coreId);
-        core.setStatus("Generated");
-        core.setVersion("1");
-        rule.setCore(core);
-
-        rule.setDescription(description);
-        rule.setSensitivity(sensitivity);
-        rule.setCheck(check);
-
-        Outcome outcome = new Outcome();
-        outcome.setMessage(outcomeMessage);
-        if (outputVars != null)
-        {
-            outcome.setOutputVariables(outputVars);
-        }
-        rule.setOutcome(outcome);
-
-        if (domain != null)
-        {
-            Scope scope = new Scope();
-            net.cumba.corej.core.model.DomainScope ds = new net.cumba.corej.core.model.DomainScope();
-            ds.setInclude(List.of(domain));
-            scope.setDomains(ds);
-            rule.setScope(scope);
-        }
-
-        return rule;
     }
 
     // ---- Helpers ----
@@ -833,7 +691,25 @@ public class DatasetRuleResolver
             @Nullable String domainPrefix, String unsplitName, List<String> detectedStructures,
             List<String> detectedSubclasses, @Nullable ScopeVariableSource scopeForeign)
     {
-        String reason = ScopeMatcher.describeDomainMismatch(r, domName, unsplitName);
+        // ⭐⭐ D125 (PLAN-typed-expression-engine phase 7c): describeDomainMismatch's FIRST argument
+        // is the MEMBER name (`FAAE`, `LBCHEM`), its second the dataset's canonical base (`FA`,
+        // `LB`) — the matcher derives `isSplit = !domainName.equals(unsplitName)` from exactly that
+        // pair. This site used to pass `domName`, which on the production path is
+        // LibraryValidator's `CdiscDomainResolver.cdiscDomainOf(table)` (:1080 `setDomainName`).
+        // ⛔ BOTH that resolver and `OperationExecutor.unsplitNameFromData` read the row-0 `DOMAIN`
+        // cell FIRST and return it, so for every dataset carrying a DOMAIN column the two arguments
+        // were equal BY CONSTRUCTION and `isSplit` was permanently FALSE: `Include_Split_Datasets`
+        // could never match on either leg, and the member-name leg of Include/Exclude
+        // (`Include: ["LB1"]`, a glob `LB*`, `AP--` against `APAE`) was unreachable. The split-base
+        // re-test still answered correctly only because `domName` already WAS the base.
+        // ⚑ The member name is the same expression `describeDatasetMismatch` needs below, so the
+        // two name axes now share one local and cannot drift apart again. The non-vacuity guard
+        // that keeps this path reachable is
+        // `net.cumba.corej.core.report.SplitScopeProductionPathTest`
+        // — it reds, naming this site, if the split branch ever stops being reachable in
+        // production.
+        String memberName = meta.getName() != null ? meta.getName() : domName;
+        String reason = ScopeMatcher.describeDomainMismatch(r, memberName, unsplitName);
         if (reason != null)
         {
             return reason;
@@ -842,10 +718,9 @@ public class DatasetRuleResolver
         // are name-level; order only decides which reason a multiply-mismatched rule reports.
         // ⭐ It matches the MEMBER file name, never the domain code, and deliberately WITHOUT the
         // split-base re-test describeDomainMismatch applies: `Domains: ["LB"]` covers LB1/LB2,
-        // `Datasets: ["LB"]` covers the file called LB and nothing else. Same expression as the
-        // caller's own `scopeDatasetName`, so the two cannot disagree about which name is meant.
-        reason = ScopeMatcher.describeDatasetMismatch(r,
-                meta.getName() != null ? meta.getName() : domName);
+        // `Datasets: ["LB"]` covers the file called LB and nothing else. Same local as the domain
+        // axis above, so the two cannot disagree about which name is meant.
+        reason = ScopeMatcher.describeDatasetMismatch(r, memberName);
         if (reason != null)
         {
             return reason;
@@ -882,12 +757,6 @@ public class DatasetRuleResolver
         // the audit trail would name two different reasons for one fact.
         return ScopeMatcher.describeVariablesMismatch(r, meta, domainPrefix, scopeForeign,
                 ScopeMatcher.QualifiedEntryPolicy.SKIP);
-    }
-
-
-    String deterministicUuid(String coreId)
-    {
-        return UUID.nameUUIDFromBytes(coreId.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
 }

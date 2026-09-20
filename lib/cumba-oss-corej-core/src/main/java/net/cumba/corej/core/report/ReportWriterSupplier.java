@@ -23,9 +23,9 @@ import net.cumba.datatable.io.Property;
  *
  * <p>
  * One supplier declares exactly one format. A module serving two formats — as
- * {@code cumba-oss-corej-report-json} does with {@code json} and {@code json-2} — registers two
- * suppliers, because {@link ReportManager} routes by {@link ReportFormat#name()} and a supplier
- * with two names could not be looked up.
+ * {@code corej-report-json} does with {@code json} and {@code json-2} — registers two suppliers,
+ * because {@link ReportManager} routes by {@link ReportFormat#name()} and a supplier with two names
+ * could not be looked up.
  * </p>
  *
  * <h2>No capability query</h2>

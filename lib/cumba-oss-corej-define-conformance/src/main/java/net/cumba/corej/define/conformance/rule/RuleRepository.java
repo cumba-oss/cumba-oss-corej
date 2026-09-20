@@ -21,15 +21,15 @@ import org.jspecify.annotations.Nullable;
  * load, and rejects duplicate ids.
  *
  * <p>
- * The rule corpus is <b>not</b> bundled in the module jar — like {@code cumba-oss-corej-core}'s
- * SDTM rules, it lives in an operator-editable directory so a rule can be corrected, disabled, or
- * supplemented without a rebuild. {@link #loadDefault()} resolves that directory from, in order,
- * the {@link #ENV_RULES_DIR} environment variable, the {@link #SP_RULES_DIR} system property, then
- * the conventional {@link #DEFAULT_RULES_DIR}; when none resolves and no explicit rules are
- * supplied, loading fails with a clear message rather than silently reporting a clean run. The
- * canonical corpus is authored in {@code lib/cumba-oss-corej-rules/rules-define-src/} and generated
- * into {@code lib/cumba-oss-corej-rules/rules-define/}, which is what ships beside the launcher. It
- * left this module on 2026-09-01 so a rule, its scenarios and its packaging live together.
+ * The rule corpus is <b>not</b> bundled in the module jar — like {@code corej-core}'s SDTM rules,
+ * it lives in an operator-editable directory so a rule can be corrected, disabled, or supplemented
+ * without a rebuild. {@link #loadDefault()} resolves that directory from, in order, the
+ * {@link #ENV_RULES_DIR} environment variable, the {@link #SP_RULES_DIR} system property, then the
+ * conventional {@link #DEFAULT_RULES_DIR}; when none resolves and no explicit rules are supplied,
+ * loading fails with a clear message rather than silently reporting a clean run. The canonical
+ * corpus is authored in {@code rules-define-src/} and generated into {@code target/rules-define/}
+ * of the sibling rules repository, which is what ships beside the launcher. It left this module on
+ * 2026-09-01 so a rule, its scenarios and its packaging live together.
  * </p>
  *
  * <p>
@@ -37,11 +37,10 @@ import org.jspecify.annotations.Nullable;
  * {@link #loadPackage} / {@link #loadPackages} read the <b>generated</b>
  * {@code rules-define-*.json} packages and are what a run uses. {@link #loadDefault} /
  * {@link #loadResolved} / {@link #loadDirectory} read the <b>authored</b> per-rule YAML; that
- * corpus lives in {@code cumba-oss-corej-rules} as {@code rules-define-src/} and is authoring and
- * review material, not a shipped artefact. No production code calls the YAML loaders any more —
- * they are kept for the generator and for tests, and adding a runtime caller would reintroduce the
- * very asymmetry this split removed, where what shipped and what was authored could silently
- * diverge.
+ * corpus lives in {@code corej-rules} as {@code rules-define-src/} and is authoring and review
+ * material, not a shipped artefact. No production code calls the YAML loaders any more — they are
+ * kept for the generator and for tests, and adding a runtime caller would reintroduce the very
+ * asymmetry this split removed, where what shipped and what was authored could silently diverge.
  * </p>
  *
  * <p>

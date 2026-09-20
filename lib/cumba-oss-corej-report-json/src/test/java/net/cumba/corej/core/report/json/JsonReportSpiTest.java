@@ -17,9 +17,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * <b>R4 — the modules are independent, not a package split.</b> This module's test classpath
- * carries {@code cumba-oss-corej-report-json} and <em>not</em> {@code cumba-oss-corej-report-xlsx},
- * so the registry must offer exactly {@code json} and {@code json-2}, and {@code xlsx} must be
- * absent with the named error rather than silently missing.
+ * carries {@code corej-report-json} and <em>not</em> {@code corej-report-xlsx}, so the registry
+ * must offer exactly {@code json} and {@code json-2}, and {@code xlsx} must be absent with the
+ * named error rather than silently missing.
  */
 class JsonReportSpiTest
 {
@@ -87,7 +87,7 @@ class JsonReportSpiTest
         ReportFormat xlsx = new ReportFormat("xlsx", "Excel", "xlsx", ".xlsx");
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> manager.getReportWriter(xlsx, Map.of()));
-        assertTrue(e.getMessage().contains("cumba-oss-corej-report-xlsx"), e.getMessage());
+        assertTrue(e.getMessage().contains("corej-report-xlsx"), e.getMessage());
         assertTrue(e.getMessage().contains("Registered formats: json, json-2"), e.getMessage());
     }
 

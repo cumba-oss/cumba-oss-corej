@@ -3,8 +3,6 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.node.TextNode;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
 import net.cumba.datatable.IDataTable;
@@ -19,6 +17,13 @@ import org.junit.jupiter.api.Test;
 class RuleRunnerInvalidRuleSentinelTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
     private static Rule invalidRule(String loadError)
     {
         Rule rule = new Rule();
@@ -27,9 +32,7 @@ class RuleRunnerInvalidRuleSentinelTest
         rule.setCore(core);
         // Give it a minimal Check tree so other code paths don't bail before reaching the
         // sentinel; the sentinel must take precedence regardless of Check shape.
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("AESTDY").operator("var_exists")
-                .value(TextNode.valueOf("x")).build();
-        rule.setCheck(leaf);
+        rule.setCheck(expr("var_exists(\"AESTDY\")"));
         rule.setLoadError(loadError);
         return rule;
     }

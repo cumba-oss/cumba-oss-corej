@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.RulePackageLoader;
@@ -19,10 +18,11 @@ import org.junit.jupiter.api.Test;
 /**
  * R-P4 ({@code plans/done/PLAN-native-engine-residuals.md}) — the re-authored ADaM additions
  * {@code ADAM-ADD-100025}/{@code 100026}: {@code $dataset_variables not_contains_all
- * $required_variables} (/{@code $expected_variables}), the fully-native FDA-SD0056 shape replacing
- * the degenerate {@code variable_name not_contains_all ["$-ref"]} form (whose {@code $}-ref sat
- * inside the keys array, where neither engine expands it). The intended verdict — "the dataset must
- * contain every required/expected variable" — is pinned here on both engines.
+ * $required_variables} (/{@code $expected_variables}), the fully-native {@code FDA-SD0056} shape
+ * ({@code not contains_all($dataset_variables, $required_variables)}) replacing the degenerate
+ * {@code variable_name not_contains_all ["$-ref"]} form (whose {@code $}-ref sat inside the keys
+ * array, where neither engine expands it). The intended verdict — "the dataset must contain every
+ * required/expected variable" — is pinned here on both engines.
  */
 @Disabled("rules-adamig-1-3-additions.json temporarily moved; corpus rules load from it. "
         + "Re-enable when the additions corpus is restored.")
@@ -189,11 +189,10 @@ class AdamAdditionsReauthoredRulesTest
     {
         Rule rule = corpusRule("ADAM-ADD-100025");
         IDataTable t = MockTable.of().name("ADSL").col("USUBJID", "01").build();
-        Map<String, NativeExecutionRecorder.Backend> rec;
 
-        NativeExecutionRecorder.enable();
-        RuleRunner.execute(rule, t, _ -> null, "ADSL", LIBRARY, null, null);
-        rec = new HashMap<>(NativeExecutionRecorder.disable());
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE, rec.get("ADAM-ADD-100025"));
+        RuleExecutionResult ran = RuleRunner.execute(rule, t, _ -> null, "ADSL", LIBRARY, null,
+                null);
+        assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
+                "the re-authored rule must reach a verdict, not skip: " + ran.getStatusMessage());
     }
 }

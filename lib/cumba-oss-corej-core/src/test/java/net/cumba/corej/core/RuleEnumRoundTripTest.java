@@ -58,7 +58,7 @@ class RuleEnumRoundTripTest
                   "Core": {"Id": "TEST-301"},
                   "Sensitivity": "Record",
                   "Executability": "Fully Executable",
-                  "Check": {"name": "AESTDY", "operator": "non_empty"}
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """;
         Rule loaded = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));
@@ -90,7 +90,7 @@ class RuleEnumRoundTripTest
                   "Core": {"Id": "TEST-302"},
                   "Sensitivity": "Variable",
                   "Executability": "Mostly Executable",
-                  "Check": {"name": "AESTDY", "operator": "non_empty"}
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """;
         Rule loaded = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));
@@ -118,7 +118,7 @@ class RuleEnumRoundTripTest
         String ruleJson = """
                 {
                   "Core": {"Id": "TEST-303"},
-                  "Check": {"name": "AESTDY", "operator": "non_empty"}
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """;
         Rule loaded = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));
@@ -145,7 +145,7 @@ class RuleEnumRoundTripTest
                   "Core": {"Id": "TEST-304"},
                   "Sensitivity": "Variable",
                   "Executability": "Mostly Executable",
-                  "Check": {"name": "AESTDY", "operator": "non_empty"}
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """;
         Rule loaded = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));

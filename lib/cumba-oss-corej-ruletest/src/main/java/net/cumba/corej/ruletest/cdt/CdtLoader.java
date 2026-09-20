@@ -342,13 +342,52 @@ public final class CdtLoader
                 Object value = CdtValues.parseValue(row.get(c), columns.get(c).getType());
                 // A missing cell is left unset: OverlayDataTable already answers an unset cell
                 // with DataValueMissing, so writing an override would add nothing.
-                // CdtValues.parseValue spells a missing cell per the column's storage type —
-                // null for Char, MissingValue for the numeric types, because DataBufferDouble
-                // rejects null — so both spellings have to be filtered here. Skipping the
-                // MissingValue keeps this loader's raw getValue() answering null for a blank
-                // numeric cell exactly as before; changing that would move IDataTable.hashCodeAt
-                // for 313 blank numeric cells across 215 rule-test fixtures.
-                if (value != null && !(value instanceof MissingValue))
+                // CdtValues.parseValue spells a missing cell per the column's storage type, so
+                // both spellings have to be filtered here. Skipping the MissingValue keeps this
+                // loader's raw getValue() answering null for a blank NUMERIC cell exactly as
+                // before; changing that would move IDataTable.hashCodeAt for 313 blank numeric
+                // cells across 215 rule-test fixtures.
+                //
+                // ⚠ The CHARACTER half changed when this module was split out of the coreJ
+                // monorepo onto the full net.cumba.datatable.provider.cdt. That CdtValues answers
+                // "" rather than null for a blank char cell — the project-wide contract, shared
+                // with the CSV / SAS7BDAT / XPT / DSJ providers, that an empty string IS a
+                // character column's missing value. So a blank char cell is no longer filtered
+                // out here: it is set, as "". The null branch below is retained because
+                // parseValue's signature still permits null.
+                // ⭐⭐ Only PLAIN MissingValue.MIS is filtered, not every MissingValue
+                // (PLAN-cdt-char-missing-contract §1c.1, 2026-09-17). MIS is the only flavour a
+                // BLANK cell can yield — `missingFor(NUM)` returns it, and the bare `.` sentinel
+                // resolves to it — so filtering exactly MIS preserves the 313-blank-numeric-cell
+                // hashCodeAt behaviour the paragraph above protects, to the cell.
+                //
+                // ⚠ The other 27 SAS forms (`._`, `.A`…`.Z`) can ONLY arrive from an explicitly
+                // authored sentinel; no blank produces them. Filtering them too collapsed all 28
+                // flavours to one on the corpus path — the loader every rule-test fixture
+                // actually travels — so `.A` and `.` were indistinguishable here even though the
+                // provider told them apart. Worse, a `.A` on a NUM column used to be a loud
+                // CdtParseException and would have become a SILENT unset cell. They are set.
+                // ⭐ A special missing goes through the ORDINARY setValue path, like every other
+                // cell (PLAN-cdt-char-missing-contract phase 6, 2026-09-18). It used to need
+                // setDataValue: OverlayDataTable.setValue stores the raw object and the overlay
+                // wraps it with DataValueSupport.getAsDataValue(val, columnType), which resolved
+                // the type switch BEFORE its `instanceof MissingValue` branch, so on a CHAR column
+                // the STRING arm won and produced the literal string ".A" — not missing.
+                // ⛔ That root cause is now FIXED in DataValueSupport (the null and MissingValue
+                // checks are resolved above the switch), and the local workaround here is removed
+                // ON PURPOSE: with it in place these fixtures would keep answering correctly even
+                // if the hoist were reverted, and nothing would red. This loader now proves the
+                // hoist rather than compensating for it, and it agrees with the provider's own
+                // AbstractDataBuffer.createDataValue, which has always tested `instanceof
+                // MissingValue` before its type switch.
+                if (value instanceof MissingValue mv)
+                {
+                    if (mv != MissingValue.MIS)
+                    {
+                        table.setValue(r, columns.get(c).getName(), mv);
+                    }
+                }
+                else if (value != null)
                 {
                     table.setValue(r, columns.get(c).getName(), value);
                 }

@@ -75,8 +75,8 @@ public class Rule
      * so ~3 473 of the 3 804 shipped rules carry no {@code Severity} key at all and
      * {@code Severity: "Error"} is not a legal shipped spelling — {@code RuleCanonicalizer} strips
      * it. That mirrors {@code ConformanceRule.effectiveSeverity()} in
-     * {@code cumba-oss-corej-define-conformance}, which has shipped the same absent-means-ERROR
-     * convention on a sibling corpus.
+     * {@code corej-define-conformance}, which has shipped the same absent-means-ERROR convention on
+     * a sibling corpus.
      * </p>
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
@@ -644,8 +644,45 @@ public class Rule
     @JsonProperty("Outcome")
     private @Nullable Outcome outcome;
 
-    @JsonProperty("Operations")
+    /**
+     * The authored {@code Bindings:} block — each entry {@code name:} + {@code expression:}
+     * ({@link Binding}). The 7b authoring surface (owner rulings 2026-09-17) replacing the retired
+     * {@code Operations:} block; {@code RulePackageLoader.normalizeOperations} materialises it into
+     * {@link #operations}, the executor-internal bound-argument records.
+     */
+    @JsonProperty("Bindings")
+    private @Nullable List<Binding> bindings;
+
+    /**
+     * The executor's bound-argument records, materialised from {@link #bindings} at load
+     * ({@code RulePackageLoader.normalizeOperations}). <b>Runtime-only since phase 7b</b> — never
+     * part of the JSON rule contract: the field form of an operation is retired as an authoring
+     * surface, so nothing binds or serialises this list.
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private @Nullable List<Operation> operations;
+
+    /**
+     * ⛔ Phase 7b (owner ruling 2026-09-17, "no legacy engine forms"): the pre-rename
+     * {@code Operations:} block fails LOUD at binding, naming the replacement — the same contract
+     * phase 7d gave the retired operator-leaf Check ({@link CheckConditionDeserializer}). Without
+     * this setter the lenient mapper ({@code FAIL_ON_UNKNOWN_PROPERTIES=false}) would drop the
+     * whole block in silence and every {@code $}-reference would dangle.
+     *
+     * @param ignored
+     *            the retired block's value, never bound
+     * @throws net.cumba.corej.core.expr.RuleDefinitionException
+     *             always
+     */
+    // Package-private, not private: invoked reflectively by Jackson, and both PMD and SpotBugs
+    // flag an uncalled private method.
+    @JsonProperty("Operations")
+    void rejectRetiredOperationsKey(com.fasterxml.jackson.databind.@Nullable JsonNode ignored)
+    {
+        throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                "the `Operations:` block is retired — declare the operation bindings under"
+                        + " `Bindings:` (each entry `name:` + `expression:`)");
+    }
 
     @JsonProperty("Match_Datasets")
     private @Nullable List<MatchDataset> matchDatasets;
@@ -674,8 +711,8 @@ public class Rule
      * the main Check is never evaluated.
      * <p>
      * Engine extension beyond the upstream rule format — specified in
-     * {@code the CORE rules specification}. When absent (all currently-shipped rules), behaviour is
-     * unchanged.
+     * {@code corej-rules/documentation/CORE-RULES-SPECIFICATION.md}. When absent (all
+     * currently-shipped rules), behaviour is unchanged.
      * </p>
      */
     @JsonProperty("Precondition")
@@ -693,7 +730,8 @@ public class Rule
      * </p>
      * <p>
      * Engine extension beyond the upstream rule format; specified in
-     * {@code the CORE rules specification}, Engine Fields &#167; {@code Expansion}.
+     * {@code corej-rules/documentation/CORE-RULES-SPECIFICATION.md}, Engine Fields &#167;
+     * {@code Expansion}.
      * </p>
      */
     @JsonProperty("Expansion")
@@ -717,8 +755,8 @@ public class Rule
      * </p>
      * <p>
      * Engine extension beyond the upstream rule format; specified in
-     * {@code the CORE rules specification}, Engine Fields &#167; {@code wildcards}. Used by
-     * CDISC-AD0078 / CDISC-AD0079 ({@code "xx > 01"}).
+     * {@code corej-rules/documentation/CORE-RULES-SPECIFICATION.md}, Engine Fields &#167;
+     * {@code wildcards}. Used by CDISC-AD0078 / CDISC-AD0079 ({@code "xx > 01"}).
      * </p>
      */
     @JsonProperty("wildcards")
@@ -734,7 +772,8 @@ public class Rule
      * ADaM sheet's verbatim "Exceptions:" lists (e.g. AD0376 / AD1011).
      * <p>
      * Engine extension beyond the upstream rule format; specified in
-     * {@code the CORE rules specification}, Engine Fields &#167; {@code wildcardExclude}.
+     * {@code corej-rules/documentation/CORE-RULES-SPECIFICATION.md}, Engine Fields &#167;
+     * {@code wildcardExclude}.
      * </p>
      */
     @JsonProperty("wildcardExclude")
@@ -748,7 +787,8 @@ public class Rule
      * requirement to look "explicitly at variable pairs defined in the CDISC standard documents".
      * <p>
      * Engine extension beyond the upstream rule format; specified in
-     * {@code the CORE rules specification}, Engine Fields &#167; {@code wildcardPairCatalogue}.
+     * {@code corej-rules/documentation/CORE-RULES-SPECIFICATION.md}, Engine Fields &#167;
+     * {@code wildcardPairCatalogue}.
      * </p>
      */
     @JsonProperty("wildcardPairCatalogue")
@@ -918,30 +958,15 @@ public class Rule
     private @Nullable Set<String> excludedOutputVariables;
 
     /**
-     * Native-evaluator backing expression, reconstructed by
-     * {@link net.cumba.corej.core.RulePackageLoader} from the rule's {@link #check} via
-     * {@code CheckToExpr} when (and only when) the whole Check is fully-expression and the rule is
-     * a Record-Data rule. Populated only at runtime; never serialised. When non-null and the
-     * {@code nativeEval} flag is on, {@link net.cumba.corej.core.exec.RuleRunner} evaluates this
-     * {@code Expr} directly via {@code NativeExprEvaluator} at the Record-Data row-level site
-     * instead of running the lowered {@link #check} through the legacy engine. {@code null} keeps
-     * the rule entirely on the legacy path.
+     * Native-evaluator backing expression, installed by
+     * {@link net.cumba.corej.core.RulePackageLoader} from the rule's compiled {@link #check}.
+     * Populated only at runtime; never serialised. When non-null,
+     * {@link net.cumba.corej.core.exec.RuleRunner} evaluates this {@code Expr} directly via
+     * {@code NativeExprEvaluator}; a rule with no compiled expression does not evaluate (D121 — the
+     * pre-expression leaf engine is retired, and an uncompilable Check is a load error).
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
     private net.cumba.corej.core.expr.ast.@Nullable Expr checkExpr;
-
-    /**
-     * Whether {@link #checkExpr} is a fold-equivalent dataset-broadcast verdict (P3a of
-     * {@code plans/done/PLAN-native-engine-full-coverage.md}): exists/not_exists facts and
-     * {@code $}-operation comparisons only — the exact class the legacy
-     * {@code partialEvaluateDataset} folds to a constant (one dataset-level violation at row 0).
-     * Set by the loader alongside {@code checkExpr}; when {@code true} (and native is on)
-     * {@code RuleRunner.executeUnified} evaluates the expression ONCE via
-     * {@code NativeExprEvaluator.evaluateBroadcast} instead of the legacy fold. Runtime-only; never
-     * serialised.
-     */
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    private boolean broadcastCheckExpr;
 
     /**
      * The native form of <b>every</b> declared check level, keyed by level (Plan C &#167;3.3 step
@@ -959,14 +984,6 @@ public class Rule
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
     private @Nullable Map<Severity, net.cumba.corej.core.expr.ast.Expr> checkLevelExprs;
-
-    /**
-     * Which of {@link #checkLevelExprs}' levels are fold-equivalent dataset-broadcast verdicts —
-     * the per-level companion of {@link #broadcastCheckExpr}, which stays the strictest level's
-     * flag. {@code null} for a single-level rule. Runtime-only; never serialised.
-     */
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    private @Nullable Set<Severity> broadcastCheckLevels;
 
     /**
      * The rule's <b>evaluation domain</b> — the join of the cursor demands of {@link #checkExpr}'s

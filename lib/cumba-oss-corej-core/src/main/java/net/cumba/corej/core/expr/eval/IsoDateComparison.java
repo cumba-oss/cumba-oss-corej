@@ -7,6 +7,17 @@ import org.jspecify.annotations.Nullable;
  * Q16 — the {@code date_*} comparison family, evaluated over the <b>hull</b> a possibly-incomplete
  * ISO-8601 value denotes rather than over its raw text.
  *
+ * <p>
+ * ⭐ <b>Phase 3b of {@code PLAN-typed-expression-engine}: this class IS the {@code date} type's
+ * comparison operator</b> (SPEC §5.2 / D71a). Its three branches are re-homed, not retired — the
+ * {@code commonPrecision} normalisation is §5.2(1), the complete-vs-complete point compare §5.2(2),
+ * the ∀-over-clipped-hulls rule §5.2(3), and the unbounded-hull all-false verdict §5.2(4). The
+ * compiler reaches it through the {@code date()} conversion's family routing
+ * ({@code ExprCompiler.compileDate} → {@link Primitives#dateComparison}), and {@code date_overlaps}
+ * is defined as the negation of its {@code !=} ({@code TemporalPredicates}).
+ * {@link IsoTimeComparison} is the {@code time} type's mirror.
+ * </p>
+ *
  * <h2>The rule</h2>
  * <p>
  * A partial date denotes a <b>range</b>, and a comparison quantifies over it: <b>{@code A op B}
@@ -115,13 +126,36 @@ import org.jspecify.annotations.Nullable;
  * mixed lower/upper test is sound.
  * </p>
  *
- * <h2>Saturating bounds — "every comparison FALSE" is emergent</h2>
+ * <h2>Saturating bounds — "every PREDICATE false" is emergent, and {@code negate} then flips
+ * it</h2>
  * <p>
  * A blank, a junk token ({@code UNKNOWN}), a calendar-impossible date ({@code 2026-02-30}) and a
  * <b>year-masked</b> value ({@code ----06-15}) alike have an <b>unbounded</b> hull:
  * {@link IsoDateBounds#lower} / {@link IsoDateBounds#upper} return {@code null} for all of them.
- * Every one of the six tests above is then false, so all six operators answer <b>false</b> with no
- * per-operator guard clause to forget.
+ * Every one of the six tests above is then false, with no per-operator guard clause to forget.
+ * </p>
+ * <p>
+ * ⭐⭐ <b>H1b (owner, 2026-09-17): the unbounded verdict answers {@code negate}, not a bare
+ * {@code false}</b> — <i>"an unpositionable RIGHT operand must answer like an unpositionable LEFT
+ * one … I would state this is correct when it fires."</i> So the five plain operators still answer
+ * {@code false} ({@code negate} is only ever set by {@code date_not_equal_to}) and
+ * {@code date_not_equal_to} <b>fires</b>.
+ * </p>
+ * <p>
+ * ⚠⚠ <b>The defect this closes was an ASYMMETRY, and the left side was only half-right.</b>
+ * {@code Primitives.compareCells} short-circuits a {@code ScalarSemantics.isMissing} LEFT cell to
+ * {@code negate} before any hull is built — so a <em>blank</em> left operand already fired under
+ * {@code !=} — while an unpositionable RIGHT operand resolves to {@code ""}, misses that
+ * short-circuit, reaches this class and was silent. ⚑ But {@code isMissing} is
+ * missing-<em>or-empty</em>, so it never covered a <b>masked</b> or <b>junk</b> LEFT operand
+ * either: {@code date(----06-15) != X} was silent too, while {@code date(BLANK) != X} fired. Both
+ * asymmetries — left/right, and blank/masked within the left — close here rather than at the
+ * short-circuit, because this is the one place that knows a hull is unbounded.
+ * </p>
+ * <p>
+ * ⚑ A genuine {@link net.cumba.datatable.values.MissingValue} never reaches this class: D96c sends
+ * it to {@code Primitives.missingVerdict} and D34 #5's total order instead. This clause is about
+ * positionally-unreadable <b>strings</b> only.
  * </p>
  * <p>
  * &#9888; Unbounded is represented <b>out of band</b> (a {@code null} bound), never as an in-band
@@ -129,9 +163,11 @@ import org.jspecify.annotations.Nullable;
  * study literally carrying {@code 9999-12-31} would otherwise make {@code A >= upper("")} fire.
  * </p>
  * <p>
- * &#9888; This deliberately breaks complementarity for such operands: {@code A == ""} and
- * {@code A != ""} are <b>both</b> false. That is intended — <i>you cannot compare against a value
- * you do not have.</i>
+ * &#9888; Complementarity is broken for such operands in the four ORDER operators, deliberately:
+ * {@code A < junk} and {@code A >= junk} are <b>both</b> false — <i>you cannot compare against a
+ * value you do not have.</i> ⚠ It used to be broken for the equality pair as well ({@code A == ""}
+ * and {@code A != ""} both false); H1b restored that half, so {@code A != junk} now fires while
+ * {@code A == junk} stays false.
  * </p>
  *
  * <h2>&#9888;&#9888; The boundary with EC-46 / Fix #142 — deliberately NOT unified</h2>
@@ -175,7 +211,9 @@ public final class IsoDateComparison
      *            whether the operator is the negated form. Only {@code date_not_equal_to} sets it,
      *            and it always arrives with {@code direction == 0}; for a hypothetical negated
      *            inequality the plain complement is returned, which is <i>"not definitely X"</i>
-     *            and over-reports — no such expression exists in the corpus.
+     *            and over-reports — no such expression exists in the corpus. ⭐ H1b: it is also the
+     *            answer for an <b>unbounded</b> hull on either side, so the negated operator fires
+     *            there instead of going silent.
      * @return {@code true} iff the leaf fires for this row.
      */
     public static boolean fires(String a, String b, int direction, boolean orEqual, boolean negate)
@@ -211,8 +249,12 @@ public final class IsoDateComparison
         String hiB = clip(IsoDateBounds.upper(b), prec);
         if (loA == null || hiA == null || loB == null || hiB == null)
         {
-            // Unbounded on at least one side — every one of the six tests is false.
-            return false;
+            // H1b — unbounded on at least one side: every one of the six PREDICATES is false, and
+            // negate flips it, exactly as an unpositionable LEFT operand already answered through
+            // compareCells' missing short-circuit. So date_not_equal_to FIRES here and the other
+            // five stay silent. See this class' "Saturating bounds" javadoc for the asymmetry this
+            // closes (right vs left, AND masked vs blank within the left).
+            return negate;
         }
         if (direction == 0)
         {

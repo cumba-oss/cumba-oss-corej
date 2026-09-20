@@ -32,9 +32,9 @@ class DictionaryBasisTest
                         {"rules": {"%s": {
                           "Core": {"Id": "%s"},
                           "Executability": "Fully Executable",
-                          "Operations": [{"id": "$terms", "expression":
+                          "Bindings": [{"name": "$terms", "expression":
                               "valid_external_dictionary_value(AEDECOD, external_dictionary_type=\\"%s\\", dictionary_term_type=\\"PT\\")"}],
-                          "Check": {"all": [{"name": "$terms", "operator": "non_empty"}]}
+                          "Check": {"all": [{"expression": "not empty($terms)"}]}
                         }}}
                         """
                         .formatted(id, id, type))
@@ -48,7 +48,7 @@ class DictionaryBasisTest
                 {"rules": {"%s": {
                   "Core": {"Id": "%s"},
                   "Executability": "Fully Executable",
-                  "Check": {"all": [{"name": "AEDECOD", "operator": "empty"}]}
+                  "Check": {"all": [{"expression": "empty(AEDECOD)"}]}
                 }}}
                 """.formatted(id, id)).getRules().values().iterator().next();
     }

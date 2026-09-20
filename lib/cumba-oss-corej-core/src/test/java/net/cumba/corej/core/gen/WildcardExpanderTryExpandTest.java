@@ -6,11 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.node.IntNode;
-import com.fasterxml.jackson.databind.node.TextNode;
 import java.util.List;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -26,6 +23,13 @@ import org.junit.jupiter.api.Test;
  */
 class WildcardExpanderTryExpandTest
 {
+
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
 
     @Test
     void tryExpand_nullCheck_returnsNotApplicable()
@@ -44,7 +48,7 @@ class WildcardExpanderTryExpandTest
     void tryExpand_noWildcardNames_returnsNotApplicable()
     {
         Rule rule = newRule("R2");
-        rule.setCheck(CheckConditionLeaf.builder().name("USUBJID").operator("non_empty").build());
+        rule.setCheck(expr("not empty(USUBJID)"));
 
         IDataTable table = MockTable.withColumns("USUBJID");
         WildcardExpander.ExpansionResult result = WildcardExpander.tryExpand(rule,
@@ -57,8 +61,7 @@ class WildcardExpanderTryExpandTest
     void tryExpand_matchedWildcard_returnsExpanded()
     {
         Rule rule = newRule("R3");
-        rule.setCheck(new CheckConditionAll(
-                List.of(CheckConditionLeaf.builder().name("*FL").operator("non_empty").build())));
+        rule.setCheck(new CheckConditionAll(List.of(expr("not empty(*FL)"))));
         Outcome out = new Outcome();
         out.setMessage("v");
         out.setOutputVariables(List.of("*FL"));
@@ -77,8 +80,7 @@ class WildcardExpanderTryExpandTest
     void tryExpand_unmatchedWildcard_returnsNoMatch()
     {
         Rule rule = newRule("R4");
-        rule.setCheck(new CheckConditionAll(
-                List.of(CheckConditionLeaf.builder().name("*FL").operator("non_empty").build())));
+        rule.setCheck(new CheckConditionAll(List.of(expr("not empty(*FL)"))));
 
         // Columns that don't end in FL → no match for *FL.
         IDataTable table = MockTable.withColumns("STUDYID", "USUBJID", "AGE");
@@ -98,8 +100,7 @@ class WildcardExpanderTryExpandTest
         // collectWildcardNames but every lowercase run parses as "unknown marker → literal".
         // tryExpand walks each WildcardPattern.groupNames() and finds them empty → NotApplicable.
         Rule rule = newRule("R5");
-        rule.setCheck(CheckConditionLeaf.builder().name("variable_data_type").operator("equal_to")
-                .value(new TextNode("Char")).build());
+        rule.setCheck(expr("variable_data_type == \"Char\""));
 
         IDataTable table = MockTable.withColumns("X");
         WildcardExpander.ExpansionResult result = WildcardExpander.tryExpand(rule,
@@ -113,15 +114,10 @@ class WildcardExpanderTryExpandTest
     @Test
     void containsWildcards_arrayValueWithWildcard()
     {
-        // CheckConditionLeaf with array-valued wildcard reference triggers the
-        // "leaf.getValue().isArray()" branch in collectWildcardNamesRecursive.
+        // A wildcard reference inside a membership list triggers the list-element branch of
+        // the wildcard-name collection.
         Rule rule = newRule("R6");
-        com.fasterxml.jackson.databind.node.ArrayNode arr = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance
-                .arrayNode();
-        arr.add("USUBJID");
-        arr.add("*FL");
-        rule.setCheck(CheckConditionLeaf.builder().name("AGE").operator("is_contained_by")
-                .value(arr).build());
+        rule.setCheck(expr("AGE in [USUBJID, *FL]"));
 
         assertTrue(WildcardExpander.containsWildcards(rule));
     }
@@ -131,12 +127,7 @@ class WildcardExpanderTryExpandTest
     void containsWildcards_arrayValueAllLiteral()
     {
         Rule rule = newRule("R7");
-        com.fasterxml.jackson.databind.node.ArrayNode arr = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance
-                .arrayNode();
-        arr.add("M");
-        arr.add("F");
-        rule.setCheck(CheckConditionLeaf.builder().name("SEX").operator("is_contained_by")
-                .value(arr).build());
+        rule.setCheck(expr("SEX in [\"M\", \"F\"]"));
 
         assertFalse(WildcardExpander.containsWildcards(rule));
     }
@@ -147,8 +138,7 @@ class WildcardExpanderTryExpandTest
     {
         // numeric value in leaf has no wildcards regardless
         Rule rule = newRule("R8");
-        rule.setCheck(CheckConditionLeaf.builder().name("AGE").operator("greater_than")
-                .value(new IntNode(18)).build());
+        rule.setCheck(expr("AGE > 18"));
         assertFalse(WildcardExpander.containsWildcards(rule));
     }
 
@@ -167,7 +157,7 @@ class WildcardExpanderTryExpandTest
     {
         // expand() short-circuits on collectWildcardNames returning empty (concrete name).
         Rule rule = newRule("R9");
-        rule.setCheck(CheckConditionLeaf.builder().name("USUBJID").operator("non_empty").build());
+        rule.setCheck(expr("not empty(USUBJID)"));
 
         IDataTable table = MockTable.withColumns("USUBJID", "AGE");
         List<Rule> expanded = WildcardExpander.expand(rule, table.getMetaData());

@@ -181,7 +181,7 @@ public final class ExpressionPrinter
     /**
      * Renders a reference operand: a bare identifier (including {@code --}/{@code *} wildcard and
      * {@code ${...}} substitution names) verbatim, otherwise backtick-quoted so non-identifier
-     * names (whitespace, …) re-lex faithfully. Public so {@code CheckToExpr} can decide
+     * names (whitespace, …) re-lex faithfully. Public so generators outside this class can decide
      * printability against the same rule.
      *
      * @param name

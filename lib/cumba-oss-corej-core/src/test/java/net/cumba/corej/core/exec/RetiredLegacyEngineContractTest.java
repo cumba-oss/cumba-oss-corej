@@ -5,10 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -32,7 +30,11 @@ import org.junit.jupiter.api.Test;
 class RetiredLegacyEngineContractTest
 {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
 
     private static final DatasetResolver NO_RESOLVER = _ -> null;
 
@@ -57,8 +59,7 @@ class RetiredLegacyEngineContractTest
         o.setMessage("external rule");
         o.setOutputVariables(List.of("AETERM"));
         r.setOutcome(o);
-        r.setCheck(new CheckConditionAll(List.of(CheckConditionLeaf.builder().name("AETERM")
-                .operator("equal_to").value(MAPPER.valueToTree("X")).build())));
+        r.setCheck(new CheckConditionAll(List.of(expr("AETERM == \"X\""))));
         r.setSensitivity(sensitivity);
         r.setGroupingVariables(groupingVariables);
         // NOTE: setCheckExpr is deliberately NOT called — that is the whole point of the test.

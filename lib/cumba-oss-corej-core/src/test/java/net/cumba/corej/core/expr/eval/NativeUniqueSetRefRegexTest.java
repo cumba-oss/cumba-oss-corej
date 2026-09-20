@@ -2,13 +2,10 @@ package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.EvaluationContext;
-import net.cumba.corej.core.expr.CheckToExpr;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
@@ -36,8 +33,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class NativeUniqueSetRefRegexTest
 {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
     private static BitSet bits(int... rows)
     {
         BitSet bs = new BitSet();
@@ -55,26 +50,27 @@ class NativeUniqueSetRefRegexTest
     }
 
 
-    private static CheckConditionLeaf notUniqueSet(String name, String regex, String... keys)
+    private static String notUniqueSet(String name, String regex, String... keys)
     {
-        var arr = MAPPER.createArrayNode();
+        StringBuilder source = new StringBuilder("not is_unique_set([").append(name);
         for (String k : keys)
         {
-            arr.add(k);
+            source.append(", ").append(k);
         }
-        var b = CheckConditionLeaf.builder().name(name).operator("is_not_unique_set").value(arr);
+        source.append("]");
         if (regex != null)
         {
-            b.regex(regex);
+            source.append(", regex=\"").append(regex.replace("\\", "\\\\")).append("\"");
         }
-        return b.build();
+        return source.append(")").toString();
     }
 
 
-    /** Native and legacy must agree, and equal {@code expected}. */
-    private static void assertParity(CheckConditionLeaf leaf, EvaluationContext c, BitSet expected)
+    /** The native verdict must equal {@code expected}. */
+    private static void assertParity(String source, EvaluationContext c, BitSet expected)
     {
-        BitSet nativ = NativeExprEvaluator.evaluate(CheckToExpr.toExpr(leaf), c);
+        BitSet nativ = NativeExprEvaluator
+                .evaluate(net.cumba.corej.core.expr.CheckExpressionParser.parse(source), c);
         assertEquals(expected, nativ, "native verdict");
     }
 

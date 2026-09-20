@@ -2,12 +2,15 @@ package net.cumba.corej.core.expr.eval;
 
 import static net.cumba.corej.core.expr.eval.VectorLayerTest.col;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.BitSet;
 import java.util.Set;
 import java.util.regex.Pattern;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -253,14 +256,19 @@ class PrimitivesTest
     @Test
     void regexFind_emptyStringEvaluatedLiterally()
     {
-        // Empty-string literal fix (A.3): "^$" matches "" and a missing cell (folds to ""), but
-        // not the populated row. Previously the empty/missing rows returned the negate flag.
+        // Empty-string literal fix (A.3): "^$" matches a BLANK cell, evaluated literally, but not
+        // the populated row. Previously the empty row returned the negate flag.
+        //
+        // ⭐ Row 2 is the D13 limb (terminal review M3): a genuine MissingValue is NOT a string and
+        // matches NO pattern, "^$" included — where before it folded to "" and matched. Row 1 is
+        // the control that keeps the two apart (D34 #1 / D96c): change the boundary from
+        // TypedValue.missingIdentityOf to the missing-or-empty fold and row 1 moves with it.
         IDataTable t = MockTable.of().col("X", "Y", "", (String) null).build();
         ColumnVector x = col(t, "X");
         Pattern empty = Pattern.compile("^$");
-        assertEquals(bits(1, 2), Primitives.regexFind(x, empty, 3, false));
-        assertEquals(bits(0), Primitives.regexFind(x, empty, 3, true));
-        // "^[YN]$" is unchanged: "" matches neither way.
+        assertEquals(bits(1), Primitives.regexFind(x, empty, 3, false));
+        assertEquals(bits(0, 2), Primitives.regexFind(x, empty, 3, true));
+        // "^[YN]$" is unchanged: "" matches neither way, and neither does a MissingValue.
         Pattern yn = Pattern.compile("^[YN]$");
         assertEquals(bits(0), Primitives.regexFind(x, yn, 3, false));
         assertEquals(bits(1, 2), Primitives.regexFind(x, yn, 3, true));
@@ -283,16 +291,18 @@ class PrimitivesTest
     @Test
     void affixRegex_emptyStringEvaluatedLiterally()
     {
-        // Empty-string literal fix (A.3): the extracted affix of "" / missing is "", evaluated
-        // against the anchored pattern. "^$" matches the empty affix; "[A-Z]{3}" does not.
+        // Empty-string literal fix (A.3): the extracted affix of a BLANK is "", evaluated against
+        // the anchored pattern. "^$" matches the empty affix; "[A-Z]{3}" does not. Row 2 is the
+        // D13 limb — a genuine MissingValue matches no pattern at all (see regexFind above), and
+        // row 1 is the control that proves the boundary is identity and not the blank fold.
         IDataTable t = MockTable.of().col("X", "ABC", "", (String) null).build();
         ColumnVector x = col(t, "X");
         Pattern empty = Pattern.compile("^$");
-        assertEquals(bits(1, 2), Primitives.affixRegex(x, empty, 3, true, 3, false));
+        assertEquals(bits(1), Primitives.affixRegex(x, empty, 3, true, 3, false));
         Pattern three = Pattern.compile("[A-Z]{3}");
         assertEquals(bits(0), Primitives.affixRegex(x, three, 3, true, 3, false));
-        // not_… (negate) over the empty affix: "^$" fires only on the populated row.
-        assertEquals(bits(0), Primitives.affixRegex(x, empty, 3, true, 3, true));
+        // not_… (negate) over the empty affix: "^$" fires on the populated row and on the missing.
+        assertEquals(bits(0, 2), Primitives.affixRegex(x, empty, 3, true, 3, true));
     }
 
     // -----------------------------------------------------------------------
@@ -456,10 +466,14 @@ class PrimitivesTest
         Set<String> yn = Set.of("Y", "N");
         assertEquals(bits(0), Primitives.membership(x, yn, 4, false, false)); // is_contained_by
         assertEquals(bits(1, 2, 3), Primitives.membership(x, yn, 4, true, false)); // is_not_...
-        // Explicit opt-out list ["","Y","N"] permits "" / missing, so they are contained.
+        // ⭐ D13: an explicit opt-out list ["","Y","N"] permits the BLANK row (2) — "" is a present
+        // value (D34 #1) — but NOT the missing row (3), which is a member of no list, "" included.
+        // That is the one row this ruling moved, and it moved because `== ""` moved with it (D12);
+        // D81 makes `in` a disjunction of `==`, so the two could not answer differently.
+        // ⚑ Vacuous on the authored corpus: no authored membership list carries "" (D81b).
         Set<String> optOut = Set.of("", "Y", "N");
-        assertEquals(bits(0, 2, 3), Primitives.membership(x, optOut, 4, false, false));
-        assertEquals(bits(1), Primitives.membership(x, optOut, 4, true, false));
+        assertEquals(bits(0, 2), Primitives.membership(x, optOut, 4, false, false));
+        assertEquals(bits(1, 3), Primitives.membership(x, optOut, 4, true, false));
     }
 
 
@@ -644,10 +658,20 @@ class PrimitivesTest
     }
 
 
+    /**
+     * ⭐ <b>Phase 6c (D117) put ONE documented seam into this differential, and the test pins the
+     * seam rather than weakening the claim.</b> Under the four <b>order</b> operators a genuine
+     * {@link net.cumba.datatable.values.MissingValue} on either side now takes D34 #5's total order
+     * inside {@code dateComparison}; {@code compareCells} keeps its {@code negate}-on-missing
+     * contract, because its other consumer — the {@code relation=} neighbour relation — is ruled
+     * the opposite way by EC-87's D-1/D-3. Everywhere else the two must still agree exactly, which
+     * is the property this method exists to protect.
+     */
     private static void differential(IDataTable t, String lhs, String rhs, int rows, int direction,
             boolean orEqual, boolean negate)
     {
-        BitSet vectorised = Primitives.dateComparison(col(t, lhs), col(t, rhs), rows, direction,
+        Vector rhsVector = col(t, rhs);
+        BitSet vectorised = Primitives.dateComparison(col(t, lhs), rhsVector, rows, direction,
                 orEqual, negate);
         int l = t.getMetaData().getColumnIndex(lhs);
         int r = t.getMetaData().getColumnIndex(rhs);
@@ -655,11 +679,121 @@ class PrimitivesTest
         {
             net.cumba.datatable.values.IDataValue left = t.getColumn(l).getDataValue(row);
             net.cumba.datatable.values.IDataValue right = t.getColumn(r).getDataValue(row);
+            MissingValue leftMissing = TypedValue.missingIdentityOf(left);
+            // ⚠ Read the CARRIER's own missing channel, not missingIdentityOf(cell): the two agree
+            // for a ColumnVector but disagree for resolved/typedCell carriers — recomputing from
+            // the cell is exactly the blind spot that hid the D96a absent-column regression (the
+            // one carrier shape that moved was the one this differential could not see).
+            MissingValue rightMissing = rhsVector.value(row).missing();
+            String where = "row " + row + " of " + lhs + "/" + rhs + " direction=" + direction
+                    + " orEqual=" + orEqual + " negate=" + negate;
+            // ⚠ Production's precedence, mirrored: a BLANK left cell short-circuits to negate
+            // before the right operand is even resolved (the absent-column contract, D96c), and
+            // only then does a genuine MissingValue on either side take the total order.
+            if (leftMissing == null && net.cumba.corej.core.exec.ScalarSemantics.isMissing(left))
+            {
+                assertEquals(negate, vectorised.get(row), "blank-left short-circuit at " + where);
+                continue;
+            }
+            if (leftMissing != null || rightMissing != null)
+            {
+                // M2: the seam now covers ALL SIX operators, not the four order ones. Equality is
+                // the same total order read at cmp == 0 (D34 #5-2), so `date(A) == date(B)` and
+                // `date(A) <= date(B)` can no longer disagree about one missing pair.
+                boolean expected = direction == 0
+                        ? negate != Primitives.equalsWithMissing(leftMissing, rightMissing)
+                        : Primitives.orderWithMissing(leftMissing, rightMissing, direction,
+                                orEqual);
+                assertEquals(expected, vectorised.get(row),
+                        "D34 #5/#5-2 missing carve-out at " + where);
+                continue;
+            }
             boolean perCell = Primitives.compareCells(left,
                     right.isMissingOrInvalid() ? null : right.getValueAsString(), direction,
                     orEqual, negate, true);
-            assertEquals(vectorised.get(row), perCell, "row " + row + " of " + lhs + "/" + rhs
-                    + " direction=" + direction + " orEqual=" + orEqual + " negate=" + negate);
+            assertEquals(vectorised.get(row), perCell, where);
         }
+    }
+
+
+    /**
+     * The carrier shapes the differential above cannot sweep (it feeds only {@code ColumnVector}s)
+     * — pinned directly, because the D96a regression lived exactly here: a {@code resolved(type,
+     * null)} carrier reports {@code missing() == MIS} and MUST take the D34 #5 order arm (a
+     * computed missing, D36 #8), while the D76 absent-column char default {@code resolved(STRING,
+     * "")} is a PRESENT empty string that must answer exactly like a blank {@code ColumnVector}
+     * twin — false for every order operator (D96c / SPEC §5.2(4)).
+     */
+    @Test
+    void dateComparison_rightCarrierShapes_absentCharDefaultVsComputedMissing()
+    {
+        IDataTable t = MockTable.of().col("A", "2020-01-15", "2020-03-04").col("B", "", "").build();
+        ColumnVector lhs = col(t, "A");
+        Vector absentCharDefault = ConstVector.of("");
+        Vector blankColumn = col(t, "B");
+        for (int direction : new int[]
+        {
+                1, -1
+        })
+        {
+            for (boolean orEqual : new boolean[]
+            {
+                    false, true
+            })
+            {
+                String where = "direction=" + direction + " orEqual=" + orEqual;
+                BitSet overBlank = Primitives.dateComparison(lhs, blankColumn, 2, direction,
+                        orEqual, false);
+                BitSet overAbsent = Primitives.dateComparison(lhs, absentCharDefault, 2, direction,
+                        orEqual, false);
+                assertEquals(overBlank, overAbsent,
+                        "EC43 absent-equals-blank on the carrier level at " + where);
+                assertEquals(new BitSet(), overAbsent,
+                        "a \"\" right operand is unpositionable — nothing fires at " + where);
+            }
+        }
+        // The computed missing keeps D36 #8: MIS sorts below both present dates, so > fires on
+        // every row and < on none.
+        Vector computedMissing = ConstVector.of(null);
+        assertEquals(bits(0, 1),
+                Primitives.dateComparison(lhs, computedMissing, 2, 1, false, false),
+                "present > computed-missing fires (D34 #5)");
+        assertEquals(new BitSet(),
+                Primitives.dateComparison(lhs, computedMissing, 2, -1, false, false),
+                "present < computed-missing never fires (D34 #5)");
+    }
+
+
+    /**
+     * The total order itself (D34 #5/#5-1/#5-2), read directly off the helper the three order
+     * families share — so the contract is pinned once rather than inferred from each family's
+     * fixtures.
+     */
+    @Test
+    void orderWithMissing_isTheD34TotalOrder()
+    {
+        MissingValue mis = MissingValue.MIS;
+        MissingValue misA = MissingValue.MIS_A;
+        // #5 — a missing on the LEFT is low: it is < and <= everything present, never > or >=.
+        assertTrue(Primitives.orderWithMissing(mis, null, -1, false), "missing < present");
+        assertTrue(Primitives.orderWithMissing(mis, null, -1, true), "missing <= present");
+        assertFalse(Primitives.orderWithMissing(mis, null, 1, false), "not missing > present");
+        assertFalse(Primitives.orderWithMissing(mis, null, 1, true), "not missing >= present");
+        // #5 — a missing on the RIGHT is low, so the verdicts mirror exactly.
+        assertFalse(Primitives.orderWithMissing(null, mis, -1, false), "not present < missing");
+        assertFalse(Primitives.orderWithMissing(null, mis, -1, true), "not present <= missing");
+        assertTrue(Primitives.orderWithMissing(null, mis, 1, false), "present > missing");
+        assertTrue(Primitives.orderWithMissing(null, mis, 1, true), "present >= missing");
+        // #5-2 — two of the SAME missing are equal: the strict operators are false, the
+        // or-equal ones true. That is what makes the comparison total rather than absent.
+        assertFalse(Primitives.orderWithMissing(mis, mis, -1, false), ". < . is false");
+        assertFalse(Primitives.orderWithMissing(mis, mis, 1, false), ". > . is false");
+        assertTrue(Primitives.orderWithMissing(mis, mis, -1, true), ". <= . is true");
+        assertTrue(Primitives.orderWithMissing(mis, mis, 1, true), ". >= . is true");
+        // #5-1 — two DIFFERENT missings sort by their value byte ('.' 64 < '.A' 65).
+        assertTrue(MissingValue.MIS.getValue() < MissingValue.MIS_A.getValue(), "the byte order");
+        assertTrue(Primitives.orderWithMissing(mis, misA, -1, false), ". < .A");
+        assertFalse(Primitives.orderWithMissing(mis, misA, 1, true), ". >= .A is false");
+        assertTrue(Primitives.orderWithMissing(misA, mis, 1, false), ".A > .");
     }
 }

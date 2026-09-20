@@ -13,7 +13,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * Engine extension beyond the upstream rule format; specified in
- * {@code the CORE rules specification}, Engine Fields &#167; {@code wildcards}.
+ * {@code corej-rules/documentation/CORE-RULES-SPECIFICATION.md}, Engine Fields &#167;
+ * {@code wildcards}.
  * </p>
  * <p>
  * <b>How widely it is used</b> (re-measured 2026-08-24). The {@code wildcards} directive is

@@ -28,10 +28,10 @@ class RuleEffectiveIdTest
         Rule r = new Rule();
         r.setId("uuid-1234");
         RuleCore core = new RuleCore();
-        core.setId("CORE-000581");
+        core.setId("CDISC-CG0368");
         r.setCore(core);
 
-        assertEquals("CORE-000581", r.effectiveId(),
+        assertEquals("CDISC-CG0368", r.effectiveId(),
                 "Core.Id is the stable identity when both are present");
     }
 

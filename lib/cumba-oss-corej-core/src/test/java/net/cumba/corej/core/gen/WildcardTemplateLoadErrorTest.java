@@ -42,7 +42,7 @@ class WildcardTemplateLoadErrorTest
                 {
                   "Core": {"Id": "%s"},
                   "Sensitivity": "%s",
-                  "Check": {"name": "TRTxxP", "operator": "empty"},
+                  "Check": {"expression": "empty(TRTxxP)"},
                   "Outcome": {"Message": "m", "Output_Variables": ["USUBJID"]}
                 }
                 """.formatted(coreId, sensitivity);

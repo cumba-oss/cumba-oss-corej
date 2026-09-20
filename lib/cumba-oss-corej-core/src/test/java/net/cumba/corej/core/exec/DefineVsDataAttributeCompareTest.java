@@ -193,10 +193,8 @@ class DefineVsDataAttributeCompareTest
     // define overlay declares DM.AGE integer (→Num) and DM.SEX text (→Char).
     private static final String LEGACY_TYPE_RULE = "{\"rules\":{\"L1\":{\"Core\":{\"Id\":\"L1\"},"
             + "" + "\"Sensitivity\":\"Dataset\",\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
-            + "\"Check\":{\"all\":["
-            + "{\"name\":\"define_variable_name\",\"operator\":\"non_empty\"},"
-            + "{\"name\":\"variable_data_type\",\"operator\":\"not_equal_to\","
-            + "\"value\":\"define_variable_data_type\"}]},"
+            + "\"Check\":{\"all\":[" + "{\"expression\": \"not empty(var_name(\\\"DEFINE\\\"))\"},"
+            + "{\"expression\": \"var_type(\\\"DATA\\\") != var_type(\\\"DEFINE\\\")\"}]},"
             + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}}}";
 
     private static Rule loadLegacyTypeRule() throws IOException

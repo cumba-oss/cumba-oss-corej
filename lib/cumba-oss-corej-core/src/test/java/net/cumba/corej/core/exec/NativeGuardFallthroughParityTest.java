@@ -3,10 +3,8 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.BitSet;
-import java.util.Map;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
@@ -18,8 +16,8 @@ import org.junit.jupiter.api.Test;
  * Guard-residual D2/D2b parity ({@code plans/done/PLAN-native-runtime-guard-residual.md}) — the
  * scenarios that previously fell through the runtime broadcast-safety guard (or the Step-1
  * fold-to-constant return) into legacy verdict production now decide natively via the tri-state
- * {@code BroadcastFold}, with verdicts byte-identical to the legacy engine and the recorder
- * reporting NATIVE.
+ * {@code BroadcastFold}, with verdicts byte-identical to the legacy engine and the rule reaching a
+ * verdict (status {@code EXECUTED}) rather than skipping.
  */
 class NativeGuardFallthroughParityTest
 {
@@ -50,26 +48,15 @@ class NativeGuardFallthroughParityTest
         return bs;
     }
 
-
-    private static NativeExecutionRecorder.Backend recordedBackend(Rule rule, IDataTable t,
-            DatasetResolver resolver)
-    {
-        NativeExecutionRecorder.enable();
-        run(rule, t, resolver);
-        return NativeExecutionRecorder.disable().get("R1");
-    }
-
     /**
      * S2 shape — a mixed Check whose decidable guard short-circuits AROUND a runtime GroupedResult
      * {@code $}-ref: {@code any[AESTDY not_exists, VISITNUM not in $grouped]}.
      */
     private static final String S2_RULE = "{\"Core\":{\"Id\":\"R1\"},"
             + "\"Sensitivity\":\"Record\","
-            + "\"Operations\":[{\"id\":\"$sv_visitnum\",\"operator\":\"distinct\","
-            + "\"domain\":\"SV\",\"name\":\"VISITNUM\",\"group\":[\"USUBJID\"]}],"
-            + "\"Check\":{\"any\":[{\"name\":\"AESTDY\",\"operator\":\"var_not_exists\"},"
-            + "{\"name\":\"VISITNUM\",\"operator\":\"is_not_contained_by\","
-            + "\"value\":\"$sv_visitnum\"}]},"
+            + "\"Bindings\":[{\"name\": \"$sv_visitnum\", \"expression\": \"distinct(VISITNUM, domain=\\\"SV\\\", group=[USUBJID])\"}],"
+            + "\"Check\":{\"any\":[{\"expression\": \"var_not_exists(\\\"AESTDY\\\")\"},"
+            + "{\"expression\": \"VISITNUM not in $sv_visitnum\"}]},"
             + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"VISITNUM\"]}}";
 
     private static final IDataTable SV = MockTable.of().name("SV").col("USUBJID", "S1", "S2")
@@ -95,9 +82,8 @@ class NativeGuardFallthroughParityTest
         assertEquals(legacy.getViolations().size(), nativ.getViolations().size());
         assertEquals(legacy.getViolations().get(0).getRowNumber(),
                 nativ.getViolations().get(0).getRowNumber());
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE,
-                recordedBackend(rule, collapsed, SV_RESOLVER),
-                "the collapse must be decided by the native fold");
+        assertEquals(RuleExecutionStatus.EXECUTED, nativ.getStatus(),
+                "the collapse must be DECIDED by the native fold — a verdict, not a skip");
     }
 
 
@@ -117,8 +103,8 @@ class NativeGuardFallthroughParityTest
         expected.set(1); // S1@3 not among S1's visits
         expected.set(2); // S2@1 not among S2's visits (per-row group resolution)
         assertEquals(expected, rows(nativ));
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE,
-                recordedBackend(rule, residue, SV_RESOLVER));
+        assertEquals(RuleExecutionStatus.EXECUTED, nativ.getStatus(),
+                "the undecided residue must be evaluated per row, not skipped");
     }
 
 
@@ -126,50 +112,52 @@ class NativeGuardFallthroughParityTest
     void s1_existsGuardFalseCollapse_decidesNativelyEmpty() throws Exception
     {
         // all[X exists, X == "Y"] on a dataset without X: both engines produce the empty verdict;
-        // the native fold decides it (recorder NATIVE), where previously the legacy Step-1 fold
-        // returned the constant.
+        // the native fold decides it — it is the only engine left — where previously the legacy
+        // Step-1 fold returned the constant.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Record\","
-                + "\"Check\":{\"all\":[{\"name\":\"AESTDY\",\"operator\":\"var_exists\"},"
-                + "{\"name\":\"AESTDY\",\"operator\":\"equal_to\",\"value\":\"1\","
-                + "\"value_is_literal\":true}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"var_exists(\\\"AESTDY\\\")\"},"
+                + "{\"expression\": \"AESTDY == \\\"1\\\"\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         IDataTable t = MockTable.of().name("AE").col("AETERM", "x", "y").build();
         RuleExecutionResult nativ = run(rule, t, _ -> null);
         RuleExecutionResult legacy = run(rule, t, _ -> null);
         assertEquals(0, nativ.getViolations().size());
         assertEquals(legacy.getViolations().size(), nativ.getViolations().size());
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE, recordedBackend(rule, t, _ -> null));
+        assertEquals(RuleExecutionStatus.EXECUTED, nativ.getStatus(),
+                "the empty verdict is DECIDED by the native fold — not a skip, which would also "
+                        + "report zero violations");
     }
 
 
     @Test
-    void missingColumnNotShape_firesPerRowLikeAnAllBlankColumn() throws Exception
+    void missingColumnNotShape_foldsToOneDatasetFinding() throws Exception
     {
         // not(AEXX == "Y") with AEXX absent everywhere.
         //
-        // UPDATED BY EC-43. The Fix #40 missing-column fold used to turn the leaf FALSE, the not()
-        // flipped it TRUE, and the Step-1 constant emitted ONE dataset-level violation even on a
-        // Record-sensitivity rule. That made an ABSENT column report differently from a PRESENT-
-        // but-all-blank one, which fires per row — and "absent behaves exactly like all-blank" is
-        // the EC-43 contract. The absent column now folds to all-missing at the leaf and the row
-        // path decides it, so this fires once per row, matching the present-column half of this
-        // very test below.
+        // UPDATED BY EC-43, AND AGAIN BY D111. The Fix #40 missing-column fold turned the leaf
+        // FALSE (wrong polarity); EC-43 sent it to the row path, firing per row like a present-
+        // but-all-blank column; D111 (typed-expression plan, phase 7) rules the granularity split:
+        // the polarity stays EC-43's — the leaf folds to all-missing and `not(== "Y")` FIRES —
+        // but absence is a schema fact decided before a row is read, so the check folds at
+        // DATASET level and reports ONE finding, not one per row. The present-but-all-blank
+        // sibling below keeps its per-row findings — that asymmetry is D111's content, pinned
+        // corpus-side by EC43-not-equal-absent-operator / EC43-absent-equals-blank-control.
         //
         // (Note the two runs here are both the NATIVE backend — `nativ` and `legacy` invoke the
         // same `run`. This asserts a Java-internal shape, not Java/Python parity.)
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Record\","
-                + "\"Check\":{\"not\":{\"all\":[{\"name\":\"AEXX\",\"operator\":\"equal_to\","
-                + "\"value\":\"Y\",\"value_is_literal\":true}]}},"
+                + "\"Check\":{\"not\":{\"all\":[{\"expression\": \"AEXX == \\\"Y\\\"\"}]}},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         IDataTable t = MockTable.of().name("AE").col("AETERM", "x", "y", "z").build();
         RuleExecutionResult nativ = run(rule, t, _ -> null);
         RuleExecutionResult legacy = run(rule, t, _ -> null);
-        assertEquals(3, nativ.getViolations().size(),
-                "one per row — an absent column evaluates exactly like an all-blank one (EC-43)");
+        assertEquals(1, nativ.getViolations().size(),
+                "one dataset-level finding — the absent-column fact reports once (D111)");
         assertEquals(legacy.getViolations().size(), nativ.getViolations().size());
         assertEquals(legacy.getViolations().get(0).getRowNumber(),
                 nativ.getViolations().get(0).getRowNumber());
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE, recordedBackend(rule, t, _ -> null));
+        assertEquals(RuleExecutionStatus.EXECUTED, nativ.getStatus(),
+                "the absent-column fold is a decided verdict, not a skip");
 
         // With the column present the fold stays UNKNOWN and the row path evaluates per row —
         // parity held (rows 0 and 2 violate the negated equality).
@@ -180,18 +168,18 @@ class NativeGuardFallthroughParityTest
 
 
     @Test
-    void nativeRunNeverRecordsLegacyForTheseShapes() throws Exception
+    void theFallThroughShapeStillReachesAVerdict() throws Exception
     {
-        // The Step-1 tripwire: under native-default none of the fall-through scenarios may
-        // produce a LEGACY (or MIXED) record.
+        // The Step-1 tripwire. It used to assert that no run recorded a LEGACY backend, which
+        // could not fail: the recorder's enum had a single constant and allMatch is true on an
+        // empty map. What it was reaching for — the fall-through shape is evaluated here, not
+        // abandoned — is asserted directly.
         Rule s2 = loadRule(S2_RULE);
         IDataTable collapsed = MockTable.of().name("AE").col("USUBJID", "S1").col("VISITNUM", "9")
                 .build();
-        NativeExecutionRecorder.enable();
-        run(s2, collapsed, SV_RESOLVER);
-        Map<String, NativeExecutionRecorder.Backend> rec = NativeExecutionRecorder.disable();
-        assertTrue(rec.values().stream().allMatch(b -> b == NativeExecutionRecorder.Backend.NATIVE),
-                "no LEGACY/MIXED under native-default: " + rec);
+        RuleExecutionResult r = run(s2, collapsed, SV_RESOLVER);
+        assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus(),
+                "the fall-through shape must reach a verdict: " + r.getStatusMessage());
     }
 
 }

@@ -534,7 +534,7 @@ class ScopeMatcherTest
         scope.setDomains(ds);
         rule.setScope(scope);
 
-        // Split of AE (the shape all three CDISC-CG0650 fixtures had): misses Include.
+        // Split of AE: misses Include. (CDISC-CG0650's own four scenarios cover the AP-- side.)
         assertEquals("domain APTOOLONG not in Scope.Domains.Include [AP--]",
                 ScopeMatcher.describeDomainMismatch(rule, "APTOOLONG", "AE"));
         // Matches Include by name but is not a split.

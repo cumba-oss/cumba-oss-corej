@@ -37,8 +37,7 @@ class RuleRunnerMetadataFindingProjectionTest
     /** define_variable_role != library_variable_role — reads BOTH provider levels. */
     private static String roleMismatchCheck()
     {
-        return "{\"all\":[{\"name\":\"define_variable_role\",\"operator\":\"not_equal_to\","
-                + "\"value\":\"library_variable_role\"}]}";
+        return "{\"all\":[{\"expression\": \"var_role(\\\"DEFINE\\\") != var_role(\\\"LIBRARY\\\")\"}]}";
     }
 
 
@@ -62,8 +61,8 @@ class RuleRunnerMetadataFindingProjectionTest
     void outputVariablesProjectEveryMetadataSourceExactly() throws Exception
     {
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Record\","
-                + "\"Operations\":[{\"id\":\"$flag\",\"operator\":\"variable_exists\","
-                + "\"name\":\"STUDYID\"}]," + "\"Check\":" + roleMismatchCheck() + ","
+                + "\"Bindings\":[{\"name\": \"$flag\", \"expression\": \"variable_exists(STUDYID)\"}],"
+                + "\"Check\":" + roleMismatchCheck() + ","
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_name\","
                 + "\"variable_label\",\"variable_data_type\",\"variable_length\","
                 + "\"variable_format\",\"library_variable_role\",\"library_variable_data_type\","

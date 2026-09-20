@@ -304,9 +304,8 @@ class StoreFieldManifestTest
             return;
         }
         ObjectNode target = aRoot;
-        // split(…, -1): the one-argument form drops trailing empty fields (Error Prone
-        // [StringSplitter]). No manifest path ends in a dot today; the limit keeps it that way
-        // rather than silently shortening such a path to its parent.
+        // split(…, -1): the one-argument form drops trailing empty fields, so a malformed
+        // manifest path ending in '.' would silently navigate to its parent instead of failing.
         String[] segments = aPath.split("\\.", -1);
         for (int i = 0; i < segments.length - 1; i++)
         {

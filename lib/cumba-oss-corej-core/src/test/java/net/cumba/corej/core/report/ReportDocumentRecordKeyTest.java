@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 class ReportDocumentRecordKeyTest
 {
 
-    private static final String CORE_ID = "CORE-000252";
+    private static final String CORE_ID = "CDISC-CG0136";
 
     private static final List<String> KEY_NAMES = List.of("RDOMAIN", "IDVAR", "IDVARVAL", "QNAM");
 

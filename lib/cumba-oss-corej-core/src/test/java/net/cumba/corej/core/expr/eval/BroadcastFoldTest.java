@@ -113,13 +113,14 @@ class BroadcastFoldTest
 
 
     @Test
-    void domainPrefixExistsResolvesInFold()
+    void domainPrefixReachingTheFoldIsAnError()
     {
-        // --TERM resolves to AETERM via the context's domain prefix, exactly like the compiled
-        // exists closure and the legacy phase-2c rewrite before the fold.
+        // D77: `--TERM` is resolved by the specialisation stage before anything folds; one that
+        // reaches the fold is an error, never an in-fold substitution (the old phase-2c mirror).
         Expr prefixed = new Expr.Call("var_exists",
                 List.of(new Expr.Ref("--TERM", OperandKind.WILDCARD_COLUMN)), Map.of());
-        assertEquals(Verdict.TRUE, fold(prefixed));
+        org.junit.jupiter.api.Assertions.assertThrows(
+                net.cumba.corej.core.expr.ExpressionException.class, () -> fold(prefixed));
     }
 
 
@@ -175,18 +176,37 @@ class BroadcastFoldTest
 
 
     @Test
-    void nonFoldableBoolCallsStayUnknown_p6FindingA1()
+    void boolCallsOverDatasetFactsDecide_p6FindingA1_afterD121()
     {
-        // is_integer($x) is BOOLEAN-registered but NOT in the legacy fold's operator surface
-        // (SUPPORTED_METADATA_OPERATORS) — the legacy leaf survives to the row path, so the
-        // native fold must stay UNKNOWN to preserve the verdict multiplicity.
+        // ⭐ RE-EXPECTED by D121/D121a (terminal review L1). P6's finding A1 kept a hand-written
+        // roster (FOLD_EQUIVALENT_BOOL_CALLS) mirroring the legacy
+        // CheckConditionOptimizer.SUPPORTED_METADATA_OPERATORS, so that a BOOLEAN call OUTSIDE it
+        // stayed UNKNOWN and its legacy leaf survived to the row path — preserving the verdict
+        // MULTIPLICITY of the two engines. Phase 7d deleted the reference copy, so there is no
+        // longer anything for the roster to be faithful to, and D121a rules the question itself
+        // out of the engine.
+        //
+        // What decides now is the PROPERTY, not the name: every argument is a dataset fact, so the
+        // call has ONE value for the whole dataset whichever function it is. ⚑ Measured free on
+        // the corpus — no non-roster BOOLEAN call over dataset-fact-only arguments exists in
+        // rules-src, so nothing shipped changes multiplicity.
         Expr isInt = new Expr.Call("is_integer",
                 List.of(new Expr.Ref("$x", OperandKind.OPERATION_REF)), Map.of());
-        assertEquals(Verdict.UNKNOWN, BroadcastFold.fold(isInt, ctx(Map.of("$x", "5")), false));
-        // empty($x) IS fold-equivalent and decides.
+        assertEquals(Verdict.TRUE, BroadcastFold.fold(isInt, ctx(Map.of("$x", "5")), false),
+                "is_integer over a dataset-level $-operand is a dataset fact and decides");
+        // …and the boundary still holds: empty($x) decided before and decides now.
         Expr emptyCall = new Expr.Call("empty",
                 List.of(new Expr.Ref("$x", OperandKind.OPERATION_REF)), Map.of());
         assertEquals(Verdict.FALSE, BroadcastFold.fold(emptyCall, ctx(Map.of("$x", "5")), false));
+        // ⛔ The control that keeps this from becoming "everything folds": an argument that is NOT
+        // a dataset fact — a PRESENT per-row column of the table — still declines, so a row-level
+        // rule keeps its per-row findings. (AETERM is a real column of this fixture; an ABSENT
+        // name would be a dataset fact under EC-43 and would decide, which is correct and is
+        // exactly why the control has to name a present one.)
+        Expr overColumn = new Expr.Call("is_integer",
+                List.of(new Expr.Ref("AETERM", OperandKind.COLUMN)), Map.of());
+        assertEquals(Verdict.UNKNOWN, BroadcastFold.fold(overColumn, ctx(Map.of("$x", "5")), false),
+                "a per-row column operand is not a dataset fact — the fold must still decline");
     }
 
 
@@ -223,31 +243,39 @@ class BroadcastFoldTest
 
 
     @Test
-    void missingColumnComparisonStaysUnknown_soTheRowPathDecidesIt()
+    void absentColumnLeafFoldsAtDatasetLevel_presentColumnStaysRowLevel()
     {
         Expr missing = new Expr.Binary(Expr.BinOp.EQ, new Expr.Ref("AEXX", OperandKind.COLUMN),
                 LIT_A);
         Expr present = new Expr.Binary(Expr.BinOp.EQ, new Expr.Ref("AETERM", OperandKind.COLUMN),
                 LIT_A);
-        // EC-43: an absent column no longer short-circuits here. It folds to all-missing at the
-        // leaf and the ROW path computes the verdict, exactly as it does for a column that is
-        // present but blank on every row — which is the contract. Short-circuiting would also
-        // report differently (one dataset-level finding vs one per row), so absent and blank would
-        // disagree on the finding SHAPE even where they agreed on the verdict.
-        assertEquals(Verdict.UNKNOWN, fold(missing));
+        // D111 / D39a: an absent column is a dataset-level constant (bindColumnLevel), so the
+        // leaf evaluates ONCE — the compiled program folds the read to all-missing (EC-43) and
+        // the operator computes its own polarity: missing == "a" is FALSE, its negation TRUE.
+        // This deliberately reports differently from a present-but-all-blank column (one
+        // dataset-level finding vs one per row): D111 rules the difference epistemic — absence
+        // is a schema fact known before a row is read, blankness a data fact.
+        assertEquals(Verdict.FALSE, fold(missing));
+        assertEquals(Verdict.TRUE, fold(new Expr.Not(missing)));
+        // A PRESENT column stays row-level, whatever its values — the fold never reads data.
         assertEquals(Verdict.UNKNOWN, fold(present));
-        // ... and the negated shape likewise defers to the row path.
-        assertEquals(Verdict.UNKNOWN, fold(new Expr.Not(missing)));
-        // Wrapped name side (upper(AEXX) == "A") folds identically — the legacy fold keys on the
-        // leaf NAME regardless of the operator's value wrappers.
+        // Wrapped name side (upper(AEXX) == "A") folds identically — a pure value function of a
+        // dataset-level operand is itself dataset-level (the DomainScan fall-through mirrored in
+        // absentColumnLeafLevel).
         Expr wrapped = new Expr.Binary(Expr.BinOp.EQ,
                 new Expr.Call("upper", List.of(new Expr.Ref("AEXX", OperandKind.COLUMN)), Map.of()),
                 LIT_A);
-        assertEquals(Verdict.UNKNOWN, fold(wrapped));
-        // --prefix name side resolves before the presence check: --SEV → AESEV (present).
+        assertEquals(Verdict.FALSE, fold(wrapped));
+        // A leaf mixing the absent column with a PRESENT one is row-level — the level join
+        // (finest of the operands) declines, so the row path keeps its per-row findings.
+        Expr mixed = new Expr.Binary(Expr.BinOp.EQ, new Expr.Ref("AEXX", OperandKind.COLUMN),
+                new Expr.Ref("AETERM", OperandKind.COLUMN));
+        assertEquals(Verdict.UNKNOWN, fold(mixed));
+        // D77: a --prefix name side no longer resolves here — an unspecialised one is an error.
         Expr prefixed = new Expr.Binary(Expr.BinOp.EQ,
                 new Expr.Ref("--SEV", OperandKind.WILDCARD_COLUMN), LIT_A);
-        assertEquals(Verdict.UNKNOWN, fold(prefixed));
+        org.junit.jupiter.api.Assertions.assertThrows(
+                net.cumba.corej.core.expr.ExpressionException.class, () -> fold(prefixed));
     }
 
 
@@ -276,26 +304,6 @@ class BroadcastFoldTest
     // ------------------------------------------------------------------
     // Runtime $-operand helpers
     // ------------------------------------------------------------------
-
-
-    @Test
-    void operationRefTypeHelpers()
-    {
-        EvaluationContext c = ctx(
-                Map.of("$g", new GroupedResult(List.of("USUBJID"), Map.of("S1", "a")), "$vmr",
-                        new VariableMetadataResult(Map.of("AETERM", "Term")), "$s", "scalar"));
-        Expr grouped = new Expr.Binary(Expr.BinOp.EQ, new Expr.Ref("$g", OperandKind.OPERATION_REF),
-                LIT_A);
-        Expr vmr = new Expr.Binary(Expr.BinOp.EQ, new Expr.Ref("$vmr", OperandKind.OPERATION_REF),
-                LIT_A);
-        Expr scalar = new Expr.Binary(Expr.BinOp.EQ, new Expr.Ref("$s", OperandKind.OPERATION_REF),
-                LIT_A);
-        assertTrue(BroadcastFold.hasGroupedOperationRef(grouped, c));
-        assertFalse(BroadcastFold.hasGroupedOperationRef(vmr, c));
-        assertTrue(BroadcastFold.hasVariableMetadataRef(vmr, c));
-        assertFalse(BroadcastFold.hasVariableMetadataRef(scalar, c));
-        assertFalse(BroadcastFold.hasVariableMetadataRef(grouped, c));
-    }
 
 
     @Test

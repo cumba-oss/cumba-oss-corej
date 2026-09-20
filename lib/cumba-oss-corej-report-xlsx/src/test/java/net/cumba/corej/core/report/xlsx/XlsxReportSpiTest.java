@@ -60,7 +60,8 @@ class XlsxReportSpiTest
         assertNotNull(csv);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         manager.writeReport(sections(), out, csv);
-        assertEquals("core_id,status\nCORE-000001,SUCCESS\n", out.toString(StandardCharsets.UTF_8));
+        assertEquals("core_id,status\nCDISC-CG0176,SUCCESS\n",
+                out.toString(StandardCharsets.UTF_8));
     }
 
 
@@ -108,7 +109,7 @@ class XlsxReportSpiTest
         ReportFormat json = new ReportFormat("json", "JSON", "json", ".json");
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> manager.getReportWriter(json, Map.of()));
-        assertTrue(e.getMessage().contains("cumba-oss-corej-report-json"), e.getMessage());
+        assertTrue(e.getMessage().contains("corej-report-json"), e.getMessage());
     }
 
 
@@ -128,6 +129,6 @@ class XlsxReportSpiTest
     private static ReportSections sections()
     {
         return new ReportSections(Map.of("Standard", "SDTMIG"), List.of(), List.of(), List.of(),
-                List.of(Map.of("core_id", "CORE-000001", "status", "SUCCESS")), List.of());
+                List.of(Map.of("core_id", "CDISC-CG0176", "status", "SUCCESS")), List.of());
     }
 }

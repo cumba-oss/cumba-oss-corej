@@ -67,8 +67,13 @@ class CallableSurfacePhase3Test
                 return new BitSet();
             }
         };
-        FunctionRegistry
-                .register(new FunctionDescriptor("kwarg_probe", 1, FunctionKind.BOOLEAN, fn));
+        // Phase 6b (D19a): a kwarg must name a DECLARED parameter — the pass-through of raw
+        // Expr kwargs survives, but only for parameters the descriptor declares.
+        FunctionRegistry.register(new FunctionDescriptor("kwarg_probe", List.of(
+                Parameter.required("x", net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN),
+                Parameter.optional("mark",
+                        net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN)),
+                FunctionKind.BOOLEAN, fn));
         try
         {
             IDataTable table = MockTable.of().col("VAR1", "a", "b").build();
@@ -81,34 +86,41 @@ class CallableSurfacePhase3Test
         }
         finally
         {
-            FunctionRegistry.unregister("kwarg_probe", 1);
+            FunctionRegistry.unregister("kwarg_probe");
         }
     }
 
 
     @Test
-    void plainFunctionsIgnoreKwargsViaTheDefaultForm()
+    void undeclaredKwargsAreRejectedNotSilentlyDropped()
     {
+        // Phase 6b (D19a/D91e): before the one-descriptor model an unknown kwarg on a registered
+        // function was silently DROPPED — the silent-disarming shape behind the record_count
+        // namespace collision. Now argument binding runs first and an undeclared name is an error.
         AtomicInteger positional = new AtomicInteger();
         EvalFunction fn = (_, _) ->
         {
             positional.incrementAndGet();
             return new BitSet();
         };
-        FunctionRegistry
-                .register(new FunctionDescriptor("kwarg_blind", 1, FunctionKind.BOOLEAN, fn));
+        FunctionRegistry.register(new FunctionDescriptor("kwarg_blind",
+                List.of(Parameter.required("x",
+                        net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN)),
+                FunctionKind.BOOLEAN, fn));
         try
         {
             IDataTable table = MockTable.of().col("VAR1", "a", "b").build();
             Expr call = new Expr.Call("kwarg_blind", List.of(ref("VAR1")),
                     Map.of("mark", new Expr.Lit(Expr.LitKind.STRING, "M1")));
-            eval(call, ctx(table, new ExpressionResultCache()));
-            assertEquals(1, positional.get(),
-                    "a lambda function runs through the positional default unchanged");
+            var ex = org.junit.jupiter.api.Assertions.assertThrows(
+                    net.cumba.corej.core.expr.ExpressionException.class,
+                    () -> eval(call, ctx(table, new ExpressionResultCache())));
+            assertTrue(ex.getMessage().contains("no parameter 'mark'"), ex.getMessage());
+            assertEquals(0, positional.get(), "the function must not run on a failed binding");
         }
         finally
         {
-            FunctionRegistry.unregister("kwarg_blind", 1);
+            FunctionRegistry.unregister("kwarg_blind");
         }
     }
 

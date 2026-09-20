@@ -11,7 +11,6 @@ import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.gen.RuleGenerationReport;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.GroupingSpec;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
@@ -24,7 +23,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code DatasetRuleResolver.expandSdtmPrefixRules} — the second of the two live corpus-delivery
+ * {@code DatasetRuleResolver.specialiseStaticRules} — the second of the two live corpus-delivery
  * expansions, and the third {@code new Rule()} clone site in the engine. It resolves a
  * domain-neutral {@code --DTC} rule into the concrete {@code AEDTC} rule the engine runs.
  *
@@ -46,6 +45,13 @@ import org.junit.jupiter.api.Test;
 class SdtmPrefixExpansionCarryOverTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
     private static IDataTable aeTable()
     {
         return MockTable.of().name("AE").col("AEDTC", "2020-01-01").col("USUBJID", "S1").build();
@@ -59,8 +65,7 @@ class SdtmPrefixExpansionCarryOverTest
         core.setId(coreId);
         rule.setCore(core);
         rule.setDescription("--DTC must be populated");
-        rule.setCheck(new CheckConditionAll(
-                List.of(CheckConditionLeaf.builder().name("--DTC").operator("non_empty").build())));
+        rule.setCheck(new CheckConditionAll(List.of(expr("not empty(--DTC)"))));
         rule.setVariableUniverse(VariableUniverse.DATA);
         GroupingSpec grouping = new GroupingSpec();
         grouping.setVariables(List.of("USUBJID"));
@@ -76,8 +81,8 @@ class SdtmPrefixExpansionCarryOverTest
     private static Rule expandOnce(Rule template)
     {
         List<Rule> out = new ArrayList<>();
-        new DatasetRuleResolver(null).expandSdtmPrefixRules(aeTable().getMetaData(), "AE",
-                List.of(template), out, new RuleGenerationReport());
+        new DatasetRuleResolver(null).specialiseStaticRules(aeTable(), "AE", List.of(template), out,
+                new RuleGenerationReport());
         assertEquals(1, out.size(), "one source rule expands to exactly one per-domain rule");
         Rule expanded = out.get(0);
         // ⛔ A load-errored expansion short-circuits deriveOmittedFields, which would make the

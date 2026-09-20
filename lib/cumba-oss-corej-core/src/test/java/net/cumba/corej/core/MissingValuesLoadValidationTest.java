@@ -60,9 +60,8 @@ class MissingValuesLoadValidationTest
     {
         Rule rule = loadRule("""
                 {"Core":{"Id":"T-MV1","Status":"Draft","Version":"1"},
-                 "Check":{"all":[{"name":"$min_ex","operator":"date_not_equal_to",
-                                  "value":"EXSTDTC"}]},
-                 "Operations":[{"id":"$min_ex",
+                 "Check":{"all":[{"expression": "date($min_ex) != EXSTDTC"}]},
+                 "Bindings":[{"name":"$min_ex",
                     "expression":"min_date(EXSTDTC, missing_values=\\"indeterminate\\")"}]}""");
         assertNull(rule.getLoadError());
         Operation op = rule.getOperations().get(0);
@@ -77,9 +76,8 @@ class MissingValuesLoadValidationTest
         // otherwise 21 of the 35 date-extreme rules could not state their own disposition.
         Rule rule = loadRule("""
                 {"Core":{"Id":"T-MV2","Status":"Draft","Version":"1"},
-                 "Check":{"all":[{"name":"$min_ex","operator":"date_greater_than",
-                                  "value":"EXSTDTC"}]},
-                 "Operations":[{"id":"$min_ex",
+                 "Check":{"all":[{"expression": "date($min_ex) > EXSTDTC"}]},
+                 "Bindings":[{"name":"$min_ex",
                     "expression":"min_date(EXSTDTC, missing_values=\\"skip\\")"}]}""");
         assertNull(rule.getLoadError());
         assertEquals(Operation.MISSING_VALUES_SKIP, rule.getOperations().get(0).getMissingValues());
@@ -96,8 +94,8 @@ class MissingValuesLoadValidationTest
         // NOT `reference_extreme`'s lenient read: a typo must not silently mean `skip`.
         Rule rule = loadRule("""
                 {"Core":{"Id":"T-MV3","Status":"Draft","Version":"1"},
-                 "Check":{"all":[{"name":"$m","operator":"date_not_equal_to","value":"X"}]},
-                 "Operations":[{"id":"$m",
+                 "Check":{"all":[{"expression": "date($m) != X"}]},
+                 "Bindings":[{"name":"$m",
                     "expression":"min_date(EXSTDTC, missing_values=\\"indeterminant\\")"}]}""");
         assertLoadErrorMentions(rule, "indeterminant");
     }
@@ -110,8 +108,8 @@ class MissingValuesLoadValidationTest
         // list must be an error rather than something the parser coerces or the mapper drops.
         Rule rule = loadRule("""
                 {"Core":{"Id":"T-MV4","Status":"Draft","Version":"1"},
-                 "Check":{"all":[{"name":"$m","operator":"date_not_equal_to","value":"X"}]},
-                 "Operations":[{"id":"$m",
+                 "Check":{"all":[{"expression": "date($m) != X"}]},
+                 "Bindings":[{"name":"$m",
                     "expression":"min_date(EXSTDTC, missing_values=[\\"\\", \\" \\"])"}]}""");
         assertNotNull(rule.getLoadError());
     }
@@ -122,8 +120,8 @@ class MissingValuesLoadValidationTest
     {
         Rule rule = loadRule("""
                 {"Core":{"Id":"T-MV5","Status":"Draft","Version":"1"},
-                 "Check":{"all":[{"name":"$m","operator":"date_not_equal_to","value":"X"}]},
-                 "Operations":[{"id":"$m",
+                 "Check":{"all":[{"expression": "date($m) != X"}]},
+                 "Bindings":[{"name":"$m",
                     "expression":"min_date(EXSTDTC, missing_values=1)"}]}""");
         assertLoadErrorMentions(rule, "missing_values");
     }
@@ -140,7 +138,7 @@ class MissingValuesLoadValidationTest
         // question. row_max / row_min: a blank horizontal cell (TRxxEDT) encodes "period not
         // used", so `indeterminate` would kill the rule (E0). max: the generic string fallback
         // also serves Char CATEGORY columns (ANRIND, ATOXGR) — a rule that wants date
-        // determinability authors max_date, the form EC-46 OQ4 moved the corpus onto.
+        // determinability authors max_date, as FDA-SD0080 was moved to do.
         for (String operator : new String[]
         {
                 "record_count", "distinct", "row_max", "row_min", "max", "variable_count", "dy"
@@ -148,8 +146,8 @@ class MissingValuesLoadValidationTest
         {
             Rule rule = loadRule("""
                     {"Core":{"Id":"T-MV6","Status":"Draft","Version":"1"},
-                     "Check":{"all":[{"name":"$m","operator":"not_equal_to","value":"X"}]},
-                     "Operations":[{"id":"$m",
+                     "Check":{"all":[{"expression": "$m != X"}]},
+                     "Bindings":[{"name":"$m",
                         "expression":"%s(EXSTDTC, missing_values=\\"skip\\")"}]}"""
                     .formatted(operator));
             assertLoadErrorMentions(rule, "not supported by operation `" + operator + "`");
@@ -167,8 +165,8 @@ class MissingValuesLoadValidationTest
         {
             Rule rule = loadRule("""
                     {"Core":{"Id":"T-MV7","Status":"Draft","Version":"1"},
-                     "Check":{"all":[{"name":"$m","operator":"not_equal_to","value":"X"}]},
-                     "Operations":[{"id":"$m",
+                     "Check":{"all":[{"expression": "$m != X"}]},
+                     "Bindings":[{"name":"$m",
                         "expression":"%s(EXSTDTC, missing_values=\\"indeterminate\\")"}]}"""
                     .formatted(operator));
             assertNull(rule.getLoadError(), operator + " must accept missing_values");
@@ -188,15 +186,15 @@ class MissingValuesLoadValidationTest
         Rule mode2 = loadRule(
                 """
                         {"Core":{"Id":"T-MV7a","Status":"Draft","Version":"1"},
-                         "Check":{"all":[{"name":"$m","operator":"not_equal_to","value":"X"}]},
-                         "Operations":[{"id":"$m","expression":"date_diff_days(MYDTC, domain=\\"SJ\\",
+                         "Check":{"all":[{"expression": "$m != X"}]},
+                         "Bindings":[{"name":"$m","expression":"date_diff_days(MYDTC, domain=\\"SJ\\",
                             reference=\\"SJSTDTC\\", group=[USUBJID], missing_values=\\"indeterminate\\")"}]}""");
         assertNull(mode2.getLoadError());
 
         Rule mode1 = loadRule("""
                 {"Core":{"Id":"T-MV7b","Status":"Draft","Version":"1"},
-                 "Check":{"all":[{"name":"$m","operator":"not_equal_to","value":"X"}]},
-                 "Operations":[{"id":"$m","expression":"date_diff_days(MYDTC,
+                 "Check":{"all":[{"expression": "$m != X"}]},
+                 "Bindings":[{"name":"$m","expression":"date_diff_days(MYDTC,
                     reference=\\"REF\\", missing_values=\\"indeterminate\\")"}]}""");
         assertLoadErrorMentions(mode1, "requires the Mode 2 grouped subtrahend");
     }
@@ -211,11 +209,11 @@ class MissingValuesLoadValidationTest
     @Test
     void fieldFormOperationIsValidatedToo() throws IOException
     {
-        Rule rule = loadRule("""
-                {"Core":{"Id":"T-MV8","Status":"Draft","Version":"1"},
-                 "Check":{"all":[{"name":"$m","operator":"not_equal_to","value":"X"}]},
-                 "Operations":[{"id":"$m","operator":"record_count","name":"EXSTDTC",
-                                "missing_values":"skip"}]}""");
+        Rule rule = loadRule(
+                """
+                        {"Core":{"Id":"T-MV8","Status":"Draft","Version":"1"},
+                         "Check":{"all":[{"expression": "$m != X"}]},
+                         "Bindings":[{"name": "$m", "expression": "record_count(EXSTDTC, missing_values=\\"skip\\")"}]}""");
         assertLoadErrorMentions(rule, "not supported by operation `record_count`");
     }
 
@@ -231,20 +229,24 @@ class MissingValuesLoadValidationTest
         // date_greater_than consumer reads a no-value extreme as "no violation", so the
         // declaration would silence the check instead — the exact opposite of its purpose, and
         // nothing downstream would catch it.
-        for (String operator : new String[]
-        {
-                "date_greater_than", "date_less_than", "date_equal_to",
-                "date_greater_than_or_equal_to", "date_less_than_or_equal_to", "equal_to",
-                "less_than", "greater_than"
-        })
+        // The expression walker names the comparison itself; a date(…) wrapper is transparent
+        // to operand identity AND to the reported operator name (phase 7d — the leaf-era
+        // date_* spellings retired with the leaf model, the polarity rule is unchanged).
+        java.util.Map<String, String> spellings = new java.util.LinkedHashMap<>();
+        spellings.put("greater_than", "date($m) > EXSTDTC");
+        spellings.put("less_than", "date($m) < EXSTDTC");
+        spellings.put("equal_to", "date($m) == EXSTDTC");
+        spellings.put("greater_than_or_equal_to", "date($m) >= EXSTDTC");
+        spellings.put("less_than_or_equal_to", "date($m) <= EXSTDTC");
+        for (java.util.Map.Entry<String, String> e : spellings.entrySet())
         {
             Rule rule = loadRule("""
                     {"Core":{"Id":"T-MV9","Status":"Draft","Version":"1"},
-                     "Check":{"all":[{"name":"$m","operator":"%s","value":"EXSTDTC"}]},
-                     "Operations":[{"id":"$m",
+                     "Check":{"all":[{"expression":"%s"}]},
+                     "Bindings":[{"name":"$m",
                         "expression":"min_date(EXSTDTC, missing_values=\\"indeterminate\\")"}]}"""
-                    .formatted(operator));
-            assertLoadErrorMentions(rule, "positive-polarity leaf `" + operator + "`");
+                    .formatted(e.getValue()));
+            assertLoadErrorMentions(rule, "positive-polarity leaf `" + e.getKey() + "`");
         }
     }
 
@@ -260,9 +262,9 @@ class MissingValuesLoadValidationTest
         Rule rule = loadRule("""
                 {"Core":{"Id":"T-MV10","Status":"Draft","Version":"1"},
                  "Check":{"all":[
-                    {"name":"$min_ds","operator":"equal_to","value":"DSSTDTC"},
-                    {"name":"$min_ds","operator":"not_equal_to","value":"DM.RFICDTC"}]},
-                 "Operations":[{"id":"$min_ds",
+                    {"expression": "$min_ds == DSSTDTC"},
+                    {"expression": "$min_ds != DM.RFICDTC"}]},
+                 "Bindings":[{"name":"$min_ds",
                     "expression":"min_date(DSSTDTC, missing_values=\\"indeterminate\\")"}]}""");
         assertLoadErrorMentions(rule, "positive-polarity leaf `equal_to`");
     }
@@ -275,10 +277,10 @@ class MissingValuesLoadValidationTest
         // same, because a missing LHS and a null RHS both no-fire a positive operator.
         Rule rule = loadRule("""
                 {"Core":{"Id":"T-MV11","Status":"Draft","Version":"1"},
-                 "Check":{"all":[{"name":"EXSTDTC","operator":"date_equal_to","value":"$m"}]},
-                 "Operations":[{"id":"$m",
+                 "Check":{"all":[{"expression": "date(EXSTDTC) == $m"}]},
+                 "Bindings":[{"name":"$m",
                     "expression":"min_date(EXSTDTC, missing_values=\\"indeterminate\\")"}]}""");
-        assertLoadErrorMentions(rule, "positive-polarity leaf `date_equal_to`");
+        assertLoadErrorMentions(rule, "positive-polarity leaf `equal_to`");
     }
 
 
@@ -289,18 +291,18 @@ class MissingValuesLoadValidationTest
         // and must be allowed…
         Rule allowed = loadRule("""
                 {"Core":{"Id":"T-MV12","Status":"Draft","Version":"1"},
-                 "Check":{"not":{"name":"$m","operator":"date_greater_than","value":"EXSTDTC"}},
-                 "Operations":[{"id":"$m",
+                 "Check":{"not":{"expression": "date($m) > EXSTDTC"}},
+                 "Bindings":[{"name":"$m",
                     "expression":"min_date(EXSTDTC, missing_values=\\"indeterminate\\")"}]}""");
         assertNull(allowed.getLoadError());
 
         // …and not(date_not_equal_to) goes silent, so the same inversion must reject it.
         Rule rejected = loadRule("""
                 {"Core":{"Id":"T-MV13","Status":"Draft","Version":"1"},
-                 "Check":{"not":{"name":"$m","operator":"date_not_equal_to","value":"EXSTDTC"}},
-                 "Operations":[{"id":"$m",
+                 "Check":{"not":{"expression": "date($m) != EXSTDTC"}},
+                 "Bindings":[{"name":"$m",
                     "expression":"min_date(EXSTDTC, missing_values=\\"indeterminate\\")"}]}""");
-        assertLoadErrorMentions(rejected, "positive-polarity leaf `date_not_equal_to`");
+        assertLoadErrorMentions(rejected, "positive-polarity leaf `not_equal_to`");
     }
 
 
@@ -314,8 +316,8 @@ class MissingValuesLoadValidationTest
     {
         Rule rule = loadRule("""
                 {"Core":{"Id":"T-MV14","Status":"Draft","Version":"1"},
-                 "Check":{"all":[{"name":"$m","operator":"date_greater_than","value":"EXSTDTC"}]},
-                 "Operations":[{"id":"$m","expression":"min_date(EXSTDTC)"}]}""");
+                 "Check":{"all":[{"expression": "date($m) > EXSTDTC"}]},
+                 "Bindings":[{"name":"$m","expression":"min_date(EXSTDTC)"}]}""");
         assertNull(rule.getLoadError());
     }
 
@@ -330,12 +332,11 @@ class MissingValuesLoadValidationTest
     {
         Rule rule = loadRule("""
                 {"Core":{"Id":"T-MV20","Status":"Draft","Version":"1"},
-                 "Precondition":{"all":[{"name":"$m","operator":"date_greater_than",
-                                         "value":"EXSTDTC"}]},
-                 "Check":{"all":[{"name":"EXSTDTC","operator":"date_not_equal_to","value":"$m"}]},
-                 "Operations":[{"id":"$m",
+                 "Precondition":{"all":[{"expression": "date($m) > EXSTDTC"}]},
+                 "Check":{"all":[{"expression": "date(EXSTDTC) != $m"}]},
+                 "Bindings":[{"name":"$m",
                     "expression":"min_date(EXSTDTC, missing_values=\\"indeterminate\\")"}]}""");
-        assertLoadErrorMentions(rule, "positive-polarity leaf `date_greater_than`");
+        assertLoadErrorMentions(rule, "positive-polarity leaf `greater_than`");
     }
 
     // -----------------------------------------------------------------------
@@ -358,7 +359,7 @@ class MissingValuesLoadValidationTest
                  "Sensitivity":"Dataset",
                  "Check":{"expression":
                     "var_label(\\"EXSTDTC\\", \\"DEFINE\\") == \\"x\\" and $m > EXSTDTC"},
-                 "Operations":[{"id":"$m",
+                 "Bindings":[{"name":"$m",
                     "expression":"min_date(EXSTDTC, missing_values=\\"indeterminate\\")"}]}""");
         assertLoadErrorMentions(rejected, "positive-polarity leaf `greater_than`");
 
@@ -368,7 +369,7 @@ class MissingValuesLoadValidationTest
                  "Sensitivity":"Dataset",
                  "Check":{"expression":
                     "var_label(\\"EXSTDTC\\", \\"DEFINE\\") == \\"x\\" and $m != EXSTDTC"},
-                 "Operations":[{"id":"$m",
+                 "Bindings":[{"name":"$m",
                     "expression":"min_date(EXSTDTC, missing_values=\\"indeterminate\\")"}]}""");
         assertNull(allowed.getLoadError());
     }
@@ -383,7 +384,7 @@ class MissingValuesLoadValidationTest
                  "Sensitivity":"Dataset",
                  "Check":{"expression":
                     "var_label(\\"EXSTDTC\\", \\"DEFINE\\") == \\"x\\" and not($m == EXSTDTC)"},
-                 "Operations":[{"id":"$m",
+                 "Bindings":[{"name":"$m",
                     "expression":"min_date(EXSTDTC, missing_values=\\"indeterminate\\")"}]}""");
         assertNull(allowed.getLoadError());
 
@@ -393,7 +394,7 @@ class MissingValuesLoadValidationTest
                  "Sensitivity":"Dataset",
                  "Check":{"expression":
                     "var_label(\\"EXSTDTC\\", \\"DEFINE\\") == \\"x\\" or $m < EXSTDTC"},
-                 "Operations":[{"id":"$m",
+                 "Bindings":[{"name":"$m",
                     "expression":"min_date(EXSTDTC, missing_values=\\"indeterminate\\")"}]}""");
         assertLoadErrorMentions(rejected, "positive-polarity leaf `less_than`");
     }
@@ -470,7 +471,7 @@ class MissingValuesLoadValidationTest
                  "Sensitivity":"Dataset",
                  "Check":{"expression":"var_label(\\"EXSTDTC\\", \\"DEFINE\\") == \\"x\\"
                     and date($m) == EXSTDTC"},
-                 "Operations":[{"id":"$m",
+                 "Bindings":[{"name":"$m",
                     "expression":"min_date(EXSTDTC, missing_values=\\"indeterminate\\")"}]}""");
         assertLoadErrorMentions(rule, "positive-polarity leaf `equal_to`");
     }
@@ -485,9 +486,8 @@ class MissingValuesLoadValidationTest
     {
         Rule rule = loadRule("""
                 {"Core":{"Id":"T-MV15","Status":"Draft","Version":"1"},
-                 "Check":{"all":[{"name":"EXSTDTC","operator":"date_greater_than",
-                                  "value":"DM.RFSTDTC"}]},
-                 "Operations":[{"id":"$unused",
+                 "Check":{"all":[{"expression": "date(EXSTDTC) > DM.RFSTDTC"}]},
+                 "Bindings":[{"name":"$unused",
                     "expression":"min_date(EXSTDTC, missing_values=\\"indeterminate\\")"}]}""");
         assertNull(rule.getLoadError());
     }

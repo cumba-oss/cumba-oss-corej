@@ -3,6 +3,7 @@ package net.cumba.corej.core.expr.eval;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -10,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.BitSet;
 import java.util.List;
 import net.cumba.corej.core.expr.ExpressionException;
+import net.cumba.corej.core.expr.typed.ExprType.Unknown;
 import org.junit.jupiter.api.Test;
 
 class FunctionRegistryTest
@@ -18,43 +20,57 @@ class FunctionRegistryTest
     @Test
     void serviceLoaderDiscoversBuiltins()
     {
-        assertTrue(FunctionRegistry.isRegistered("lower", 1));
-        assertTrue(FunctionRegistry.isRegistered("contains", 2));
-        assertTrue(FunctionRegistry.isRegistered("is_valid_date", 1));
-        assertNotNull(FunctionRegistry.resolve("non_empty", 1));
-        assertEquals(FunctionKind.VALUE, FunctionRegistry.descriptor("len", 1).kind());
-        assertEquals(FunctionKind.BOOLEAN, FunctionRegistry.descriptor("contains", 2).kind());
+        assertTrue(FunctionRegistry.isRegistered("lower"));
+        assertTrue(FunctionRegistry.isRegistered("contains"));
+        assertTrue(FunctionRegistry.isRegistered("is_valid_date"));
+        assertNotNull(FunctionRegistry.resolve("non_empty"));
+        assertEquals(FunctionKind.VALUE, FunctionRegistry.descriptor("len").kind());
+        assertEquals(FunctionKind.BOOLEAN, FunctionRegistry.descriptor("contains").kind());
     }
 
 
     @Test
-    void unknownNameOrArityThrows()
+    void unknownNameThrows()
     {
-        assertThrows(ExpressionException.class, () -> FunctionRegistry.resolve("no_such_fn", 1));
-        // contains exists only at arity 2
-        assertThrows(ExpressionException.class, () -> FunctionRegistry.resolve("contains", 1));
+        assertThrows(ExpressionException.class, () -> FunctionRegistry.resolve("no_such_fn"));
+        assertNull(FunctionRegistry.descriptor("no_such_fn"));
+    }
+
+
+    /**
+     * Phase 6b (D19a): one descriptor per name. What used to be an arity overload is an optional
+     * parameter; the {@code (name, arity)} key and the per-arity registrations are gone.
+     */
+    @Test
+    void oneDescriptorPerName()
+    {
+        FunctionDescriptor substring = FunctionRegistry.descriptor("substring");
+        assertNotNull(substring);
+        assertEquals(2, substring.minArity());
+        assertEquals(3, substring.maxArity());
+        // the arity probe honours the parameter bounds
+        assertNotNull(FunctionRegistry.descriptorAccepting("substring", 2));
+        assertNotNull(FunctionRegistry.descriptorAccepting("substring", 3));
+        assertNull(FunctionRegistry.descriptorAccepting("substring", 4));
+        assertNull(FunctionRegistry.descriptorAccepting("no_such_fn", 1));
     }
 
 
     @Test
-    void programmaticRegistrationAndOverloadByArity()
+    void programmaticRegistrationByName()
     {
         EvalFunction one = (_, _) -> new BitSet();
-        EvalFunction two = (_, _) -> new BitSet();
-        FunctionRegistry.register(new FunctionDescriptor("xtest", 1, FunctionKind.BOOLEAN, one));
-        FunctionRegistry.register(new FunctionDescriptor("xtest", 2, FunctionKind.BOOLEAN, two));
+        FunctionRegistry.register(new FunctionDescriptor("xtest",
+                List.of(Parameter.required("x", Unknown.UNKNOWN)), FunctionKind.BOOLEAN, one));
         try
         {
-            assertSame(one, FunctionRegistry.resolve("xtest", 1));
-            assertSame(two, FunctionRegistry.resolve("xtest", 2));
-            assertThrows(ExpressionException.class, () -> FunctionRegistry.resolve("xtest", 3));
+            assertSame(one, FunctionRegistry.resolve("xtest"));
         }
         finally
         {
-            FunctionRegistry.unregister("xtest", 1);
-            FunctionRegistry.unregister("xtest", 2);
+            FunctionRegistry.unregister("xtest");
         }
-        assertFalse(FunctionRegistry.isRegistered("xtest", 1));
+        assertFalse(FunctionRegistry.isRegistered("xtest"));
     }
 
 
@@ -65,11 +81,8 @@ class FunctionRegistryTest
         assertTrue(all.size() >= 20, "built-ins registered");
         for (int i = 1; i < all.size(); i++)
         {
-            FunctionDescriptor prev = all.get(i - 1);
-            FunctionDescriptor cur = all.get(i);
-            int byName = prev.name().compareTo(cur.name());
-            assertTrue(byName < 0 || (byName == 0 && prev.arity() <= cur.arity()),
-                    "sorted by (name, arity)");
+            assertTrue(all.get(i - 1).name().compareTo(all.get(i).name()) < 0,
+                    "sorted by name, one descriptor per name");
         }
     }
 

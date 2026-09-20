@@ -52,8 +52,9 @@ CDISCPILOT01 | LB | AP-701-1015 | LBSEQ | 3 | LBFAST | Fasting Status | Y | CRF 
 # prefix, with no closed list.
 #
 # ⚠⚠ Wave-13 lane A (edit set E) deliberately authored `SQAPFA--` on ZERO rules, and the reason
-# is measured, not cautious. The rules that name this shape (CDISC-CG0018, CDISC-CG0205) both
-# check `dataset_name longer_than 8`; `SQAPFA--` matches names
+# is measured, not cautious. The two rules that name this shape (CDISC-CG0018, CDISC-CG0205 —
+# re-measured 2026-09-19 after the CORE family's retirement, which took two of the four) both
+# check `len(dataset_name) > 8`; `SQAPFA--` matches names
 # of EXACTLY 8 characters, and 8 is not longer than 8, so the token is PROVABLY INERT on them —
 # it cannot change an outcome on any data, ever. Its sibling `SUPPAPFA--` (8+2 = 10) is not
 # inert and WAS authored on those four; see supp-family.cdt. Nothing else in the corpus has a

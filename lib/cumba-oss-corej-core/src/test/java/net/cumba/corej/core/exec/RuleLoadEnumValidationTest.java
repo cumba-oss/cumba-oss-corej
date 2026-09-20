@@ -62,7 +62,7 @@ class RuleLoadEnumValidationTest
                 {
                   "Core": {"Id": "TEST-201"},
                   "Rule_Type": "Record Data",
-                  "Check": {"name": "AESTDY", "operator": "non_empty"}
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """;
         Rule rule = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));
@@ -83,7 +83,7 @@ class RuleLoadEnumValidationTest
                 {
                   "Core": {"Id": "TEST-202"},
                   "Sensitivity": "Variable",
-                  "Check": {"name": "AESTDY", "operator": "non_empty"}
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """;
         Rule rule = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));
@@ -101,7 +101,7 @@ class RuleLoadEnumValidationTest
                 {
                   "Core": {"Id": "TEST-203"},
                   "Executability": "Sort of Executable",
-                  "Check": {"name": "AESTDY", "operator": "non_empty"}
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """;
         Rule rule = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));
@@ -119,7 +119,7 @@ class RuleLoadEnumValidationTest
                 {
                   "Core": {"Id": "TEST-204"},
                   "Sensitivity": "Variable",
-                  "Check": {"name": "AESTDY", "operator": "non_empty"}
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """;
         Rule rule = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));
@@ -144,7 +144,7 @@ class RuleLoadEnumValidationTest
                   "Rule_Type": "Bogus Type",
                   "Sensitivity": "Bogus Sensitivity",
                   "Executability": "Bogus Executability",
-                  "Check": {"name": "AESTDY", "operator": "non_empty"}
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """;
         Rule rule = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));
@@ -165,7 +165,7 @@ class RuleLoadEnumValidationTest
                 {
                   "Core": {"Id": "TEST-206"},
                   "Sensitivity": "Variable",
-                  "Check": {"name": "PH${*}SDT", "operator": "equal_to", "value": "X"}
+                  "Check": {"expression": "PH${*}SDT == X"}
                 }
                 """;
         Rule rule = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));
@@ -185,7 +185,7 @@ class RuleLoadEnumValidationTest
         String ruleJson = """
                 {
                   "Core": {"Id": "TEST-207"},
-                  "Check": {"name": "AESTDY", "operator": "non_empty"}
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """;
         Rule rule = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));
@@ -219,7 +219,7 @@ class RuleLoadEnumValidationTest
                   "Core": {"Id": "TEST-208"},
                   "Sensitivity": "Record",
                   "Executability": "Fully Executable",
-                  "Check": {"name": "AESTDY", "operator": "non_empty"}
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """;
         Rule rule = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));

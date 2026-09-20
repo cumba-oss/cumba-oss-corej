@@ -37,7 +37,7 @@ class RulePackageLoaderEdgeCaseTest
                       "Core": {"Id": "CORE-TEST", "Status": "Draft", "Version": "1"},
                       "Sensitivity": "Record",
                       "unknown_field": "should be ignored",
-                      "Check": {"name": "X", "operator": "var_exists"}
+                      "Check": {"expression": "var_exists(\\"X\\")"}
                     }
                   }
                 }
@@ -57,7 +57,7 @@ class RulePackageLoaderEdgeCaseTest
                     "uuid1": {
                       "id": "uuid1",
                       "Core": {"Id": "CORE-001"},
-                      "Check": {"name": "A", "operator": "var_exists"},
+                      "Check": {"expression": "var_exists(\\"A\\")"},
                       "Sensitivity": "Record"
                     }
                   }
@@ -100,7 +100,7 @@ class RulePackageLoaderEdgeCaseTest
                     "R1": {
                       "Core": {"Id": "CG0001"},
                       "Description": "desc",
-                      "Check": {"name": "A", "operator": "var_exists"},
+                      "Check": {"expression": "var_exists(\\"A\\")"},
                       "Sensitivity": "Record"
                     }
                   }

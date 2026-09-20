@@ -3,12 +3,10 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
@@ -19,16 +17,16 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Fix #64 regression: a {@code variable_name is_not_contained_by $allowed_variables} rule must
- * resolve {@code $allowed_variables} as a list (not the literal token) so a variable IN the allowed
- * list does not fire. The rule built below is the shape {@code FDA-SD0058} ships (and its
- * equivalence classmates {@code CDISC-CG0013} / {@code CDISC-CG0351} / {@code PMDA-SD0058}):
+ * Fix #64 regression: a {@code varname() not in $allowed_variables} rule must resolve
+ * {@code $allowed_variables} as a list (not the literal token) so a variable IN the allowed list
+ * does not fire. The rule built below is the shape {@code FDA-SD0058} ships (and its equivalence
+ * classmates {@code CDISC-CG0013} / {@code CDISC-CG0351} / {@code PMDA-SD0058}):
  * {@code $allowed_variables = get_model_column_order()}, checked with
  * {@code varname() not in $allowed_variables}. Because it is a {@code Sensitivity.DATASET} Variable
  * Metadata Check, the engine reports a single dataset-level violation — the FIRST variable not in
- * the allowed list (mirroring Python's {@code COREActions.generate_targeted_error_object}
- * {@code errors_df.iloc[0]}; see the matching {@code rulespec/specs/FDA-SD0058.yaml} drift guard in
- * {@code cumba-oss-corej-rules}) — and zero violations when every variable is allowed.
+ * the allowed list — and zero violations when every variable is allowed. The same single-violation
+ * shape is pinned as a corpus drift guard by {@code rulespec/specs/FDA-SD0058.yaml} in the rules
+ * repository, whose one {@code expected_violations} entry reports {@code variable_name: AEFOO}.
  *
  * <p>
  * Pre-Fix-#64, the per-variable {@code partialEvaluateVariable} fold called
@@ -44,7 +42,12 @@ import org.junit.jupiter.api.Test;
 class VariableMetadataOperandListResolutionTest
 {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
 
     private static Rule allowedVariablesRule()
     {
@@ -55,9 +58,8 @@ class VariableMetadataOperandListResolutionTest
 
         // Check: { all: [{ name: "variable_name", op: "is_not_contained_by",
         // value: "$allowed_variables" }] }
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("variable_name")
-                .operator("is_not_contained_by").value(MAPPER.valueToTree("$allowed_variables"))
-                .build();
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr(
+                "varname() not in $allowed_variables");
 
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
@@ -225,8 +227,8 @@ class VariableMetadataOperandListResolutionTest
     void mixedColumns_onlyDisallowedVariablesFire()
     {
         // Two columns are in the list (STUDYID, USUBJID); two are not (AECUSTOM, AEEXTRA).
-        // A Sensitivity.DATASET Variable Metadata Check collapses to exactly ONE error
-        // (errors_df.iloc[0], the first failing variable in column order), which is what
+        // A Sensitivity.DATASET Variable Metadata Check collapses to exactly ONE violation —
+        // the first failing variable in column order — which is what
         // rulespec/specs/FDA-SD0058.yaml pins as a drift guard over the shipped rule. The first
         // disallowed column in iteration order is AECUSTOM.
         IDataTable table = MockTable.of().col("STUDYID", "S001").col("USUBJID", "U001")

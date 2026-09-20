@@ -57,9 +57,8 @@ class RuleRunnerValueRowFindingTest
     {
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Record\","
                 + "\"Check\":{\"all\":["
-                + "{\"name\":\"variable_name\",\"operator\":\"matches_regex\","
-                + "\"value\":\"^DESC$\"},"
-                + "{\"name\":\"variable_value\",\"operator\":\"longer_than\",\"value\":5}]},"
+                + "{\"expression\": \"ends_with(varname(), \\\"DESC\\\")\"},"
+                + "{\"expression\": \"len(value()) > 5\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_name\","
                 + "\"variable_label\",\"variable_value\",\"variable_data_type\",\"USUBJID\"]}}");
 
@@ -122,9 +121,8 @@ class RuleRunnerValueRowFindingTest
     {
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Record\","
                 + "\"Check\":{\"all\":["
-                + "{\"name\":\"variable_name\",\"operator\":\"matches_regex\","
-                + "\"value\":\"^DESC$\"},"
-                + "{\"name\":\"variable_value\",\"operator\":\"longer_than\",\"value\":1}]},"
+                + "{\"expression\": \"ends_with(varname(), \\\"DESC\\\")\"},"
+                + "{\"expression\": \"len(value()) > 1\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_value\"]}}");
         IDataTable t = MockTable.of().name("ADSL").col("DESC", "aaa", "bbb", "ccc").build();
 
@@ -142,8 +140,7 @@ class RuleRunnerValueRowFindingTest
     void rowPathCapKeepsTrueViolationCount() throws Exception
     {
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Record\","
-                + "\"Check\":{\"all\":[{\"name\":\"AESEV\",\"operator\":\"equal_to\","
-                + "\"value\":\"BAD\",\"value_is_literal\":true}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"AESEV == \\\"BAD\\\"\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEV\"]}}");
         IDataTable t = MockTable.of().name("AE").col("AESEV", "BAD", "BAD", "BAD").build();
 
@@ -165,8 +162,7 @@ class RuleRunnerValueRowFindingTest
     @Test
     void recordEmitsPerRowWithIdentityDatasetCollapsesWithout() throws Exception
     {
-        String check = "\"Check\":{\"all\":[{\"name\":\"AESEV\",\"operator\":\"equal_to\","
-                + "\"value\":\"BAD\",\"value_is_literal\":true}]},"
+        String check = "\"Check\":{\"all\":[{\"expression\": \"AESEV == \\\"BAD\\\"\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEV\"]}";
         Rule record = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Record\"," + check + "}");
         Rule dataset = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Dataset\"," + check + "}");
@@ -250,12 +246,9 @@ class RuleRunnerValueRowFindingTest
     {
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Record\","
                 + "\"Check\":{\"all\":["
-                + "{\"name\":\"variable_name\",\"operator\":\"matches_regex\","
-                + "\"value\":\"^AGE$\"},"
-                + "{\"name\":\"variable_value\",\"operator\":\"not_equal_to\","
-                + "\"value\":\"library_variable_role\"},"
-                + "{\"name\":\"variable_value\",\"operator\":\"not_equal_to\","
-                + "\"value\":\"define_variable_role\"}]},"
+                + "{\"expression\": \"ends_with(varname(), \\\"AGE\\\")\"},"
+                + "{\"expression\": \"value() != var_role(\\\"LIBRARY\\\")\"},"
+                + "{\"expression\": \"value() != var_role(\\\"DEFINE\\\")\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_name\","
                 + "\"variable_value\",\"library_variable_role\",\"define_variable_role\"]}}");
 

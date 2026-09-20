@@ -10,7 +10,6 @@ import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.gen.RuleGenerationReport;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.model.Sensitivity;
@@ -19,32 +18,32 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * Pins {@code DatasetRuleResolver.expandSdtmPrefixRules} — the {@code --}-prefix expansion that
- * turns one domain-neutral static rule into the concrete per-domain rule.
+ * Pins {@code DatasetRuleResolver.specialiseStaticRules} — the bind-time pass (D77) that hands one
+ * domain-neutral static rule to {@link RuleSpecialiser} and delivers the concrete per-domain rule.
  *
  * <p>
- * {@code CheckLevelCloneSiteTest} already holds the level-map half of this method (the phase-3
- * Severity/level-drop site). What it does not hold is everything around it: mutation testing
- * reported 12 of the method's 24 mutants surviving, including the removal of four separate "carry
- * the source field onto the expanded child" calls. That is exactly the failure mode the method's
- * own comment records — {@code buildRule} starts from a fresh {@code new Rule()}, so a field not
- * named in the copy block is silently dropped, and the loss is invisible to the loader, both
- * schemas and the writer because the SOURCE rule still carries it.
- * </p>
- *
- * <p>
- * ⚠ One mutant here is <b>equivalent and deliberately not chased</b>: the
- * {@code domain.length() >= 2} boundary. For a two-character domain {@code substring(0, 2)} returns
- * the domain itself, so {@code >= 2} and {@code > 2} agree at every length; only the negation is
- * observable, and {@link #aLongerDomainCodeStillContributesATwoCharacterPrefix} kills that.
+ * {@code CheckLevelCloneSiteTest} holds the level-map half of this pass (the phase-3
+ * Severity/level-drop site); this class holds the prefix policy and the copy semantics. Since D77
+ * the copy is a full reflective shallow copy, so "field silently dropped from the clone" can no
+ * longer happen by omission — the identity pins below assert the pass-through and carry contracts
+ * instead.
  * </p>
  */
 class DatasetRuleResolverSdtmPrefixExpansionTest
 {
 
-    private static CheckConditionLeaf leaf(String name, String operator)
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
     {
-        return CheckConditionLeaf.builder().name(name).operator(operator).build();
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
+    private static net.cumba.corej.core.model.CheckConditionExpression leaf(String name,
+            String operator)
+    {
+        return expr(
+                "non_empty".equals(operator) ? "not empty(" + name + ")" : "empty(" + name + ")");
     }
 
 
@@ -76,9 +75,15 @@ class DatasetRuleResolverSdtmPrefixExpansionTest
 
     private static List<Rule> expand(String domain, Rule... templates)
     {
+        return expand(ae(), domain, templates);
+    }
+
+
+    private static List<Rule> expand(IDataTable table, String domain, Rule... templates)
+    {
         List<Rule> out = new ArrayList<>();
-        new DatasetRuleResolver(null).expandSdtmPrefixRules(ae().getMetaData(), domain,
-                List.of(templates), out, new RuleGenerationReport());
+        new DatasetRuleResolver(null).specialiseStaticRules(table, domain, List.of(templates), out,
+                new RuleGenerationReport());
         return out;
     }
 
@@ -97,11 +102,26 @@ class DatasetRuleResolverSdtmPrefixExpansionTest
 
 
     @Test
-    void aLongerDomainCodeStillContributesATwoCharacterPrefix()
+    void anAssociatedPersonsDomainSubstitutesItsParentSuffix()
     {
-        // An AP-- member's domain is its full four-character name; the prefix is the first two.
-        // Negating `domain.length() >= 2` would substitute the whole code ("APQSDTC").
-        assertEquals("not empty(APDTC)",
+        // ⚠ Re-pinned under D77c (F1 / D77f): this test used to assert `APQS` -> `APDTC` — the
+        // old expander's own `domain.substring(0, 2)` policy, which encoded the bug. An AP
+        // dataset carries PARENT-prefixed variables (`RuleRunner`'s own EC-36 comment: "for an AP
+        // dataset that means --TERM -> MHTERM, not APMHTERM"), so on an APID-bearing APQS dataset
+        // the variable prefix is the 2-character parent suffix "QS" and `--DTC` is `QSDTC`.
+        IDataTable apqs = MockTable.of().name("APQS").col("APID", "AP01").col("QSDTC", "2020")
+                .build();
+        assertEquals("not empty(QSDTC)", rendered(
+                Objects.requireNonNull(expand(apqs, "APQS", template()).getFirst().getCheck())));
+    }
+
+
+    @Test
+    void anApShapedDomainWithoutAnApidColumnKeepsTheFullCode()
+    {
+        // The AP suffix is gated on an APID column (Python's is_ap); without one the domain code
+        // itself is the substitution — the D77c authority, not a truncation.
+        assertEquals("not empty(APQSDTC)",
                 rendered(Objects.requireNonNull(expand("APQS", template()).getFirst().getCheck())));
     }
 
@@ -160,9 +180,7 @@ class DatasetRuleResolverSdtmPrefixExpansionTest
     {
         // containsDashPrefix accepts either half of the leaf: the NAME or a textual VALUE.
         Rule valueSide = template();
-        valueSide.setCheck(new CheckConditionAll(List.of(CheckConditionLeaf.builder().name("AEDTC")
-                .operator("equal_to")
-                .value(new com.fasterxml.jackson.databind.node.TextNode("--STDTC")).build())));
+        valueSide.setCheck(new CheckConditionAll(List.of(expr("AEDTC == --STDTC"))));
 
         List<Rule> out = expand("AE", valueSide);
 

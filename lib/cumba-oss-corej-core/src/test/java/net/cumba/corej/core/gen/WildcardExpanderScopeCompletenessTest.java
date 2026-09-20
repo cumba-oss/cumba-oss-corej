@@ -13,7 +13,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.ClassScope;
 import net.cumba.corej.core.model.DataStructureScope;
 import net.cumba.corej.core.model.DatasetScope;
@@ -73,6 +72,12 @@ import org.junit.jupiter.api.Test;
 class WildcardExpanderScopeCompletenessTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
     /**
      * Fields of {@link Scope} exempt from the survival sweep. {@code unknownKeys} is parse-time
      * diagnostic state; it is never null, so it would pass the sweep regardless — naming it keeps
@@ -82,6 +87,30 @@ class WildcardExpanderScopeCompletenessTest
 
     /** {@link Requirements}' counterpart of {@link #SCOPE_FIELDS_NOT_CARRIED}. */
     private static final Set<String> REQUIREMENT_FIELDS_NOT_CARRIED = Set.of("unknownKeys");
+
+    /**
+     * {@link VariableRequirement}'s counterpart — ⛔ the net used to stop at {@link Requirements},
+     * one level ABOVE the hazard (review F1, 2026-09-17).
+     *
+     * <p>
+     * {@code WildcardExpander.expandRequirements} builds a <b>fresh</b> {@code VariableRequirement}
+     * and copies its facets by hand, which is exactly the two-branch shape the class javadoc warns
+     * about — but the sweep only walked {@code Requirements}, where {@code variables} is checked as
+     * <em>one non-null field</em>. A field added to {@code VariableRequirement} without its sibling
+     * copy line would be dropped on every wildcard-expanded rule, the copy-branch test would still
+     * pass because {@code variables} is non-null, the identity branch would carry it invisibly, and
+     * the gate would stay green. {@code anyGroups} is safe today only because
+     * {@code anyGroupingSurvivesExpansion} was hand-written for it.
+     * </p>
+     *
+     * <p>
+     * ⚑ {@code anyMixedShape} is exempt <b>deliberately</b>: it is parse-time diagnostic state read
+     * by loader gate R4, never a carried facet — recorded here in executable form rather than only
+     * in a javadoc, so the exemption is a decision someone made rather than a gap.
+     * </p>
+     */
+    private static final Set<String> VARIABLE_REQUIREMENT_FIELDS_NOT_CARRIED = Set.of("unknownKeys",
+            "anyMixedShape");
 
     private static DataTableMeta adaeMeta()
     {
@@ -128,7 +157,7 @@ class WildcardExpanderScopeCompletenessTest
         {
             VariableRequirement variables = new VariableRequirement();
             variables.setAll(List.of("TRTxxP"));
-            variables.setAny(List.of("ADSL.TRTxxPN", "AESEV"));
+            variables.setAnyGroups(List.of(List.of("ADSL.TRTxxPN", "AESEV")));
             variables.setNone(List.of("POOLID"));
             req.setVariables(variables);
         }
@@ -142,7 +171,7 @@ class WildcardExpanderScopeCompletenessTest
         RuleCore core = new RuleCore();
         core.setId("TEST-REQ-WC");
         rule.setCore(core);
-        rule.setCheck(CheckConditionLeaf.builder().name("TRTxxP").operator("non_empty").build());
+        rule.setCheck(expr("not empty(TRTxxP)"));
         rule.setScope(fullScope());
         rule.setRequirements(fullRequirements(withVariables));
         return rule;
@@ -295,6 +324,32 @@ class WildcardExpanderScopeCompletenessTest
         }
         assertTrue(dropped.isEmpty(),
                 "Requirements fields silently dropped by WildcardExpander: " + dropped);
+
+        // ⭐ F1: sweep one level DOWN, where expandRequirements actually hand-copies.
+        List<String> droppedFacets = new ArrayList<>();
+        for (Rule rule : expanded)
+        {
+            Requirements out = rule.getRequirements();
+            assertNotNull(out);
+            VariableRequirement vars = out.getVariables();
+            assertNotNull(vars, "the variable facet must reach the expanded rule at all");
+            assertNotSame(template.getRequirements().getVariables(), vars,
+                    "the fixture must drive the COPYING branch for the facet too");
+            for (Field field : declaredFields(VariableRequirement.class))
+            {
+                if (VARIABLE_REQUIREMENT_FIELDS_NOT_CARRIED.contains(field.getName()))
+                {
+                    continue;
+                }
+                if (valueOf(vars, field) == null)
+                {
+                    droppedFacets.add(field.getName());
+                }
+            }
+        }
+        assertTrue(droppedFacets.isEmpty(),
+                "VariableRequirement facets silently dropped by WildcardExpander: "
+                        + droppedFacets);
     }
 
 
@@ -319,6 +374,52 @@ class WildcardExpanderScopeCompletenessTest
                 assertNotNull(valueOf(out, field), field.getName() + " was dropped");
             }
         }
+    }
+
+
+    /**
+     * ⭐ N4's red target ({@code plans/done/PLAN-any-variable-sets.md} §5.1):
+     * {@code expandRequirements} both <b>reads and writes</b> the {@code Any} facet, so a
+     * substitution over {@code anyUnion()} would collapse {@code [[A,B],[C,D]]} — "one of each" —
+     * into one union group — "one of the four" — for every wildcard-expanded rule, with every entry
+     * still correctly substituted and everything green. Only an assertion on the GROUP COUNT after
+     * expansion can tell the two apart.
+     */
+    @Test
+    @DisplayName("⭐ Any GROUPING survives expansion — substituted per group, never flattened")
+    void anyGroupingSurvivesExpansion() throws Exception
+    {
+        Rule template = template(true);
+        Requirements req = template.getRequirements();
+        assertNotNull(req);
+        VariableRequirement vars = req.getVariables();
+        assertNotNull(vars);
+        vars.setAnyGroups(List.of(List.of("ADSL.TRTxxPN", "AESEV"), List.of("AESTDTC", "AEENDTC")));
+
+        List<Rule> expanded = WildcardExpander.expand(template, adaeMeta());
+        assertEquals(2, expanded.size(), "one rule per treatment period");
+        List<String> qualifiedFirstEntries = new ArrayList<>();
+        for (Rule rule : expanded)
+        {
+            Requirements outReq = rule.getRequirements();
+            assertNotNull(outReq);
+            VariableRequirement out = outReq.getVariables();
+            assertNotNull(out);
+            List<List<String>> groups = out.getAnyGroups();
+            assertNotNull(groups, "the Any facet must survive the copying branch at all");
+            assertEquals(2, groups.size(),
+                    "a flattened substitution collapses the two groups into one union: " + groups);
+            assertEquals("AESEV", groups.get(0).get(1),
+                    "the literal entry stays in ITS group: " + groups);
+            assertEquals(List.of("AESTDTC", "AEENDTC"), groups.get(1),
+                    "an all-literal group is carried verbatim as its own group: " + groups);
+            qualifiedFirstEntries.add(groups.get(0).get(0));
+        }
+        assertTrue(
+                qualifiedFirstEntries.contains("ADSL.TRT01PN")
+                        && qualifiedFirstEntries.contains("ADSL.TRT02PN"),
+                "the qualified template entry must bind the tuple's xx INSIDE its group: "
+                        + qualifiedFirstEntries);
     }
 
 
@@ -375,9 +476,9 @@ class WildcardExpanderScopeCompletenessTest
             VariableRequirement vars = req.getVariables();
             assertNotNull(vars);
             assertNotNull(vars.getAll());
-            assertNotNull(vars.getAny());
+            assertNotNull(vars.getAnyGroups());
             alls.addAll(vars.getAll());
-            anys.addAll(vars.getAny());
+            anys.addAll(vars.anyUnion());
             assertEquals(List.of("POOLID"), vars.getNone(), "a literal facet is carried verbatim");
         }
         assertTrue(alls.contains("TRT01P") && alls.contains("TRT02P"), alls.toString());

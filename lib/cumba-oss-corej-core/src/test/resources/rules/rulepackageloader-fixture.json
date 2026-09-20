@@ -253,16 +253,10 @@
         }
       ],
       "Check": {
-        "all": [
-          {
-            "name": "USUBJID",
-            "operator": "is_not_unique_set",
-            "value": "DOMAIN"
-          }
-        ]
+        "expression": "not is_unique_set([USUBJID, DOMAIN])"
       },
       "Core": {
-        "Id": "CORE-000351",
+        "Id": "CDISC-CG0151",
         "Status": "Published",
         "Version": "1"
       },
@@ -394,30 +388,19 @@
         }
       ],
       "Check": {
-        "all": [
-          {
-            "name": "--LNKGRP",
-            "operator": "var_exists"
-          },
-          {
-            "name": "$VARIABLE_COUNT",
-            "operator": "less_than",
-            "value": 2
-          }
-        ]
+        "expression": "var_exists(\"--LNKGRP\") and $VARIABLE_COUNT < 2"
       },
       "Core": {
-        "Id": "CORE-000358",
+        "Id": "CDISC-CG0022",
         "Status": "Published",
         "Version": "1"
       },
       "Description": "Verify that when --LNKGRP is present in one domain it is also present in another domain.",
       "Executability": "Fully Executable",
-      "Operations": [
+      "Bindings": [
         {
-          "id": "$VARIABLE_COUNT",
-          "name": "--LNKGRP",
-          "operator": "variable_count"
+          "name": "$VARIABLE_COUNT",
+          "expression": "variable_count(--LNKGRP)"
         }
       ],
       "Outcome": {
@@ -494,63 +477,10 @@
         }
       ],
       "Check": {
-        "any": [
-          {
-            "all": [
-              {
-                "name": "ARMNRS",
-                "operator": "empty"
-              },
-              {
-                "name": "TSPARMCD",
-                "operator": "equal_to",
-                "value": "STYPE",
-                "value_is_literal": true
-              },
-              {
-                "name": "TSVAL",
-                "operator": "equal_to",
-                "value": "INTERVENTIONAL",
-                "value_is_literal": true
-              },
-              {
-                "name": "USUBJID",
-                "operator": "is_not_contained_by",
-                "value": "$usubjids_in_ex"
-              }
-            ]
-          },
-          {
-            "all": [
-              {
-                "name": "ARMNRS",
-                "operator": "equal_to",
-                "value": "UNPLANNED TREATMENT",
-                "value_is_literal": true
-              },
-              {
-                "name": "TSPARMCD",
-                "operator": "equal_to",
-                "value": "STYPE",
-                "value_is_literal": true
-              },
-              {
-                "name": "TSVAL",
-                "operator": "equal_to",
-                "value": "INTERVENTIONAL",
-                "value_is_literal": true
-              },
-              {
-                "name": "USUBJID",
-                "operator": "is_not_contained_by",
-                "value": "$usubjids_in_ex"
-              }
-            ]
-          }
-        ]
+        "expression": "empty(ARMNRS) and TSPARMCD == \"STYPE\" and TSVAL == \"INTERVENTIONAL\" and USUBJID not in $usubjids_in_ex or ARMNRS == \"UNPLANNED TREATMENT\" and TSPARMCD == \"STYPE\" and TSVAL == \"INTERVENTIONAL\" and USUBJID not in $usubjids_in_ex"
       },
       "Core": {
-        "Id": "CORE-000885",
+        "Id": "CDISC-CG0148",
         "Status": "Published",
         "Version": "1"
       },
@@ -564,12 +494,10 @@
           "Name": "TS"
         }
       ],
-      "Operations": [
+      "Bindings": [
         {
-          "domain": "EX",
-          "id": "$usubjids_in_ex",
-          "name": "USUBJID",
-          "operator": "distinct"
+          "name": "$usubjids_in_ex",
+          "expression": "distinct(USUBJID, domain=\"EX\")"
         }
       ],
       "Outcome": {
@@ -763,23 +691,10 @@
         }
       ],
       "Check": {
-        "all": [
-          {
-            "name": "DSDECOD",
-            "operator": "equal_to",
-            "value": "DEATH",
-            "value_is_literal": true
-          },
-          {
-            "name": "DTHFL",
-            "operator": "not_equal_to",
-            "value": "Y",
-            "value_is_literal": true
-          }
-        ]
+        "expression": "DSDECOD == \"DEATH\" and DTHFL != \"Y\""
       },
       "Core": {
-        "Id": "CORE-000252",
+        "Id": "CDISC-CG0136",
         "Status": "Published",
         "Version": "1"
       },
@@ -1091,26 +1006,10 @@
         }
       ],
       "Check": {
-        "all": [
-          {
-            "name": "IDVAR",
-            "operator": "non_empty"
-          },
-          {
-            "name": "IDVARVAL",
-            "operator": "non_empty"
-          },
-          {
-            "name": "IDVARVAL",
-            "operator": "not_equal_to",
-            "type_insensitive": true,
-            "value": "IDVAR",
-            "value_is_reference": true
-          }
-        ]
+        "expression": "not empty(IDVAR) and not empty(IDVARVAL) and str(IDVARVAL) != str(colref(IDVAR))"
       },
       "Core": {
-        "Id": "CORE-000206",
+        "Id": "CDISC-CG0371",
         "Status": "Published",
         "Version": "1"
       },
@@ -1294,39 +1193,25 @@
       "Check": {
         "all": [
           {
-            "name": "VISITNUM",
-            "operator": "var_exists"
+            "expression": "var_exists(\"VISITNUM\")"
           },
           {
-            "name": "--TPTREF",
-            "operator": "var_exists"
+            "expression": "var_exists(\"--TPTREF\")"
           },
           {
             "any": [
               {
-                "name": "--TPT",
-                "operator": "is_inconsistent_across_dataset",
-                "value": [
-                  "--TPTNUM",
-                  "VISITNUM",
-                  "--TPTREF"
-                ]
+                "expression": "is_inconsistent_across_dataset(--TPT, keys=[--TPTNUM, VISITNUM, --TPTREF])"
               },
               {
-                "name": "--TPTNUM",
-                "operator": "is_inconsistent_across_dataset",
-                "value": [
-                  "--TPT",
-                  "VISITNUM",
-                  "--TPTREF"
-                ]
+                "expression": "is_inconsistent_across_dataset(--TPTNUM, keys=[--TPT, VISITNUM, --TPTREF])"
               }
             ]
           }
         ]
       },
       "Core": {
-        "Id": "CORE-000689",
+        "Id": "CDISC-CG0573",
         "Status": "Published",
         "Version": "1"
       },
@@ -1428,29 +1313,10 @@
         }
       ],
       "Check": {
-        "all": [
-          {
-            "name": "DM.DTHFL",
-            "operator": "equal_to",
-            "value": "Y",
-            "value_is_literal": true
-          },
-          {
-            "name": "$ae_aeout",
-            "operator": "does_not_contain",
-            "value": "FATAL",
-            "value_is_literal": true
-          },
-          {
-            "name": "$ae_aesdth",
-            "operator": "does_not_contain",
-            "value": "Y",
-            "value_is_literal": true
-          }
-        ]
+        "expression": "DM.DTHFL == \"Y\" and not contains($ae_aeout, \"FATAL\") and not contains($ae_aesdth, \"Y\")"
       },
       "Core": {
-        "Id": "CORE-001078",
+        "Id": "CDISC-CG0133",
         "Status": "Published",
         "Version": "1"
       },
@@ -1473,24 +1339,14 @@
           "Name": "AE"
         }
       ],
-      "Operations": [
+      "Bindings": [
         {
-          "domain": "AE",
-          "group": [
-            "USUBJID"
-          ],
-          "id": "$ae_aeout",
-          "name": "AEOUT",
-          "operator": "distinct"
+          "name": "$ae_aeout",
+          "expression": "distinct(AEOUT, domain=\"AE\", group=[USUBJID])"
         },
         {
-          "domain": "AE",
-          "group": [
-            "USUBJID"
-          ],
-          "id": "$ae_aesdth",
-          "name": "AESDTH",
-          "operator": "distinct"
+          "name": "$ae_aesdth",
+          "expression": "distinct(AESDTH, domain=\"AE\", group=[USUBJID])"
         }
       ],
       "Outcome": {

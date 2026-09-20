@@ -21,7 +21,6 @@ import net.cumba.corej.core.gen.WildcardExpander;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionExpression;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.ExpansionDirective;
 import net.cumba.corej.core.model.ExpansionSource;
 import net.cumba.corej.core.model.LevelCheck;
@@ -249,8 +248,8 @@ class CheckLevelCloneSiteTest
         tpl.setOutcome(o);
 
         List<Rule> out = new java.util.ArrayList<>();
-        new DatasetRuleResolver(null).expandSdtmPrefixRules(ae.getMetaData(), "AE", List.of(tpl),
-                out, new RuleGenerationReport());
+        new DatasetRuleResolver(null).specialiseStaticRules(ae, "AE", List.of(tpl), out,
+                new RuleGenerationReport());
 
         assertEquals(1, out.size(), out.toString());
         SequencedMap<Severity, LevelCheck> got = out.getFirst().getCheckLevels();
@@ -272,9 +271,12 @@ class CheckLevelCloneSiteTest
     }
 
 
-    private static CheckConditionLeaf leaf(String aName, String aOperator)
+    private static CheckCondition leaf(String aName, String aOperator)
     {
-        return CheckConditionLeaf.builder().name(aName).operator(aOperator).build();
+        // Backtick-quoted so expansion-token names (`&VAR`) lex as references, exactly as the
+        // authored rulespec templates spell them.
+        String ref = "`" + aName + "`";
+        return expr("empty".equals(aOperator) ? "empty(" + ref + ")" : "not empty(" + ref + ")");
     }
 
 

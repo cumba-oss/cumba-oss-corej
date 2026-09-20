@@ -13,11 +13,6 @@ import net.cumba.corej.core.expr.MetadataOperandMapping;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.MetadataExprScan;
-import net.cumba.corej.core.model.CheckCondition;
-import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionAny;
-import net.cumba.corej.core.model.CheckConditionLeaf;
-import net.cumba.corej.core.model.CheckConditionNot;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.OperationType;
 import net.cumba.corej.core.model.Outcome;
@@ -122,7 +117,7 @@ public final class OutputVariableDeriver
      *
      * <p>
      * ⚠ E-3.4 rejects {@code !--SEQ}, but the per-domain expansion
-     * ({@code DatasetRuleResolver#expandSdtmPrefixRules}) re-validates the <em>substituted</em>
+     * ({@code DatasetRuleResolver#specialiseStaticRules}) re-validates the <em>substituted</em>
      * rule, where the same authored token now reads {@code !LBSEQ} — not a member of the set, so
      * the verbatim test alone lets it through on the way out ({@code Fix #356}; latent, 0
      * carriers). Resolving the wildcard members here against {@link #pinnedDomains} — the identical
@@ -267,20 +262,14 @@ public final class OutputVariableDeriver
         // derivation is the join over every level — a name a weaker level reports must be in the
         // projection whichever level ends up claiming the row. One entry (and it IS getCheckExpr()
         // / getCheck()) for every rule that authors a plain Check:.
+        // Phase 7d (D121): a rule with no compiled expression contributes nothing from its
+        // Check — the retired leaf fallback walked the v1 operator-leaf tree, a shape that no
+        // longer exists (an uncompilable Check is a load error, and a Check-less rule has nothing
+        // to walk either way).
         List<Expr> exprs = checkExprsOf(rule);
-        if (!exprs.isEmpty())
+        for (Expr expr : exprs)
         {
-            for (Expr expr : exprs)
-            {
-                walk.walk(expr, false, false);
-            }
-        }
-        else
-        {
-            for (CheckCondition level : rule.checkConditions())
-            {
-                walkLegacy(level, walk);
-            }
+            walk.walk(expr, false, false);
         }
         contributeOperations(rule, walk);
 
@@ -333,12 +322,7 @@ public final class OutputVariableDeriver
         {
             return false;
         }
-        List<Expr> exprs = checkExprsOf(rule);
-        if (!exprs.isEmpty())
-        {
-            return exprs.stream().anyMatch(OutputVariableDeriver::readsVlm);
-        }
-        return rule.checkConditions().stream().anyMatch(OutputVariableDeriver::checkReadsVlm);
+        return checkExprsOf(rule).stream().anyMatch(OutputVariableDeriver::readsVlm);
     }
 
 
@@ -376,24 +360,6 @@ public final class OutputVariableDeriver
         case Expr.Binary b -> readsVlm(b.left()) || readsVlm(b.right());
         case Expr.Ref r -> r.name().startsWith("define_vlm_");
         case Expr.Lit _ -> false;
-        };
-    }
-
-
-    private static boolean checkReadsVlm(CheckCondition check)
-    {
-        return switch (check)
-        {
-        case CheckConditionAll all -> all.getConditions().stream()
-                .anyMatch(OutputVariableDeriver::checkReadsVlm);
-        case CheckConditionAny any -> any.getConditions().stream()
-                .anyMatch(OutputVariableDeriver::checkReadsVlm);
-        case CheckConditionNot not -> checkReadsVlm(not.getCondition());
-        case CheckConditionLeaf leaf -> (leaf.getName() != null
-                && leaf.getName().startsWith("define_vlm_"))
-                || (leaf.getValue() != null && leaf.getValue().isTextual()
-                        && leaf.getValue().asText().startsWith("define_vlm_"));
-        default -> false;
         };
     }
 
@@ -604,8 +570,11 @@ public final class OutputVariableDeriver
             case Expr.Ref r ->
             {
                 // D2c — a bare token in a value list is a literal, not a column; a $-ref
-                // still names a materialised operation result.
-                if (!inValueList || r.kind() == OperandKind.OPERATION_REF)
+                // still names a materialised operation result. The join-match flag names a join
+                // verdict, never a reportable variable (spec §3.3) — same disposition as
+                // ds_exists' operand (D8); rules consuming it author Output_Variables explicitly.
+                if (r.kind() != OperandKind.MATCHED_FLAG
+                        && (!inValueList || r.kind() == OperandKind.OPERATION_REF))
                 {
                     contribute(r.name(), negatedExistence);
                 }
@@ -672,49 +641,4 @@ public final class OutputVariableDeriver
         }
     }
 
-    // ------------------------------------------------------------------ D2 legacy fallback
-
-    /**
-     * Fix #15 behaviour for rules with no native {@code checkExpr}: leaf targets, skipping
-     * {@code var_not_exists} leaves (D3), {@code additional_columns_*} leaves (runtime-expanded —
-     * see the class javadoc) and the {@code ds_*} presence leaves, whose name is a dataset
-     * identifier (D8).
-     */
-    private static void walkLegacy(CheckCondition check, Walk walk)
-    {
-        switch (check)
-        {
-        case CheckConditionAll all ->
-        {
-            for (CheckCondition c : all.getConditions())
-            {
-                walkLegacy(c, walk);
-            }
-        }
-        case CheckConditionAny any ->
-        {
-            for (CheckCondition c : any.getConditions())
-            {
-                walkLegacy(c, walk);
-            }
-        }
-        case CheckConditionNot not -> walkLegacy(not.getCondition(), walk);
-        case CheckConditionLeaf leaf ->
-        {
-            String name = leaf.getName();
-            String operator = leaf.getOperator();
-            if (name != null && !name.isEmpty() && !"var_not_exists".equals(operator)
-                    && !"ds_not_exists".equals(operator) && !"ds_exists".equals(operator)
-                    && !"additional_columns_empty".equals(operator)
-                    && !"additional_columns_not_empty".equals(operator))
-            {
-                walk.contribute(name, false);
-            }
-        }
-        default ->
-        {
-            // CheckConditionConstant / CheckConditionExpression — no leaf columns here
-        }
-        }
-    }
 }

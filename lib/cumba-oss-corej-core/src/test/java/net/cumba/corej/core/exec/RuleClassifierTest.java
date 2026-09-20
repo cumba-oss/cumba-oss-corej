@@ -37,7 +37,11 @@ class RuleClassifierTest
     {
         try
         {
-            return MAPPER.readValue(json, Rule.class);
+            Rule bound = MAPPER.readValue(json, Rule.class);
+            // An external binder must materialise the Bindings itself (7b) — see
+            // RulePackageLoader.normalizeOperations' javadoc.
+            RulePackageLoader.normalizeOperations(bound);
+            return bound;
         }
         catch (Exception e)
         {
@@ -52,11 +56,18 @@ class RuleClassifierTest
     }
 
 
-    /** A Check with a single operator leaf. */
+    /** A Check with a single condition, in the operator's expression spelling. */
     private static String leaf(String name, String operator)
     {
-        return "{\"Check\":{\"all\":[{\"name\":\"" + name + "\",\"operator\":\"" + operator
-                + "\"}]}}";
+        String expression = switch (operator)
+        {
+        case "ds_not_exists" -> "ds_not_exists(\\\"" + name + "\\\")";
+        case "var_not_exists" -> "var_not_exists(\\\"" + name + "\\\")";
+        case "var_is_null" -> "var_is_null(" + name + ")";
+        case "non_empty" -> "not empty(" + name + ")";
+        default -> throw new IllegalArgumentException(operator);
+        };
+        return "{\"Check\":{\"all\":[{\"expression\":\"" + expression + "\"}]}}";
     }
 
     /**
@@ -114,8 +125,8 @@ class RuleClassifierTest
         /** Shape B: a top-level {@code ds_exists} guard conjunct plus real data-column leaves. */
         private static String shapeB()
         {
-            return "{\"Check\":{\"all\":[{\"name\":\"TV\",\"operator\":\"ds_exists\"},"
-                    + "{\"name\":\"VISIT\",\"operator\":\"empty\"}]}}";
+            return "{\"Check\":{\"all\":[{\"expression\": \"ds_exists(\\\"TV\\\")\"},"
+                    + "{\"expression\": \"empty(VISIT)\"}]}}";
         }
 
 
@@ -185,9 +196,8 @@ class RuleClassifierTest
             // Positive evidence, not absence of evidence (Q2): with operation calls visible as
             // usages, a plain column genuinely demands the contents frame. Record stays LIKELY
             // rather than CERTAIN: a per-record leaf is a necessary, not a sufficient, sign.
-            RuleClassifier.Derived<Sensitivity> s = RuleClassifier
-                    .deriveSensitivity(rule("{\"Check\":{\"all\":[{\"name\":\"AESEV\",\"operator\":"
-                            + "\"equal_to\",\"value\":\"MILD\",\"value_is_literal\":true}]}}"));
+            RuleClassifier.Derived<Sensitivity> s = RuleClassifier.deriveSensitivity(
+                    rule("{\"Check\":{\"all\":[{\"expression\": \"AESEV == \\\"MILD\\\"\"}]}}"));
             assertEquals(Sensitivity.RECORD, s.value());
             assertEquals(RuleClassifier.Confidence.LIKELY, s.confidence());
         }
@@ -215,7 +225,7 @@ class RuleClassifierTest
         {
             assertEquals(Sensitivity.GROUP,
                     sensitivity("{\"Grouping_Variables\":[\"USUBJID\"],\"Check\":{\"all\":[{"
-                            + "\"name\":\"AVAL\",\"operator\":\"non_empty\"}]}}"));
+                            + "\"expression\":\"not empty(AVAL)\"}]}}"));
         }
 
 
@@ -230,8 +240,8 @@ class RuleClassifierTest
         void anEntailedPositiveAnchorMakesItDatasetNotStudy()
         {
             assertEquals(Sensitivity.DATASET,
-                    sensitivity("{\"Check\":{\"all\":[{\"name\":\"MS\",\"operator\":\"ds_exists\"},"
-                            + "{\"name\":\"MB\",\"operator\":\"ds_not_exists\"}]}}"));
+                    sensitivity("{\"Check\":{\"all\":[{\"expression\": \"ds_exists(\\\"MS\\\")\"},"
+                            + "{\"expression\": \"ds_not_exists(\\\"MB\\\")\"}]}}"));
         }
 
 
@@ -239,7 +249,7 @@ class RuleClassifierTest
         void aSingleBranchAnyStillEntailsItsAnchor()
         {
             assertEquals(Sensitivity.DATASET, sensitivity(
-                    "{\"Check\":{\"any\":[{\"name\":\"TT\",\"operator\":" + "\"ds_exists\"}]}}"));
+                    "{\"Check\":{\"any\":[{\"expression\": \"ds_exists(\\\"TT\\\")\"}]}}"));
         }
 
 
@@ -255,18 +265,18 @@ class RuleClassifierTest
         @Test
         void presenceOnlyChecksAreDatasetLevel()
         {
-            assertEquals(Sensitivity.DATASET, sensitivity(
-                    "{\"Check\":{\"all\":[{\"name\":\"TRTPGy\",\"operator\":\"var_exists\"},"
-                            + "{\"name\":\"TRTPGyN\",\"operator\":\"var_not_exists\"}]}}"));
+            assertEquals(Sensitivity.DATASET,
+                    sensitivity(
+                            "{\"Check\":{\"all\":[{\"expression\": \"var_exists(\\\"TRTPGy\\\")\"},"
+                                    + "{\"expression\": \"var_not_exists(\\\"TRTPGyN\\\")\"}]}}"));
         }
 
 
         @Test
         void aPerRecordLeafMakesItRecord()
         {
-            assertEquals(Sensitivity.RECORD,
-                    sensitivity("{\"Check\":{\"all\":[{\"name\":\"AESEV\",\"operator\":"
-                            + "\"is_not_contained_by\",\"value\":[\"MILD\"]}]}}"));
+            assertEquals(Sensitivity.RECORD, sensitivity(
+                    "{\"Check\":{\"all\":[{\"expression\": \"AESEV not in [\\\"MILD\\\"]\"}]}}"));
         }
 
 
@@ -275,9 +285,8 @@ class RuleClassifierTest
         {
             // §3.4: DOMAIN is constant within a dataset, so a regex on it is one verdict per
             // dataset — and the regex operand must not be misread as a column reference.
-            assertEquals(Sensitivity.DATASET,
-                    sensitivity("{\"Check\":{\"all\":[{\"name\":\"DOMAIN\",\"operator\":"
-                            + "\"matches_regex\",\"value\":\"^[^A-Z]\"}]}}"));
+            assertEquals(Sensitivity.DATASET, sensitivity(
+                    "{\"Check\":{\"all\":[{\"expression\": \"DOMAIN =~ /^[^A-Z]/\"}]}}"));
         }
 
 
@@ -285,30 +294,26 @@ class RuleClassifierTest
         void aRecordScopedOperationMakesItRecord()
         {
             // `is_last_in_group` returns a GroupedResult — grounded from OperationExecutor.
-            assertEquals(Sensitivity.RECORD,
-                    sensitivity("{\"Operations\":[{\"id\":\"$last\",\"operator\":"
-                            + "\"is_last_in_group\"}],\"Check\":{\"all\":[{\"name\":\"$last\","
-                            + "\"operator\":\"equal_to\",\"value\":true}]}}"));
+            assertEquals(Sensitivity.RECORD, sensitivity(
+                    "{\"Bindings\":[{\"name\": \"$last\", \"expression\": \"is_last_in_group()\"}],\"Check\":{\"all\":[{\"expression\": \"$last == true\"}]}}"));
         }
 
 
         @Test
         void aGroupedOperationIsRecordScopedWhateverItsOperator()
         {
-            assertEquals(Sensitivity.RECORD,
-                    sensitivity("{\"Operations\":[{\"id\":\"$n\",\"operator\":\"record_count\","
-                            + "\"group\":[\"USUBJID\"]}],\"Check\":{\"all\":[{\"name\":\"$n\","
-                            + "\"operator\":\"greater_than\",\"value\":1}]}}"));
+            assertEquals(Sensitivity.RECORD, sensitivity(
+                    "{\"Bindings\":[{\"name\": \"$n\", \"expression\": \"record_count(group=[USUBJID])\"}],\"Check\":{\"all\":[{\"expression\": \"$n > 1\"}]}}"));
         }
 
 
         @Test
         void studyLevelOperationsDoNotCountAsReadingTheDataset()
         {
-            assertEquals(Sensitivity.STUDY,
-                    sensitivity("{\"Operations\":[{\"id\":\"$ds\",\"operator\":\"dataset_names\"}],"
-                            + "\"Check\":{\"all\":[{\"name\":\"$ds\",\"operator\":"
-                            + "\"not_contains_all\",\"value\":\"$ds\"}]}}"));
+            assertEquals(Sensitivity.STUDY, sensitivity(
+                    "{\"Bindings\":[{\"name\": \"$ds\", \"expression\": \"dataset_names()\"}],"
+                            + "\"Check\":{\"all\":[{\"expression\":"
+                            + "\"not contains_all($ds, $ds)\"}]}}"));
         }
 
 
@@ -362,7 +367,7 @@ class RuleClassifierTest
         void theCursorFormVarIsNullRulesKeepTheirRecordDerivationAndRationale()
         {
             RuleClassifier.Derived<Sensitivity> s = RuleClassifier
-                    .deriveSensitivity(rule("{\"Operations\":[{\"id\":\"$permissible_variables\","
+                    .deriveSensitivity(rule("{\"Bindings\":[{\"name\":\"$permissible_variables\","
                             + "\"expression\":\"get_dataset_filtered_variables(key_name=\\\"core\\\","
                             + " key_value=\\\"Perm\\\")\"}],\"Check\":{\"expression\":\"varname() in"
                             + " $permissible_variables and var_is_null(varname())\"}}"));
@@ -384,8 +389,8 @@ class RuleClassifierTest
         @Test
         void reportsTheNamedAnchorDatasets()
         {
-            Rule r = rule("{\"Check\":{\"all\":[{\"name\":\"TA\",\"operator\":\"ds_exists\"},"
-                    + "{\"name\":\"EX\",\"operator\":\"ds_not_exists\"}]}}");
+            Rule r = rule("{\"Check\":{\"all\":[{\"expression\": \"ds_exists(\\\"TA\\\")\"},"
+                    + "{\"expression\": \"ds_not_exists(\\\"EX\\\")\"}]}}");
             assertEquals(List.of("TA"), RuleClassifier.datasetAnchors(r));
         }
 
@@ -395,14 +400,13 @@ class RuleClassifierTest
         {
             // The retired generic `exists` (rejected at load) anchors nothing; the column form
             // anchors nothing; only ds_exists names a dataset.
-            Rule generic = rule(
-                    "{\"Check\":{\"all\":[{\"name\":\"TA\",\"operator\":\"exists\"}]}}");
+            Rule generic = rule("{\"Check\":{\"all\":[{\"expression\": \"exists(TA)\"}]}}");
             assertTrue(RuleClassifier.datasetAnchors(generic).isEmpty());
             Rule column = rule(
-                    "{\"Check\":{\"all\":[{\"name\":\"TA\",\"operator\":\"var_exists\"}]}}");
+                    "{\"Check\":{\"all\":[{\"expression\": \"var_exists(\\\"TA\\\")\"}]}}");
             assertTrue(RuleClassifier.datasetAnchors(column).isEmpty());
             Rule dataset = rule(
-                    "{\"Check\":{\"all\":[{\"name\":\"TA\",\"operator\":\"ds_exists\"}]}}");
+                    "{\"Check\":{\"all\":[{\"expression\": \"ds_exists(\\\"TA\\\")\"}]}}");
             assertEquals(List.of("TA"), RuleClassifier.datasetAnchors(dataset));
         }
 
@@ -410,8 +414,8 @@ class RuleClassifierTest
         @Test
         void aNegatedAnchorDoesNotCount()
         {
-            Rule r = rule("{\"Check\":{\"all\":[{\"not\":{\"name\":\"TA\",\"operator\":"
-                    + "\"ds_exists\"}}]}}");
+            Rule r = rule(
+                    "{\"Check\":{\"all\":[{\"not\":{\"expression\": \"ds_exists(\\\"TA\\\")\"}}]}}");
             assertTrue(RuleClassifier.datasetAnchors(r).isEmpty());
         }
 
@@ -419,8 +423,8 @@ class RuleClassifierTest
         @Test
         void anUnentailedAnchorUnderAMultiBranchAnyDoesNotCount()
         {
-            Rule r = rule("{\"Check\":{\"any\":[{\"name\":\"TA\",\"operator\":\"ds_exists\"},"
-                    + "{\"name\":\"TE\",\"operator\":\"ds_exists\"}]}}");
+            Rule r = rule("{\"Check\":{\"any\":[{\"expression\": \"ds_exists(\\\"TA\\\")\"},"
+                    + "{\"expression\": \"ds_exists(\\\"TE\\\")\"}]}}");
             assertTrue(RuleClassifier.datasetAnchors(r).isEmpty());
         }
 
@@ -455,8 +459,7 @@ class RuleClassifierTest
             // `equal_to` with value_is_literal must not contribute "variable_label" as a
             // metadata operand — the rule stays a per-record column check.
             assertEquals(Sensitivity.RECORD, sensitivity(
-                    "{\"Check\":{\"all\":[{\"name\":\"AEACN\",\"operator\":\"equal_to\","
-                            + "\"value\":\"variable_label\",\"value_is_literal\":true}]}}"));
+                    "{\"Check\":{\"all\":[{\"expression\": \"AEACN == \\\"variable_label\\\"\"}]}}"));
         }
 
 
@@ -464,9 +467,8 @@ class RuleClassifierTest
         void aColumnValuedOperatorContributesItsValueAsAnOperand()
         {
             // is_not_unique_set's value names key COLUMNS, so the rule reads per-record data.
-            assertEquals(Sensitivity.RECORD,
-                    sensitivity("{\"Check\":{\"all\":[{\"name\":\"DSCAT\",\"operator\":"
-                            + "\"is_not_unique_set\",\"value\":[\"USUBJID\",\"EPOCH\"]}]}}"));
+            assertEquals(Sensitivity.RECORD, sensitivity("{\"Check\":{\"all\":[{\"expression\":"
+                    + "\"not is_unique_set([DSCAT, USUBJID, EPOCH])\"}]}}"));
         }
 
 

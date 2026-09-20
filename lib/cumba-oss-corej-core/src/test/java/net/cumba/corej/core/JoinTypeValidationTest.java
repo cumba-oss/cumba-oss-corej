@@ -47,8 +47,7 @@ class JoinTypeValidationTest
                 "Sensitivity":"Record",\
                 "Match_Datasets":[{"Name":"ADSL","Keys":["USUBJID"]%s}],\
                 "Outcome":{"Message":"m","Output_Variables":["USUBJID","AGE"]},\
-                "Check":{"all":[{"name":"AGE","operator":"not_equal_to","value":"ADSL.AGE"}]}}}}"""
-                .formatted(joinTypeJson);
+                "Check":{"all":[{"expression": "AGE != ADSL.AGE"}]}}}}""".formatted(joinTypeJson);
     }
 
 
@@ -216,7 +215,7 @@ class JoinTypeValidationTest
                 "Match_Datasets":[{"Name":"ADSL","Keys":["USUBJID"],"Join_Type":"left"},\
                 {"Name":"ADAE","Keys":["USUBJID"],"Join_Type":"outer"}],\
                 "Outcome":{"Message":"m","Output_Variables":["USUBJID","AGE"]},\
-                "Check":{"all":[{"name":"AGE","operator":"not_equal_to","value":"ADSL.AGE"}]}}}}""";
+                "Check":{"all":[{"expression": "AGE != ADSL.AGE"}]}}}}""";
         Rule rule = RulePackageLoader.loadFromString(json).getRules().get("x");
         assertNotNull(rule);
         String error = rule.getLoadError();

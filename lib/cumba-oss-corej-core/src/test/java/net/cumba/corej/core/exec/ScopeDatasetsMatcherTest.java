@@ -1,10 +1,8 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import net.cumba.corej.core.model.DatasetScope;
@@ -56,19 +54,6 @@ class ScopeDatasetsMatcherTest
         Rule rule = datasetScoped(null, null);
         assertNull(ScopeMatcher.describeDatasetMismatch(rule, "ADSL"));
         assertNull(ScopeMatcher.describeDatasetMismatch(rule, null), "a null name gates nothing");
-    }
-
-
-    @Test
-    @DisplayName("Include selects the named file and rejects every other")
-    void includeLiteral()
-    {
-        Rule rule = datasetScoped(List.of("ADSL"), null);
-        assertNull(ScopeMatcher.describeDatasetMismatch(rule, "ADSL"));
-        assertTrue(ScopeMatcher.matchesDatasets(rule, "ADSL"));
-        assertEquals("dataset ADAE not in Scope.Datasets.Include [ADSL]",
-                ScopeMatcher.describeDatasetMismatch(rule, "ADAE"));
-        assertFalse(ScopeMatcher.matchesDatasets(rule, "ADAE"));
     }
 
 

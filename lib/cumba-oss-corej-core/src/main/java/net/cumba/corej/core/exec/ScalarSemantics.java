@@ -19,18 +19,30 @@ import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Shared, parity-critical scalar semantics for per-row operators.
+ * Shared, single-sourced scalar semantics for per-row operators.
  *
  * <p>
  * These are the pure, side-effect-free helpers that encode the subtle null/missing handling, the
  * ISO-vs-SAS date comparison rules (timezone normalization, precision truncation, {@code 1e-9}
  * epsilon), the structural ISO-8601 date-prefix validators, the integer check and the ISO-8601
- * duration grammar. They were extracted from {@link OperatorRegistry} so that <b>both</b> the
- * legacy operator engine and the native expression evaluator (package
- * {@code net.cumba.corej.core.expr.eval}) compute over the <i>same</i> code. Parity between the two
- * backends is therefore by construction, and the existing {@code OperatorRegistry*Test} suites
- * (which exercise the legacy engine that now delegates here) double as the parity proof for these
- * primitives.
+ * duration grammar. They exist so that every caller answers the same scalar question the same way:
+ * the native expression evaluator (package {@code net.cumba.corej.core.expr.eval}, chiefly
+ * {@code Primitives}), the {@code Operations}/{@code Bindings} pre-pass in
+ * {@code OperationExecutor}, the lookup and merge machinery ({@code DatasetLookup},
+ * {@code ValueResolver}, {@code ChildMatchPreMerger}, {@code GroupSemantics}) and
+ * {@link OperatorRegistry}'s name-existence probes. The {@code ScalarSemantics*Test} suites — plus
+ * {@code NumericToleranceTest} and {@code IsoDateLayoutDifferentialTest} — pin these primitives
+ * directly.
+ * </p>
+ *
+ * <p>
+ * ⚠ Corrected 2026-09-18: this paragraph used to say the helpers were extracted from
+ * {@link OperatorRegistry} so that "both the legacy operator engine and the native expression
+ * evaluator" compute over the same code, and that the {@code OperatorRegistry*Test} suites "double
+ * as the parity proof" for them. Both halves are stale. The legacy per-row operator engine is gone
+ * — removed once every shipped rule compiled to a native {@code Expr}, see {@link OperatorRegistry}
+ * (whose own name is likewise historical) — so there is one engine and no two-backend parity to
+ * prove; and no {@code OperatorRegistry*Test} class exists any more.
  * </p>
  *
  * <p>
@@ -314,8 +326,8 @@ public final class ScalarSemantics
      * <p>
      * The predicate itself now lives on the datatable layer as
      * {@link IDataValue#isEmptyOrMissing()} (so {@code DataValueSupport} and the column
-     * implementations can reach it, which they cannot do for a {@code cumba-oss-corej-core} class);
-     * this method is the null-safe wrapper its callers already depend on.
+     * implementations can reach it, which they cannot do for a {@code corej-core} class); this
+     * method is the null-safe wrapper its callers already depend on.
      * </p>
      * <p>
      * ⚠ When you have the column and the row rather than an {@link IDataValue}, call
@@ -335,6 +347,176 @@ public final class ScalarSemantics
 
 
     /**
+     * ⭐⭐ <b>THE VALUE CONTRACT OF THE EXPRESSION ENGINE — the cell a producer hands back when it
+     * has no value.</b>
+     *
+     * <h4>⚑ TARGET-INVARIANT(null-free-value-channel)</h4>
+     *
+     * <p>
+     * <b>The rule (owner, 2026-09-18):</b> a variable value is either a real value (a string or a
+     * number) or a {@link net.cumba.datatable.values.MissingValue}; a <b>function result</b>, an
+     * <b>expression result</b> and a <b>parameter passed into</b> a function or operator are
+     * likewise each either a real value or a {@code MissingValue}. <b>Never {@code null}</b>, in
+     * any of those four channels. There is no third state: {@code null} is not a value the engine
+     * may hold, produce, pass or propagate, and it was never defined nor allowed as one.
+     * </p>
+     *
+     * <p>
+     * ⛔⛔ <b>This is the TARGET state, NOT a statement of present fact.</b> A {@code null} value is
+     * still producible in this engine as of 2026-09-18 — that is the defect, and closing it is a
+     * workstream with its own plan, not something this method's existence accomplishes. Where this
+     * sentence appears in code it is marked {@code ⚑ TARGET-INVARIANT(null-free-value-channel)} so
+     * the whole population is greppable.
+     * </p>
+     *
+     * <p>
+     * ⭐ <b>The expected count, because §6 requires one: the marker appears 16× in this repo</b>
+     * (re-derived 2026-09-18) — so a grep returning a different number is itself a signal. ⚠ And
+     * the count is <b>asserted</b>, not merely stated: {@code TargetInvariantMarkerCensusTest} reds
+     * on any movement, with a sensitivity arm proving its counter still counts, because a number
+     * written in prose is not re-derived by anything and erosion of the whole marker set to zero
+     * would otherwise be silent — the exact failure mode §6 names. It also reds on either of the
+     * two RETIRED rival spellings coming back. ⛔ The other two repos of the plan (the datatable
+     * repository, the rules repository) carry their own occurrences and need their own censuses; a
+     * run here cannot read them, so no tree-wide total is asserted anywhere.
+     * </p>
+     *
+     * <p>
+     * ⭐ <b>What must be true before the rule may be rewritten as fact:</b> {@code null} must be
+     * <em>unrepresentable</em>, not merely absent — every signature in the four channels carrying a
+     * non-null type with NullAway enforcing it. On that day, each
+     * {@code ⚑ TARGET-INVARIANT(null-free-value-channel)} marker becomes the plain assertion <i>"a
+     * value is a real value or a {@code MissingValue}, never {@code null} — enforced by NullAway at
+     * {@code ERROR} under {@code -Werror}"</i>, and the markers are deleted. ⛔ Until then do not
+     * promote it, and ⛔ never buy a green by re-adding {@code @Nullable}, by
+     * {@code @SuppressWarnings}, or by a {@code requireNonNull} that throws where a
+     * {@code MissingValue} is the right answer — a throw is not an improvement on a null.
+     * </p>
+     *
+     * <h4>How far the types actually enforce it (measured 2026-09-18)</h4>
+     * <ul>
+     * <li>✅ <b>The typed-cell channel IS enforced.</b>
+     * {@link net.cumba.corej.core.expr.eval.ComputedVector#typed}'s producer,
+     * {@link net.cumba.corej.core.expr.eval.TypedValue#typedCell}, {@link JoinLookup#lookupValue}
+     * and the three private row functions of {@code ExprCompiler} ({@code arithmeticCell},
+     * {@code substitutedScalarCell}, {@code firstJoinedCell}) had their {@code @Nullable} removed;
+     * NullAway then reported exactly <b>11</b> producers returning {@code null}, all in this
+     * module, and all now return a value. A new violation there fails the compile.
+     * <p>
+     * ⚠ <b>Returning a value is not the same as returning the RIGHT value.</b> Eight of the eleven
+     * were genuinely computed non-results and this method is their correct answer. The other
+     * <b>three</b> — all in {@code substitutedScalarCell} — owed a present cell's own missing
+     * identity or an absent column's default value, and returned the behaviour-preserving computed
+     * {@code MIS} instead.
+     * </p>
+     * <p>
+     * ⭐ <b>All three have since been corrected</b> ({@code PLAN-null-free-value-channel} phases 2,
+     * 3 and 5): the present-column arm hands its own cell through, the absent-from-primary arm
+     * takes the D76 default, and the dotted not-supplied arm reads the rule's expectation — as does
+     * the AUTHORED dotted form {@code dottedVector}, fixed in the same pass because the substituted
+     * and authored spellings of one operand must not diverge. ⇒ {@code ExprCompiler} carries
+     * <b>no</b> {@code ⚑ TARGET-INVARIANT(null-free-value-channel)} marker any more; what pins
+     * those arms is {@code SubstitutedScalarValueChannelTest} and
+     * {@code DottedNotSuppliedDefaultTest}. ⚠ The verdict movement this javadoc recorded as
+     * unmeasurable from this repo was then <b>measured</b> — an ordered install plus the rule
+     * corpus with {@code -Dcorej.findingsSnapshot=true} moved <b>zero</b> findings. That says no
+     * rule exercises those paths with the affected shapes; it is <b>not</b> evidence the code is
+     * inert.
+     * </p>
+     * </li>
+     * <li>❌ <b>The untyped result channel is NOT enforced.</b> The plain
+     * {@code ComputedVector(int, DataValueType, IntFunction<Object>)} producer — which every VALUE
+     * builtin in {@code BuiltinFunctions} uses — still returns {@code null} in many places, and
+     * NullAway does not reject it: it does not check a lambda's return against a generic type
+     * argument, so {@code IntFunction<Object>} is unenforced however the package is annotated.
+     * Hardening it needs a dedicated {@code @FunctionalInterface} with an explicitly non-null
+     * return; the population behind it has not been measured.</li>
+     * </ul>
+     *
+     * <h4>⚑ Which non-value to produce is a THREE-way choice, not one</h4>
+     * <p>
+     * Getting it wrong swaps one defect for another, so classify the site before picking:
+     * </p>
+     * <ul>
+     * <li><b>A present column whose cell is missing</b> ⇒ hand <em>that cell</em> through, identity
+     * and all ({@code .A} stays {@code .A} — D11/D12/D85c). ⛔ Never this method: minting a fresh
+     * {@link net.cumba.datatable.values.MissingValue#MIS} here <em>destroys</em> a supplied
+     * identity.</li>
+     * <li><b>An absent column</b> ⇒ its type-derived constant, because an absent column is a
+     * CONSTANT-VALUE column whose value is known up front for every row: character ⇒ {@code ""} (a
+     * present empty string), numeric ⇒ {@code MissingValue.MIS}. That is
+     * {@link net.cumba.datatable.values.DataValueSupport#defaultForType}, and D76 supplies the
+     * expectation when the column is absent and so has no declared type of its own.</li>
+     * <li><b>A genuinely COMPUTED non-result</b> — {@code num("abc")}, division by zero, an
+     * unresolvable {@code ${…}} substitution ⇒ <b>this method</b>: {@code MissingValue.MIS}, the
+     * computed-missing identity (D36 #8).</li>
+     * </ul>
+     *
+     * <h4>⛔⛔ Three claims sit side by side above. They MUST NOT be collapsed into one</h4>
+     * <p>
+     * ⚠⚠ <b>This is how the rule failed while being on file.</b> It was recorded on
+     * <b>2026-08-04</b> and restated in a plan's own <em>title</em>, quoted twice in the session it
+     * was then broken in. What defeated all of that was a single table row carrying <i>"missing =
+     * empty (synonyms)"</i> in the SAME cell as <i>"{@code null} is mapped to missing"</i> — two
+     * true-sounding halves a reader can read as one claim, arriving at <i>"a missing character cell
+     * is an empty string"</i>. So they are set out here as three separate facts, and the separation
+     * is the point:
+     * </p>
+     * <ol>
+     * <li>an <b>ABSENT character column</b> is {@code ""} — it has no cells at all, so its value is
+     * a per-type constant, the same one for every row;</li>
+     * <li>a <b>PRESENT column's MISSING cell</b> is <b>that cell's own</b>
+     * {@link net.cumba.datatable.values.MissingValue} — ⛔ <b>NOT</b> {@code ""}, and ⛔ not a
+     * freshly minted {@code MIS} either. Owner, 2026-09-18: <i>"an absent column gets empty string.
+     * A present column can be missing, and <b>missing is not empty string</b>"</i>, retiring
+     * <i>"the engine treats a missing character cell exactly like an empty string"</i>;</li>
+     * <li>a genuinely <b>STORED</b> empty string is {@code ""} and is a <b>present value</b>, not a
+     * blank (D34 #1 — a tautology, and still true).</li>
+     * </ol>
+     * <p>
+     * ⇒ {@code ""} and a {@code MissingValue} are <b>different values</b>, and which one a
+     * character cell holds is decided by <b>whether the COLUMN exists</b> — never by the type, and
+     * never by the two being interchangeable. ⛔ A citation of D34 #1 does not license (2): the ~11
+     * javadocs in this module that cite it cite a true claim, several of them as a deliberate
+     * control on this very boundary, so re-labelling them would pin the retired reading while
+     * looking corrected.
+     * </p>
+     * <p>
+     * ⛔⛔ <b>These three are the RULE, not a description of today's engine.</b> Sites that still
+     * answer otherwise — {@link #isMissing} and, behind it, {@code Primitives.empty} /
+     * {@code non_empty}, which fold {@code null}, a {@code MissingValue} <em>and</em> {@code ""}
+     * into one "blank"; {@link #resolvedString}'s {@code null} for a blank cell; every per-operator
+     * note that a missing cell folds to {@code ""} — are instances of the violation under repair,
+     * and are pinned as deliberately unchanged so that changing them is an act rather than drift. ⛔
+     * Do not flip such a note to the answer above: that writes the target as fact, which is the
+     * shape this whole section exists to prevent. Whether the {@link #isMissing} fold must also
+     * stop being blind to the difference is a <b>separate owner question, open as of 2026-09-18</b>
+     * — see {@link #resolvedString}.
+     * </p>
+     *
+     * <p>
+     * ⚠⚠ <b>Why prose alone is not enough here, measured.</b> Two tests pinned this class's
+     * {@link #resolvedString} <b>{@code String}</b> contract and <b>nothing pinned the
+     * {@code IDataValue} one</b>, so every gate stayed green over a channel that produced
+     * {@code null} values. Any statement of this rule must therefore travel with something that
+     * FAILS when it is violated — the removed {@code @Nullable}s above for the typed channel, and
+     * {@code ScalarSemanticsComputedMissingTest} for this method's own contract.
+     * </p>
+     *
+     * @return a cell carrying {@link net.cumba.datatable.values.MissingValue#MIS} — the
+     *         computed-missing identity
+     */
+    public static IDataValue computedMissing()
+    {
+        // Byte-identical to the sentinel TypedValue.typedCell used to mint for a null cell
+        // (DataValueSupport.getAsDataValue(null, MISSING)): both answer new
+        // DataValueMissing(MissingValue.MIS). Routed through defaultForType so the engine has ONE
+        // spelling of "no value" rather than two that must be kept in step.
+        return DataValueSupport.defaultForType(DataValueType.MISSING);
+    }
+
+
+    /**
      * <b>The engine-facing string form of a cell — the one place that decides how a blank cell
      * resolves.</b>
      *
@@ -345,14 +527,55 @@ public final class ScalarSemantics
      * fast path for the overwhelmingly common case of a populated character cell.
      * </p>
      *
-     * <h4>⚠⚠ Why a blank character cell does NOT yet resolve to {@code ""}</h4>
+     * <h4>⛔ RETIRED (owner, 2026-09-18): a missing character cell does NOT resolve to
+     * {@code ""}</h4>
      * <p>
-     * The settled design wants the engine <em>blind</em> to the difference between a source
-     * {@code null} and an empty string in a character column, which means a blank character cell
-     * should resolve to {@code ""} — the direction the owner specified ("treat a
-     * {@code MissingValue} in a char column like an empty string"). <b>That step is a separate
-     * decision (Q5) with its own acceptance criterion; the {@code date_*} defect that used to block
-     * it is FIXED (Q16).</b>
+     * ⭐⭐ <b>Owner ruling, 2026-09-18:</b> <i>"'the engine treats a missing character cell exactly
+     * like an empty string' is not required anymore and now even dangerous. An <b>absent column</b>
+     * gets empty string. A <b>present column can be missing</b>, and <b>missing is not empty
+     * string</b>."</i>
+     * </p>
+     * <p>
+     * ⇒ The step this javadoc used to carry as PARKED behind an owner decision (Q5 — resolve a
+     * blank character cell to {@code ""} so the engine could not tell a source {@code null} from an
+     * empty string) is <b>retired, not pending</b>. The {@code null} answer below is the contract,
+     * and the <em>distinction</em> it preserves is now the valuable property: on a column that
+     * exists, a cell that is <em>missing</em> answers {@code null}, and only a genuinely stored
+     * empty string answers {@code ""}. The two must stay tellable apart in this text channel —
+     * pinned by {@code ScalarSemanticsResolvedStringTest.missingAndEmptyStringStayDistinguishable},
+     * which asserts both directions.
+     * </p>
+     * <p>
+     * ⚠ The <em>absent-column</em> half of the ruling is served elsewhere and is unaffected by
+     * anything below — but ⭐ it is <b>type-DEPENDENT</b>, and this paragraph used to describe it as
+     * if it were not. An absent column folds to its {@code D76} type default <em>for the type the
+     * expression expects</em>: <b>numeric-expected → {@code MissingValue.MIS}</b>, otherwise
+     * {@code ""}. The {@code ""} is the <em>char</em> case alone, never the whole rule.
+     * </p>
+     * <p>
+     * ⛔ Reading {@code ""} off here as <em>the</em> absent-column answer is the mistake the old
+     * wording invited, and the dangerous kind: the claim is <b>true for char</b>, so a reader
+     * checks it, finds it correct, and carries away a type-independent rule that is false. See
+     * {@link DatasetLookup#lookupValue}'s {@code colIdx < 0} arm and
+     * {@link KeyMatchExpandedLookup#lookupValue} — both take the expectation from
+     * {@code JoinLookup.lookupValue(IDataTable, long, String, boolean)}, the <b>4-arg overload that
+     * IS that channel</b>; the 3-arg form answers as if nothing numeric were expected. The reason
+     * the arm is type-dependent is the dotted-parity ruling (owner, 2026-09-18): a joined variable
+     * and a primary variable differ in <b>exactly one</b> respect — the dotted access form — and in
+     * every other respect, <b>available or absent</b>, they behave identically.
+     * </p>
+     * <p>
+     * ⚑ None of this moves {@code resolvedString}: it is only ever reached with a column that
+     * <em>exists</em>, so it never sees the absent case, and its own contract below is unchanged.
+     * </p>
+     * <p>
+     * ⛔⛔ <b>What the ruling does NOT decide, and what must therefore not drift:</b> whether
+     * {@link #isMissing} — and through it {@code Primitives.empty} / {@code non_empty}, which fold
+     * {@code null}, a {@code MissingValue} <em>and</em> {@code ""} into one "blank" answer — must
+     * also stop being blind to the difference. That is a <b>separate owner question, open as of
+     * 2026-09-18</b>. {@code isMissing}'s behaviour is deliberately unchanged, and it is pinned as
+     * unchanged by {@code ScalarSemanticsResolvedStringTest.theBlankFoldBehindEmptyIsUnchanged} so
+     * that a later ruling on it is a deliberate act rather than drift.
      * </p>
      * <p>
      * ⚠ History, kept because the stale form of this comment misled a ruling once. It used to claim
@@ -372,20 +595,15 @@ public final class ScalarSemantics
      * and nothing else reaches it.
      * </p>
      * <p>
-     * ⚠ The Q5 flip is still not a no-op for {@code date_*}, for a narrower reason: a {@code null}
-     * comparand returns {@code negate} (the absent-column contract — {@code date_not_equal_to}
-     * FIRES on it), while a {@code ""} comparand saturates to {@code false} on character leaves —
-     * and flips to <b>all six operators {@code true}</b> on numeric-typed leaves (the mixed-shape
-     * branch above). Resolving blanks to {@code ""} would therefore still move
-     * {@code date_not_equal_to} verdicts on character leaves and every operator on numeric ones, in
-     * merged/joined columns too (see {@code PolymorphicMergedColumn.getDataValue}, which maps a
-     * blank parent cell to the missing sentinel whatever the column's type) — which is why the step
-     * still needs an owner decision rather than being a free rename.
-     * </p>
-     * <p>
-     * ⚠ When that decision lands, the blank branch below becomes
-     * {@code aDeclaredType == DataValueType.STRING ? "" : null} and nothing else here changes —
-     * which is why {@code aDeclaredType} is already a parameter.
+     * ⚑ What the retired flip <em>would</em> have moved, kept as the record of why it was never the
+     * free rename it looked like: a {@code null} comparand returns {@code negate} (the
+     * absent-column contract — {@code date_not_equal_to} FIRES on it), while a {@code ""} comparand
+     * saturates to {@code false} on character leaves — and flips to <b>all six operators
+     * {@code true}</b> on numeric-typed leaves (the mixed-shape branch above). Resolving blanks to
+     * {@code ""} would have moved {@code date_not_equal_to} verdicts on character leaves and every
+     * operator on numeric ones, in merged/joined columns too (see
+     * {@code PolymorphicMergedColumn.getDataValue}, which maps a blank parent cell to the missing
+     * sentinel whatever the column's type).
      * </p>
      *
      * <p>
@@ -397,8 +615,13 @@ public final class ScalarSemantics
      * @param aColumn
      *            the column to read.
      * @param aDeclaredType
-     *            the column's declared type, from its {@code DataTableColumnMeta}. Not consulted
-     *            yet; see the blocked step above.
+     *            the column's declared type, from its {@code DataTableColumnMeta}. ⛔ <b>Not
+     *            consulted — and, the 2026-09-18 ruling having retired the step it was threaded
+     *            for, no longer expected to be.</b> Deliberately kept: dropping it is a public-API
+     *            change to a method called from across the engine, and the table-addressed overload
+     *            below would have to change with it. Both overloads' contracts are now
+     *            type-independent, which is the ruling's own principle — whether a cell is missing
+     *            cannot depend on the column's type.
      * @param aRow
      *            the 0-based row index.
      * @return the cell's string form, or {@code null} when the cell is missing/invalid.
@@ -470,56 +693,6 @@ public final class ScalarSemantics
 
 
     /**
-     * Equality verdict with numeric mode (Phase 8). The comparison runs in <b>numeric mode</b> when
-     * the cell is not missing, the comparison is neither case- nor type-insensitive, and at least
-     * one operand is declared/known numeric — i.e. {@code forceNumeric} (the native-only
-     * {@code num()} marker), the LHS is a numeric-typed cell ({@link DataValueType#LONG} /
-     * {@link DataValueType#DOUBLE}), or the resolved {@code target} is a {@link Number}. In numeric
-     * mode both sides are parsed ({@link IDataValue#getValueAsDouble()} for the LHS,
-     * {@link #comparisonTargetAsDouble(Object)} for the RHS) and compared numerically <i>only when
-     * both parse</i>; otherwise the verdict falls back to the literal textual fold (a missing /
-     * empty / non-parseable side folds to {@code ""}), preserving the {@code equal_to} empty-string
-     * semantics ({@code missing == missing} matches, {@code present != missing} fires,
-     * {@code AGE != "abc"} fires textually).
-     *
-     * <p>
-     * This is the single parity anchor for {@code ==}/{@code !=}: both the native evaluator
-     * ({@code Primitives.equality}) routes through it, so the engines cannot drift. The trigger is
-     * computable identically in both engines (each has the cell {@code dv} and the resolved
-     * {@code target}); it deliberately does <b>not</b> consult the RHS vector's declared type,
-     * which legacy cannot see.
-     * </p>
-     *
-     * @return {@code true} when the cell equals the target under this verdict
-     */
-    public static boolean equalsNumericAware(IDataValue dv, @Nullable Object target,
-            boolean dvMissing, boolean caseInsensitive, boolean typeInsensitive,
-            boolean forceNumeric)
-    {
-        if (!caseInsensitive && !typeInsensitive && !dvMissing
-                && (forceNumeric || isNumericType(dv) || target instanceof Number))
-        {
-            double lhsD = dv.getValueAsDouble();
-            Double rhsD = comparisonTargetAsDouble(target);
-            if (!Double.isNaN(lhsD) && rhsD != null)
-            {
-                // Step C: tolerant equality. Exact `==` is kept as the fast path inside
-                // numericEquals, so an exact match never pays for the tolerance computation.
-                return numericEquals(lhsD, rhsD);
-            }
-        }
-        String a = dvMissing ? "" : dv.getValueAsString();
-        // ⚠ getValueAsString(), never toString(): a typed operand may be an IDataValue, and
-        // DataValueString.toString() QUOTES its value while the anonymous DataValues.of has no
-        // override at all. Folding either through toString() would silently change every textual
-        // verdict on this path.
-        String b = target == null ? ""
-                : target instanceof IDataValue tv ? tv.getValueAsString() : target.toString();
-        return caseInsensitive ? a.equalsIgnoreCase(b) : a.equals(b);
-    }
-
-
-    /**
      * Numeric-membership verdict (Phase 9b, decision D2). The probe {@code dv} is a member of an
      * <b>all-numeric</b> membership list iff its content parses to a finite number ({@code ==})
      * equal to one of the {@code numericMembers}. A missing / empty / non-numeric probe parses to
@@ -527,7 +700,7 @@ public final class ScalarSemantics
      * on a blank exactly as the textual path fires on a blank not present in the set (a numeric set
      * can never contain {@code ""}). The members were parsed once via the same
      * {@link IDataValue#getValueAsDouble()} / {@code Double.parseDouble} path, and the comparison
-     * is exact {@code ==} on the parsed doubles — consistent with {@link #equalsNumericAware} — so
+     * is exact {@code ==} on the parsed doubles — consistent with {@code Primitives.equality} — so
      * {@code "1.0"}, {@code "01"} and {@code "1"} all match the member {@code 1}.
      *
      * <p>
@@ -568,16 +741,6 @@ public final class ScalarSemantics
             }
         }
         return false;
-    }
-
-
-    /**
-     * {@code true} when the cell's declared type is {@link DataValueType#LONG} / {@code DOUBLE}.
-     */
-    private static boolean isNumericType(IDataValue dv)
-    {
-        DataValueType t = dv.getType();
-        return t == DataValueType.LONG || t == DataValueType.DOUBLE;
     }
 
     // -------------------------------------------------------------------------
@@ -669,7 +832,15 @@ public final class ScalarSemantics
                 return null;
             }
             double d = v.getValueAsDouble();
-            return Double.isNaN(d) ? parseOrNull(v.getValueAsString()) : d;
+            if (!Double.isNaN(d))
+            {
+                return d;
+            }
+            // ⚠ Not a ternary: `isNaN(d) ? parseOrNull(…) : d` auto-unboxes the Double branch to
+            // match the double one, so an unparseable text cell NPE'd instead of answering null
+            // (found by phase 3d's TypedComparisonChannelParityTest; the typed sibling
+            // Primitives.targetAsDouble carries the same fix).
+            return parseOrNull(v.getValueAsString());
         }
         try
         {
@@ -1043,10 +1214,10 @@ public final class ScalarSemantics
      * <em>middle</em> unknown, so a legitimately partial {@code --DTC} was reported as an invalid
      * date. {@code plans/done/PLAN-partial-date-extreme-selection.md} (and the retired
      * {@code CORE-RULES-JAVA-EXTENSIONS.md} &#167;21, indexed in
-     * {@code the expression-docs disposition note} &#167;A) state that {@code --DTC} variables
-     * <b>legally</b> carry masked components, so that rejection was a false positive. &#9888; The
-     * name is now the contract: <em>this answers "is {@code s} a partial date", not "is {@code s} a
-     * truncation prefix"</em>. When you need the narrower question, ask
+     * {@code corej-rules/documentation/expression-docs-disposition.md} &#167;A) state that
+     * {@code --DTC} variables <b>legally</b> carry masked components, so that rejection was a false
+     * positive. &#9888; The name is now the contract: <em>this answers "is {@code s} a partial
+     * date", not "is {@code s} a truncation prefix"</em>. When you need the narrower question, ask
      * {@link #isoComponents(String)} whether the layout it returns has an <em>interior</em>
      * {@link IsoDateComponents#ABSENT}, or ask {@link #isMaskedDate(String)} directly.
      * </p>

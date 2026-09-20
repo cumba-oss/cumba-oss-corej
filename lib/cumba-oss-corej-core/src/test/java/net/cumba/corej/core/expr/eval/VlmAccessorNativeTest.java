@@ -114,14 +114,26 @@ class VlmAccessorNativeTest
     @Test
     void lengthCheckFiresOnlyOnMatchedOverlongValue()
     {
-        // r0 GLUC len 4 > 3 -> fire; r1 GLUC len 2 -> no fire; r2 HGB (unmatched) -> no fire.
+        // r0 GLUC len 4 > 3 -> fire; r1 GLUC len 2 -> no fire; r2 HGB (unmatched) -> the SHIPPED
+        // rule does not fire, because it guards the accessor.
         IDataTable t = MockTable.of().col("LBTESTCD", "GLUC", "GLUC", "HGB")
                 .col("LBSTRESC", "1234", "12", "999999").build();
         BitSet bits = NativeExprEvaluator.evaluate(parse("len(value()) > vlm_length(varname())"),
                 ctx(t, resolver()));
         assertTrue(bits.get(0), "GLUC row with length 4 > declared 3 fires (SD1231)");
         assertFalse(bits.get(1), "GLUC row within length 3 does not fire");
-        assertFalse(bits.get(2), "unmatched (HGB) row has no VLM length -> no fire");
+        // ⭐ Phase 6c (D117/D34 #5): an unmatched row's vlm_length is a genuine MissingValue, and
+        // a missing sorts BELOW every non-missing value — so the UNGUARDED spelling now fires on
+        // it. FDA-SD1231 / PMDA-SD1231 are two of Review 1's nine guard sites precisely because of
+        // this, and phase 3c shipped the guard; both spellings are pinned here so the pair cannot
+        // drift apart.
+        assertTrue(bits.get(2), "unguarded: unmatched (HGB) row has a missing VLM length, and "
+                + "a missing is low, so `>` fires (D34 #5)");
+        BitSet guarded = NativeExprEvaluator.evaluate(
+                parse("not empty(vlm_length(varname())) and len(value()) > vlm_length(varname())"),
+                ctx(t, resolver()));
+        assertTrue(guarded.get(0), "guarded: the overlong GLUC row still fires");
+        assertFalse(guarded.get(2), "guarded (the shipped SD1231 spelling): unmatched -> no fire");
     }
 
 
@@ -278,10 +290,19 @@ class VlmAccessorNativeTest
         // The rule-level SKIPPED status is asserted in the end-to-end test; here we confirm the
         // accessor null-propagates.
         IDataTable t = MockTable.of().col("LBTESTCD", "GLUC").col("LBSTRESC", "123456").build();
-        BitSet bits = NativeExprEvaluator.evaluate(parse("len(value()) > vlm_length(varname())"),
-                EvaluationContext.builder().table(t).datasetResolver(_ -> null).domainName("LB")
-                        .variables(Map.of("variable_name", "LBSTRESC")).build());
-        assertTrue(bits.isEmpty(), "no resolver -> vlm_length null -> no fire");
+        EvaluationContext noVlm = EvaluationContext.builder().table(t).datasetResolver(_ -> null)
+                .domainName("LB").variables(Map.of("variable_name", "LBSTRESC")).build();
+        // ⭐ Phase 6c (D117/D34 #5): with no resolver the accessor is a genuine MissingValue on
+        // every row, which is LOW — so the unguarded `>` fires everywhere. What null-propagates
+        // is the ACCESSOR, and the guard is what turns that into silence; the rule-level SKIPPED
+        // status (asserted end to end) is the real protection when no Define-XML is supplied.
+        assertEquals(1,
+                NativeExprEvaluator.evaluate(parse("len(value()) > vlm_length(varname())"), noVlm)
+                        .cardinality(),
+                "no resolver -> vlm_length missing -> the UNGUARDED order comparison fires");
+        assertTrue(NativeExprEvaluator.evaluate(
+                parse("not empty(vlm_length(varname())) and len(value()) > vlm_length(varname())"),
+                noVlm).isEmpty(), "no resolver -> the shipped guarded spelling stays silent");
     }
 
 

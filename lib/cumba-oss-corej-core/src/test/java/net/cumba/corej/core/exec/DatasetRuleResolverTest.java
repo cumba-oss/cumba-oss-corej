@@ -3,6 +3,7 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -10,7 +11,6 @@ import java.util.Map;
 import net.cumba.corej.core.gen.GeneratedRulePackage;
 import net.cumba.corej.core.gen.SkippedSourceRule;
 import net.cumba.corej.core.gen.WildcardExpander;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -25,6 +25,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class DatasetRuleResolverTest
 {
+
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
 
     private MockLibraryProvider library;
 
@@ -62,9 +68,9 @@ class DatasetRuleResolverTest
      * <p>
      * This used to lean on the {@code DISALLOWED_VARIABLE} generator minting
      * {@code GEN-DISALLOW-DM} so the package would be non-empty. That generator is gone — but <b>id
-     * determinism is a property of the surviving delivery path too</b>:
-     * {@code expandSdtmPrefixRules} → {@code
-     * buildRule} → {@code deterministicUuid} must give the same rule the same id on every run, or
+     * determinism is a property of the surviving delivery path too</b>: since D77 the path is
+     * {@code specialiseStaticRules} → {@code RuleSpecialiser}, whose full copy carries the source
+     * rule's identity fields verbatim, so the same rule must yield the same id on every run, or
      * findings stop being comparable across runs. Deleting the test with its old fixture would have
      * dropped that coverage silently, which is the shape this plan exists to avoid.
      * </p>
@@ -72,14 +78,14 @@ class DatasetRuleResolverTest
     @Test
     void expandedRuleIdsAreDeterministic()
     {
-        generator.setStaticRules(List.of(dashDtcRule("CORE-000001")));
+        generator.setStaticRules(List.of(dashDtcRule("CDISC-CG0176")));
         IDataTable table = MockTable.of().name("AE").col("STUDYID", "S001")
                 .col("AEDTC", "2024-01-01").build();
 
         GeneratedRulePackage pkg1 = gen(table, "AE", "EVENTS");
 
         DatasetRuleResolver second = new DatasetRuleResolver(library);
-        second.setStaticRules(List.of(dashDtcRule("CORE-000001")));
+        second.setStaticRules(List.of(dashDtcRule("CDISC-CG0176")));
         GeneratedRulePackage pkg2 = gen(second, table, "AE", "EVENTS");
 
         assertFalse(pkg1.getRules().isEmpty(), "nothing was delivered — the pin would be vacuous");
@@ -102,7 +108,7 @@ class DatasetRuleResolverTest
         r.setDescription("--DTC must not be empty");
         r.setSensitivity(Sensitivity.RECORD);
         r.setExecutability(net.cumba.corej.core.model.Executability.FULLY_EXECUTABLE);
-        r.setCheck(CheckConditionLeaf.builder().name("--DTC").operator("empty").build());
+        r.setCheck(expr("empty(--DTC)"));
         Outcome outcome = new Outcome();
         outcome.setMessage("--DTC is empty");
         outcome.setOutputVariables(List.of("--DTC"));
@@ -148,13 +154,12 @@ class DatasetRuleResolverTest
         // Create a static rule with -- prefix
         net.cumba.corej.core.model.Rule staticRule = new net.cumba.corej.core.model.Rule();
         net.cumba.corej.core.model.RuleCore core = new net.cumba.corej.core.model.RuleCore();
-        core.setId("CORE-000001");
+        core.setId("CDISC-CG0176");
         staticRule.setCore(core);
         staticRule.setDescription("--DTC must not be empty");
         staticRule.setSensitivity(net.cumba.corej.core.model.Sensitivity.RECORD);
         staticRule.setExecutability(net.cumba.corej.core.model.Executability.FULLY_EXECUTABLE);
-        staticRule.setCheck(net.cumba.corej.core.model.CheckConditionLeaf.builder().name("--DTC")
-                .operator("empty").build());
+        staticRule.setCheck(expr("empty(--DTC)"));
         net.cumba.corej.core.model.Outcome outcome = new net.cumba.corej.core.model.Outcome();
         outcome.setMessage("--DTC is empty");
         outcome.setOutputVariables(java.util.List.of("--DTC"));
@@ -167,15 +172,18 @@ class DatasetRuleResolverTest
 
         GeneratedRulePackage pkg = gen(table, "AE", "EVENTS");
 
-        // The expansion keeps the base CORE id verbatim (no GEN-EXP-<domain> prefix) — matching
+        // The expansion keeps the base rule id verbatim (no GEN-EXP-<domain> prefix) — matching
         // the Python engine, which does not append the domain code.
         List<Rule> expanded = pkg.getRules().stream()
-                .filter(r -> "CORE-000001".equals(r.getCore().getId())).toList();
+                .filter(r -> "CDISC-CG0176".equals(r.getCore().getId())).toList();
         assertEquals(1, expanded.size());
 
         Rule exp = expanded.getFirst();
-        assertEquals("CORE-000001", exp.getCore().getId());
-        assertEquals("Generated", exp.getCore().getStatus());
+        assertEquals("CDISC-CG0176", exp.getCore().getId());
+        // D77: the specialised copy keeps the AUTHORED Core verbatim — the old expander stamped
+        // Status "Generated" over whatever the rule declared, which misreported every shipped
+        // `--` rule's status in anything that read the per-dataset copy.
+        assertNull(exp.getCore().getStatus(), "the fixture authored no Status, so none appears");
 
         // Description is kept domain-neutral: the `--` token is preserved, NOT substituted to the
         // domain prefix (AEDTC). Only the functional Check substitution below resolves the prefix.
@@ -196,11 +204,10 @@ class DatasetRuleResolverTest
         // A rule without -- should not be expanded
         net.cumba.corej.core.model.Rule staticRule = new net.cumba.corej.core.model.Rule();
         net.cumba.corej.core.model.RuleCore core = new net.cumba.corej.core.model.RuleCore();
-        core.setId("CORE-000002");
+        core.setId("CDISC-CG0208");
         staticRule.setCore(core);
         staticRule.setDescription("STUDYID must exist");
-        staticRule.setCheck(net.cumba.corej.core.model.CheckConditionLeaf.builder().name("STUDYID")
-                .operator("var_exists").build());
+        staticRule.setCheck(expr("var_exists(\"STUDYID\")"));
 
         generator.setStaticRules(java.util.List.of(staticRule));
 
@@ -209,9 +216,9 @@ class DatasetRuleResolverTest
         GeneratedRulePackage pkg = gen(table, "DM", "SPECIAL PURPOSE");
 
         // No -- expansion: the rule has no `--`, so no "Generated"-status expansion is produced
-        // for CORE-000002. (After the rename an expansion would share the bare CORE id, so the
+        // for CDISC-CG0208. (After the rename an expansion would share the bare base id, so the
         // "Generated" status — not the id — is what distinguishes an expansion from a passthrough.)
-        assertTrue(pkg.getRules().stream().noneMatch(r -> "CORE-000002".equals(r.getCore().getId())
+        assertTrue(pkg.getRules().stream().noneMatch(r -> "CDISC-CG0208".equals(r.getCore().getId())
                 && "Generated".equals(r.getCore().getStatus())));
     }
 
@@ -243,8 +250,7 @@ class DatasetRuleResolverTest
             scope.setSubclasses(sc);
         }
         rule.setScope(scope);
-        rule.setCheck(net.cumba.corej.core.model.CheckConditionLeaf.builder().name("STUDYID")
-                .operator("empty").build());
+        rule.setCheck(expr("empty(STUDYID)"));
         net.cumba.corej.core.model.Outcome outcome = new net.cumba.corej.core.model.Outcome();
         outcome.setMessage("gate test");
         rule.setOutcome(outcome);
@@ -340,11 +346,8 @@ class DatasetRuleResolverTest
         requirements.setVariables(variables);
         template.setRequirements(requirements);
 
-        template.setCheck(new net.cumba.corej.core.model.CheckConditionAll(java.util.List.of(
-                net.cumba.corej.core.model.CheckConditionLeaf.builder().name("TRTPGy")
-                        .operator("non_empty").build(),
-                net.cumba.corej.core.model.CheckConditionLeaf.builder().name("TRTPGyN")
-                        .operator("empty").build())));
+        template.setCheck(new net.cumba.corej.core.model.CheckConditionAll(
+                java.util.List.of(expr("not empty(TRTPGy)"), expr("empty(TRTPGyN)"))));
 
         net.cumba.corej.core.model.Outcome outcome = new net.cumba.corej.core.model.Outcome();
         outcome.setMessage("TRTPGy populated but TRTPGyN missing");
@@ -435,8 +438,7 @@ class DatasetRuleResolverTest
         net.cumba.corej.core.model.Requirements req = new net.cumba.corej.core.model.Requirements();
         req.setVariables(vr);
         rule.setRequirements(req);
-        rule.setCheck(net.cumba.corej.core.model.CheckConditionLeaf.builder().name("STUDYID")
-                .operator("non_empty").build());
+        rule.setCheck(expr("not empty(STUDYID)"));
         return rule;
     }
 
@@ -517,14 +519,6 @@ class DatasetRuleResolverTest
     // ⚑ noBuiltInRuleIsMergedIntoTheExecutedSet (above) is what replaces them: it asserts the
     // generator adds no id the caller did not hand it.
 
-    // ⚑ Dead scaffolding removed (Error Prone [UnusedMethod], 13 hits). The SMQzz, CRITy, TRxx,
-    // MedDRA/WHO-Drug and dictionary-column-index families this section introduced were generated
-    // in Java by the old rule generator; PLAN-remove-rule-generator deleted those generators and
-    // their tests, leaving these helpers and their rationale comments behind — comments that
-    // claimed to pin guards nothing pins any more. Identically dead in the internal tree
-    // (cumba-corej, same file, same 13 declarations with no call site), so this is leftover, not
-    // an unported caller. applyTemplatePostFilters below KEEPS its section: its two tests live.
-
     // ---- applyTemplatePostFilters: which expansions survive ----
     //
     // 19 mutants survived in applyTemplatePostFilters. It is the filter that decides which
@@ -532,6 +526,15 @@ class DatasetRuleResolverTest
     // domain, the expansion whose column is exactly `<domain><wildcard suffix>` is dropped,
     // because the `--` prefix expansion already produces that rule. Nothing pinned it, so the
     // filter could have dropped everything, or nothing, unnoticed.
+    //
+    // ⚠ The template below is SYNTHETIC and its id is deliberately outside every shipped
+    // authority namespace (`TEST-`, like TEST-DSGATE / TEST-WCSCOPE above). It was `CORE-900001`
+    // until the CORE family was retired; a shipped id must not be substituted for it, because no
+    // shipped rule has this shape — the `*DTC` suffix wildcard over a bare `empty(...)` Check is
+    // an expansion shape these two tests construct. Naming a real rule would make the expansion
+    // ids asserted below (`-AESTDTC` and friends) a false claim about that rule: CDISC-CG0468, the
+    // id that stood here briefly, is `var_exists("--TPT") and not var_exists("--TPTNUM")` and has
+    // no `*` wildcard to expand at all.
 
 
     private static Rule wildcardTemplate(String coreId, String wildcardName)
@@ -542,7 +545,7 @@ class DatasetRuleResolverTest
         tpl.setCore(core);
         tpl.setDescription(wildcardName + " must not be empty");
         tpl.setSensitivity(Sensitivity.RECORD);
-        tpl.setCheck(CheckConditionLeaf.builder().name(wildcardName).operator("empty").build());
+        tpl.setCheck(expr("empty(" + wildcardName + ")"));
         Outcome outcome = new Outcome();
         outcome.setMessage("m");
         outcome.setOutputVariables(List.of("USUBJID"));
@@ -553,9 +556,9 @@ class DatasetRuleResolverTest
 
     private List<String> expansionIdsFor(String wildcardName, String domain, IDataTable table)
     {
-        generator.setStaticRules(List.of(wildcardTemplate("CORE-900001", wildcardName)));
+        generator.setStaticRules(List.of(wildcardTemplate("TEST-WCEXPAND", wildcardName)));
         return gen(table, domain, "EVENTS").getRules().stream().map(r -> r.getCore().getId())
-                .filter(id -> id != null && id.startsWith("CORE-900001")).sorted().toList();
+                .filter(id -> id != null && id.startsWith("TEST-WCEXPAND")).sorted().toList();
     }
 
 
@@ -570,10 +573,10 @@ class DatasetRuleResolverTest
 
         List<String> ids = expansionIdsFor("*DTC", "AE", ae);
 
-        assertFalse(ids.contains("CORE-900001-AEDTC"),
+        assertFalse(ids.contains("TEST-WCEXPAND-AEDTC"),
                 "the domain's own suffix column must be dropped: " + ids);
-        assertTrue(ids.contains("CORE-900001-AESTDTC"), ids.toString());
-        assertTrue(ids.contains("CORE-900001-AEENDTC"), ids.toString());
+        assertTrue(ids.contains("TEST-WCEXPAND-AESTDTC"), ids.toString());
+        assertTrue(ids.contains("TEST-WCEXPAND-AEENDTC"), ids.toString());
     }
 
 
@@ -587,7 +590,7 @@ class DatasetRuleResolverTest
 
         List<String> ids = expansionIdsFor("*DTC", "ADSL", adsl);
 
-        assertTrue(ids.contains("CORE-900001-ADSLDTC"),
+        assertTrue(ids.contains("TEST-WCEXPAND-ADSLDTC"),
                 "a non-SDTM domain must not trigger the prefix drop: " + ids);
     }
 
@@ -738,8 +741,7 @@ class DatasetRuleResolverTest
         ds.setExclude(exclude);
         scope.setDatasets(ds);
         rule.setScope(scope);
-        rule.setCheck(net.cumba.corej.core.model.CheckConditionLeaf.builder().name("STUDYID")
-                .operator("non_empty").build());
+        rule.setCheck(expr("not empty(STUDYID)"));
         return rule;
     }
 

@@ -92,12 +92,11 @@ class DictionaryValidationTest
             {
                 ops.append(',');
             }
-            ops.append("{\"id\":\"$op").append(i).append("\",\"expression\":\"")
+            ops.append("{\"name\":\"$op").append(i).append("\",\"expression\":\"")
                     .append(operationExpressions[i]).append("\"}");
         }
         String pkg = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"T\"}," + "\"Sensitivity\":\"Record\","
-                + "\"Operations\":[" + ops + "]," + "\"Check\":{\"expression\":\"" + check
-                + "\"}}}}";
+                + "\"Bindings\":[" + ops + "]," + "\"Check\":{\"expression\":\"" + check + "\"}}}}";
         Rule r = RulePackageLoader.loadFromString(pkg).getRules().get("x");
         assertNotNull(r, "rule loads");
         assertNull(r.getLoadError(), "clean load: " + r.getLoadError());

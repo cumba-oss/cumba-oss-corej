@@ -380,6 +380,13 @@ public final class ReportAssembler
         // e.g. `CDISC-CG0088`) collapse into one summary row keyed by (core_id, message), with the
         // per-domain dataset names joined alphabetically into a single comma-separated string.
         // Every other id keeps its per-dataset rows. Issue_Details and Rules_Report are unaffected.
+        // ⚑ The example id departs from plans/findings/CENSUS-core-rule-disposition.tsv on
+        // purpose. This comment used to name `CORE-000767`, which the census maps to
+        // `CDISC-CG0603` — but CG0603 is a `**`-wildcard rule
+        // (`not empty(RELREC.**DECOD) and FAOBJ != RELREC.**DECOD`), not a `--`-prefix expansion,
+        // so it cannot illustrate the bundling described here. `CDISC-CG0088`
+        // (`not var_exists("--PRESP") and var_exists("--OCCUR")`) is a real `--`-prefix rule and
+        // does illustrate it.
         Map<List<String>, BundleAccumulator> grouped = new LinkedHashMap<>();
         for (ValidationReportMember member : report.getMembers())
         {
@@ -648,6 +655,10 @@ public final class ReportAssembler
             rowMap.put("SEQ", c.seq());
             // EC-40: the record key, omitted entirely when none resolved so the default
             // corej.findingKeys=off leaves this object byte-identical to a pre-EC-40 build.
+            // D29/D66a (phase 5b): a Group-sensitivity finding always resolves a key — its
+            // GROUP VARIABLES (keySource GROUP) — so v2 keys a group finding by the group
+            // variables while v1, which never reads this channel, keeps anchoring at the
+            // block's first flagged row (D66's deliberate v1 trait).
             if (!keyVars.isEmpty())
             {
                 rowMap.put("keys", finding.getRowKeys(p));
@@ -691,6 +702,9 @@ public final class ReportAssembler
         // Rules that were skipped somewhere and executed nowhere — the only ones that may report
         // SKIPPED. Findings always win, so this is consulted only when the rule produced none.
         Set<String> skippedEverywhere = buildSkippedEverywhereCoreIds();
+        // D65: the three per-rule execution counts (executed / skipped / errored).
+        Map<String, Integer> executionTotals = buildExecutionTotals();
+        Map<String, Integer> skippedCounts = buildSkippedCounts();
 
         // Emit one row per supplied rule. Status falls back to SUCCESS for rules that produced
         // no findings and were not skipped everywhere.
@@ -711,7 +725,8 @@ public final class ReportAssembler
             // tells consumers what the rule was checking — Python parity.
             String message = rs != null ? rs.message() : declaredMessageOf(rule);
             out.add(rulesReportRow(coreId, rule, status, message,
-                    ruleRuntimesMillis.getOrDefault(coreId, -1L)));
+                    ruleRuntimesMillis.getOrDefault(coreId, -1L),
+                    executionCounts(coreId, statusByCoreId, executionTotals, skippedCounts)));
         }
         // Emit any orphan findings (in report, not in rules list).
         for (Map.Entry<String, RuleStatus> e : statusByCoreId.entrySet())
@@ -719,11 +734,84 @@ public final class ReportAssembler
             if (!seen.contains(e.getKey()))
             {
                 out.add(rulesReportRow(e.getKey(), null, e.getValue().status(),
-                        e.getValue().message(), ruleRuntimesMillis.getOrDefault(e.getKey(), -1L)));
+                        e.getValue().message(), ruleRuntimesMillis.getOrDefault(e.getKey(), -1L),
+                        executionCounts(e.getKey(), statusByCoreId, executionTotals,
+                                skippedCounts)));
             }
         }
 
         out.sort(Comparator.comparing(r -> nullSafe(r, FIELD_CORE_ID)));
+        return out;
+    }
+
+    /**
+     * D65 — one rule's three execution counts for {@code Rules_Report}: how often it
+     * <b>executed</b> successfully (violations or a clean pass), was <b>skipped</b>, and
+     * <b>errored</b>, each counted per (rule × dataset).
+     */
+    private record ExecutionCounts(int executed, int skipped, int errored)
+    {
+    }
+
+    /**
+     * Derives one rule's {@link ExecutionCounts} from the report (D65).
+     *
+     * <ul>
+     * <li><b>errored</b> — the rule's {@code ENGINE_ERROR} findings, one per errored (rule ×
+     * dataset) execution ({@code ValidationReportBuilder} emits exactly one per errored result). A
+     * load-parked rule errors once per dataset it targeted, which is exactly SPEC §9's "counts as
+     * {@code errored} once per targeted dataset".</li>
+     * <li><b>executed</b> — occurrences in the report's executed multiset (one entry per
+     * non-skipped execution, errored ones included) minus the errored count; clamped at zero for
+     * error findings with no matching execution record (the synthetic dataset-load id).</li>
+     * <li><b>skipped</b> — the rule's {@code Skipped_Rules} entries, both channels (execution-time
+     * and generation-time skips).</li>
+     * </ul>
+     */
+    private ExecutionCounts executionCounts(String coreId, Map<String, RuleStatus> statusByCoreId,
+            Map<String, Integer> executionTotals, Map<String, Integer> skippedCounts)
+    {
+        RuleStatus rs = statusByCoreId.get(coreId);
+        int errored = rs != null ? rs.erroredCount() : 0;
+        int executed = Math.max(0, executionTotals.getOrDefault(coreId, 0) - errored);
+        return new ExecutionCounts(executed, skippedCounts.getOrDefault(coreId, 0), errored);
+    }
+
+
+    /** Executions per CORE id — occurrences in the report's executed multiset (D65). */
+    private Map<String, Integer> buildExecutionTotals()
+    {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        if (report == null)
+        {
+            return out;
+        }
+        for (String coreId : report.getExecutedCoreIds())
+        {
+            if (coreId != null)
+            {
+                out.merge(coreId, 1, Integer::sum);
+            }
+        }
+        return out;
+    }
+
+
+    /** Skip entries per CORE id — both skip channels count, per (rule × dataset) pair (D65). */
+    private Map<String, Integer> buildSkippedCounts()
+    {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        if (report == null)
+        {
+            return out;
+        }
+        for (net.cumba.datatable.report.SkippedRuleEntry e : report.getSkippedRules())
+        {
+            if (e.getCoreId() != null)
+            {
+                out.merge(e.getCoreId(), 1, Integer::sum);
+            }
+        }
         return out;
     }
 
@@ -840,23 +928,24 @@ public final class ReportAssembler
         {
             return;
         }
-        RuleStatus existing = statusByCoreId.get(coreId);
-        String newStatus = isEngineError(finding) ? STATUS_EXECUTION_ERROR : STATUS_ISSUE_REPORTED;
-        if (existing == null)
+        RuleStatus status = statusByCoreId.computeIfAbsent(coreId, _ -> new RuleStatus());
+        if (isEngineError(finding))
         {
-            statusByCoreId.put(coreId, new RuleStatus(newStatus, finding.getMessage()));
+            // Engine error wins over issue reported — and per-binding / per-dataset error
+            // messages ACCUMULATE rather than overwrite (D65a / SPEC §9): a cursor rule may
+            // error for variable C on one dataset and for variable D on another, and D41 rules
+            // "the report must say WHICH variable errored" — an overwrite kept only the last.
+            status.recordError(finding.getMessage());
         }
-        else if (STATUS_EXECUTION_ERROR.equals(newStatus))
+        else
         {
-            // Engine error wins over issue reported.
-            statusByCoreId.put(coreId,
-                    new RuleStatus(STATUS_EXECUTION_ERROR, finding.getMessage()));
+            status.recordIssue(finding.getMessage());
         }
     }
 
 
     private static Map<String, Object> rulesReportRow(@Nullable String coreId, @Nullable Rule rule,
-            String status, @Nullable String message, long runtimeMs)
+            String status, @Nullable String message, long runtimeMs, ExecutionCounts counts)
     {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put(FIELD_CORE_ID, coreId);
@@ -867,6 +956,12 @@ public final class ReportAssembler
         m.put("status", status);
         // Summed per-rule runtime in ms across the datasets this rule ran on (-1 = not measured).
         m.put("runtime_ms", runtimeMs);
+        // D65: the three per-rule execution counts, per (rule × dataset). ⛔ v2-only — v1 is
+        // FROZEN (owner ruling 2026-08-11), so ReportSections.toExportDocument strips these
+        // three keys again, exactly as it strips Numeric_Tolerance_Digits.
+        m.put(ReportSections.RULES_EXECUTED_COUNT, counts.executed());
+        m.put(ReportSections.RULES_SKIPPED_COUNT, counts.skipped());
+        m.put(ReportSections.RULES_ERRORED_COUNT, counts.errored());
         return m;
     }
 
@@ -914,10 +1009,10 @@ public final class ReportAssembler
      *
      * <p>
      * Right-trim only: leading whitespace is intentional data and must be preserved in the report
-     * ({@code FDA-SD1021} / {@code PMDA-SD1021} flag a character value with a leading space —
-     * without preserving them, every flagged value would render with the leading whitespace
-     * stripped and the finding would be useless to investigate). Trailing whitespace is fixed-width
-     * padding from the source format and is safe to strip for report-display purposes.
+     * (a rule that flags text variables with leading spaces reports the offending value — without
+     * preserving them, every flagged value would render with the leading whitespace stripped and
+     * the finding would be useless to investigate). Trailing whitespace is fixed-width padding from
+     * the source format and is safe to strip for report-display purposes.
      * </p>
      */
     private static String processValue(@Nullable String value)
@@ -970,11 +1065,10 @@ public final class ReportAssembler
      * This is the oracle for the {@code cdisc_rule_id} / {@code fda_rule_id} columns of the xlsx
      * Rules Report, of the JSON report's {@code Rules_Report}, and of {@code GET
      * /api/checks/{id}/rules}. It is <b>public rather than private</b> so
-     * {@code ReleasedRuleIdColumnsTest} (in {@code cumba-oss-corej-rules}, which owns the corpus)
-     * can assert that a released package and its authored source produce identical columns — the
-     * whole justification for the §10 strip of
-     * {@code plans/done/PLAN-rules-corpus-build-integration.md}. Computing the columns a second way
-     * in the test would have guarded the copy, not the code.
+     * {@code ReleasedRuleIdColumnsTest} (in {@code corej-rules}, which owns the corpus) can assert
+     * that a released package and its authored source produce identical columns — the whole
+     * justification for the §10 strip of {@code plans/done/PLAN-rules-corpus-build-integration.md}.
+     * Computing the columns a second way in the test would have guarded the copy, not the code.
      * </p>
      *
      * @param rule
@@ -1448,7 +1542,7 @@ public final class ReportAssembler
          *
          * ⚠ This is an availability-for-visibility swap, not a pure NPE removal. Downstream
          * consumers were checked and all are null-tolerant, but one of them CHANGES BEHAVIOUR:
-         * DatasetGroupAssembler (a downstream REST service) does `if (filename == null) continue;`, so a
+         * DatasetGroupAssembler (corej-rest) does `if (filename == null) continue;`, so a
          * non-file-backed dataset is now silently OMITTED from the REST grouped view where it
          * previously crashed report assembly outright. That is the better failure mode, but it
          * is a behaviour change and should not surprise anyone reading this later.
@@ -1548,7 +1642,71 @@ public final class ReportAssembler
     }
 
 
-    private record RuleStatus(String status, @Nullable String message)
+    /**
+     * Per-rule status accumulator for {@code Rules_Report}. Engine errors win over issue-reported
+     * for the {@code status}; engine-error messages <b>accumulate</b> (D65a / SPEC §9 —
+     * "per-binding messages accumulate rather than overwrite"), distinct and in first-seen order,
+     * joined with {@code "; "} — so three datasets erroring on different variables name all three,
+     * while the common case (one message, or the same message on every dataset) renders
+     * byte-identically to the pre-D65a output.
+     */
+    private static final class RuleStatus
     {
+
+        private final Set<String> errorMessages = new LinkedHashSet<>();
+
+        private @Nullable String issueMessage;
+
+        private boolean issueSeen;
+
+        private int erroredCount;
+
+        void recordError(@Nullable String message)
+        {
+            erroredCount++;
+            if (message != null)
+            {
+                errorMessages.add(message);
+            }
+        }
+
+
+        void recordIssue(@Nullable String message)
+        {
+            // First issue message wins, matching the pre-D65a behaviour for violations.
+            if (!issueSeen)
+            {
+                issueMessage = message;
+                issueSeen = true;
+            }
+        }
+
+
+        String status()
+        {
+            return erroredCount > 0 ? STATUS_EXECUTION_ERROR : STATUS_ISSUE_REPORTED;
+        }
+
+
+        /** The number of {@code ENGINE_ERROR} findings merged — the D65 {@code errored} count. */
+        int erroredCount()
+        {
+            return erroredCount;
+        }
+
+
+        @Nullable
+        String message()
+        {
+            if (erroredCount == 0)
+            {
+                return issueMessage;
+            }
+            if (errorMessages.isEmpty())
+            {
+                return null;
+            }
+            return String.join("; ", errorMessages);
+        }
     }
 }

@@ -423,8 +423,7 @@ class AbsentDatasetSkipTest
     {
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},"
                 + "\"Sensitivity\":\"Record\",\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
-                + "\"Operations\":[{\"id\":\"$ta_armcd\",\"operator\":\"distinct\","
-                + "\"name\":\"ARMCD\",\"domain\":\"TA\"}],"
+                + "\"Bindings\":[{\"name\": \"$ta_armcd\", \"expression\": \"distinct(ARMCD, domain=\\\"TA\\\")\"}],"
                 + "\"Check\":{\"expression\":\"ARMCD not in $ta_armcd\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"ARMCD\"]}}");
         IDataTable dm = MockTable.of().name("DM").col("ARMCD", "A", "B").build();

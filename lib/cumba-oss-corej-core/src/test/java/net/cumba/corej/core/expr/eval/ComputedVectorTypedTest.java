@@ -40,14 +40,14 @@ class ComputedVectorTypedTest
         // value() through a text-converting wrapper AND again from dataValue, so a row whose text
         // and typed forms were both read cost two lookupValue calls -- or two full lookupAllValues
         // scans for a candidates vector.
-        v.dataValue(0);
-        v.resolvedObject(0);
-        v.comparisonOperand(0);
-        v.dataValue(0);
+        v.value(0).cell();
+        v.value(0).resolved();
+        Primitives.targetAsDouble(v.value(0));
+        v.value(0).cell();
         assertEquals(1, calls.get(), "row 0 must be produced exactly once");
 
-        v.resolvedObject(1);
-        v.dataValue(1);
+        v.value(1).resolved();
+        v.value(1).cell();
         assertEquals(2, calls.get(), "row 1 adds exactly one more");
     }
 
@@ -58,20 +58,30 @@ class ComputedVectorTypedTest
     {
         IDataValue cell = num(4.25);
         ComputedVector v = ComputedVector.typed(1, DataValueType.DOUBLE, _ -> cell);
-        assertSame(cell, v.dataValue(0), "the typed view is the producer's own value, not a copy");
-        assertEquals(cell.getValueAsString(), v.resolvedObject(0),
+        assertSame(cell, v.value(0).cell(),
+                "the typed view is the producer's own value, not a copy");
+        assertEquals(cell.getValueAsString(), v.value(0).resolved(),
                 "the text view is derived from that same cell");
-        assertSame(cell, v.comparisonOperand(0));
+        assertSame(cell, v.value(0).sourceCell(),
+                "the typed comparison read (phase 3d) consumes the producer's own cell");
     }
 
 
+    /**
+     * ⭐ RE-BASED 2026-09-18: the producer used to be {@code _ -> null}, which pinned {@code null}
+     * as an accepted row value. A row value is a real value or a {@code MissingValue}, never
+     * {@code null} (see {@code ScalarSemantics.computedMissing}), and the producer's type argument
+     * no longer permits it — NullAway rejects {@code _ -> null} at compile time. What the vector
+     * ANSWERS for a no-result row is unchanged, and that is what is pinned below.
+     */
     @Test
-    @DisplayName("a null typed row answers MISSING as a cell and null as text")
+    @DisplayName("a no-result typed row answers MISSING as a cell and null as text")
     void nullRowIsMissing()
     {
-        ComputedVector v = ComputedVector.typed(1, DataValueType.DOUBLE, _ -> null);
-        assertTrue(v.dataValue(0).isMissingOrInvalid());
-        assertNull(v.resolvedObject(0), "a missing row must not render as the text \"null\"");
+        ComputedVector v = ComputedVector.typed(1, DataValueType.DOUBLE,
+                _ -> net.cumba.corej.core.exec.ScalarSemantics.computedMissing());
+        assertTrue(v.value(0).cell().isMissingOrInvalid());
+        assertNull(v.value(0).resolved(), "a missing row must not render as the text \"null\"");
     }
 
 

@@ -31,9 +31,9 @@ class DefineTermsVsLibraryCodelistTest
     {
         String json = "{\"Core\":{\"Id\":\"R1\"}," + "\"Variable_Universe\":\"Define\","
                 + "\"Sensitivity\":\"Dataset\",\"Check\":{\"all\":["
-                + "{\"name\":\"library_variable_codelist_extensible\",\"operator\":\"equal_to\",\"value\":false},"
-                + "{\"name\":\"library_variable_codelist_coded_values\",\"operator\":\"not_contains_all\","
-                + "\"value\":\"define_variable_codelist_coded_values\"}]},"
+                + "{\"expression\": \"var_codelist_extensible(\\\"LIBRARY\\\") == false\"},"
+                + "{\"expression\":\"not contains_all(library_variable_codelist_coded_values,"
+                + " define_variable_codelist_coded_values)\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":"
                 + "[\"variable_name\",\"define_variable_codelist_coded_values\"]}}";
         RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"R1\":" + json + "}}");

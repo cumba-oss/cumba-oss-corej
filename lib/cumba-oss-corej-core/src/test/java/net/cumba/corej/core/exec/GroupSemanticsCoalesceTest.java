@@ -4,18 +4,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import net.cumba.corej.core.expr.CheckExpressionParser;
-import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.eval.NativeExprEvaluator;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
@@ -29,8 +25,6 @@ import org.junit.jupiter.api.Test;
  */
 class GroupSemanticsCoalesceTest
 {
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static Set<Set<Integer>> groupSet(List<int[]> groups)
     {
@@ -374,12 +368,6 @@ class GroupSemanticsCoalesceTest
     // ---- has_multiple_values_for end-to-end (legacy == native) ----
 
 
-    private static JsonNode nestedWithin()
-    {
-        return MAPPER.valueToTree(List.of(List.of("USUBJID", "POOLID")));
-    }
-
-
     private static IDataTable pooledTable()
     {
         // Mirrors spec COALESCE-within-pooled. KEY=PCTPTREF (value), DEPENDENT=PCNOMDY (name).
@@ -409,10 +397,9 @@ class GroupSemanticsCoalesceTest
     void hasMultipleValuesForCoalescePerPool()
     {
         IDataTable t = pooledTable();
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("PCNOMDY")
-                .operator("has_multiple_values_for").value(MAPPER.valueToTree("PCTPTREF"))
-                .within(nestedWithin()).build();
-        BitSet bs = NativeExprEvaluator.evaluate(CheckToExpr.toExpr(leaf),
+        BitSet bs = NativeExprEvaluator.evaluate(
+                CheckExpressionParser.parse(
+                        "has_multiple_values_for(PCNOMDY, PCTPTREF, within=[[USUBJID, POOLID]])"),
                 EvaluationContext.builder().table(t).build());
         // Fires: rows 1,2 (P1/C1 -> {5,6}) and rows 5,6 (001/R1 -> {1,9}). No cross-pool fire.
         assertTrue(bs.get(1));
@@ -430,15 +417,14 @@ class GroupSemanticsCoalesceTest
     void hasMultipleValuesForCoalesceSurvivesPrintParseRoundTrip()
     {
         IDataTable t = pooledTable();
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("PCNOMDY")
-                .operator("has_multiple_values_for").value(MAPPER.valueToTree("PCTPTREF"))
-                .within(nestedWithin()).build();
         EvaluationContext ctx = EvaluationContext.builder().table(t).build();
-        // Native via CheckToExpr -> Expr -> evaluator (exercises withinOperand + withinComponents).
-        BitSet native1 = NativeExprEvaluator.evaluate(CheckToExpr.toExpr(leaf), ctx);
+        // The parsed nested-within expression (exercises withinComponents).
+        net.cumba.corej.core.expr.ast.Expr parsed = CheckExpressionParser
+                .parse("has_multiple_values_for(PCNOMDY, PCTPTREF, within=[[USUBJID, POOLID]])");
+        BitSet native1 = NativeExprEvaluator.evaluate(parsed, ctx);
         assertEquals(expectedPerPool(), native1, "coalesced within must fire per pool");
         // And via the printed text round-trip (proves the nested-list prints and parses back).
-        String printed = ExpressionPrinter.print(CheckToExpr.toExpr(leaf));
+        String printed = ExpressionPrinter.print(parsed);
         BitSet native2 = NativeExprEvaluator.evaluate(CheckExpressionParser.parse(printed), ctx);
         assertEquals(expectedPerPool(), native2,
                 "verdict must survive a print/parse round-trip: " + printed);

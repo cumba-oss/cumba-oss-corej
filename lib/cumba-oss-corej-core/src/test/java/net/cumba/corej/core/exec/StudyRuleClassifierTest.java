@@ -228,8 +228,7 @@ class StudyRuleClassifierTest
     @Test
     void aGroupedOperationIsRejectedEvenWithAPinnedDomain() throws Exception
     {
-        Rule r = ruleWithOperation("\"operator\": \"record_count\", \"domain\": \"TS\","
-                + " \"group\": [\"USUBJID\"]");
+        Rule r = ruleWithOperation("record_count(domain=\\\"TS\\\", group=[USUBJID])");
         assertFalse(StudyRuleClassifier.isAnchorEligible(r),
                 "a grouped aggregate resolves per primary row");
     }
@@ -239,7 +238,7 @@ class StudyRuleClassifierTest
     @Test
     void anOperatorOutsideTheAllowlistIsRejected() throws Exception
     {
-        Rule r = ruleWithOperation("\"operator\": \"dy\", \"domain\": \"TS\"");
+        Rule r = ruleWithOperation("dy(domain=\\\"TS\\\")");
         assertFalse(StudyRuleClassifier.isAnchorEligible(r),
                 "the operation gate is an allowlist, not a denylist");
     }
@@ -249,7 +248,7 @@ class StudyRuleClassifierTest
     @Test
     void aPinnedAllowlistedOperationIsAccepted() throws Exception
     {
-        Rule r = ruleWithOperation("\"operator\": \"record_count\", \"domain\": \"TS\"");
+        Rule r = ruleWithOperation("record_count(domain=\\\"TS\\\")");
         assertTrue(StudyRuleClassifier.isAnchorEligible(r),
                 "record_count pinned to a concrete domain is a study-level fact");
     }
@@ -263,8 +262,7 @@ class StudyRuleClassifierTest
     @Test
     void anOperationWithAWildcardOutsideDomainIsRejected() throws Exception
     {
-        Rule r = ruleWithOperation(
-                "\"operator\": \"distinct\", \"domain\": \"TS\", \"name\": \"--TESTCD\"");
+        Rule r = ruleWithOperation("distinct(--TESTCD, domain=\\\"TS\\\")");
         assertFalse(StudyRuleClassifier.isAnchorEligible(r),
                 "an unresolved -- token in `name` still reads the primary dataset");
     }
@@ -282,14 +280,14 @@ class StudyRuleClassifierTest
 
 
     /**
-     * Builds a Study rule whose Check is a single `$op` comparison, with that Operation attached.
+     * Builds a Study rule whose Check is a single `$op` comparison, with that binding attached.
      */
-    private static Rule ruleWithOperation(String operationFields) throws Exception
+    private static Rule ruleWithOperation(String operationExpression) throws Exception
     {
         return rule("\"Sensitivity\": \"Study\","
                 + " \"Scope\": {\"Domains\": {\"Include\": [\"ALL\"]}},"
-                + " \"Operations\": [{\"id\": \"$op\", " + operationFields + "}],"
-                + " \"Check\": {\"expression\": \"$op > 0\"},"
+                + " \"Bindings\": [{\"name\": \"$op\", \"expression\": \"" + operationExpression
+                + "\"}]," + " \"Check\": {\"expression\": \"$op > 0\"},"
                 + " \"Outcome\": {\"Message\": \"m\"}");
     }
 
@@ -336,7 +334,7 @@ class StudyRuleClassifierTest
     {
         Rule r = rule("\"Sensitivity\": \"Study\","
                 + " \"Scope\": {\"Domains\": {\"Include\": [\"ALL\"]}},"
-                + " \"Operations\": [{\"id\": \"$rows\", \"operator\": \"record_count\"}],"
+                + " \"Bindings\": [{\"name\": \"$rows\", \"expression\": \"record_count()\"}],"
                 + " \"Check\": {\"expression\": \"not ds_exists(\\\"DM\\\")\"},"
                 + " \"Outcome\": {\"Message\": \"m\"," + " \"Output_Variables\": [\"$rows\"]}");
         assertFalse(StudyRuleClassifier.isAnchorEligible(r),
@@ -350,7 +348,7 @@ class StudyRuleClassifierTest
     {
         Rule r = rule("\"Sensitivity\": \"Study\","
                 + " \"Scope\": {\"Domains\": {\"Include\": [\"ALL\"]}},"
-                + " \"Operations\": [{\"id\": \"$names\", \"operator\": \"dataset_names\"}],"
+                + " \"Bindings\": [{\"name\": \"$names\", \"expression\": \"dataset_names()\"}],"
                 + " \"Check\": {\"expression\": \"not ds_exists(\\\"DM\\\")\"},"
                 + " \"Outcome\": {\"Message\": \"m\"," + " \"Output_Variables\": [\"$names\"]}");
         assertTrue(StudyRuleClassifier.isAnchorEligible(r), "dataset_names is a study-level fact");
@@ -361,17 +359,17 @@ class StudyRuleClassifierTest
     @Test
     void minusIsStudySafeOnlyWhenBothOperandsAre() throws Exception
     {
-        Rule safe = ruleWithOperations("{\"id\": \"$all\", \"operator\": \"dataset_names\"},"
-                + " {\"id\": \"$def\", \"operator\": \"define_dataset_names\"},"
-                + " {\"id\": \"$gap\", \"operator\": \"minus\","
-                + " \"name\": \"$all\", \"subtract\": \"$def\"}", "$gap");
+        Rule safe = ruleWithOperations(
+                "{\"name\": \"$all\", \"expression\": \"dataset_names()\"},"
+                        + " {\"name\": \"$def\", \"expression\": \"define_dataset_names()\"},"
+                        + " {\"name\": \"$gap\", \"expression\": \"minus($all, subtract=$def)\"}",
+                "$gap");
         assertTrue(StudyRuleClassifier.isAnchorEligible(safe),
                 "minus over two study-level operands stays study-level");
 
         Rule unsafe = ruleWithOperations(
-                "{\"id\": \"$def\", \"operator\": \"define_dataset_names\"},"
-                        + " {\"id\": \"$gap\", \"operator\": \"minus\","
-                        + " \"name\": \"USUBJID\", \"subtract\": \"$def\"}",
+                "{\"name\": \"$def\", \"expression\": \"define_dataset_names()\"},"
+                        + " {\"name\": \"$gap\", \"expression\": \"minus(USUBJID, subtract=$def)\"}",
                 "$gap");
         assertFalse(StudyRuleClassifier.isAnchorEligible(unsafe),
                 "a bare column operand names the dataset under evaluation");
@@ -406,8 +404,8 @@ class StudyRuleClassifierTest
     {
         Rule r = rule("\"Sensitivity\": \"Study\","
                 + " \"Scope\": {\"Domains\": {\"Include\": [\"ALL\"]}},"
-                + " \"Operations\": [{\"id\": \"$nosuchop\", \"operator\": \"record_count\","
-                + " \"domain\": \"DM\"}]," + " \"Check\": {\"expression\": \"$nosuchop > 0\"},"
+                + " \"Bindings\": [{\"name\": \"$nosuchop\", \"expression\": \"record_count(domain=\\\"DM\\\")\"}],"
+                + " \"Check\": {\"expression\": \"$nosuchop > 0\"},"
                 + " \"Outcome\": {\"Message\": \"m\", \"Output_Variables\": [\"USUBJID\"]}");
         assertNull(r.getLoadError(), "fixture must load cleanly: " + r.getLoadError());
         assertNotNull(r.getCheckExpr(),
@@ -442,7 +440,7 @@ class StudyRuleClassifierTest
     private static Rule ruleWithOperations(String operations, String ref) throws Exception
     {
         return rule("\"Sensitivity\": \"Study\","
-                + " \"Scope\": {\"Domains\": {\"Include\": [\"ALL\"]}}," + " \"Operations\": ["
+                + " \"Scope\": {\"Domains\": {\"Include\": [\"ALL\"]}}," + " \"Bindings\": ["
                 + operations + "]," + " \"Check\": {\"expression\": \"\\\"DM\\\" in " + ref + "\"},"
                 + " \"Outcome\": {\"Message\": \"m\"}");
     }

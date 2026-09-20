@@ -1,18 +1,15 @@
 package net.cumba.corej.core.exec;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.List;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.Scope;
 import org.junit.jupiter.api.Test;
 
 /**
- * Tests for {@link ScopeMatcher#filterByUseCase} and the {@link ScopeMatcher#matchesUseCase}
- * branches not covered by {@link ScopeMatcherTest}.
+ * Tests for {@link ScopeMatcher#matchesUseCase} (its {@code filterByUseCase} sibling went with D121
+ * — main-dead after phase 7) and the branches not covered by {@link ScopeMatcherTest}.
  */
 class ScopeMatcherUseCaseTest
 {
@@ -70,45 +67,6 @@ class ScopeMatcherUseCaseTest
     {
         Rule rule = ruleWithUseCase("INDH, PROD");
         assertFalse(ScopeMatcher.matchesUseCase(rule, "BLA"));
-    }
-
-
-    @Test
-    void filterByUseCase_nullUseCase_returnsAllRulesCopy()
-    {
-        Rule a = new Rule();
-        Rule b = new Rule();
-        List<Rule> rules = List.of(a, b);
-        List<Rule> out = ScopeMatcher.filterByUseCase(rules, null);
-        assertEquals(2, out.size());
-        // The implementation must return a fresh list to allow caller mutation.
-        assertNotSame(rules, out);
-        assertTrue(out.contains(a));
-        assertTrue(out.contains(b));
-    }
-
-
-    @Test
-    void filterByUseCase_filtersByMatching()
-    {
-        Rule a = ruleWithUseCase("INDH");
-        Rule b = ruleWithUseCase("PROD");
-        Rule c = new Rule(); // null scope → matches anything
-        List<Rule> rules = List.of(a, b, c);
-
-        List<Rule> indh = ScopeMatcher.filterByUseCase(rules, "INDH");
-        assertEquals(2, indh.size());
-        assertTrue(indh.contains(a));
-        assertTrue(indh.contains(c));
-        assertFalse(indh.contains(b));
-    }
-
-
-    @Test
-    void filterByUseCase_emptyInput_returnsEmpty()
-    {
-        List<Rule> empty = ScopeMatcher.filterByUseCase(List.of(), "INDH");
-        assertTrue(empty.isEmpty());
     }
 
 

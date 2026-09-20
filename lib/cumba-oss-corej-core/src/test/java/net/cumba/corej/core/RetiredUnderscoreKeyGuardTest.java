@@ -53,7 +53,7 @@ class RetiredUnderscoreKeyGuardTest
     void retiredSpellingOfARenamedFieldNamesItsReplacement() throws IOException
     {
         Rule rule = loadOne("\"_wildcards\": {\"xx\": {\"min\": 2}},"
-                + "\"Check\": {\"all\": [{\"name\": \"TRTxxP\", \"operator\": \"var_exists\"}]}");
+                + "\"Check\": {\"all\": [{\"expression\": \"var_exists(\\\"TRTxxP\\\")\"}]}");
         String error = rule.getLoadError();
         assertNotNull(error, "a retired _wildcards spelling must tag loadError");
         assertTrue(error.contains("_wildcards"), error);

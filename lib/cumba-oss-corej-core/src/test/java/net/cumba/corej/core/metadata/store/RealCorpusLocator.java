@@ -15,7 +15,7 @@ import net.cumba.corej.core.metadata.pickle.PickleCache;
  * well-known path, two of the nine "migrated wholesale" ADaM tests silently never ran.
  *
  * <p>
- * Precedence follows {@code cumba-corej-rules}' {@code PickleCacheLocator}: the
+ * Precedence follows the rules repository's {@code PickleCacheLocator}: the
  * {@code cdisc.pickle.cache.dir} system property, then the {@code CDISC_PICKLE_CACHE_DIR}
  * environment variable — plus, unlike that repo, the well-known {@link #WELL_KNOWN} directory as a
  * last tier, because it is the location this module's real-corpus conformance gate has always run

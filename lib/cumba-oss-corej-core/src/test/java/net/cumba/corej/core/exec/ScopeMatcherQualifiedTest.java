@@ -463,7 +463,7 @@ class ScopeMatcherQualifiedTest
         Rule rule = new Rule();
         Requirements req = new Requirements();
         VariableRequirement vars = new VariableRequirement();
-        vars.setAny(List.of("AESTDTC", "DM.ARM"));
+        vars.setAnyGroups(List.of(List.of("AESTDTC", "DM.ARM")));
         req.setVariables(vars);
         rule.setRequirements(req);
 

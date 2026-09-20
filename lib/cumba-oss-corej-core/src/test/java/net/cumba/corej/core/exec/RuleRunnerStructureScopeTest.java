@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.DataStructureScope;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -25,6 +24,12 @@ import org.junit.jupiter.api.Test;
  */
 class RuleRunnerStructureScopeTest
 {
+
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
 
     private static final DatasetResolver NO_DATASETS = _ -> null;
 
@@ -53,7 +58,7 @@ class RuleRunnerStructureScopeTest
             scope.setSubclasses(sc);
         }
         rule.setScope(scope);
-        rule.setCheck(CheckConditionLeaf.builder().name("STUDYID").operator("empty").build());
+        rule.setCheck(expr("empty(STUDYID)"));
         // Hand-built rules bypass RulePackageLoader — give the Check its compiled/native form so
         // the matching cases actually execute (same treatment WildcardExpander gives expansions).
         net.cumba.corej.core.RulePackageLoader.installNativeExpr(rule);

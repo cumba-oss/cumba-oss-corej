@@ -61,14 +61,13 @@ public final class MetadataProductCatalogue
      *            pre-P4 API-cache override; ignored likewise.
      * @return the configured catalogue (possibly empty)
      */
-    // [InlineMeSuggester] suppressed rather than obeyed. @InlineMe would need
-    // com.google.errorprone:error_prone_annotations as a COMPILE dependency of a published OSS
-    // artifact — today Error Prone reaches this build only through the annotation processor path,
-    // and the ErrPrn profile is opt-in — to buy an automated rewrite of two ignored arguments. It
-    // would also be the wrong instruction: the arguments are dropped, not forwarded, so inlining
-    // silently discards whatever expression a caller computed for them, and this overload exists
-    // precisely so the cross-repo callers can be migrated deliberately rather than under a compile
-    // error (see the @param text).
+    // [InlineMeSuggester] suppressed rather than obeyed (plan D9). @InlineMe would need
+    // com.google.errorprone:error_prone_annotations as a COMPILE dependency of a published
+    // artifact — Error Prone reaches this build only through the annotation-processor path — to
+    // buy an automated rewrite of two ignored arguments. It would also be the wrong instruction:
+    // the arguments are dropped, not forwarded, so inlining silently discards whatever expression
+    // a caller computed for them, and this overload exists precisely so the cross-repo callers can
+    // be migrated deliberately rather than under a compile error (see the @param text).
     @SuppressWarnings("InlineMeSuggester")
     @Deprecated(since = "cache P4", forRemoval = true)
     public static MetadataProductCatalogue configured(@Nullable String aIgnoredPickleDir,

@@ -29,9 +29,9 @@
           ]
         }
       },
-      "Operations": [
+      "Bindings": [
         {
-          "id": "$define_key_variables",
+          "name": "$define_key_variables",
           "expression": "define_key_variables()"
         }
       ],

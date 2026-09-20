@@ -5,18 +5,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.EvaluationContext;
-import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.ast.Expr.BinOp;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
@@ -26,8 +23,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class NativeExprEvaluatorTest
 {
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static Expr ref(String n)
     {
@@ -56,6 +51,13 @@ class NativeExprEvaluatorTest
     private static Expr opref(String n)
     {
         return new Expr.Ref(n, OperandKind.OPERATION_REF);
+    }
+
+
+    /** Parses one canonical expression — the spelling the retired converter used to produce. */
+    private static Expr px(String source)
+    {
+        return net.cumba.corej.core.expr.CheckExpressionParser.parse(source);
     }
 
 
@@ -182,8 +184,10 @@ class NativeExprEvaluatorTest
         // conjunct matches no row (empty), so the running intersection is empty and the probe is
         // skipped. In `SEX==M && probe(SEX)` the first conjunct is non-empty, so the probe runs.
         java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
-        FunctionRegistry
-                .register(new FunctionDescriptor("__probe_and__", 1, FunctionKind.BOOLEAN, (_, _) ->
+        FunctionRegistry.register(new FunctionDescriptor("__probe_and__",
+                List.of(Parameter.required("x",
+                        net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN)),
+                FunctionKind.BOOLEAN, (_, _) ->
                 {
                     calls.incrementAndGet();
                     return new BitSet();
@@ -205,7 +209,7 @@ class NativeExprEvaluatorTest
         }
         finally
         {
-            FunctionRegistry.unregister("__probe_and__", 1);
+            FunctionRegistry.unregister("__probe_and__");
         }
     }
 
@@ -217,8 +221,10 @@ class NativeExprEvaluatorTest
         // the
         // running union is full and the probe is skipped.
         java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
-        FunctionRegistry
-                .register(new FunctionDescriptor("__probe_or__", 1, FunctionKind.BOOLEAN, (_, _) ->
+        FunctionRegistry.register(new FunctionDescriptor("__probe_or__",
+                List.of(Parameter.required("x",
+                        net.cumba.corej.core.expr.typed.ExprType.Unknown.UNKNOWN)),
+                FunctionKind.BOOLEAN, (_, _) ->
                 {
                     calls.incrementAndGet();
                     return new BitSet();
@@ -233,31 +239,32 @@ class NativeExprEvaluatorTest
         }
         finally
         {
-            FunctionRegistry.unregister("__probe_or__", 1);
+            FunctionRegistry.unregister("__probe_or__");
         }
     }
 
 
     @Test
-    void domainPrefixWildcardResolvesNatively()
+    void domainPrefixWildcardIsSpecialisedNotEvalResolved()
     {
-        // B1: `--STAT` is a domain-prefix wildcard; native resolves it against the context's domain
-        // prefix (AE -> AESTAT) at eval time, so the program stays domain-agnostic. The expression
-        // is natively supported (no longer declined) and fires on the matching rows.
+        // D77: `--STAT` still COMPILES (the load-time support probe compiles, never evaluates),
+        // but evaluating the raw template is an error — the specialisation stage
+        // (ExprPrefixResolver) rewrites it to the concrete column before execution.
         Expr wildcard = new Expr.Ref("--STAT", OperandKind.WILDCARD_COLUMN);
         Expr e = bin(BinOp.EQ, wildcard, s("NOT DONE"));
-        assertTrue(NativeExprEvaluator.isSupported(e), "--STAT comparison is natively supported");
+        assertTrue(NativeExprEvaluator.isSupported(e), "--STAT comparison still compiles (probe)");
 
         IDataTable t = MockTable.of().col("AESTAT", "NOT DONE", "", "NOT DONE").build();
         EvaluationContext c = EvaluationContext.builder().table(t).domainPrefix("AE").build();
-        assertEquals(bits(0, 2), NativeExprEvaluator.evaluate(e, c),
-                "--STAT resolves to AESTAT and matches the populated rows");
+        assertEquals(bits(0, 2),
+                NativeExprEvaluator.evaluate(
+                        net.cumba.corej.core.exec.ExprPrefixResolver.resolve(e, "AE", "AE"), c),
+                "the specialised AESTAT comparison matches the populated rows");
 
-        // With no/!=2-char domain prefix the raw name stays unresolved -> column missing -> no
-        // rows.
-        EvaluationContext noPrefix = EvaluationContext.builder().table(t).build();
-        assertEquals(new BitSet(), NativeExprEvaluator.evaluate(e, noPrefix),
-                "absent domain prefix leaves --STAT unresolved (missing column => empty)");
+        org.junit.jupiter.api.Assertions.assertThrows(
+                net.cumba.corej.core.expr.ExpressionException.class,
+                () -> NativeExprEvaluator.evaluate(e, c),
+                "a raw --STAT reaching the evaluator is an error (D77b), never a resolution");
     }
 
 
@@ -296,28 +303,28 @@ class NativeExprEvaluatorTest
     @Test
     void arithmeticNotEqualNativeMatchesLegacy()
     {
-        // Phase 4b: X != A / B evaluates natively via ArithmeticSemantics and equals the legacy
-        // not_equal_to_divide. row0 2==10/5 ok; row1 4!=10/2 violation; row2 div-by-zero skipped;
-        // row3 missing name skipped.
+        // Phase 3d: X != A / B is ordinary first-class arithmetic. row0 2==10/5 ok;
+        // row1 4!=10/2 violation; row2 div-by-zero FIRES — D85: a zero denominator is
+        // MissingValue.MIS (a no result, never NaN), and under D34 #5-2's total comparison a
+        // present R2BASE never equals MIS (the legacy NaN silently suppressed this row);
+        // row3 missing R2BASE FIRES — a missing value never equals the present quotient 2
+        // (the fused caller's skip was verdict-freezing scaffolding, retired in 3d).
         // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
         // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
         // declare a numeric column. Do not put this back to col(...) with digit strings.
         IDataTable t = MockTable.of().colLong("R2BASE", 2L, 4L, 1L, null)
                 .colLong("AVAL", 10L, 10L, 5L, 10L).colLong("BASE", 5L, 2L, 0L, 5L).build();
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("R2BASE")
-                .operator("not_equal_to_divide")
-                .value(MAPPER.createArrayNode().add("AVAL").add("BASE")).build();
         EvaluationContext c = ctx(t);
-        BitSet nativ = NativeExprEvaluator.evaluate(CheckToExpr.toExpr(leaf), c);
-        assertEquals(bits(1), nativ, "native not_equal_to_divide");
+        BitSet nativ = NativeExprEvaluator.evaluate(px("R2BASE != (AVAL / BASE)"), c);
+        assertEquals(bits(1, 2, 3), nativ,
+                "native not_equal_to_divide (zero divisor fires D85; missing LHS fires 3d)");
     }
 
 
     @Test
     void colrefTwoHopNativeMatchesLegacy()
     {
-        // CDISC-CG0371: IDVARVAL not_equal_to IDVAR (type-insensitive, value_is_reference
-        // two-hop)
+        // CDISC-CG0371: IDVARVAL not_equal_to IDVAR (type-insensitive, value_is_reference two-hop)
         // ->
         // `str(IDVARVAL) != str(colref(IDVAR))`. IDVAR names a column; colref reads it on the same
         // row. AESEQ is the parent-domain column ChildMatchPreMerger pre-merges into the SUPP--
@@ -326,10 +333,7 @@ class NativeExprEvaluatorTest
         // AESEQ=1 (no violation); row1 IDVARVAL=99 != AESEQ=1 (violation).
         IDataTable t = MockTable.of().col("IDVAR", "AESEQ", "AESEQ").col("IDVARVAL", "1", "99")
                 .col("AESEQ", "1", "1").build();
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("IDVARVAL")
-                .operator("not_equal_to").typeInsensitive(true)
-                .value(MAPPER.getNodeFactory().textNode("IDVAR")).valueIsReference(true).build();
-        Expr e = CheckToExpr.toExpr(leaf); // str(IDVARVAL) != str(colref(IDVAR))
+        Expr e = px("str(IDVARVAL) != str(colref(IDVAR))");
         assertTrue(NativeExprEvaluator.isSupported(e),
                 "str(IDVARVAL) != str(colref(IDVAR)) is natively supported");
         EvaluationContext c = ctx(t);
@@ -344,9 +348,7 @@ class NativeExprEvaluatorTest
         // str(A) == str(B): native type-insensitive equality coerces both operands to strings, so
         // the string "1" equals the long 1. Must match the legacy type_insensitive equal_to.
         IDataTable t = MockTable.of().col("A", "1", "2", "3").colLong("B", 1L, 9L, 3L).build();
-        CheckConditionLeaf plain = CheckConditionLeaf.builder().name("A").operator("equal_to")
-                .typeInsensitive(true).value(MAPPER.getNodeFactory().textNode("B")).build();
-        Expr ep = CheckToExpr.toExpr(plain); // str(A) == str(B)
+        Expr ep = px("str(A) == str(B)");
         assertTrue(NativeExprEvaluator.isSupported(ep), "str(A) == str(B) is natively supported");
         assertEquals(bits(0, 2), NativeExprEvaluator.evaluate(ep, ctx(t)),
                 "type-insensitive equality: \"1\"==1 and \"3\"==3 fire, \"2\"!=9 does not");
@@ -422,28 +424,16 @@ class NativeExprEvaluatorTest
         // list literal (JSON integral nodes). Native and legacy must agree bit-for-bit.
         IDataTable t = MockTable.of().colLong("AESEV", 1L, 2L, 3L, 9L)
                 .col("AESEVC", "1", "2.0", "03", "9").build();
-        assertParity(CheckConditionLeaf.builder().name("AESEV").operator("is_contained_by")
-                .value(MAPPER.valueToTree(List.of(1, 2, 3))).build(), t);
-        assertParity(CheckConditionLeaf.builder().name("AESEV").operator("is_not_contained_by")
-                .value(MAPPER.valueToTree(List.of(1, 2, 3))).build(), t);
+        assertParity("AESEV in [1, 2, 3]", t);
+        assertParity("AESEV not in [1, 2, 3]", t);
         // A STRING-typed column against the same numeric list is the R3 defect shape — since
         // Phase 3 of PLAN-column-type-conformance it ERRORS (dataset-wide false-positive family;
         // the authored form is num(AESEVC) in [1,2,3]) instead of silently parsing.
         assertThrows(ColumnTypeMismatchException.class,
-                () -> NativeExprEvaluator
-                        .evaluate(
-                                CheckToExpr.toExpr(CheckConditionLeaf.builder().name("AESEVC")
-                                        .operator("is_contained_by")
-                                        .value(MAPPER.valueToTree(List.of(1, 2, 3))).build()),
-                                ctx(t)),
+                () -> NativeExprEvaluator.evaluate(px("AESEVC in [1, 2, 3]"), ctx(t)),
                 "Char probe against a numeric list errors (R3/R4)");
         assertThrows(ColumnTypeMismatchException.class,
-                () -> NativeExprEvaluator
-                        .evaluate(
-                                CheckToExpr.toExpr(CheckConditionLeaf.builder().name("AESEVC")
-                                        .operator("is_not_contained_by")
-                                        .value(MAPPER.valueToTree(List.of(1, 2, 3))).build()),
-                                ctx(t)),
+                () -> NativeExprEvaluator.evaluate(px("AESEVC not in [1, 2, 3]"), ctx(t)),
                 "Char probe against a numeric not-in list errors (R3/R4)");
     }
 
@@ -454,9 +444,7 @@ class NativeExprEvaluatorTest
         // The mixed-list load error must fire identically on the legacy engine (lockstep with
         // native). The corpus has zero mixed lists, so this is the defensive parity proof.
         IDataTable t = MockTable.of().col("X", "1", "A").build();
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("X").operator("is_contained_by")
-                .value(MAPPER.valueToTree(List.of(1, "A"))).build();
-        Expr expr = CheckToExpr.toExpr(leaf);
+        Expr expr = px("X in [1, \"A\"]");
         assertThrows(RuleDefinitionException.class,
                 () -> NativeExprEvaluator.evaluate(expr, ctx(t)));
     }
@@ -508,15 +496,11 @@ class NativeExprEvaluatorTest
                 List.of(call("non_empty", ref("X")), bin(BinOp.GT, call("len", ref("X")), num(0))));
         assertEquals(bits(0), NativeExprEvaluator.evaluate(optOut, ctx(t)));
 
-        // longer_than 0 (lowers to len(X) > 0): empty/missing do not fire.
-        Expr longer = CheckToExpr.toExpr(CheckConditionLeaf.builder().name("X")
-                .operator("longer_than").value(MAPPER.valueToTree(0)).build());
-        assertEquals(bits(0), NativeExprEvaluator.evaluate(longer, ctx(t)));
+        // longer_than 0 (len(X) > 0): empty/missing do not fire.
+        assertEquals(bits(0), NativeExprEvaluator.evaluate(px("len(X) > 0"), ctx(t)));
 
-        // shorter_than 1 (lowers to len(X) < 1): empty/missing fire (length 0 < 1).
-        Expr shorter = CheckToExpr.toExpr(CheckConditionLeaf.builder().name("X")
-                .operator("shorter_than").value(MAPPER.valueToTree(1)).build());
-        assertEquals(bits(1, 2), NativeExprEvaluator.evaluate(shorter, ctx(t)));
+        // shorter_than 1 (len(X) < 1): empty/missing fire (length 0 < 1).
+        assertEquals(bits(1, 2), NativeExprEvaluator.evaluate(px("len(X) < 1"), ctx(t)));
     }
 
 
@@ -562,14 +546,14 @@ class NativeExprEvaluatorTest
     }
 
     // ------------------------------------------------------------------
-    // Parity: converter (CheckToExpr) -> native vs lower-then-legacy
+    // Parity: canonical expression spellings of the retired operator vocabulary
     // ------------------------------------------------------------------
 
 
     /** Native smoke evaluation (the legacy comparison oracle is retired with the engine). */
-    private void assertParity(CheckConditionLeaf leaf, IDataTable t)
+    private void assertParity(String source, IDataTable t)
     {
-        assertTrue(NativeExprEvaluator.evaluate(CheckToExpr.toExpr(leaf), ctx(t)) != null,
+        assertTrue(NativeExprEvaluator.evaluate(px(source), ctx(t)) != null,
                 "native evaluation completes");
     }
 
@@ -582,27 +566,18 @@ class NativeExprEvaluatorTest
                 .col("DTC", "2024-01-02", "2024-01-01", "").col("DUR", "P1Y", "BAD", "P2M")
                 .col("NUM", "5", "5.5", "x").build();
 
-        assertParity(CheckConditionLeaf.builder().name("SEX").operator("equal_to")
-                .value(MAPPER.valueToTree("M")).valueIsLiteral(true).build(), t);
-        assertParity(CheckConditionLeaf.builder().name("SEX").operator("not_equal_to")
-                .value(MAPPER.valueToTree("M")).valueIsLiteral(true).build(), t);
-        assertParity(CheckConditionLeaf.builder().name("AGE").operator("greater_than")
-                .value(MAPPER.valueToTree(20)).build(), t);
-        assertParity(CheckConditionLeaf.builder().name("AGE").operator("less_than_or_equal_to")
-                .value(MAPPER.valueToTree(20)).build(), t);
-        assertParity(CheckConditionLeaf.builder().name("AESEV").operator("matches_regex")
-                .value(MAPPER.valueToTree("^MI")).valueIsLiteral(true).build(), t);
-        assertParity(CheckConditionLeaf.builder().name("AESEV").operator("is_contained_by")
-                .value(MAPPER.valueToTree(List.of("MILD", "MODERATE"))).build(), t);
-        assertParity(CheckConditionLeaf.builder().name("DTC").operator("date_greater_than")
-                .value(MAPPER.valueToTree("2024-01-01")).valueIsLiteral(true).build(), t);
-        assertParity(CheckConditionLeaf.builder().name("AESEV").operator("contains")
-                .value(MAPPER.valueToTree("MI")).valueIsLiteral(true).build(), t);
-        assertParity(CheckConditionLeaf.builder().name("NUM").operator("is_integer").build(), t);
-        assertParity(CheckConditionLeaf.builder().name("SEX").operator("non_empty").build(), t);
-        assertParity(CheckConditionLeaf.builder().name("SEX").operator("empty").build(), t);
-        assertParity(CheckConditionLeaf.builder().name("AESEV").operator("starts_with")
-                .value(MAPPER.valueToTree("MI")).valueIsLiteral(true).build(), t);
+        assertParity("SEX == \"M\"", t);
+        assertParity("SEX != \"M\"", t);
+        assertParity("AGE > 20", t);
+        assertParity("AGE <= 20", t);
+        assertParity("AESEV =~ /^MI/", t);
+        assertParity("AESEV in [\"MILD\", \"MODERATE\"]", t);
+        assertParity("date(DTC) > \"2024-01-01\"", t);
+        assertParity("contains(AESEV, \"MI\")", t);
+        assertParity("is_integer(NUM)", t);
+        assertParity("not empty(SEX)", t);
+        assertParity("empty(SEX)", t);
+        assertParity("starts_with(AESEV, \"MI\")", t);
     }
 
 
@@ -616,14 +591,11 @@ class NativeExprEvaluatorTest
         IDataTable t = MockTable.of().col("DUR", "P1Y", "BAD", "P2M", "", "-P1D", "-P2M", "--P1Y")
                 .build();
         // negative absent → default true (accept signed grammar).
-        assertParity(CheckConditionLeaf.builder().name("DUR").operator("invalid_duration").build(),
-                t);
+        assertParity("invalid_duration(DUR)", t);
         // negative true → accept signed grammar (the kwarg-drop regression case).
-        assertParity(CheckConditionLeaf.builder().name("DUR").operator("invalid_duration")
-                .negative(true).build(), t);
+        assertParity("invalid_duration(DUR, negative=true)", t);
         // negative false → reject the leading sign.
-        assertParity(CheckConditionLeaf.builder().name("DUR").operator("invalid_duration")
-                .negative(false).build(), t);
+        assertParity("invalid_duration(DUR, negative=false)", t);
     }
 
 
@@ -631,10 +603,8 @@ class NativeExprEvaluatorTest
     void parityForLengthAndCaseInsensitive()
     {
         IDataTable t = MockTable.of().col("X", "abcd", "ab", "ABCD").build();
-        assertParity(CheckConditionLeaf.builder().name("X").operator("longer_than")
-                .value(MAPPER.valueToTree(2)).build(), t);
-        assertParity(CheckConditionLeaf.builder().name("X").operator("equal_to_case_insensitive")
-                .value(MAPPER.valueToTree("ABCD")).valueIsLiteral(true).build(), t);
+        assertParity("len(X) > 2", t);
+        assertParity("equalsIgnoreCase(X, \"ABCD\")", t);
     }
 
 
@@ -646,16 +616,9 @@ class NativeExprEvaluatorTest
         // fire.
         IDataTable t = MockTable.of().col("X", "abcd", "AB", "Wxyz", "")
                 .col("Y", "ABCD", "ab", "", "").build();
-        assertParity(
-                CheckConditionLeaf.builder().name("X").operator("not_equal_to_case_insensitive")
-                        .value(MAPPER.valueToTree("ABCD")).valueIsLiteral(true).build(),
-                t);
-        assertParity(
-                CheckConditionLeaf.builder().name("X").operator("is_contained_by_case_insensitive")
-                        .value(MAPPER.valueToTree(List.of("abcd", "WXYZ"))).build(),
-                t);
-        assertParity(CheckConditionLeaf.builder().name("X").operator("has_not_equal_length")
-                .value(MAPPER.valueToTree(4)).build(), t);
+        assertParity("not equalsIgnoreCase(X, \"ABCD\")", t);
+        assertParity("upper(X) in [\"ABCD\", \"WXYZ\"]", t);
+        assertParity("len(X) != 4", t);
     }
 
 
@@ -669,10 +632,7 @@ class NativeExprEvaluatorTest
         // "Wxyz"->WXYZ in set (false). (Previously a legacy no-op / native decline — now fixed,
         // PLAN-regex-rule-optimization Phase 1.)
         IDataTable t = MockTable.of().col("X", "abcd", "AB", "Wxyz").build();
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("X")
-                .operator("is_not_contained_by_case_insensitive")
-                .value(MAPPER.valueToTree(List.of("abcd", "WXYZ"))).build();
-        Expr expr = CheckToExpr.toExpr(leaf);
+        Expr expr = px("upper(X) not in [\"ABCD\", \"WXYZ\"]");
         assertTrue(NativeExprEvaluator.isSupported(expr),
                 "is_not_contained_by_case_insensitive must be natively supported");
         assertEquals(bits(1), NativeExprEvaluator.evaluate(expr, ctx(t)),
@@ -688,17 +648,12 @@ class NativeExprEvaluatorTest
         // VISITNUM 1 -> {10,20,40} -> rows 0,1,3 fire.
         IDataTable t = MockTable.of().col("USUBJID", "S1", "S1", "S1", "S2")
                 .col("VISITNUM", "1", "1", "2", "1").col("AVAL", "10", "20", "30", "40").build();
-        assertParity(CheckConditionLeaf.builder().name("AVAL").operator("has_multiple_values_for")
-                .value(MAPPER.valueToTree("VISITNUM")).within(MAPPER.valueToTree("USUBJID"))
-                .build(), t);
+        assertParity("has_multiple_values_for(AVAL, VISITNUM, within=USUBJID)", t);
         assertEquals(bits(0, 1),
-                NativeExprEvaluator.evaluate(CheckToExpr.toExpr(CheckConditionLeaf.builder()
-                        .name("AVAL").operator("has_multiple_values_for")
-                        .value(MAPPER.valueToTree("VISITNUM")).within(MAPPER.valueToTree("USUBJID"))
-                        .build()), ctx(t)),
+                NativeExprEvaluator.evaluate(
+                        px("has_multiple_values_for(AVAL, VISITNUM, within=USUBJID)"), ctx(t)),
                 "grouped has_multiple_values_for");
-        assertParity(CheckConditionLeaf.builder().name("AVAL").operator("has_multiple_values_for")
-                .value(MAPPER.valueToTree("VISITNUM")).build(), t);
+        assertParity("has_multiple_values_for(AVAL, VISITNUM)", t);
     }
 
 
@@ -710,22 +665,19 @@ class NativeExprEvaluatorTest
         // a single dependent. Default (no include_empty) fires nothing on this table.
         IDataTable t = MockTable.of().col("ATPT", "Baseline", "", "Screening")
                 .col("ATPTN", "1", "1", "").build();
-        CheckConditionLeaf hmvf = CheckConditionLeaf.builder().name("ATPT")
-                .operator("has_multiple_values_for").value(MAPPER.valueToTree("ATPTN"))
-                .includeEmpty(true).build();
+        String hmvf = "has_multiple_values_for(ATPT, ATPTN, include_empty=true)";
         assertParity(hmvf, t);
-        assertEquals(bits(0, 1), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(hmvf), ctx(t)),
+        assertEquals(bits(0, 1), NativeExprEvaluator.evaluate(px(hmvf), ctx(t)),
                 "include_empty has_multiple_values_for");
 
         // is_inconsistent_across_dataset: ALB group {mg/L (x2), ""} -> the blank row is the
         // minority and fires; the default would fire nothing.
         IDataTable inc = MockTable.of().col("STRESU", "mg/L", "", "mg/L")
                 .col("TESTCD", "ALB", "ALB", "ALB").build();
-        CheckConditionLeaf incLeaf = CheckConditionLeaf.builder().name("STRESU")
-                .operator("is_inconsistent_across_dataset")
-                .value(MAPPER.valueToTree(List.of("TESTCD"))).includeEmpty(true).build();
-        assertParity(incLeaf, inc);
-        assertEquals(bits(1), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(incLeaf), ctx(inc)),
+        String incExpr = "is_inconsistent_across_dataset(STRESU, include_empty=true,"
+                + " keys=[TESTCD])";
+        assertParity(incExpr, inc);
+        assertEquals(bits(1), NativeExprEvaluator.evaluate(px(incExpr), ctx(inc)),
                 "include_empty is_inconsistent_across_dataset");
     }
 
@@ -737,18 +689,13 @@ class NativeExprEvaluatorTest
         // (S1,NAUSEA)=row2 and (S2,PAIN)=row3 fire for not_present.
         IDataTable t = MockTable.of().col("USUBJID", "S1", "S1", "S1", "S2")
                 .col("AETERM", "HEAD", "HEAD", "NAUSEA", "PAIN").build();
-        CheckConditionLeaf present = CheckConditionLeaf.builder().name("AETERM")
-                .operator("present_on_multiple_rows_within").within(MAPPER.valueToTree("USUBJID"))
-                .build();
+        String present = "present_on_multiple_rows_within(AETERM, within=USUBJID)";
         assertParity(present, t);
-        assertEquals(bits(0, 1), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(present), ctx(t)),
+        assertEquals(bits(0, 1), NativeExprEvaluator.evaluate(px(present), ctx(t)),
                 "present_on_multiple_rows_within");
-        CheckConditionLeaf notPresent = CheckConditionLeaf.builder().name("AETERM")
-                .operator("not_present_on_multiple_rows_within")
-                .within(MAPPER.valueToTree("USUBJID")).build();
+        String notPresent = "not present_on_multiple_rows_within(AETERM, within=USUBJID)";
         assertParity(notPresent, t);
-        assertEquals(bits(2, 3),
-                NativeExprEvaluator.evaluate(CheckToExpr.toExpr(notPresent), ctx(t)),
+        assertEquals(bits(2, 3), NativeExprEvaluator.evaluate(px(notPresent), ctx(t)),
                 "not_present_on_multiple_rows_within (Q1 not present(...) surface)");
     }
 
@@ -760,11 +707,9 @@ class NativeExprEvaluatorTest
         // at row 0 -> {0}. The trailing empty (row 2, the ordered last) is allowed.
         IDataTable t = MockTable.of().col("USUBJID", "S1", "S1", "S1", "S2")
                 .col("SEQ", "1", "2", "3", "1").col("AVAL", "", "x", "", "").build();
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("AVAL")
-                .operator("empty_within_except_last_row").value(MAPPER.valueToTree("USUBJID"))
-                .ordering("SEQ").build();
-        assertParity(leaf, t);
-        assertEquals(bits(0), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(leaf), ctx(t)),
+        String source = "empty_within_except_last_row(AVAL, USUBJID, ordering=SEQ)";
+        assertParity(source, t);
+        assertEquals(bits(0), NativeExprEvaluator.evaluate(px(source), ctx(t)),
                 "empty_within_except_last_row");
     }
 
@@ -778,11 +723,9 @@ class NativeExprEvaluatorTest
         IDataTable t = MockTable.of().col("USUBJID", "S1", "S1", "S1", "S2")
                 .col("SEQ", "1", "2", "3", "1").col("A", "10", "99", "30", "p")
                 .col("B", "x", "10", "20", "r").build();
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("A")
-                .operator("does_not_have_next_corresponding_record").value(MAPPER.valueToTree("B"))
-                .within(MAPPER.valueToTree("USUBJID")).ordering("SEQ").build();
-        assertParity(leaf, t);
-        assertEquals(bits(1), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(leaf), ctx(t)),
+        String source = "not has_next_corresponding_record(A, B, ordering=SEQ, within=USUBJID)";
+        assertParity(source, t);
+        assertEquals(bits(1), NativeExprEvaluator.evaluate(px(source), ctx(t)),
                 "does_not_have_next_corresponding_record (Q1 not has_next...(...) surface)");
     }
 
@@ -795,13 +738,9 @@ class NativeExprEvaluatorTest
         // group B is a singleton -> skipped.
         IDataTable t = MockTable.of().col("GRP", "A", "A", "B").col("ORD", "2", "1", "1")
                 .col("VAL", "3", "5", "1").build();
-        com.fasterxml.jackson.databind.node.ObjectNode d = MAPPER.createObjectNode();
-        d.put("name", "ORD").put("sort_order", "asc").put("null_position", "last");
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("VAL")
-                .operator("target_is_not_sorted_by").value(MAPPER.createArrayNode().add(d))
-                .within(MAPPER.valueToTree("GRP")).build();
-        assertParity(leaf, t);
-        assertEquals(bits(0, 1), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(leaf), ctx(t)),
+        String source = "not is_sorted_by(VAL, by=[asc(\"ORD\")], within=GRP)";
+        assertParity(source, t);
+        assertEquals(bits(0, 1), NativeExprEvaluator.evaluate(px(source), ctx(t)),
                 "target_is_not_sorted_by (not is_sorted_by(...) surface)");
     }
 
@@ -811,42 +750,33 @@ class NativeExprEvaluatorTest
     {
         // is_not_unique_relationship: A=x maps to both 1 and 2 -> rows {0,1}.
         IDataTable rel = MockTable.of().col("A", "x", "x", "y").col("B", "1", "2", "3").build();
-        CheckConditionLeaf relLeaf = CheckConditionLeaf.builder().name("A")
-                .operator("is_not_unique_relationship").value(MAPPER.valueToTree("B")).build();
-        assertParity(relLeaf, rel);
-        assertEquals(bits(0, 1),
-                NativeExprEvaluator.evaluate(CheckToExpr.toExpr(relLeaf), ctx(rel)),
+        String relExpr = "not is_unique_relationship(A, B)";
+        assertParity(relExpr, rel);
+        assertEquals(bits(0, 1), NativeExprEvaluator.evaluate(px(relExpr), ctx(rel)),
                 "is_not_unique_relationship");
 
         // is_not_unique_set on (NAME,K): (a,1) duplicated -> {0,1}; is_unique_set -> {2}.
         IDataTable set = MockTable.of().col("NAME", "a", "a", "b").col("K", "1", "1", "2").build();
-        CheckConditionLeaf dup = CheckConditionLeaf.builder().name("NAME")
-                .operator("is_not_unique_set").value(MAPPER.valueToTree(List.of("K"))).build();
+        String dup = "not is_unique_set([NAME, K])";
         assertParity(dup, set);
-        assertEquals(bits(0, 1), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(dup), ctx(set)),
+        assertEquals(bits(0, 1), NativeExprEvaluator.evaluate(px(dup), ctx(set)),
                 "is_not_unique_set");
-        CheckConditionLeaf uniq = CheckConditionLeaf.builder().name("NAME")
-                .operator("is_unique_set").value(MAPPER.valueToTree(List.of("K"))).build();
+        String uniq = "is_unique_set([NAME, K])";
         assertParity(uniq, set);
-        assertEquals(bits(2), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(uniq), ctx(set)),
-                "is_unique_set");
+        assertEquals(bits(2), NativeExprEvaluator.evaluate(px(uniq), ctx(set)), "is_unique_set");
 
         // is_inconsistent_across_dataset: group G=A has NAME {x,y} (>1 distinct) -> {0,1}.
         IDataTable inc = MockTable.of().col("G", "A", "A", "B").col("NAME", "x", "y", "z").build();
-        CheckConditionLeaf incLeaf = CheckConditionLeaf.builder().name("NAME")
-                .operator("is_inconsistent_across_dataset").value(MAPPER.valueToTree(List.of("G")))
-                .build();
-        assertParity(incLeaf, inc);
-        assertEquals(bits(0, 1),
-                NativeExprEvaluator.evaluate(CheckToExpr.toExpr(incLeaf), ctx(inc)),
+        String incExpr = "is_inconsistent_across_dataset(NAME, keys=[G])";
+        assertParity(incExpr, inc);
+        assertEquals(bits(0, 1), NativeExprEvaluator.evaluate(px(incExpr), ctx(inc)),
                 "is_inconsistent_across_dataset");
 
         // inconsistent_enumerated_columns: row 1 has TS empty but TS1 populated -> gap -> {1}.
         IDataTable enu = MockTable.of().col("TS", "a", "").col("TS1", "x", "y").build();
-        CheckConditionLeaf enuLeaf = CheckConditionLeaf.builder().name("TS")
-                .operator("inconsistent_enumerated_columns").build();
-        assertParity(enuLeaf, enu);
-        assertEquals(bits(1), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(enuLeaf), ctx(enu)),
+        String enuExpr = "inconsistent_enumerated_columns(TS)";
+        assertParity(enuExpr, enu);
+        assertEquals(bits(1), NativeExprEvaluator.evaluate(px(enuExpr), ctx(enu)),
                 "inconsistent_enumerated_columns");
     }
 
@@ -856,30 +786,25 @@ class NativeExprEvaluatorTest
     {
         // not_contains_all: TSPARMCD distinct {INTMODEL,INTTYPE} lacks PCLASS -> all rows flagged.
         IDataTable miss = MockTable.of().col("TSPARMCD", "INTMODEL", "INTTYPE").build();
-        CheckConditionLeaf nca = CheckConditionLeaf.builder().name("TSPARMCD")
-                .operator("not_contains_all")
-                .value(MAPPER.valueToTree(List.of("INTMODEL", "INTTYPE", "PCLASS"))).build();
+        String nca = "not contains_all(TSPARMCD, keys=[INTMODEL, INTTYPE, PCLASS])";
         assertParity(nca, miss);
-        assertEquals(bits(0, 1), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(nca), ctx(miss)),
+        assertEquals(bits(0, 1), NativeExprEvaluator.evaluate(px(nca), ctx(miss)),
                 "not_contains_all (missing required value)");
         // Contains all -> no violation.
         IDataTable full = MockTable.of().col("TSPARMCD", "INTMODEL", "INTTYPE", "PCLASS").build();
         assertParity(nca, full);
-        assertEquals(new BitSet(), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(nca), ctx(full)),
+        assertEquals(new BitSet(), NativeExprEvaluator.evaluate(px(nca), ctx(full)),
                 "not_contains_all (contains all)");
 
         // has_same_values: all MHCAT identical -> all rows flagged; mixed -> none.
         IDataTable same = MockTable.of().col("MHCAT", "GENERAL", "GENERAL", "GENERAL").build();
-        CheckConditionLeaf hsv = CheckConditionLeaf.builder().name("MHCAT")
-                .operator("has_same_values").build();
+        String hsv = "has_same_values(MHCAT)";
         assertParity(hsv, same);
-        assertEquals(bits(0, 1, 2),
-                NativeExprEvaluator.evaluate(CheckToExpr.toExpr(hsv), ctx(same)),
+        assertEquals(bits(0, 1, 2), NativeExprEvaluator.evaluate(px(hsv), ctx(same)),
                 "has_same_values");
         IDataTable mixed = MockTable.of().col("MHCAT", "A", "B", "A").build();
         assertParity(hsv, mixed);
-        assertEquals(new BitSet(),
-                NativeExprEvaluator.evaluate(CheckToExpr.toExpr(hsv), ctx(mixed)),
+        assertEquals(new BitSet(), NativeExprEvaluator.evaluate(px(hsv), ctx(mixed)),
                 "has_same_values (mixed)");
     }
 
@@ -891,8 +816,7 @@ class NativeExprEvaluatorTest
         // group of "abABcd"; row1 "ZZ"!=group of "qrXYst"; row2 no full match; row3 both missing.
         IDataTable t = MockTable.of().col("X", "AB", "ZZ", "QQ", "")
                 .col("Y", "abABcd", "qrXYst", "nomatch", "anyz").build();
-        assertParity(CheckConditionLeaf.builder().name("X").operator("does_not_equal_string_part")
-                .value(MAPPER.valueToTree("Y")).regex(".{2}(..).*").build(), t);
+        assertParity("does_not_equal_string_part(X, Y, regex=\".{2}(..).*\")", t);
     }
 
 
@@ -903,11 +827,9 @@ class NativeExprEvaluatorTest
         // value_is_literal marks "FA" as the literal it is — a bareword would be a column ref.
         // "FAKE" → "FA" fires; "APKE" → "AP" doesn't; "F" (shorter than 2) → whole string "F".
         IDataTable t = MockTable.of().col("X", "FAKE", "APKE", "F", "").build();
-        CheckConditionLeaf eq = CheckConditionLeaf.builder().name("X").operator("prefix_equal_to")
-                .prefix(2).value(MAPPER.valueToTree("FA")).valueIsLiteral(true).build();
+        String eq = "prefix(X, 2) == \"FA\"";
         assertParity(eq, t);
-        assertEquals(bits(0), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(eq), ctx(t)),
-                "prefix(X,2) == FA");
+        assertEquals(bits(0), NativeExprEvaluator.evaluate(px(eq), ctx(t)), "prefix(X,2) == FA");
         // prefix_not_equal_to with prefix:2: fires where the first 2 chars differ from "FA",
         // INCLUDING the missing row 3 — a missing cell folds to "" and "" differs from "FA".
         //
@@ -919,21 +841,17 @@ class NativeExprEvaluatorTest
         // fixture, so before the fix the two negative affix surfaces disagreed with each other
         // on the same operand. See register §45 (the retired JAVA-EXTENSIONS §22 is indexed in
         // expression-docs-disposition.md §A).
-        CheckConditionLeaf neq = CheckConditionLeaf.builder().name("X")
-                .operator("prefix_not_equal_to").prefix(2).value(MAPPER.valueToTree("FA"))
-                .valueIsLiteral(true).build();
+        String neq = "prefix(X, 2) != \"FA\"";
         assertParity(neq, t);
-        assertEquals(bits(1, 2, 3), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(neq), ctx(t)),
+        assertEquals(bits(1, 2, 3), NativeExprEvaluator.evaluate(px(neq), ctx(t)),
                 "prefix(X,2) != FA — the missing row 3 folds to \"\" and fires, like every other "
                         + "negative leaf (Fix #148)");
         // prefix_is_not_contained_by (NOT_IN surface): empty-string literal fix (A.1 affix) — a
         // missing cell folds to "" (extracted prefix ""), which is not in the list, so it now
         // fires; legacy and native move together (parity preserved).
-        CheckConditionLeaf notIn = CheckConditionLeaf.builder().name("X")
-                .operator("prefix_is_not_contained_by").prefix(2)
-                .value(MAPPER.createArrayNode().add("FA").add("AP")).build();
+        String notIn = "prefix(X, 2) not in [\"FA\", \"AP\"]";
         assertParity(notIn, t);
-        assertEquals(bits(2, 3), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(notIn), ctx(t)),
+        assertEquals(bits(2, 3), NativeExprEvaluator.evaluate(px(notIn), ctx(t)),
                 "prefix(X,2) not in [FA, AP] — 'F' fires, '' (missing) folds to '' and fires");
     }
 
@@ -1053,19 +971,15 @@ class NativeExprEvaluatorTest
         // (P1: BOOLEAN prefix_matches/3). Legacy fires rows whose 2-char prefix does NOT match —
         // including missing values (negate semantics).
         IDataTable t = MockTable.of().col("X", "FAKE", "AP01", "XF12", "").build();
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("X")
-                .operator("not_prefix_matches_regex").prefix(2).value(MAPPER.valueToTree("(AP|FA)"))
-                .valueIsLiteral(Boolean.TRUE).build();
-        assertParity(leaf, t);
-        assertEquals(bits(2, 3), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(leaf), ctx(t)),
+        String source = "prefix(X, 2) !~ /^(AP|FA)$/";
+        assertParity(source, t);
+        assertEquals(bits(2, 3), NativeExprEvaluator.evaluate(px(source), ctx(t)),
                 "not prefix_matches(X, /(AP|FA)/, 2)");
         // positive suffix form: suffix_matches_regex with suffix:3 fires the matching rows only.
         IDataTable s = MockTable.of().col("Y", "IDSEQ", "IDSEX", "").build();
-        CheckConditionLeaf pos = CheckConditionLeaf.builder().name("Y")
-                .operator("suffix_matches_regex").suffix(3).value(MAPPER.valueToTree("SEQ"))
-                .valueIsLiteral(Boolean.TRUE).build();
+        String pos = "suffix(Y, 3) =~ /^SEQ$/";
         assertParity(pos, s);
-        assertEquals(bits(0), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(pos), ctx(s)),
+        assertEquals(bits(0), NativeExprEvaluator.evaluate(px(pos), ctx(s)),
                 "suffix_matches(Y, /SEQ/, 3)");
     }
 
@@ -1077,31 +991,26 @@ class NativeExprEvaluatorTest
         // $-list vs $-list: sharing an element → no violation; disjoint → all rows.
         EvaluationContext c = EvaluationContext.builder().table(t).variables(Map.of("$datasets",
                 List.of("DM", "AE"), "$shared", List.of("DM"), "$disjoint", List.of("XX"))).build();
-        CheckConditionLeaf shared = CheckConditionLeaf.builder().name("$datasets")
-                .operator("shares_no_elements_with").value(MAPPER.valueToTree("$shared")).build();
-        assertEquals(new BitSet(), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(shared), c),
+        assertEquals(new BitSet(),
+                NativeExprEvaluator.evaluate(px("not shares_elements_with($datasets, $shared)"), c),
                 "shared element → not flagged");
-        CheckConditionLeaf disjoint = CheckConditionLeaf.builder().name("$datasets")
-                .operator("shares_no_elements_with").value(MAPPER.valueToTree("$disjoint")).build();
-        assertEquals(bits(0, 1), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(disjoint), c),
+        assertEquals(
+                bits(0, 1), NativeExprEvaluator
+                        .evaluate(px("not shares_elements_with($datasets, $disjoint)"), c),
                 "disjoint sets → all rows flagged");
         // keys=[…] literal-array form (the arity-1 raise): $datasets vs ["DM"] → shared → none.
-        CheckConditionLeaf keysForm = CheckConditionLeaf.builder().name("$datasets")
-                .operator("shares_no_elements_with").value(MAPPER.createArrayNode().add("DM"))
-                .build();
-        assertEquals(new BitSet(), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(keysForm), c),
+        assertEquals(
+                new BitSet(), NativeExprEvaluator
+                        .evaluate(px("not shares_elements_with($datasets, keys=[DM])"), c),
                 "keys-form literal array shares DM → not flagged");
         // unresolvable NAME (a non-$ name never resolves for this operator) → all rows (legacy
         // null contract).
-        CheckConditionLeaf unresolved = CheckConditionLeaf.builder().name("NOTAVAR")
-                .operator("shares_no_elements_with").value(MAPPER.valueToTree("$shared")).build();
-        assertEquals(bits(0, 1), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(unresolved), c),
+        assertEquals(bits(0, 1),
+                NativeExprEvaluator.evaluate(px("not shares_elements_with(NOTAVAR, $shared)"), c),
                 "unresolvable operand → all rows flagged");
-        // ABSENT $-NAME → the CheckEvaluator.evaluateLeaf guard short-circuits to NO violation
-        // (it fires before the operator's flag-all null contract can apply).
-        CheckConditionLeaf absentVar = CheckConditionLeaf.builder().name("$absent_var")
-                .operator("shares_no_elements_with").value(MAPPER.valueToTree("$shared")).build();
-        assertTrue(NativeExprEvaluator.evaluate(CheckToExpr.toExpr(absentVar), c).isEmpty(),
+        // ABSENT $-NAME → the retired leaf guard's contract: NO violation.
+        assertTrue(NativeExprEvaluator
+                .evaluate(px("not shares_elements_with($absent_var, $shared)"), c).isEmpty(),
                 "absent $-name → leaf guard → no violation");
     }
 
@@ -1115,19 +1024,18 @@ class NativeExprEvaluatorTest
                         "$library", List.of("A", "B", "C")))
                 .build();
         // ordered subsequence (gaps allowed) → no violation.
-        CheckConditionLeaf ok = CheckConditionLeaf.builder().name("$inOrder")
-                .operator("is_not_ordered_subset_of").value(MAPPER.valueToTree("$library")).build();
-        assertEquals(new BitSet(), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(ok), c),
+        assertEquals(new BitSet(),
+                NativeExprEvaluator.evaluate(px("not is_ordered_subset_of($inOrder, $library)"), c),
                 "ordered subset → not flagged");
         // out of order → all rows flagged.
-        CheckConditionLeaf bad = CheckConditionLeaf.builder().name("$outOfOrder")
-                .operator("is_not_ordered_subset_of").value(MAPPER.valueToTree("$library")).build();
-        assertEquals(bits(0, 1), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(bad), c),
+        assertEquals(
+                bits(0, 1), NativeExprEvaluator
+                        .evaluate(px("not is_ordered_subset_of($outOfOrder, $library)"), c),
                 "order violated → all rows flagged");
         // unresolvable operand → NO violation (the inverse of shares_no_elements_with's contract).
-        CheckConditionLeaf unresolved = CheckConditionLeaf.builder().name("$missingvar")
-                .operator("is_not_ordered_subset_of").value(MAPPER.valueToTree("$library")).build();
-        assertEquals(new BitSet(), NativeExprEvaluator.evaluate(CheckToExpr.toExpr(unresolved), c),
+        assertEquals(
+                new BitSet(), NativeExprEvaluator
+                        .evaluate(px("not is_ordered_subset_of($missingvar, $library)"), c),
                 "unresolvable operand → not flagged");
     }
 
@@ -1140,7 +1048,10 @@ class NativeExprEvaluatorTest
     void arithmeticNotEqualDivideAcceptsLiteralOperand()
     {
         // X != ( A / 2 ): the divisor is a numeric literal (Phase 9c). row0 2==4/2 ok;
-        // row1 4!=4/2 violation; row2 missing A skipped; row3 missing X skipped.
+        // row1 4!=4/2 violation; rows 2/3 FIRE since phase 3d: a missing A propagates into the
+        // quotient (D85c/D86a) and a present X never equals it, and a missing X never equals
+        // the present quotient (D34 #5-2) — the fused caller's skip was verdict-freezing
+        // scaffolding, retired in 3d.
         // Owner ruling 2026-09-13: a character CELL never converts -- DataValueString
         // .getValueAsDouble() is a hard NaN -- so a fixture that needs the NUMERIC path must
         // declare a numeric column. Do not put this back to col(...) with digit strings.
@@ -1148,7 +1059,7 @@ class NativeExprEvaluatorTest
                 .build();
         Expr e = bin(BinOp.NEQ, ref("X"), bin(BinOp.DIV, ref("A"), num(2)));
         assertTrue(NativeExprEvaluator.isSupported(e), "X != ( A / 2 ) supported");
-        assertEquals(bits(1), NativeExprEvaluator.evaluate(e, ctx(t)), "X != ( A / 2 )");
+        assertEquals(bits(1, 2, 3), NativeExprEvaluator.evaluate(e, ctx(t)), "X != ( A / 2 )");
     }
 
 
@@ -1218,8 +1129,8 @@ class NativeExprEvaluatorTest
                 "literal-only lower(...) folds to a ConstVector");
         org.junit.jupiter.api.Assertions.assertSame(v1, v2,
                 "the folded ConstVector is computed once and reused across evaluations");
-        assertEquals("text", v1.resolvedObject(0), "row 0 broadcast value");
-        assertEquals("text", v1.resolvedObject(1), "row 1 broadcast value");
+        assertEquals("text", v1.value(0).resolved(), "row 0 broadcast value");
+        assertEquals("text", v1.value(1).resolved(), "row 1 broadcast value");
     }
 
 
@@ -1233,7 +1144,7 @@ class NativeExprEvaluatorTest
         Vector v = plan.eval(EvalRun.fullRange(ctx(t)));
         org.junit.jupiter.api.Assertions.assertInstanceOf(ConstVector.class, v,
                 "substring literal-only folds");
-        assertEquals("BC", v.resolvedObject(0), "substring(\"ABCDE\", 2, 2)");
+        assertEquals("BC", v.value(0).resolved(), "substring(\"ABCDE\", 2, 2)");
     }
 
 
@@ -1245,7 +1156,7 @@ class NativeExprEvaluatorTest
         ExprCompiler.ValuePlan plan = ExprCompiler.valueCallPlan((Expr.Call) call("record_count"));
         IDataTable t = MockTable.of().col("X", "a", "b", "c").build();
         Vector v = plan.eval(EvalRun.fullRange(ctx(t)));
-        assertEquals(3L, ((Number) v.resolvedObject(0)).longValue(), "record_count() = 3");
+        assertEquals(3L, ((Number) v.value(0).resolved()).longValue(), "record_count() = 3");
     }
 
 
@@ -1259,8 +1170,8 @@ class NativeExprEvaluatorTest
         IDataTable t = MockTable.of().col("X", "AB", "CD").build();
         Vector v = plan.eval(EvalRun.fullRange(ctx(t)));
         assertFalse(v instanceof ConstVector, "column-arg lower(X) is not folded to a constant");
-        assertEquals("ab", v.resolvedObject(0), "row 0");
-        assertEquals("cd", v.resolvedObject(1), "row 1");
+        assertEquals("ab", v.value(0).resolved(), "row 0");
+        assertEquals("cd", v.value(1).resolved(), "row 1");
     }
 
     // ------------------------------------------------------------------
@@ -1320,8 +1231,11 @@ class NativeExprEvaluatorTest
                         ctx(t)),
                 "num(AGECHAR) > 0 (converted LHS, same verdict as the numeric column)");
 
-        // <= mirrors the same four RHS shapes (AGE <= 20 => rows 1,2; missing row never fires).
-        BitSet le20 = bits(1, 2);
+        // <= mirrors the same RHS shapes. ⭐ Phase 6c (D117/D34 #5): the missing row 3 now DOES
+        // fire on the low side — a MissingValue sorts below every non-missing value, so `<=` is
+        // true on it while `>` above stays false. The point of this test is unchanged and still
+        // holds: both RHS spellings give the SAME verdict, symmetry intact.
+        BitSet le20 = bits(1, 2, 3);
         assertEquals(le20, NativeExprEvaluator.evaluate(bin(BinOp.LE, ref("AGE"), num(20)), ctx(t)),
                 "AGE <= 20 (numeric literal)");
         assertEquals(le20, NativeExprEvaluator.evaluate(bin(BinOp.LE, ref("AGE"), s("20")), ctx(t)),
@@ -1335,12 +1249,16 @@ class NativeExprEvaluatorTest
                 NativeExprEvaluator.evaluate(bin(BinOp.GE, ref("AGE"), s("TEXT")), ctx(t)),
                 "AGE >= \"TEXT\" (non-numeric RHS) never fires");
 
-        // Missing LHS never fires regardless of RHS shape (row 3 is missing in AGE; an all-missing
-        // column LHS compared to 0 yields the empty set).
+        // A missing LHS never fires on the HIGH side, regardless of RHS shape (an all-missing
+        // column compared to 0 yields the empty set under `>`), and always fires on the LOW side
+        // — the two halves of D34 #5's total order, pinned together so neither can drift alone.
         IDataTable allMissing = MockTable.of().colLong("M", (Long) null, null).build();
         assertEquals(new BitSet(),
                 NativeExprEvaluator.evaluate(bin(BinOp.GT, ref("M"), num(0)), ctx(allMissing)),
-                "missing LHS never fires");
+                "missing LHS never fires on the high side");
+        assertEquals(bits(0, 1),
+                NativeExprEvaluator.evaluate(bin(BinOp.LT, ref("M"), num(0)), ctx(allMissing)),
+                "missing LHS always fires on the low side (D34 #5)");
     }
 
 

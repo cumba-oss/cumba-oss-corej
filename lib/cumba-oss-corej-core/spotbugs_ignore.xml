@@ -56,6 +56,17 @@
         <Bug pattern="FE_FLOATING_POINT_EQUALITY" />
     </Match>
 
+    <!-- D84a: PresentNumber.reportingForm renders the LEGACY cleaned text,
+         deliberately byte-identical to DataValueDouble.getValueAsString —
+         including its exact `cleaned == Math.floor(cleaned)` integral test
+         ("2.0" -> "2"). An epsilon compare would diverge from the rendering
+         every report and rendered-key lockstep map already depends on. -->
+    <Match>
+        <Class name="net.cumba.corej.core.exec.GroupKeyPolicy$KeyPart$PresentNumber" />
+        <Method name="reportingForm" />
+        <Bug pattern="FE_FLOATING_POINT_EQUALITY" />
+    </Match>
+
     <!-- CDISC rule engine: case folding is applied to standard names
          ("sdtmig","adamig"), domain codes (SDTM 2-letter), variable names
          (SAS-style, <=32 ASCII chars), CT package types, JSON CheckOperator

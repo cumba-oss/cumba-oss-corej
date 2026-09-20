@@ -33,13 +33,13 @@
           ]
         }
       },
-      "Operations": [
+      "Bindings": [
         {
-          "id": "$bt_pop",
+          "name": "$bt_pop",
           "expression": "record_count(filter=filter(BASETYPE=\"&\"))"
         },
         {
-          "id": "$bt_total",
+          "name": "$bt_total",
           "expression": "record_count()"
         }
       ],

@@ -10,7 +10,6 @@ import java.util.Map;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.DomainScope;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
@@ -26,7 +25,14 @@ import org.junit.jupiter.api.Test;
 class OutputVariableDeriverTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
     // ------------------------------------------------------------- builders
+
 
     private static Rule rule(Expr check)
     {
@@ -528,22 +534,22 @@ class OutputVariableDeriverTest
         assertEquals(List.of("AESTDTC"), OutputVariableDeriver.derive(r));
     }
 
-    // ------------------------------------------------------------- D2 fallback
+    // ------------------------------------------------------------- D2 fallback retired (7d)
 
 
+    /**
+     * Phase 7d (D121): the D2 legacy-tree fallback walked the v1 operator-leaf Check of a rule with
+     * no compiled expression; the shape no longer exists (an uncompilable Check is a load error),
+     * so a rule that never acquired a {@code checkExpr} derives NOTHING from its Check — pinned so
+     * the retirement cannot silently turn back into a partial derivation.
+     */
     @Test
-    void legacyTreeFallbackWhenNoCheckExpr()
+    void noCompiledExpressionDerivesNothingFromTheCheck()
     {
-        CheckConditionLeaf keep = CheckConditionLeaf.builder().name("AETERM").operator("empty")
-                .build();
-        CheckConditionLeaf gone = CheckConditionLeaf.builder().name("AESLIFE")
-                .operator("var_not_exists").build();
-        CheckConditionLeaf additional = CheckConditionLeaf.builder().name("TSVAL")
-                .operator("additional_columns_empty").build();
         Rule r = new Rule();
-        r.setCheck(new CheckConditionAll(List.of(keep, gone, additional)));
-        // var_not_exists (D3) and additional_columns_* (runtime-expanded) leaves contribute nothing
-        assertEquals(List.of("AETERM"), OutputVariableDeriver.derive(r));
+        r.setCheck(new CheckConditionAll(List.of(expr("empty(AETERM)"),
+                expr("var_not_exists(\"AESLIFE\")"), expr("additional_columns_empty(TSVAL)"))));
+        assertEquals(List.of(), OutputVariableDeriver.derive(r));
     }
 
     // ------------------------------------------------------------- D10
@@ -610,6 +616,19 @@ class OutputVariableDeriverTest
                 new Expr.And(List.of(eq(col("AETERM"), str("t")), eq(col("AEDECOD"), str("d")),
                         eq(col("AESEV"), str("s")))));
         assertEquals(List.of("AESEV"), OutputVariableDeriver.derivedOnly(r));
+    }
+
+
+    @Test
+    void theMatchedFlagIsNeverADerivedOutputVariable()
+    {
+        // 5b-J (spec §3.3): the flag names a join verdict, not a reportable variable — same
+        // disposition as ds_exists' operand. `not AE._matched_ and empty(DTHFL)` derives only
+        // DTHFL.
+        Expr flag = new Expr.Ref("AE._matched_", OperandKind.MATCHED_FLAG);
+        Expr check = new Expr.And(List.of(new Expr.Not(flag),
+                new Expr.Call("empty", List.of(col("DTHFL")), Map.of())));
+        assertEquals(List.of("DTHFL"), OutputVariableDeriver.derive(rule(check)));
     }
 
 

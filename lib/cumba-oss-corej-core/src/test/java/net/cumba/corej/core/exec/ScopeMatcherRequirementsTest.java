@@ -56,7 +56,7 @@ class ScopeMatcherRequirementsTest
         rule.setCore(core);
         VariableRequirement vars = new VariableRequirement();
         vars.setAll(all);
-        vars.setAny(any);
+        vars.setAnyGroups(any == null ? null : java.util.List.of(any));
         vars.setNone(none);
         Requirements req = new Requirements();
         req.setVariables(vars);
@@ -128,10 +128,10 @@ class ScopeMatcherRequirementsTest
             Rule rule = ruleWithRequirement(null, List.of("TEENRL", "TEDUR"), null);
             String reason = describe(rule, meta("TE", "TESEQ"));
             assertEquals(
-                    "no variable of Requirements.Variables.Any [TEENRL, TEDUR] present in"
-                            + " dataset",
-                    reason,
-                    "no single entry is at fault in a disjunction, so the message names the list");
+                    "no variable of Requirements.Variables.Any group 1 [TEENRL, TEDUR] present"
+                            + " in dataset",
+                    reason, "no single entry is at fault in a disjunction, so the message names the"
+                            + " group and its index");
         }
 
 

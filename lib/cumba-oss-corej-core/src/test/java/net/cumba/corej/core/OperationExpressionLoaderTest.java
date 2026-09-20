@@ -32,7 +32,7 @@ class OperationExpressionLoaderTest
         Rule rule = loadRule("""
                 {"Core":{"Id":"T-OP1","Status":"Draft","Version":"1"},
                  "Check":{"expression":"var_exists(--LNKGRP) and $VARIABLE_COUNT < 2"},
-                 "Operations":[{"id":"$VARIABLE_COUNT",
+                 "Bindings":[{"name":"$VARIABLE_COUNT",
                                 "expression":"variable_count(--LNKGRP)"}]}""");
         assertNull(rule.getLoadError());
         assertNotNull(rule.getOperations());
@@ -50,23 +50,29 @@ class OperationExpressionLoaderTest
         Rule rule = loadRule("""
                 {"Core":{"Id":"T-OP2","Status":"Draft","Version":"1"},
                  "Check":{"expression":"$X < 2"},
-                 "Operations":[{"id":"$X","expression":"bogus_operation(X)"}]}""");
+                 "Bindings":[{"name":"$X","expression":"bogus_operation(X)"}]}""");
         assertNotNull(rule.getLoadError());
     }
 
 
+    /**
+     * A field-form {@link Operation} constructed <em>programmatically</em> (the executor-internal
+     * record — no YAML/JSON surface produces one since phase 7b) passes through the normalise pass
+     * untouched.
+     */
     @Test
-    void fieldFormOperationUntouched() throws IOException
+    void programmaticFieldFormOperationUntouched()
     {
-        Rule rule = loadRule("""
-                {"Core":{"Id":"T-OP3","Status":"Draft","Version":"1"},
-                 "Check":{"expression":"$VARIABLE_COUNT < 2"},
-                 "Operations":[{"id":"$VARIABLE_COUNT","name":"--LNKGRP",
-                                "operator":"variable_count"}]}""");
+        Rule rule = new Rule();
+        Operation op = new Operation();
+        op.setId("$VARIABLE_COUNT");
+        op.setOperator("variable_count");
+        op.setName("--LNKGRP");
+        rule.setOperations(new java.util.ArrayList<>(java.util.List.of(op)));
+        RulePackageLoader.normalizeOperations(rule);
         assertNull(rule.getLoadError());
-        Operation op = rule.getOperations().get(0);
-        assertEquals("variable_count", op.getOperator());
-        assertEquals("--LNKGRP", op.getName());
+        assertEquals("variable_count", rule.getOperations().get(0).getOperator());
+        assertEquals("--LNKGRP", rule.getOperations().get(0).getName());
     }
 
 }

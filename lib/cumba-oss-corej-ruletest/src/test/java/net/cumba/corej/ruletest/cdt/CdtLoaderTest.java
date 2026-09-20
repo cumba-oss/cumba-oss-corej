@@ -1,6 +1,7 @@
 package net.cumba.corej.ruletest.cdt;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -11,6 +12,7 @@ import net.cumba.corej.ruletest.cdt.CdtLoader.CdtParseException;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.impl.support.OverlayDataTable;
 import net.cumba.datatable.values.DataValueType;
+import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -21,6 +23,67 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 class CdtLoaderTest
 {
+
+    /**
+     * ⭐ The SAS special missings must survive into the table as MISSING on <b>every</b> column type
+     * — review H1/H2, 2026-09-17.
+     *
+     * <p>
+     * This branch is otherwise <b>untested by construction</b>: zero {@code .cdt} fixtures in
+     * either this repository or the rules repository author a special-missing sentinel, so the
+     * whole corpus gate is green whether the code works or not. That is exactly how H1 reached a
+     * committed state through three green gates.
+     * </p>
+     *
+     * <p>
+     * ⛔ The CHAR assertion is the load-bearing one, and since PLAN-cdt-char-missing-contract phase
+     * 6 it is <b>also this repo's guard on the fix</b>. The loader no longer wraps a special
+     * missing itself: the cell goes through the ordinary {@code setValue}, and the overlay wraps
+     * the raw enum with {@code DataValueSupport.getAsDataValue(val, STRING)}. That helper used to
+     * resolve its type switch first, so the STRING arm returned {@code new DataValueString(".A")} —
+     * ordinary data, {@code isMissingOrInvalid()} false; it now resolves
+     * {@code instanceof MissingValue} above the switch. ⛔ The local workaround in {@code CdtLoader}
+     * was removed ON PURPOSE so that this assertion reds if the hoist is ever reverted — with the
+     * workaround in place it stayed green either way. Measured 2026-09-18: against a pre-hoist
+     * datatable this assertion fails, against the fixed one it passes.
+     * </p>
+     *
+     * <p>
+     * Assert the {@code IDataValue} view, not {@code getValue()}: the engine reads cells through
+     * the former, and only the former was wrong.
+     * </p>
+     */
+    @Test
+    void specialMissingsSurviveAsMissingOnBothCharAndNumericColumns()
+    {
+        String content = """
+                dataset T
+                col C type=Char
+                col N type=Num
+                ---
+                .A | .B
+                .  | .
+                x  | 1
+                ---
+                """;
+        OverlayDataTable t = CdtLoader.parse(content, "test");
+
+        // Row 0 — the flavours must survive, and must READ AS MISSING through IDataValue.
+        assertTrue(t.getDataValue(0, 0).isMissingOrInvalid(), "a .A CHAR cell must be missing");
+        assertTrue(t.getDataValue(0, 1).isMissingOrInvalid(), "a .B NUM cell must be missing");
+        assertEquals(MissingValue.MIS_A, t.getValue(0, 0), "and it must keep its FLAVOUR");
+        assertEquals(MissingValue.MIS_B, t.getValue(0, 1));
+
+        // Row 1 — plain `.` stays filtered, so an unset cell still answers missing. This is the
+        // half that protects the 313 blank numeric cells' hashCodeAt.
+        assertTrue(t.getDataValue(1, 0).isMissingOrInvalid());
+        assertTrue(t.getDataValue(1, 1).isMissingOrInvalid());
+
+        // Row 2 — ordinary data is untouched, and `.A` must not be confused with the string ".A".
+        assertEquals("x", t.getValue(2, 0));
+        assertFalse(t.getDataValue(2, 0).isMissingOrInvalid());
+    }
+
 
     @Test
     void parse_minimal_charColumns()
@@ -78,9 +141,19 @@ class CdtLoaderTest
                 01-002 | GLUC | .
                 """;
         OverlayDataTable table = CdtLoader.parse(content, "test");
-        // Empty char field → null
-        assertNull(table.getValue(0, 1));
-        // Dot in numeric field → null
+        // Empty char field → "" (NOT null).
+        //
+        // ⚠ This assertion was assertNull in the coreJ monorepo. It changed with the dependency,
+        // not with this loader: the monorepo's own CdtValues.missingFor(CHAR) answered null, while
+        // net.cumba.datatable.provider.cdt's answers "" — its javadoc states the project-wide
+        // contract, that a character column has no missing sentinel because the empty string IS
+        // its missing value, the same spelling the CSV / SAS7BDAT / XPT / DSJ providers already
+        // use. Against the full stack the .cdt harness now agrees with every other provider
+        // instead of being the one that yields null.
+        assertEquals("", table.getValue(0, 1));
+        // Dot in numeric field → null. Unchanged: a numeric column has no null spelling
+        // (DataBufferDouble rejects it), so parseValue answers MissingValue.MIS, CdtLoader leaves
+        // the cell unset, and an unset cell reads back null.
         assertNull(table.getValue(1, 2));
         // Other values present
         assertEquals("01-001", table.getValue(0, 0));

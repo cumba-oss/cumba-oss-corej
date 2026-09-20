@@ -22,10 +22,17 @@ import org.junit.jupiter.api.Test;
  * <h2>⛔ The shipped javadoc's guarantee is wrong as written</h2> {@link AbsentDatasetSkip}'s class
  * javadoc says the cross-standard arm <i>"changes <b>no findings</b> — only a vacuous {@code PASS}
  * into {@code SKIPPED}"</i>. Measured on 2026-08-11 over every rule of every ADaM-family package:
- * <b>19 rules of {@code rules-core-tig-1-0.json} DO lose findings</b> when the arm engages.
- * {@code isFalse(suppress(check, …))} is a statement about a <em>rewrite</em>; it does not say the
- * suppressed leaves <em>evaluate</em> to {@code false}, and on an absent dataset several standard
- * shapes evaluate to {@code true} for every row:
+ * <b>19 rules of {@code rules-core-tig-1-0.json} DO lose findings</b> when the arm engages. ⚠⚠
+ * <b>{@code rules-core-tig-1-0.json} is a RETIRED package</b> — it was the CORE family's TIG
+ * package and stopped being generated when that family was retired on 2026-09-19
+ * ({@code plans/done/PLAN-retire-core-family.md}, ruling {@code D1}: the TIG <em>corpus</em> goes,
+ * the TIG <em>machinery</em> stays). The measurement below is kept <b>as measured</b>, with the
+ * rule ids it names resolvable only in git history: it is a dated observation about the engine's
+ * behaviour, not a claim about today's shipped corpus, and rewriting it onto surviving packages
+ * would be asserting a count nobody has run. {@code isFalse(suppress(check, …))} is a statement
+ * about a <em>rewrite</em>; it does not say the suppressed leaves <em>evaluate</em> to
+ * {@code false}, and on an absent dataset several standard shapes evaluate to {@code true} for
+ * every row:
  * <ul>
  * <li>{@code X not in $op(domain=<absent>)} — the operation yields the empty set and {@code not in}
  * an empty set is vacuously TRUE. This is the collapsing leaf in <b>all 19</b>, and the same defect
@@ -55,8 +62,8 @@ import org.junit.jupiter.api.Test;
  * {@code var_exists}-guarded in the top-level {@code and}; the 27th ({@code CDISC-AD0646}) is
  * unguarded but safe by evaluation, because {@code record_count} over an absent domain is 0 and
  * {@code 0 > 0} is false. Only the TIG package contains unguarded collapse shapes that fire.
- * {@code CrossStandardCollapseCorpusTest} in {@code cumba-oss-corej-rules} asserts that half over
- * the whole shipped corpus.
+ * {@code CrossStandardCollapseCorpusTest} in {@code corej-rules} asserts that half over the whole
+ * shipped corpus.
  */
 class AbsentDatasetSkipCrossStandardCollapseTest
 {
@@ -86,18 +93,26 @@ class AbsentDatasetSkipCrossStandardCollapseTest
              "Outcome":{"Message":"m","Output_Variables":["USUBJID"]}}""";
 
     /**
-     * {@code CORE-000271} as shipped in {@code rules/rules-core-tig-1-0.json} (read 2026-08-11) —
-     * the 16-rule {@code not in $op} majority of the refutation, and one of the shapes actually
-     * reachable on a TIG-ADaM run ({@code Domains.Include ALL}, and ADaM datasets carry
-     * {@code EPOCH}). The {@code EPOCH} requirement is authored in its post-phase-5 host,
-     * {@code Requirements.Variables.All} — the shipped rule's {@code Scope.Variables.Include}
-     * migrated there unchanged.
+     * The {@code x not in $op(domain=D)} collapse shape — the 16-rule majority of the refutation,
+     * and one of the shapes actually reachable on a TIG-ADaM run ({@code Domains.Include ALL}, and
+     * ADaM datasets carry {@code EPOCH}). The {@code EPOCH} requirement is authored in its
+     * post-phase-5 host, {@code Requirements.Variables.All}.
+     *
+     * <p>
+     * ⚑ Carried here as {@code CDISC-CG0009}, which is the <b>surviving twin</b> of the rule the
+     * 2026-08-11 reading took this body from: verified 2026-09-19 to be field-identical on
+     * {@code Scope}, {@code Requirements}, {@code Bindings}, {@code Check} and {@code Outcome}, so
+     * the shape this test exercises is still shipped even though the retired package the
+     * measurement counted is not. It ships in {@code rules-cdisc-sdtmig-3-4.json}, not a TIG
+     * package — which is why the class javadoc's population figure stays a dated historical record
+     * rather than being restated over the live corpus.
+     * </p>
      */
-    private static final String CORE_000271 = """
-            {"Core":{"Id":"CORE-000271"},"Sensitivity":"Record",
+    private static final String CG0009 = """
+            {"Core":{"Id":"CDISC-CG0009"},"Sensitivity":"Record",
              "Scope":{"Domains":{"Include":["ALL"]}},
              "Requirements":{"Variables":{"All":["EPOCH"]}},
-             "Operations":[{"id":"$ta_epoch","expression":"distinct(EPOCH, domain=\\"TA\\")"}],
+             "Bindings":[{"name":"$ta_epoch","expression":"distinct(EPOCH, domain=\\"TA\\")"}],
              "Check":{"expression":"EPOCH not in $ta_epoch and not empty(EPOCH)"},
              "Outcome":{"Message":"m","Output_Variables":["EPOCH"]}}""";
 
@@ -178,10 +193,10 @@ class AbsentDatasetSkipCrossStandardCollapseTest
     @Test
     void aNotInOnAnUnsuppliedDomainFloodsAndTheArmSilencesIt() throws Exception
     {
-        // CORE-000271, shipped. TA is not supplied, so `$ta_epoch` is the empty set and
+        // CDISC-CG0009, shipped. TA is not supplied, so `$ta_epoch` is the empty set and
         // `EPOCH not in {}` is vacuously TRUE for every row. This is a real finding change, and it
         // is what refutes the class javadoc's "this arm changes no findings".
-        Rule rule = load(CORE_000271);
+        Rule rule = load(CG0009);
         IDataTable adsl = adsl();
         DatasetResolver noTa = _ -> null;
 
@@ -209,7 +224,7 @@ class AbsentDatasetSkipCrossStandardCollapseTest
         // that reads the absent dataset to be true. So a removed finding cannot survive the
         // dataset being supplied. Supply TA with the very EPOCH values the rows carry and the same
         // two rows produce nothing: the pre-Fix #218 findings existed only because TA was missing.
-        Rule rule = load(CORE_000271);
+        Rule rule = load(CG0009);
         IDataTable adsl = adsl();
         IDataTable ta = MockTable.of().name("TA").col("EPOCH", "TREATMENT", "FOLLOW-UP").build();
         DatasetResolver withTa = Map.of("ADSL", adsl, "TA", ta)::get;

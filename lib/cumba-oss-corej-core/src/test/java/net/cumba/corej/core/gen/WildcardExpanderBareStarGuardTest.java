@@ -13,7 +13,6 @@ import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionExpression;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
 import net.cumba.datatable.DataTableMeta;
@@ -42,9 +41,23 @@ import org.junit.jupiter.api.Test;
 class WildcardExpanderBareStarGuardTest
 {
 
-    private static CheckConditionLeaf leaf(String name, String operator)
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
     {
-        return CheckConditionLeaf.builder().name(name).operator(operator).build();
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
+    /**
+     * The one leaf shape this guard needs: {@code not empty(<name>)}. ⚑ Took a second
+     * {@code operator} argument that the body never read — both call sites passed
+     * {@code "non_empty"}, which is what it builds regardless, so the parameter promised a
+     * configurability that did not exist. Dropped rather than honoured: the guard is about HOW MANY
+     * expansions a bare {@code *} produces, not about which operator they carry.
+     */
+    private static net.cumba.corej.core.model.CheckConditionExpression leaf(String name)
+    {
+        return expr("not empty(" + name + ")");
     }
 
 
@@ -106,9 +119,7 @@ class WildcardExpanderBareStarGuardTest
     void unanchoredBareStarRefusesToExpand()
     {
         List<Rule> expanded = WildcardExpander.expand(
-                template("WC-BARE-1",
-                        new CheckConditionAll(
-                                List.of(leaf("*", "non_empty"), leaf("*FL", "non_empty")))),
+                template("WC-BARE-1", new CheckConditionAll(List.of(leaf("*"), leaf("*FL")))),
                 flagTable());
 
         assertEquals(List.of(), expanded,
@@ -130,9 +141,8 @@ class WildcardExpanderBareStarGuardTest
         DataTableMeta meta = MockTable.of().name("ADAE").col("AVAL", "1").col("AVALN", "1")
                 .col("PARAM", "x").build().getMetaData();
 
-        List<Rule> expanded = WildcardExpander.expand(template("WC-BARE-2",
-                new CheckConditionAll(List.of(leaf("*", "non_empty"), leaf("*N", "non_empty")))),
-                meta);
+        List<Rule> expanded = WildcardExpander.expand(
+                template("WC-BARE-2", new CheckConditionAll(List.of(leaf("*"), leaf("*N")))), meta);
 
         assertEquals(1, expanded.size(),
                 "seeding is anchored: PARAM matches the bare '*' but not '*N', so it is not a "

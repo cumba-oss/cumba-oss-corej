@@ -19,9 +19,10 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Fix #19 — end-to-end integration tests for CDISC-AD0044 and CDISC-AD0045 in the ADaMIG v1.3 rule
- * package. The rule bodies were rewritten to use the new {@code time_part_not_equal_to} /
- * {@code date_part_not_equal_to} operators and the {@code *DTM} side moved onto the LHS so the
- * engine extracts the partial precision via the polymorphic dispatch.
+ * package. ⚑ The rule bodies once used the {@code time_part_not_equal_to} /
+ * {@code date_part_not_equal_to} operators; phase 3c's retyping and phase 3b's {@code time()}
+ * conversion replaced that spelling with the two-sided expression form, and the {@code *DTM} side
+ * sits on the LHS so the engine extracts the partial precision via the polymorphic dispatch.
  * <p>
  * Numeric *DT/*DTM/*TM columns are fabricated via the typed {@link MockTable} factories
  * ({@code colLong} / {@code colDouble}). The rule's wildcard (e.g., {@code *DTM}) is expanded by
@@ -147,22 +148,39 @@ class CdiscAd0044And0045IntegrationTest
     // ---- Sanity: rule-body shape ------------------------------------------
 
 
+    /**
+     * ⚠⚠ <b>This asserted the legacy OPERATOR spelling until 2026-09-16, and that was the wrong
+     * thing to pin.</b> Phase 3c's D71b retyping made the fixture two-sided
+     * ({@code time_part(date(*DTM)) != time(*TM)}), and phase 3b's {@code time()} conversion has no
+     * legacy operator surface at all — so the rule no longer lowers to
+     * {@code time_part_not_equal_to} and correctly never will: {@code CheckOperator} has
+     * <b>zero</b> authored call sites (D91c) and phase 7 retires the operator IR entirely.
+     *
+     * <p>
+     * ⭐ So the sanity check now pins <b>what the rule compares</b> — the time part of {@code *DTM}
+     * against {@code *TM} — which is the property the test was always for, and which survives the
+     * representation change it was accidentally pinned to.
+     * </p>
+     */
     @Test
-    void cdiscAd0044_ruleBodyUsesTimePartNotEqualTo()
+    void cdiscAd0044_ruleBodyComparesTheTimePartAgainstTM()
     {
         Rule rule = findByCoreId("CDISC-AD0044");
         String json = rule.toString(); // @Data toString — sufficient for a sanity check.
-        assertEquals(true, json.contains("time_part_not_equal_to"),
-                "CDISC-AD0044 must use the new time_part_not_equal_to operator");
+        assertEquals(true, json.contains("time_part"),
+                "CDISC-AD0044 must compare the time part of *DTM: " + json);
+        assertEquals(true, json.contains("*TM"), "CDISC-AD0044 must compare against *TM: " + json);
     }
 
 
+    /** The {@code date_part} twin of {@link #cdiscAd0044_ruleBodyComparesTheTimePartAgainstTM}. */
     @Test
-    void cdiscAd0045_ruleBodyUsesDatePartNotEqualTo()
+    void cdiscAd0045_ruleBodyComparesTheDatePartAgainstDT()
     {
         Rule rule = findByCoreId("CDISC-AD0045");
         String json = rule.toString();
-        assertEquals(true, json.contains("date_part_not_equal_to"),
-                "CDISC-AD0045 must use the new date_part_not_equal_to operator");
+        assertEquals(true, json.contains("date_part"),
+                "CDISC-AD0045 must compare the date part of *DTM: " + json);
+        assertEquals(true, json.contains("*DT"), "CDISC-AD0045 must compare against *DT: " + json);
     }
 }

@@ -3,6 +3,7 @@ package net.cumba.corej.core.expr.eval;
 import static net.cumba.corej.core.expr.eval.VectorLayerTest.col;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.BitSet;
@@ -25,17 +26,37 @@ class BuiltinFunctionsTest
 
     private static Vector value(String name, int rowCount, Vector... args)
     {
-        Object out = FunctionRegistry.resolve(name, args.length).apply(EvalRun.ofRowCount(rowCount),
-                List.of(args));
+        Object out = FunctionRegistry.resolve(name).apply(EvalRun.ofRowCount(rowCount),
+                padded(name, args));
         return (Vector) out;
     }
 
 
     private static BitSet bool(String name, int rowCount, Vector... args)
     {
-        Object out = FunctionRegistry.resolve(name, args.length).apply(EvalRun.ofRowCount(rowCount),
-                List.of(args));
+        Object out = FunctionRegistry.resolve(name).apply(EvalRun.ofRowCount(rowCount),
+                padded(name, args));
         return (BitSet) out;
+    }
+
+
+    /**
+     * Phase 6b: implementations receive one (possibly null = absent optional) vector per declared
+     * parameter — what {@code ArgumentBinder} + the compiler hand them — so the test pads the
+     * positional arguments the same way (a collector descriptor stays flat).
+     */
+    private static List<Vector> padded(String name, Vector... args)
+    {
+        java.util.ArrayList<Vector> list = new java.util.ArrayList<>(java.util.Arrays.asList(args));
+        FunctionDescriptor d = FunctionRegistry.descriptor(name);
+        if (d != null && d.maxArity() != Integer.MAX_VALUE)
+        {
+            while (list.size() < d.parameters().size())
+            {
+                list.add(null);
+            }
+        }
+        return list;
     }
 
 
@@ -54,8 +75,8 @@ class BuiltinFunctionsTest
     private static Vector valueOn(String name, IDataTable t, int rowCount, Vector... args)
     {
         EvaluationContext ctx = EvaluationContext.builder().table(t).build();
-        Object out = FunctionRegistry.resolve(name, args.length)
-                .apply(new EvalRun(ctx, 0, rowCount), List.of(args));
+        Object out = FunctionRegistry.resolve(name).apply(new EvalRun(ctx, 0, rowCount),
+                padded(name, args));
         return (Vector) out;
     }
 
@@ -92,8 +113,8 @@ class BuiltinFunctionsTest
 
         Vector up = value("upper", 2, sets);
 
-        assertEquals(List.of("YES", "N"), up.resolvedObject(0));
-        assertEquals(List.of("Y"), up.resolvedObject(1));
+        assertEquals(List.of("YES", "N"), up.value(0).resolved());
+        assertEquals(List.of("Y"), up.value(1).resolved());
 
         // And the whole point: the folded collection reaches exact membership, so "Y" does NOT
         // match the element "YES" the way a substring probe on "[YES, N]" would have.
@@ -110,22 +131,25 @@ class BuiltinFunctionsTest
 
         Vector lo = value("lower", 1, sets);
 
-        assertEquals(java.util.Arrays.asList("y", ""), lo.resolvedObject(0));
+        assertEquals(java.util.Arrays.asList("y", ""), lo.value(0).resolved());
     }
 
 
     @Test
     void len()
     {
-        // len("")=0, len(«missing»)=0 (function-examples.md "Length — len / length").
+        // ⭐ D13 / SPEC §4(4)'s len limb: len("") is 0 — an empty string is a PRESENT value of
+        // length zero (D34 #1) — while len(«missing») is MISSING, because a MissingValue has no
+        // length. This assertion previously pinned len(«missing») == 0, the pre-D13 answer, and is
+        // re-expected rather than deleted so the boundary between the two stays visible: the pair
+        // of rows below IS the ruling.
         IDataTable t = MockTable.of().col("X", "abcd", "", "z", (String) null).build();
         Vector l = value("length", 4, col(t, "X")); // alias of len
         assertEquals(4.0, l.asDouble(0));
         assertFalse(l.isMissing(1));
-        assertEquals(0.0, l.asDouble(1)); // "" -> length 0
+        assertEquals(0.0, l.asDouble(1)); // "" -> length 0 (a present value)
         assertEquals(1.0, l.asDouble(2));
-        assertFalse(l.isMissing(3));
-        assertEquals(0.0, l.asDouble(3)); // «missing» -> length 0
+        assertTrue(l.value(3).isMissing(), "len(«missing») is MISSING, not 0 (D13)");
     }
 
 
@@ -171,23 +195,32 @@ class BuiltinFunctionsTest
 
 
     @Test
-    void substringFamilyMissingNeedleFoldsToEmpty()
+    void substringFamilyMissingNeedleAnswersFalse()
     {
-        // Decision #1 — a missing/null needle cell folds to "", so s.contains("")/startsWith("")/
-        // endsWith("") fire on every row, while does_not_contain "" never fires.
+        // ⭐ R2-20 re-expectation (owner, 2026-09-17): a genuinely-missing needle makes all three
+        // answer FALSE — D13's principle, "a MissingValue is not a string", reaching its fifth,
+        // sixth and seventh site. This test used to pin the OPPOSITE ("decision #1": the needle
+        // folded to "" and contains/starts_with/ends_with fired on EVERY row). ⚠ Note what that
+        // means for the negated surface, which is the consequence the owner accepted:
+        // does_not_contain now fires on every row where contains used to.
+        // ⚑ MockTable.col(name, (String) null) yields a genuine MissingValue cell (DataValues.of
+        // (null) → MIS) — NOT the "" a real character buffer would substitute. That is exactly
+        // the identity this arm keys on; the blank control lives in SubstringMissingLimbTest.
         IDataTable t = MockTable.of().col("X", "HELLO", "WORLD")
                 .col("NEEDLE", (String) null, (String) null).build();
-        assertEquals(bits(0, 1), bool("contains", 2, col(t, "X"), col(t, "NEEDLE")));
-        assertEquals(bits(0, 1), bool("starts_with", 2, col(t, "X"), col(t, "NEEDLE")));
-        assertEquals(bits(0, 1), bool("ends_with", 2, col(t, "X"), col(t, "NEEDLE")));
-        assertEquals(bits(), bool("does_not_contain", 2, col(t, "X"), col(t, "NEEDLE")));
+        assertEquals(bits(), bool("contains", 2, col(t, "X"), col(t, "NEEDLE")));
+        assertEquals(bits(), bool("starts_with", 2, col(t, "X"), col(t, "NEEDLE")));
+        assertEquals(bits(), bool("ends_with", 2, col(t, "X"), col(t, "NEEDLE")));
+        assertEquals(bits(0, 1), bool("does_not_contain", 2, col(t, "X"), col(t, "NEEDLE")));
     }
 
 
     @Test
-    void substringFamilyEmptyLiteralMatchesMissingNeedle()
+    void substringFamilyEmptyLiteralNeedleStillMatchesEveryRow()
     {
-        // An explicit "" literal needle behaves exactly like a missing needle cell (decision #1).
+        // ⚠ The D96c boundary in one test: an explicit "" literal needle is a PRESENT empty string
+        // and still matches every row — it is NOT a missing, and R2-20 did not touch it. Until
+        // that ruling this test was named "…MatchesMissingNeedle" and the two were the same thing.
         IDataTable t = MockTable.of().col("X", "HELLO", "WORLD").build();
         assertEquals(bits(0, 1), bool("contains", 2, col(t, "X"), ConstVector.of("")));
         assertEquals(bits(0, 1), bool("starts_with", 2, col(t, "X"), ConstVector.of("")));
@@ -534,13 +567,63 @@ class BuiltinFunctionsTest
     }
 
 
+    /**
+     * ⭐⭐ The second hop's column is ABSENT — and the assertion is on the VALUE channel, because the
+     * F3 fold cannot see this at all (PLAN-null-free-value-channel, Class A site 2).
+     *
+     * <p>
+     * ⚠⚠ <b>This test used to consist of its last line alone and was BLIND to the defect.</b>
+     * {@code Vector.isMissing} is {@code ScalarSemantics.isMissing}, i.e.
+     * {@code DataValueSupport.isEmptyOrMissing}, which folds {@code ""} and a {@code MissingValue}
+     * together — so it answers {@code true} both for the computed {@code MissingValue.MIS} this arm
+     * used to produce and for the {@code ""} an absent CHARACTER column actually owes (D76 / D34
+     * #3). It is kept, unchanged, as the fold pin it always was; everything below it is the channel
+     * that can tell the two apart.
+     * </p>
+     *
+     * <p>
+     * ⭐ Why {@code ""} and not {@code MIS}: an absent column is a CONSTANT-VALUE column whose value
+     * is known up front for every row (owner, 2026-09-18). It has no declared type of its own, so
+     * D76 reads the expectation off the RULE; a second hop resolved from DATA carries none, so
+     * "otherwise char" applies — exactly as {@code DatasetLookup.lookupValue} rules the same case
+     * for a joined dataset. The difference is observable: {@code MIS} sorts below every value under
+     * phase 6c's D34 #5 order arm and {@code ""} does not.
+     * </p>
+     */
     @Test
-    void colrefNamedColumnAbsentIsMissing()
+    void colrefNamedColumnAbsentIsTheAbsentColumnDefault()
     {
-        // First hop names a column that is not present (e.g. parent col not pre-merged) -> null.
+        // First hop names a column that is not present (e.g. parent col not pre-merged).
         IDataTable t = MockTable.of().col("IDVAR", "NOPE").build();
         Vector r = valueOn("colref", t, 1, col(t, "IDVAR"));
-        assertTrue(r.isMissing(0));
+        assertTrue(r.isMissing(0), "the F3 blank fold still folds it — and always did, either way");
+
+        TypedValue tv = r.value(0);
+        assertFalse(tv.isMissing(),
+                "⛔ the VALUE is a present empty string, not a missing: an absent char column owes"
+                        + " its type default (D76/D34 #3), and the computed MIS this produced"
+                        + " before took the D34 #5 order arm below every value");
+        assertEquals("", tv.resolved(), "and that default is \"\"");
+    }
+
+
+    /** The numeric arm of the same site: the RULE's own expectation makes MIS correct. */
+    @Test
+    void colrefNamedColumnAbsentIsMisWhenTheRuleNumericExpectsIt()
+    {
+        IDataTable t = MockTable.of().col("IDVAR", "NOPE").build();
+        EvaluationContext ctx = EvaluationContext.builder().table(t)
+                .numericExpectedColumns(java.util.Set.of("NOPE")).build();
+        Vector r = (Vector) FunctionRegistry.resolve("colref").apply(new EvalRun(ctx, 0, 1),
+                padded("colref", new Vector[]
+                {
+                        col(t, "IDVAR")
+                }));
+
+        TypedValue tv = r.value(0);
+        assertTrue(tv.isMissing(), "a numeric-expected absent column is all-MIS (D34 #4)");
+        assertSame(net.cumba.datatable.values.MissingValue.MIS, tv.missing(),
+                "and the computed-missing identity is MIS");
     }
 
 
@@ -732,7 +815,7 @@ class BuiltinFunctionsTest
         IDataTable t = MockTable.of().col("AESEQ", "1", "2").build();
         EvaluationContext ctx = EvaluationContext.builder().table(t)
                 .variables(java.util.Map.of("variable_name", "AESEQ")).build();
-        Vector v = (Vector) FunctionRegistry.resolve("varname", 0).apply(new EvalRun(ctx, 0, 2),
+        Vector v = (Vector) FunctionRegistry.resolve("varname").apply(new EvalRun(ctx, 0, 2),
                 List.of());
         assertEquals("AESEQ", v.asString(0));
         assertEquals("AESEQ", v.asString(1), "broadcast constant across rows");
@@ -745,7 +828,7 @@ class BuiltinFunctionsTest
     {
         IDataTable t = MockTable.of().col("AESEQ", "1").build();
         EvaluationContext ctx = EvaluationContext.builder().table(t).build();
-        Vector v = (Vector) FunctionRegistry.resolve("varname", 0).apply(new EvalRun(ctx, 0, 1),
+        Vector v = (Vector) FunctionRegistry.resolve("varname").apply(new EvalRun(ctx, 0, 1),
                 List.of());
         assertTrue(v.isMissing(0), "no cursor ⇒ missing varname");
     }
@@ -758,7 +841,7 @@ class BuiltinFunctionsTest
         IDataTable t = MockTable.of().col("TRTPFL", "Y", "X").col("OTHER", "a", "b").build();
         EvaluationContext ctx = EvaluationContext.builder().table(t)
                 .variables(java.util.Map.of("variable_name", "TRTPFL")).build();
-        Vector v = (Vector) FunctionRegistry.resolve("value", 0).apply(new EvalRun(ctx, 0, 2),
+        Vector v = (Vector) FunctionRegistry.resolve("value").apply(new EvalRun(ctx, 0, 2),
                 List.of());
         assertEquals("Y", v.asString(0));
         assertEquals("X", v.asString(1));
@@ -771,13 +854,13 @@ class BuiltinFunctionsTest
     {
         IDataTable t = MockTable.of().col("TRTPFL", "Y").build();
         EvaluationContext noCursor = EvaluationContext.builder().table(t).build();
-        Vector v1 = (Vector) FunctionRegistry.resolve("value", 0).apply(new EvalRun(noCursor, 0, 1),
+        Vector v1 = (Vector) FunctionRegistry.resolve("value").apply(new EvalRun(noCursor, 0, 1),
                 List.of());
         assertTrue(v1.isMissing(0), "no cursor ⇒ missing value");
 
         EvaluationContext badCol = EvaluationContext.builder().table(t)
                 .variables(java.util.Map.of("variable_name", "NOSUCH")).build();
-        Vector v2 = (Vector) FunctionRegistry.resolve("value", 0).apply(new EvalRun(badCol, 0, 1),
+        Vector v2 = (Vector) FunctionRegistry.resolve("value").apply(new EvalRun(badCol, 0, 1),
                 List.of());
         assertTrue(v2.isMissing(0), "absent column ⇒ missing value");
     }

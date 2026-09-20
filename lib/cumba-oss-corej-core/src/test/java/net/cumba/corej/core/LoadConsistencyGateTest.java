@@ -52,6 +52,8 @@ class LoadConsistencyGateTest
         {
             throw new IllegalArgumentException("bad test fixture: " + json, e);
         }
+        // 7b: an external binder materialises the Bindings itself — see normalizeOperations.
+        RulePackageLoader.normalizeOperations(rule);
         RulePackageLoader.validateEnumFields(rule);
         return rule;
     }
@@ -81,7 +83,7 @@ class LoadConsistencyGateTest
     class RuleTypeRejected
     {
 
-        private static final String CHECK = "\"Check\":{\"all\":[{\"name\":\"AESEV\",\"operator\":\"var_exists\"}]}";
+        private static final String CHECK = "\"Check\":{\"all\":[{\"expression\": \"var_exists(\\\"AESEV\\\")\"}]}";
 
         @Test
         @DisplayName("a rule without Rule_Type loads and derives only Sensitivity")
@@ -120,7 +122,7 @@ class LoadConsistencyGateTest
     class GroupConsistency
     {
 
-        private static final String CHECK = "\"Check\":{\"all\":[{\"name\":\"AESEV\",\"operator\":\"empty\"}]}";
+        private static final String CHECK = "\"Check\":{\"all\":[{\"expression\": \"empty(AESEV)\"}]}";
 
         @Test
         @DisplayName("Group with grouping variables is the conforming shape")
@@ -166,10 +168,8 @@ class LoadConsistencyGateTest
     class GroupedOperationOnAnyType
     {
 
-        private static final String GROUPED_OP = "\"Operations\":[{\"id\":\"$n\",\"operator\":\"record_count\","
-                + "\"group\":[\"USUBJID\"]}],"
-                + "\"Check\":{\"all\":[{\"name\":\"$n\",\"operator\":\"equal_to\","
-                + "\"value\":1}]}";
+        private static final String GROUPED_OP = "\"Bindings\":[{\"name\": \"$n\", \"expression\": \"record_count(group=[USUBJID])\"}],"
+                + "\"Check\":{\"all\":[{\"expression\": \"$n == 1\"}]}";
 
         @Test
         @DisplayName("a grouped operation loads without any type gate (phase 6, leaf-scope plan)")

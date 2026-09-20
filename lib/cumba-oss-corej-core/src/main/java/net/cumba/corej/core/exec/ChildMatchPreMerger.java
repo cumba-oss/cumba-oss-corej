@@ -675,7 +675,8 @@ public final class ChildMatchPreMerger
             // J8 (PLAN-joined-column-typing): the merged column reports the parent column's own
             // type when every parent that exposes the name agrees, and STRING when they disagree.
             // Computed ONCE here and handed to BOTH the meta and the column, so the declared type
-            // and the cells can never diverge -- ScalarSemantics.equalsNumericAware branches on the
+            // and the cells can never diverge -- Primitives.equalsTypedAware (D121 retired
+            // ScalarSemantics.equalsNumericAware) branches on the
             // CELL's type, not the declared one, so a mismatch would silently flip
             // `AESEQ == "3"` between textual and numeric equality.
             DataValueType merged = agreedParentType(perParentType);

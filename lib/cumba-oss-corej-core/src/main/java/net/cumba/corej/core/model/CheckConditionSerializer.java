@@ -12,8 +12,8 @@ import java.io.IOException;
  *
  * <p>
  * Without this serialiser, Lombok-generated accessors would emit {@code CheckConditionAll} as
- * {@code {"conditions":[…]}} which the deserialiser no longer recognises as a composite and
- * silently collapses into a {@link CheckConditionLeaf} on the next read.
+ * {@code {"conditions":[…]}} which the deserialiser does not recognise as a composite and rejects
+ * on the next read.
  * </p>
  */
 public class CheckConditionSerializer extends StdSerializer<CheckCondition>
@@ -60,14 +60,6 @@ public class CheckConditionSerializer extends StdSerializer<CheckCondition>
             serialize(not.getCondition(), aGen, aProvider);
             aGen.writeEndObject();
         }
-        else if (aValue instanceof CheckConditionLeaf leaf)
-        {
-            aProvider.defaultSerializeValue(leaf, aGen);
-        }
-        else if (aValue instanceof CheckConditionConstant c)
-        {
-            aProvider.defaultSerializeValue(c, aGen);
-        }
         else if (aValue instanceof CheckConditionExpression expr)
         {
             aGen.writeStartObject();
@@ -94,12 +86,6 @@ public class CheckConditionSerializer extends StdSerializer<CheckCondition>
      * Plan C &#167;3.3 spells that level as the condition's keys <em>plus</em> {@code Message} in
      * one flat object, so the {@code Message} has to become a sibling of the condition's keys
      * rather than wrap them.
-     * </p>
-     *
-     * <p>
-     * The bean shapes ({@link CheckConditionLeaf}, {@link CheckConditionConstant}) go through
-     * Jackson's own unwrapping serialiser — the mechanism {@code @JsonUnwrapped} uses — so their
-     * property set, naming and inclusion rules stay exactly what the wrapped form emits.
      * </p>
      *
      * @param aValue
@@ -141,19 +127,7 @@ public class CheckConditionSerializer extends StdSerializer<CheckCondition>
             new CheckConditionSerializer().serialize(not.getCondition(), aGen, aProvider);
         }
         case CheckConditionExpression expr -> aGen.writeStringField("expression", expr.source());
-        case CheckConditionLeaf leaf -> writeBeanFields(leaf, aGen, aProvider);
-        case CheckConditionConstant c -> writeBeanFields(c, aGen, aProvider);
         }
     }
 
-
-    private static void writeBeanFields(Object aBean, JsonGenerator aGen,
-            SerializerProvider aProvider)
-        throws IOException
-    {
-        com.fasterxml.jackson.databind.JsonSerializer<Object> ser = aProvider
-                .findValueSerializer(aBean.getClass(), null);
-        ser.unwrappingSerializer(com.fasterxml.jackson.databind.util.NameTransformer.NOP)
-                .serialize(aBean, aGen, aProvider);
-    }
 }

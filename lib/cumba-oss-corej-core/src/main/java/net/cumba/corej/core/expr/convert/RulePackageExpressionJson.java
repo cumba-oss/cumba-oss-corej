@@ -51,12 +51,12 @@ public final class RulePackageExpressionJson
     /**
      * Serializes a single {@link Rule} like {@code RulePackageLoader.toJson(Rule)}, but with the
      * {@code Check} and {@code Precondition} subtrees rendered in expression notation via
-     * {@link CheckToExpr} and the {@code Operations} array rewritten to function-call form via
-     * {@link OperationExpressionPrinter} (the loader normalises a Form-B operation to field form,
-     * so the display renders it back; the corpus-side rewriter retired with
-     * {@code PLAN-retire-corpus-transforms.md} phase 8). A subtree with no full expression surface
-     * stays old-style (byte-faithful), so the output is always loadable; a subtree whose rendering
-     * fails unexpectedly is likewise kept as-is rather than failing the whole rule.
+     * {@link CheckToExpr} and the {@code Bindings} array rendered from the rule's runtime operation
+     * records via {@link OperationExpressionPrinter} (the loader normalises a binding's expression
+     * to the internal field form, so the display renders it back — see {@link #renderBindings}). A
+     * subtree with no full expression surface stays old-style (byte-faithful), so the output is
+     * always loadable; a subtree whose rendering fails unexpectedly is likewise kept as-is rather
+     * than failing the whole rule.
      *
      * @param rule
      *            the rule to serialize ({@code null} yields {@code "null"})
@@ -99,21 +99,20 @@ public final class RulePackageExpressionJson
                     }
                 }
             }
-            JsonNode ops = obj.get("Operations");
-            if (ops != null && !ops.isNull())
+            List<net.cumba.corej.core.model.Operation> ops = rule.getOperations();
+            if (ops != null && !ops.isEmpty())
             {
                 try
                 {
-                    obj.set("Operations", renderOperations(ops));
+                    obj.set("Bindings", renderBindings(ops));
                 }
                 catch (RuntimeException e)
                 {
-                    // Defensive: renderOperations already keeps the legacy array on failure, but
-                    // an
-                    // unexpected error must not lose the rule — keep the original Operations array.
+                    // Defensive: an unexpected rendering error must not lose the rule — keep the
+                    // serialized authored Bindings (verbatim, always loadable) for this rule.
                     LOGGER.log(System.Logger.Level.WARNING,
-                            "Expression rendering of ''Operations'' failed — keeping the legacy"
-                                    + " array: {0}",
+                            "Expression rendering of ''Bindings'' failed — keeping the authored"
+                                    + " entries: {0}",
                             e.toString());
                 }
             }
@@ -131,42 +130,28 @@ public final class RulePackageExpressionJson
 
 
     /**
-     * Renders a serialized {@code Operations} array in function-call form: a field-form entry
-     * ({@code operator:} set) becomes {@code {"id": …, "expression": …}} via
-     * {@link OperationExpressionPrinter}; an entry already carrying an {@code expression} (or an
-     * unrecognisable one) is carried through verbatim.
+     * Renders the rule's <b>runtime</b> operation records back to the authored {@code Bindings:}
+     * shape ({@code {"name": …, "expression": …}} per entry). Rendering from
+     * {@link Rule#getOperations()} rather than echoing the serialized {@code Bindings} keeps the
+     * pre-7b behaviour for a rule whose records were rewritten after load — a specialised rule's
+     * display shows the <em>resolved</em> operation (a {@code --} prefix made concrete), not the
+     * authored template. A record still carrying its Form-B {@code expression} (an external binder
+     * that never ran {@code normalizeOperations}) is emitted verbatim; a normalised one is printed
+     * via {@link OperationExpressionPrinter}.
      */
-    private static JsonNode renderOperations(JsonNode ops)
+    private static JsonNode renderBindings(List<net.cumba.corej.core.model.Operation> ops)
     {
-        if (!(ops instanceof com.fasterxml.jackson.databind.node.ArrayNode arr))
-        {
-            return ops;
-        }
         com.fasterxml.jackson.databind.node.ArrayNode out = MAPPER.createArrayNode();
-        for (JsonNode opNode : arr)
+        for (net.cumba.corej.core.model.Operation op : ops)
         {
-            net.cumba.corej.core.model.Operation op;
-            try
-            {
-                op = MAPPER.treeToValue(opNode, net.cumba.corej.core.model.Operation.class);
-            }
-            catch (com.fasterxml.jackson.core.JsonProcessingException _)
-            {
-                out.add(opNode);
-                continue;
-            }
-            if (op.getExpression() != null || op.getOperator() == null)
-            {
-                out.add(opNode);
-                continue;
-            }
-            ObjectNode rewritten = MAPPER.createObjectNode();
+            ObjectNode rendered = MAPPER.createObjectNode();
             if (op.getId() != null)
             {
-                rewritten.put("id", op.getId());
+                rendered.put("name", op.getId());
             }
-            rewritten.put("expression", OperationExpressionPrinter.print(op));
-            out.add(rewritten);
+            rendered.put("expression", op.getExpression() != null ? op.getExpression()
+                    : OperationExpressionPrinter.print(op));
+            out.add(rendered);
         }
         return out;
     }

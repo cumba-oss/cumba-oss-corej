@@ -4,11 +4,13 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
-
+import java.util.TreeSet;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.Violation;
 import net.cumba.datatable.DataTableMeta;
@@ -39,6 +41,32 @@ import org.jspecify.annotations.Nullable;
  * equality and is never numeric-coerced — so subject ids like {@code "003"} only match
  * {@code "003"} (not {@code 3}). Output variables, already engine-stringified, are matched
  * exact-or-numeric ({@link #valueMatchesString}).
+ * </p>
+ *
+ * <h2>&#9940; A {@code $} pin is PAYLOAD-ONLY</h2>
+ * <p>
+ * A constraint key starting with {@code $} names an <em>operation result</em> the engine projected
+ * onto the violation, never a dataset variable. Such a key is therefore resolved <b>only</b> in
+ * {@link Violation#getValues()} and <b>never</b> against a table column; when no observed violation
+ * carries it, {@link #verify} fails with a message naming the key, rather than silently changing
+ * channel.
+ * </p>
+ * <p>
+ * This is not theoretical tidiness. The two lookups differ in <em>both</em> directions:
+ * </p>
+ * <ul>
+ * <li>the payload lookup is a {@code Map} {@code containsKey} — <b>case-SENSITIVE</b>;</li>
+ * <li>{@code DataTableMeta.getColumnIndex} is a linear name scan that is <b>case-INSENSITIVE by
+ * default</b> ({@code columnNameCaseSensitive} defaults to {@code false}).</li>
+ * </ul>
+ * <p>
+ * So before this rule a census cell transcribed in the wrong case ({@code $DATASET_SIZE} for
+ * {@code $dataset_size}) missed the payload and hit the column — measured green by
+ * {@code ViolationLocationCheckTest.dollarPin_misCasedKey_failsLoudly_ratherThanChangingChannel}
+ * before the fix. And a {@code $}-named <em>column</em> is genuinely declarable in a {@code .cdt}
+ * ({@code col $dataset_size type=Num} parses), so the fallthrough arm was reachable, not merely
+ * reachable-by-regression: with the payload key gone the check read the row's column of that name
+ * and <b>passed</b>.
  * </p>
  */
 public final class ViolationLocationCheck
@@ -103,6 +131,11 @@ public final class ViolationLocationCheck
                     prefix + "findings cap truncated the violation list (showing "
                             + aObserved.size() + " of " + aEffectiveCount
                             + "); drop #expectViolationAt or shrink the fixture");
+        }
+        Result unbackedDollarPin = verifyDollarPinsAreCarried(prefix, wantAt, aObserved);
+        if (unbackedDollarPin != null)
+        {
+            return unbackedDollarPin;
         }
         DataTableMeta meta = aPrimary.getMetaData();
         if (aObserved.size() != wantAt.size())
@@ -172,10 +205,22 @@ public final class ViolationLocationCheck
                 // numeric value.
                 ok = valueMatchesString(c.getValue(), out.get(c.getKey()));
             }
+            else if (isDollarPin(c.getKey()))
+            {
+                // ⛔ PAYLOAD-ONLY (see the class javadoc): a $ key names an operation result, so
+                // an absent one is a NON-MATCH — never a table lookup. #verify's pre-check has
+                // already turned "no observed violation carries it at all" into a named failure;
+                // reaching here means some OTHER violation carries it, so failing this candidate
+                // and letting the bijection try the rest is the correct, per-violation answer.
+                ok = false;
+            }
             else
             {
                 // Table cell: compare by the cell's runtime type so a Char "002" only matches the
                 // string "002" (never numerically), while a Num 1.0 still matches "1".
+                // ⛔ Relied on: a non-$ key absent from the payload resolves from the column of
+                // that name. Pinned by
+                // ViolationLocationCheckTest.nonDollarPin_absentFromPayload_stillFallsBackToTheTableCell.
                 ok = valueMatchesCell(c.getValue(),
                         tableCell(aPrimary, aMeta, aObserved.getRow(), c.getKey()));
             }
@@ -185,6 +230,70 @@ public final class ViolationLocationCheck
             }
         }
         return true;
+    }
+
+
+    /** A constraint key naming an engine operation result rather than a dataset variable. */
+    private static boolean isDollarPin(String aKey)
+    {
+        return aKey.startsWith("$");
+    }
+
+
+    /**
+     * Fail loudly when a {@code $} pin is backed by <em>no</em> observed violation's payload.
+     *
+     * <p>
+     * Without this the pin degraded into a lookup of a column of the same name — and on a fixture
+     * that happens to have one, into a silent pass. It is the same self-disarming shape as the
+     * unreserved {@code severity=} key: the weakened expectation keeps the fixture green, so the
+     * loss is invisible. Returns {@code null} when every {@code $} pin is carried (or none is
+     * declared).
+     * </p>
+     */
+    private static @Nullable Result verifyDollarPinsAreCarried(String aPrefix,
+            List<ExpectedViolation> aExpected, List<Violation> aObserved)
+    {
+        Set<String> pinned = new LinkedHashSet<>();
+        for (ExpectedViolation e : aExpected)
+        {
+            for (String key : e.getConstraints().keySet())
+            {
+                if (isDollarPin(key))
+                {
+                    pinned.add(key);
+                }
+            }
+        }
+        if (pinned.isEmpty())
+        {
+            return null;
+        }
+        Set<String> carried = new TreeSet<>();
+        for (Violation v : aObserved)
+        {
+            if (v.getValues() != null)
+            {
+                carried.addAll(v.getValues().keySet());
+            }
+        }
+        List<String> absent = new ArrayList<>();
+        for (String key : pinned)
+        {
+            if (!carried.contains(key))
+            {
+                absent.add(key);
+            }
+        }
+        if (absent.isEmpty())
+        {
+            return null;
+        }
+        return new Result(false, aPrefix + "#expectViolationAt pins " + absent
+                + " which NO observed violation carries — a $ key is payload-only and is never"
+                + " resolved against a table column of that name. Either the engine stopped"
+                + " projecting the operation, or the key is mis-spelled / mis-cased (the payload"
+                + " lookup is case-sensitive). Keys actually projected: " + carried);
     }
 
 
@@ -387,10 +496,10 @@ public final class ViolationLocationCheck
      * <li>a cap-truncated result yields count only (the checker refuses exact location match when
      * the materialised list is incomplete).</li>
      * <li>value-based (record-level) rule → one {@code row=} entry per violation, plus
-     * {@code USUBJID} / {@code <DOMAIN>SEQ} identity pins when present.</li>
+     * {@code USUBJID} / {@code <DOMAIN>SEQ} identity pins when present, plus any {@code $}-prefixed
+     * operation results the violation carries.</li>
      * <li>non-value-based (per-domain) rule → pin by the projected output variables (e.g.
-     * {@code variable_name=…}); {@code $}-prefixed operation dumps are skipped (verbose and
-     * order-unstable).</li>
+     * {@code variable_name=…}), {@code $}-prefixed operation results included.</li>
      * <li>If the per-violation entries cannot enumerate the full count (some violation yielded no
      * pin), fall back to count-only so the emitted directives stay self-consistent (the parser
      * rejects a count that disagrees with the {@code #expectViolationAt} line count).</li>
@@ -414,6 +523,33 @@ public final class ViolationLocationCheck
      * &#9873; A single-level rule's violations carry {@code null} here (the producing sites stamp
      * no level; the report builder falls back to the rule's effective severity), so nothing is
      * emitted for them and the ~8 800 single-level fixtures are byte-unaffected.
+     * </p>
+     *
+     * <p>
+     * &#9940;&#9940; <b>Why {@code $} pins are carried, on BOTH branches.</b> The identical
+     * self-deleting shape, found once more: this method used to skip every {@code $}-prefixed key
+     * ("verbose and order-unstable"), and the value-based branch never consulted the payload at all
+     * &mdash; so one {@code -Dbackfill.locations=true} run erased all <b>23</b> {@code $} pins in
+     * the corpus (16 of them on the value-based branch, i.e. carrying {@code row=}), and nothing
+     * went red, because the erased pin degraded into a table lookup that a fixture with a
+     * same-named column satisfied. Skipping them is not a cosmetic preference; it is a pin that
+     * deletes itself. Pinned by {@code ScenarioLocationBackfillTest.backfillRoundTripsADollarPin}
+     * and the two {@code toExpectations_*carriesDollarPins} tests.
+     * </p>
+     * <p>
+     * &#9873; The trade-off is accepted, not overlooked. A {@code $} result that stringifies
+     * order-unstably now yields a pin that <em>fails on the next run</em> &mdash; loud, and the
+     * right direction; the alternative was a pin that vanished in silence. Verbosity is likewise
+     * accepted: a captured operation dump is data the checker can verify, unlike the {@code row=}
+     * pin that cannot recover it. The value-based branch deliberately carries <em>only</em>
+     * {@code $} keys from the payload: every other output variable is recoverable from the table at
+     * the pinned row, so omitting those loses nothing and keeps the record-level fixtures
+     * byte-stable.
+     * </p>
+     * <p>
+     * &#9888; A {@code $} result whose value is blank is still not emitted ({@link #notBlank})
+     * &mdash; an empty pin would match vacuously, see {@link #valueMatchesCell}. No corpus scenario
+     * pins an empty value today.
      * </p>
      */
     public static Expectations toExpectations(List<Violation> aObserved, long aTotalCount,
@@ -441,12 +577,25 @@ public final class ViolationLocationCheck
                 {
                     pins.put(aDomain + "SEQ", v.getSeq());
                 }
+                // ⛔ Only a $ key, and on this branch too: row= / USUBJID / SEQ are all
+                // table-derived, so an operation result is the one pin that cannot be recovered
+                // from the fixture — carry it or the back-fill deletes it.
+                if (v.getValues() != null)
+                {
+                    for (Map.Entry<String, String> e : v.getValues().entrySet())
+                    {
+                        if (isDollarPin(e.getKey()) && notBlank(e.getValue()))
+                        {
+                            pins.put(e.getKey(), e.getValue());
+                        }
+                    }
+                }
             }
             else if (v.getValues() != null)
             {
                 for (Map.Entry<String, String> e : v.getValues().entrySet())
                 {
-                    if (notBlank(e.getValue()) && !e.getKey().startsWith("$"))
+                    if (notBlank(e.getValue()))
                     {
                         pins.put(e.getKey(), e.getValue());
                     }

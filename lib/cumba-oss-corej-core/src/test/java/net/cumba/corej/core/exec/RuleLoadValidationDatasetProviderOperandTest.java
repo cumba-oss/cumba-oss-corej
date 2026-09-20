@@ -41,8 +41,7 @@ class RuleLoadValidationDatasetProviderOperandTest
                   "Sensitivity": "Record",
                   "Check": {
                     "all": [
-                      {"name": "library_dataset_class", "operator": "equal_to",
-                       "value": "EVENTS", "value_is_literal": true}
+                      {"expression": "ds_class(\\"LIBRARY\\") == \\"EVENTS\\""}
                     ]
                   }
                 }
@@ -64,8 +63,8 @@ class RuleLoadValidationDatasetProviderOperandTest
                   "Sensitivity": "Dataset",
                   "Check": {
                     "any": [
-                      {"name": "variable_label", "operator": "non_empty"},
-                      {"name": "define_dataset_label", "operator": "non_empty"}
+                      {"expression": "not empty(var_label(\\"DATA\\"))"},
+                      {"expression": "not empty(ds_label(\\"DEFINE\\"))"}
                     ]
                   }
                 }
@@ -86,24 +85,23 @@ class RuleLoadValidationDatasetProviderOperandTest
                   "Sensitivity": "Record",
                   "Precondition": {
                     "all": [
-                      {"name": "library_dataset_structure_version", "operator": "equal_to",
-                       "value": "EVENTS", "value_is_literal": true}
+                      {"expression": "library_dataset_structure_version == \\"EVENTS\\""}
                     ]
                   },
                   "Check": {
                     "all": [
-                      {"name": "define_dataset_purpose", "operator": "non_empty"},
-                      {"name": "AETERM", "operator": "empty"}
+                      {"expression": "not empty(define_dataset_purpose)"},
+                      {"expression": "empty(AETERM)"}
                     ]
                   }
                 }
                 """;
-        Rule rule = onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));
-        assertNotNull(rule.getLoadError());
-        assertTrue(rule.getLoadError().contains("define_dataset_purpose"), rule.getLoadError());
-        assertTrue(rule.getLoadError().contains("Check.all[0]"), rule.getLoadError());
-        assertTrue(rule.getLoadError().contains("Precondition"), rule.getLoadError());
-        assertTrue(rule.getLoadError().contains("no ds_* accessor serves"), rule.getLoadError());
+        // Phase 7d (D121): an operand no accessor serves is not even CLASSIFIABLE in the
+        // expression grammar — the parse itself rejects the unknown lowercase operand, one stage
+        // earlier and louder than the retired leaf walker's per-rule loadError.
+        Exception ex = org.junit.jupiter.api.Assertions.assertThrows(Exception.class,
+                () -> RulePackageLoader.loadFromString(packageOf(ruleJson)));
+        assertTrue(ex.getMessage().contains("Unknown built-in reference"), ex.getMessage());
     }
 
 
@@ -111,16 +109,14 @@ class RuleLoadValidationDatasetProviderOperandTest
     void datasetMetadataCheckUsage_staysValid() throws IOException
     {
         // The supported home of these operands: DATASET_METADATA_CHECK, where RuleRunner phase
-        // 2a2 injects the provider-backed values (e.g. CDISC-CG0010-style three-level
-        // compares).
+        // 2a2 injects the provider-backed values (e.g. CDISC-CG0010-style three-level compares).
         String ruleJson = """
                 {
                   "Core": {"Id": "TEST-GR-C4"},
                   "Sensitivity": "Dataset",
                   "Check": {
                     "all": [
-                      {"name": "define_dataset_label", "operator": "not_equal_to",
-                       "value": "library_dataset_label"}
+                      {"expression": "ds_label(\\"DEFINE\\") != ds_label(\\"LIBRARY\\")"}
                     ]
                   }
                 }
@@ -142,8 +138,7 @@ class RuleLoadValidationDatasetProviderOperandTest
                   "Sensitivity": "Record",
                   "Check": {
                     "all": [
-                      {"name": "AETERM", "operator": "equal_to",
-                       "value": "library_dataset_class"}
+                      {"expression": "AETERM == ds_class(\\"LIBRARY\\")"}
                     ]
                   }
                 }

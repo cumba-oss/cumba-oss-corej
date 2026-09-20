@@ -24,8 +24,7 @@ import org.junit.jupiter.api.Test;
 class RuleRunnerDefineItemFindingTest
 {
 
-    private static final String CHECK = "{\"all\":[{\"name\":\"define_variable_role\","
-            + "\"operator\":\"not_equal_to\",\"value\":\"library_variable_role\"}]}";
+    private static final String CHECK = "{\"all\":[{\"expression\": \"var_role(\\\"DEFINE\\\") != var_role(\\\"LIBRARY\\\")\"}]}";
 
     private static Rule load(String ruleJson) throws Exception
     {
@@ -76,8 +75,8 @@ class RuleRunnerDefineItemFindingTest
     {
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},\"Variable_Universe\":\"Define\","
                 + "\"Sensitivity\":\"Record\","
-                + "\"Operations\":[{\"id\":\"$flag\",\"operator\":\"variable_exists\","
-                + "\"name\":\"STUDYID\"}]," + "\"Check\":" + CHECK + ","
+                + "\"Bindings\":[{\"name\": \"$flag\", \"expression\": \"variable_exists(STUDYID)\"}],"
+                + "\"Check\":" + CHECK + ","
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_name\","
                 + "\"define_variable_role\",\"library_variable_role\","
                 + "\"define_variable_codelist_coded_codes\",\"record_count\",\"$flag\"]}}");

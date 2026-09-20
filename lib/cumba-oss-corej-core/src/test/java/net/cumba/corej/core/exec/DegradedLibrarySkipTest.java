@@ -83,9 +83,9 @@ class DegradedLibrarySkipTest
         String pkg = """
                 {"rules":{"x":{
                   "Core":{"Id":"T-REQ"},
-                  "Operations":[
-                    {"id":"$required_variables","expression":"required_variables()"},
-                    {"id":"$dataset_variables","expression":"get_column_order_from_dataset()"}
+                  "Bindings":[
+                    {"name":"$required_variables","expression":"required_variables()"},
+                    {"name":"$dataset_variables","expression":"get_column_order_from_dataset()"}
                   ],
                   "Check":{"expression":"not contains_all($dataset_variables, $required_variables)"},
                   "Outcome":{"Message":"A Required variable is not present."}
@@ -99,7 +99,7 @@ class DegradedLibrarySkipTest
 
     private static Rule ruleOn(String operationExpression, String check) throws Exception
     {
-        String pkg = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"T\"},\"Operations\":[{\"id\":\"$v\","
+        String pkg = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"T\"},\"Bindings\":[{\"name\":\"$v\","
                 + "\"expression\":\"" + operationExpression + "\"}],\"Check\":{\"expression\":\""
                 + check + "\"},\"Outcome\":{\"Message\":\"m\"}}}}";
         Rule r = RulePackageLoader.loadFromString(pkg).getRules().get("x");
@@ -326,9 +326,9 @@ class DegradedLibrarySkipTest
                 new Arm("valid_codelist_dates()", "non_empty($v)")
         })
         {
-            String pkg = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"T\"},\"Operations\":["
-                    + "{\"id\":\"$v\",\"expression\":\"" + arm.expression() + "\"},"
-                    + "{\"id\":\"$dataset_variables\",\"expression\":"
+            String pkg = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"T\"},\"Bindings\":["
+                    + "{\"name\":\"$v\",\"expression\":\"" + arm.expression() + "\"},"
+                    + "{\"name\":\"$dataset_variables\",\"expression\":"
                     + "\"get_column_order_from_dataset()\"}],\"Check\":{\"expression\":\""
                     + arm.check() + "\"},\"Outcome\":{\"Message\":\"m\"}}}}";
             Rule rule = RulePackageLoader.loadFromString(pkg).getRules().get("x");
@@ -467,7 +467,7 @@ class DegradedLibrarySkipTest
         // what "the rules that CAN answer from the define" means, arrived at without any per-arm
         // list. ⚠ This is the degradedAnswerOrSkip half of condition 3 (the hand-rolled arms);
         // `degradedLibrary_defineBackedStudy_optInOn_executes` covers the evalLibrary half.
-        String pkg = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"T\"},\"Operations\":[{\"id\":\"$v\","
+        String pkg = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"T\"},\"Bindings\":[{\"name\":\"$v\","
                 + "\"expression\":\"get_model_filtered_variables(key_name=\\\"role\\\","
                 + " key_value=\\\"Timing\\\")\"}],\"Check\":{\"expression\":\"non_empty($v)\"},"
                 + "\"Outcome\":{\"Message\":\"m\"}}}}";

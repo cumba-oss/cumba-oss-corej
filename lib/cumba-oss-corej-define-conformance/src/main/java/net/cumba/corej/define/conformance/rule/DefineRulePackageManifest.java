@@ -16,10 +16,10 @@ import java.util.Optional;
  *
  * <p>
  * Deliberately <b>not</b> {@code net.cumba.corej.core.RulePackageManifest}. That class lives in
- * {@code cumba-oss-corej-core}, a module this one does not depend on, so reusing it would add a
- * lib&rarr;lib edge for nothing; and its {@code Entry} carries a {@code List<StandardRef> declared}
- * describing CDISC Library products, which has no meaning for Define-XML. The two manifests share a
- * shape and nothing else.
+ * {@code corej-core}, a module this one does not depend on, so reusing it would add a lib&rarr;lib
+ * edge for nothing; and its {@code Entry} carries a {@code List<StandardRef> declared} describing
+ * CDISC Library products, which has no meaning for Define-XML. The two manifests share a shape and
+ * nothing else.
  * </p>
  *
  * <p>

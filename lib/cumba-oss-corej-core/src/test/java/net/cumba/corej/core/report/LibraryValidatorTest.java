@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Handler;
@@ -18,7 +17,6 @@ import java.util.logging.Logger;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.DomainScope;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
@@ -40,9 +38,16 @@ import org.junit.jupiter.api.Test;
 class LibraryValidatorTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
     // ------------------------------------------------------------------
     // Fixtures
     // ------------------------------------------------------------------
+
 
     private static MetadataProvider providerWithDm()
     {
@@ -111,8 +116,7 @@ class LibraryValidatorTest
             // each rule yields findings and the dataset really is reported. A rule that never
             // fires leaves the dataset out of the report entirely and the assertions below would
             // be measuring the fixture, not the validator.
-            rule.setCheck(CheckConditionLeaf.builder().name(columns[i++ % columns.length])
-                    .operator("non_empty").build());
+            rule.setCheck(expr("not empty(" + columns[i++ % columns.length] + ")"));
             Outcome outcome = new Outcome();
             outcome.setMessage(coreId + " fired");
             rule.setOutcome(outcome);
@@ -234,8 +238,9 @@ class LibraryValidatorTest
     @Test
     void missingRequiredVariableProducesFinding()
     {
-        // Required-variable checking is handled by corpus rule FDA-SD0056 (required_variables
-        // Operation + not_contains_all); the generator never produced per-variable GEN-REQ rules.
+        // Required-variable checking is handled by corpus rule FDA-SD0056 (a
+        // required_variables() binding + not contains_all(...)); the generator never produced
+        // per-variable GEN-REQ rules.
         // ⚑ Fix #366: the rule set must now be non-empty, because nothing is merged in behind the
         // caller's back — with zero selected rules the dataset is not validated and produces no
         // report member at all. That is the change, not a defect: a rule that belongs to no
@@ -310,15 +315,15 @@ class LibraryValidatorTest
         Rule ok = simpleRule("OK-1");
         ok.setDescription("OK rule description");
         ok.setExecutability(net.cumba.corej.core.model.Executability.FULLY_EXECUTABLE);
-        ok.setCheck(CheckConditionLeaf.builder().name("STUDYID").operator("var_exists").build());
+        ok.setCheck(expr("var_exists(\"STUDYID\")"));
         // A rule carrying a load error is reported as a single ERROR result by the runner.
         Rule err = simpleRule("ERR-1");
-        err.setCheck(CheckConditionLeaf.builder().name("STUDYID").operator("var_exists").build());
+        err.setCheck(expr("var_exists(\"STUDYID\")"));
         err.setLoadError("rule failed to load");
         // A rule scoped to AE only does not match DM — it must surface as a SKIPPED outcome.
         Rule skip = simpleRule("SKIP-1");
         skip.setDescription("AE-only rule");
-        skip.setCheck(CheckConditionLeaf.builder().name("STUDYID").operator("var_exists").build());
+        skip.setCheck(expr("var_exists(\"STUDYID\")"));
         Scope scope = new Scope();
         DomainScope domains = new DomainScope();
         domains.setInclude(List.of("AE"));
@@ -381,8 +386,7 @@ class LibraryValidatorTest
         // APLB rather than be SKIPPED for "class could not be determined".
         Rule classRule = simpleRule("CLS-1");
         classRule.setDescription("FINDINGS-scoped rule");
-        classRule.setCheck(
-                CheckConditionLeaf.builder().name("STUDYID").operator("var_exists").build());
+        classRule.setCheck(expr("var_exists(\"STUDYID\")"));
         Scope scope = new Scope();
         net.cumba.corej.core.model.ClassScope classes = new net.cumba.corej.core.model.ClassScope();
         classes.setInclude(List.of("FINDINGS"));
@@ -418,8 +422,7 @@ class LibraryValidatorTest
     {
         // Generation-time skip: a rule scoped to AE only never matches the DM dataset.
         Rule outOfScope = simpleRule("SKIP-SCOPE");
-        outOfScope.setCheck(
-                CheckConditionLeaf.builder().name("STUDYID").operator("var_exists").build());
+        outOfScope.setCheck(expr("var_exists(\"STUDYID\")"));
         Scope scope = new Scope();
         DomainScope domains = new DomainScope();
         domains.setInclude(List.of("AE"));
@@ -429,8 +432,7 @@ class LibraryValidatorTest
         // Execution-time skip: the rule references a define_* operand but the validator carries
         // no Define-XML provider, so the runner reports SKIPPED with its status message.
         Rule defineRule = simpleRule("SKIP-DEFINE");
-        defineRule.setCheck(CheckConditionLeaf.builder().name("define_dataset_label")
-                .operator("non_empty").build());
+        defineRule.setCheck(expr("not empty(ds_label(\"DEFINE\"))"));
 
         ValidationReport report = LibraryValidator.builder().provider(providerWithDm())
                 .rules(List.of(outOfScope, defineRule))
@@ -542,8 +544,8 @@ class LibraryValidatorTest
         op.setId("$codelist_dates");
         op.setOperator("valid_codelist_dates");
 
-        CheckConditionLeaf opLeaf = CheckConditionLeaf.builder().name("RFICDTC")
-                .operator("is_not_contained_by").value(JSON.valueToTree("$codelist_dates")).build();
+        net.cumba.corej.core.model.CheckConditionExpression opCheck = expr(
+                "RFICDTC not in $codelist_dates");
 
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
@@ -553,7 +555,7 @@ class LibraryValidatorTest
         outcome.setMessage("boom rule");
         outcome.setOutputVariables(List.of("USUBJID"));
         rule.setOutcome(outcome);
-        rule.setCheck(new CheckConditionAll(List.of(opLeaf)));
+        rule.setCheck(new CheckConditionAll(List.of(opCheck)));
         rule.setOperations(List.of(op));
 
         // Capture System.Logger output (CustomLog routes through java.util.logging) from the
@@ -607,7 +609,6 @@ class LibraryValidatorTest
         }
     }
 
-    private static final ObjectMapper JSON = new ObjectMapper();
 
     /**
      * A {@link MetadataProvider} that delegates DM metadata to a real

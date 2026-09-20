@@ -49,11 +49,9 @@ class DefineVariableCodelistE2ETest
 
     private static Rule sd0037() throws IOException
     {
-        String checkJson = "{\"all\":[{\"name\":\"variable_value\",\"operator\":\"non_empty\"},"
-                + "{\"name\":\"define_variable_has_codelist\",\"operator\":\"equal_to\","
-                + "\"value\":true,\"value_is_literal\":true},"
-                + "{\"name\":\"variable_value\",\"operator\":\"is_not_contained_by\","
-                + "\"value\":\"define_variable_codelist_coded_values\"}]}";
+        String checkJson = "{\"all\":[{\"expression\": \"not empty(value())\"},"
+                + "{\"expression\": \"var_has_codelist(\\\"DEFINE\\\") == true\"},"
+                + "{\"expression\": \"value() not in var_codelist_coded_values(\\\"DEFINE\\\")\"}]}";
         String json = "{\"Core\":{\"Id\":\"FDA-SD0037\"}," + ""
                 + "\"Sensitivity\":\"Record\",\"Check\":" + checkJson + ","
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_name\",\"variable_value\"]}}";

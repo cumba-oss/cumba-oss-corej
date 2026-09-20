@@ -8,7 +8,6 @@ import java.util.Map;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleRunner;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -43,6 +42,13 @@ import org.junit.jupiter.api.Test;
 class OperandTemplateScalarIntegrationTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
     private static Rule notExistsRule()
     {
         Rule rule = new Rule();
@@ -58,9 +64,7 @@ class OperandTemplateScalarIntegrationTest
         rule.setMatchDatasets(List.of(md));
         // Substitute against primary-row APERIOD; the schema check is local to
         // the primary dataset because the operand has no foreign-dataset prefix.
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("ADSL.AP${APERIOD:%02d}SDT")
-                .operator("var_not_exists").build();
-        rule.setCheck(leaf);
+        rule.setCheck(expr("var_not_exists(ADSL.AP${APERIOD:%02d}SDT)"));
         net.cumba.corej.core.RulePackageLoader.installNativeExpr(rule);
         return rule;
     }

@@ -32,9 +32,9 @@ import org.junit.jupiter.api.Test;
  * </ul>
  *
  * Each case loads a one-rule package through {@link RulePackageLoader} (so retention + the
- * broadcast flag are exercised end-to-end), then runs {@link RuleRunner#execute} twice —
- * {@code nativeEval} on and off — and asserts identical findings, plus the expected
- * {@link NativeExecutionRecorder} backend.
+ * broadcast flag are exercised end-to-end), runs {@link RuleRunner#execute} and asserts the
+ * findings, plus — for the dispatch cases — that the rule actually EXECUTED rather than being
+ * skipped short of a verdict.
  */
 class NativeBroadcastVerdictParityTest
 {
@@ -66,7 +66,7 @@ class NativeBroadcastVerdictParityTest
 
     private static final String VMC_EXISTS = "{\"Core\":{\"Id\":\"R1\"},"
             + "\"Sensitivity\":\"Dataset\","
-            + "\"Check\":{\"all\":[{\"name\":\"AEOCCUR\",\"operator\":\"var_exists\"}]},"
+            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(\\\"AEOCCUR\\\")\"}]},"
             + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}";
 
     @Test
@@ -76,7 +76,6 @@ class NativeBroadcastVerdictParityTest
         // presence) — one dataset-level finding when the column is in the table.
         Rule rule = loadRule(VMC_EXISTS);
         assertNotNull(rule.getCheckExpr(), "presence VMC rule must retain a checkExpr");
-        assertTrue(rule.isBroadcastCheckExpr(), "presence VMC rule must be broadcast-flagged");
 
         IDataTable with = MockTable.of().name("AE").col("AEOCCUR", "Y").build();
         Map<Long, Map<String, String>> fired = findings(rule, with, "AE");
@@ -94,11 +93,10 @@ class NativeBroadcastVerdictParityTest
         Rule rule = loadRule(VMC_EXISTS);
         IDataTable with = MockTable.of().name("AE").col("AEOCCUR", "Y").build();
 
-        NativeExecutionRecorder.enable();
-        RuleRunner.execute(rule, with, NO_RESOLVER, "AE", null, null, null);
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE,
-                NativeExecutionRecorder.disable().get("R1"),
-                "broadcast path must record the NATIVE backend");
+        RuleExecutionResult ran = RuleRunner.execute(rule, with, NO_RESOLVER, "AE", null, null,
+                null);
+        assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
+                "the broadcast path must reach dispatch and come back EXECUTED");
     }
 
 
@@ -107,7 +105,7 @@ class NativeBroadcastVerdictParityTest
     {
         // CDISC-AD0047 shape: var_not_exists(COL) — fires when the required column is absent.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
-                + "\"Check\":{\"all\":[{\"name\":\"SUBJID\",\"operator\":\"var_not_exists\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"var_not_exists(\\\"SUBJID\\\")\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         assertNotNull(rule.getCheckExpr());
 
@@ -124,8 +122,8 @@ class NativeBroadcastVerdictParityTest
         // CDISC-CG0503 shape: var_exists(A) && var_not_exists(B) — "if A is used, B must accompany
         // it".
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
-                + "\"Check\":{\"all\":[{\"name\":\"AESTDTC\",\"operator\":\"var_exists\"},"
-                + "{\"name\":\"AESTDY\",\"operator\":\"var_not_exists\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"var_exists(\\\"AESTDTC\\\")\"},"
+                + "{\"expression\": \"var_not_exists(\\\"AESTDY\\\")\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         assertNotNull(rule.getCheckExpr());
 
@@ -147,8 +145,8 @@ class NativeBroadcastVerdictParityTest
         // against the run's domain prefix inside the compiled closure (P3b), so the SAME loaded
         // rule serves any domain.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
-                + "\"Check\":{\"all\":[{\"name\":\"--TPT\",\"operator\":\"var_exists\"},"
-                + "{\"name\":\"--TPTNUM\",\"operator\":\"var_not_exists\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"var_exists(\\\"--TPT\\\")\"},"
+                + "{\"expression\": \"var_not_exists(\\\"--TPTNUM\\\")\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         assertNotNull(rule.getCheckExpr(), "--presence VMC rule must retain a checkExpr");
 
@@ -183,8 +181,8 @@ class NativeBroadcastVerdictParityTest
         // operator. rowBased=false → the relaxed gate evaluates the checkExpr natively and the
         // caller collapses the per-row bits to ONE violation — identically to legacy.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
-                + "\"Check\":{\"all\":[{\"name\":\"DSSCAT\","
-                + "\"operator\":\"is_not_unique_relationship\",\"value\":\"DSDECOD\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\":"
+                + "\"not is_unique_relationship(DSSCAT, DSDECOD)\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"DSSCAT\"]}}");
         assertNotNull(rule.getCheckExpr());
 
@@ -193,10 +191,9 @@ class NativeBroadcastVerdictParityTest
         Map<Long, Map<String, String>> fired = findings(rule, dup, "DS");
         assertEquals(1, fired.size(), "dataset sensitivity collapses to ONE violation");
 
-        NativeExecutionRecorder.enable();
-        RuleRunner.execute(rule, dup, NO_RESOLVER, "DS", null, null, null);
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE,
-                NativeExecutionRecorder.disable().get("R1"),
+        RuleExecutionResult ran = RuleRunner.execute(rule, dup, NO_RESOLVER, "DS", null, null,
+                null);
+        assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "the relaxed non-row-based gate must run native");
 
         IDataTable clean = MockTable.of().name("DS").col("DSSCAT", "x", "y")
@@ -208,17 +205,17 @@ class NativeBroadcastVerdictParityTest
     @Test
     void dollarComparisonBroadcast_viaRealOperation() throws Exception
     {
-        // FDA-SD9744 class: a Record-Data rule at Dataset sensitivity whose whole Check is a
+        // The $-operation-comparison class: a Record-Data rule at Dataset sensitivity whose
+        // whole Check is a
         // $-operation comparison. The $-var comes from a real record_count Operation, so this
         // exercises the operation-result branch of the broadcast path end-to-end. (The retired
         // variable_exists operation formerly played this role; record_count is a value-producing
         // operation that keeps the same $-op-compared-to-literal broadcast shape.)
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
-                + "\"Operations\":[{\"id\":\"$RC\",\"operator\":\"record_count\"}],"
-                + "\"Check\":{\"all\":[{\"name\":\"$RC\",\"operator\":\"equal_to\","
-                + "\"value\":1}]}," + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
+                + "\"Bindings\":[{\"name\": \"$RC\", \"expression\": \"record_count()\"}],"
+                + "\"Check\":{\"all\":[{\"expression\": \"$RC == 1\"}]},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         assertNotNull(rule.getCheckExpr());
-        assertTrue(rule.isBroadcastCheckExpr(), "$-comparison must be broadcast-flagged");
 
         IDataTable oneRow = MockTable.of().name("AE").col("AESEV", "MILD").build();
         assertEquals(1, findings(rule, oneRow, "AE").size(), "record_count == 1 → finding");
@@ -233,7 +230,7 @@ class NativeBroadcastVerdictParityTest
         // The broadcast fast path must project Output_Variables identically to the legacy
         // partialEvaluateDataset fold (extractOutputValues at row 0).
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
-                + "\"Check\":{\"all\":[{\"name\":\"AEOCCUR\",\"operator\":\"var_exists\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"var_exists(\\\"AEOCCUR\\\")\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"STUDYID\"]}}");
         IDataTable t = MockTable.of().name("AE").col("AEOCCUR", "Y").col("STUDYID", "S1").build();
         Map<Long, Map<String, String>> nativeF = findings(rule, t, "AE");
@@ -251,8 +248,7 @@ class NativeBroadcastVerdictParityTest
 
     private static final String RD_DS_NAME = "{\"Core\":{\"Id\":\"R1\"},"
             + "\"Sensitivity\":\"Dataset\","
-            + "\"Check\":{\"all\":[{\"name\":\"dataset_name\",\"operator\":\"equal_to\","
-            + "\"value\":\"AE\",\"value_is_literal\":true}]},"
+            + "\"Check\":{\"all\":[{\"expression\": \"ds_name(\\\"DATA\\\") == \\\"AE\\\"\"}]},"
             + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}";
 
     @Test
@@ -263,7 +259,6 @@ class NativeBroadcastVerdictParityTest
         // the native fast path produces the identical one-violation verdict.
         Rule rule = loadRule(RD_DS_NAME);
         assertNotNull(rule.getCheckExpr(), "dataset-fact rule must retain a checkExpr");
-        assertTrue(rule.isBroadcastCheckExpr(), "dataset-fact rule must be broadcast-flagged");
 
         IDataTable ae = MockTable.of().name("AE").col("AETERM", "x", "y").build();
         Map<Long, Map<String, String>> fired = findings(rule, ae, "AE");
@@ -280,9 +275,8 @@ class NativeBroadcastVerdictParityTest
         // `record_count > 2` — canonicalized to the record_count() builtin; fires once on a
         // 3-row table, never on a 1-row table, identically to the legacy fold's compareNumeric.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
-                + "\"Check\":{\"all\":[{\"name\":\"record_count\",\"operator\":\"greater_than\","
-                + "\"value\":2}]}," + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
-        assertTrue(rule.isBroadcastCheckExpr(), "record_count rule must be broadcast-flagged");
+                + "\"Check\":{\"all\":[{\"expression\": \"record_count > 2\"}]},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
 
         IDataTable three = MockTable.of().name("AE").col("AETERM", "x", "y", "z").build();
         assertEquals(1, findings(rule, three, "AE").size(), "3 rows > 2 → one finding");
@@ -298,9 +292,8 @@ class NativeBroadcastVerdictParityTest
         // `record_count == 0` on an empty dataset — the legacy fold emits its dataset-level
         // violation at row 0 even with no data rows; the broadcast path must mirror that.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
-                + "\"Check\":{\"all\":[{\"name\":\"record_count\",\"operator\":\"equal_to\","
-                + "\"value\":0}]}," + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
-        assertTrue(rule.isBroadcastCheckExpr());
+                + "\"Check\":{\"all\":[{\"expression\": \"record_count == 0\"}]},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
 
         IDataTable empty = MockTable.of().name("AE").col("AETERM").build();
         assertEquals(1, findings(rule, empty, "AE").size(),
@@ -316,9 +309,8 @@ class NativeBroadcastVerdictParityTest
         // ds_name accessor broadcast-constant. Per-row verdicts must agree (this shape was the
         // pre-R-P2 silent divergence: a bare dataset_name ref resolved as a missing column).
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Record\","
-                + "\"Check\":{\"all\":[{\"name\":\"dataset_name\",\"operator\":\"equal_to\","
-                + "\"value\":\"AE\",\"value_is_literal\":true},"
-                + "{\"name\":\"AETERM\",\"operator\":\"empty\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"ds_name(\\\"DATA\\\") == \\\"AE\\\"\"},"
+                + "{\"expression\": \"empty(AETERM)\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         assertNotNull(rule.getCheckExpr());
 
@@ -341,8 +333,7 @@ class NativeBroadcastVerdictParityTest
         // matched anything (a silent no-op); measured 2026-08-22, no shipped rule carries the
         // shape, so only an externally-supplied leaf-form rule can observe the change.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Record\","
-                + "\"Check\":{\"all\":[{\"name\":\"AETERM\",\"operator\":\"equal_to\","
-                + "\"value\":\"dataset_name\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"AETERM == ds_name(\\\"DATA\\\")\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         assertNotNull(rule.getCheckExpr());
         String printed = net.cumba.corej.core.expr.ExpressionPrinter.print(rule.getCheckExpr());
@@ -358,19 +349,18 @@ class NativeBroadcastVerdictParityTest
 
 
     @Test
-    void datasetFactRunsNativeAndLegacyFoldRecordsLegacy() throws Exception
+    void datasetFactExecutesViaBroadcastFastPath() throws Exception
     {
-        // With nativeEval ON the broadcast fast path preempts the fold (recorder: NATIVE); with
-        // the kill-switch OFF the verdict comes from the legacy Step-1 fold, whose R-P2
-        // instrumentation must record LEGACY (a TRUE fold is load-bearing).
+        // A dataset-level fact is decided by the broadcast fast path, which preempts the per-row
+        // fold. The legacy Step-1 fold and its --no-native-eval kill-switch are both gone, so
+        // there is no second lane to compare against: what is pinned here is that the rule reaches
+        // dispatch and comes back with a verdict.
         Rule rule = loadRule(RD_DS_NAME);
         IDataTable ae = MockTable.of().name("AE").col("AETERM", "x").build();
 
-        NativeExecutionRecorder.enable();
-        RuleRunner.execute(rule, ae, NO_RESOLVER, "AE", null, null, null);
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE,
-                NativeExecutionRecorder.disable().get("R1"),
-                "broadcast fast path, recorded NATIVE (legacy engine retired)");
+        RuleExecutionResult ran = RuleRunner.execute(rule, ae, NO_RESOLVER, "AE", null, null, null);
+        assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
+                "the broadcast fast path must come back EXECUTED");
     }
 
 }

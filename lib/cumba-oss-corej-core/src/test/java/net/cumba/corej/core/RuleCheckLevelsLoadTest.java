@@ -154,9 +154,7 @@ class RuleCheckLevelsLoadTest
         Rule r = loaded("""
                 Check:
                   ERROR:
-                    operator: "equal_to"
-                    name: "A"
-                    value: "x"
+                    expression: 'A == "x"'
                     Message: "m"
                 """);
         assertNull(r.getLoadError());
@@ -413,32 +411,20 @@ class RuleCheckLevelsLoadTest
                 Check:
                   ERROR:
                     all:
-                      - operator: "non_empty"
-                        name: "A"
-                      - operator: "empty"
-                        name: "B"
+                      - expression: 'not empty(A)'
+                      - expression: 'empty(B)'
                     Message: "m"
                 """, """
                 Check:
                   ERROR:
                     any:
-                      - operator: "non_empty"
-                        name: "A"
+                      - expression: 'not empty(A)'
                     Message: "m"
                 """, """
                 Check:
                   ERROR:
                     not:
-                      operator: "non_empty"
-                      name: "A"
-                    Message: "m"
-                """, """
-                Check:
-                  ERROR:
-                    operator: "equal_to"
-                    name: "A"
-                    value: "x"
-                    value_is_literal: true
+                      expression: 'not empty(A)'
                     Message: "m"
                 """, """
                 Check:
@@ -509,8 +495,11 @@ class RuleCheckLevelsLoadTest
                     expression: >-
                       2 == 2
                 """);
-        var mapped = LevelCheck.mapConditions(r.getCheckLevels(),
-                _ -> new net.cumba.corej.core.model.CheckConditionConstant(true));
+        var mapped = LevelCheck
+                .mapConditions(r.getCheckLevels(),
+                        _ -> new net.cumba.corej.core.model.CheckConditionExpression(
+                                net.cumba.corej.core.expr.CheckExpressionParser.parse("1 == 1"),
+                                "1 == 1"));
         assertNotNull(mapped);
         assertEquals(List.of(Severity.ERROR, Severity.INFO), List.copyOf(mapped.keySet()));
         assertEquals("m", mapped.get(Severity.ERROR).message(), "the Message survives the rewrite");

@@ -31,8 +31,10 @@ import org.junit.jupiter.api.Test;
  * sets are identical for BOTH the present and the absent dataset cases. Coverage spans a bare
  * {@code ds_not_exists}, a bare {@code ds_exists}, a two-clause
  * {@code ds_exists AND ds_not_exists}, and a {@code var_exists} column-presence clause guarding a
- * {@code ds_exists} dataset clause (the migrated CDISC-CG0105 shape that replaced the retired
- * {@code variable_exists} operation).
+ * {@code ds_exists} dataset clause — the migrated form of the shape {@code CDISC-CG0105} carries (⚠
+ * that rule still ships the <em>org</em> form: {@code Requirements.Datasets: [EC]} plus a
+ * {@code variable_exists(EXVAMT)} binding checked as {@code $exvamt_exists == true}, so the
+ * migrated spelling below is this test's, not the corpus's).
  * </p>
  */
 class DomainPresenceNativeParityTest
@@ -104,7 +106,7 @@ class DomainPresenceNativeParityTest
     {
         // CDISC-AD0001: ds_not_exists(ADSL) — fires when ADSL is absent.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
-                + "\"Check\":{\"all\":[{\"name\":\"ADSL\",\"operator\":\"ds_not_exists\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"ds_not_exists(\\\"ADSL\\\")\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         assertNotNull(rule.getCheckExpr(), "Domain-Presence rule must retain a native checkExpr");
 
@@ -119,9 +121,9 @@ class DomainPresenceNativeParityTest
     @Test
     void bareExists_parity() throws Exception
     {
-        // CDISC-CG0648: ds_exists(TP).
+        // CDISC-CG0648: ds_exists("TP").
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
-                + "\"Check\":{\"all\":[{\"name\":\"TP\",\"operator\":\"ds_exists\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"ds_exists(\\\"TP\\\")\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         assertNotNull(rule.getCheckExpr());
 
@@ -134,11 +136,11 @@ class DomainPresenceNativeParityTest
     @Test
     void existsAndNotExists_parity() throws Exception
     {
-        // CDISC-CG0407: ds_exists(TA) and ds_not_exists(EX) — both the present and absent sides
-        // exercised.
+        // CDISC-CG0407: ds_exists("TA") and not ds_exists("EX") — both the present and absent
+        // sides exercised.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
-                + "\"Check\":{\"all\":[{\"name\":\"TA\",\"operator\":\"ds_exists\"},"
-                + "{\"name\":\"EX\",\"operator\":\"ds_not_exists\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"ds_exists(\\\"TA\\\")\"},"
+                + "{\"expression\": \"ds_not_exists(\\\"EX\\\")\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         assertNotNull(rule.getCheckExpr());
 
@@ -155,14 +157,15 @@ class DomainPresenceNativeParityTest
     @Test
     void varExistsGuarded_parity() throws Exception
     {
-        // Migrated CDISC-CG0105 shape: var_exists(EXVAMT) and ds_exists(EC). The var_exists leaf is
+        // The migrated CDISC-CG0105 shape: var_exists(EXVAMT) and ds_exists(EC). The var_exists
+        // leaf is
         // column presence on the primary table; the generic ds_exists(EC) resolves to dataset
         // presence
         // for a Domain Presence Check — the two-clause native broadcast path end-to-end. (Replaces
         // the retired $EXVAMT_EXISTS == true variable_exists Operation; verdict-identical.)
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
-                + "\"Check\":{\"all\":[" + "{\"name\":\"EXVAMT\",\"operator\":\"var_exists\"},"
-                + "{\"name\":\"EC\",\"operator\":\"ds_exists\"}]},"
+                + "\"Check\":{\"all\":[" + "{\"expression\": \"var_exists(\\\"EXVAMT\\\")\"},"
+                + "{\"expression\": \"ds_exists(\\\"EC\\\")\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         assertNotNull(rule.getCheckExpr());
 
@@ -183,7 +186,7 @@ class DomainPresenceNativeParityTest
         // With an explicit Output_Variable, both backends must project the same dataset-level value
         // map onto the single row-0 finding.
         Rule rule = loadRule("{\"Core\":{\"Id\":\"R1\"}," + "\"Sensitivity\":\"Dataset\","
-                + "\"Check\":{\"all\":[{\"name\":\"ADSL\",\"operator\":\"ds_not_exists\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"ds_not_exists(\\\"ADSL\\\")\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"STUDYID\"]}}");
         assertNotNull(rule.getCheckExpr());
 

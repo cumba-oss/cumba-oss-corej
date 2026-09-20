@@ -369,8 +369,9 @@ class OperationExecutorMoreCoverageTest
     {
         // FAAE/FACM are Findings About splits of FA (both DOMAIN=FA). The family key is the
         // data-driven unsplit name, so they collapse to one family — a name-only key
-        // (SplitDatasetUtil.unsplitName) would see two and yield 2. Mirrors parity spec
-        // CORE-000358a, which pins the same key for variable_count.
+        // (SplitDatasetUtil.unsplitName) would see two and yield 2. Mirrors the rulespec
+        // EC-variable-count-split-family-dedup (renamed off the CORE-000358a stem by the
+        // 2026-09-19 CORE-family retirement), which pins the same key for variable_count.
         IDataTable faae = MockTable.of().col("DOMAIN", "FA").col("FATESTCD", "OCCUR").name("FAAE")
                 .build();
         IDataTable facm = MockTable.of().col("DOMAIN", "FA").col("FATESTCD", "OCCUR").name("FACM")

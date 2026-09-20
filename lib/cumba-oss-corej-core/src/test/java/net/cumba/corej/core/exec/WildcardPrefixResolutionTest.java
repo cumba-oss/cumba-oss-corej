@@ -7,9 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import net.cumba.corej.core.expr.CheckToExpr;
-import net.cumba.corej.core.model.CheckCondition;
-import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
@@ -60,7 +57,7 @@ class WildcardPrefixResolutionTest
                   Variables: {All: ["--TERM"]}
                 Check:
                   all:
-                  - {name: "--TERM", operator: "equal_to", value: "BAD", value_is_literal: true}
+                  - {expression: '--TERM == "BAD"'}
                 Outcome:
                   Message: "bad term"
                   Output_Variables: ["--TERM"]
@@ -122,7 +119,7 @@ class WildcardPrefixResolutionTest
                   Variables: {All: ["--QNAM"]}
                 Check:
                   all:
-                  - {name: "--QNAM", operator: "equal_to", value: "BAD", value_is_literal: true}
+                  - {expression: '--QNAM == "BAD"'}
                 Outcome:
                   Message: "bad qnam"
                   Output_Variables: ["--QNAM"]
@@ -229,7 +226,7 @@ class WildcardPrefixResolutionTest
                   Domains: {Include: ["ALL"]}
                 Check:
                   all:
-                  - {name: "RELID", operator: "equal_to", value: "1", value_is_literal: true}
+                  - {expression: 'RELID == "1"'}
                 Outcome:
                   Message: "relid"
                   Output_Variables: ["RELID"]
@@ -265,15 +262,9 @@ class WildcardPrefixResolutionTest
         // `SUPP--.QVAL` names a DATASET, not a column. On an APMH primary the supplemental dataset
         // is SUPPAPMH; substituting the variable prefix would give SUPPMH — a DIFFERENT dataset
         // that can genuinely exist in a study carrying both MH and APMH.
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("--TERM").operator("equal_to")
-                .value(new com.fasterxml.jackson.databind.node.TextNode("SUPP--.QVAL")).build();
-        CheckCondition resolved = CheckConditionTransformer.resolvePrefixes(
-                new CheckConditionAll(java.util.List.of(leaf)), "MH", "APMH", null);
-
-        CheckConditionLeaf out = (CheckConditionLeaf) ((CheckConditionAll) resolved).getConditions()
-                .get(0);
-        assertEquals("MHTERM", out.getName(), "the leaf NAME is a column -> variable prefix");
-        assertEquals("SUPPAPMH.QVAL", out.getValue().asText(),
+        assertEquals("MHTERM", resolveValue("--TERM", "MH", "APMH"),
+                "a column name takes the variable prefix");
+        assertEquals("SUPPAPMH.QVAL", resolveValue("SUPP--.QVAL", "MH", "APMH"),
                 "the dataset half keeps the full domain code");
     }
 
@@ -282,14 +273,7 @@ class WildcardPrefixResolutionTest
     void dotQualifiedColumnName_takesTheVariablePrefix()
     {
         // Mirror image: the wildcard sits AFTER the dot, so it names a column on another dataset.
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("USUBJID").operator("equal_to")
-                .value(new com.fasterxml.jackson.databind.node.TextNode("DM.--SEQ")).build();
-        CheckCondition resolved = CheckConditionTransformer.resolvePrefixes(
-                new CheckConditionAll(java.util.List.of(leaf)), "MH", "APMH", null);
-
-        CheckConditionLeaf out = (CheckConditionLeaf) ((CheckConditionAll) resolved).getConditions()
-                .get(0);
-        assertEquals("DM.MHSEQ", out.getValue().asText());
+        assertEquals("DM.MHSEQ", resolveValue("DM.--SEQ", "MH", "APMH"));
     }
 
 
@@ -334,12 +318,11 @@ class WildcardPrefixResolutionTest
 
     private static String resolveValue(String value, String varPrefix, String domainCode)
     {
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("X").operator("equal_to")
-                .value(new com.fasterxml.jackson.databind.node.TextNode(value)).build();
-        CheckCondition out = CheckConditionTransformer.resolvePrefixes(
-                new CheckConditionAll(java.util.List.of(leaf)), varPrefix, domainCode, null);
-        return ((CheckConditionLeaf) ((CheckConditionAll) out).getConditions().get(0)).getValue()
-                .asText();
+        // The one shared text policy (phase 7d: the leaf-tree transformer is retired; every
+        // caller — ExprPrefixResolver, RuleSpecialiser — resolves through this method).
+        String resolved = CheckConditionTransformer.resolveTextWildcard(value, varPrefix,
+                domainCode);
+        return resolved == null ? value : resolved;
     }
 
 
@@ -377,30 +360,6 @@ class WildcardPrefixResolutionTest
     {
         // Regression guard for Fix #5 proper.
         assertEquals("RELREC.**DECOD", resolveValue("RELREC.**DECOD", "MH", "APMH"));
-    }
-
-
-    @Test
-    void arrayValueResolvesIdenticallyToTheSameStringAsAScalar()
-    {
-        // The array branch had its own narrower copy, so 3 of 5 shapes resolved differently
-        // depending on whether the string sat in `value` or inside `value[]`.
-        com.fasterxml.jackson.databind.node.ArrayNode arr = new com.fasterxml.jackson.databind.ObjectMapper()
-                .createArrayNode();
-        arr.add("SUPP--.QVAL");
-        arr.add("DM.--SEQ");
-        arr.add("--SEQ");
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("X").operator("is_contained_by")
-                .value(arr).build();
-
-        CheckCondition out = CheckConditionTransformer.resolvePrefixes(
-                new CheckConditionAll(java.util.List.of(leaf)), "MH", "APMH", null);
-        com.fasterxml.jackson.databind.JsonNode v = ((CheckConditionLeaf) ((CheckConditionAll) out)
-                .getConditions().get(0)).getValue();
-
-        assertEquals("SUPPAPMH.QVAL", v.get(0).asText());
-        assertEquals("DM.MHSEQ", v.get(1).asText());
-        assertEquals("MHSEQ", v.get(2).asText());
     }
 
 
@@ -458,7 +417,7 @@ class WildcardPrefixResolutionTest
                   Domains: {Include: ["ALL"]}
                 Check:
                   all:
-                  - {name: "--TERM", operator: "equal_to", value: "BAD", value_is_literal: true}
+                  - {expression: '--TERM == "BAD"'}
                 Outcome:
                   Message: "bad term"
                   Output_Variables: ["--CAT", "--TERM"]
@@ -488,7 +447,7 @@ class WildcardPrefixResolutionTest
                   Domains: {Include: ["ALL"]}
                 Check:
                   all:
-                  - {name: "--VAL", operator: "equal_to", value: "BAD", value_is_literal: true}
+                  - {expression: '--VAL == "BAD"'}
                 Outcome:
                   Message: "bad qval"
                   Output_Variables: ["--NAM", "--VAL"]

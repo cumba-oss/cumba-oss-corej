@@ -123,10 +123,11 @@ public record ProviderRequirements(boolean library, boolean define, boolean dict
         // getCheck(), for every rule that authors a plain Check:.
         for (CheckCondition check : rule.checkConditions())
         {
-            // Surface 2a — bare operand prefixes on the TYPED condition tree. Kept beside the
-            // delegation below, not replaced by it: an old-style Check that CheckToExpr cannot
-            // raise (an operator leaf carrying within/regex/ordering) has no expression surface at
-            // all, and its operand names are reachable only here.
+            // Surface 2a — the same predicate the RUNTIME operand gate reads
+            // (RuleRunner.referencesOperandPrefix). Kept beside the delegation below so the
+            // load-time derivation and the runtime arm can never answer differently for the same
+            // Check; since phase 7d both resolve the expression form through
+            // MetadataExprScan.providerLevelsUsed, one vocabulary.
             lib |= RuleRunner.referencesOperandPrefix(check, "library_");
             def |= RuleRunner.referencesOperandPrefix(check, "define_");
             Expr raised = tryRaise(check);

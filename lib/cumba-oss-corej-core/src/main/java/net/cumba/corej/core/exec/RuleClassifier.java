@@ -556,23 +556,14 @@ public final class RuleClassifier
      * expression surface.
      *
      * <p>
-     * The single front door for derivation. All three shipped corpora reach it: an operator-leaf
-     * Check ({@code rules-src}, {@code rules-legacy}) is converted, and an expression Check
-     * ({@code rules/} — 100% of it) already carries its parsed {@code Expr}, which
-     * {@code CheckToExpr} returns as-is. One traversal therefore serves every corpus; two
-     * front-ends that could disagree about the same rule would be worse than the duplication this
-     * plan removes.
+     * The single front door for derivation. Every corpus is expression-form (phase 7d, D121 — the
+     * operator-leaf model is retired), so an expression Check already carries its parsed
+     * {@code Expr}, which {@code CheckToExpr} returns as-is, and a composite
+     * ({@code all}/{@code any}/{@code not} over expressions) is raised structurally. One traversal
+     * serves every corpus; two front-ends that could disagree about the same rule would be worse
+     * than the duplication this plan removed.
      * </p>
      *
-     * <p>
-     * Converted with a {@code null} {@code Rule_Type}, which is <strong>not</strong> circular:
-     * {@code CheckToExpr.existsByRuleType} returns null for a null type, so a generic
-     * {@code exists} stays generic rather than being guessed at, while the explicit
-     * {@code ds_exists} / {@code var_exists} forms convert to themselves through the ordinary
-     * unary-predicate path. The 59-rule {@code ds_exists} conversion is what made this possible: it
-     * moved the ambiguity out of the data, so the type is no longer needed to read the type's own
-     * signal.
-     * </p>
      */
     private static @Nullable Expr toExprOrNull(@Nullable CheckCondition condition)
     {
@@ -586,8 +577,8 @@ public final class RuleClassifier
         }
         catch (RuntimeException _)
         {
-            // No expression surface (boolean constant, unconvertible leaf): no operands, exactly
-            // as an empty Check gave — the caller degrades to Confidence.NONE.
+            // No expression surface (boolean constant): no operands, exactly as an empty Check
+            // gave — the caller degrades to Confidence.NONE.
             return null;
         }
     }

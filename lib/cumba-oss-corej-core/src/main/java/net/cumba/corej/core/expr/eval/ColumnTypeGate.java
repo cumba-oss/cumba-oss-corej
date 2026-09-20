@@ -10,6 +10,15 @@ import org.jspecify.annotations.Nullable;
  * authoritative (R5) — no CDISC Library lookup is involved.
  *
  * <p>
+ * ⭐ <b>Since phase 4 of {@code PLAN-typed-expression-engine.md} this gate IS stage B's armed
+ * column-type check (D15)</b> — the typed engine absorbed it rather than growing a second gate: a
+ * raise here, per (rule, dataset) through {@code RuleRunner}'s single catch site (D74a), stays the
+ * one erroring path, while {@code expr.typed.StageBChecker} adds the per-binding <em>reporting</em>
+ * the throw-on-first-mismatch shape cannot (D41) and reuses this gate's expectation notions for the
+ * absent-column default (D76/D76a) — the one case this gate deliberately skips.
+ * </p>
+ *
+ * <p>
  * <b>Eligibility (§10 F9, widened by J7 of {@code PLAN-joined-column-typing}):</b> a vector is
  * gated when it reports a {@link Vector#gatedName()} — an authored column name that resolved to a
  * real, typed column. ⭐ That now includes a <b>dotted joined reference</b> ({@code DM.AGE}), which
@@ -38,8 +47,14 @@ import org.jspecify.annotations.Nullable;
 public final class ColumnTypeGate
 {
 
-    /** The two authored kinds the gate compares. */
-    enum Kind
+    /**
+     * The two authored kinds the gate compares. Public since phase 4 of
+     * {@code PLAN-typed-expression-engine.md}: this gate <b>is</b> stage B's armed column-type
+     * check (D15 — the typed engine absorbs it rather than growing a second gate), and the stage-B
+     * checker ({@code expr.typed.StageBChecker}) classifies through the gate's own kind vocabulary
+     * so the two layers cannot hold different ideas of Char/Num.
+     */
+    public enum Kind
     {
         NUMERIC, CHARACTER
     }
@@ -53,7 +68,7 @@ public final class ColumnTypeGate
      * The gate-relevant kind of a declared column type: {@code STRING} → CHARACTER, {@code LONG}/
      * {@code DOUBLE} → NUMERIC, anything else (BOOLEAN, MISSING, dates) → {@code null} (not gated).
      */
-    static @Nullable Kind kindOf(DataValueType t)
+    public static @Nullable Kind kindOf(DataValueType t)
     {
         if (t == DataValueType.STRING)
         {
@@ -125,6 +140,51 @@ public final class ColumnTypeGate
                             + " expects a character value — a numeric column's text form depends on"
                             + " formatting, so this rule cannot be evaluated as authored");
         }
+    }
+
+
+    /**
+     * ⚠ <b>D55, OBSERVE-ONLY — deliberately not armed in phase 3b</b> (the E2 escalation of
+     * {@code FINDINGS-review0-date-equality.md}, measured 2026-09-16): a {@code date()} /
+     * {@code time()} conversion over a resolved <b>numeric</b> column is the {@code date(NUM)}
+     * shape D55 makes a bind error — but the ruled rewrite ({@code date_from_sas_days} /
+     * {@code date_from_sas_datetime}) exists <b>nowhere</b> yet (not in the engine, not in the
+     * corpus), the four shape-4 ADaM rules' phase-3c rewrite will put {@code date()} over
+     * {@code *DT}/{@code *DTM} columns that are <b>numeric in real ADaM</b> while all eight of
+     * their {@code .cdt} fixtures declare {@code type=Char} (no numeric acceptance coverage), and
+     * every one of the corpus' 119 {@code date(…)} sites today wraps an SDTM/SEND {@code *DTC} /
+     * {@code *TPT} text column. Arming now would set a trap 3c walks into with every gate green.
+     * The observation logs at DEBUG and notifies the measurement observer, and is pinned by a test
+     * so it cannot erode silently.
+     */
+    public static void observeIsoConversionRead(@Nullable Vector v, String context)
+    {
+        Vector cv = gatedColumn(v);
+        if (cv != null && kindOf(cv.declaredType()) == Kind.NUMERIC)
+        {
+            String message = "column-type mismatch (D55, observe-only): " + describe(cv) + " but "
+                    + context + " reads an ISO-8601 text value — date_from_sas_days(...) / "
+                    + "date_from_sas_datetime(...) is the ruled rewrite once those functions "
+                    + "exist";
+            LOGGER.log(System.Logger.Level.DEBUG, message);
+            java.util.function.Consumer<String> observer = ISO_OBSERVER.get();
+            if (observer != null)
+            {
+                observer.accept(message);
+            }
+        }
+    }
+
+    private static final System.Logger LOGGER = System.getLogger(ColumnTypeGate.class.getName());
+
+    /** Measurement hook for {@link #observeIsoConversionRead}; test / measurement use only. */
+    private static final java.util.concurrent.atomic.AtomicReference<java.util.function.@Nullable Consumer<String>> ISO_OBSERVER = new java.util.concurrent.atomic.AtomicReference<>();
+
+    /** Sets (or clears) the D55 observation hook. Test / measurement use only. */
+    public static void setIsoConversionObserver(
+            java.util.function.@Nullable Consumer<String> observer)
+    {
+        ISO_OBSERVER.set(observer);
     }
 
 

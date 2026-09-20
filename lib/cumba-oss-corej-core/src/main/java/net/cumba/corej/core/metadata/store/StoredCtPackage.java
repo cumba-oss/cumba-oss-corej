@@ -16,7 +16,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * ⚠ {@code id} is {@link Nullable} on purpose, and was annotated as such once NullAway was armed
- * (it had always been constructed null-bearing). {@code null} is the <b>anonymous empty package</b>
+ * (it had always been CONSTRUCTED null-bearing). {@code null} is the <b>anonymous empty package</b>
  * a provider carries when the run selected no CT at all — see
  * {@code StoreMetadataProviderFactory.forSdtm}/{@code forAdam}, whose
  * {@code MetadataLibraryProvider} sink already takes a {@code @Nullable} configured package id. A

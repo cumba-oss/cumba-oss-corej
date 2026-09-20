@@ -106,10 +106,8 @@ class DefineVlmE2ETest
     {
         try
         {
-            return rule("FDA-SD1231",
-                    "{\"all\":[{\"name\":\"variable_value\",\"operator\":\"non_empty\"},"
-                            + "{\"name\":\"variable_value_length\",\"operator\":\"greater_than\","
-                            + "\"value\":\"define_vlm_length\"}]}",
+            return rule("FDA-SD1231", "{\"all\":[{\"expression\": \"not empty(value())\"},"
+                    + "{\"expression\": \"vlm_value_length(variable_name) > vlm_length(variable_name)\"}]}",
                     "\"variable_name\",\"variable_value\"");
         }
         catch (IOException e)
@@ -125,12 +123,9 @@ class DefineVlmE2ETest
     void codelistMembership_firesOnlyForMatchedValuesOutsideTheValueLevelCodelist()
         throws IOException
     {
-        Rule sd0037 = rule("FDA-SD0037",
-                "{\"all\":[{\"name\":\"variable_value\",\"operator\":\"non_empty\"},"
-                        + "{\"name\":\"define_vlm_has_codelist\",\"operator\":\"equal_to\","
-                        + "\"value\":true,\"value_is_literal\":true},"
-                        + "{\"name\":\"variable_value\",\"operator\":\"is_not_contained_by\","
-                        + "\"value\":\"define_vlm_codelist_coded_values\"}]}",
+        Rule sd0037 = rule("FDA-SD0037", "{\"all\":[{\"expression\": \"not empty(value())\"},"
+                + "{\"expression\": \"vlm_has_codelist(variable_name) == true\"},"
+                + "{\"expression\": \"value() not in vlm_codelist_coded_values(variable_name)\"}]}",
                 "\"variable_name\",\"variable_value\"");
         // r0 PH+URINE ACIDIC in codelist -> no; r1 PH+URINE PURPLE not in codelist -> fire; r2
         // PH+BLOOD PURPLE compound not matched -> no; r3 GLUC has no value-level codelist -> no.
@@ -149,9 +144,8 @@ class DefineVlmE2ETest
     void datatypeConformance_firesOnNonConformingMatchedValues() throws IOException
     {
         Rule sd1230 = rule("FDA-SD1230",
-                "{\"all\":[{\"name\":\"variable_value\",\"operator\":\"non_empty\"},"
-                        + "{\"name\":\"define_vlm_type_conforms\",\"operator\":\"equal_to\","
-                        + "\"value\":false,\"value_is_literal\":true}]}",
+                "{\"all\":[{\"expression\": \"not empty(value())\"},"
+                        + "{\"expression\": \"vlm_type_conforms(variable_name) == false\"}]}",
                 "\"variable_name\",\"variable_value\"");
         // GLUC value-level type is float. r0 "12.5" conforms; r1 "abc" not numeric -> fire; r2
         // PH+URINE "ACIDIC" is text -> conforms; r3 GLUC empty -> non_empty guard excludes; r4 HGB
@@ -171,14 +165,10 @@ class DefineVlmE2ETest
     @Test
     void nonExtensibleValueLevelCodelist_ct2004_fires() throws IOException
     {
-        Rule ct2004 = rule("FDA-CT2004",
-                "{\"all\":[{\"name\":\"variable_value\",\"operator\":\"non_empty\"},"
-                        + "{\"name\":\"define_vlm_codelist_extensible\",\"operator\":\"equal_to\","
-                        + "\"value\":false,\"value_is_literal\":true},"
-                        + "{\"name\":\"define_vlm_has_codelist\",\"operator\":\"equal_to\","
-                        + "\"value\":true,\"value_is_literal\":true},"
-                        + "{\"name\":\"variable_value\",\"operator\":\"is_not_contained_by\","
-                        + "\"value\":\"define_vlm_codelist_coded_values\"}]}",
+        Rule ct2004 = rule("FDA-CT2004", "{\"all\":[{\"expression\": \"not empty(value())\"},"
+                + "{\"expression\": \"vlm_codelist_extensible(variable_name) == false\"},"
+                + "{\"expression\": \"vlm_has_codelist(variable_name) == true\"},"
+                + "{\"expression\": \"value() not in vlm_codelist_coded_values(variable_name)\"}]}",
                 "\"variable_name\",\"variable_value\"");
         // The fixture's PH value-level codelist (C99999) is marked non-extensible in the library.
         // r0 PH+URINE PURPLE not in {ACIDIC,NEUTRAL,BASIC} -> fire; r1 ACIDIC in list -> no; r2
@@ -197,14 +187,10 @@ class DefineVlmE2ETest
     @Test
     void extensibleValueLevelCodelist_ct2004_doesNotFire() throws IOException
     {
-        Rule ct2004 = rule("FDA-CT2004",
-                "{\"all\":[{\"name\":\"variable_value\",\"operator\":\"non_empty\"},"
-                        + "{\"name\":\"define_vlm_codelist_extensible\",\"operator\":\"equal_to\","
-                        + "\"value\":false,\"value_is_literal\":true},"
-                        + "{\"name\":\"define_vlm_has_codelist\",\"operator\":\"equal_to\","
-                        + "\"value\":true,\"value_is_literal\":true},"
-                        + "{\"name\":\"variable_value\",\"operator\":\"is_not_contained_by\","
-                        + "\"value\":\"define_vlm_codelist_coded_values\"}]}",
+        Rule ct2004 = rule("FDA-CT2004", "{\"all\":[{\"expression\": \"not empty(value())\"},"
+                + "{\"expression\": \"vlm_codelist_extensible(variable_name) == false\"},"
+                + "{\"expression\": \"vlm_has_codelist(variable_name) == true\"},"
+                + "{\"expression\": \"value() not in vlm_codelist_coded_values(variable_name)\"}]}",
                 "\"variable_name\",\"variable_value\"");
         // When the same codelist is EXTENSIBLE, CT2004 (the non-extensible check) does not fire.
         StubMetadataProvider library = new StubMetadataProvider().extensible("C99999", true);
@@ -222,9 +208,8 @@ class DefineVlmE2ETest
     void codeDecodePairing_ct2006() throws IOException
     {
         Rule ct2006 = rule("FDA-CT2006",
-                "{\"all\":[{\"name\":\"variable_value\",\"operator\":\"non_empty\"},"
-                        + "{\"name\":\"define_vlm_decode_matches\",\"operator\":\"equal_to\","
-                        + "\"value\":false,\"value_is_literal\":true}]}",
+                "{\"all\":[{\"expression\": \"not empty(value())\"},"
+                        + "{\"expression\": \"vlm_decode_matches(variable_name) == false\"}]}",
                 "\"variable_name\",\"variable_value\"");
         // QSTESTCD has a value-level codelist (under QSCAT=FUNC) mapping WALK -> "Walk Test". Its
         // paired decode QSTEST must carry the matching decode. r0 match -> no fire; r1 wrong decode
@@ -246,9 +231,8 @@ class DefineVlmE2ETest
     void mandatoryNull_firesOnEmptyValueUnderMandatoryCondition() throws IOException
     {
         Rule sd1229 = rule("FDA-SD1229",
-                "{\"all\":[{\"name\":\"define_vlm_mandatory\",\"operator\":\"equal_to\","
-                        + "\"value\":\"Yes\",\"value_is_literal\":true},"
-                        + "{\"name\":\"variable_value\",\"operator\":\"empty\"}]}",
+                "{\"all\":[{\"expression\": \"vlm_mandatory(variable_name) == \\\"Yes\\\"\"},"
+                        + "{\"expression\": \"empty(value())\"}]}",
                 "\"variable_name\"");
         // r0 GLUC (Mandatory=Yes) empty -> fire; r1 GLUC populated -> no; r2 PH+URINE
         // (Mandatory=No)

@@ -2,7 +2,6 @@ package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
@@ -10,9 +9,6 @@ import java.util.Map;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.JoinLookup;
-import net.cumba.corej.core.expr.CheckToExpr;
-import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
@@ -40,8 +36,6 @@ import org.junit.jupiter.api.Test;
  */
 class NativeJoinedMultiMatchParityTest
 {
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**
      * A row-indexed multi-match join. {@code firstMatch[r]} is what the scalar {@link #lookup}
@@ -124,19 +118,18 @@ class NativeJoinedMultiMatchParityTest
     }
 
 
-    /** A leaf whose value is a column reference (value position resolves another column). */
-    private static CheckConditionLeaf refLeaf(String name, String operator, String reference)
+    /** A comparison whose right side is a column reference (value position resolves it). */
+    private static String refLeaf(String name, String operator, String reference)
     {
-        return CheckConditionLeaf.builder().name(name).operator(operator)
-                .value(MAPPER.valueToTree(reference)).build();
+        return name + ("not_equal_to".equals(operator) ? " != " : " == ") + reference;
     }
 
 
-    /** Runs the leaf through the native engine (the legacy engine is retired). */
-    private static BitSet nativeBits(CheckConditionLeaf leaf, EvaluationContext context)
+    /** Runs one canonical expression through the native engine (the legacy engine is retired). */
+    private static BitSet nativeBits(String source, EvaluationContext context)
     {
-        CheckConditionAll check = new CheckConditionAll(List.of(leaf));
-        return NativeExprEvaluator.evaluate(CheckToExpr.toExpr(check), context);
+        return NativeExprEvaluator
+                .evaluate(net.cumba.corej.core.expr.CheckExpressionParser.parse(source), context);
     }
 
 
@@ -263,11 +256,10 @@ class NativeJoinedMultiMatchParityTest
     // ------------------------------------------------------------------
 
 
-    /** A leaf comparing the joined column against a literal. */
-    private static CheckConditionLeaf litLeaf(String operator, String literal)
+    /** A comparison of the joined column against a literal. */
+    private static String litLeaf(String operator, String literal)
     {
-        return CheckConditionLeaf.builder().name(TARGET).operator(operator)
-                .value(MAPPER.valueToTree(literal)).valueIsLiteral(true).build();
+        return TARGET + ("not_equal_to".equals(operator) ? " != \"" : " == \"") + literal + "\"";
     }
 
 
@@ -304,14 +296,10 @@ class NativeJoinedMultiMatchParityTest
         BitSet neq = nativeBits(litLeaf("not_equal_to", "Y"), context);
         assertEquals(bits(1), neq);
 
-        CheckConditionLeaf in = CheckConditionLeaf.builder().name(TARGET)
-                .operator("is_contained_by").value(MAPPER.createArrayNode().add("N")).build();
-        BitSet mem = nativeBits(in, context);
+        BitSet mem = nativeBits(TARGET + " in [\"N\"]", context);
         assertEquals(bits(1), mem);
 
-        CheckConditionLeaf rx = CheckConditionLeaf.builder().name(TARGET).operator("matches_regex")
-                .value(MAPPER.valueToTree("^N")).valueIsLiteral(true).build();
-        BitSet re = nativeBits(rx, context);
+        BitSet re = nativeBits(TARGET + " =~ /^N/", context);
         assertEquals(bits(1), re);
     }
 
@@ -330,8 +318,7 @@ class NativeJoinedMultiMatchParityTest
         List<List<String>> all = matches(List.of(List.of("N"), List.<String> of()));
         EvaluationContext context = ctx(primary, firstMatch, all);
 
-        BitSet empty = nativeBits(
-                CheckConditionLeaf.builder().name(TARGET).operator("empty").build(), context);
+        BitSet empty = nativeBits("empty(" + TARGET + ")", context);
         assertEquals(bits(1), empty, "the unmatched row votes once with a missing probe");
 
         BitSet eq = nativeBits(litLeaf("equal_to", "Y"), context);
@@ -353,9 +340,7 @@ class NativeJoinedMultiMatchParityTest
         List<List<String>> all = matches(List.of(List.of("AB", "ABCD"), List.of("AB")));
         EvaluationContext context = ctx(primary, firstMatch, all);
 
-        CheckConditionLeaf longer = CheckConditionLeaf.builder().name(TARGET)
-                .operator("longer_than").value(MAPPER.valueToTree(2)).build();
-        BitSet len = nativeBits(longer, context);
+        BitSet len = nativeBits("len(" + TARGET + ") > 2", context);
         assertEquals(bits(0), len, "candidate ABCD (len 4) > 2 fires row 0 only");
 
         // upper-propagation: candidates ["n","Y"] vs case-insensitive set ["y"] → "Y" matches.
@@ -364,10 +349,7 @@ class NativeJoinedMultiMatchParityTest
         {
                 "n", "n"
         }, ci);
-        CheckConditionLeaf inCi = CheckConditionLeaf.builder().name(TARGET)
-                .operator("is_contained_by_case_insensitive")
-                .value(MAPPER.createArrayNode().add("y")).build();
-        BitSet r = nativeBits(inCi, ciCtx);
+        BitSet r = nativeBits("upper(" + TARGET + ") in [\"Y\"]", ciCtx);
         assertEquals(bits(0), r);
     }
 
@@ -386,9 +368,7 @@ class NativeJoinedMultiMatchParityTest
         List<List<String>> all = matches(List.of(List.of("")));
         EvaluationContext context = ctx(primary, firstMatch, all);
 
-        CheckConditionLeaf shorter = CheckConditionLeaf.builder().name(TARGET)
-                .operator("shorter_than").value(MAPPER.valueToTree(5)).build();
-        BitSet r = nativeBits(shorter, context);
+        BitSet r = nativeBits("len(" + TARGET + ") < 5", context);
         assertEquals(bits(0), r, "len(\"\")=0 < 5 fires on the empty candidate");
     }
 
@@ -409,10 +389,9 @@ class NativeJoinedMultiMatchParityTest
         List<List<String>> all = matches(List.of(List.of("Y", "X"), List.of("Y")));
         EvaluationContext context = ctx(primary, firstMatch, all);
 
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name(TARGET)
-                .operator("does_not_equal_string_part").value(MAPPER.valueToTree("AVAL"))
-                .regex("^([A-Z])-[0-9]$").build();
-        BitSet r = nativeBits(leaf, context);
+        BitSet r = nativeBits(
+                "does_not_equal_string_part(" + TARGET + ", AVAL, regex=\"^([A-Z])-[0-9]$\")",
+                context);
         assertEquals(bits(0), r, "any-match OR fires on the differing candidate only");
     }
 
@@ -433,8 +412,7 @@ class NativeJoinedMultiMatchParityTest
         List<List<String>> all = matches(List.of(List.<String> of(), List.<String> of()));
         EvaluationContext context = ctx(primary, firstMatch, all);
 
-        BitSet r = nativeBits(CheckConditionLeaf.builder().name(TARGET).operator("empty").build(),
-                context);
+        BitSet r = nativeBits("empty(" + TARGET + ")", context);
         assertEquals(new BitSet(), r, "a never-latched lookup casts no vote, even for empty");
     }
 

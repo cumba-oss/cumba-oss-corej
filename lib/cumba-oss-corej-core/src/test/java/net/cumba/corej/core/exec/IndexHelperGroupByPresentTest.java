@@ -222,8 +222,10 @@ class IndexHelperGroupByPresentTest
     @Test
     void recordCountGrouped_absentGroupColumn_countsTheWholeDataset()
     {
-        // CDISC-CG0273's shape: record_count filtered to HLTSUBJI=N, grouped by the Perm TSGRPID,
-        // on a TS dataset that does not carry TSGRPID.
+        // CDISC-CG0273's shape: a record_count filtered to TSPARMCD=HLTSUBJI / TSVAL=N, grouped
+        // by a column the TS dataset does not carry. ⚠ The shipped rule groups by [STUDYID]; the
+        // Permissible TSGRPID used here is this test's own choice of an ABSENT group column, which
+        // is the case under test.
         IDataTable t = MockTable.of().col("TSPARMCD", "HLTSUBJI", "TDIGRP", "TITLE")
                 .col("TSVAL", "N", "", "A Study").build();
 

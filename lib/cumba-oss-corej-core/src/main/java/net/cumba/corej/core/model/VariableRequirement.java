@@ -3,6 +3,8 @@ package net.cumba.corej.core.model;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -20,8 +22,11 @@ import org.jspecify.annotations.Nullable;
  * <ul>
  * <li>{@code All} — every entry must be present. Byte-for-byte the former
  * {@code Scope.Variables.Include}.</li>
- * <li>{@code Any} — <b>new</b>: at least one entry must be present. Unmet only when <em>every</em>
- * entry is absent, so the mismatch reason names the whole list — no single entry is at fault.</li>
+ * <li>{@code Any} — one or more <b>groups</b>, ANDed with each other; a group is satisfied when at
+ * least one of its entries is present (an AND of ORs). The flat authored spelling
+ * ({@code Any: ["A","B"]}) is ONE group; the nested spelling ({@code Any: [["A","B"],["C","D"]]})
+ * declares several. A group is unmet only when <em>every</em> entry in it is absent, so the
+ * mismatch reason names the group — no single entry is at fault.</li>
  * <li>{@code None} — no entry may be present. Byte-for-byte the former
  * {@code Scope.Variables.Exclude}.</li>
  * </ul>
@@ -54,9 +59,38 @@ public class VariableRequirement
     @JsonProperty("All")
     private @Nullable List<String> all;
 
-    /** At least one entry must be present. Two or more entries required (loader gate R4). */
-    @JsonProperty("Any")
-    private @Nullable List<String> any;
+    /**
+     * The canonical {@code Any} groups — an AND of ORs. A flat authored {@code Any} is ONE group;
+     * each group needs two or more distinct entries (loader gate R4, rulings D2/D3). {@code null}
+     * when the facet is absent or authored {@code ~}; an authored {@code []} is an <b>empty</b>
+     * list here — zero groups, which R4 rejects as unsatisfiable.
+     *
+     * <p>
+     * ⚠ JSON binding goes through {@link #readAny}/{@link #writeAny} (see {@link AnyGroupsJson}),
+     * not through this field: the parse must also set {@link #anyMixedShape}, which a field-level
+     * {@code JsonDeserializer} cannot reach.
+     * </p>
+     */
+    @JsonIgnore
+    private @Nullable List<List<String>> anyGroups;
+
+    /**
+     * Whether the authored {@code Any} mixed flat entries with groups
+     * ({@code Any: ["A", ["B","C"]]}). Ruling D2 makes that a load error, and it is a <b>shape</b>
+     * error: loader gate R4 reads this flag to report <i>"mixed shape"</i> rather than blaming a
+     * one-entry group the author never typed (which is D3's message about a different mistake).
+     *
+     * <p>
+     * A parse-time diagnostic like {@link #unknownKeys}: never serialised, excluded from
+     * {@code equals} / {@code hashCode} / {@code toString}, and not carried by wildcard expansion —
+     * R4 runs at load time, before any expansion.
+     * </p>
+     */
+    @JsonIgnore
+    @lombok.Setter(lombok.AccessLevel.NONE)
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
+    private boolean anyMixedShape;
 
     /** No entry may be present — the former {@code Scope.Variables.Exclude}. */
     @JsonProperty("None")
@@ -78,6 +112,68 @@ public class VariableRequirement
     @lombok.EqualsAndHashCode.Exclude
     @lombok.ToString.Exclude
     private final SequencedSet<String> unknownKeys = new LinkedHashSet<>();
+
+    /**
+     * The JSON read half of the {@code Any} facet — flat or nested, per element (see
+     * {@link AnyGroupsJson}). Explicitly annotated so the key {@code "Any"} stays a <em>known</em>
+     * property and never reaches {@link #recordUnknownKey}.
+     *
+     * @param node
+     *            the authored {@code Any} value, or {@code null} / a JSON null for {@code Any: ~}
+     */
+    @JsonProperty("Any")
+    void readAny(@Nullable JsonNode node)
+    {
+        AnyGroupsJson.Parsed parsed = AnyGroupsJson.parse(node);
+        this.anyGroups = parsed.groups();
+        this.anyMixedShape = parsed.mixedShape();
+    }
+
+
+    /**
+     * The JSON write half of the {@code Any} facet: one group serialises <b>flat</b>, several
+     * serialise nested — see {@link AnyGroupsJson#write}.
+     *
+     * @return the JSON value for {@code "Any"}, or {@code null} when there are no groups
+     */
+    @JsonProperty("Any")
+    @Nullable
+    Object writeAny()
+    {
+        return AnyGroupsJson.write(anyGroups);
+    }
+
+
+    /**
+     * Every entry of every group, flattened, in group order then entry order. For lint, census and
+     * presence checks ONLY — anything that reasons about the <em>disjunction</em> must iterate
+     * {@code getAnyGroups()} instead ({@code ScopeMatcher.describeAnyLeg},
+     * {@code WildcardExpander}'s substitution, loader gate R4).
+     *
+     * <p>
+     * ⚠⚠ Preserves EVERY entry verbatim — {@code null}s and blanks included. Loader gate R3 exists
+     * to find empty entries and reads this; a filtering {@code anyUnion()} would make R3 silently
+     * stop checking.
+     * </p>
+     *
+     * @return an unmodifiable flat view of the groups; never {@code null}, empty when there are no
+     *         groups
+     */
+    public List<String> anyUnion()
+    {
+        List<List<String>> groups = anyGroups;
+        if (groups == null || groups.isEmpty())
+        {
+            return List.of();
+        }
+        List<String> union = new ArrayList<>();
+        for (List<String> group : groups)
+        {
+            union.addAll(group);
+        }
+        return Collections.unmodifiableList(union);
+    }
+
 
     /**
      * Jackson's catch-all for unbound JSON keys; records the key name and drops the value.

@@ -3,7 +3,6 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.node.TextNode;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
@@ -13,7 +12,6 @@ import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionAny;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -39,6 +37,13 @@ import org.junit.jupiter.api.Test;
 class AbsentColumnFoldLogTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
     /** TS with TSPARMCD populated over 4 rows; TSVAL and TSVALNF absent. */
     private static IDataTable ts()
     {
@@ -62,9 +67,10 @@ class AbsentColumnFoldLogTest
      * real.
      * </p>
      */
-    private static CheckConditionLeaf foldingNegative(String column)
+    private static net.cumba.corej.core.model.CheckConditionExpression foldingNegative(
+            String column)
     {
-        return CheckConditionLeaf.builder().name(column).operator("is_not_integer").build();
+        return expr("not is_integer(" + column + ")");
     }
 
 
@@ -74,17 +80,17 @@ class AbsentColumnFoldLogTest
      * for. Two <em>different</em> leaves, so nothing can collapse them into one and make "both
      * leaves fired" a statement about a single leaf.
      */
-    private static CheckConditionLeaf doesNotContain(String column, String value)
+    private static net.cumba.corej.core.model.CheckConditionExpression doesNotContain(String column,
+            String value)
     {
-        return CheckConditionLeaf.builder().name(column).operator("does_not_contain")
-                .value(new TextNode(value)).build();
+        return expr("not contains(" + column + ", \"" + value + "\")");
     }
 
 
-    private static CheckConditionLeaf neq(String column, String value)
+    private static net.cumba.corej.core.model.CheckConditionExpression neq(String column,
+            String value)
     {
-        return CheckConditionLeaf.builder().name(column).operator("not_equal_to")
-                .value(new TextNode(value)).valueIsLiteral(true).build();
+        return expr(column + " != \"" + value + "\"");
     }
 
 
@@ -197,9 +203,7 @@ class AbsentColumnFoldLogTest
         // short-circuits before the fold), not who supplied the guard. Authoring it keeps the
         // assertion and removes the dependency on a pass that no longer exists.
         Rule guarded = rule("CORE-LOG-4",
-                new CheckConditionAll(List.of(
-                        CheckConditionLeaf.builder().name("TSVAL").operator("var_exists").build(),
-                        neq("TSVAL", "X"))));
+                new CheckConditionAll(List.of(expr("var_exists(\"TSVAL\")"), neq("TSVAL", "X"))));
         assertTrue(String.valueOf(guarded.getCheckExpr()).contains("var_exists"),
                 () -> "precondition: the guard must be present — " + guarded.getCheckExpr());
         assertEquals(List.of(), capture(() -> RuleRunner.execute(guarded, ts())),

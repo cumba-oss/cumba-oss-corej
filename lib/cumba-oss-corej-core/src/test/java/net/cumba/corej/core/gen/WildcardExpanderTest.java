@@ -2,14 +2,11 @@ package net.cumba.corej.core.gen;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.fasterxml.jackson.databind.node.IntNode;
-import com.fasterxml.jackson.databind.node.TextNode;
 import java.util.List;
 import java.util.Set;
 import net.cumba.corej.core.gen.WildcardExpander.WildcardPattern;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionAny;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -21,7 +18,22 @@ import org.junit.jupiter.api.Test;
 class WildcardExpanderTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
+    /** The expansion's Check rendered back to expression text, for concrete-name assertions. */
+    private static String rendered(net.cumba.corej.core.model.CheckCondition condition)
+    {
+        return net.cumba.corej.core.expr.ExpressionPrinter
+                .print(net.cumba.corej.core.expr.CheckToExpr.toExpr(condition));
+    }
+
     // ---- isWildcard ----
+
 
     @Test
     void isWildcard_starPrefix()
@@ -262,9 +274,7 @@ class WildcardExpanderTest
     @Test
     void collectWildcardNames_singleLeaf()
     {
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("*FL").operator("non_empty")
-                .build();
-        Set<String> names = WildcardExpander.collectWildcardNames(leaf);
+        Set<String> names = WildcardExpander.collectWildcardNames(expr("not empty(*FL)"));
         assertEquals(Set.of("*FL"), names);
     }
 
@@ -272,11 +282,8 @@ class WildcardExpanderTest
     @Test
     void collectWildcardNames_multipleInAll()
     {
-        CheckConditionAll check = new CheckConditionAll(List.of(
-                CheckConditionLeaf.builder().name("*FL").operator("equal_to")
-                        .value(new TextNode("Y")).valueIsLiteral(true).build(),
-                CheckConditionLeaf.builder().name("*FN").operator("not_equal_to")
-                        .value(new IntNode(1)).build()));
+        CheckConditionAll check = new CheckConditionAll(
+                List.of(expr("*FL == \"Y\""), expr("*FN != 1")));
         Set<String> names = WildcardExpander.collectWildcardNames(check);
         assertEquals(Set.of("*FL", "*FN"), names);
     }
@@ -286,10 +293,7 @@ class WildcardExpanderTest
     void collectWildcardNames_valueReference()
     {
         CheckConditionAll check = new CheckConditionAll(
-                List.of(CheckConditionLeaf.builder().name("*SDT").operator("non_empty").build(),
-                        CheckConditionLeaf.builder().name("*EDT").operator("non_empty").build(),
-                        CheckConditionLeaf.builder().name("*SDT").operator("greater_than")
-                                .value(new TextNode("*EDT")).build()));
+                List.of(expr("not empty(*SDT)"), expr("not empty(*EDT)"), expr("*SDT > *EDT")));
         Set<String> names = WildcardExpander.collectWildcardNames(check);
         assertEquals(Set.of("*SDT", "*EDT"), names);
     }
@@ -298,10 +302,8 @@ class WildcardExpanderTest
     @Test
     void collectWildcardNames_skipsLiteral()
     {
-        // When value_is_literal=true, the value should not be collected as wildcard
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("*FL").operator("equal_to")
-                .value(new TextNode("Y")).valueIsLiteral(true).build();
-        Set<String> names = WildcardExpander.collectWildcardNames(leaf);
+        // A string literal on the value side must not be collected as a wildcard.
+        Set<String> names = WildcardExpander.collectWildcardNames(expr("*FL == \"Y\""));
         assertEquals(Set.of("*FL"), names);
     }
 
@@ -310,10 +312,7 @@ class WildcardExpanderTest
     void collectWildcardNames_skipsMetadataNames()
     {
         CheckConditionAll check = new CheckConditionAll(
-                List.of(CheckConditionLeaf.builder().name("*DT").operator("var_exists").build(),
-                        CheckConditionLeaf.builder().name("variable_data_type")
-                                .operator("not_equal_to").value(new TextNode("Num"))
-                                .valueIsLiteral(true).build()));
+                List.of(expr("var_exists(\"*DT\")"), expr("var_type(\"DATA\") != \"Num\"")));
         Set<String> names = WildcardExpander.collectWildcardNames(check);
         assertEquals(Set.of("*DT"), names);
     }
@@ -325,10 +324,8 @@ class WildcardExpanderTest
     void expand_singleWildcard_starFL()
     {
         Rule template = buildTemplateRule("CDISC-AD0005",
-                new CheckConditionAll(List.of(
-                        CheckConditionLeaf.builder().name("*FL").operator("non_empty").build(),
-                        CheckConditionLeaf.builder().name("*FL").operator("is_not_contained_by")
-                                .value(new TextNode("[\"Y\",\"N\"]")).build())),
+                new CheckConditionAll(
+                        List.of(expr("not empty(*FL)"), expr("*FL not in [\"Y\", \"N\"]"))),
                 List.of("*FL"));
 
         IDataTable table = MockTable.withColumns("STUDYID", "USUBJID", "SAFFL", "ITTFL", "AGE");
@@ -344,9 +341,9 @@ class WildcardExpanderTest
     @Test
     void expand_singleWildcard_indexedTRTxxP()
     {
-        Rule template = buildTemplateRule("CDISC-AD0075", new CheckConditionAll(List.of(
-                CheckConditionLeaf.builder().name("TRTxxPN").operator("var_exists").build(),
-                CheckConditionLeaf.builder().name("TRTxxP").operator("var_not_exists").build())),
+        Rule template = buildTemplateRule("CDISC-AD0075",
+                new CheckConditionAll(
+                        List.of(expr("var_exists(TRTxxPN)"), expr("var_not_exists(TRTxxP)"))),
                 List.of("TRTxxPN"));
 
         IDataTable table = MockTable.withColumns("TRT01P", "TRT01PN", "TRT02P", "TRT02PN",
@@ -358,20 +355,15 @@ class WildcardExpanderTest
         assertEquals(2, expanded.size());
         // Check that the expanded Check has concrete names
         CheckConditionAll check0 = (CheckConditionAll) expanded.get(0).getCheck();
-        CheckConditionLeaf leaf0 = (CheckConditionLeaf) check0.getConditions().get(0);
-        assertEquals("TRT01PN", leaf0.getName());
+        assertEquals("var_exists(TRT01PN)", rendered(check0.getConditions().get(0)));
     }
 
 
     @Test
     void expand_multiWildcard_starSDT_starEDT()
     {
-        Rule template = buildTemplateRule("CDISC-AD0121",
-                new CheckConditionAll(List.of(
-                        CheckConditionLeaf.builder().name("*SDT").operator("non_empty").build(),
-                        CheckConditionLeaf.builder().name("*EDT").operator("non_empty").build(),
-                        CheckConditionLeaf.builder().name("*SDT").operator("greater_than")
-                                .value(new TextNode("*EDT")).build())),
+        Rule template = buildTemplateRule("CDISC-AD0121", new CheckConditionAll(
+                List.of(expr("not empty(*SDT)"), expr("not empty(*EDT)"), expr("*SDT > *EDT"))),
                 List.of("*SDT", "*EDT"));
 
         // TRTSDT/TRTEDT share root "TRT", ASTSDT has no matching ASTEDT
@@ -393,17 +385,14 @@ class WildcardExpanderTest
         Rule trtRule = expanded.stream().filter(r -> r.getCore().getId().contains("TRTSDT"))
                 .findFirst().orElseThrow();
         CheckConditionAll trtCheck = (CheckConditionAll) trtRule.getCheck();
-        CheckConditionLeaf gtLeaf = (CheckConditionLeaf) trtCheck.getConditions().get(2);
-        assertEquals("TRTSDT", gtLeaf.getName());
-        assertEquals("TRTEDT", gtLeaf.getValue().asText());
+        assertEquals("TRTSDT > TRTEDT", rendered(trtCheck.getConditions().get(2)));
     }
 
 
     @Test
     void expand_noMatches()
     {
-        Rule template = buildTemplateRule("CDISC-AD0046", CheckConditionLeaf.builder().name("*DY")
-                .operator("equal_to").value(new IntNode(0)).build(), List.of("*DY"));
+        Rule template = buildTemplateRule("CDISC-AD0046", expr("*DY == 0"), List.of("*DY"));
 
         IDataTable table = MockTable.withColumns("STUDYID", "USUBJID", "AGE");
 
@@ -416,9 +405,7 @@ class WildcardExpanderTest
     void expand_doubleIndex_TRxxPGy()
     {
         Rule template = buildTemplateRule("CDISC-AD0419",
-                new CheckConditionAll(List.of(
-                        CheckConditionLeaf.builder().name("TRxxPGyN").operator("non_empty").build(),
-                        CheckConditionLeaf.builder().name("TRxxPGy").operator("empty").build())),
+                new CheckConditionAll(List.of(expr("not empty(TRxxPGyN)"), expr("empty(TRxxPGy)"))),
                 List.of("TRxxPGyN", "TRxxPGy"));
 
         IDataTable table = MockTable.withColumns("TR01PG1", "TR01PG1N", "TR01PG2", "TR01PG2N",
@@ -433,9 +420,7 @@ class WildcardExpanderTest
     @Test
     void containsWildcards_templateWithWildcards()
     {
-        Rule template = buildTemplateRule("CDISC-AD0005",
-                CheckConditionLeaf.builder().name("*FL").operator("non_empty").build(),
-                List.of("*FL"));
+        Rule template = buildTemplateRule("CDISC-AD0005", expr("not empty(*FL)"), List.of("*FL"));
         assertTrue(WildcardExpander.containsWildcards(template));
     }
 
@@ -443,8 +428,7 @@ class WildcardExpanderTest
     @Test
     void containsWildcards_noWildcards()
     {
-        Rule rule = buildTemplateRule("CDISC-AD0001",
-                CheckConditionLeaf.builder().name("ADSL").operator("ds_not_exists").build(), null);
+        Rule rule = buildTemplateRule("CDISC-AD0001", expr("ds_not_exists(\"ADSL\")"), null);
         assertFalse(WildcardExpander.containsWildcards(rule));
     }
 
@@ -452,8 +436,7 @@ class WildcardExpanderTest
     @Test
     void containsWildcards_metadataOnly()
     {
-        Rule rule = buildTemplateRule("CDISC-AD0013", CheckConditionLeaf.builder()
-                .name("variable_name").operator("longer_than").value(new IntNode(8)).build(), null);
+        Rule rule = buildTemplateRule("CDISC-AD0013", expr("len(varname()) > 8"), null);
         assertFalse(WildcardExpander.containsWildcards(rule));
     }
 
@@ -466,11 +449,8 @@ class WildcardExpanderTest
         // Template: *SDT exists AND variable_label does_not_contain "Start Date"
         // WildcardExpander performs pure name substitution — no hidden transforms.
         Rule template = buildTemplateRule("CDISC-AD0509", Sensitivity.DATASET,
-                new CheckConditionAll(List.of(
-                        CheckConditionLeaf.builder().name("*SDT").operator("var_exists").build(),
-                        CheckConditionLeaf.builder().name("variable_label")
-                                .operator("does_not_contain").value(new TextNode("Start Date"))
-                                .valueIsLiteral(true).build())),
+                new CheckConditionAll(List.of(expr("var_exists(\"*SDT\")"),
+                        expr("not contains(var_label(\"DATA\"), \"Start Date\")"))),
                 List.of("*SDT"));
 
         IDataTable table = MockTable.withColumns("STUDYID", "TRTSDT", "ASTSDT", "AGE");
@@ -482,14 +462,11 @@ class WildcardExpanderTest
         Rule trtRule = expanded.stream().filter(r -> r.getCore().getId().contains("TRTSDT"))
                 .findFirst().orElseThrow();
         CheckConditionAll trtCheck = (CheckConditionAll) trtRule.getCheck();
-        CheckConditionLeaf existsLeaf = (CheckConditionLeaf) trtCheck.getConditions().get(0);
-        assertEquals("TRTSDT", existsLeaf.getName());
-        assertEquals("var_exists", existsLeaf.getOperator());
+        assertEquals("var_exists(\"TRTSDT\")", rendered(trtCheck.getConditions().get(0)));
 
-        // The second leaf (variable_label) should be unchanged
-        CheckConditionLeaf labelLeaf = (CheckConditionLeaf) trtCheck.getConditions().get(1);
-        assertEquals("variable_label", labelLeaf.getName());
-        assertEquals("does_not_contain", labelLeaf.getOperator());
+        // The second conjunct (variable_label) should be unchanged
+        assertEquals("not contains(var_label(\"DATA\"), \"Start Date\")",
+                rendered(trtCheck.getConditions().get(1)));
     }
 
 
@@ -498,10 +475,8 @@ class WildcardExpanderTest
     {
         // Both *FN and *FL are pure name substitutions
         Rule template = buildTemplateRule("CDISC-AD0007", Sensitivity.DATASET,
-                new CheckConditionAll(List.of(
-                        CheckConditionLeaf.builder().name("*FN").operator("var_exists").build(),
-                        CheckConditionLeaf.builder().name("*FL").operator("var_not_exists")
-                                .build())),
+                new CheckConditionAll(
+                        List.of(expr("var_exists(\"*FN\")"), expr("var_not_exists(\"*FL\")"))),
                 List.of("*FN"));
 
         IDataTable table = MockTable.withColumns("SAFFN", "SAFFL", "ITTFN");
@@ -513,13 +488,8 @@ class WildcardExpanderTest
         Rule safRule = expanded.stream().filter(r -> r.getCore().getId().contains("SAFFN"))
                 .findFirst().orElseThrow();
         CheckConditionAll safCheck = (CheckConditionAll) safRule.getCheck();
-        CheckConditionLeaf fnLeaf = (CheckConditionLeaf) safCheck.getConditions().get(0);
-        assertEquals("SAFFN", fnLeaf.getName());
-        assertEquals("var_exists", fnLeaf.getOperator());
-
-        CheckConditionLeaf flLeaf = (CheckConditionLeaf) safCheck.getConditions().get(1);
-        assertEquals("SAFFL", flLeaf.getName());
-        assertEquals("var_not_exists", flLeaf.getOperator());
+        assertEquals("var_exists(\"SAFFN\")", rendered(safCheck.getConditions().get(0)));
+        assertEquals("var_not_exists(\"SAFFL\")", rendered(safCheck.getConditions().get(1)));
     }
 
     // ---- Fix #23 — mixed-group expansion ----
@@ -534,9 +504,8 @@ class WildcardExpanderTest
         // candidate tuples (it covers the union); TRTxxP's column per tuple
         // is matched-or-computed.
         Rule template = buildTemplateRule("CDISC-AD0756",
-                new CheckConditionAll(List.of(
-                        CheckConditionLeaf.builder().name("TRxxPGy").operator("non_empty").build(),
-                        CheckConditionLeaf.builder().name("TRTxxP").operator("non_empty").build())),
+                new CheckConditionAll(
+                        List.of(expr("not empty(TRxxPGy)"), expr("not empty(TRTxxP)"))),
                 List.of("TRxxPGy", "TRTxxP"));
 
         IDataTable table = MockTable.withColumns("TR01PG1", "TR01PG2", "TR02PG1", "TRT01P",
@@ -567,11 +536,8 @@ class WildcardExpanderTest
         // tuple, with TRxxAGy resolved via buildConcreteName so the
         // not_exists Check has a concrete column name to evaluate against.
         Rule template = buildTemplateRule("CDISC-AD0368", Sensitivity.DATASET,
-                new CheckConditionAll(List.of(
-                        CheckConditionLeaf.builder().name("TRxxPGy").operator("var_exists").build(),
-                        CheckConditionLeaf.builder().name("TRTxxA").operator("var_exists").build(),
-                        CheckConditionLeaf.builder().name("TRxxAGy").operator("var_not_exists")
-                                .build())),
+                new CheckConditionAll(List.of(expr("var_exists(\"TRxxPGy\")"),
+                        expr("var_exists(\"TRTxxA\")"), expr("var_not_exists(\"TRxxAGy\")"))),
                 List.of("TRxxPGy", "TRTxxA", "TRxxAGy"));
 
         IDataTable table = MockTable.withColumns("TR01PG1", "TR02PG1", "TRT01A", "TRT02A");
@@ -589,10 +555,8 @@ class WildcardExpanderTest
                 .filter(r -> r.getCore().getId().equals("CDISC-AD0368-TR01PG1")).findFirst()
                 .orElseThrow();
         CheckConditionAll firstCheck = (CheckConditionAll) first.getCheck();
-        CheckConditionLeaf notExistsLeaf = (CheckConditionLeaf) firstCheck.getConditions().get(2);
-        assertEquals("TR01AG1", notExistsLeaf.getName(),
+        assertEquals("var_not_exists(\"TR01AG1\")", rendered(firstCheck.getConditions().get(2)),
                 "TRxxAGy in expansion (01,1) should resolve to TR01AG1");
-        assertEquals("var_not_exists", notExistsLeaf.getOperator());
     }
 
 
@@ -605,9 +569,8 @@ class WildcardExpanderTest
         // expansion correctly drops the orphan rather than fabricating an
         // arbitrary y or producing an under-specified rule.
         Rule template = buildTemplateRule("CDISC-AD0756",
-                new CheckConditionAll(List.of(
-                        CheckConditionLeaf.builder().name("TRxxPGy").operator("non_empty").build(),
-                        CheckConditionLeaf.builder().name("TRTxxP").operator("non_empty").build())),
+                new CheckConditionAll(
+                        List.of(expr("not empty(TRxxPGy)"), expr("not empty(TRTxxP)"))),
                 List.of("TRxxPGy", "TRTxxP"));
 
         // TRxxPGy only matches xx=01; TRTxxP matches xx=01 AND xx=02. xx=02
@@ -668,9 +631,7 @@ class WildcardExpanderTest
     void expand_renamesTheNameInsideAnExclusionToken()
     {
         Rule template = buildTemplateRule("EXCL-OV",
-                new CheckConditionAll(List.of(
-                        CheckConditionLeaf.builder().name("TRTxxP").operator("non_empty").build(),
-                        CheckConditionLeaf.builder().name("TRxxSDT").operator("empty").build())),
+                new CheckConditionAll(List.of(expr("not empty(TRTxxP)"), expr("empty(TRxxSDT)"))),
                 List.of("TRTxxP", "!TRxxSDT"));
 
         IDataTable table = MockTable.withColumns("TRT01P", "TR01SDT");
@@ -693,9 +654,8 @@ class WildcardExpanderTest
         // CDISC-AD0078 pattern: TRTxxP exists AND TRxxSDT not_exists, with
         // wildcards: {xx: {min: 2}} so xx=01 is dropped and only xx=02+
         // expansions are emitted.
-        Rule template = buildTemplateRule("CDISC-AD0078", new CheckConditionAll(List.of(
-                CheckConditionLeaf.builder().name("TRTxxP").operator("var_exists").build(),
-                CheckConditionLeaf.builder().name("TRxxSDT").operator("var_not_exists").build())),
+        Rule template = buildTemplateRule("CDISC-AD0078", new CheckConditionAll(
+                List.of(expr("var_exists(\"TRTxxP\")"), expr("var_not_exists(\"TRxxSDT\")"))),
                 List.of("TRTxxP", "TRxxSDT"));
         net.cumba.corej.core.model.WildcardFilter filter = new net.cumba.corej.core.model.WildcardFilter();
         filter.setMin(2);
@@ -719,9 +679,8 @@ class WildcardExpanderTest
     @Test
     void expand_wildcardFilterMax_dropsAboveBound()
     {
-        Rule template = buildTemplateRule("FILTER-MAX", new CheckConditionAll(List
-                .of(CheckConditionLeaf.builder().name("TRTxxP").operator("var_exists").build())),
-                List.of("TRTxxP"));
+        Rule template = buildTemplateRule("FILTER-MAX",
+                new CheckConditionAll(List.of(expr("var_exists(\"TRTxxP\")"))), List.of("TRTxxP"));
         net.cumba.corej.core.model.WildcardFilter filter = new net.cumba.corej.core.model.WildcardFilter();
         filter.setMax(5);
         template.setWildcards(java.util.Map.of("xx", filter));
@@ -738,9 +697,8 @@ class WildcardExpanderTest
     @Test
     void expand_wildcardFilterMinAndMax_inclusiveBoth()
     {
-        Rule template = buildTemplateRule("FILTER-RANGE", new CheckConditionAll(List
-                .of(CheckConditionLeaf.builder().name("TRTxxP").operator("var_exists").build())),
-                List.of("TRTxxP"));
+        Rule template = buildTemplateRule("FILTER-RANGE",
+                new CheckConditionAll(List.of(expr("var_exists(\"TRTxxP\")"))), List.of("TRTxxP"));
         net.cumba.corej.core.model.WildcardFilter filter = new net.cumba.corej.core.model.WildcardFilter();
         filter.setMin(2);
         filter.setMax(4);
@@ -759,9 +717,8 @@ class WildcardExpanderTest
     {
         // Both leaves share the same xx group; the filter applies once for the
         // shared tuple regardless of which leaf carries the wildcard.
-        Rule template = buildTemplateRule("MULTI-LEAF", new CheckConditionAll(List.of(
-                CheckConditionLeaf.builder().name("TRTxxP").operator("var_exists").build(),
-                CheckConditionLeaf.builder().name("TRxxSDT").operator("var_not_exists").build())),
+        Rule template = buildTemplateRule("MULTI-LEAF", new CheckConditionAll(
+                List.of(expr("var_exists(\"TRTxxP\")"), expr("var_not_exists(\"TRxxSDT\")"))),
                 List.of("TRTxxP", "TRxxSDT"));
         net.cumba.corej.core.model.WildcardFilter filter = new net.cumba.corej.core.model.WildcardFilter();
         filter.setMin(2);
@@ -779,9 +736,8 @@ class WildcardExpanderTest
     void expand_noWildcardFilter_existingBehaviorUnchanged()
     {
         // Sanity check: rules without wildcards expand exactly as before.
-        Rule template = buildTemplateRule("NO-FILTER", new CheckConditionAll(List
-                .of(CheckConditionLeaf.builder().name("TRTxxP").operator("var_exists").build())),
-                List.of("TRTxxP"));
+        Rule template = buildTemplateRule("NO-FILTER",
+                new CheckConditionAll(List.of(expr("var_exists(\"TRTxxP\")"))), List.of("TRTxxP"));
 
         IDataTable table = MockTable.withColumns("TRT01P", "TRT02P", "TRT03P");
 
@@ -800,9 +756,7 @@ class WildcardExpanderTest
         // PMDA-AD0376 shape: bare "*" primary co-anchored by "*N" secondary. Tuples must be
         // seeded from the ANCHORED "*N" columns only — never one-tuple-per-column (explosion).
         Rule template = buildTemplateRule("PMDA-AD0376",
-                new CheckConditionAll(List.of(
-                        CheckConditionLeaf.builder().name("*").operator("non_empty").build(),
-                        CheckConditionLeaf.builder().name("*N").operator("empty").build())),
+                new CheckConditionAll(List.of(expr("not empty(*)"), expr("empty(*N)"))),
                 List.of("*"));
 
         // 8 columns, but only TRTPN and PARAMN end in "N" (anchored). A bare-* seed would
@@ -822,8 +776,8 @@ class WildcardExpanderTest
         Rule trtRule = expanded.stream().filter(r -> r.getCore().getId().equals("PMDA-AD0376-TRTP"))
                 .findFirst().orElseThrow();
         CheckConditionAll trtCheck = (CheckConditionAll) trtRule.getCheck();
-        assertEquals("TRTP", ((CheckConditionLeaf) trtCheck.getConditions().get(0)).getName());
-        assertEquals("TRTPN", ((CheckConditionLeaf) trtCheck.getConditions().get(1)).getName());
+        assertEquals("not empty(TRTP)", rendered(trtCheck.getConditions().get(0)));
+        assertEquals("empty(TRTPN)", rendered(trtCheck.getConditions().get(1)));
     }
 
 
@@ -833,9 +787,7 @@ class WildcardExpanderTest
         // A bare "*" leaf with NO "*N"/"*C" sibling must be refused (would seed one tuple per
         // column). expand returns empty rather than exploding.
         Rule template = buildTemplateRule("GUARD-TEST",
-                new CheckConditionAll(List
-                        .of(CheckConditionLeaf.builder().name("*").operator("non_empty").build())),
-                List.of("*"));
+                new CheckConditionAll(List.of(expr("not empty(*)"))), List.of("*"));
 
         IDataTable table = MockTable.withColumns("STUDYID", "TRTP", "PARAM", "AGE");
 
@@ -850,9 +802,7 @@ class WildcardExpanderTest
         // PMDA-AD0376/AD1011 shape: wildcardExclude drops the anchored secondary columns that
         // match a literal (TRTPN) or wildcard (*FN) exclusion, so their pairs never seed.
         Rule template = buildTemplateRule("PMDA-AD1011",
-                new CheckConditionAll(List.of(
-                        CheckConditionLeaf.builder().name("*N").operator("non_empty").build(),
-                        CheckConditionLeaf.builder().name("*").operator("empty").build())),
+                new CheckConditionAll(List.of(expr("not empty(*N)"), expr("empty(*)"))),
                 List.of("*"));
         template.setWildcardExclude(List.of("TRTPN", "*FN"));
 
@@ -868,8 +818,8 @@ class WildcardExpanderTest
         assertEquals("PMDA-AD1011-PARAMN", expanded.get(0).getCore().getId());
         // The pairing resolved bare-* -> PARAM (the primary) and *N -> PARAMN.
         CheckConditionAll surviving = (CheckConditionAll) expanded.get(0).getCheck();
-        assertEquals("PARAMN", ((CheckConditionLeaf) surviving.getConditions().get(0)).getName());
-        assertEquals("PARAM", ((CheckConditionLeaf) surviving.getConditions().get(1)).getName());
+        assertEquals("not empty(PARAMN)", rendered(surviving.getConditions().get(0)));
+        assertEquals("empty(PARAM)", rendered(surviving.getConditions().get(1)));
     }
 
 
@@ -879,15 +829,11 @@ class WildcardExpanderTest
         // PMDA-AD1012A shape: wildcardPairCatalogue=true restricts anchored *N/*C seeds to the
         // curated CDISC-standard catalogue. TRTPN (*N) and AVALC (*C) are catalogued; FOON/BARC
         // are not.
-        Rule template = buildTemplateRule("PMDA-AD1012A",
-                new CheckConditionAny(List.of(new CheckConditionAll(List.of(
-                        CheckConditionLeaf.builder().name("*").operator("var_not_exists").build(),
-                        CheckConditionLeaf.builder().name("*N").operator("var_exists").build())),
-                        new CheckConditionAll(List.of(
-                                CheckConditionLeaf.builder().name("*").operator("var_not_exists")
-                                        .build(),
-                                CheckConditionLeaf.builder().name("*C").operator("var_exists")
-                                        .build())))),
+        Rule template = buildTemplateRule("PMDA-AD1012A", new CheckConditionAny(List.of(
+                new CheckConditionAll(
+                        List.of(expr("var_not_exists(\"*\")"), expr("var_exists(\"*N\")"))),
+                new CheckConditionAll(
+                        List.of(expr("var_not_exists(\"*\")"), expr("var_exists(\"*C\")"))))),
                 List.of("*"));
         template.setWildcardPairCatalogue(true);
 
@@ -908,27 +854,24 @@ class WildcardExpanderTest
     @Test
     void expand_valuePositionLiteralStar_doesNotTriggerBareStarGuard()
     {
-        // Regression for Fix #84: a "*" that appears only in a leaf VALUE position (the
-        // pre-existing
-        // `library_variable_label does_not_contain "*"` shape of CDISC-AD0018 / 0708 / 0709 and
-        // PMDA-AD0018) is NOT a bare-* target. It must not trigger the empty-suffix guard (which
-        // would swallow the rule to an empty result + WARNING) — the value-position "*" still seeds
-        // per column exactly as before Fix #84.
-        Rule template = buildTemplateRule("REGRESS-AD0018", new CheckConditionAll(List.of(
-                CheckConditionLeaf.builder().name("variable_name").operator("not_matches_regex")
-                        .value(new TextNode("xx")).valueIsLiteral(true).build(),
-                CheckConditionLeaf.builder().name("library_variable_label")
-                        .operator("does_not_contain").value(new TextNode("*")).build())),
+        // Regression for Fix #84, on the native form the corpus actually ships: a "*" that
+        // appears only in a VALUE-position string literal (the
+        // `not contains(var_label("LIBRARY"), "*")` shape of CDISC-AD0018 / 0708 / 0709 and
+        // PMDA-AD0018) is NOT a bare-* target. It must neither trigger the empty-suffix guard
+        // nor mark the rule as a wildcard template at all.
+        Rule template = buildTemplateRule("REGRESS-AD0018",
+                new CheckConditionAll(List.of(expr("varname() !~ /xx/"),
+                        expr("not contains(var_label(\"LIBRARY\"), \"*\")"))),
                 List.of("library_variable_label"));
 
+        assertFalse(WildcardExpander.containsWildcards(template),
+                "a value-position literal '*' is data, not a template marker");
+
         IDataTable table = MockTable.withColumns("STUDYID", "AGE", "SEX");
-
-        List<Rule> expanded = WildcardExpander.expand(template, table.getMetaData());
-
-        // Not guarded to empty: the value-position "*" seeds one expansion per column (3), the
-        // pre-Fix-#84 behavior — proving the name-position-only bare-* detection.
-        assertEquals(3, expanded.size(),
-                "value-position '*' must seed per column, not hit the bare-* guard");
+        WildcardExpander.ExpansionResult result = WildcardExpander.tryExpand(template,
+                table.getMetaData());
+        assertInstanceOf(WildcardExpander.ExpansionResult.NotApplicable.class, result,
+                "no template markers → NotApplicable, never the bare-* guard's empty result");
     }
 
 
@@ -937,15 +880,11 @@ class WildcardExpanderTest
     {
         // Control for the catalogue test: with the flag OFF, the same template seeds every *N/*C
         // column (proving the catalogue restriction — not some other filter — drops FOON/BARC).
-        Rule template = buildTemplateRule("NOCAT",
-                new CheckConditionAny(List.of(new CheckConditionAll(List.of(
-                        CheckConditionLeaf.builder().name("*").operator("var_not_exists").build(),
-                        CheckConditionLeaf.builder().name("*N").operator("var_exists").build())),
-                        new CheckConditionAll(List.of(
-                                CheckConditionLeaf.builder().name("*").operator("var_not_exists")
-                                        .build(),
-                                CheckConditionLeaf.builder().name("*C").operator("var_exists")
-                                        .build())))),
+        Rule template = buildTemplateRule("NOCAT", new CheckConditionAny(List.of(
+                new CheckConditionAll(
+                        List.of(expr("var_not_exists(\"*\")"), expr("var_exists(\"*N\")"))),
+                new CheckConditionAll(
+                        List.of(expr("var_not_exists(\"*\")"), expr("var_exists(\"*C\")"))))),
                 List.of("*"));
 
         IDataTable table = MockTable.withColumns("TRTPN", "AVALC", "FOON", "BARC");
@@ -958,11 +897,8 @@ class WildcardExpanderTest
     @Test
     void collectAvailableCaptureGroups_starAndIndex()
     {
-        CheckConditionLeaf l1 = CheckConditionLeaf.builder().name("TRTxxP").operator("var_exists")
-                .build();
-        CheckConditionLeaf l2 = CheckConditionLeaf.builder().name("*GRy").operator("non_empty")
-                .build();
-        CheckConditionAll all = new CheckConditionAll(List.of(l1, l2));
+        CheckConditionAll all = new CheckConditionAll(
+                List.of(expr("var_exists(\"TRTxxP\")"), expr("not empty(*GRy)")));
         java.util.Set<String> groups = WildcardExpander.collectAvailableCaptureGroups(all);
         assertTrue(groups.contains("xx"));
         assertTrue(groups.contains("*"));

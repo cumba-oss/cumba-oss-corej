@@ -12,7 +12,6 @@ import java.util.function.UnaryOperator;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.metadata.MetadataKeys;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -42,6 +41,12 @@ import org.junit.jupiter.api.Test;
  */
 class LibraryValidatorTaskDecoratorTest
 {
+
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
 
     private static final ThreadLocal<String> MARKER = new ThreadLocal<>();
 
@@ -258,8 +263,9 @@ class LibraryValidatorTaskDecoratorTest
             // Alternate the operator, not just the column. ⚑ This mattered when the cohort
             // grouper keyed on the Check shape and four rules of one shape became ONE pool task;
             // it is now belt-and-braces (see the fixture note above).
-            rule.setCheck(CheckConditionLeaf.builder().name(columns[i % columns.length])
-                    .operator(i++ % 2 == 0 ? "empty" : "non_empty").build());
+            String column = columns[i % columns.length];
+            rule.setCheck(
+                    expr(i++ % 2 == 0 ? "empty(" + column + ")" : "not empty(" + column + ")"));
             Outcome outcome = new Outcome();
             outcome.setMessage(coreId + " fired");
             rule.setOutcome(outcome);

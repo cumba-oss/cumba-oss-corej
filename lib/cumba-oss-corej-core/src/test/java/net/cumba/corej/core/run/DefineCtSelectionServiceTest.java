@@ -161,7 +161,7 @@ class DefineCtSelectionServiceTest
                     "u1": {
                       "id": "u1",
                       "Core": {"Id": "CORE-CT-NOTE"},
-                      "Check": {"name": "USUBJID", "operator": "var_exists"}
+                      "Check": {"expression": "var_exists(\\"USUBJID\\")"}
                     }
                   }
                 }
@@ -278,7 +278,7 @@ class DefineCtSelectionServiceTest
                     "u1": {
                       "id": "u1",
                       "Core": {"Id": "CORE-CT-SEL"},
-                      "Check": {"name": "USUBJID", "operator": "var_exists"}
+                      "Check": {"expression": "var_exists(\\"USUBJID\\")"}
                     }
                   }
                 }

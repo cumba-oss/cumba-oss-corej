@@ -84,7 +84,7 @@ class RuleTestCdtTest
     {
         String content = """
                 #!RuleTest
-                #test CORE-000012 expect=violation domain=AE
+                #test CDISC-CG0040 expect=violation domain=AE
                 #note "AEOCCUR must not exist in AE dataset"
                 dataset AE
                 col STUDYID type=Char
@@ -96,7 +96,7 @@ class RuleTestCdtTest
                 """;
         RuleTestScenario s = RuleTestCdt.parse(content, "test.cdt");
 
-        assertEquals("CORE-000012", s.getCoreId());
+        assertEquals("CDISC-CG0040", s.getCoreId());
         assertEquals(Verdict.VIOLATION, s.getExpect());
         assertEquals("AE", s.getDomain());
         assertEquals("AEOCCUR must not exist in AE dataset", s.getNote());
@@ -112,7 +112,7 @@ class RuleTestCdtTest
     {
         String content = """
                 #!RuleTest
-                #test CORE-000012 expect=noViolation domain=AE
+                #test CDISC-CG0040 expect=noViolation domain=AE
                 dataset AE
                 col STUDYID type=Char
                 ---
@@ -133,7 +133,7 @@ class RuleTestCdtTest
         // a scenario had to borrow `noViolation` — which asserted nothing at all.
         String content = """
                 #!RuleTest
-                #test CORE-000012 expect=skipped domain=AE
+                #test CDISC-CG0040 expect=skipped domain=AE
                 dataset AE
                 col STUDYID type=Char
                 ---
@@ -150,7 +150,7 @@ class RuleTestCdtTest
     {
         String content = """
                 #!RuleTest
-                #test CORE-000012 expect=SKIPPED domain=AE
+                #test CDISC-CG0040 expect=SKIPPED domain=AE
                 dataset AE
                 col STUDYID type=Char
                 ---
@@ -168,7 +168,7 @@ class RuleTestCdtTest
         // location backfill) would silently downgrade its contract.
         String content = """
                 #!RuleTest
-                #test CORE-000012 expect=skipped domain=AE
+                #test CDISC-CG0040 expect=skipped domain=AE
                 #note "AEOCCUR is absent, so the Requirements.Variables gate skips the rule"
                 dataset AE
                 col STUDYID type=Char
@@ -188,7 +188,7 @@ class RuleTestCdtTest
     {
         String content = """
                 #!RuleTest
-                #test CORE-000012 expect=maybe domain=AE
+                #test CDISC-CG0040 expect=maybe domain=AE
                 dataset AE
                 col STUDYID type=Char
                 ---
@@ -297,7 +297,7 @@ class RuleTestCdtTest
     {
         String content = """
                 #!RuleTest
-                #test CORE-000008 expect=violation domain=DM
+                #test CDISC-CG0132 expect=violation domain=DM
                 #note "DM.DTHFL must be 'Y' when SS.SSSTRESC = 'DEAD'"
 
                 dataset DM
@@ -624,7 +624,7 @@ class RuleTestCdtTest
     {
         RuleTestScenario original = RuleTestCdt.parse("""
                 #!RuleTest
-                #test CORE-000012 expect=violation domain=AE
+                #test CDISC-CG0040 expect=violation domain=AE
                 #note "AEOCCUR must not exist"
                 dataset AE
                 col STUDYID type=Char
@@ -638,7 +638,7 @@ class RuleTestCdtTest
         String out = RuleTestCdt.toString(original);
         // Shebang + #test directive + #note directive are present in the output.
         assertTrue(out.startsWith("#!RuleTest\n"), out);
-        assertTrue(out.contains("#test CORE-000012 expect=violation domain=AE"), out);
+        assertTrue(out.contains("#test CDISC-CG0040 expect=violation domain=AE"), out);
         assertTrue(out.contains("#note \"AEOCCUR must not exist\""), out);
 
         RuleTestScenario roundTripped = RuleTestCdt.parse(out, "rt");
@@ -667,7 +667,7 @@ class RuleTestCdtTest
     {
         String content = """
                 #!RuleTest
-                #test CORE-000008 expect=noViolation domain=DM
+                #test CDISC-CG0132 expect=noViolation domain=DM
                 dataset DM
                 col USUBJID type=Char
                 col DTHFL type=Char
@@ -750,7 +750,7 @@ class RuleTestCdtTest
     {
         RuleTestScenario original = RuleTestCdt.parse("""
                 #!RuleTest
-                #test CORE-000012 expect=violation domain=AE
+                #test CDISC-CG0040 expect=violation domain=AE
                 #note "something"
                 dataset AE
                 col USUBJID type=Char

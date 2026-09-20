@@ -22,11 +22,11 @@ import org.junit.jupiter.api.Test;
 class ReportDocumentV2Test
 {
 
-    private static final String CORE_252 = "CORE-000252";
+    private static final String CORE_252 = "CDISC-CG0136";
 
-    private static final String CORE_ERR = "CORE-000999";
+    private static final String CORE_ERR = "CDISC-CG0623";
 
-    private static final String CORE_LIB = "CORE-000500";
+    private static final String CORE_LIB = "CDISC-CG0299";
 
     @Test
     void multiRowFinding_emitsOneCombinedEntryWithRowsAndLocation()
@@ -147,7 +147,29 @@ class ReportDocumentV2Test
 
         assertEquals(v1.get("Dataset_Details"), v2.get("Dataset_Details"));
         assertEquals(v1.get("Issue_Summary"), v2.get("Issue_Summary"));
-        assertEquals(v1.get("Rules_Report"), v2.get("Rules_Report"));
+        // ⚠ Rules_Report is the SECOND shared section that is no longer byte-equal: D65 adds the
+        // three execution counts, and they are v2-ONLY for the same frozen-v1 reason as the
+        // tolerance key. Same pin shape — "differs by exactly those three keys" — so any other
+        // drift between the two Rules_Report projections still reds this test.
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rr1 = (List<Map<String, Object>>) v1.get("Rules_Report");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rr2 = (List<Map<String, Object>>) v2.get("Rules_Report");
+        assertEquals(rr1.size(), rr2.size());
+        for (int i = 0; i < rr1.size(); i++)
+        {
+            Map<String, Object> row1 = rr1.get(i);
+            Map<String, Object> row2 = new java.util.LinkedHashMap<>(rr2.get(i));
+            assertFalse(row1.containsKey("executed"), "v1 is frozen");
+            assertFalse(row1.containsKey("skipped"), "v1 is frozen");
+            assertFalse(row1.containsKey("errored"), "v1 is frozen");
+            assertTrue(row2.containsKey("executed"), "D65: v2 records the execution counts");
+            row2.remove("executed");
+            row2.remove("skipped");
+            row2.remove("errored");
+            assertEquals(row1, row2,
+                    "apart from the v2-only D65 count keys the rows must stay identical");
+        }
         // v2 replaces the flat per-row Issue_Details with the combined Findings array.
         assertFalse(v2.containsKey("Issue_Details"));
         assertTrue(v2.containsKey("Findings"));
@@ -159,8 +181,8 @@ class ReportDocumentV2Test
     {
         // Two findings on different datasets with out-of-order core ids → sorted (core_id,
         // dataset).
-        ValidationFinding f2 = finding("CORE-000300", "DM", List.of("AGE"), "120");
-        ValidationFinding f1 = finding("CORE-000100", "AE", List.of("AETERM"), "HEADACHE");
+        ValidationFinding f2 = finding("CDISC-CG0512", "DM", List.of("AGE"), "120");
+        ValidationFinding f1 = finding("CDISC-CG0423", "AE", List.of("AETERM"), "HEADACHE");
         ValidationReport report = ValidationReport.builder()
                 .members(List.of(
                         ValidationReportMember.builder().domain("DM").fileName("dm.xpt")
@@ -174,8 +196,8 @@ class ReportDocumentV2Test
         assertEquals("2.0", export.get("Report_Version"));
         List<Map<String, Object>> findings = combinedFindings(export);
         assertEquals(2, findings.size());
-        assertEquals("CORE-000100", findings.get(0).get("core_id"));
-        assertEquals("CORE-000300", findings.get(1).get("core_id"));
+        assertEquals("CDISC-CG0423", findings.get(0).get("core_id"));
+        assertEquals("CDISC-CG0512", findings.get(1).get("core_id"));
     }
 
 
@@ -208,7 +230,7 @@ class ReportDocumentV2Test
     {
         ValidationReport report = sampleReport().toBuilder()
                 .skippedRules(List.of(
-                        net.cumba.datatable.report.SkippedRuleEntry.builder().coreId("CORE-000351")
+                        net.cumba.datatable.report.SkippedRuleEntry.builder().coreId("CDISC-CG0040")
                                 .dataset("EX").reason("Rule skipped — no Library access").build()))
                 .build();
 
@@ -222,7 +244,7 @@ class ReportDocumentV2Test
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> skipped = (List<Map<String, Object>>) export.get("Skipped_Rules");
         assertEquals(1, skipped.size());
-        assertEquals("CORE-000351", skipped.get(0).get("core_id"));
+        assertEquals("CDISC-CG0040", skipped.get(0).get("core_id"));
         assertEquals("EX", skipped.get(0).get("dataset"));
         assertEquals("Rule skipped — no Library access", skipped.get(0).get("reason"));
     }

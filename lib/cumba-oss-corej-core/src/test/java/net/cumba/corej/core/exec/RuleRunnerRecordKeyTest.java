@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -28,6 +27,13 @@ import org.junit.jupiter.api.Test;
 class RuleRunnerRecordKeyTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
     /**
      * SUPPAE-shaped table: no sequence variable, so the STRUCTURAL tier is what identifies rows.
      */
@@ -42,8 +48,7 @@ class RuleRunnerRecordKeyTest
 
     private static Rule qvalNonEmptyRule()
     {
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("QVAL").operator("empty")
-                .build();
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr("empty(QVAL)");
         return buildRule("CORE-KEY-1", "QVAL must be populated",
                 new CheckConditionAll(List.of(leaf)), List.of("QVAL"));
     }
@@ -187,8 +192,7 @@ class RuleRunnerRecordKeyTest
         // so nothing is left for the key — and the finding is otherwise completely unaffected.
         IDataTable table = MockTable.of().col("USUBJID", "SUBJ-001").col("AESEQ", "1")
                 .col("AETERM", "").name("AE").build();
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("AETERM").operator("empty")
-                .build();
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr("empty(AETERM)");
         Rule rule = buildRule("CORE-KEY-2", "AETERM must be populated",
                 new CheckConditionAll(List.of(leaf)), List.of("AETERM"));
 

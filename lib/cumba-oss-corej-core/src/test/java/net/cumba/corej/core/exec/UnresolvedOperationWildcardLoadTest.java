@@ -64,16 +64,15 @@ class UnresolvedOperationWildcardLoadTest
     @Test
     void declaredReferenceWildcard_tagsLoadError_andExecutesAsError() throws IOException
     {
-        Rule rule = load("""
-                {
-                  "Core": {"Id": "TEST-UOW-1"},
-                  "Executability": "Fully Executable",
-                  "Operations": [{"id": "$diff", "operator": "date_diff_days",
-                                  "name": "TFDTC", "reference": "--STDTC"}],
-                  "Check": {"all": [{"name": "TFDETECT", "operator": "not_equal_to",
-                                     "value": "$diff"}]}
-                }
-                """);
+        Rule rule = load(
+                """
+                        {
+                          "Core": {"Id": "TEST-UOW-1"},
+                          "Executability": "Fully Executable",
+                          "Bindings": [{"name": "$diff", "expression": "date_diff_days(TFDTC, reference=\\"--STDTC\\")"}],
+                          "Check": {"all": [{"expression": "TFDETECT != $diff"}]}
+                        }
+                        """);
         assertNotNull(rule.getLoadError(), "an executable rule must fail loud");
         assertTrue(rule.getLoadError().contains(MARKER), rule.getLoadError());
         assertTrue(rule.getLoadError().contains("reference=\"--STDTC\""), rule.getLoadError());
@@ -92,14 +91,14 @@ class UnresolvedOperationWildcardLoadTest
     {
         // is_last_in_group reads `ordering` off the evaluation table: an unresolved "--SEQ" makes
         // evalIsLastInGroup return null on ordIdx < 0, so every row's verdict is simply absent.
-        Rule rule = load("""
-                {
-                  "Core": {"Id": "TEST-UOW-2"},
-                  "Operations": [{"id": "$last", "operator": "is_last_in_group",
-                                  "group": ["USUBJID"], "ordering": "--SEQ"}],
-                  "Check": {"all": [{"name": "$last", "operator": "equal_to", "value": true}]}
-                }
-                """);
+        Rule rule = load(
+                """
+                        {
+                          "Core": {"Id": "TEST-UOW-2"},
+                          "Bindings": [{"name": "$last", "expression": "is_last_in_group(ordering=\\"--SEQ\\", group=[USUBJID])"}],
+                          "Check": {"all": [{"expression": "$last == true"}]}
+                        }
+                        """);
         assertNotNull(rule.getLoadError());
         assertTrue(rule.getLoadError().contains(MARKER), rule.getLoadError());
         assertTrue(rule.getLoadError().contains("ordering=\"--SEQ\""), rule.getLoadError());
@@ -112,15 +111,14 @@ class UnresolvedOperationWildcardLoadTest
         // The worst of the three: evalDateDiffDays cannot parse "--RFDY" as an integer, looks it
         // up as a column, misses, and silently applies an offset of 0 — a wrong number, not a
         // skip. That is the EC-47 failure mode reached by an authoring slip instead of a data gap.
-        Rule rule = load("""
-                {
-                  "Core": {"Id": "TEST-UOW-3"},
-                  "Operations": [{"id": "$diff", "operator": "date_diff_days",
-                                  "name": "TFDTC", "reference": "EXSTDTC", "offset": "--RFDY"}],
-                  "Check": {"all": [{"name": "TFDETECT", "operator": "not_equal_to",
-                                     "value": "$diff"}]}
-                }
-                """);
+        Rule rule = load(
+                """
+                        {
+                          "Core": {"Id": "TEST-UOW-3"},
+                          "Bindings": [{"name": "$diff", "expression": "date_diff_days(TFDTC, reference=\\"EXSTDTC\\", offset=\\"--RFDY\\")"}],
+                          "Check": {"all": [{"expression": "TFDETECT != $diff"}]}
+                        }
+                        """);
         assertNotNull(rule.getLoadError());
         assertTrue(rule.getLoadError().contains(MARKER), rule.getLoadError());
         assertTrue(rule.getLoadError().contains("offset=\"--RFDY\""), rule.getLoadError());
@@ -163,7 +161,7 @@ class UnresolvedOperationWildcardLoadTest
                   "Core": {"Id": "TEST-UOW-5"},
                   "Precondition": {"expression":
                     "is_last_in_group(group=[USUBJID], ordering=\\"--SEQ\\") == true"},
-                  "Check": {"all": [{"name": "SESTDTC", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty(SESTDTC)"}]}
                 }
                 """.replaceAll("\\s*\\R\\s*", " "));
         assertNotNull(rule.getLoadError(), "the Precondition gates the Check, so it is as fatal");
@@ -180,15 +178,15 @@ class UnresolvedOperationWildcardLoadTest
     {
         // Fix #159: `Executability: "Not Executable"` removes the rule from the package at load, so
         // this gate never sees it and the old severity downgrade had nothing left to downgrade.
-        RulePackage pkg = RulePackageLoader.loadFromString("""
-                {"rules": {"rule-1": {
-                  "Core": {"Id": "TEST-UOW-6"},
-                  "Executability": "Not Executable",
-                  "Operations": [{"id": "$last", "operator": "is_last_in_group",
-                                  "group": ["USUBJID"], "ordering": "--SEQ"}],
-                  "Check": {"all": [{"name": "$last", "operator": "equal_to", "value": true}]}
-                }}}
-                """);
+        RulePackage pkg = RulePackageLoader.loadFromString(
+                """
+                        {"rules": {"rule-1": {
+                          "Core": {"Id": "TEST-UOW-6"},
+                          "Executability": "Not Executable",
+                          "Bindings": [{"name": "$last", "expression": "is_last_in_group(ordering=\\"--SEQ\\", group=[USUBJID])"}],
+                          "Check": {"all": [{"expression": "$last == true"}]}
+                        }}}
+                        """);
         assertTrue(pkg.getRules().isEmpty(),
                 () -> "a Not Executable rule is parked, not warned: " + pkg.getRules().keySet());
     }
@@ -207,17 +205,14 @@ class UnresolvedOperationWildcardLoadTest
         // BECAUSE that is the design, so guarding it would reject the one shape the field exists
         // for. ⚠ If this test ever goes red, the guard has been widened wrongly — do not "fix" it
         // by editing the rule.
-        Rule rule = load("""
-                {
-                  "Core": {"Id": "TEST-UOW-7"},
-                  "Operations": [{"id": "$diff", "operator": "date_diff_days",
-                                  "name": "PMDTC", "reference": "TFSTDTC",
-                                  "minuend_domain": "PM",
-                                  "minuend_match": ["USUBJID", "--SPID"]}],
-                  "Check": {"all": [{"name": "TFDETECT", "operator": "not_equal_to",
-                                     "value": "$diff"}]}
-                }
-                """);
+        Rule rule = load(
+                """
+                        {
+                          "Core": {"Id": "TEST-UOW-7"},
+                          "Bindings": [{"name": "$diff", "expression": "date_diff_days(PMDTC, reference=\\"TFSTDTC\\", minuend_domain=\\"PM\\", minuend_match=[USUBJID, --SPID])"}],
+                          "Check": {"all": [{"expression": "TFDETECT != $diff"}]}
+                        }
+                        """);
         assertNull(rule.getLoadError(), "minuend_match `--` is resolved per side, not a gap");
         assertNull(rule.getLoadWarning());
     }
@@ -229,14 +224,14 @@ class UnresolvedOperationWildcardLoadTest
         // name / group / dictionary_parent / external_dictionary_term_variable all ARE rewritten
         // by resolvePrefixes (the last two by Fix #125 / EC-36), and shipped rules rely on it —
         // CDISC-CG0562 groups by "--TESTCD", CDISC-CG0460 declares dictionary_parent "--SOC".
-        Rule rule = load("""
-                {
-                  "Core": {"Id": "TEST-UOW-8"},
-                  "Operations": [{"id": "$n", "operator": "record_count",
-                                  "name": "--DTC", "group": ["USUBJID", "--TESTCD"]}],
-                  "Check": {"all": [{"name": "$n", "operator": "greater_than", "value": 1}]}
-                }
-                """);
+        Rule rule = load(
+                """
+                        {
+                          "Core": {"Id": "TEST-UOW-8"},
+                          "Bindings": [{"name": "$n", "expression": "record_count(--DTC, group=[USUBJID, --TESTCD])"}],
+                          "Check": {"all": [{"expression": "$n > 1"}]}
+                        }
+                        """);
         assertNull(rule.getLoadError(), "these positions are resolved, so `--` is legal there");
         assertNull(rule.getLoadWarning());
     }
@@ -247,15 +242,14 @@ class UnresolvedOperationWildcardLoadTest
     {
         // "-1" is a legal integer offset and contains a single hyphen; only the two-character
         // wildcard token is a finding.
-        Rule rule = load("""
-                {
-                  "Core": {"Id": "TEST-UOW-9"},
-                  "Operations": [{"id": "$diff", "operator": "date_diff_days",
-                                  "name": "TFDTC", "reference": "EXSTDTC", "offset": "-1"}],
-                  "Check": {"all": [{"name": "TFDETECT", "operator": "not_equal_to",
-                                     "value": "$diff"}]}
-                }
-                """);
+        Rule rule = load(
+                """
+                        {
+                          "Core": {"Id": "TEST-UOW-9"},
+                          "Bindings": [{"name": "$diff", "expression": "date_diff_days(TFDTC, reference=\\"EXSTDTC\\", offset=\\"-1\\")"}],
+                          "Check": {"all": [{"expression": "TFDETECT != $diff"}]}
+                        }
+                        """);
         assertNull(rule.getLoadError());
         assertNull(rule.getLoadWarning());
     }

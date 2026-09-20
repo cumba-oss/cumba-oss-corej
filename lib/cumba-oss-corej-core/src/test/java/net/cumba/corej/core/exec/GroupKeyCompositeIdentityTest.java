@@ -153,6 +153,59 @@ class GroupKeyCompositeIdentityTest
         assertThrows(IllegalArgumentException.class, () -> new KeyPart.Present(""));
     }
 
+    // ---------------------------------------------------------------- D84a — exact numeric keys
+
+
+    @Test
+    void numericKeysAreExactNotCleaned()
+    {
+        GroupKeyPolicy p = GroupKeyPolicy.FOLD_BLANK_KEYS;
+        // Two values equal to 12 significant digits but different beyond them: the cleaned TEXT
+        // folds them (both render "10000000000000" once getAsDoubleCleaned rounds to 12 digits),
+        // while the exact identity keeps them apart — D64h: "key identity always exact".
+        KeyPart a = p.keyPart(new DataValueDouble(10000000000001.0));
+        KeyPart b = p.keyPart(new DataValueDouble(10000000000001.4));
+        assertEquals(new KeyPart.PresentNumber(10000000000001.0), a);
+        assertNotEquals(a, b, "keys differing beyond 12 significant digits must separate");
+        // Sub-epsilon magnitudes used to flatten to the "0" key; now they are their own key.
+        assertNotEquals(p.keyPart(new DataValueDouble(5e-14)), p.keyPart(new DataValueDouble(0.0)));
+    }
+
+
+    @Test
+    void numericRenderingStaysTheLegacyCleanedText()
+    {
+        // reportingForm is presentation and the rendered-key lockstep encoding — byte-identical
+        // to the pre-D84a Present(getValueAsString()) rendering.
+        assertEquals(new DataValueDouble(2.0).getValueAsString(),
+                new KeyPart.PresentNumber(2.0).reportingForm());
+        assertEquals("2", new KeyPart.PresentNumber(2.0).reportingForm());
+        assertEquals(new DataValueDouble(2.5).getValueAsString(),
+                new KeyPart.PresentNumber(2.5).reportingForm());
+        assertEquals(new DataValueDouble(5e-14).getValueAsString(),
+                new KeyPart.PresentNumber(5e-14).reportingForm(),
+                "the sub-epsilon value still RENDERS as the flattened text");
+    }
+
+
+    @Test
+    void numericKeyEdges()
+    {
+        // -0.0 and 0.0 are one numeric identity (and rendered identically before D84a).
+        assertEquals(new KeyPart.PresentNumber(0.0), new KeyPart.PresentNumber(-0.0));
+        // A NaN is the missing ENCODING (D85a) — it can never be a present numeric key.
+        assertThrows(IllegalArgumentException.class, () -> new KeyPart.PresentNumber(Double.NaN));
+        // A LONG 2 and a DOUBLE 2.0 keyed identically before (both rendered "2") and still do.
+        GroupKeyPolicy p = GroupKeyPolicy.FOLD_BLANK_KEYS;
+        assertEquals(p.keyPart(new DataValueDouble(2.0)),
+                p.keyPart(net.cumba.datatable.values.DataValueSupport.getAsDataValue(2L,
+                        net.cumba.datatable.values.DataValueType.LONG)));
+        // A numeric key is present — it participates wherever presence is the question.
+        assertTrue(new KeyPart.PresentNumber(2.0).present());
+        // And it equals no text key, not even the one it renders as (identity lives in the type).
+        assertNotEquals((KeyPart) new KeyPart.PresentNumber(2.0), new KeyPart.Present("2"));
+    }
+
     // ---------------------------------------------------------------- the identity relation
 
 

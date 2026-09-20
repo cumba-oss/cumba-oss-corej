@@ -2,6 +2,7 @@ package net.cumba.corej.core.exec;
 
 import java.util.Objects;
 
+import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.IDataValue;
 import net.cumba.datatable.values.MissingValue;
 
@@ -138,7 +139,7 @@ public record GroupKeyPolicy(boolean keepMissings, Blankness blankness)
     public sealed interface KeyPart
     {
 
-        /** A real value — <b>including</b> {@code "."} and whitespace-only strings. */
+        /** A real <b>text</b> value — <b>including</b> {@code "."} and whitespace-only strings. */
         record Present(String value) implements KeyPart
         {
 
@@ -159,6 +160,83 @@ public record GroupKeyPolicy(boolean keepMissings, Blankness blankness)
             {
                 return value;
             }
+
+
+            @Override
+            public boolean present()
+            {
+                return true;
+            }
+        }
+
+
+        /**
+         * A real <b>numeric</b> value, keyed by its exact double (D84a / D64h: <i>"key identity
+         * always exact"</i>).
+         *
+         * <p>
+         * ⭐ Until D84a a numeric cell keyed as {@code Present(dv.getValueAsString())}, and
+         * {@code DataValueDouble.getValueAsString()} runs {@code getAsDoubleCleaned}
+         * unconditionally — rounding to 12 significant digits and flattening {@code abs(v) < 1e-13}
+         * to {@code 0} — so two values the data distinguishes could fold into one group with
+         * nothing red. The identity is now the value itself; two values equal to 12 significant
+         * digits but different beyond them are <b>different keys</b>.
+         * </p>
+         *
+         * <p>
+         * {@link #reportingForm()} still renders the legacy cleaned text on purpose: it is
+         * presentation (and the lockstep rendered-key encoding of {@code GroupedResult.buildKey} /
+         * {@code IndexHelper.buildGroupKey}), never re-parsed for identity, and keeping it
+         * byte-identical means reports and cross-table rendered-key lookups do not move.
+         * </p>
+         *
+         * <p>
+         * ⚠ One record for {@code LONG} and {@code DOUBLE} cells alike: a {@code LONG} {@code 2}
+         * and a {@code DOUBLE} {@code 2.0} keyed identically before (both rendered {@code "2"}) and
+         * must keep doing so. A {@code long} beyond 2^53 loses exactness in the double — far beyond
+         * any clinical value, and the cleaned text was coarser still.
+         * </p>
+         */
+        record PresentNumber(double value) implements KeyPart
+        {
+
+            public PresentNumber
+            {
+                // A NaN is the carrier encoding of a MissingValue (D85a) — it must have been
+                // decoded to a Missing part long before here. Loud beats silent.
+                if (Double.isNaN(value))
+                {
+                    throw new IllegalArgumentException(
+                            "a NaN is a missing encoding, never a present numeric key");
+                }
+                if (value == 0.0)
+                {
+                    // Canonicalise -0.0: record equality is by Double.compare, which separates
+                    // the two zeros, while the numeric identity (and the legacy text) does not.
+                    value = 0.0;
+                }
+            }
+
+
+            @Override
+            public String reportingForm()
+            {
+                // The legacy rendering, verbatim (DataValueDouble.getValueAsString): cleaned to
+                // 12 significant digits, integral values without the ".0".
+                double cleaned = DataValueSupport.getAsDoubleCleaned(value);
+                if (cleaned == Math.floor(cleaned) && !Double.isInfinite(cleaned))
+                {
+                    return String.valueOf((long) cleaned);
+                }
+                return String.valueOf(cleaned);
+            }
+
+
+            @Override
+            public boolean present()
+            {
+                return true;
+            }
         }
 
 
@@ -173,6 +251,13 @@ public record GroupKeyPolicy(boolean keepMissings, Blankness blankness)
             {
                 return "";
             }
+
+
+            @Override
+            public boolean present()
+            {
+                return false;
+            }
         }
 
 
@@ -184,6 +269,13 @@ public record GroupKeyPolicy(boolean keepMissings, Blankness blankness)
             public String reportingForm()
             {
                 return "\u0001" + marker.name();
+            }
+
+
+            @Override
+            public boolean present()
+            {
+                return false;
             }
         }
 
@@ -209,11 +301,12 @@ public record GroupKeyPolicy(boolean keepMissings, Blankness blankness)
          * actually meets in rule data.
          *
          * <p>
-         * ⚠ The {@code default} arm is not dead code, even where the three interned cases happen to
-         * be the whole enum. {@code net.cumba.datatable}'s {@code MissingValue} carries the SAS
-         * special-missing set — {@code ._} and {@code .A}–{@code .Z} — in its full form, so the
-         * switch is only exhaustive against a reduced one and the remaining markers must still
-         * yield a part rather than fail to compile.
+         * ⚠ The three interned cases were once the WHOLE enum: the coreJ monorepo's own
+         * {@code net.cumba.datatable} carried a reduced {@code MissingValue} with exactly
+         * {@code MIS} / {@code MIS_UNKNOWN} / {@code MIS_ERROR}, so this switch was exhaustive and
+         * the method never allocated. The full {@code net.cumba.datatable} this engine now links
+         * against carries the complete SAS special-missing set — {@code ._} and {@code .A}–{@code
+         * .Z}, 31 constants — so the switch needs a default arm and the 28 SAS markers allocate.
          * </p>
          *
          * <p>
@@ -258,6 +351,18 @@ public record GroupKeyPolicy(boolean keepMissings, Blankness blankness)
          * @return the rendered component
          */
         String reportingForm();
+
+
+        /**
+         * Whether this component is a real value — {@link Present} or {@link PresentNumber} — as
+         * opposed to a blank identity ({@link Empty}, {@link Missing}). The type test every
+         * participation / blank-exclusion site asks, spelled once so a new present-shaped record
+         * cannot silently fall out of those sites (implemented per record: KeyPart may declare no
+         * default methods — see the class-initialization note above the interned constants).
+         *
+         * @return whether the component carries a real value
+         */
+        boolean present();
     }
 
     /**
@@ -406,6 +511,14 @@ public record GroupKeyPolicy(boolean keepMissings, Blankness blankness)
         }
         if (!isBlankKeyComponent(dv))
         {
+            // D84a: a numeric cell keys by its EXACT value. getValueAsString() runs
+            // getAsDoubleCleaned unconditionally (12 significant digits, abs(v) < 1e-13 -> 0), so
+            // the text form silently folded near-equal keys — while D64h rules key identity always
+            // exact. Text cells keep keying by their text, which was never cleaned.
+            if (dv.getValue() instanceof Number n)
+            {
+                return new KeyPart.PresentNumber(n.doubleValue());
+            }
             return new KeyPart.Present(dv.getValueAsString());
         }
         if (dv.getValue() instanceof MissingValue m)

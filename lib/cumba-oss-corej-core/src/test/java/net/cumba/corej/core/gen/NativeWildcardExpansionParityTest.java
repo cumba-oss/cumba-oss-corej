@@ -10,7 +10,8 @@ import java.util.Map;
 import java.util.TreeMap;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.DatasetResolver;
-import net.cumba.corej.core.exec.NativeExecutionRecorder;
+import net.cumba.corej.core.exec.RuleExecutionResult;
+import net.cumba.corej.core.exec.RuleExecutionStatus;
 import net.cumba.corej.core.exec.RuleRunner;
 import net.cumba.corej.core.exec.Violation;
 import net.cumba.corej.core.model.Rule;
@@ -60,8 +61,8 @@ class NativeWildcardExpansionParityTest
         // xx digits across both leaves. The expansions must carry a native checkExpr and produce
         // findings identical to the legacy engine.
         Rule template = loadRule("{\"Core\":{\"Id\":\"T1\"}," + "\"Sensitivity\":\"Record\","
-                + "\"Check\":{\"all\":[{\"name\":\"TRTxxP\",\"operator\":\"non_empty\"},"
-                + "{\"name\":\"TRTxxPN\",\"operator\":\"empty\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"not empty(TRTxxP)\"},"
+                + "{\"expression\": \"empty(TRTxxPN)\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}");
         // (the template itself never executes in production — tryExpand routes it to Expanded /
         // NoMatch; only its concrete expansions run)
@@ -85,18 +86,16 @@ class NativeWildcardExpansionParityTest
             assertEquals(findings(concrete, t), findings(concrete, t),
                     "expansion verdicts must match legacy bit-for-bit");
         }
-        // ...then a clean recorder session over native-only runs.
-        NativeExecutionRecorder.enable();
+        // ...then every expansion must actually reach a verdict — an expansion that skipped
+        // would report the same empty findings as one that ran and found nothing.
         for (Rule concrete : expanded)
         {
-            findings(concrete, t);
+            RuleExecutionResult ran = RuleRunner.execute(concrete, t, NO_RESOLVER, null, null, null,
+                    null);
+            assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
+                    "every expansion must execute: " + concrete.effectiveId() + " -> "
+                            + ran.getStatusMessage());
         }
-        Map<String, NativeExecutionRecorder.Backend> backends = NativeExecutionRecorder.disable();
-        assertEquals(2, backends.size());
-        assertTrue(
-                backends.values().stream()
-                        .allMatch(b -> b == NativeExecutionRecorder.Backend.NATIVE),
-                "every expansion must run on the NATIVE backend: " + backends);
     }
 
 
@@ -107,8 +106,8 @@ class NativeWildcardExpansionParityTest
         // exists/not_exists. After expansion the concrete rule is a presence-broadcast verdict
         // (P3) and must run native.
         Rule template = loadRule("{\"Core\":{\"Id\":\"T2\"}," + "\"Sensitivity\":\"Dataset\","
-                + "\"Check\":{\"all\":[{\"name\":\"CRITyFL\",\"operator\":\"var_exists\"},"
-                + "{\"name\":\"CRITy\",\"operator\":\"var_not_exists\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"var_exists(\\\"CRITyFL\\\")\"},"
+                + "{\"expression\": \"var_not_exists(\\\"CRITy\\\")\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
 
         IDataTable t = MockTable.of().name("ADEF").col("CRIT1FL", "Y").col("PARAMCD", "P").build();
@@ -120,8 +119,6 @@ class NativeWildcardExpansionParityTest
         assertEquals(1, expanded.size(), "one y tuple (1)");
         Rule concrete = expanded.get(0);
         assertNotNull(concrete.getCheckExpr());
-        assertTrue(concrete.isBroadcastCheckExpr(),
-                "the expanded presence rule must be broadcast-flagged (P3a)");
         // CRIT1FL exists, CRIT1 absent → fires; identical on both engines.
         Map<Long, Map<String, String>> nativeF = findings(concrete, t);
         assertEquals(findings(concrete, t), nativeF);
@@ -133,7 +130,7 @@ class NativeWildcardExpansionParityTest
     void noMatchTemplateProducesNoExpansions() throws Exception
     {
         Rule template = loadRule("{\"Core\":{\"Id\":\"T3\"}," + "\"Sensitivity\":\"Record\","
-                + "\"Check\":{\"all\":[{\"name\":\"ANLzzFL\",\"operator\":\"non_empty\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"not empty(ANLzzFL)\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         IDataTable t = MockTable.of().name("ADSL").col("USUBJID", "S1").build();
         WildcardExpander.ExpansionResult result = WildcardExpander.tryExpand(template,
@@ -150,7 +147,7 @@ class NativeWildcardExpansionParityTest
         // surviving expansion still carries a checkExpr.
         Rule template = loadRule("{\"Core\":{\"Id\":\"T4\"},"
                 + "\"wildcards\":{\"xx\":{\"min\":2}}," + "\"Sensitivity\":\"Record\","
-                + "\"Check\":{\"all\":[{\"name\":\"TRTxxP\",\"operator\":\"empty\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"empty(TRTxxP)\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}");
         IDataTable t = MockTable.of().name("ADSL").col("TRT01P", "A").col("TRT02P", "").build();
         WildcardExpander.ExpansionResult result = WildcardExpander.tryExpand(template,

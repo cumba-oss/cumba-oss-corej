@@ -1699,10 +1699,12 @@ public final class MetadataLibraryProvider implements MetadataProvider
         // Step 6 — IG-override merge (Fix #42 Phase 2 step 3). Custom domains skip this step
         // (Python: `if is_custom: variables_metadata = model_variables`); their model-derived
         // list is the final answer.
-        // ⚠ This used to read `!DOMAIN_SUPPQUAL.equals(effectiveDomain) && …`. That guard predates
+        // ⚠ This used to read `!DOMAIN_SUPPQUAL.equals(effectiveDomain) && …`. That term predates
         // Fix #61's SUPPQUAL short-circuit in step 2 above, which RETURNS for a SUPPQUAL effective
-        // domain, so the term was provably dead (Error Prone [AlreadyChecked]) and the value of
-        // `isCustom` is unchanged by dropping it. Restore the term only together with removing
+        // domain (and `effectiveDomain` is never reassigned in between), so it was provably dead
+        // — Error Prone [AlreadyChecked]. Dropping it does not change the value of `isCustom`, and
+        // SUPPQUAL does NOT lose the IG-override merge: it never reaches step 6 at all, because
+        // resolveSuppQualVariables IS its answer. Restore the term only together with removing
         // that early return.
         boolean isCustom = !sdtmProductHasDomain(effectiveDomain);
         if (!isCustom)

@@ -201,9 +201,10 @@ class DatasetLookupTest
         IDataTable primary = MockTable.of().col("KEY", "A").build();
 
         DatasetLookup lookup = DatasetLookup.build("DS", joined, List.of("KEY"));
-        // A blank joined value has no comparand and resolves to null, whatever the column type.
-        // ⚠ For a CHARACTER column this is the case the blindness step would change to "";
-        // it is blocked on the date_* defect recorded in ScalarSemantics.resolvedString.
+        // A MISSING joined value has no comparand and resolves to null, whatever the column type
+        // — the SETTLED contract for a character column too since the owner ruling of 2026-09-18.
+        // ⛔ This comment used to call the character case a pending blindness step ("would change
+        // to ''") blocked on a date_* defect; that step is retired. A stored "" still reads "".
         assertNull(lookup.lookup(primary, 0, "VAL"));
         assertNull(lookup.lookup(primary, 0, "NUM"));
     }

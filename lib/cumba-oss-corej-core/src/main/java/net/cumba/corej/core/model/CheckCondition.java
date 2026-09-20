@@ -10,8 +10,6 @@ public sealed interface CheckCondition
         CheckConditionAll,
         CheckConditionAny,
         CheckConditionNot,
-        CheckConditionLeaf,
-        CheckConditionConstant,
         CheckConditionExpression
 {
 

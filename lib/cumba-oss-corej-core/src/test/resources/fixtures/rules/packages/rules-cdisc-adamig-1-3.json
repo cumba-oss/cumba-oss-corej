@@ -34,7 +34,7 @@
         }
       },
       "Check": {
-        "expression": "not empty(*TM) and not empty(*DTM) and time_part(*DTM) != *TM"
+        "expression": "not empty(*TM) and not empty(*DTM) and time_part(date(*DTM)) != time(*TM)"
       },
       "Outcome": {
         "Message": "The time portion of the value of the DTM-suffixed variable does not equal the value of the TM-suffixed variable with the same root name",
@@ -68,7 +68,7 @@
         }
       },
       "Check": {
-        "expression": "not empty(*DT) and not empty(*DTM) and date_part(*DTM) != *DT"
+        "expression": "not empty(*DT) and not empty(*DTM) and date_part(date(*DTM)) != date(*DT)"
       },
       "Outcome": {
         "Message": "The date portion of the value of the DTM-suffixed variable does not equal the value of the DT-suffixed variable with the same root name",
@@ -101,9 +101,9 @@
           ]
         }
       },
-      "Operations": [
+      "Bindings": [
         {
-          "id": "$fl_count",
+          "name": "$fl_count",
           "expression": "variable_count(name_pattern=\"^.+FL$\")"
         }
       ],
@@ -157,7 +157,7 @@
         }
       ],
       "Check": {
-        "expression": "empty(DM.USUBJID)"
+        "expression": "not DM._matched_"
       },
       "Outcome": {
         "Message": "This record's USUBJID value was not found in SDTM.DM",
@@ -1155,9 +1155,9 @@
           ]
         }
       },
-      "Operations": [
+      "Bindings": [
         {
-          "id": "$ae_aeacn_pop",
+          "name": "$ae_aeacn_pop",
           "expression": "record_count(AEACN, domain=\"AE\", filter=filter(AEACN=\"&\"))"
         }
       ],
@@ -1286,9 +1286,9 @@
           "PARAMCD"
         ]
       },
-      "Operations": [
+      "Bindings": [
         {
-          "id": "$basetype_mixed",
+          "name": "$basetype_mixed",
           "expression": "has_mixed_emptiness_within_group(BASETYPE, group=[PARAMCD], qualifying_any_populated=[BASE, BASEC])"
         }
       ],

@@ -55,8 +55,8 @@ class NotExecutableParksRuleLoadTest
     private static String ruleJson(String id, String executabilityBlock, String column)
     {
         return "{\"Core\": {\"Id\": \"" + id + "\"}," + executabilityBlock
-                + " \"Sensitivity\": \"Record\"," + " \"Check\": {\"all\": [{\"name\": \"" + column
-                + "\", \"operator\": \"non_empty\"}]},"
+                + " \"Sensitivity\": \"Record\","
+                + " \"Check\": {\"all\": [{\"expression\": \"not empty(" + column + ")\"}]},"
                 + " \"Outcome\": {\"Message\": \"m\", \"Output_Variables\": [\"" + column + "\"]}}";
     }
 
@@ -202,8 +202,7 @@ class NotExecutableParksRuleLoadTest
                 + " \"Executability\": \"Not Executable\","
                 + " \"ExecutabilityHint\": {\"Category\": \"not executable\"," + " \"Detail\": \""
                 + hint + "\"}," + " \"Sensitivity\": \"Record\","
-                + " \"Check\": {\"all\": [{\"name\": \"AETERM\","
-                + " \"operator\": \"equal_to\", \"value\": \"HEADACHE\"}]},"
+                + " \"Check\": {\"all\": [{\"expression\": \"AETERM == HEADACHE\"}]},"
                 + " \"Outcome\": {\"Message\": \"m\"," + " \"Output_Variables\": [\"AETERM\"]}}"));
 
         String detail = lines.stream().filter(l -> l.contains("TEST-PARK-6") && l.contains(hint))
@@ -272,8 +271,8 @@ class NotExecutableParksRuleLoadTest
                 () -> RulePackageLoader.loadFromString("{\"rules\": {\"the-map-key\": {"
                         + " \"Executability\": \"Not Executable\","
                         + " \"Sensitivity\": \"Record\","
-                        + " \"Check\": {\"all\": [{\"name\": \"AETERM\","
-                        + " \"operator\": \"non_empty\"}]}," + " \"Outcome\": {\"Message\": \"m\","
+                        + " \"Check\": {\"all\": [{\"expression\": \"not empty(AETERM)\"}]},"
+                        + " \"Outcome\": {\"Message\": \"m\","
                         + " \"Output_Variables\": [\"AETERM\"]}}}}"));
 
         assertEquals(1, lines.size(), () -> "one summary line: " + lines);
@@ -289,7 +288,7 @@ class NotExecutableParksRuleLoadTest
     {
         return "{\"Core\": {\"Id\": \"" + id + "\"}," + " \"Executability\": \"Not Executable\","
                 + " \"ExecutabilityHint\": {" + hintBody + "}," + " \"Sensitivity\": \"Record\","
-                + " \"Check\": {\"all\": [{\"name\": \"AETERM\", \"operator\": \"non_empty\"}]},"
+                + " \"Check\": {\"all\": [{\"expression\": \"not empty(AETERM)\"}]},"
                 + " \"Outcome\": {\"Message\": \"m\", \"Output_Variables\": [\"AETERM\"]}}";
     }
 

@@ -1,0 +1,94 @@
+{
+  "standards": [
+    {
+      "id": "sdtmig/3-4",
+      "role": "primary"
+    }
+  ],
+  "rules": {
+    "CDISC-CG0001": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Rule_Ids": [
+            "CG0001"
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-CG0001",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when the DOMAIN value of a non-custom domain is not a Domain Code published by CDISC in the \"SDTM Domain Abbreviations\" controlled terminology codelist.",
+      "Sensitivity": "Dataset",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Domains": {
+          "Include": [
+            "ALL"
+          ]
+        }
+      },
+      "Variable_Universe": "Define",
+      "Bindings": [
+        {
+          "name": "$domain_is_custom",
+          "expression": "domain_is_custom()"
+        },
+        {
+          "name": "$domain_lib_ccode",
+          "expression": "codelist_terms(codelists=[DOMAIN], level=\"term\", returntype=\"code\")"
+        }
+      ],
+      "Check": {
+        "expression": "$domain_is_custom == false and var_ccode(\"DEFINE\") == \"C66734\" and var_codelist_coded_codes(\"DEFINE\") not in $domain_lib_ccode"
+      },
+      "Outcome": {
+        "Message": "DOMAIN is not a valid Domain Code published by CDISC in the SDTM Domain Abbreviations controlled terminology.",
+        "Output_Variables": [
+          "$domain_is_custom",
+          "define_variable_ccode",
+          "define_variable_codelist_coded_codes",
+          "$domain_lib_ccode"
+        ]
+      }
+    },
+    "CDISC-CG0010": {
+      "Authorities": [
+        {
+          "Organization": "CDISC",
+          "Rule_Ids": [
+            "CG0010"
+          ]
+        }
+      ],
+      "Core": {
+        "Id": "CDISC-CG0010",
+        "Status": "Published",
+        "Version": "1"
+      },
+      "Description": "Raise an error when the variable role specified in the Define-XML does not match the variable role defined in the SDTMIG (for domains in the IG) or in the SDTM model (for custom domains).",
+      "Executability": "Fully Executable",
+      "Scope": {
+        "Domains": {
+          "Include": [
+            "ALL"
+          ]
+        }
+      },
+      "Variable_Universe": "Define",
+      "Check": {
+        "expression": "not empty(var_role(\"LIBRARY\")) and not empty(var_name(\"DEFINE\")) and var_role(\"DEFINE\") != var_role(\"LIBRARY\")"
+      },
+      "Outcome": {
+        "Message": "The variable role specified in the Define-XML does not match the variable role in the SDTMIG (for domains in the IG) or in the SDTM model (for custom domains).",
+        "Output_Variables": [
+          "define_variable_name",
+          "define_variable_role",
+          "library_variable_role"
+        ]
+      }
+    }
+  }
+}

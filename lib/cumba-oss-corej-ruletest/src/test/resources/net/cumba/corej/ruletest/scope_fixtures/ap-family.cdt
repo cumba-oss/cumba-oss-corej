@@ -7,7 +7,8 @@
 # ⚠ Unlike SUPP/SQ, an AP dataset carries a DOMAIN column, so
 # OperationExecutor.unsplitNameFromData takes its FIRST branch and reads the DOMAIN cell. The
 # AP DOMAIN value is the 4-character AP form (APMH, not MH) — see the shipped
-# CDISC-CG0309-valid-APMH.cdt scenario, which asserts exactly that length.
+# CDISC-CG0309-valid-APMH.cdt scenario and CDISC-CG0309 itself, which assert exactly that
+# length.
 
 dataset APMH label="Associated Persons Medical History"
 col STUDYID type=Char label="Study Identifier"

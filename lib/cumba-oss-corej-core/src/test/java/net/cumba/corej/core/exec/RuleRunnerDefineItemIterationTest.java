@@ -28,8 +28,7 @@ class RuleRunnerDefineItemIterationTest
     private static final String ROLE_RULE = "{\"Core\":{\"Id\":\"R1\"},"
             + "\"Variable_Universe\":\"Define\","
             + "\"Sensitivity\":\"Dataset\",\"Check\":{\"all\":["
-            + "{\"name\":\"define_variable_role\",\"operator\":\"not_equal_to\","
-            + "\"value\":\"library_variable_role\"}]},"
+            + "{\"expression\": \"var_role(\\\"DEFINE\\\") != var_role(\\\"LIBRARY\\\")\"}]},"
             + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":"
             + "[\"define_variable_role\",\"define_variable_name\",\"library_variable_role\"]}}";
 

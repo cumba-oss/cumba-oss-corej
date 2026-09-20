@@ -167,48 +167,11 @@ class InjectInlineOperationGatesTest
 
 
     @Test
-    void anUnraisableWeakerLevelNeitherDiscardsStricterGatesNorStaysSilent()
-    {
-        // F-corej-L2-05 (multi-level half): terms are collected "from every declared level"
-        // (Plan C 3.3), so an unraisable WARNING level must not throw away the gate the ERROR
-        // level already needs -- and, like the unraisable-Precondition twin below, it must say
-        // what it could not do instead of silently skipping.
-        Rule rule = load("{\"Core\":{\"Id\":\"X-1\"}," + "\"Check\":{"
-                + "\"ERROR\":{\"expression\":\"domain_is_custom() == false\"},"
-                + "\"WARNING\":{\"name\":\"AETERM\",\"operator\":\"has_no_expression_surface_op\",\"value\":\"x\"}}}");
-        assertNull(rule.getLoadError());
-        assertEquals("library_available() and available(domain_is_custom())",
-                preconditionText(rule),
-                "the raisable ERROR level's gate must survive the unraisable WARNING level");
-        assertNotNull(rule.getInjectedPreconditionGates());
-        assertNotNull(rule.getLoadWarning(),
-                "an unraisable level must warn like the unraisable-Precondition twin");
-        assertTrue(rule.getLoadWarning().contains("cannot be raised"), rule.getLoadWarning());
-    }
-
-
-    @Test
-    void anUnraisableOnlyLevelWarnsInsteadOfSilentlySkipping()
-    {
-        // F-corej-L2-05 (single-level half): the silent bare `return` also covered the case where
-        // the ONLY declared level cannot be raised. Nothing can be gated then, but the exit must
-        // say so rather than leave the rule indistinguishable from one needing no gate.
-        Rule rule = load("{\"Core\":{\"Id\":\"X-1\"}," + "\"Check\":{\"name\":\"AETERM\","
-                + "\"operator\":\"has_no_expression_surface_op\",\"value\":\"x\"}}");
-        assertNull(rule.getLoadError());
-        assertNull(rule.getInjectedPreconditionGates(), "nothing raisable, nothing to inject");
-        assertNotNull(rule.getLoadWarning(),
-                "an unraisable level must warn like the unraisable-Precondition twin");
-    }
-
-
-    @Test
     void declaredOperationsStayWithTheEagerGatesNotThisOne()
     {
         // A $-ref goes through RuleRunner's declaration-keyed SKIP gates — no injection here.
         Rule rule = load("{\"Core\":{\"Id\":\"X-1\"},"
-                + "\"Operations\":[{\"id\":\"$codes\",\"operator\":\"codelist_terms\","
-                + "\"codelists\":[\"SDOMAIN\"],\"level\":\"term\",\"returntype\":\"value\"}],"
+                + "\"Bindings\":[{\"name\": \"$codes\", \"expression\": \"codelist_terms(codelists=[SDOMAIN], level=\\\"term\\\", returntype=\\\"value\\\")\"}],"
                 + "\"Check\":{\"expression\":\"DOMAIN not in $codes\"}}");
         assertNull(rule.getInjectedPreconditionGates());
         assertNull(rule.getPrecondition());

@@ -285,6 +285,9 @@ public final class StudyRuleClassifier
         // where it is a pure metadata question; that case is decided in callReadsPrimaryDataset
         // before the operand walk ever sees the ref.
         case DOTTED_REF -> true;
+        // The join-match flag is a per-row verdict over the current row of the dataset under
+        // evaluation (spec §3.3) — a row read, exactly like a dotted ref in value position.
+        case MATCHED_FLAG -> true;
         case OPERATION_REF -> operationReadsPrimaryDataset(ref.name(), rule, new ArrayList<>());
         };
     }
@@ -470,7 +473,7 @@ public final class StudyRuleClassifier
     private static boolean hasEntries(@Nullable VariableRequirement req)
     {
         return req != null
-                && (notEmpty(req.getAll()) || notEmpty(req.getAny()) || notEmpty(req.getNone()));
+                && (notEmpty(req.getAll()) || notEmpty(req.anyUnion()) || notEmpty(req.getNone()));
     }
 
 

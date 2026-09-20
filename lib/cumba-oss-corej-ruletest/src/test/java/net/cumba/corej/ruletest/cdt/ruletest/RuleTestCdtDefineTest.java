@@ -139,8 +139,7 @@ class RuleTestCdtDefineTest
     {
         String json = "{\"Core\":{\"Id\":\"R1\"}," + "\"Variable_Universe\":\"Define\","
                 + "\"Sensitivity\":\"Dataset\",\"Check\":{\"all\":["
-                + "{\"name\":\"define_variable_label\",\"operator\":\"not_equal_to\","
-                + "\"value\":\"Position of Subject\",\"value_is_literal\":true}]},"
+                + "{\"expression\": \"var_label(\\\"DEFINE\\\") != \\\"Position of Subject\\\"\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"define_variable_label\"]}}";
         RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"R1\":" + json + "}}");
         Rule rule = pkg.getRules().get("R1");

@@ -4,12 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -28,7 +25,12 @@ import org.junit.jupiter.api.Test;
 class RuleRunnerOutputValuesTest
 {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
 
     @Test
     void unknownOutputVariableIsOmittedFromValues()
@@ -36,8 +38,8 @@ class RuleRunnerOutputValuesTest
         IDataTable table = MockTable.of().col("USUBJID", "S01", "S02", "S03")
                 .col("SEX", "M", "U", "F").build();
 
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("SEX")
-                .operator("is_not_contained_by").value(arrayNode("M", "F")).build();
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr(
+                "SEX not in [\"M\", \"F\"]");
 
         // AESEV / AESMIE are NOT columns on this table.
         Rule rule = buildRule("CORE-TEST-1", "SEX not in codelist",
@@ -59,8 +61,7 @@ class RuleRunnerOutputValuesTest
     {
         IDataTable table = MockTable.of().col("AETERM", "Headache", "Cough", "Cold")
                 .col("DOMAIN", "AE", "AE", "AE").build();
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("AETERM").operator("non_empty")
-                .build();
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr("not empty(AETERM)");
         Rule rule = buildRule("CORE-TEST-2", "AETERM must be populated",
                 new CheckConditionAll(List.of(leaf)), List.of("AETERM", "DOMAIN", "AESMIE"));
 
@@ -78,8 +79,8 @@ class RuleRunnerOutputValuesTest
     {
         // Negative regression: the literal "Not in dataset" must never appear as a value.
         IDataTable table = MockTable.of().col("USUBJID", "S01", "S02").col("SEX", "M", "U").build();
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("SEX")
-                .operator("is_not_contained_by").value(arrayNode("M", "F")).build();
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr(
+                "SEX not in [\"M\", \"F\"]");
         Rule rule = buildRule("CORE-TEST-3", "SEX", new CheckConditionAll(List.of(leaf)),
                 List.of("USUBJID", "SEX", "AESEV")); // AESEV unresolved
 
@@ -109,16 +110,5 @@ class RuleRunnerOutputValuesTest
         rule.setCheck(check);
         net.cumba.corej.core.RulePackageLoader.installNativeExpr(rule);
         return rule;
-    }
-
-
-    private static ArrayNode arrayNode(String... values)
-    {
-        ArrayNode arr = MAPPER.createArrayNode();
-        for (String v : values)
-        {
-            arr.add(v);
-        }
-        return arr;
     }
 }

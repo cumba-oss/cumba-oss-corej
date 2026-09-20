@@ -24,7 +24,7 @@ class ListCardinalityFunctionsTest
     /** Applies a 1-arity value builtin to a single constant cell, through the real registry. */
     private static Vector apply(String name, Object value)
     {
-        Object out = FunctionRegistry.resolve(name, 1).apply(EvalRun.ofRowCount(1),
+        Object out = FunctionRegistry.resolve(name).apply(EvalRun.ofRowCount(1),
                 List.of(ConstVector.of(value)));
         return (Vector) out;
     }

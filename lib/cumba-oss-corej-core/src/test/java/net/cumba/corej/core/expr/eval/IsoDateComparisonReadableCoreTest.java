@@ -313,11 +313,16 @@ class IsoDateComparisonReadableCoreTest
                     }
                     if (!bothReadable)
                     {
+                        // ⭐ H1b (2026-09-17): the hull path's unbounded branch now answers
+                        // `negate`, so == is false there and != is TRUE. Both halves still
+                        // discriminate — the fast path for an equal-core pair answers == true /
+                        // != false, i.e. the exact opposite of what the hull answers — so this
+                        // remains a two-sided instrument rather than a one-sided one.
                         assertFalse(IsoDateComparison.fires(a, b, 0, true, false),
                                 () -> "an unreadable core must not reach the fast path: " + a
                                         + " == " + b);
-                        assertFalse(IsoDateComparison.fires(a, b, 0, true, true),
-                                () -> "an unreadable core must not reach the fast path: " + a
+                        assertTrue(IsoDateComparison.fires(a, b, 0, true, true),
+                                () -> "an unreadable core must answer the hull's negate: " + a
                                         + " != " + b);
                     }
                 }
@@ -365,10 +370,12 @@ class IsoDateComparisonReadableCoreTest
                 {
                     for (Operator op : OPERATORS)
                     {
-                        assertFalse(op.fires(u, other),
+                        // H1b: "through the hull" is false for the five predicates and TRUE for
+                        // !=, whose `negate` the unbounded branch now returns.
+                        assertEquals(op.negate(), op.fires(u, other),
                                 () -> "mixed pair must answer through the hull: " + u + " "
                                         + op.symbol() + " " + other);
-                        assertFalse(op.fires(other, u),
+                        assertEquals(op.negate(), op.fires(other, u),
                                 () -> "mixed pair must answer through the hull: " + other + " "
                                         + op.symbol() + " " + u);
                     }
@@ -415,12 +422,16 @@ class IsoDateComparisonReadableCoreTest
          * &#9873; <b>The readability family ({@code Fix #229}) narrows; the raw/core family
          * ({@code Fix #250}) flips to <i>equal</i>.</b> A pair with an unreadable core falls
          * through to the hull path, whose bounds are {@code null}, whose answer is {@code false}
-         * for all six operators — every such verdict moves {@code true} &rarr; {@code false}. A
-         * readable pair moves exactly when its raw reading disagrees with its cores' reading; both
-         * operands are then {@link CalendarDates#isValidDate}-valid, at least one carries a
-         * {@code '.'}-tail, the core comparison answers <i>equal</i>, and exactly <b>4</b> verdicts
-         * move — {@code ==}/{@code >=}/{@code <=} gain two, {@code !=} and one strict inequality
-         * lose two. <i>(Before {@code Fix #250} this test asserted every moved verdict was
+         * for all six operators — every such verdict moves {@code true} &rarr; {@code false}.
+         * &#9888; Since <b>H1b</b> (2026-09-17) that hull answer is {@code negate} rather than a
+         * bare {@code false}, so the {@code !=} operator reads {@code true} there; the census
+         * normalises that one flip away (see the loop body) so its four recorded constants keep
+         * measuring Fix #229/#250 and nothing else. A readable pair moves exactly when its raw
+         * reading disagrees with its cores' reading; both operands are then
+         * {@link CalendarDates#isValidDate}-valid, at least one carries a {@code '.'}-tail, the
+         * core comparison answers <i>equal</i>, and exactly <b>4</b> verdicts move —
+         * {@code ==}/{@code >=}/{@code <=} gain two, {@code !=} and one strict inequality lose two.
+         * <i>(Before {@code Fix #250} this test asserted every moved verdict was
          * {@code true → false}; the 260-pair raw/core family moves both directions, which is the
          * fix working — 520 up, 520 down.)</i>
          * </p>
@@ -445,7 +456,24 @@ class IsoDateComparisonReadableCoreTest
                     for (Operator op : OPERATORS)
                     {
                         boolean before = op.rawFastPathFormula(a, b);
+                        // ⭐⭐ H1b is NORMALISED OUT of this census, deliberately, and the four
+                        // recorded constants below are therefore UNCHANGED by the ruling — which
+                        // is a stronger statement than re-deriving them would have been: it says
+                        // H1b moved nothing in this space except the one flip it was ruled to
+                        // move. An unreadable core has a null hull bound, so since H1b the != of
+                        // such a pair answers `negate` (true) instead of false; the two
+                        // assertions here prove that shape pair-by-pair before undoing it, so the
+                        // undo cannot hide a different change. Fix #229/#250's subject is the
+                        // PREDICATE, and that is what the census measures.
                         boolean after = op.fires(a, b);
+                        if (!bothReadable)
+                        {
+                            assertFalse(IsoDateComparison.fires(a, b, 0, true, false),
+                                    () -> "H1b shape: == is false on an unbounded hull");
+                            assertTrue(IsoDateComparison.fires(a, b, 0, true, true),
+                                    () -> "H1b shape: != answers negate on an unbounded hull");
+                            after = false;
+                        }
                         if (before != after)
                         {
                             moved++;
@@ -529,12 +557,16 @@ class IsoDateComparisonReadableCoreTest
             {
                 for (Operator op : OPERATORS)
                 {
-                    assertFalse(op.fires(u, u), () -> u + " " + op.symbol() + " " + u
+                    // H1b: the hull's unbounded branch answers `negate`, so != is true and the
+                    // other five are false. The double-neuter property is unaffected: neutering
+                    // isReadableCore sends these back to the fast path, where u == u answers TRUE
+                    // and u != u answers FALSE — both the opposite of the line below.
+                    assertEquals(op.negate(), op.fires(u, u), () -> u + " " + op.symbol() + " " + u
                             + " must answer through the hull");
-                    assertFalse(op.fires(u, "2012-06-15"), () -> u + " " + op.symbol()
+                    assertEquals(op.negate(), op.fires(u, "2012-06-15"), () -> u + " " + op.symbol()
                             + " 2012-06-15 must answer through the hull");
-                    assertFalse(op.fires("2012-06-15", u), () -> "2012-06-15 " + op.symbol() + " "
-                            + u + " must answer through the hull");
+                    assertEquals(op.negate(), op.fires("2012-06-15", u), () -> "2012-06-15 "
+                            + op.symbol() + " " + u + " must answer through the hull");
                 }
             }
         }

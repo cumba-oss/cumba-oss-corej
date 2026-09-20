@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -20,7 +19,8 @@ import org.junit.jupiter.api.Test;
 /**
  * Regression tests for rule execution against a 0-row dataset — the unit-level pin of the zero-row
  * policy ({@code PLAN-zero-row-routing-rekey.md}, owner rulings Q1 / Q5 / 6c-1, shipped as
- * {@code Fix #349} / {@code EC-89}; the policy text is {@code the zero-row policy note}).
+ * {@code Fix #349} / {@code EC-89}; the policy text is the rules repository's
+ * {@code documentation/zero-row-policy.md}).
  *
  * <p>
  * The policy in one line: a zero-row dataset is an error case reported <b>once</b>, by the
@@ -46,11 +46,18 @@ import org.junit.jupiter.api.Test;
 class RuleRunnerEmptyDatasetTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
     /** A dataset-level metadata rule: fire when {@code TRTSDT} is not a column on the dataset. */
     private static Rule trtsdtNotExistsRule(String coreId, List<String> outputVars)
     {
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("TRTSDT")
-                .operator("var_not_exists").build();
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr(
+                "var_not_exists(\"TRTSDT\")");
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
         core.setId(coreId);
@@ -157,8 +164,7 @@ class RuleRunnerEmptyDatasetTest
         RuleCore core = new RuleCore();
         core.setId("CORE-EMPTY-PATHB");
         rule.setCore(core);
-        rule.setCheck(
-                CheckConditionLeaf.builder().name("TSVAL").operator("is_not_integer").build());
+        rule.setCheck(expr("not is_integer(TSVAL)"));
         // DATASET sensitivity makes the rule non-row-based: one finding at most, collapsed from the
         // row evaluation — the shape the retired synthetic table used to be built for.
         rule.setSensitivity(Sensitivity.DATASET);
@@ -185,8 +191,7 @@ class RuleRunnerEmptyDatasetTest
         RuleCore rowCore = new RuleCore();
         rowCore.setId("CORE-EMPTY-PATHB-ROW");
         rowBased.setCore(rowCore);
-        rowBased.setCheck(
-                CheckConditionLeaf.builder().name("TSVAL").operator("is_not_integer").build());
+        rowBased.setCheck(expr("not is_integer(TSVAL)"));
         rowBased.setSensitivity(Sensitivity.RECORD);
         rowBased.setOutcome(outcome);
         net.cumba.corej.core.RulePackageLoader.installNativeExpr(rowBased);
@@ -224,11 +229,8 @@ class RuleRunnerEmptyDatasetTest
         // Guard AUTHORED (NonEmptyGuardInliner, which injected it, was deleted 2026-08-26).
         // The subject here is the engine's row-path verdict on a guarded negative, not the
         // provenance of the guard.
-        rule.setCheck(new net.cumba.corej.core.model.CheckConditionAll(java.util.List.of(
-                CheckConditionLeaf.builder().name("TSVAL").operator("var_exists").build(),
-                CheckConditionLeaf.builder().name("TSVAL").operator("not_equal_to")
-                        .value(new com.fasterxml.jackson.databind.node.TextNode("X"))
-                        .valueIsLiteral(true).build())));
+        rule.setCheck(new net.cumba.corej.core.model.CheckConditionAll(
+                java.util.List.of(expr("var_exists(\"TSVAL\")"), expr("TSVAL != \"X\""))));
         rule.setSensitivity(Sensitivity.DATASET);
         Outcome outcome = new Outcome();
         outcome.setMessage("TSVAL is not X");
@@ -258,8 +260,7 @@ class RuleRunnerEmptyDatasetTest
     {
         IDataTable empty = MockTable.of().name("AE").col("AESEV").build();
 
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("AESEV").operator("non_empty")
-                .build();
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr("not empty(AESEV)");
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
         core.setId("CORE-EMPTY-ROWBASED");
@@ -339,12 +340,16 @@ class RuleRunnerEmptyDatasetTest
 
     /**
      * The unit-level pin of the 13 (ruling 6c-1): a {@code Dataset} × {@code {ROW}}
-     * {@code DOMAIN}-column rule — {@code len(DOMAIN) != 2}, the shape of {@code CDISC-CG0308} and
-     * its siblings ({@code CDISC-CG0309}, {@code FDA-SD1300}, {@code PMDA-SD1300}), which author it
-     * as {@code len(dataset_domain) != 2} today — on a 0-row table that <em>declares</em>
-     * {@code DOMAIN}. Before {@code Fix #349} this fired once on every empty dataset: the synthetic
-     * substitute had no columns, {@code DOMAIN} folded absent and {@code len(absent) != 2} was
-     * true.
+     * {@code DOMAIN}-column rule — {@code len(DOMAIN) != 2} — on a 0-row table that
+     * <em>declares</em> {@code DOMAIN}. ⚑ Re-derived 2026-09-19: the shipped carrier of the
+     * DOMAIN-<em>column</em> length shape is {@code CDISC-CG0309} ({@code len(DOMAIN) != 4}, AP--
+     * scoped) and it is the only one — the other three length rules ({@code CDISC-CG0308},
+     * {@code FDA-SD1300}, {@code PMDA-SD1300}) read the dataset-level {@code dataset_domain}
+     * instead and never take the row path. The "twelve siblings" figure stood here against the
+     * retired CORE family and is not re-derivable; the ruling's population (the 13) is unchanged
+     * and is not a count of this shape. Before {@code Fix #349} this fired once on every empty
+     * dataset: the synthetic substitute had no columns, {@code DOMAIN} folded absent and
+     * {@code len(absent) != 2} was true.
      */
     @Test
     void rowReadingRule_emptyDataset_executedWithNoFindings()
@@ -469,7 +474,7 @@ class RuleRunnerEmptyDatasetTest
                                   "Core": {"Id": "TEST-NO-RECORDS", "Status": "Published", "Version": "1"},
                                   "Executability": "Fully Executable",
                                   "Scope": {"Domains": {"Include": ["ALL"]}},
-                                  "Operations": [{"id": "$records_in_dataset", "expression": "record_count()"}],
+                                  "Bindings": [{"name": "$records_in_dataset", "expression": "record_count()"}],
                                   "Check": {"expression": "$records_in_dataset == 0"},
                                   "Outcome": {"Message": "Dataset has no records.",
                                               "Output_Variables": ["$records_in_dataset"]}

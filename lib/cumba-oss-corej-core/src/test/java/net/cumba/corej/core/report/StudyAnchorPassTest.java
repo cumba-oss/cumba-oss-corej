@@ -263,8 +263,8 @@ class StudyAnchorPassTest
                       "Core": { "Id": "STUDY-DUP" },
                       "Sensitivity": "Study",
                       "Scope": { "Domains": { "Include": ["ALL"] } },
-                      "Operations": [
-                        { "id": "$defined", "operator": "define_dataset_names" }
+                      "Bindings": [
+                        {"name": "$defined", "expression": "define_dataset_names()"}
                       ],
                       "Check": { "expression": "\\"DM\\" not in $defined" },
                       "Outcome": { "Message": "DM missing" }

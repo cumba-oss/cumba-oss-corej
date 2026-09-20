@@ -161,9 +161,8 @@ class KeyNameDeclarationTest
         }
         // ⛔ Both filters, deliberately. There is ONE vocabulary, not one per level — see
         // LibraryVariableRowBreadthTest, which measures both walks against the real resolver.
-        Rule ok = load("{\"Core\":{\"Id\":\"X-1\"},\"Operations\":[{\"id\":\"$t\","
-                + "\"operator\":\"get_model_filtered_variables\",\"key_name\":\"notes\","
-                + "\"key_value\":\"ISO 8601.\"}],\"Check\":{\"expression\":\"varname() in $t\"}}");
+        Rule ok = load(
+                "{\"Core\":{\"Id\":\"X-1\"},\"Bindings\":[{\"name\": \"$t\", \"expression\": \"get_model_filtered_variables(key_name=\\\"notes\\\", key_value=\\\"ISO 8601.\\\")\"}],\"Check\":{\"expression\":\"varname() in $t\"}}");
         assertNull(ok.getLoadError());
     }
 
@@ -191,22 +190,20 @@ class KeyNameDeclarationTest
     @Test
     void fieldForm_isValidatedByTheLoader()
     {
-        Rule ok = load("{\"Core\":{\"Id\":\"X-1\"},\"Operations\":[{\"id\":\"$t\","
-                + "\"operator\":\"get_model_filtered_variables\",\"key_name\":\"role\","
-                + "\"key_value\":\"Timing\"}],\"Check\":{\"expression\":\"varname() in $t\"}}");
+        Rule ok = load(
+                "{\"Core\":{\"Id\":\"X-1\"},\"Bindings\":[{\"name\": \"$t\", \"expression\": \"get_model_filtered_variables(key_name=\\\"role\\\", key_value=\\\"Timing\\\")\"}],\"Check\":{\"expression\":\"varname() in $t\"}}");
         assertNull(ok.getLoadError());
         assertNotNull(ok.getOperations());
         assertEquals("role", ok.getOperations().get(0).getKeyName());
 
-        Rule badKey = load("{\"Core\":{\"Id\":\"X-1\"},\"Operations\":[{\"id\":\"$t\","
-                + "\"operator\":\"get_model_filtered_variables\",\"key_name\":\"valueList\","
-                + "\"key_value\":\"x\"}],\"Check\":{\"expression\":\"varname() in $t\"}}");
+        Rule badKey = load(
+                "{\"Core\":{\"Id\":\"X-1\"},\"Bindings\":[{\"name\": \"$t\", \"expression\": \"get_model_filtered_variables(key_name=\\\"valueList\\\", key_value=\\\"x\\\")\"}],\"Check\":{\"expression\":\"varname() in $t\"}}");
         assertNotNull(badKey.getLoadError());
         assertTrue(badKey.getLoadError().contains("`key_name` `valueList`"), badKey.getLoadError());
 
-        Rule badOperator = load("{\"Core\":{\"Id\":\"X-1\"},\"Operations\":[{\"id\":\"$t\","
-                + "\"operator\":\"get_column_order_from_library\",\"key_name\":\"role\"}],"
-                + "\"Check\":{\"expression\":\"varname() in $t\"}}");
+        Rule badOperator = load(
+                "{\"Core\":{\"Id\":\"X-1\"},\"Bindings\":[{\"name\": \"$t\", \"expression\": \"get_column_order_from_library(key_name=\\\"role\\\")\"}],"
+                        + "\"Check\":{\"expression\":\"varname() in $t\"}}");
         assertNotNull(badOperator.getLoadError());
         assertTrue(badOperator.getLoadError().contains("is not consumed by operation"),
                 badOperator.getLoadError());
@@ -244,9 +241,8 @@ class KeyNameDeclarationTest
                 "get_model_filtered_variables(key_name=\"core\", key_value=\"Perm\")");
         assertEquals("core", op.getKeyName());
         assertEquals("Perm", op.getKeyValue());
-        Rule ok = load("{\"Core\":{\"Id\":\"X-1\"},\"Operations\":[{\"id\":\"$t\","
-                + "\"operator\":\"get_model_filtered_variables\",\"key_name\":\"core\","
-                + "\"key_value\":\"Perm\"}],\"Check\":{\"expression\":\"varname() in $t\"}}");
+        Rule ok = load(
+                "{\"Core\":{\"Id\":\"X-1\"},\"Bindings\":[{\"name\": \"$t\", \"expression\": \"get_model_filtered_variables(key_name=\\\"core\\\", key_value=\\\"Perm\\\")\"}],\"Check\":{\"expression\":\"varname() in $t\"}}");
         assertNull(ok.getLoadError());
         // Symmetrically: `role` is absent from every ADaM row (buildResolvedAdam leaves it out),
         // so it must not be rejected on either filter either.

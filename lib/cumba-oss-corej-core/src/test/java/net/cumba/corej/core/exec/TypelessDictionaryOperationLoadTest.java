@@ -50,15 +50,15 @@ class TypelessDictionaryOperationLoadTest
     @Test
     void aDeclaredTypelessDictionaryOperationIsALoadError_andExecutesAsError() throws IOException
     {
-        Rule rule = load("""
-                {
-                  "Core": {"Id": "TEST-TDO-1"},
-                  "Executability": "Fully Executable",
-                  "Operations": [{"id": "$terms", "operator": "valid_external_dictionary_value",
-                                  "name": "AEDECOD", "dictionary_term_type": "PT"}],
-                  "Check": {"all": [{"name": "$terms", "operator": "non_empty"}]}
-                }
-                """);
+        Rule rule = load(
+                """
+                        {
+                          "Core": {"Id": "TEST-TDO-1"},
+                          "Executability": "Fully Executable",
+                          "Bindings": [{"name": "$terms", "expression": "valid_external_dictionary_value(AEDECOD, dictionary_term_type=\\"PT\\")"}],
+                          "Check": {"all": [{"expression": "not empty($terms)"}]}
+                        }
+                        """);
         assertNotNull(rule.getLoadError(), "a typeless dictionary operation must fail the load");
         assertTrue(rule.getLoadError().contains(DEFECTIVE), rule.getLoadError());
         assertTrue(rule.getLoadError().contains("$terms"), rule.getLoadError());
@@ -83,9 +83,9 @@ class TypelessDictionaryOperationLoadTest
                 {
                   "Core": {"Id": "TEST-TDO-2"},
                   "Executability": "Fully Executable",
-                  "Operations": [{"id": "$terms", "expression":
+                  "Bindings": [{"name": "$terms", "expression":
                       "valid_external_dictionary_value(AEDECOD, dictionary_term_type=\\"PT\\")"}],
-                  "Check": {"all": [{"name": "$terms", "operator": "non_empty"}]}
+                  "Check": {"all": [{"expression": "not empty($terms)"}]}
                 }
                 """);
         assertNotNull(rule.getLoadError());
@@ -135,9 +135,9 @@ class TypelessDictionaryOperationLoadTest
                         {
                           "Core": {"Id": "TEST-TDO-4"},
                           "Executability": "Fully Executable",
-                          "Operations": [{"id": "$terms", "expression":
+                          "Bindings": [{"name": "$terms", "expression":
                               "valid_external_dictionary_value(AEDECOD, external_dictionary_type=\\"meddra\\", dictionary_term_type=\\"PT\\")"}],
-                          "Check": {"all": [{"name": "$terms", "operator": "non_empty"}]}
+                          "Check": {"all": [{"expression": "not empty($terms)"}]}
                         }
                         """);
         assertNull(declared.getLoadError(), declared.getLoadError());
@@ -169,8 +169,8 @@ class TypelessDictionaryOperationLoadTest
                 {
                   "Core": {"Id": "TEST-TDO-6"},
                   "Executability": "Fully Executable",
-                  "Operations": [{"id": "$gate", "operator": "dictionary_available"}],
-                  "Check": {"all": [{"name": "$gate", "operator": "non_empty"}]}
+                  "Bindings": [{"name": "$gate", "expression": "dictionary_available()"}],
+                  "Check": {"all": [{"expression": "not empty($gate)"}]}
                 }
                 """);
         assertTrue(rule.getLoadError() == null || !rule.getLoadError().contains(DEFECTIVE),

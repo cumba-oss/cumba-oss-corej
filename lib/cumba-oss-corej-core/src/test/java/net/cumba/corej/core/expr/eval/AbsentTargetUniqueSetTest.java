@@ -1,7 +1,6 @@
 package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import java.util.BitSet;
 import java.util.List;
@@ -9,8 +8,6 @@ import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.GroupKeyPolicy;
 import net.cumba.corej.core.exec.GroupSemantics;
 import net.cumba.corej.core.expr.CheckExpressionParser;
-import net.cumba.corej.core.expr.ExprLowering;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
@@ -33,8 +30,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * </p>
  *
  * <p>
- * <b>Three answers, and why the fixtures pin exact rows.</b> On the CDISC-CG0536 shape (rows 0/1
- * share the surviving key tuple, row 2 does not):
+ * <b>Three answers, and why the fixtures pin exact rows.</b> On the {@code CDISC-CG0536} shape
+ * (rows 0/1 share the surviving key tuple, row 2 does not):
  * </p>
  *
  * <pre>
@@ -46,34 +43,45 @@ import org.mockito.junit.jupiter.MockitoExtension;
  *
  * <p>
  * (b) is what a {@code flip(0, rowCount)} over (a)'s empty {@code BitSet} produced, and it is the
- * defect that {@code CDISC-CG0536} / {@code CDISC-CG0562} — the surviving {@code is_unique_set}
- * carriers — were filed against. It flags a row that duplicates nothing. Distinguishing (c) from
- * (b) therefore needs the <b>exact</b> {@code BitSet} — never merely "something fired" — so every
- * assertion below names the rows.
+ * defect {@code CDISC-CG0536} / {@code CDISC-CG0562} were filed for (under their pre-retirement
+ * CORE ids). It flags a row that duplicates nothing. Distinguishing (c) from (b) therefore needs
+ * the <b>exact</b> {@code BitSet} — never merely "something fired" — so every assertion below names
+ * the rows.
  * </p>
  *
  * <p>
  * <b>The historical defects do not return on the shipped rules either</b>, for a second and
- * independent reason: both anchors guard their target. {@code CDISC-CG0536} opens with
- * {@code {name: EPOCH, operator: exists}} and {@code CDISC-CG0562} with {@code {name: --REPNUM,
- * operator: exists}} (its Description: <em>"when REPNUM is in the dataset"</em>). (c) is
- * unobservable on them — asserted directly by {@link #guardedRuleIsUnaffectedByTheChange()}.
+ * independent reason: both anchors guard their target — ⚑ re-derived 2026-09-19 against the
+ * surviving twins, and the MECHANISM is not the one this paragraph used to name.
+ * {@code CDISC-CG0536} declares {@code Requirements.Variables.All: [DSSCAT, EPOCH, DSCAT]} and
+ * {@code CDISC-CG0562} declares {@code [--REPNUM]}, so the <b>Requirements gate</b> SKIPs each rule
+ * when its target column is absent; CG0536 additionally carries a {@code var_exists("DSSCAT")}
+ * conjunct. The retired CORE originals guarded the target with an {@code exists} <em>leaf</em>
+ * instead. Either way (c) is unobservable on the shipped rules — the leaf form is asserted directly
+ * by {@link #guardedRuleIsUnaffectedByTheChange()}.
  * </p>
  *
  * <p>
  * The Java lane deliberately diverges from the parity fork here, which keeps
  * {@code is_(not_)unique_set} in {@code ABSENT_TARGET_AWARE_OPERATORS} and returns
  * all-{@code False} for both polarities. Filed as a {@code known_divergences} entry with
- * {@code lane: "python"} and {@code fix_ref: "EC-53 java-only-accepted"}; spec
- * {@code CORE-000144-absent-taetord}.
+ * {@code lane: "python"} and {@code fix_ref: "EC-53 java-only-accepted"}; entry
+ * {@code CORE-000144-absent-taetord}. ⚑ That name is a key in
+ * {@code documentation/parity-diff-baseline.json}, a <b>frozen record of a retired lane</b> (Python
+ * parity was retired 2026-09-17), so it is left exactly as filed — it is not a spec file and not a
+ * live rule reference.
  * </p>
  */
 @ExtendWith(MockitoExtension.class)
 class AbsentTargetUniqueSetTest
 {
 
-    /** CDISC-CG0536: rows 0/1 share (USUBJID, DSSCAT); row 2 is distinct on both. */
-    private static final String CORE_000213 = "not is_unique_set([EPOCH, USUBJID, DSSCAT])";
+    /**
+     * The {@code CDISC-CG0536} target/key shape: rows 0/1 share (USUBJID, DSSCAT); row 2 is
+     * distinct on both. ⚠ The shipped rule's key set adds {@code DSCAT}; the three members below
+     * are the minimum that makes (b) and (c) differ.
+     */
+    private static final String CG0536_SHAPE = "not is_unique_set([EPOCH, USUBJID, DSSCAT])";
 
     /** FDA-SD1060, the minimal single-key shape (two members). */
     private static final String FDA_SD1060 = "not is_unique_set([VISITNUM, USUBJID])";
@@ -106,7 +114,7 @@ class AbsentTargetUniqueSetTest
     }
 
 
-    /** DS with EPOCH absent — the CDISC-CG0536 over-firing shape. */
+    /** DS with EPOCH absent — the over-firing shape. */
     private static IDataTable dsWithoutEpoch()
     {
         return MockTable.of().name("DS").col("USUBJID", "S1", "S1", "S2")
@@ -136,16 +144,16 @@ class AbsentTargetUniqueSetTest
 
 
     @Test
-    void absentTargetRegroupsOnTheSurvivorsCore000213()
+    void absentTargetRegroupsOnTheSurvivorsCg0536()
     {
         IDataTable ds = dsWithoutEpoch();
-        BitSet nativeBits = nativePath(CORE_000213, ds);
+        BitSet nativeBits = nativePath(CG0536_SHAPE, ds);
 
         assertEquals(bits(0, 1), nativeBits,
                 "EC-53: an absent TARGET is dropped and the check regroups on (USUBJID, DSSCAT) — "
                         + "rows 0/1 share that tuple. ROW 2 MUST NOT FIRE: it duplicates nothing, "
-                        + "and flagging it is exactly the over-firing defect (b) that CDISC-CG0536 "
-                        + "was filed for");
+                        + "and flagging it is exactly the over-firing defect (b) that "
+                        + "CDISC-CG0536 was filed for");
         assertEquals(legacyPath(ds, "EPOCH", "USUBJID", "DSSCAT"), nativeBits,
                 "native must agree with the legacy is_not_unique_set leaf");
     }
@@ -157,10 +165,10 @@ class AbsentTargetUniqueSetTest
         // The whole argument for (c) in one assertion: absent == all-missing, and an all-blank
         // target is a constant key component that cannot tell two rows apart. If these two ever
         // disagree, the carve-out is back.
-        assertEquals(nativePath(CORE_000213, dsWithBlankEpoch()),
-                nativePath(CORE_000213, dsWithoutEpoch()),
+        assertEquals(nativePath(CG0536_SHAPE, dsWithBlankEpoch()),
+                nativePath(CG0536_SHAPE, dsWithoutEpoch()),
                 "an absent target must evaluate exactly like a present-but-all-blank one");
-        assertEquals(bits(0, 1), nativePath(CORE_000213, dsWithBlankEpoch()),
+        assertEquals(bits(0, 1), nativePath(CG0536_SHAPE, dsWithBlankEpoch()),
                 "…and the shared answer is the regrouped one, not the empty one");
     }
 
@@ -195,7 +203,7 @@ class AbsentTargetUniqueSetTest
     void absentKeyStillDropsAndRegroups()
     {
         IDataTable ds = dsWithoutDsscat();
-        BitSet nativeBits = nativePath(CORE_000213, ds);
+        BitSet nativeBits = nativePath(CG0536_SHAPE, ds);
 
         assertEquals(bits(0, 1), nativeBits,
                 "an absent KEY column is dropped and the check regroups on the survivors — "
@@ -210,7 +218,7 @@ class AbsentTargetUniqueSetTest
         IDataTable ds = MockTable.of().name("DS").col("USUBJID", "S1", "S1", "S2")
                 .col("DSSCAT", "STUDY PARTICIPATION", "STUDY PARTICIPATION", "STUDY TREATMENT")
                 .col("EPOCH", "TREATMENT", "TREATMENT", "SCREENING").build();
-        BitSet nativeBits = nativePath(CORE_000213, ds);
+        BitSet nativeBits = nativePath(CG0536_SHAPE, ds);
 
         assertEquals(bits(0, 1), nativeBits, "rows 0/1 share the whole key tuple");
         assertEquals(legacyPath(ds, "EPOCH", "USUBJID", "DSSCAT"), nativeBits);
@@ -225,24 +233,14 @@ class AbsentTargetUniqueSetTest
     @Test
     void guardedRuleIsUnaffectedByTheChange()
     {
-        // CDISC-CG0536 as it ships: the var_exists guards short-circuit the whole `and`, so the
+        // The guarded form: the var_exists conjuncts short-circuit the whole `and`, so the
         // historical over-firing shape still reports nothing under (c). Both anchors of the
-        // original defect are guarded this way — CDISC-CG0562 opens with `--REPNUM exists`.
+        // original defect are protected — on the shipped twins CDISC-CG0536 / CDISC-CG0562 by
+        // Requirements.Variables.All rather than by a leaf (see the class javadoc).
         String shipped = "var_exists(\"EPOCH\") and var_exists(\"DSCAT\") and "
-                + "DSCAT == \"DISPOSITION EVENT\" and var_exists(\"DSSCAT\") and " + CORE_000213;
+                + "DSCAT == \"DISPOSITION EVENT\" and var_exists(\"DSSCAT\") and " + CG0536_SHAPE;
         assertEquals(new BitSet(), nativePath(shipped, dsWithoutEpoch()));
         assertEquals(new BitSet(), nativePath(shipped, dsWithoutDsscat()));
-    }
-
-
-    @Test
-    void notIsUniqueSetLowersToTheNegativeLeaf()
-    {
-        // The lowering the native mapping mirrors: both paths must compute the same check.
-        CheckConditionLeaf leaf = assertInstanceOf(CheckConditionLeaf.class,
-                ExprLowering.toCheckCondition(CheckExpressionParser.parse(CORE_000213)));
-        assertEquals("is_not_unique_set", leaf.getOperator());
-        assertEquals("EPOCH", leaf.getName());
     }
 
 
@@ -254,7 +252,7 @@ class AbsentTargetUniqueSetTest
         // straight-to-negative mapping REDUNDANT here (it is still needed for an unresolved name
         // operand — see compileNot). Before Fix #143 both sides were empty and this failed.
         IDataTable ds = dsWithoutEpoch();
-        BitSet negative = nativePath(CORE_000213, ds);
+        BitSet negative = nativePath(CG0536_SHAPE, ds);
         BitSet positive = nativePath("is_unique_set([EPOCH, USUBJID, DSSCAT])", ds);
 
         BitSet union = (BitSet) negative.clone();

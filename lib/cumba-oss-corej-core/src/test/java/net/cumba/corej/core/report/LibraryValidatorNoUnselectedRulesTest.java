@@ -12,7 +12,6 @@ import java.util.Map;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.metadata.MetadataKeys;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -56,6 +55,12 @@ import org.junit.jupiter.api.Test;
 class LibraryValidatorNoUnselectedRulesTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
     /** The one rule a caller "selects". Everything else in the executed set is a defect. */
     private static final String SELECTED_ID = "CORE-SELECTED-1";
 
@@ -97,7 +102,7 @@ class LibraryValidatorNoUnselectedRulesTest
         core.setId(SELECTED_ID);
         rule.setCore(core);
         rule.setSensitivity(Sensitivity.RECORD);
-        rule.setCheck(CheckConditionLeaf.builder().name("STUDYID").operator("empty").build());
+        rule.setCheck(expr("empty(STUDYID)"));
         Outcome outcome = new Outcome();
         outcome.setMessage("STUDYID must not be empty");
         rule.setOutcome(outcome);
@@ -111,7 +116,7 @@ class LibraryValidatorNoUnselectedRulesTest
         tplCore.setId(SELECTED_ID);
         template.setCore(tplCore);
         template.setSensitivity(Sensitivity.RECORD);
-        template.setCheck(CheckConditionLeaf.builder().name("TRTxxP").operator("empty").build());
+        template.setCheck(expr("empty(TRTxxP)"));
         Outcome tplOutcome = new Outcome();
         tplOutcome.setMessage("TRTxxP must not be empty");
         template.setOutcome(tplOutcome);

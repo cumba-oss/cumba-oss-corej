@@ -3,15 +3,11 @@ package net.cumba.corej.core.gen;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.TextNode;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.OperandClassifier;
@@ -19,7 +15,6 @@ import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionExpression;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -43,9 +38,17 @@ import org.junit.jupiter.api.Test;
 class WildcardExpanderSubstitutionEdgeTest
 {
 
-    private static CheckConditionLeaf leaf(String name, String operator)
+    private static net.cumba.corej.core.model.CheckConditionExpression leaf(String name,
+            String operator)
     {
-        return CheckConditionLeaf.builder().name(name).operator(operator).build();
+        return expr("empty".equals(operator) ? "empty(" + name + ")" : "not empty(" + name + ")");
+    }
+
+
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                CheckExpressionParser.parse(source), source);
     }
 
 
@@ -66,6 +69,13 @@ class WildcardExpanderSubstitutionEdgeTest
         assertEquals(1, expanded.size(), "expected exactly one expansion, got "
                 + expanded.stream().map(Rule::effectiveId).toList());
         return expanded.get(0);
+    }
+
+
+    private static String renderedPart(CheckCondition condition)
+    {
+        return ExpressionPrinter
+                .print(((net.cumba.corej.core.model.CheckConditionExpression) condition).expr());
     }
 
 
@@ -95,21 +105,15 @@ class WildcardExpanderSubstitutionEdgeTest
     {
         DataTableMeta meta = MockTable.of().name("ADAE").col("TRT01P", "PLACEBO").build()
                 .getMetaData();
-        CheckConditionLeaf comparison = CheckConditionLeaf.builder().name("TRTxxP")
-                .operator("equal_to").value(new TextNode("PLACEBO")).valueIsLiteral(Boolean.TRUE)
-                .build();
+        net.cumba.corej.core.model.CheckConditionExpression comparison = expr(
+                "TRTxxP == \"PLACEBO\"");
 
         Rule expanded = expandOnce(template("WC-SUB-1", new CheckConditionAll(List.of(comparison))),
                 meta);
 
-        CheckConditionLeaf got = (CheckConditionLeaf) partsOf(expanded).get(0);
-        assertEquals("TRT01P", got.getName(), "the NAME is rewritten…");
-        assertNotNull(got.getValue(),
-                "…but the literal VALUE must survive — a dropped comparand silently changes what "
-                        + "the rule tests");
-        assertEquals("PLACEBO", got.getValue().asText());
-        assertEquals(true, got.getValueIsLiteral(),
-                "the literal flag itself must survive, or the value is re-read as a column name");
+        assertEquals("TRT01P == \"PLACEBO\"", renderedPart(partsOf(expanded).get(0)),
+                "the NAME is rewritten but the literal VALUE must survive — a dropped comparand "
+                        + "silently changes what the rule tests");
     }
 
 
@@ -126,7 +130,8 @@ class WildcardExpanderSubstitutionEdgeTest
     {
         DataTableMeta meta = MockTable.of().name("ADAE").col("TRT01P", "A").col("USUBJID", "U")
                 .build().getMetaData();
-        CheckConditionLeaf untouched = leaf("USUBJID", "non_empty");
+        net.cumba.corej.core.model.CheckConditionExpression untouched = leaf("USUBJID",
+                "non_empty");
 
         Rule expanded = expandOnce(
                 template("WC-SUB-2",
@@ -134,11 +139,10 @@ class WildcardExpanderSubstitutionEdgeTest
                 meta);
 
         List<CheckCondition> parts = partsOf(expanded);
-        assertEquals("TRT01P", ((CheckConditionLeaf) parts.get(0)).getName(),
-                "the wildcard leaf IS rewritten");
-        assertSame(untouched, parts.get(1),
-                "a leaf with nothing to rewrite must come back as the same object — rebuilding it "
-                        + "runs it through a field-by-field copy that drops include_empty");
+        assertEquals("not empty(TRT01P)", renderedPart(parts.get(0)),
+                "the wildcard conjunct IS rewritten");
+        assertEquals("not empty(USUBJID)", renderedPart(parts.get(1)),
+                "a conjunct with nothing to rewrite must come back unchanged");
     }
 
 
@@ -154,23 +158,15 @@ class WildcardExpanderSubstitutionEdgeTest
     {
         DataTableMeta meta = MockTable.of().name("ADAE").col("TRT01P", "A").col("USUBJID", "U")
                 .build().getMetaData();
-        ArrayNode value = JsonNodeFactory.instance.arrayNode();
-        value.add("TRTxxP");
-        value.add("USUBJID");
-        CheckConditionLeaf membership = CheckConditionLeaf.builder().name("TRTxxP")
-                .operator("is_contained_by").value(value).build();
+        net.cumba.corej.core.model.CheckConditionExpression membership = expr(
+                "TRTxxP in [TRTxxP, USUBJID]");
 
         Rule expanded = expandOnce(template("WC-SUB-3", new CheckConditionAll(List.of(membership))),
                 meta);
 
-        CheckConditionLeaf got = (CheckConditionLeaf) partsOf(expanded).get(0);
-        assertNotNull(got.getValue());
-        assertTrue(got.getValue().isArray(), "the array shape must survive: " + got.getValue());
-        assertEquals(2, got.getValue().size());
-        assertEquals("TRT01P", got.getValue().get(0).asText(),
-                "the wildcard element is bound to this tuple's column");
-        assertEquals("USUBJID", got.getValue().get(1).asText(),
-                "a non-wildcard element is carried through untouched");
+        assertEquals("TRT01P in [TRT01P, USUBJID]", renderedPart(partsOf(expanded).get(0)),
+                "the wildcard list element is bound to this tuple's column; a non-wildcard "
+                        + "element is carried through untouched");
     }
 
 
@@ -196,8 +192,8 @@ class WildcardExpanderSubstitutionEdgeTest
 
         assertEquals("WC-SUB-4-TRT01P", expanded.effectiveId());
         List<CheckCondition> parts = partsOf(expanded);
-        assertEquals("TRT01P", ((CheckConditionLeaf) parts.get(0)).getName());
-        assertEquals("TRT01PN", ((CheckConditionLeaf) parts.get(1)).getName(),
+        assertEquals("not empty(TRT01P)", renderedPart(parts.get(0)));
+        assertEquals("empty(TRT01PN)", renderedPart(parts.get(1)),
                 "the marker must be replaced by the tuple's captured value even though no column "
                         + "matched — leaving 'TRTxxPN' makes the check vacuous");
     }

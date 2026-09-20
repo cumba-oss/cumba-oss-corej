@@ -55,11 +55,11 @@ import org.junit.jupiter.api.Test;
  * A <b>behavioural</b> guard — construct every decorator over a recording delegate, invoke each
  * capability method, assert the delegate saw the same call with the same arguments — is strictly
  * harder to fool than any text scan, and it was the first thing tried. It cannot be written
- * <em>here</em> over the whole population: {@code MapBackedLibraryMetadataProvider} lives in
- * {@code cumba-oss-corej-ruletest}, which <em>depends on</em> this module, so it is not on this
- * module's test classpath and cannot be. Loading it out of a sibling module's
- * {@code target/test-classes} would make the guard pass vacuously whenever that module happened not
- * to be built — the exact failure mode this rewrite exists to remove.
+ * <em>here</em> over the whole population: {@code MapBackedLibraryMetadataProvider} lives in the
+ * ruletest module, which <em>depends on</em> this module, so it is not on this module's test
+ * classpath and cannot be. Loading it out of a sibling module's {@code target/test-classes} would
+ * make the guard pass vacuously whenever that module happened not to be built — the exact failure
+ * mode this rewrite exists to remove.
  * </p>
  *
  * <p>
@@ -127,7 +127,7 @@ class MetadataProviderDecoratorDelegationGuardTest
      * Test sources are scanned too (only {@code *Test.java} is skipped, see
      * {@link #providerSources()}). No decorator lives under {@code src/test/java} in this
      * repository today — the two production-shaped harness components that did, and that are the
-     * ones that actually drifted, moved to cumba-oss-corej-rules with the rule corpus — but
+     * ones that actually drifted, moved to the rules repository with the rule corpus — but
      * {@code StubMetadataProvider} does, and scanning test sources is what keeps a decorator added
      * there tomorrow from being invisible.
      * </p>
@@ -196,20 +196,18 @@ class MetadataProviderDecoratorDelegationGuardTest
      * ⚠⚠ <b>These were 8 / 4 in the coreJ monorepo, and the three missing implementations did not
      * disappear — they moved to another repository.</b> {@code CompositeMetadataProvider},
      * {@code MockLibraryProvider} and {@code ScenarioDeclaredScopeProvider} all live in
-     * {@code cumba-oss-corej-rules}' test sources (at
-     * {@code src/test/java/net/cumba/corej/core/rulespec} and {@code .../ruletestsuites}), and this
-     * repo's build never checks that repo out. Lowering the floor is therefore recording a
+     * {@code lib/corej-rules/src/test}, which the split places in <b>the rules repository</b>, and
+     * this repo's build never checks that repo out. Lowering the floor is therefore recording a
      * boundary, not weakening the guard — which is the one thing the message on the failing
      * assertion tells you not to do, so it is spelled out here.
      * </p>
      *
      * <p>
-     * ⚠ That obligation is discharged upstream, where the rule-corpus repository carries its own
-     * copy of this guard pinned over its own three implementations; ⛔ measured 2026-09-09,
-     * {@code cumba-oss-corej-rules} does <b>not</b> yet carry that copy, so those three are
-     * unguarded in this distribution. ⚠ In either case that ledger and this one are measured over
-     * different populations and are <b>supposed</b> to differ — copying a value across is how a row
-     * gets excused by a class the copying repository does not contain.
+     * ⭐ That obligation is discharged: the rules repository carries its own copy of this guard (at
+     * {@code src/test/java/net/cumba/corej/core/rulespec}), pinned over its own three
+     * implementations. ⚠ Its ledger and this one are measured over different populations and are
+     * <b>supposed</b> to differ — its floors are not this file's, and copying a value across is how
+     * a row gets excused by a class the copying repository does not contain.
      * </p>
      */
     private static final int MIN_IMPLEMENTATIONS = 5;
@@ -304,7 +302,7 @@ class MetadataProviderDecoratorDelegationGuardTest
             // ⭐ Re-derived over THIS repository's population (2026-09-08). Both rows below sat in
             // INHERITABLE_DEFAULTS excused as "not delegated by CompositeMetadataProvider" — a
             // class that has never existed here. It lives with the rule corpus in
-            // cumba-oss-corej-rules, outside SCAN_ROOTS, so the excuse was true THERE and vacuous
+            // the rules repository, outside SCAN_ROOTS, so the excuse was true THERE and vacuous
             // HERE: it named nothing this scan can reach, and the guard had silently stopped
             // guarding two capability-shaped defaults. Both decorators in this tree do in fact
             // delegate them — CompanionDomainsProvider forwards to `base`;
@@ -323,8 +321,8 @@ class MetadataProviderDecoratorDelegationGuardTest
      *
      * <p>
      * ⚠ Exact equality despite the name, and this repository's own number — the sibling ledgers in
-     * cumba-oss-corej-rules and in the internal coreJ repository are measured over different
-     * populations and carry different values on purpose. Never copy one across.
+     * the rules repository and in this repository's twin are measured over different populations
+     * and carry different values on purpose. Never copy one across.
      * </p>
      */
     private static final int MIN_CAPABILITIES = 11;

@@ -8,7 +8,6 @@ import java.util.List;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -44,6 +43,12 @@ import org.junit.jupiter.api.Test;
  */
 class IsoIntervalInvalidDateRuleTest
 {
+
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
 
     /** The forward spellings that must stay silent — see PLAN &sect;7. */
     private static final String FORWARD = "2003-01-01/2003-06-30";
@@ -98,9 +103,8 @@ class IsoIntervalInvalidDateRuleTest
         // FDA-SD0003's own shape: non_empty ∧ invalid_date. ⚠ The non_empty conjunct is
         // load-bearing here — without it the blank cell in the fixture fires too, because
         // isValidDate("") is false. That is the shipped rule, not a quirk of this test.
-        rule.setCheck(new CheckConditionAll(List.of(
-                CheckConditionLeaf.builder().name("AESTDTC").operator("non_empty").build(),
-                CheckConditionLeaf.builder().name("AESTDTC").operator("invalid_date").build())));
+        rule.setCheck(new CheckConditionAll(
+                List.of(expr("not empty(AESTDTC)"), expr("invalid_date(AESTDTC)"))));
         rule.setSensitivity(Sensitivity.RECORD);
         Outcome outcome = new Outcome();
         outcome.setMessage("Invalid ISO 8601 value for a Date/Time (DTC) variable.");

@@ -1,17 +1,12 @@
 package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.expr.CheckExpressionParser;
-import net.cumba.corej.core.expr.ExprLowering;
-import net.cumba.corej.core.model.CheckCondition;
-import net.cumba.corej.core.model.CheckConditionLeaf;
-import net.cumba.corej.core.model.CheckConditionNot;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
@@ -20,8 +15,8 @@ import org.junit.jupiter.api.Test;
  * Engine-work Task EA — the four positive group functions ({@code is_unique_relationship},
  * {@code contains_all}, {@code shares_elements_with}, {@code is_ordered_subset_of}) introduced as
  * the logical complement of their existing negative operators (change #1). Verifies the native
- * complement property and the paired {@link ExprLowering} reversal that keeps the
- * {@code Check → Expr → Check} round-trip intact.
+ * complement property. (The paired {@code ExprLowering} reversal these tests also covered is
+ * retired with the leaf model — phase 7d, D121.)
  */
 class PositiveGroupFunctionsTest
 {
@@ -103,60 +98,6 @@ class PositiveGroupFunctionsTest
         IDataTable t = MockTable.of().col("U", "S1", "S1", "S2").build();
         EvaluationContext c = EvaluationContext.builder().table(t).build();
         assertComplement("is_not_unique_value(U)", "is_unique_value(U)", c, 3);
-    }
-
-
-    @Test
-    void isUniqueValueLowersThroughTheNegative()
-    {
-        // not is_unique_value(U) -> is_not_unique_value operator-leaf (change #1, Task ED).
-        CheckCondition lowered = ExprLowering
-                .toCheckCondition(CheckExpressionParser.parse("not is_unique_value(U)"));
-        CheckConditionLeaf leaf = assertInstanceOf(CheckConditionLeaf.class, lowered);
-        assertEquals("is_not_unique_value", leaf.getOperator());
-        assertEquals("U", leaf.getName());
-        // a bare is_unique_value(U) -> Not(is_not_unique_value leaf).
-        CheckCondition bare = ExprLowering
-                .toCheckCondition(CheckExpressionParser.parse("is_unique_value(U)"));
-        CheckConditionNot not = assertInstanceOf(CheckConditionNot.class, bare);
-        assertEquals("is_not_unique_value",
-                assertInstanceOf(CheckConditionLeaf.class, not.getCondition()).getOperator());
-    }
-
-
-    @Test
-    void notPositiveLowersToTheNegativeOperatorLeaf()
-    {
-        // change #1 round-trip: the converter emits not <positive>(…) for the negative operator;
-        // lowering must reverse it back to the negative operator-leaf.
-        assertNotPositiveLowersToNegative("is_unique_relationship", "is_not_unique_relationship");
-        assertNotPositiveLowersToNegative("contains_all", "not_contains_all");
-        assertNotPositiveLowersToNegative("shares_elements_with", "shares_no_elements_with");
-        assertNotPositiveLowersToNegative("is_ordered_subset_of", "is_not_ordered_subset_of");
-    }
-
-
-    private static void assertNotPositiveLowersToNegative(String positive, String negative)
-    {
-        CheckCondition lowered = ExprLowering
-                .toCheckCondition(CheckExpressionParser.parse("not " + positive + "(A, B)"));
-        CheckConditionLeaf leaf = assertInstanceOf(CheckConditionLeaf.class, lowered,
-                "not " + positive + " lowers to a leaf");
-        assertEquals(negative, leaf.getOperator());
-        assertEquals("A", leaf.getName());
-    }
-
-
-    @Test
-    void barePositiveLowersToNotNegativeLeaf()
-    {
-        CheckCondition lowered = ExprLowering
-                .toCheckCondition(CheckExpressionParser.parse("is_unique_relationship(A, B)"));
-        CheckConditionNot not = assertInstanceOf(CheckConditionNot.class, lowered,
-                "a bare positive lowers to Not(<negative>)");
-        CheckConditionLeaf leaf = assertInstanceOf(CheckConditionLeaf.class, not.getCondition());
-        assertEquals("is_not_unique_relationship", leaf.getOperator());
-        assertEquals("A", leaf.getName());
     }
 
 }

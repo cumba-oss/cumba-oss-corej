@@ -1,7 +1,6 @@
 package net.cumba.corej.core;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,8 +25,6 @@ import net.cumba.corej.core.exec.ScopeVariableEntry;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionAny;
-import net.cumba.corej.core.model.CheckConditionConstant;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.CheckConditionNot;
 import net.cumba.corej.core.model.DatasetScope;
 import net.cumba.corej.core.model.DomainScope;
@@ -530,13 +527,14 @@ public class RulePackageLoader
 
 
     /**
-     * Per-rule variant of {@link #normalizeOperations(RulePackage)}: rewrites every expression-form
-     * (Form B) {@code Operations} entry to the field form the {@code OperationExecutor} consumes.
-     * Public for the same reason as {@link #deriveOmittedFields(Rule)}: anything that binds a
-     * {@link Rule} outside this loader — the parity harness ({@code RuleScaffold}), a tool, an
-     * editor preview — must apply the same pass, or a shipped native rule's declared operations
-     * look operator-less and silently resolve {@code null}. Idempotent; a malformed expression
-     * lands on the rule's {@code loadError} channel, preserving any earlier cause.
+     * Per-rule variant of {@link #normalizeOperations(RulePackage)}: materialises the authored
+     * {@code Bindings:} entries ({@code name:} + {@code expression:}, phase 7b) into the field-form
+     * {@link Operation} records the {@code OperationExecutor} consumes. Public for the same reason
+     * as {@link #deriveOmittedFields(Rule)}: anything that binds a {@link Rule} outside this loader
+     * — the parity harness ({@code RuleScaffold}), a tool, an editor preview — must apply the same
+     * pass, or a shipped rule's declared bindings never reach {@code getOperations()} and silently
+     * resolve {@code null}. Idempotent; a malformed expression lands on the rule's
+     * {@code loadError} channel, preserving any earlier cause.
      *
      * @param rule
      *            the rule to normalise in place, may be {@code null}
@@ -550,6 +548,32 @@ public class RulePackageLoader
         List<Operation> ops = rule.getOperations();
         try
         {
+            // ⭐ Phase 7b (owner rulings 2026-09-17): materialise the authored `Bindings:` entries
+            // into the executor-internal bound-argument records. The `name:`/`expression:` pair is
+            // the ONLY authoring surface — Binding's deserializer rejects every retired spelling
+            // (`Operations:` is rejected on Rule itself) — and `operations` is @JsonIgnore, so
+            // this is the sole producer on the load path. Guarded on `operations == null` for
+            // idempotence: this method is public and re-run by every external binder.
+            List<net.cumba.corej.core.model.Binding> bindings = rule.getBindings();
+            if (ops == null && bindings != null && !bindings.isEmpty())
+            {
+                ops = new ArrayList<>(bindings.size());
+                for (net.cumba.corej.core.model.Binding binding : bindings)
+                {
+                    String expression = binding.getExpression();
+                    if (expression == null || expression.isBlank())
+                    {
+                        throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                                "binding `" + binding.getName() + "` declares no `expression:` — a"
+                                        + " `Bindings:` entry is `name:` + `expression:`");
+                    }
+                    Operation op = new Operation();
+                    op.setId(binding.getName());
+                    op.setExpression(expression);
+                    ops.add(op);
+                }
+                rule.setOperations(ops);
+            }
             if (ops != null && !ops.isEmpty())
             {
                 ops.replaceAll(
@@ -560,6 +584,12 @@ public class RulePackageLoader
                 // consume it without complaint. Idempotent for the operations just normalised.
                 for (Operation op : ops)
                 {
+                    // ⭐ Phase 6b (D16): the operation's own descriptor decides which parameters
+                    // exist — the field-form twin of the fromCall kwarg gate, generalising the
+                    // four hand-kept operator allowlists below to the whole parameter surface.
+                    // The specific validators still own their VALUE and cross-parameter checks.
+                    net.cumba.corej.core.expr.convert.OperationExpressionParser
+                            .validateAgainstDescriptor(op);
                     net.cumba.corej.core.expr.convert.OperationExpressionParser
                             .validateMissingValues(op);
                     // Same three-surface reasoning as missing_values: a FIELD-FORM operation never
@@ -614,13 +644,15 @@ public class RulePackageLoader
      * <p>
      * ⚠ <b>{@code equal_to} is the one family whose answer is conditional, and it is classified by
      * the case that matters.</b> {@code Primitives.equality} routes through
-     * {@code ScalarSemantics.equalsNumericAware}, which folds <em>both</em> a missing cell and a
-     * null target to {@code ""} — so {@code equal_to} against a no-value extreme fires when the
-     * compared column is <em>itself</em> empty, and goes silent when it is populated. The populated
-     * case is the one the rule is written for, and silence there is unrecoverable, so
-     * {@code equal_to} sits in the silencing set. By the same token {@code not_equal_to} does
-     * <em>not</em> report on an empty-vs-empty row; the disposition's promise is therefore "reports
-     * on a populated row", not "always reports".
+     * {@code Primitives.equalsTypedAware} (the equality anchor since D121 retired
+     * {@code ScalarSemantics.equalsNumericAware}), whose textual fold takes <em>both</em> a
+     * missing-but-not-{@code MissingValue} cell and a null target to {@code ""} — so
+     * {@code equal_to} against a no-value extreme fires when the compared column is <em>itself</em>
+     * empty, and goes silent when it is populated. The populated case is the one the rule is
+     * written for, and silence there is unrecoverable, so {@code equal_to} sits in the silencing
+     * set. By the same token {@code not_equal_to} does <em>not</em> report on an empty-vs-empty
+     * row; the disposition's promise is therefore "reports on a populated row", not "always
+     * reports".
      * </p>
      *
      * <p>
@@ -713,54 +745,26 @@ public class RulePackageLoader
      */
     private static void validateInlineMissingValues(@Nullable CheckCondition condition)
     {
-        if (condition instanceof net.cumba.corej.core.model.CheckConditionExpression expression)
+        if (condition == null)
         {
-            validateInlineMissingValues(expression.expr());
+            return;
         }
-        else if (condition instanceof CheckConditionAll all)
+        // ⛔ R2-7 (review round 2): an EXHAUSTIVE pattern switch over the sealed CheckCondition,
+        // not an `instanceof` chain. This method is a VALIDATOR — a chain whose last `else if`
+        // fails to match simply stops validating, so a FIFTH implementor would silently skip
+        // inline `missing_values` validation on every Check shaped like it, with nothing red.
+        // The switch has no `default`, so that fifth implementor fails to COMPILE here instead.
+        // (Round 3: this said "sixth". CheckCondition permits FOUR -- All, Any, Not, Expression
+        // -- so the next one is the fifth. The miscount was inherited from RuleRunner.)
+        switch (condition)
         {
-            all.getConditions().forEach(RulePackageLoader::validateInlineMissingValues);
-        }
-        else if (condition instanceof CheckConditionAny any)
-        {
-            any.getConditions().forEach(RulePackageLoader::validateInlineMissingValues);
-        }
-        else if (condition instanceof CheckConditionNot not)
-        {
-            validateInlineMissingValues(not.getCondition());
-        }
-        else if (condition instanceof CheckConditionLeaf leaf && leaf.getRelation() != null)
-        {
-            // EC-87 ⚠⚠ The deserializer LOWERS an authored expression to this leaf whenever it
-            // can, so for every shipped carrier the `relation=` kwarg arrives here as a leaf
-            // field, never as an inline call — and a bad value on the leaf would otherwise make
-            // `CheckToExpr` / `ExprCompiler` throw an ExpressionException that `tryRaiseToExpr`
-            // swallows, leaving the rule on the LEGACY leaf evaluator, which knows no relation:
-            // the silent fallback to identity this validation exists to rule out.
-            validateLeafRelation(leaf);
-        }
-    }
-
-
-    /**
-     * EC-87 — the declared-leaf half of {@link #validateInlineCheckRelation}: a {@code relation} on
-     * an operator other than the next-record pair, or with a spelling outside
-     * {@link net.cumba.corej.core.model.NextRecordRelation#SPELLINGS}, is a load error.
-     */
-    private static void validateLeafRelation(CheckConditionLeaf leaf)
-    {
-        String op = leaf.getOperator();
-        if (op == null || !net.cumba.corej.core.model.NextRecordRelation.OPERATORS.contains(op))
-        {
-            throw new net.cumba.corej.core.expr.RuleDefinitionException(
-                    "`relation` is not supported by `" + op
-                            + "`; only has_next_corresponding_record consumes it");
-        }
-        if (net.cumba.corej.core.model.NextRecordRelation.fromSpelling(leaf.getRelation()) == null)
-        {
-            throw new net.cumba.corej.core.expr.RuleDefinitionException("unknown `relation` `"
-                    + leaf.getRelation() + "` on `" + op + "`; expected one of "
-                    + net.cumba.corej.core.model.NextRecordRelation.SPELLINGS);
+        case net.cumba.corej.core.model.CheckConditionExpression expression -> validateInlineMissingValues(
+                expression.expr());
+        case CheckConditionAll all -> all.getConditions()
+                .forEach(RulePackageLoader::validateInlineMissingValues);
+        case CheckConditionAny any -> any.getConditions()
+                .forEach(RulePackageLoader::validateInlineMissingValues);
+        case CheckConditionNot not -> validateInlineMissingValues(not.getCondition());
         }
     }
 
@@ -824,12 +828,9 @@ public class RulePackageLoader
      * <p>
      * ⚠⚠ It must be a LOAD error, not an {@code ExprCompiler} {@code unsupported(...)}: the
      * compiler's throw DEGRADES the rule (it stops running) where the author expects an error — the
-     * {@link #validateInlineCheckKeepMissings} reasoning. ⚠ It reaches a call only through a
-     * {@link net.cumba.corej.core.model.CheckConditionExpression}: a Check that
-     * {@code ExprLowering} lowers to a leaf is never re-inspected here, and both spellings lower to
-     * the identical leaf (D-2). The arming step is therefore
-     * {@code ExprLowering.functionOperatorLeaf} refusing the old shape for the pair — Plan A Phase
-     * 2 step 2; until then this validator fires only on a Check the deserializer left native.
+     * {@link #validateInlineCheckKeepMissings} reasoning. It reaches a call through a
+     * {@link net.cumba.corej.core.model.CheckConditionExpression} — since phase 7 (D121) the only
+     * Check shape there is, the leaf model and its {@code ExprLowering} round-trip being retired.
      * </p>
      */
     private static void validateInlineUniqueSetShape(net.cumba.corej.core.expr.ast.Expr.Call call)
@@ -865,9 +866,9 @@ public class RulePackageLoader
     }
 
     /**
-     * The operators that consume a grouping-key {@code keep_missings=} on the <b>Check</b> surface.
-     * Mirrors {@code CheckToExpr}'s declared-surface allowlist; kept in this shape so the inline
-     * and declared surfaces reject the same set.
+     * The operators that consume a grouping-key {@code keep_missings=} on the <b>Check</b> surface
+     * — the allowlist the retired declared-leaf surface shared, kept so the inline surface rejects
+     * the same set it always did.
      */
     private static final java.util.Set<String> CHECK_KEEP_MISSINGS_OPERATORS = java.util.Set.of(
             "has_multiple_values_for", "is_inconsistent_across_dataset", "is_not_unique_set",
@@ -1020,43 +1021,16 @@ public class RulePackageLoader
                 .forEach(c -> collectSilencingConsumers(c, declared, negated, out));
         case CheckConditionNot not -> collectSilencingConsumers(not.getCondition(), declared,
                 !negated, out);
-        case CheckConditionLeaf leaf -> collectSilencingLeaf(leaf, declared, negated, out);
-        case CheckConditionConstant _ ->
-        {
-            // constants carry no operand, so there is nothing to judge
-        }
         case net.cumba.corej.core.model.CheckConditionExpression expr -> collectSilencingExpr(
                 expr.expr(), declared, negated, out);
         }
     }
 
 
-    private static void collectSilencingLeaf(CheckConditionLeaf leaf, List<String> declared,
-            boolean negated, Map<String, String> out)
-    {
-        String operator = leaf.getOperator();
-        if (operator == null || !isSilencing(operator, negated))
-        {
-            return;
-        }
-        for (String id : declared)
-        {
-            boolean referenced = id.equals(leaf.getName())
-                    || (leaf.getNames() != null && leaf.getNames().contains(id))
-                    || (leaf.getValue() != null && leaf.getValue().isTextual()
-                            && id.equals(leaf.getValue().asText()));
-            if (referenced)
-            {
-                out.putIfAbsent(id, operator);
-            }
-        }
-    }
-
-
     /**
-     * The native-only twin of {@link #collectSilencingLeaf}, for a Check that could not be lowered
-     * to operator-leaf form. Only the infix comparisons carry a polarity; anything else is left
-     * unjudged, matching the leaf walker's treatment of unenumerated operators.
+     * The expression walk behind {@link #collectSilencingConsumers}. Only the infix comparisons
+     * carry a polarity; anything else is left unjudged, matching the retired leaf walker's
+     * treatment of unenumerated operators.
      */
     private static void collectSilencingExpr(net.cumba.corej.core.expr.ast.Expr expr,
             List<String> declared, boolean negated, Map<String, String> out)
@@ -1116,13 +1090,13 @@ public class RulePackageLoader
      *
      * <p>
      * ⚠ <b>Recursive, and deliberately over-matching.</b> The comparison operand is not always a
-     * bare {@code $}-ref: {@code ExprLowering}'s own operand readers strip the {@code date(…)} /
-     * {@code num(…)} / {@code lowcase(…)} wrappers before naming the operand, so a rule written
-     * {@code date($min_ds) == DSSTDTC} means exactly what {@code $min_ds == DSSTDTC} means. A
-     * literal {@code instanceof Expr.Ref} test would judge the first and miss the second — the same
-     * rule text getting two verdicts depending on whether an unrelated sibling conjunct happened to
-     * block lowering. Descending into every sub-expression keeps the guard on its stated policy
-     * that over-rejection is the safe direction.
+     * bare {@code $}-ref: a conversion wrapper is transparent to operand identity, so a rule
+     * written {@code date($min_ds) == DSSTDTC} means exactly what {@code $min_ds == DSSTDTC} means
+     * (the retired lowering stripped {@code date(…)} / {@code num(…)} / {@code lowcase(…)} before
+     * naming the operand, and the engine's semantics kept that equivalence). A literal
+     * {@code instanceof Expr.Ref} test would judge the first and miss the second. Descending into
+     * every sub-expression keeps the guard on its stated policy that over-rejection is the safe
+     * direction.
      * </p>
      */
     private static boolean referencesId(net.cumba.corej.core.expr.ast.Expr operand, String id)
@@ -1464,11 +1438,12 @@ public class RulePackageLoader
      * Reconstructs the native-evaluator expression for each native-eligible rule whose Check raises
      * and compiles on the native backend, storing it on {@link Rule#getCheckExpr()} (mirroring the
      * {@code loadError} runtime-only precedent — never serialised). The dispatch sites use it
-     * whenever the {@code nativeEval} flag is on; the {@code --no-native-eval} kill-switch keeps
-     * the legacy engine. A rule that fails to raise or to compile keeps {@code checkExpr == null}
-     * and runs entirely on the legacy path — recorded as a LEGACY execution by
-     * {@code NativeExecutionRecorder} and gated corpus-wide by
-     * {@code NativeCorpusFullCoverageTest}. Sees the same materialised Check tree.
+     * unconditionally: since the legacy {@code CheckEvaluator} retirement the native evaluator is
+     * the only backend, so there is no flag and no kill-switch. A rule that fails to raise or to
+     * compile keeps {@code checkExpr == null} and can no longer be evaluated at all —
+     * {@code RuleRunner} reports it as a per-rule {@code ERROR} rather than falling back — and that
+     * every shipped rule does compile is gated corpus-wide by {@code NativeCorpusFullCoverageTest}.
+     * Sees the same materialised Check tree.
      *
      * <p>
      * Per-rule work is {@link #installNativeExpr(Rule)}; this driver only walks the package.
@@ -1572,6 +1547,17 @@ public class RulePackageLoader
             level.setValue(net.cumba.corej.core.expr.MetadataOperandMapping
                     .canonicalizeMetadataOperands(level.getValue()));
         }
+        // Phase 2 of PLAN-typed-expression-engine.md: the stage-A checker (spec §2) runs here —
+        // once per rule, on the same canonicalised IR the compiler sees, before anything is
+        // installed. An ARMED finding files on the existing loadError/park channel (spec §9:
+        // load error, rule parked, ERROR once); every armed kind is measured at ZERO newly
+        // parked rules over the shipped corpora, so this changes no production verdict.
+        // Observe-only findings are logged and offered to the measurement observer.
+        net.cumba.corej.core.expr.typed.StageAChecker.runAndApply(rule, levels);
+        if (rule.getLoadError() != null)
+        {
+            return;
+        }
         try
         {
             installCompiledLevels(rule, levels);
@@ -1601,12 +1587,11 @@ public class RulePackageLoader
      * </p>
      *
      * <p>
-     * {@link Rule#getCheckExpr()}, {@link Rule#isBroadcastCheckExpr()} keep meaning <em>the
-     * strictest level</em>, so every reader on the single-level path is unchanged;
-     * {@link Rule#getEvaluationDomain()} becomes the <b>join</b> of the levels' domains (&#167;3.3
-     * step 2) so the finding unit does not change shape between levels of one rule. The per-level
-     * maps are installed only when there is more than one level, so a single-level rule carries
-     * exactly the fields it carried before.
+     * {@link Rule#getCheckExpr()} keeps meaning <em>the strictest level</em>, so every reader on
+     * the single-level path is unchanged; {@link Rule#getEvaluationDomain()} becomes the
+     * <b>join</b> of the levels' domains (&#167;3.3 step 2) so the finding unit does not change
+     * shape between levels of one rule. The per-level maps are installed only when there is more
+     * than one level, so a single-level rule carries exactly the fields it carried before.
      * </p>
      */
     private static void installCompiledLevels(Rule rule,
@@ -1619,17 +1604,9 @@ public class RulePackageLoader
                 return;
             }
         }
-        java.util.Set<Severity> broadcast = new java.util.LinkedHashSet<>();
         net.cumba.corej.core.expr.eval.Domain join = null;
         for (Map.Entry<Severity, net.cumba.corej.core.expr.ast.Expr> level : levels.entrySet())
         {
-            // P3a: flag fold-equivalent broadcast verdicts so RuleRunner routes them to
-            // the native dataset-level broadcast evaluation (one violation at row 0 —
-            // the legacy partialEvaluateDataset fold projection).
-            if (isBroadcastVerdictExpr(level.getValue()))
-            {
-                broadcast.add(level.getKey());
-            }
             // §3.2: the cached domain the runner dispatches on (and the report projects
             // FindingScope from). A memoised result of the inference, never an input to it.
             net.cumba.corej.core.expr.eval.Domain domain = net.cumba.corej.core.expr.eval.DomainScan
@@ -1639,7 +1616,6 @@ public class RulePackageLoader
         }
         Map.Entry<Severity, net.cumba.corej.core.expr.ast.Expr> strictest = levels.firstEntry();
         rule.setCheckExpr(strictest.getValue());
-        rule.setBroadcastCheckExpr(broadcast.contains(strictest.getKey()));
         rule.setEvaluationDomain(join);
         // Installed for every rule that DECLARED a level map — a one-entry map included, or its
         // single level would never build a levelPlan and that level's own Message would silently
@@ -1652,7 +1628,6 @@ public class RulePackageLoader
         if (declaredLevels != null && !declaredLevels.isEmpty())
         {
             rule.setCheckLevelExprs(new LinkedHashMap<>(levels));
-            rule.setBroadcastCheckLevels(broadcast);
         }
         checkVariableUniverse(rule, java.util.Objects.requireNonNull(join, "at least one level"),
                 strictest.getValue());
@@ -2191,6 +2166,36 @@ public class RulePackageLoader
      * Raises a Check tree to the {@link net.cumba.corej.core.expr.ast.Expr} IR, returning
      * {@code null} for a mixed / old-style Check that has no faithful expression surface (so the
      * rule keeps {@code checkExpr == null} and runs on the legacy path).
+     *
+     * <p>
+     * ⛔ The catch is {@link net.cumba.corej.core.expr.ExpressionException} ONLY, deliberately (H3,
+     * 2026-09-17): widening it to {@code RuntimeException} would turn a malformed tree into a
+     * silent legacy-path fallback — the exact D121 failure direction. The one known NPE source —
+     * {@code CheckConditionNot(null)} from a {@code not: null} Check — is rejected at
+     * deserialisation now ({@code CheckConditionDeserializer}), so a tree reaching this method is
+     * structurally sound and anything else that throws here SHOULD kill the load loudly.
+     * </p>
+     *
+     * <p>
+     * ⚠⚠ <b>The {@code == null} guards on this method's callers are UNREACHABLE and kept anyway</b>
+     * (L4, D121 / D132a). They stay because deleting them also means deleting the narrow catch
+     * above, which is a fail-loud behaviour change owed its own decision — <b>not</b> because they
+     * are the unique home of the hazard note. That second justification, as recorded in commit
+     * {@code 40947e5}, is <b>false</b> and is corrected here (R2-7 review round 2): the "silently
+     * PASSes instead of SKIPPING when the provider is absent" hazard is also stated by
+     * {@link #injectInlineOperationGates(Rule)}'s javadoc, by the {@code INFO} line that method
+     * actually emits on <em>every</em> injection, and by {@code InjectInlineOperationGatesTest}.
+     * Dropping the guards would not drop the hazard note.
+     * </p>
+     *
+     * <p>
+     * ⛔ <b>Do not take the size of that guard surface from a comment.</b> The same commit recorded
+     * it as "exactly 5" and a later filing certified the number as re-measured; both were wrong —
+     * there are <b>seven</b> call sites carrying <b>six</b> {@code == null} guards plus one
+     * null-tolerant {@code != null} use. The surface is enumerated mechanically instead, by
+     * {@code TryRaiseToExprGuardSurfaceTest}, which parses this file: it fails when a call site is
+     * added, removed, or left without a guard, so no reader ever has to count them by hand again.
+     * </p>
      */
     private static net.cumba.corej.core.expr.ast.@Nullable Expr tryRaiseToExpr(CheckCondition check)
     {
@@ -2638,7 +2643,9 @@ public class RulePackageLoader
             // the retired half by name. A second arm here could only fire on a state the model can
             // no longer represent.
             checkRequirementEntries(rule, vars.getAll(), "Requirements.Variables.All", errors);
-            checkRequirementEntries(rule, vars.getAny(), "Requirements.Variables.Any", errors);
+            // ⚠ anyUnion() preserves every entry verbatim — nulls and blanks included — which is
+            // what lets this R3 arm keep finding them across ALL groups (§D7).
+            checkRequirementEntries(rule, vars.anyUnion(), "Requirements.Variables.Any", errors);
             checkRequirementEntries(rule, vars.getNone(), "Requirements.Variables.None", errors);
             checkAnyFacetShape(rule, vars, errors);
         }
@@ -2679,28 +2686,112 @@ public class RulePackageLoader
     }
 
 
-    /** R4 — the degenerate {@code Any} shapes and the three facet intersections (ruling Q9). */
+    /**
+     * R4 — the degenerate {@code Any} shapes and the three facet intersections (ruling Q9). Since
+     * {@code Any} became groups (an AND of ORs): the mixed shape is its own error (ruling D2), the
+     * two-distinct-entries minimum applies <b>per group</b> (ruling D3), zero groups
+     * ({@code Any: []}) stays the unsatisfiable error it always was, a duplicate <b>across</b>
+     * groups is a {@code WARNING} and never an error (ruling D4), and the three overlap arms fire
+     * against the flat union.
+     */
     private static void checkAnyFacetShape(Rule rule, VariableRequirement vars, List<String> errors)
     {
-        List<String> any = vars.getAny();
-        // ⚠ DISTINCT entries, not entries: `Any: ["AESEV","AESEV"]` is exactly the degenerate
-        // one-column Any this arm's own message describes, and counting the raw list let it
-        // through. Folded the same way the overlap arms fold, so `["AESEV","aesev"]` — which no
-        // consumer can tell apart — is caught too.
-        int distinctAny = any == null ? 0 : normalizedFacet(any).size();
-        if (any != null && distinctAny < MIN_ANY_ENTRIES)
+        List<List<String>> anyGroups = vars.getAnyGroups();
+        if (vars.isAnyMixedShape())
         {
-            errors.add("[" + ruleId(rule) + "] Requirements.Variables.Any needs at least "
-                    + MIN_ANY_ENTRIES + " distinct entries, got " + distinctAny + " (from "
-                    + any.size() + "): a one-entry Any is All with extra ceremony and hides a"
-                    + " truncated list, and an empty one is unsatisfiable");
+            // D2 is a SHAPE ruling, so the message must say "mixed shape": the parse wraps stray
+            // flat entries as singleton groups to survive at all, and without this arm the D3 arm
+            // below would report "group N needs at least 2 distinct entries" about a group the
+            // author never typed.
+            errors.add("[" + ruleId(rule) + "] Requirements.Variables.Any has a mixed shape —"
+                    + " flat entries and groups in one array: author it either flat (one group)"
+                    + " or as nested groups of entries, not both");
         }
-        reportFacetOverlap(rule, "Any", any, "All", vars.getAll(),
+        else if (anyGroups != null)
+        {
+            if (anyGroups.isEmpty())
+            {
+                errors.add("[" + ruleId(rule) + "] Requirements.Variables.Any needs at least "
+                        + MIN_ANY_ENTRIES + " distinct entries, got 0 (from 0): a one-entry Any"
+                        + " is All with extra ceremony and hides a truncated list, and an empty"
+                        + " one is unsatisfiable");
+            }
+            for (int g = 0; g < anyGroups.size(); g++)
+            {
+                // ⚠ DISTINCT entries per group, not entries: `["AESEV","AESEV"]` is exactly the
+                // degenerate one-column group this arm's own message describes, and counting the
+                // raw list let it through. Folded the same way the overlap arms fold, so
+                // `["AESEV","aesev"]` — which no consumer can tell apart — is caught too.
+                List<String> group = anyGroups.get(g);
+                int distinct = normalizedFacet(group).size();
+                if (distinct < MIN_ANY_ENTRIES)
+                {
+                    errors.add("[" + ruleId(rule) + "] Requirements.Variables.Any group " + (g + 1)
+                            + " (of " + anyGroups.size() + ") needs at least " + MIN_ANY_ENTRIES
+                            + " distinct entries, got " + distinct + " (from " + group.size()
+                            + "): a one-entry group is All with extra ceremony"
+                            + " and hides a truncated list, and an empty one is unsatisfiable");
+                }
+            }
+            warnOnCrossGroupDuplicates(rule, anyGroups);
+        }
+        List<String> anyUnion = vars.anyUnion();
+        reportFacetOverlap(rule, "Any", anyUnion, "All", vars.getAll(),
                 "the Any leg is then already satisfied by the All leg and says nothing", errors);
-        reportFacetOverlap(rule, "Any", any, "None", vars.getNone(),
+        reportFacetOverlap(rule, "Any", anyUnion, "None", vars.getNone(),
                 "the entry would have to be both present and absent", errors);
         reportFacetOverlap(rule, "All", vars.getAll(), "None", vars.getNone(),
                 "the entry would have to be both present and absent", errors);
+    }
+
+
+    /**
+     * D4 — the same entry in two different {@code Any} groups is legal (each group stays
+     * independently satisfiable) but suspicious enough to say out loud: a {@code WARNING} through
+     * {@link #LOGGER}, never an error.
+     *
+     * <p>
+     * ⚠ Not to be confused with the {@code Any}×{@code All} overlap ERROR next door: <b>within</b>
+     * {@code Any} a duplicate warns, <b>across</b> {@code Any} and {@code All} it stays an error —
+     * the two messages are worded apart on purpose. Duplicates <em>within one group</em> are not
+     * this method's business either: the D3 arm's distinct fold already collapses them.
+     * </p>
+     */
+    private static void warnOnCrossGroupDuplicates(Rule rule, List<List<String>> anyGroups)
+    {
+        if (anyGroups.size() < 2)
+        {
+            return;
+        }
+        Map<String, Integer> firstGroupOf = new LinkedHashMap<>();
+        for (int g = 0; g < anyGroups.size(); g++)
+        {
+            for (String entry : anyGroups.get(g))
+            {
+                if (entry == null)
+                {
+                    continue; // R3's error, not a duplicate
+                }
+                String normalized = normalizeFacetEntry(entry);
+                Integer first = firstGroupOf.putIfAbsent(normalized, g + 1);
+                if (first != null && first != g + 1)
+                {
+                    // ⭐ Both channels, per the house idiom at :1219 and :2997 (review F2,
+                    // 2026-09-17). The plan said "WARNING via the existing LOGGER" and appears
+                    // not to have known setLoadWarning existed: with only the log stream, a
+                    // duplicate is invisible to Rule.getLoadWarning() and so to any corpus lint
+                    // or report surface that reads load warnings — its single trace would be a
+                    // JUL record nobody keeps.
+                    String warning = "[" + ruleId(rule) + "] Requirements.Variables.Any entry '"
+                            + entry.trim() + "' appears in group " + first + " and again in group "
+                            + (g + 1) + " — allowed (ruling D4), each group stays independently"
+                            + " satisfiable, but check the duplication is intended";
+                    rule.setLoadWarning(rule.getLoadWarning() == null ? warning
+                            : rule.getLoadWarning() + "; " + warning);
+                    LOGGER.log(System.Logger.Level.WARNING, "{0}", warning);
+                }
+            }
+        }
     }
 
     /** The smallest {@code Any} list that means anything a plain {@code All} does not. */
@@ -2714,9 +2805,14 @@ public class RulePackageLoader
             return;
         }
         java.util.Set<String> rightNormalized = normalizedFacet(right);
+        // ⚠ One error per DISTINCT offending entry: since Any flattens through anyUnion() here, an
+        // entry duplicated across two Any groups and also present in All would otherwise emit the
+        // identical error string twice — noise that reads like two defects.
+        java.util.Set<String> reported = new java.util.LinkedHashSet<>();
         for (String entry : left)
         {
-            if (entry != null && rightNormalized.contains(normalizeFacetEntry(entry)))
+            if (entry != null && rightNormalized.contains(normalizeFacetEntry(entry))
+                    && reported.add(normalizeFacetEntry(entry)))
             {
                 errors.add("[" + ruleId(rule) + "] Requirements.Variables entry '" + entry.trim()
                         + "' appears in both " + leftName + " and " + rightName + " — " + why);
@@ -3347,11 +3443,6 @@ public class RulePackageLoader
                 findings);
         case net.cumba.corej.core.model.CheckConditionExpression expression -> collectInlineUnresolvedWildcards(
                 expression.expr(), findings);
-        case CheckConditionLeaf _,CheckConditionConstant _ ->
-        {
-            // A legacy leaf carries no inline operation; its own `ordering` is a Check-tree
-            // position resolved (or not) by CheckConditionTransformer, not by this pass.
-        }
         }
     }
 
@@ -3539,10 +3630,6 @@ public class RulePackageLoader
                 findings);
         case net.cumba.corej.core.model.CheckConditionExpression expression -> collectInlineTypelessDictionaryOps(
                 expression.expr(), findings);
-        case CheckConditionLeaf _,CheckConditionConstant _ ->
-        {
-            // A legacy leaf carries no inline operation.
-        }
         }
     }
 
@@ -3561,9 +3648,9 @@ public class RulePackageLoader
 
 
     /**
-     * Collects every {@code $}-prefixed operand reference in a Check tree, covering both authored
-     * shapes ({@link CheckConditionLeaf} and
-     * {@link net.cumba.corej.core.model.CheckConditionExpression}).
+     * Collects every {@code $}-prefixed operand reference in a Check tree
+     * ({@link net.cumba.corej.core.model.CheckConditionExpression} nodes, possibly under
+     * {@code all}/{@code any}/{@code not} composites).
      */
     private static void collectOperandRefs(@Nullable CheckCondition condition,
             java.util.Set<String> out)
@@ -3580,120 +3667,8 @@ public class RulePackageLoader
         case CheckConditionAll all -> all.getConditions().forEach(c -> collectOperandRefs(c, out));
         case CheckConditionAny any -> any.getConditions().forEach(c -> collectOperandRefs(c, out));
         case CheckConditionNot not -> collectOperandRefs(not.getCondition(), out);
-        case CheckConditionLeaf leaf -> collectOperandRefs(leaf, out);
-        case CheckConditionConstant _ ->
-        {
-            // a constant carries no operand
-        }
         case net.cumba.corej.core.model.CheckConditionExpression expr -> collectOperandRefs(
                 expr.expr(), out);
-        }
-    }
-
-    /**
-     * Operators whose {@code value} operand {@code CheckToExpr} emits as a <b>literal regardless of
-     * the {@code value_is_literal} / {@code value_is_reference} flags</b>, so a leading {@code $}
-     * there is a character in a substring / pattern / length, never an operation id.
-     *
-     * <p>
-     * Derived from the three routing helpers that bypass {@code CheckToExpr.value}:
-     * {@code substringValue} (the contains / starts_with / ends_with family, whose own javadoc says
-     * "emitted as a string literal regardless of any flag"), {@code regex} and {@code affixMatches}
-     * (the regex family), and {@code lengthValue} (which reads the value with {@code asInt}, so a
-     * textual value becomes the number {@code 0}). Without this set a rule matching a literal
-     * dollar amount — {@code {"operator": "contains", "value": "$50"}} — would be rejected as a
-     * dangling operand.
-     * </p>
-     */
-    private static final java.util.Set<String> LITERAL_VALUE_OPERATORS = java.util.Set.of(
-            "contains", "does_not_contain", "contains_case_insensitive",
-            "does_not_contain_case_insensitive", "starts_with", "ends_with", "matches_regex",
-            "not_matches_regex", "prefix_matches_regex", "not_prefix_matches_regex",
-            "suffix_matches_regex", "not_suffix_matches_regex", "has_equal_length",
-            "has_not_equal_length");
-
-    /**
-     * Leaf-form operand positions: every field {@code CheckToExpr} raises with {@code ref(…)}.
-     *
-     * <ul>
-     * <li>{@code name} and each {@code names} entry — always references.</li>
-     * <li>a bare textual {@code value} without {@code value_is_literal}, mirroring
-     * {@code CheckToExpr.value} — except for {@link #LITERAL_VALUE_OPERATORS}, which never reach
-     * that helper.</li>
-     * <li>⚠ each textual element of an <b>array</b> {@code value}. For the function/group family
-     * the array does <em>not</em> become a LIST of literals — both of {@code
-     * CheckToExpr.functionLeaf}'s arms raise each element as {@code e.isTextual() ? ref(…) :
-     * literal(e)}, and {@code ExprCompiler.expandRefKeys} then splices a {@code $}-keyed member out
-     * to its column list. Which arm runs depends on the operator: for {@code
-     * ExprLowering.UNIQUE_SET_OPERATORS} {@code functionLeaf} inlines the elements itself, into the
-     * single list operand the 2026-08-23 grammar requires ({@code f([name, …value])}); every other
-     * group operator still routes the array through {@code arrayOperand} into its {@code keys=}
-     * kwarg. ⚠ The four worked examples this bullet used to name — {@code CDISC-CG0562},
-     * {@code FDA-SD1117}, {@code PMDA-SD1117}, {@code PMDA-SD1152} — are all uniqueness carriers
-     * authored as {@code Check.expression} today, so none of them reaches this leaf path at all,
-     * let alone {@code arrayOperand}; the position is validated for the leaf input shape, not for a
-     * shipped rule. Missing it is not a silent PASS but a silent <em>wrong answer</em>:
-     * {@code GroupSemantics.uniqueSetViolations} simply drops an unresolvable key column, so the
-     * uniqueness set gets coarser and the rule over-reports.</li>
-     * <li>{@code within} (raised entry-by-entry by {@code withinOperand}, including nested
-     * coalesce-groups) and {@code ordering} ({@code ref(leaf.getOrdering())}). No shipped rule puts
-     * a {@code $} there today; they are covered because the engine would resolve one.</li>
-     * </ul>
-     *
-     * <p>
-     * ⚠ Both sides matter. {@code CDISC-AD0591}'s third leaf is
-     * {@code $current_value != $adsl_value} — a name-position-only walk catches half of it.
-     * </p>
-     */
-    private static void collectOperandRefs(CheckConditionLeaf leaf, java.util.Set<String> out)
-    {
-        addOperandRef(leaf.getName(), out);
-        if (leaf.getNames() != null)
-        {
-            leaf.getNames().forEach(n -> addOperandRef(n, out));
-        }
-        JsonNode value = leaf.getValue();
-        if (value != null && !Boolean.TRUE.equals(leaf.getValueIsLiteral())
-                && !LITERAL_VALUE_OPERATORS.contains(leaf.getOperator()))
-        {
-            if (value.isTextual())
-            {
-                addOperandRef(value.asText(), out);
-            }
-            else if (value.isArray())
-            {
-                value.forEach(item ->
-                {
-                    if (item.isTextual())
-                    {
-                        addOperandRef(item.asText(), out);
-                    }
-                });
-            }
-        }
-        collectWithinRefs(leaf.getWithin(), out);
-        addOperandRef(leaf.getOrdering(), out);
-    }
-
-
-    /**
-     * The {@code within} partition operand, which {@code CheckToExpr.withinOperand} raises
-     * entry-by-entry via {@code ref(…)}. Polymorphic on the wire — a single column name, a list of
-     * them, or a list containing a nested coalesce-group list — so the walk recurses.
-     */
-    private static void collectWithinRefs(@Nullable JsonNode within, java.util.Set<String> out)
-    {
-        if (within == null)
-        {
-            return;
-        }
-        if (within.isTextual())
-        {
-            addOperandRef(within.asText(), out);
-        }
-        else if (within.isArray())
-        {
-            within.forEach(item -> collectWithinRefs(item, out));
         }
     }
 
@@ -4392,23 +4367,6 @@ public class RulePackageLoader
         }
         case CheckConditionNot not -> collectDatasetProviderOperands(not.getCondition(),
                 path + ".not", errors, ruleId);
-        case CheckConditionLeaf leaf ->
-        {
-            String name = leaf.getName();
-            if (name != null
-                    && (name.startsWith("library_dataset_") || name.startsWith("define_dataset_"))
-                    && net.cumba.corej.core.expr.MetadataOperandMapping
-                            .forwardOperand(name) == null)
-            {
-                errors.add("[" + ruleId + "] " + path + " uses operand '" + name
-                        + "', which no ds_* accessor serves (previously a silent empty-string"
-                        + " comparison) — name a dataset attribute the accessors provide");
-            }
-        }
-        case CheckConditionConstant _ ->
-        {
-            // constants carry no operand
-        }
         case net.cumba.corej.core.model.CheckConditionExpression _ ->
         {
             // native-only expression — dataset provider metadata is read via the ds_* accessors,
@@ -4692,7 +4650,7 @@ public class RulePackageLoader
         {
             checkNoExpansionToken(rule, vars.getAll(), "Requirements.Variables.All", tokens,
                     errors);
-            checkNoExpansionToken(rule, vars.getAny(), "Requirements.Variables.Any", tokens,
+            checkNoExpansionToken(rule, vars.anyUnion(), "Requirements.Variables.Any", tokens,
                     errors);
             checkNoExpansionToken(rule, vars.getNone(), "Requirements.Variables.None", tokens,
                     errors);
@@ -4907,7 +4865,7 @@ public class RulePackageLoader
         {
             checkVariableScopeList(requiredVars.getAll(), "Requirements.Variables", "All", rule,
                     errors);
-            checkVariableScopeList(requiredVars.getAny(), "Requirements.Variables", "Any", rule,
+            checkVariableScopeList(requiredVars.anyUnion(), "Requirements.Variables", "Any", rule,
                     errors);
             checkVariableScopeList(requiredVars.getNone(), "Requirements.Variables", "None", rule,
                     errors);
@@ -5135,23 +5093,150 @@ public class RulePackageLoader
             }
         }
         case CheckConditionNot not -> walkCheck(not.getCondition(), path + ".not", errors, ruleId);
-        case CheckConditionLeaf leaf -> validateLeaf(leaf, path, errors, ruleId);
-        case CheckConditionConstant _ ->
-        {
-            // constants carry no operand
-        }
         case net.cumba.corej.core.model.CheckConditionExpression ce ->
         {
-            // native-only expression — operands are already resolved in the Expr; the only leaf
-            // check that applies is the retired generic presence call (owner ruling 1 of
-            // PLAN-leaf-scope-domain-inference.md).
+            // The retired generic presence call (owner ruling 1 of
+            // PLAN-leaf-scope-domain-inference.md)…
             String generic = genericPresenceCall(ce.expr());
             if (generic != null)
             {
                 errors.add(genericPresenceError(ruleId, path, generic));
             }
+            // …and the Fix #37 operand-substitution validation, re-homed from the retired
+            // operator-leaf walker (phase 7d, D121): a malformed `${…}` template, or a `${*}`
+            // wildcard in a position that is not list-aware, is a load error — the compiler's own
+            // parse failure would only DECLINE the operand silently, which is the exact silent
+            // degradation Fix #37 exists to rule out.
+            validateSubstitutionTemplates(ce.expr(), null, false, path, errors, ruleId);
+            // …and R-P4's non-executable operand, re-homed the same way: `dataset_metadata` is a
+            // registered builtin token with NO resolution anywhere (not a dataset-fold name, not
+            // variable-level, no provider mapping), so a rule reading it has never fired — fail
+            // loudly at load (user decision: ADAM-ADD-100019) instead of reviving the silent
+            // no-op through the expression spelling.
+            collectNonExecutableOperandRefs(ce.expr(), path, errors, ruleId);
         }
         }
+    }
+
+
+    /**
+     * The expression-side arm of Fix #37: validates every {@code ${…}} operand-substitution
+     * template reachable from {@code expr}.
+     *
+     * <p>
+     * Position mapping mirrors the retired leaf walker: a comparison's LEFT operand and a call's
+     * first argument are the name position, a comparison's RIGHT operand is the value position. A
+     * {@code ${*}} wildcard is legal only as the name of an exists-family call and as the
+     * right-hand side of a membership ({@code in} / {@code not in}) — exactly
+     * {@link OperandSubstitutor#validate}'s diagonal.
+     * </p>
+     */
+    private static void validateSubstitutionTemplates(net.cumba.corej.core.expr.ast.Expr expr,
+            @Nullable String operator, boolean valuePosition, String path, List<String> errors,
+            String ruleId)
+    {
+        switch (expr)
+        {
+        case net.cumba.corej.core.expr.ast.Expr.Ref ref -> validateSubstitutionOperand(ref.name(),
+                operator, valuePosition, path, errors, ruleId);
+        case net.cumba.corej.core.expr.ast.Expr.Binary binary ->
+        {
+            String infix = switch (binary.op())
+            {
+            case EQ -> "equal_to";
+            case NEQ -> "not_equal_to";
+            case LT -> "less_than";
+            case LE -> "less_than_or_equal_to";
+            case GT -> "greater_than";
+            case GE -> "greater_than_or_equal_to";
+            case IN -> "is_contained_by";
+            case NOT_IN -> "is_not_contained_by";
+            case MATCH -> "matches_regex";
+            case NMATCH -> "not_matches_regex";
+            default -> null;
+            };
+            validateSubstitutionTemplates(binary.left(), infix, false, path, errors, ruleId);
+            validateSubstitutionTemplates(binary.right(), infix, true, path, errors, ruleId);
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Call call ->
+        {
+            List<net.cumba.corej.core.expr.ast.Expr> args = call.args();
+            for (int i = 0; i < args.size(); i++)
+            {
+                net.cumba.corej.core.expr.ast.Expr arg = args.get(i);
+                // The exists family accepts its name as a string literal; a template inside it
+                // is validated like the bare-reference spelling.
+                if (i == 0 && arg instanceof net.cumba.corej.core.expr.ast.Expr.Lit lit
+                        && lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.STRING
+                        && ("var_exists".equals(call.name()) || "var_not_exists".equals(call.name())
+                                || "ds_exists".equals(call.name())
+                                || "ds_not_exists".equals(call.name())))
+                {
+                    validateSubstitutionOperand((String) lit.value(), call.name(), false, path,
+                            errors, ruleId);
+                    continue;
+                }
+                validateSubstitutionTemplates(arg, i == 0 ? call.name() : operator, i != 0, path,
+                        errors, ruleId);
+            }
+            call.kwargs().values().forEach(
+                    v -> validateSubstitutionTemplates(v, call.name(), true, path, errors, ruleId));
+        }
+        default -> childrenOf(expr).forEach(child -> validateSubstitutionTemplates(child, operator,
+                valuePosition, path, errors, ruleId));
+        }
+    }
+
+
+    private static void validateSubstitutionOperand(@Nullable String name,
+            @Nullable String operator, boolean valuePosition, String path, List<String> errors,
+            String ruleId)
+    {
+        if (name == null || !OperandSubstitutor.hasPlaceholder(name))
+        {
+            return;
+        }
+        String positionLabel = valuePosition ? "value" : "name";
+        try
+        {
+            ParsedOperand parsed = OperandSubstitutor.parse(name);
+            OperandSubstitutor.validate(parsed, operator,
+                    valuePosition ? Position.VALUE : Position.NAME);
+        }
+        catch (OperandParseException ex)
+        {
+            errors.add("[" + ruleId + "] " + path + " parse error: " + positionLabel + "=`" + name
+                    + "`" + (operator != null ? ", operator=`" + operator + "`" : "") + ": "
+                    + ex.getMessage());
+        }
+        catch (OperatorMismatchException ex)
+        {
+            errors.add("[" + ruleId + "] " + path + " operator mismatch: " + positionLabel + "=`"
+                    + name + "`" + (operator != null ? ", operator=`" + operator + "`" : "") + ": "
+                    + ex.getMessage());
+        }
+    }
+
+    /**
+     * Operand NAMES with no resolution on any engine (R-P4,
+     * {@code plans/done/PLAN-native-engine-residuals.md}), re-homed from the retired leaf walker: a
+     * bare reference to one is a load error, never a silent no-op.
+     */
+    private static final java.util.Set<String> NON_EXECUTABLE_OPERANDS = java.util.Set
+            .of("dataset_metadata");
+
+    private static void collectNonExecutableOperandRefs(net.cumba.corej.core.expr.ast.Expr expr,
+            String path, List<String> errors, String ruleId)
+    {
+        if (expr instanceof net.cumba.corej.core.expr.ast.Expr.Ref ref
+                && NON_EXECUTABLE_OPERANDS.contains(ref.name()))
+        {
+            errors.add("[" + ruleId + "] " + path + " uses operand '" + ref.name()
+                    + "' which is not executable (no resolution on any engine; previously a"
+                    + " silent no-op)");
+        }
+        childrenOf(expr)
+                .forEach(child -> collectNonExecutableOperandRefs(child, path, errors, ruleId));
     }
 
     /**
@@ -5226,124 +5311,6 @@ public class RulePackageLoader
             }
         }
         return null;
-    }
-
-    /**
-     * Operators that NO engine implements: absent from {@code CheckOperator}/the legacy
-     * {@code OperatorRegistry} (where they were a silent "Unknown operator" no-op returning an
-     * empty BitSet) and deliberately declined by the native compiler to preserve that parity. Under
-     * the zero-fallback program (PLAN-native-engine-full-coverage, decision P1b) a rule using one
-     * must surface as a load error — never as a silently-passing no-op.
-     */
-    private static final java.util.Set<String> NON_EXECUTABLE_OPERATORS = java.util.Set.of(
-            // The affix-compare variants CheckToExpr can raise but the legacy OperatorRegistry
-            // never implemented (absent from CheckOperator → silent "Unknown operator" no-op).
-            // Tagged per the same P1b decision so a rule using one fails loudly at load instead of
-            // silently passing on legacy / silently firing on native (P9 review finding 2).
-            // suffix_equal_to is now executable on both backends (native suffix(X,n)==; legacy
-            // OperatorRegistry::evalSuffixEqualTo) — J5 / CORE-DRAFT-900007.
-            "prefix_is_contained_by", "suffix_not_equal_to", "suffix_is_contained_by");
-
-    /**
-     * Operand NAMES with no resolution on either engine (R-P4,
-     * {@code plans/done/PLAN-native-engine-residuals.md}): {@code dataset_metadata} is registered
-     * as a builtin token but is not a dataset-fold name, not variable-level, and has no provider
-     * mapping — a leaf naming it has never fired anywhere. Tagged at load like the non-executable
-     * operators above.
-     */
-    private static final java.util.Set<String> NON_EXECUTABLE_OPERANDS = java.util.Set
-            .of("dataset_metadata");
-
-    private static void validateLeaf(CheckConditionLeaf leaf, String path, List<String> errors,
-            String ruleId)
-    {
-        if (leaf.getOperator() != null && GENERIC_PRESENCE_OPERATORS.contains(leaf.getOperator()))
-        {
-            errors.add(genericPresenceError(ruleId, path, leaf.getOperator()));
-        }
-        // P1b — non-executable operator: fail at load instead of silently passing at runtime.
-        if (leaf.getOperator() != null && NON_EXECUTABLE_OPERATORS.contains(leaf.getOperator()))
-        {
-            errors.add("[" + ruleId + "] " + path + " uses operator '" + leaf.getOperator()
-                    + "' which is not executable (no engine implementation; previously a silent"
-                    + " no-op)");
-        }
-        // R-P4 (PLAN-native-engine-residuals) — non-executable OPERAND: dataset_metadata has no
-        // resolution on either engine (not a dataset-level fold name, not variable-level, no
-        // provider mapping; at row level the column miss yields an empty BitSet) — a rule using
-        // it has never fired. Fail loudly at load (user decision: ADAM-ADD-100019).
-        if (leaf.getName() != null && NON_EXECUTABLE_OPERANDS.contains(leaf.getName()))
-        {
-            errors.add("[" + ruleId + "] " + path + " uses operand '" + leaf.getName()
-                    + "' which is not executable (no resolution on any engine; previously a"
-                    + " silent no-op)");
-        }
-        // Review F2 (PLAN-extend-expression-engine) — ds_exists/ds_not_exists take a PLAIN
-        // dataset name only. The dotted / filter / ${...} / --prefix forms are rejected by the
-        // native compiler (ExprCompiler.compileExists) and the lowering, but a leaf authored
-        // directly in legacy JSON reaches neither: evalDsExists would silently resolver-miss,
-        // and ds_not_exists with a ${...} name would silently fire every row.
-        if (("ds_exists".equals(leaf.getOperator()) || "ds_not_exists".equals(leaf.getOperator()))
-                && leaf.getName() != null)
-        {
-            String dsName = leaf.getName();
-            if (dsName.indexOf('.') >= 0 || dsName.indexOf('=') >= 0 || dsName.contains("${")
-                    || dsName.contains("--"))
-            {
-                errors.add("[" + ruleId + "] operator '" + leaf.getOperator()
-                        + "' expects a plain dataset name, found '" + dsName + "'");
-            }
-        }
-        // Name side
-        String name = leaf.getName();
-        if (OperandSubstitutor.hasPlaceholder(name))
-        {
-            try
-            {
-                ParsedOperand parsed = OperandSubstitutor.parse(name);
-                OperandSubstitutor.validate(parsed, leaf.getOperator(), Position.NAME);
-            }
-            catch (OperandParseException | OperatorMismatchException ex)
-            {
-                errors.add(formatLeafError(ruleId, path, leaf, "name", name, ex));
-            }
-        }
-        // Value side — only when textual
-        JsonNode value = leaf.getValue();
-        if (value != null && value.isTextual())
-        {
-            String text = value.asText();
-            if (OperandSubstitutor.hasPlaceholder(text))
-            {
-                try
-                {
-                    ParsedOperand parsed = OperandSubstitutor.parse(text);
-                    OperandSubstitutor.validate(parsed, leaf.getOperator(), Position.VALUE);
-                }
-                catch (OperandParseException | OperatorMismatchException ex)
-                {
-                    errors.add(formatLeafError(ruleId, path, leaf, "value", text, ex));
-                }
-            }
-        }
-    }
-
-
-    private static String formatLeafError(@Nullable String ruleId, String path,
-            CheckConditionLeaf leaf, String operandPos, @Nullable String operand, Exception ex)
-    {
-        String msg = ex instanceof OperatorMismatchException ? "operator mismatch" : "parse error";
-        StringBuilder sb = new StringBuilder();
-        sb.append('[').append(ruleId).append("] ");
-        sb.append(path).append(' ');
-        sb.append(msg).append(": ");
-        sb.append(operandPos).append("=`").append(operand).append("`");
-        if (leaf.getOperator() != null)
-        {
-            sb.append(", operator=`").append(leaf.getOperator()).append('`');
-        }
-        sb.append(": ").append(ex.getMessage());
-        return sb.toString();
     }
 
     /** What {@link #ruleId} yields for a rule carrying no identity at all. */

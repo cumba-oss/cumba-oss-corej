@@ -94,23 +94,23 @@ class ModelClassDeclarationTest
     @Test
     void fieldForm_isValidatedAndNormalisedByTheLoader()
     {
-        Rule ok = load("{\"Core\":{\"Id\":\"X-1\"},\"Operations\":[{\"id\":\"$ev\","
-                + "\"operator\":\"get_model_filtered_variables\",\"model_class\":\"events\"}],"
-                + "\"Check\":{\"expression\":\"varname() in $ev\"}}");
+        Rule ok = load(
+                "{\"Core\":{\"Id\":\"X-1\"},\"Bindings\":[{\"name\": \"$ev\", \"expression\": \"get_model_filtered_variables(model_class=\\\"events\\\")\"}],"
+                        + "\"Check\":{\"expression\":\"varname() in $ev\"}}");
         assertNull(ok.getLoadError());
         assertNotNull(ok.getOperations());
         assertEquals("EVENTS", ok.getOperations().get(0).getModelClass());
 
-        Rule badClass = load("{\"Core\":{\"Id\":\"X-1\"},\"Operations\":[{\"id\":\"$ev\","
-                + "\"operator\":\"get_model_filtered_variables\",\"model_class\":\"EVENT\"}],"
-                + "\"Check\":{\"expression\":\"varname() in $ev\"}}");
+        Rule badClass = load(
+                "{\"Core\":{\"Id\":\"X-1\"},\"Bindings\":[{\"name\": \"$ev\", \"expression\": \"get_model_filtered_variables(model_class=\\\"EVENT\\\")\"}],"
+                        + "\"Check\":{\"expression\":\"varname() in $ev\"}}");
         assertNotNull(badClass.getLoadError());
         assertTrue(badClass.getLoadError().contains("unknown `model_class` value"),
                 badClass.getLoadError());
 
-        Rule badOperator = load("{\"Core\":{\"Id\":\"X-1\"},\"Operations\":[{\"id\":\"$ev\","
-                + "\"operator\":\"get_model_column_order\",\"model_class\":\"EVENTS\"}],"
-                + "\"Check\":{\"expression\":\"varname() in $ev\"}}");
+        Rule badOperator = load(
+                "{\"Core\":{\"Id\":\"X-1\"},\"Bindings\":[{\"name\": \"$ev\", \"expression\": \"get_model_column_order(model_class=\\\"EVENTS\\\")\"}],"
+                        + "\"Check\":{\"expression\":\"varname() in $ev\"}}");
         assertNotNull(badOperator.getLoadError());
         assertTrue(badOperator.getLoadError().contains("only valid on operation"),
                 badOperator.getLoadError());

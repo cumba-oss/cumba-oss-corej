@@ -43,12 +43,13 @@ class ReportSectionsTest
     void sectionsCarrySkippedRules()
     {
         ValidationReport report = ValidationReport.builder().members(List.of())
-                .skippedRules(List.of(SkippedRuleEntry.builder().coreId("CORE-000351").dataset("EX")
-                        .reason("domain EX not in Scope.Domains.Include [AE]").build()))
+                .skippedRules(
+                        List.of(SkippedRuleEntry.builder().coreId("CDISC-CG0040").dataset("EX")
+                                .reason("domain EX not in Scope.Domains.Include [AE]").build()))
                 .build();
         ReportSections s = new ReportAssembler().report(report).sections();
         assertEquals(1, s.skippedRules().size());
-        assertEquals("CORE-000351", s.skippedRules().get(0).get("core_id"));
+        assertEquals("CDISC-CG0040", s.skippedRules().get(0).get("core_id"));
         assertEquals("EX", s.skippedRules().get(0).get("dataset"));
         assertEquals("domain EX not in Scope.Domains.Include [AE]",
                 s.skippedRules().get(0).get("reason"));

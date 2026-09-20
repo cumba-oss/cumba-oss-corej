@@ -2,10 +2,8 @@ package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -20,7 +18,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class RuleRunnerEdgeCaseTest
 {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
 
     @Test
     void testExecute_nullCheck_returnsEmptyResult()
@@ -49,8 +52,8 @@ class RuleRunnerEdgeCaseTest
         IDataTable table = MockTable.of().col("SEX", "M", "U", "X").build();
 
         // Dataset-sensitivity rule → treated as dataset-level (single violation max)
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("SEX")
-                .operator("is_not_contained_by").value(arrayNode("M", "F")).build();
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr(
+                "SEX not in [\"M\", \"F\"]");
 
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
@@ -73,8 +76,8 @@ class RuleRunnerEdgeCaseTest
     {
         IDataTable table = MockTable.of().col("SEX", "M", "U", "X").build();
 
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("SEX")
-                .operator("is_not_contained_by").value(arrayNode("M", "F")).build();
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr(
+                "SEX not in [\"M\", \"F\"]");
 
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
@@ -105,7 +108,7 @@ class RuleRunnerEdgeCaseTest
         Rule rule = new Rule();
         rule.setId("fallback-uuid");
         // core is null
-        rule.setCheck(CheckConditionLeaf.builder().name("X").operator("var_exists").build());
+        rule.setCheck(expr("var_exists(\"X\")"));
 
         installExpr(rule);
 
@@ -122,7 +125,7 @@ class RuleRunnerEdgeCaseTest
 
         Rule rule = new Rule();
         rule.setId("test");
-        rule.setCheck(CheckConditionLeaf.builder().name("X").operator("non_empty").build());
+        rule.setCheck(expr("not empty(X)"));
         // outcome is null
 
         installExpr(rule);
@@ -142,9 +145,8 @@ class RuleRunnerEdgeCaseTest
 
         // A variable metadata check that checks if variable_name == "STUDYID"
         // This should evaluate per-column, not per-row
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("$variable_name")
-                .operator("equal_to").value(MAPPER.valueToTree("STUDYID")).valueIsLiteral(true)
-                .build();
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr(
+                "$variable_name == \"STUDYID\"");
 
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
@@ -169,17 +171,14 @@ class RuleRunnerEdgeCaseTest
     {
         IDataTable table = MockTable.of().col("X", "1").build();
 
-        // A rule that references a non-existent operator shouldn't crash
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("X")
-                .operator("completely_unknown_op_xyz").value(MAPPER.valueToTree("1")).build();
-
+        // A rule whose Check never acquired a native form must not crash. (Pre-phase-7 this
+        // fixture was an unknown OPERATOR leaf, which the raise rejected, leaving checkExpr null;
+        // the equivalent end state now is simply a rule with no compiled expression.)
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
         core.setId("CORE-BADOP");
         rule.setCore(core);
-        rule.setCheck(leaf);
-
-        installExpr(rule);
+        rule.setCheck(expr("completely_unknown_op_xyz(X, 1)"));
 
         RuleExecutionResult result = RuleRunner.execute(rule, table);
 
@@ -208,8 +207,7 @@ class RuleRunnerEdgeCaseTest
         };
 
         // A simple rule on DM with no cross-domain check
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("AGE").operator("greater_than")
-                .value(MAPPER.valueToTree(26)).build();
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr("AGE > 26");
 
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
@@ -238,9 +236,8 @@ class RuleRunnerEdgeCaseTest
     {
         IDataTable table = MockTable.of().col("AESTDTC", "2024-01-01", "2024-06-15").build();
 
-        // value_is_literal marks the text as a literal rather than a column reference
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("AESTDTC").operator("equal_to")
-                .value(MAPPER.valueToTree("2024-01-01")).valueIsLiteral(true).build();
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr(
+                "AESTDTC == \"2024-01-01\"");
 
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
@@ -266,8 +263,7 @@ class RuleRunnerEdgeCaseTest
                 .col("AETERM", "Headache", "Nausea", "Headache", "Headache").build();
 
         // A simple check
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("AETERM").operator("equal_to")
-                .value(MAPPER.valueToTree("Headache")).valueIsLiteral(true).build();
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr("AETERM == \"Headache\"");
 
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
@@ -290,17 +286,6 @@ class RuleRunnerEdgeCaseTest
     }
 
 
-    private static com.fasterxml.jackson.databind.node.ArrayNode arrayNode(String... values)
-    {
-        com.fasterxml.jackson.databind.node.ArrayNode arr = MAPPER.createArrayNode();
-        for (String v : values)
-        {
-            arr.add(v);
-        }
-        return arr;
-    }
-
-
     /**
      * The retired legacy engine evaluated hand-built Checks directly; the native engine needs the
      * load-time compile. Mirrors {@code RulePackageLoader.installNativeExpr} for the simple fixture
@@ -316,8 +301,8 @@ class RuleRunnerEdgeCaseTest
             }
             catch (net.cumba.corej.core.expr.ExpressionException _)
             {
-                // Unraisable Check (e.g. the unknown-operator error fixture): leave checkExpr
-                // null so the runner reports the no-native-form ERROR, which is that test's point.
+                // Unraisable Check: leave checkExpr null so the runner reports the
+                // no-native-form ERROR.
             }
         }
     }

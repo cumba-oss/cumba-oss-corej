@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.List;
 import net.cumba.corej.core.RulePackageLoader;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -35,6 +34,12 @@ import org.junit.jupiter.api.Test;
 class CompleteDatePartRuleTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
     /** The confirmed truth table's values, in row order. */
     private static final List<String> VALUES = List.of("", "banana", "2020-13-45", "2020",
             "2020-01", "2020-01-15", "2020-01-15T10", "2020-01-15T10:30:00");
@@ -45,7 +50,9 @@ class CompleteDatePartRuleTest
         RuleCore core = new RuleCore();
         core.setId("CORE-FIX157-" + operator);
         rule.setCore(core);
-        rule.setCheck(CheckConditionLeaf.builder().name("TSVAL").operator(operator).build());
+        rule.setCheck(expr(
+                "is_not_complete_date_part".equals(operator) ? "not is_complete_date_part(TSVAL)"
+                        : operator + "(TSVAL)"));
         rule.setSensitivity(Sensitivity.RECORD);
         Outcome outcome = new Outcome();
         outcome.setMessage("date part is not complete");
@@ -103,20 +110,24 @@ class CompleteDatePartRuleTest
 
 
     /**
-     * EC-43 — an absent column is an all-missing column, so the negative form fires on every row
-     * and the positive form on none. That is why {@code is_not_complete_date_part} is a
-     * guard-matrix class-V <em>negative</em> leaf despite its positive-looking spelling.
+     * EC-43 / D111 — an absent column is an all-missing column, so the negative form FIRES and the
+     * positive form does not; that is why {@code is_not_complete_date_part} is a guard-matrix
+     * class-V <em>negative</em> leaf despite its positive-looking spelling. Since D111
+     * (typed-expression plan, phase 7) the two states report at different granularity on purpose:
+     * blankness is a data fact (per row), absence a schema fact decided before a row is read (one
+     * dataset-level finding). This test used to assert identical per-row firing for both — that was
+     * EC-43's reporting equivalence, retired knowingly by D111.
      */
     @Test
-    void absentColumnBehavesExactlyLikeAnAllBlankColumn()
+    void absentColumnFiresOnceAtDatasetLevel_blankColumnPerRow()
     {
         IDataTable absent = MockTable.of().name("TS").col("TSPARMCD", "A", "B", "C").build();
         IDataTable blank = MockTable.of().name("TS").col("TSPARMCD", "A", "B", "C")
                 .col("TSVAL", "", "", "").build();
 
         assertEquals(List.of(0L, 1L, 2L), firedRows("is_not_complete_date_part", blank));
-        assertEquals(firedRows("is_not_complete_date_part", blank),
-                firedRows("is_not_complete_date_part", absent));
+        assertEquals(List.of(0L), firedRows("is_not_complete_date_part", absent),
+                "one dataset-level finding (rendered at row 0), not one per row (D111)");
         assertEquals(List.of(), firedRows("is_complete_date_part", absent));
     }
 

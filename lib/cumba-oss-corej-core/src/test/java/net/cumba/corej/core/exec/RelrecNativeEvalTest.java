@@ -4,14 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
@@ -34,7 +32,12 @@ import org.junit.jupiter.api.Test;
 class RelrecNativeEvalTest
 {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
 
     private static IDataTable tbl(String name, String[] cols, String[][] rows)
     {
@@ -126,11 +129,11 @@ class RelrecNativeEvalTest
     }
 
 
-    /** A leaf whose value is a column reference (not a literal). */
-    private static CheckConditionLeaf ref(String name, String operator, String reference)
+    /** A comparison whose right side is a column reference (not a literal). */
+    private static net.cumba.corej.core.model.CheckConditionExpression ref(String name,
+            String operator, String reference)
     {
-        return CheckConditionLeaf.builder().name(name).operator(operator)
-                .value(MAPPER.valueToTree(reference)).build();
+        return expr(name + ("not_equal_to".equals(operator) ? " != " : " == ") + reference);
     }
 
 
@@ -181,10 +184,7 @@ class RelrecNativeEvalTest
         // single out the PAIN pair. Proves the native engine reads the expanded related values.
         // Leaf with a literal RHS: compare the expanded RELREC.FAOBJ (name side, dot-qualified)
         // to the literal "PAIN".
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("RELREC.FAOBJ")
-                .operator("equal_to").value(MAPPER.valueToTree("PAIN")).valueIsLiteral(true)
-                .build();
-        CheckConditionAll check = new CheckConditionAll(List.of(leaf));
+        CheckConditionAll check = new CheckConditionAll(List.of(expr("RELREC.FAOBJ == \"PAIN\"")));
         Rule rule = relrecRule(check);
         rule.setCheckExpr(CheckToExpr.toExpr(check));
         assertNotNull(rule.getCheckExpr());
@@ -222,10 +222,8 @@ class RelrecNativeEvalTest
                 "legacy: AETERM differs from every related FAOBJ");
         assertEquals(norm(legacy), norm(nativ), "native RELREC.** verdicts must equal legacy");
 
-        NativeExecutionRecorder.enable();
-        RuleRunner.execute(rule, ae, resolver(), "AE", null, null);
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE,
-                NativeExecutionRecorder.disable().get("CORE-RELREC-NATIVE"),
+        RuleExecutionResult ran = RuleRunner.execute(rule, ae, resolver(), "AE", null, null);
+        assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "the RELREC.** rule must run on the NATIVE backend");
     }
 }

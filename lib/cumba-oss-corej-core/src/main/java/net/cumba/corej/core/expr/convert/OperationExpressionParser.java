@@ -8,6 +8,7 @@ import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.corej.core.expr.ast.Expr;
+import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.metadata.LibraryVariableAttributes;
 import net.cumba.corej.core.metadata.SdtmObservationClasses;
 import net.cumba.corej.core.model.Operation;
@@ -72,8 +73,28 @@ public final class OperationExpressionParser
         if (op.getOperator() != null)
         {
             throw new RuleDefinitionException(
-                    "operation declares both `expression` and `operator`; use one form: `"
-                            + expression + "`");
+                    "operation declares both `expression` and `operator`; the field form is"
+                            + " retired — author the whole operation as the `expression` function"
+                            + " call: `" + expression + "`");
+        }
+        // ⛔ Phase 7b (owner ruling 2026-09-17): an expression operation carrying ANY sibling
+        // parameter field is an error naming the offending key. fromCall builds a FRESH Operation
+        // from the parsed expression, so a sibling field would otherwise be OVERWRITTEN and
+        // silently discarded — measured: `level: "term"` beside an expression that does not name
+        // it resolved to null with no error, and a disagreeing sibling lost to the expression with
+        // no error. That is the FDA-SD1078 silent-drop shape ("no element field should overwrite
+        // an expression / function parameter"). The Jackson surface already rejects these keys
+        // (Binding.rejectRetiredKey); this guard is the programmatic-construction twin.
+        for (Map.Entry<String, java.util.function.Function<Operation, @Nullable Object>> field : FIELD_READERS
+                .entrySet())
+        {
+            if (field.getValue().apply(op) != null)
+            {
+                throw new RuleDefinitionException("binding `" + op.getId()
+                        + "` carries both `expression` and the parameter field `" + field.getKey()
+                        + "` — a parameter is authored inside the expression as a keyword"
+                        + " argument (`" + field.getKey() + "=…`), never as a sibling field");
+            }
         }
         Expr parsed;
         try
@@ -106,7 +127,8 @@ public final class OperationExpressionParser
     public static Operation fromCall(Expr.Call call, @Nullable String id)
     {
         String operator = call.name();
-        if (OperationType.fromJson(operator) == null)
+        FunctionDescriptor descriptor = OperationDescriptors.byName(operator);
+        if (descriptor == null)
         {
             throw new RuleDefinitionException("unknown operation function `" + operator + "`");
         }
@@ -120,29 +142,196 @@ public final class OperationExpressionParser
                     + "` accepts at most one positional argument (the target name) but got "
                     + args.size());
         }
+        String positionalParam = null;
         if (args.size() == 1)
         {
             // A list literal in the sole positional slot is the composite `names` target (T3
-            // `distinct([VISIT, VISITNUM], …)`); a scalar is the ordinary `name`.
+            // `distinct([VISIT, VISITNUM], …)`); a scalar is the ordinary `name`; a CALL or an
+            // arithmetic expression is a COMPUTED target (D3/D14 — this branch is what closes
+            // R11: `max` / `date_diff_days` were excluded from the column-type gate only because
+            // stringOf threw on any Call here, a positional artifact, not semantics).
             Expr sole = args.get(0);
             if (sole instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
             {
                 op.setNames(listOf(sole));
+                positionalParam = "names";
+            }
+            else if (isComputedTarget(sole))
+            {
+                validateComputedTarget(operator, sole);
+                op.setNameExpr(sole);
+                positionalParam = "name";
             }
             else
             {
                 op.setName(stringOf(sole));
+                positionalParam = "name";
             }
         }
+        RuleDefinitionException undeclared = null;
         for (Map.Entry<String, Expr> kw : call.kwargs().entrySet())
         {
-            applyKwarg(op, operator, kw.getKey(), kw.getValue());
+            String key = kw.getKey();
+            if (key.equals(positionalParam))
+            {
+                // D19a's second error: a name the positional already bound may not be given
+                // again.
+                throw new RuleDefinitionException("argument `" + key + "` of operation `" + operator
+                        + "` is already bound by the positional target and may not"
+                        + " be given again by name");
+            }
+            // ⭐ Phase 6b (D16/D19a): the operation's own descriptor decides which keyword
+            // arguments exist — per operation, not the union the old 35-arm switch accepted for
+            // every operator and the executor then silently ignored (the FDA-SD1078 shape). A
+            // globally-unknown name keeps applyKwarg's own rejection; a known parameter the
+            // operator does not declare is remembered and raised AFTER the four value-validators,
+            // whose operator-naming messages ({@code validateKeyName} et al.) take precedence.
+            if (descriptor.parameter(key) == null && !VALIDATOR_OWNED.contains(key)
+                    && undeclared == null)
+            {
+                undeclared = new RuleDefinitionException("operation `" + operator
+                        + "` has no parameter `" + key + "`; " + parameterList(descriptor));
+            }
+            applyKwarg(op, operator, key, kw.getValue());
         }
         validateMissingValues(op);
         validateKeepMissings(op);
         validateModelClass(op);
         validateKeyName(op);
+        if (undeclared != null)
+        {
+            throw undeclared;
+        }
         return op;
+    }
+
+
+    /**
+     * Phase 6b — the field-form twin of the {@link #fromCall} descriptor gate: every populated
+     * parameter field of {@code op} must be a declared parameter of its operator's descriptor
+     * ({@link OperationDescriptors}). A field-form (Jackson-bound) operation never passes through
+     * {@code fromCall}, and every mapper runs with {@code FAIL_ON_UNKNOWN_PROPERTIES=false}, so a
+     * parameter the operation does not consume would otherwise bind silently and be dropped at
+     * runtime — the same silent under-report {@link #validateKeyName} documents for FDA-SD1078,
+     * generalised from four hand-kept allowlists to the whole parameter surface.
+     *
+     * <p>
+     * Public and idempotent for the same three-surface reason as {@link #validateMissingValues};
+     * {@code RulePackageLoader.normalizeOperations} runs it over normalised and field-form
+     * operations alike.
+     * </p>
+     *
+     * @param op
+     *            the operation to check
+     * @throws RuleDefinitionException
+     *             if a populated field is not a parameter of the operator
+     */
+    public static void validateAgainstDescriptor(Operation op)
+    {
+        String operator = op.getOperator();
+        if (operator == null)
+        {
+            return; // an unparsed Form-B operation; normalize() reports it on its own channel
+        }
+        FunctionDescriptor descriptor = OperationDescriptors.byName(operator);
+        if (descriptor == null)
+        {
+            return; // unknown operator: reported by the loader's own operator validation
+        }
+        for (Map.Entry<String, java.util.function.Function<Operation, @Nullable Object>> field : FIELD_READERS
+                .entrySet())
+        {
+            if (VALIDATOR_OWNED.contains(field.getKey()))
+            {
+                continue; // judged by its own shipped validator, whose message names the consumers
+            }
+            if (field.getValue().apply(op) != null && descriptor.parameter(field.getKey()) == null)
+            {
+                throw new RuleDefinitionException("operation `" + operator + "` has no parameter `"
+                        + field.getKey() + "`, so the declaration would be silently dropped; "
+                        + parameterList(descriptor));
+            }
+        }
+    }
+
+    /**
+     * The four parameters whose per-operation legality is owned by a shipped, message-bearing
+     * validator ({@link #validateMissingValues}, {@link #validateKeepMissings},
+     * {@link #validateModelClass}, {@link #validateKeyName}) rather than the generic descriptor
+     * gate — their allowlists agree with the descriptors by construction
+     * ({@code OperationDescriptorsTest} pins the equality), and their messages name the consuming
+     * operators, which the generic message cannot.
+     */
+    private static final java.util.Set<String> VALIDATOR_OWNED = java.util.Set.of("missing_values",
+            "keep_missings", "model_class", "key_name");
+
+    /**
+     * Every author-facing parameter field of {@link Operation}, keyed by its authored keyword.
+     * Deliberately excludes the engine-internal fields ({@code id}, {@code operator},
+     * {@code expression}, {@code originalName} — the specialiser's provenance carrier).
+     */
+    private static final Map<String, java.util.function.Function<Operation, @Nullable Object>> FIELD_READERS = buildFieldReaders();
+
+    private static Map<String, java.util.function.Function<Operation, @Nullable Object>> buildFieldReaders()
+    {
+        Map<String, java.util.function.Function<Operation, @Nullable Object>> m = new LinkedHashMap<>();
+        m.put("name", Operation::getName);
+        m.put("names", Operation::getNames);
+        m.put("subtract", Operation::getSubtract);
+        m.put("value", Operation::getValue);
+        m.put("domain", Operation::getDomain);
+        m.put("reference", Operation::getReference);
+        m.put("offset", Operation::getOffset);
+        m.put("reference_extreme", Operation::getReferenceExtreme);
+        m.put("minuend_domain", Operation::getMinuendDomain);
+        m.put("minuend_match", Operation::getMinuendMatch);
+        m.put("delimiter", Operation::getDelimiter);
+        m.put("ordering", Operation::getOrdering);
+        m.put("group", Operation::getGroup);
+        m.put("filter", Operation::getFilter);
+        m.put("codelists", Operation::getCodelists);
+        m.put("level", Operation::getLevel);
+        m.put("returntype", Operation::getReturntype);
+        m.put("key_name", Operation::getKeyName);
+        m.put("key_value", Operation::getKeyValue);
+        m.put("model_class", Operation::getModelClass);
+        m.put("ct_attribute", Operation::getCtAttribute);
+        m.put("version", Operation::getVersion);
+        m.put("ct_package_types", Operation::getCtPackageTypes);
+        m.put("regex", Operation::getRegex);
+        m.put("name_pattern", Operation::getNamePattern);
+        m.put("min_length", Operation::getMinLength);
+        m.put("value_is_reference", Operation::getValueIsReference);
+        m.put("external_dictionary_type", Operation::getExternalDictionaryType);
+        m.put("dictionary_term_type", Operation::getDictionaryTermType);
+        m.put("case_sensitive", Operation::getCaseSensitive);
+        m.put("external_dictionary_term_variable", Operation::getExternalDictionaryTermVariable);
+        m.put("dictionary_parent", Operation::getDictionaryParent);
+        m.put("qualifying_any_populated", Operation::getQualifyingAnyPopulated);
+        m.put("missing_values", Operation::getMissingValues);
+        m.put("keep_missings", Operation::getKeepMissings);
+        return m;
+    }
+
+
+    /**
+     * Every author-facing parameter keyword of {@link Operation} — the {@link #FIELD_READERS} key
+     * set. Public for {@code Binding.rejectRetiredKey}, whose per-key rejection message
+     * distinguishes a retired field-form parameter from a plainly unknown key.
+     *
+     * @return the authored parameter keywords, unmodifiable
+     */
+    public static java.util.Set<String> parameterKeys()
+    {
+        return java.util.Collections.unmodifiableSet(FIELD_READERS.keySet());
+    }
+
+
+    private static String parameterList(FunctionDescriptor descriptor)
+    {
+        return "parameters are (" + descriptor.parameters().stream()
+                .map(net.cumba.corej.core.expr.eval.Parameter::name)
+                .collect(java.util.stream.Collectors.joining(", ")) + ")";
     }
 
 
@@ -493,6 +682,84 @@ public final class OperationExpressionParser
         case "keep_missings" -> op.setKeepMissings(boolOf(value, "keep_missings"));
         default -> throw new RuleDefinitionException(
                 "unknown argument `" + key + "` for operation `" + operator + "`");
+        }
+    }
+
+    /**
+     * The operations whose target reads ROWS of the resolved target table — the shapes a computed
+     * target can be materialised for (a synthetic appended column). The metadata / library / walk
+     * operations read names and keys, not row values, so a computed target there has no meaning.
+     */
+    private static final java.util.Set<OperationType> COMPUTED_TARGET_OPERATIONS = java.util.Set.of(
+            OperationType.MAX, OperationType.MAX_DATE, OperationType.MIN_DATE,
+            OperationType.DISTINCT, OperationType.DATE_DIFF_DAYS, OperationType.RECORD_COUNT);
+
+    /**
+     * Whether the sole positional is a computed target (D3/D14): a value function call, or an
+     * arithmetic expression. The {@code filter(...)} marker is not a value and never a target.
+     */
+    private static boolean isComputedTarget(Expr e)
+    {
+        return switch (e)
+        {
+        case Expr.Call c -> !"filter".equals(c.name());
+        case Expr.Binary b -> b.op() == Expr.BinOp.ADD || b.op() == Expr.BinOp.SUB
+                || b.op() == Expr.BinOp.MUL || b.op() == Expr.BinOp.DIV;
+        default -> false;
+        };
+    }
+
+
+    /**
+     * Guards the first increment of computed targets, loudly: only the row-reading operations
+     * ({@link #COMPUTED_TARGET_OPERATIONS}) can materialise one, and a {@code --} domain-prefix
+     * reference inside the expression is rejected because the specialiser (D77) does not descend
+     * into operation target expressions yet — accepting it would defer the failure to the engine's
+     * unresolved-{@code --} evaluation assertion (D93a), which D35 reserves for specialiser
+     * defects, not authoring.
+     */
+    private static void validateComputedTarget(String operator, Expr target)
+    {
+        OperationType type = OperationType.fromJson(operator);
+        if (!COMPUTED_TARGET_OPERATIONS.contains(type))
+        {
+            throw new RuleDefinitionException("operation `" + operator
+                    + "` does not support a computed target expression; only the row-reading"
+                    + " operations (max, max_date, min_date, distinct, date_diff_days,"
+                    + " record_count) do");
+        }
+        rejectDomainPrefixRefs(target, operator);
+    }
+
+
+    private static void rejectDomainPrefixRefs(Expr e, String operator)
+    {
+        switch (e)
+        {
+        case Expr.Ref r ->
+        {
+            if (r.name().startsWith("--"))
+            {
+                throw new RuleDefinitionException("operation `" + operator
+                        + "`: a `--` domain-prefix reference inside a computed target expression"
+                        + " is not supported yet (`" + r.name()
+                        + "`) — spell the concrete column name");
+            }
+        }
+        case Expr.Call c ->
+        {
+            c.args().forEach(a -> rejectDomainPrefixRefs(a, operator));
+            c.kwargs().values().forEach(a -> rejectDomainPrefixRefs(a, operator));
+        }
+        case Expr.Binary b ->
+        {
+            rejectDomainPrefixRefs(b.left(), operator);
+            rejectDomainPrefixRefs(b.right(), operator);
+        }
+        default ->
+        {
+            // literals and the boolean combinators (which cannot appear in a value target)
+        }
         }
     }
 

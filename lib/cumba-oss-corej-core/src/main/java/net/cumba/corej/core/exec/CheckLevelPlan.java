@@ -30,9 +30,6 @@ import org.jspecify.annotations.Nullable;
  * @param expr
  *            the level's <b>effective</b> compiled expression: its own, or the {@code Fix #222}
  *            dependency-scoped rewrite when this level reads an absent, already-reported dataset
- * @param broadcast
- *            whether {@code expr} is a fold-equivalent dataset-broadcast verdict — the per-level
- *            {@code Rule.broadcastCheckExpr}
  * @param collapsed
  *            whether {@code Fix #222} collapsed this level's whole Check. A collapsed level is
  *            constant-{@code false} and contributes nothing; the <em>rule</em> reports
@@ -48,8 +45,8 @@ import org.jspecify.annotations.Nullable;
  *            the level's own {@code Message}, or {@code null} to fall back to the rule's
  *            {@code Outcome.Message} at report time (&#167;3.6)
  */
-public record CheckLevelPlan(Severity level, CheckCondition condition, Expr expr, boolean broadcast,
-        boolean collapsed, Domain domain, List<String> outputVariables, @Nullable String message)
+public record CheckLevelPlan(Severity level, CheckCondition condition, Expr expr, boolean collapsed,
+        Domain domain, List<String> outputVariables, @Nullable String message)
 {
 
     /**

@@ -2,6 +2,7 @@ package net.cumba.corej.core.metadata.store.seed;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -53,6 +54,31 @@ class WebApiStoreSeederTest
     private WebApiStoreSeeder seeder()
     {
         return new WebApiStoreSeeder(SeedFixtures.offlineAccess(cacheDir));
+    }
+
+
+    /**
+     * ⛔ Both spellings must resolve. A trailing slash is an ordinary URL variation a proxy, mirror
+     * or endpoint revision can introduce, and rejecting it seeds the store <b>without the
+     * foundational SDTM model</b> — {@code projectProducts} warns and continues, so every
+     * model-tier resolution downstream runs IG-only. Neither direction was pinned before (review
+     * N1, 2026-09-17), which is how a {@code split("/", -1)} tightening filed as hygiene changed
+     * what the seeder accepts.
+     */
+    @Test
+    void modelKeyForAcceptsAHrefWithOrWithoutATrailingSlash()
+    {
+        assertEquals("models/sdtm/2-0", WebApiStoreSeeder.modelKeyFor("/mdr/sdtm/2-0"));
+        assertEquals("models/sdtm/2-0", WebApiStoreSeeder.modelKeyFor("/mdr/sdtm/2-0/"),
+                "a trailing slash must not cost the foundational model");
+        assertEquals("models/sdtm/2-0", WebApiStoreSeeder.modelKeyFor("/mdr/sdtm/sdtm-2-0"),
+                "the product-prefixed spelling still resolves");
+
+        // Genuinely malformed shapes stay rejected — the tightening's real intent.
+        assertNull(WebApiStoreSeeder.modelKeyFor("/mdr/sdtm"), "one segment is not the shape");
+        assertNull(WebApiStoreSeeder.modelKeyFor("/mdr/sdtm/2-0/extra"), "three segments are not");
+        assertNull(WebApiStoreSeeder.modelKeyFor("/mdr//2-0"), "an empty first segment is not");
+        assertNull(WebApiStoreSeeder.modelKeyFor("/other/sdtm/2-0"), "a foreign prefix is not");
     }
 
 

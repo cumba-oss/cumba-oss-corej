@@ -48,7 +48,7 @@ class ProviderRequirementsTest
     void noProviderNeeded() throws IOException
     {
         ProviderRequirements derived = of(
-                "\"Check\":{\"all\":[{\"name\":\"AESEV\",\"operator\":\"var_exists\"}]}");
+                "\"Check\":{\"all\":[{\"expression\": \"var_exists(\\\"AESEV\\\")\"}]}");
         assertEquals(new ProviderRequirements(false, false, false), derived);
     }
 
@@ -57,15 +57,14 @@ class ProviderRequirementsTest
     @DisplayName("surface 1 — a declared library / define / dictionary Operation")
     void declaredOperations() throws IOException
     {
-        assertTrue(of("\"Operations\":[{\"id\":\"$r\",\"operator\":\"required_variables\"}],"
-                + "\"Check\":{\"all\":[{\"name\":\"$r\",\"operator\":\"empty\"}]}").library());
-        assertTrue(of("\"Operations\":[{\"id\":\"$d\",\"operator\":\"define_variable_names\"}],"
-                + "\"Check\":{\"all\":[{\"name\":\"$d\",\"operator\":\"empty\"}]}").define());
-        assertTrue(of("\"Operations\":[{\"id\":\"$x\","
-                + "\"operator\":\"valid_external_dictionary_code\","
-                + "\"external_dictionary_type\":\"meddra\",\"name\":\"AEDECOD\"}],"
-                + "\"Check\":{\"all\":[{\"name\":\"$x\",\"operator\":\"equal_to\","
-                + "\"value\":false}]}").dictionary());
+        assertTrue(of("\"Bindings\":[{\"name\": \"$r\", \"expression\": \"required_variables()\"}],"
+                + "\"Check\":{\"all\":[{\"expression\": \"empty($r)\"}]}").library());
+        assertTrue(
+                of("\"Bindings\":[{\"name\": \"$d\", \"expression\": \"define_variable_names()\"}],"
+                        + "\"Check\":{\"all\":[{\"expression\": \"empty($d)\"}]}").define());
+        assertTrue(of(
+                "\"Bindings\":[{\"name\": \"$x\", \"expression\": \"valid_external_dictionary_code(AEDECOD, external_dictionary_type=\\\"meddra\\\")\"}],"
+                        + "\"Check\":{\"all\":[{\"expression\": \"$x == false\"}]}").dictionary());
     }
 
 
@@ -79,10 +78,9 @@ class ProviderRequirementsTest
     @DisplayName("⚠ dictionary_available is the GATE, never a dependency")
     void dictionaryAvailableIsNotADependency() throws IOException
     {
-        Rule rule = load("\"Operations\":[{\"id\":\"$a\",\"operator\":\"dictionary_available\","
-                + "\"external_dictionary_type\":\"meddra\"}],"
-                + "\"Check\":{\"all\":[{\"name\":\"$a\",\"operator\":\"equal_to\","
-                + "\"value\":true}]}");
+        Rule rule = load(
+                "\"Bindings\":[{\"name\": \"$a\", \"expression\": \"dictionary_available(external_dictionary_type=\\\"meddra\\\")\"}],"
+                        + "\"Check\":{\"all\":[{\"expression\": \"$a == true\"}]}");
         assertFalse(ProviderRequirements.of(rule).dictionary());
     }
 
@@ -92,11 +90,12 @@ class ProviderRequirementsTest
     void operandPrefixSurface() throws IOException
     {
         assertTrue(
-                of("\"Check\":{\"all\":[{\"name\":\"library_variable_role\","
-                        + "\"operator\":\"equal_to\",\"value\":\"Topic\"}]}").library(),
+                of("\"Check\":{\"all\":[{\"expression\": \"var_role(\\\"LIBRARY\\\") == Topic\"}]}")
+                        .library(),
                 "CDISC-CG0010's shape: the dependency exists with no Operations entry at all");
-        assertTrue(of("\"Check\":{\"all\":[{\"name\":\"define_variable_name\","
-                + "\"operator\":\"non_empty\"}]}").define());
+        assertTrue(of(
+                "\"Check\":{\"all\":[{\"expression\": \"not empty(var_name(\\\"DEFINE\\\"))\"}]}")
+                        .define());
     }
 
 
@@ -198,9 +197,8 @@ class ProviderRequirementsTest
     void surfacesUnion() throws IOException
     {
         ProviderRequirements derived = of(
-                "\"Operations\":[{\"id\":\"$d\",\"operator\":\"define_variable_names\"}],"
-                        + "\"Check\":{\"all\":[{\"name\":\"library_variable_role\","
-                        + "\"operator\":\"equal_to\",\"value\":\"$d\"}]}");
+                "\"Bindings\":[{\"name\": \"$d\", \"expression\": \"define_variable_names()\"}],"
+                        + "\"Check\":{\"all\":[{\"expression\": \"var_role(\\\"LIBRARY\\\") == $d\"}]}");
         assertTrue(derived.define(), "from the declared Operation");
         assertTrue(derived.library(), "from the bare operand prefix");
         assertFalse(derived.dictionary());
@@ -211,8 +209,9 @@ class ProviderRequirementsTest
     @DisplayName("a Check with no expression surface derives from the Operations alone")
     void unraisableCheckStillDerivesFromOperations() throws IOException
     {
-        Rule rule = load("\"Operations\":[{\"id\":\"$r\",\"operator\":\"required_variables\"}],"
-                + "\"Check\":{\"all\":[{\"name\":\"$r\",\"operator\":\"empty\"}]}");
+        Rule rule = load(
+                "\"Bindings\":[{\"name\": \"$r\", \"expression\": \"required_variables()\"}],"
+                        + "\"Check\":{\"all\":[{\"expression\": \"empty($r)\"}]}");
         rule.setCheckExpr(null);
         assertTrue(ProviderRequirements.of(rule).library());
     }

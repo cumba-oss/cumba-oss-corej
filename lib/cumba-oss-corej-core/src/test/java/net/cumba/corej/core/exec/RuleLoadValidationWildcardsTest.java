@@ -44,7 +44,7 @@ class RuleLoadValidationWildcardsTest
                   "wildcards": {"xx": {"min": 2}},
                   "Check": {
                     "all": [
-                      {"name": "TRTxxP", "operator": "var_exists"}
+                      {"expression": "var_exists(\\"TRTxxP\\")"}
                     ]
                   }
                 }
@@ -67,7 +67,7 @@ class RuleLoadValidationWildcardsTest
                   "wildcards": {"xy": {"min": 2}},
                   "Check": {
                     "all": [
-                      {"name": "TRTxxP", "operator": "var_exists"}
+                      {"expression": "var_exists(\\"TRTxxP\\")"}
                     ]
                   }
                 }
@@ -107,8 +107,8 @@ class RuleLoadValidationWildcardsTest
                   "Check": {
                     "any": [
                       {"all": [
-                        {"name": "*", "operator": "non_empty"},
-                        {"name": "*N", "operator": "empty"}
+                        {"expression": "not empty(*)"},
+                        {"expression": "empty(*N)"}
                       ]}
                     ]
                   }
@@ -130,8 +130,8 @@ class RuleLoadValidationWildcardsTest
                   "wildcardExclude": ["TRTPN", "  "],
                   "Check": {
                     "all": [
-                      {"name": "*", "operator": "non_empty"},
-                      {"name": "*N", "operator": "empty"}
+                      {"expression": "not empty(*)"},
+                      {"expression": "empty(*N)"}
                     ]
                   }
                 }
@@ -153,12 +153,12 @@ class RuleLoadValidationWildcardsTest
                   "Check": {
                     "any": [
                       {"all": [
-                        {"name": "*N", "operator": "var_exists"},
-                        {"name": "*", "operator": "var_not_exists"}
+                        {"expression": "var_exists(*N)"},
+                        {"expression": "var_not_exists(*)"}
                       ]},
                       {"all": [
-                        {"name": "*C", "operator": "var_exists"},
-                        {"name": "*", "operator": "var_not_exists"}
+                        {"expression": "var_exists(*C)"},
+                        {"expression": "var_not_exists(*)"}
                       ]}
                     ]
                   }
@@ -181,7 +181,7 @@ class RuleLoadValidationWildcardsTest
                   "wildcardPairCatalogue": true,
                   "Check": {
                     "all": [
-                      {"name": "*N", "operator": "var_exists"}
+                      {"expression": "var_exists(*N)"}
                     ]
                   }
                 }
@@ -204,7 +204,7 @@ class RuleLoadValidationWildcardsTest
                   "wildcards": {"y": {"min": 2}},
                   "Check": {
                     "all": [
-                      {"name": "*GRy", "operator": "non_empty"}
+                      {"expression": "not empty(*GRy)"}
                     ]
                   }
                 }

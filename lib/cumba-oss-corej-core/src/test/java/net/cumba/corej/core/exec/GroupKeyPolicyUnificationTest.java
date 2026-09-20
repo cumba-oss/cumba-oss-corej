@@ -90,10 +90,22 @@ class GroupKeyPolicyUnificationTest
 
 
     /**
-     * A table with a NUMERIC key column carrying a genuine missing marker on row 1. Numeric is
-     * deliberate: after {@code Fix #161} a character column yields only {@code ""} and a numeric
-     * column only a {@code MissingValue}, so a genuine missing key is reachable <b>only</b> through
-     * a numeric column. A character fixture would make every discard assertion below vacuous.
+     * A table with a NUMERIC key column carrying a genuine missing marker on row 1.
+     *
+     * <p>
+     * ⚠ Numeric is deliberate, but the reason has been CORRECTED. This javadoc used to argue that
+     * "after {@code Fix #161} a character column yields only {@code ""}", so a genuine missing key
+     * was reachable <b>only</b> through a numeric column. That is no longer true: the owner ruling
+     * of 2026-09-18 ("a present column can be missing, and missing is not empty string") makes a
+     * character cell missing too, and the datatable repository's {@code d4edd59} landed it. The
+     * fixture stays numeric because {@code MockTable.colLong(..., (Long) null)} is the shortest
+     * unambiguous way to obtain a marker — not because a character column cannot hold one.
+     * </p>
+     * <p>
+     * ⚑ Still load-bearing either way: a fixture whose "missing" key were a stored {@code ""} would
+     * make every discard assertion below vacuous, because {@code ""} is blank under
+     * {@code MISSING_OR_EMPTY} for its own reason (W32-E3) rather than as a marker.
+     * </p>
      */
     private static IDataTable numericKeyWithMissing()
     {

@@ -214,4 +214,71 @@ class ScenarioLocationBackfillTest
         assertEquals(VIOLATION, out);
         assertFalse(out.contains("#expectViolation"), out);
     }
+
+
+    /**
+     * &#9940;&#9940; <b>A back-fill run must not erase a {@code $} pin.</b> Exactly the {@code F6}
+     * failure the {@code severity=} test above pins, one {@code startsWith} away and still live:
+     * {@link ScenarioLocationBackfill} strips every {@code #expectViolationAt} line and re-emits
+     * from {@link ViolationLocationCheck#toExpectations}, which skipped {@code $}-prefixed
+     * operation results — so one opt-in {@code -Dbackfill.locations=true} run deleted all 23
+     * {@code $} pins in the corpus. Before the payload-only fix nothing went red either: the
+     * weakened pin fell through to a table lookup.
+     */
+    @Test
+    void backfillRoundTripsADollarPin(@TempDir Path dir) throws IOException
+    {
+        String pinned = """
+                #!RuleTest
+                #test CORE-1 expect=violation domain=AE
+                #expectViolationCount 1
+                #expectViolationAt row=1 "$dataset_size"=6000000000
+                dataset AE
+                col USUBJID type=Char
+                col AESEQ   type=Num
+                ---
+                001 |    1
+                002 |    2
+                ---
+                """;
+        Path f = write(dir, pinned);
+        RuleTestScenario s = RuleTestCdt.parse(pinned, f.toString());
+        assertEquals("6000000000",
+                s.getExpectedViolations().get(0).getConstraints().get("$dataset_size"),
+                "fixture must carry the $ pin before the run");
+
+        Violation v = new Violation(0, Map.of("$dataset_size", "6000000000"));
+        ScenarioLocationBackfill.run(f, s, List.of(v), 1, false, true);
+
+        String out = Files.readString(f);
+        assertEquals(1, count(out, "$dataset_size"),
+                () -> "the $ pin must survive the back-fill exactly once:\n" + out);
+
+        // ...and it re-parses and is honoured by the checker — an emitted pin that cannot be read
+        // back is worse than one that was dropped.
+        RuleTestScenario reparsed = RuleTestCdt.parse(out, f.toString());
+        assertEquals("6000000000",
+                reparsed.getExpectedViolations().get(0).getConstraints().get("$dataset_size"), out);
+        assertTrue(ViolationLocationCheck.verify(reparsed, List.of(v), 1, false, s.primaryTable())
+                .pass(), out);
+
+        // The teeth: the re-emitted pin still REJECTS a violation that carries no such result.
+        assertFalse(
+                ViolationLocationCheck.verify(reparsed, List.of(new Violation(0, Map.of())), 1,
+                        false, s.primaryTable()).pass(),
+                "a back-filled $ pin that matches anything is an erased pin with extra steps");
+    }
+
+
+    /** Occurrence count for a needle that is not a safe regex ({@code $} is a metacharacter). */
+    private static int count(String aHaystack, String aNeedle)
+    {
+        int n = 0;
+        for (int i = aHaystack.indexOf(aNeedle); i >= 0; i = aHaystack.indexOf(aNeedle,
+                i + aNeedle.length()))
+        {
+            n++;
+        }
+        return n;
+    }
 }

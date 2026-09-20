@@ -52,10 +52,7 @@ class RuleLoadValidationPatternTest
                 {
                   "Core": {"Id": "%s"},
                   %s,
-                  "Check": {
-                    "name": "AESTDY",
-                    "operator": "non_empty"
-                  }
+                  "Check": {"expression": "not empty(AESTDY)"}
                 }
                 """.formatted(coreId, blocksJson);
         return onlyRule(RulePackageLoader.loadFromString(packageOf(ruleJson)));

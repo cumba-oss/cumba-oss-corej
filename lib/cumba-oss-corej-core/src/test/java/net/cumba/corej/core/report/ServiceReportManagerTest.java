@@ -101,7 +101,7 @@ class ServiceReportManagerTest
     private static ReportSections sections()
     {
         return new ReportSections(Map.of(), List.of(), List.of(),
-                List.of(Map.of("core_id", "CORE-000001")), List.of(Map.of("core_id", "X")),
+                List.of(Map.of("core_id", "CDISC-CG0176")), List.of(Map.of("core_id", "X")),
                 List.of());
     }
 
@@ -114,7 +114,7 @@ class ServiceReportManagerTest
     void theEngineAloneRegistersNoWriters()
     {
         assertTrue(new ServiceReportManager().getSupportedReportFormats().isEmpty(),
-                "cumba-oss-corej-core must ship no report writer of its own — a non-empty registry "
+                "corej-core must ship no report writer of its own — a non-empty registry "
                         + "here means a writer module leaked onto the engine's own classpath");
     }
 
@@ -136,7 +136,7 @@ class ServiceReportManagerTest
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> manager.getReportWriter(xlsx, Map.of()));
         assertTrue(e.getMessage().contains("'xlsx'"), e.getMessage());
-        assertTrue(e.getMessage().contains("cumba-oss-corej-report-xlsx"), e.getMessage());
+        assertTrue(e.getMessage().contains("corej-report-xlsx"), e.getMessage());
         assertTrue(e.getMessage().contains("Registered formats: none"), e.getMessage());
     }
 

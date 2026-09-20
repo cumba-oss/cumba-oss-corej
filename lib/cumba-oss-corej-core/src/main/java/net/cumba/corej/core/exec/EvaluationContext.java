@@ -103,6 +103,20 @@ public class EvaluationContext
     ExpressionResultCache exprCache;
 
     /**
+     * Phase 6 of {@code PLAN-typed-expression-engine.md} — the <b>binding-hoist memo</b>: a
+     * per-execution store for the results of binding-invariant pure subtrees, armed by
+     * {@code RuleRunner} around a variable-cursor binding loop (D8/D92e) and shared by every
+     * per-binding context the loop builds ({@code toBuilder} carries the reference). Where the
+     * cross-rule {@link #exprCache} must decline a VAR-cursor domain — its key has no notion of the
+     * loop, and its lifetime spans rules with different join states — this memo's lifetime is
+     * exactly one (rule × dataset) execution, so a statically pure subtree (which by construction
+     * reads no cursor) evaluates once for the first binding and is reused by the rest. {@code null}
+     * everywhere else — every non-loop evaluation is byte-identical to phase 5b.
+     */
+    @Nullable
+    ExpressionResultCache bindingHoist;
+
+    /**
      * Optional sponsor Define-XML metadata provider — the "define" level of the three-level
      * metadata model (data / define / library). May be {@code null} when no Define-XML is present.
      * Carried here for the {@code define_*} operand family; consumed by the metadata-check
@@ -221,6 +235,24 @@ public class EvaluationContext
      */
     @Builder.Default
     Set<String> absentColumnFolds = ConcurrentHashMap.newKeySet();
+
+    /**
+     * D76 — the column names this rule's own expression <b>numeric-expects</b>
+     * ({@code TypeExpectations.numericDefaultColumns()}, computed over the specialised rule's
+     * expression roots by {@code RuleRunner} when it builds the context). Read by the
+     * value-position absent-column fold ({@code ExprCompiler.valueRefPlan}): an absent column named
+     * here defaults to all-{@code MissingValue.MIS} (D34 #4) and therefore takes the D34 #5 total
+     * order; every other absent column defaults to all-{@code ""} (D34 #3 — D76's "otherwise char"
+     * absorbs character-expected, ISO-text and no-expectation alike).
+     *
+     * <p>
+     * Defaults to the empty set, so a context built outside rule execution (probes, operation
+     * filters, tests) applies the char default throughout — the same "no expectation ⇒ char"
+     * disposition D76a rules.
+     * </p>
+     */
+    @Builder.Default
+    Set<String> numericExpectedColumns = Set.of();
 
     /** Records that {@code column} was absent and evaluated as all-missing (EC-43). */
     public void noteAbsentColumnFold(String column)

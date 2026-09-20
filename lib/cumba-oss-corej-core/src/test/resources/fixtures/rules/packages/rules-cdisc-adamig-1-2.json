@@ -50,7 +50,7 @@
         }
       ],
       "Check": {
-        "expression": "empty(DM.USUBJID)"
+        "expression": "not DM._matched_"
       },
       "Outcome": {
         "Message": "This record's USUBJID value was not found in SDTM.DM",
@@ -82,9 +82,9 @@
           ]
         }
       },
-      "Operations": [
+      "Bindings": [
         {
-          "id": "$trxx_max",
+          "name": "$trxx_max",
           "expression": "row_max(name_pattern=\"^TR(0[1-9]|[1-9][0-9])EDT$\")"
         }
       ],
@@ -134,9 +134,9 @@
           "PARAMCD"
         ]
       },
-      "Operations": [
+      "Bindings": [
         {
-          "id": "$basetype_mixed",
+          "name": "$basetype_mixed",
           "expression": "has_mixed_emptiness_within_group(BASETYPE, group=[PARAMCD])"
         }
       ],
@@ -272,9 +272,9 @@
           ]
         }
       },
-      "Operations": [
+      "Bindings": [
         {
-          "id": "$baseline_ayind",
+          "name": "$baseline_ayind",
           "expression": "max(\"AyIND\", group=[USUBJID, PARAMCD, BASETYPE], filter=filter(ABLFL=\"Y\"))"
         }
       ],

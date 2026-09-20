@@ -9,6 +9,7 @@
     "CDISC-AD0210",
     "CDISC-AD0367",
     "CDISC-AD0899",
+    "CDISC-CG0370",
     "CDISC-SEND-0272",
     "CDISC-SEND-0277",
     "CDISC-SEND-0324",
@@ -71,6 +72,9 @@
   ],
   "b2_by_tuple": {
     "sdtmig-3-4": [
+      "CDISC-CG0001",
+      "CDISC-CG0010",
+      "FDA-SD0007",
       "FDA-SD0054",
       "FDA-SD0059",
       "FDA-SD0060",

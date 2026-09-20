@@ -10,7 +10,6 @@ import java.util.Map;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.metadata.MetadataKeys;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -24,13 +23,20 @@ import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.Test;
 
 /**
- * Covers the {@link LibraryValidator} wiring that collects the bare CORE ids of SDTM {@code
+ * Covers the {@link LibraryValidator} wiring that collects the bare base ids of SDTM {@code
  * --}-prefix expansions (surfaced via {@link LibraryValidator#getSdtmPrefixExpandedIds()} and used
  * by the report writer to bundle their per-domain rows). Kept in its own class to stay clear of the
  * larger {@code LibraryValidatorTest}.
  */
 class LibraryValidatorSdtmExpansionTest
 {
+
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
 
     private static MetadataProvider providerWithDm()
     {
@@ -65,7 +71,7 @@ class LibraryValidatorSdtmExpansionTest
         RuleCore core = new RuleCore();
         core.setId(coreId);
         rule.setCore(core);
-        rule.setCheck(CheckConditionLeaf.builder().name("--DTC").operator("empty").build());
+        rule.setCheck(expr("empty(--DTC)"));
         Outcome outcome = new Outcome();
         outcome.setMessage("--DTC must not be empty");
         rule.setOutcome(outcome);
@@ -82,16 +88,16 @@ class LibraryValidatorSdtmExpansionTest
     void validateCollectsBareCoreIdOfSdtmPrefixExpansion()
     {
         LibraryValidator validator = LibraryValidator.builder().provider(providerWithDm())
-                .rules(dashRulePackage("CORE-000001")).targetDataset("DM", "dm.xpt", dmTable())
+                .rules(dashRulePackage("CDISC-CG0176")).targetDataset("DM", "dm.xpt", dmTable())
                 .build();
 
         ValidationReport report = validator.validate();
         assertNotNull(report);
 
-        // The `--DTC` rule was expanded for DM, and its expansion keeps the bare base CORE id —
+        // The `--DTC` rule was expanded for DM, and its expansion keeps the bare base rule id —
         // no GEN-EXP- prefix, no domain code. That id is what the report writer bundles on.
-        assertTrue(validator.getSdtmPrefixExpandedIds().contains("CORE-000001"),
-                "the SDTM `--` expansion's bare CORE id must be collected for bundling");
+        assertTrue(validator.getSdtmPrefixExpandedIds().contains("CDISC-CG0176"),
+                "the SDTM `--` expansion's bare base id must be collected for bundling");
     }
 
 
@@ -100,22 +106,22 @@ class LibraryValidatorSdtmExpansionTest
     {
         // A plain rule without `--` produces no SDTM-prefix expansion, so nothing is collected.
         Rule plain = new Rule();
-        plain.setId("uuid-CORE-000002");
+        plain.setId("uuid-CDISC-CG0208");
         RuleCore core = new RuleCore();
-        core.setId("CORE-000002");
+        core.setId("CDISC-CG0208");
         plain.setCore(core);
-        plain.setCheck(CheckConditionLeaf.builder().name("STUDYID").operator("var_exists").build());
+        plain.setCheck(expr("var_exists(\"STUDYID\")"));
         RulePackage pkg = new RulePackage();
         Map<String, Rule> rules = new HashMap<>();
-        rules.put("CORE-000002", plain);
+        rules.put("CDISC-CG0208", plain);
         pkg.setRules(rules);
 
         LibraryValidator validator = LibraryValidator.builder().provider(providerWithDm())
                 .rules(pkg).targetDataset("DM", "dm.xpt", dmTable()).build();
         validator.validate();
 
-        assertFalse(validator.getSdtmPrefixExpandedIds().contains("CORE-000002"));
+        assertFalse(validator.getSdtmPrefixExpandedIds().contains("CDISC-CG0208"));
         assertEquals(0, validator.getSdtmPrefixExpandedIds().stream()
-                .filter(id -> id.startsWith("CORE-000002")).count());
+                .filter(id -> id.startsWith("CDISC-CG0208")).count());
     }
 }

@@ -21,8 +21,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * <b>The discrimination is total and free:</b> every {@link CheckCondition} node name is lower-case
- * ({@code all} / {@code any} / {@code not} / {@code expression}, plus the leaf's {@code operator} /
- * {@code name} / {@code value} / …), and every ladder level name is UPPER-case. So:
+ * ({@code all} / {@code any} / {@code not} / {@code expression}), and every ladder level name is
+ * UPPER-case. So:
  * </p>
  * <ul>
  * <li>all keys are level names &rArr; a <b>level map</b>, re-ordered strictest-first
@@ -37,8 +37,8 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * &#9888; A level's value is either a bare condition ({@code {expression: …}} / {@code {all: …}} /
  * …) or that same object carrying an additional {@code Message}. The {@code Message} key is
- * <b>stripped before the condition is bound</b>, so it can never reach {@link CheckConditionLeaf}
- * as a stray property.
+ * <b>stripped before the condition is bound</b>, so it can never reach the condition binding as a
+ * stray property.
  * </p>
  *
  * <p>
@@ -56,7 +56,7 @@ public class RuleCheckDeserializer extends StdDeserializer<RuleCheck>
     /**
      * A key that <em>looks like</em> a level name: all-caps, so it can be nothing else in this
      * grammar. Used to turn a typo ({@code FATAL:}, {@code REJECTED:}) into a stated "unknown level
-     * name" rather than a silently-nonsense {@link CheckConditionLeaf}.
+     * name" rather than an unhelpful generic condition rejection.
      */
     private static final Pattern LEVEL_SHAPED = Pattern.compile("[A-Z][A-Z0-9_]*");
 
@@ -130,7 +130,7 @@ public class RuleCheckDeserializer extends StdDeserializer<RuleCheck>
      * @param node
      *            the {@code Check:} value
      * @param ctxt
-     *            the deserialisation context, for the leaf binding
+     *            the deserialisation context, for the condition binding
      * @return the bound form, never {@code null}
      * @throws IOException
      *             if the underlying condition binding fails
@@ -162,7 +162,8 @@ public class RuleCheckDeserializer extends StdDeserializer<RuleCheck>
             {
                 // `Notice`/`NOTICE` (never authorable), a non-canonical spelling (`Error:`), or an
                 // all-caps typo. All three are "you meant a level and got it wrong", which must be
-                // said out loud — falling through to the plain branch would bind a nonsense leaf.
+                // said out loud — the plain branch would reject it with a message about condition
+                // keys.
                 unknownLevelKeys.add(name);
             }
             else
@@ -216,7 +217,7 @@ public class RuleCheckDeserializer extends StdDeserializer<RuleCheck>
                 }
                 message = m.asText();
                 // Strip it before binding: `Message` is not part of the condition grammar and
-                // would otherwise reach CheckConditionLeaf as an unbound property.
+                // would otherwise reach the condition binding as an unknown key.
                 ObjectNode stripped = ((ObjectNode) value).deepCopy();
                 stripped.remove(MESSAGE_KEY);
                 conditionNode = stripped;
@@ -225,13 +226,18 @@ public class RuleCheckDeserializer extends StdDeserializer<RuleCheck>
             {
                 // Tested BEFORE binding, because fromNode never returns null for an object node —
                 // it would bind `ERROR: {}` (or `ERROR: {Message: "m"}` after the strip above) to
-                // an all-null leaf that loads clean and checks nothing.
+                // a nonsense binding (historically an all-null leaf that checked nothing).
                 return RuleCheck.invalid("Check level " + key + " has no condition"
                         + (message != null
                                 ? " — a level must carry a condition, not only a " + MESSAGE_KEY
                                 : ""));
             }
-            CheckCondition condition = CheckConditionDeserializer.fromNode(conditionNode, ctxt);
+            // requireNonNull: the guards above have established that conditionNode is a NON-EMPTY
+            // OBJECT, and fromNode answers null only for a JSON null — the invariant the
+            // `conditionNode.isEmpty()` check above already documents. A LevelCheck with a null
+            // condition is the all-null binding that check exists to prevent.
+            CheckCondition condition = java.util.Objects
+                    .requireNonNull(CheckConditionDeserializer.fromNode(conditionNode, ctxt));
             levels.put(Severity.valueOf(key), new LevelCheck(condition, message));
         }
         SequencedMap<Severity, LevelCheck> ordered = LevelCheck.byLadder(levels);

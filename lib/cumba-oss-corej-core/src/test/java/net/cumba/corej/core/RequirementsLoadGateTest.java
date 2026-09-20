@@ -32,8 +32,7 @@ import org.junit.jupiter.api.Test;
 class RequirementsLoadGateTest
 {
 
-    private static final String CHECK = "\"Check\":{\"all\":[{\"name\":\"AESEV\","
-            + "\"operator\":\"var_exists\"}]}";
+    private static final String CHECK = "\"Check\":{\"all\":[{\"expression\": \"var_exists(\\\"AESEV\\\")\"}]}";
 
     private static String packageOf(String ruleBody)
     {
@@ -209,8 +208,9 @@ class RequirementsLoadGateTest
                     + "\"Any\":[\"AESTDTC\",\"AEDTC\"],\"None\":[\"POOLID\"]}}," + CHECK);
             assertNotNull(modern.effectiveVariableRequirement());
             assertEquals(List.of("AEDECOD"), modern.effectiveVariableRequirement().getAll());
-            assertEquals(List.of("AESTDTC", "AEDTC"),
-                    modern.effectiveVariableRequirement().getAny());
+            assertEquals(List.of(List.of("AESTDTC", "AEDTC")),
+                    modern.effectiveVariableRequirement().getAnyGroups(),
+                    "a flat authored Any is ONE group");
             assertEquals(List.of("POOLID"), modern.effectiveVariableRequirement().getNone());
 
             assertNull(load(CHECK).effectiveVariableRequirement());
@@ -598,6 +598,208 @@ class RequirementsLoadGateTest
         }
     }
 
+    // ---- R3/R4 over GROUPS — Any as an AND of ORs (PLAN-any-variable-sets) -----
+
+
+    @Nested
+    @DisplayName("R3/R4 over groups — the nested Any shapes (rulings D2/D3/D4)")
+    class AnyGroups
+    {
+
+        @Test
+        @DisplayName("two two-entry groups are the conforming nested shape")
+        void conformingNested() throws IOException
+        {
+            assertNull(errorOf("\"Requirements\":{\"Variables\":{\"Any\":"
+                    + "[[\"TEENRL\",\"TEDUR\"],[\"TESTDTC\",\"TEDTC\"]]}}," + CHECK));
+        }
+
+
+        @Test
+        @DisplayName("D3 — a one-entry group is rejected, and the message names the group")
+        void oneEntryGroupIsRejected() throws IOException
+        {
+            String error = errorOf("\"Requirements\":{\"Variables\":{\"Any\":"
+                    + "[[\"TEENRL\",\"TEDUR\"],[\"TESTDTC\"]]}}," + CHECK);
+            assertNotNull(error);
+            assertTrue(error.contains("group 2"), error);
+            assertTrue(error.contains("at least 2 distinct entries"), error);
+        }
+
+
+        @Test
+        @DisplayName("D3 — the distinct fold applies per group: one column in two cases")
+        void repeatedEntryWithinAGroupIsRejected() throws IOException
+        {
+            String error = errorOf("\"Requirements\":{\"Variables\":{\"Any\":"
+                    + "[[\"TEENRL\",\"TEDUR\"],[\"AESEV\",\"aesev\"]]}}," + CHECK);
+            assertNotNull(error, "two spellings of one column are one column to every consumer,"
+                    + " inside a group exactly as in a flat Any");
+            assertTrue(error.contains("group 2"), error);
+            assertTrue(error.contains("at least 2 distinct entries"), error);
+        }
+
+
+        @Test
+        @DisplayName("an EMPTY group is rejected as that group, not as an empty facet")
+        void emptyGroupIsRejected() throws IOException
+        {
+            String error = errorOf("\"Requirements\":{\"Variables\":{\"Any\":"
+                    + "[[],[\"TEENRL\",\"TEDUR\"]]}}," + CHECK);
+            assertNotNull(error);
+            assertTrue(error.contains("group 1"), error);
+            assertTrue(error.contains("got 0 (from 0)"), error);
+        }
+
+
+        /**
+         * D2 is a <b>shape</b> ruling, so the message must say "mixed shape": the parse wraps the
+         * stray flat entry as a singleton group to stay parseable at all, and without the dedicated
+         * arm the author would read "group 1 needs at least 2 distinct entries" about a group they
+         * never typed.
+         */
+        @Test
+        @DisplayName("D2 — a mixed array is rejected with a message that says MIXED")
+        void mixedShapeIsRejectedAsMixed() throws IOException
+        {
+            String error = errorOf("\"Requirements\":{\"Variables\":{\"Any\":"
+                    + "[\"TEENRL\",[\"TEDUR\",\"TESTDTC\"]]}}," + CHECK);
+            assertNotNull(error);
+            assertTrue(error.contains("mixed shape"), error);
+            assertFalse(error.contains("at least 2 distinct entries"),
+                    "the D3 arm must stand down on a mixed shape — its group indices would blame"
+                            + " groups the author never typed: " + error);
+        }
+
+
+        /**
+         * D4 — a duplicate <b>across</b> groups is legal and each group stays independently
+         * satisfiable, but it is suspicious enough to warn. Asserted on the captured log record —
+         * asserting only "no error" would pass with the warning silently deleted.
+         */
+        @Test
+        @DisplayName("D4 — a cross-group duplicate WARNS and still loads")
+        void crossGroupDuplicateWarnsButLoads() throws Exception
+        {
+            List<String> warnings = new java.util.ArrayList<>();
+            java.util.logging.Handler handler = new java.util.logging.Handler()
+            {
+
+                private final java.util.logging.SimpleFormatter formatter = new java.util.logging.SimpleFormatter();
+
+                @Override
+                public void publish(java.util.logging.LogRecord record)
+                {
+                    if (record.getLevel().intValue() >= java.util.logging.Level.WARNING.intValue())
+                    {
+                        warnings.add(formatter.formatMessage(record));
+                    }
+                }
+
+
+                @Override
+                public void flush()
+                {
+                }
+
+
+                @Override
+                public void close()
+                {
+                }
+            };
+            java.util.logging.Logger juli = java.util.logging.Logger
+                    .getLogger(RulePackageLoader.class.getName());
+            java.util.logging.Level previous = juli.getLevel();
+            juli.addHandler(handler);
+            juli.setLevel(java.util.logging.Level.ALL);
+            String error;
+            try
+            {
+                error = errorOf("\"Requirements\":{\"Variables\":{\"Any\":"
+                        + "[[\"TEENRL\",\"TEDUR\"],[\"teenrl\",\"TESTDTC\"]]}}," + CHECK);
+            }
+            finally
+            {
+                juli.removeHandler(handler);
+                juli.setLevel(previous);
+            }
+            assertNull(error, "D4: a cross-group duplicate is a warning, never an error");
+            List<String> d4 = warnings.stream().filter(w -> w.contains("appears in group"))
+                    .toList();
+            assertEquals(1, d4.size(), () -> "expected exactly one D4 warning, got " + warnings);
+            assertTrue(d4.get(0).contains("teenrl"), d4::toString);
+            assertTrue(d4.get(0).contains("group 1"), d4::toString);
+            assertTrue(d4.get(0).contains("group 2"), d4::toString);
+            assertTrue(d4.get(0).contains("TEST-REQ"),
+                    () -> "the warning must name its rule: " + d4);
+
+            // ⭐⭐ The warning must reach Rule.getLoadWarning(), not only the log stream
+            // (review F2, 2026-09-17). The house idiom is setLoadWarning + LOGGER, and D4
+            // originally had only the logger — which left a duplicate invisible to every corpus
+            // lint or report surface that reads load warnings, its one trace a JUL record
+            // nobody keeps. Asserting the CHANNEL, not just the text, is what makes that
+            // regression visible if the call is ever dropped again.
+            Rule loaded = load("\"Requirements\":{\"Variables\":{\"Any\":"
+                    + "[[\"TEENRL\",\"TEDUR\"],[\"teenrl\",\"TESTDTC\"]]}}," + CHECK);
+            assertNull(loaded.getLoadError(), "still not an error");
+            String loadWarning = loaded.getLoadWarning();
+            assertNotNull(loadWarning, "D4 must set the rule's load warning, not only log it");
+            assertTrue(loadWarning.contains("appears in group"), () -> loadWarning);
+            assertTrue(loadWarning.contains("teenrl"), () -> loadWarning);
+        }
+
+
+        /**
+         * D4 vs the Q9 overlap arms: <b>within</b> {@code Any} a duplicate warns, <b>across</b>
+         * {@code Any} and {@code All} it stays an error — and since the overlap arms read the flat
+         * union, an entry duplicated across groups AND present in {@code All} must produce that
+         * error <b>once</b>, not once per group.
+         */
+        @Test
+        @DisplayName("Q9 — a group-2 entry shared with All is still an error, emitted ONCE")
+        void overlapArmsReadTheUnionAndDedupe() throws IOException
+        {
+            String error = errorOf("\"Requirements\":{\"Variables\":{\"All\":[\"TEENRL\"],"
+                    + "\"Any\":[[\"TEENRL\",\"TEDUR\"],[\"TEENRL\",\"TESTDTC\"]]}}," + CHECK);
+            assertNotNull(error);
+            assertTrue(error.contains("both Any and All"), error);
+            int first = error.indexOf("both Any and All");
+            assertEquals(-1, error.indexOf("both Any and All", first + 1),
+                    "one distinct offending entry, one error: " + error);
+        }
+
+
+        @Test
+        @DisplayName("R3 reaches inside groups — an empty and a null entry in group 2 are"
+                + " rejected")
+        void emptyAndNullEntriesInsideAGroupAreRejected() throws IOException
+        {
+            String empty = errorOf("\"Requirements\":{\"Variables\":{\"Any\":"
+                    + "[[\"TEENRL\",\"TEDUR\"],[\"TESTDTC\",\"\"]]}}," + CHECK);
+            assertNotNull(empty, "anyUnion() must preserve blanks or R3 goes blind on groups");
+            assertTrue(empty.contains("Requirements.Variables.Any"), empty);
+            assertTrue(empty.contains("empty/null entry"), empty);
+
+            String nul = errorOf("\"Requirements\":{\"Variables\":{\"Any\":"
+                    + "[[\"TEENRL\",\"TEDUR\"],[\"TESTDTC\",null]]}}," + CHECK);
+            assertNotNull(nul, "anyUnion() must preserve nulls or R3 goes blind on groups");
+            assertTrue(nul.contains("empty/null entry"), nul);
+        }
+
+
+        @Test
+        @DisplayName("an invalid /regex/ inside group 2 fails at load, exactly as in a flat Any")
+        void invalidRegexInsideAGroupIsRejected() throws IOException
+        {
+            String error = errorOf("\"Requirements\":{\"Variables\":{\"Any\":"
+                    + "[[\"TEENRL\",\"TEDUR\"],[\"/[/\",\"TESTDTC\"]]}}," + CHECK);
+            assertNotNull(error);
+            assertTrue(error.contains("Requirements.Variables.Any"), error);
+            assertTrue(error.contains("not a valid pattern"), error);
+        }
+    }
+
     // ---- R5 — provider declared ⇔ derived (ruling Q4) -------------------------
 
 
@@ -606,9 +808,8 @@ class RequirementsLoadGateTest
     class ProviderAgreement
     {
 
-        private static final String LIBRARY_OP = "\"Operations\":[{\"id\":\"$req\","
-                + "\"operator\":\"required_variables\"}],"
-                + "\"Check\":{\"all\":[{\"name\":\"$req\",\"operator\":\"empty\"}]}";
+        private static final String LIBRARY_OP = "\"Bindings\":[{\"name\": \"$req\", \"expression\": \"required_variables()\"}],"
+                + "\"Check\":{\"all\":[{\"expression\": \"empty($req)\"}]}";
 
         @Test
         @DisplayName("omitting the field is always legal — the corpus's state on day one")
@@ -653,8 +854,7 @@ class RequirementsLoadGateTest
         void operandSurfaceCounts() throws IOException
         {
             String body = "\"Requirements\":{\"Library\":true},"
-                    + "\"Check\":{\"all\":[{\"name\":\"library_variable_role\","
-                    + "\"operator\":\"equal_to\",\"value\":\"Topic\"}]}";
+                    + "\"Check\":{\"all\":[{\"expression\": \"var_role(\\\"LIBRARY\\\") == Topic\"}]}";
             assertNull(errorOf(body),
                     "CDISC-CG0010's shape: the dependency exists with no Operations entry at all");
         }
@@ -664,9 +864,8 @@ class RequirementsLoadGateTest
         @DisplayName("Define and Dictionary are gated the same way")
         void defineAndDictionary() throws IOException
         {
-            String defineOp = "\"Operations\":[{\"id\":\"$d\","
-                    + "\"operator\":\"define_variable_names\"}],"
-                    + "\"Check\":{\"all\":[{\"name\":\"$d\",\"operator\":\"empty\"}]}";
+            String defineOp = "\"Bindings\":[{\"name\": \"$d\", \"expression\": \"define_variable_names()\"}],"
+                    + "\"Check\":{\"all\":[{\"expression\": \"empty($d)\"}]}";
             assertNull(errorOf("\"Requirements\":{\"Define\":true}," + defineOp));
             String error = errorOf("\"Requirements\":{\"Define\":false}," + defineOp);
             assertNotNull(error);
@@ -694,7 +893,7 @@ class RequirementsLoadGateTest
         void conforming() throws IOException
         {
             assertNull(errorOf(EXPANSION + "\"Requirements\":{\"Variables\":{\"All\":[\"AESEV\"]}},"
-                    + "\"Check\":{\"all\":[{\"name\":\"&VAR\",\"operator\":\"var_exists\"}]}"));
+                    + "\"Check\":{\"all\":[{\"expression\": \"var_exists(`&VAR`)\"}]}"));
         }
 
 
@@ -702,9 +901,9 @@ class RequirementsLoadGateTest
         @DisplayName("a token in Requirements.Variables.All is rejected")
         void tokenInAll() throws IOException
         {
-            String error = errorOf(EXPANSION
-                    + "\"Requirements\":{\"Variables\":{\"All\":[\"&VAR\"]}},"
-                    + "\"Check\":{\"all\":[{\"name\":\"&VAR\",\"operator\":\"var_exists\"}]}");
+            String error = errorOf(
+                    EXPANSION + "\"Requirements\":{\"Variables\":{\"All\":[\"&VAR\"]}},"
+                            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(`&VAR`)\"}]}");
             assertNotNull(error, "the requirement gate runs BEFORE expansion, so the token would"
                     + " be matched literally and the rule would skip on every dataset");
             assertTrue(error.contains("Requirements.Variables.All"), error);
@@ -715,15 +914,15 @@ class RequirementsLoadGateTest
         @DisplayName("a token in Any and in None is rejected too")
         void tokenInAnyAndNone() throws IOException
         {
-            String any = errorOf(EXPANSION
-                    + "\"Requirements\":{\"Variables\":{\"Any\":[\"&VAR\",\"AESEV\"]}},"
-                    + "\"Check\":{\"all\":[{\"name\":\"&VAR\",\"operator\":\"var_exists\"}]}");
+            String any = errorOf(
+                    EXPANSION + "\"Requirements\":{\"Variables\":{\"Any\":[\"&VAR\",\"AESEV\"]}},"
+                            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(`&VAR`)\"}]}");
             assertNotNull(any);
             assertTrue(any.contains("Requirements.Variables.Any"), any);
 
-            String none = errorOf(EXPANSION
-                    + "\"Requirements\":{\"Variables\":{\"None\":[\"&VAR\"]}},"
-                    + "\"Check\":{\"all\":[{\"name\":\"&VAR\",\"operator\":\"var_exists\"}]}");
+            String none = errorOf(
+                    EXPANSION + "\"Requirements\":{\"Variables\":{\"None\":[\"&VAR\"]}},"
+                            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(`&VAR`)\"}]}");
             assertNotNull(none);
             assertTrue(none.contains("Requirements.Variables.None"), none);
         }
@@ -740,7 +939,7 @@ class RequirementsLoadGateTest
         void tokenUnderTheRetiredSpellingIsStillRejected() throws IOException
         {
             String error = errorOf(EXPANSION + "\"Scope\":{\"Variables\":{\"Include\":[\"&VAR\"]}},"
-                    + "\"Check\":{\"all\":[{\"name\":\"&VAR\",\"operator\":\"var_exists\"}]}");
+                    + "\"Check\":{\"all\":[{\"expression\": \"var_exists(`&VAR`)\"}]}");
             assertNotNull(error);
             assertTrue(error.contains("Scope.Variables"), error);
         }
@@ -755,9 +954,9 @@ class RequirementsLoadGateTest
         @DisplayName("⚠ R6's message names the offending rule, as every sibling gate's does")
         void theMessageNamesTheRule() throws IOException
         {
-            String error = errorOf(EXPANSION
-                    + "\"Requirements\":{\"Variables\":{\"All\":[\"&VAR\"]}},"
-                    + "\"Check\":{\"all\":[{\"name\":\"&VAR\",\"operator\":\"var_exists\"}]}");
+            String error = errorOf(
+                    EXPANSION + "\"Requirements\":{\"Variables\":{\"All\":[\"&VAR\"]}},"
+                            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(`&VAR`)\"}]}");
             assertNotNull(error);
             assertTrue(error.startsWith("[TEST-REQ]"), error);
         }
@@ -859,8 +1058,9 @@ class RequirementsLoadGateTest
         @DisplayName("an authored Precondition is a load error")
         void authoredIsRejected() throws IOException
         {
-            String error = errorOf("\"Precondition\":{\"all\":[{\"name\":\"AESEV\","
-                    + "\"operator\":\"var_exists\"}]}," + CHECK);
+            String error = errorOf(
+                    "\"Precondition\":{\"all\":[{\"expression\": \"var_exists(\\\"AESEV\\\")\"}]},"
+                            + CHECK);
             assertNotNull(error);
             assertTrue(error.contains("'Precondition' is not an authorable field"), error);
             assertTrue(error.contains("Requirements"), error);
@@ -922,10 +1122,10 @@ class RequirementsLoadGateTest
                 + " rejected")
         void anAuthoredPreconditionIsRejectedEvenWhenInjectionWouldRun() throws IOException
         {
-            Rule rule = load("\"Precondition\":{\"all\":[{\"name\":\"AESEV\","
-                    + "\"operator\":\"var_exists\"}]},\"Check\":{\"expression\":"
-                    + "\"valid_external_dictionary_value(AEDECOD, dictionary_term_type="
-                    + "\\\"PT\\\", external_dictionary_type=\\\"meddra\\\") == false\"}");
+            Rule rule = load(
+                    "\"Precondition\":{\"all\":[{\"expression\": \"var_exists(\\\"AESEV\\\")\"}]},\"Check\":{\"expression\":"
+                            + "\"valid_external_dictionary_value(AEDECOD, dictionary_term_type="
+                            + "\\\"PT\\\", external_dictionary_type=\\\"meddra\\\") == false\"}");
             String error = rule.getLoadError();
             assertNotNull(error, "the authored half must be diagnosed before the loader writes its"
                     + " own gate into the same field");

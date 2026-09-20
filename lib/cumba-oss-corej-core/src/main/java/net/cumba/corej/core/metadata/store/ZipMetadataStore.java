@@ -10,7 +10,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -236,10 +235,16 @@ final class ZipMetadataStore implements MetadataStore
      * array and surface as an unattributed {@code NullPointerException} deep in a binary decoder.
      * NullAway flags exactly that gap.
      * </p>
+     *
+     * @param aEntries
+     *            the store's entries, as verifyParts accepted them
+     * @param aName
+     *            the fixed part's entry name
+     * @return that part's bytes
      */
     private static byte[] fixedPart(Map<String, byte[]> aEntries, String aName)
     {
-        return Objects.requireNonNull(aEntries.get(aName),
+        return java.util.Objects.requireNonNull(aEntries.get(aName),
                 () -> "metadata store part " + aName + " is missing after verifyParts accepted "
                         + "the store; the fixed-part inventory and the readers disagree");
     }

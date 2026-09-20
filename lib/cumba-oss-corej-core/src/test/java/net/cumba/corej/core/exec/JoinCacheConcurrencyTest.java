@@ -12,7 +12,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
@@ -37,6 +36,12 @@ import org.junit.jupiter.api.Test;
 @SuppressWarnings("FutureReturnValueIgnored")
 class JoinCacheConcurrencyTest
 {
+
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
 
     private static final int THREADS = 8;
 
@@ -165,11 +170,10 @@ class JoinCacheConcurrencyTest
 
     private static Rule buildJoinRule()
     {
-        // Check: TRTP must equal ADSL.TRT01P. The CheckConditionLeaf with a foreign-dataset
-        // reference is what drives DatasetLookup.lookup per row, and Match_Datasets registers
-        // ADSL/USUBJID with the JoinCache.
-        CheckConditionLeaf leaf = CheckConditionLeaf.builder().name("TRTP").operator("not_equal_to")
-                .value(textNode("ADSL.TRT01P")).build();
+        // Check: TRTP must equal ADSL.TRT01P. The foreign-dataset reference is what drives
+        // DatasetLookup.lookup per row, and Match_Datasets registers ADSL/USUBJID with the
+        // JoinCache.
+        net.cumba.corej.core.model.CheckConditionExpression leaf = expr("TRTP != ADSL.TRT01P");
 
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
@@ -186,12 +190,6 @@ class JoinCacheConcurrencyTest
         md.setKeys(List.of("USUBJID"));
         rule.setMatchDatasets(List.of(md));
         return rule;
-    }
-
-
-    private static com.fasterxml.jackson.databind.node.TextNode textNode(String s)
-    {
-        return com.fasterxml.jackson.databind.node.TextNode.valueOf(s);
     }
 
 

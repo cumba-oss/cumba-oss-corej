@@ -33,10 +33,10 @@ import org.junit.jupiter.api.Test;
  * <em>cannot</em> prove on their own is the step before the matcher: every call below hands
  * {@code unsplitName} in as a <b>string literal</b>, so nothing here shows that a real
  * {@code SUPPLBHM} dataset actually yields {@code SUPPLB} from its own columns. That link is made
- * by {@code ApSqDomainScopeFromDataTest} in {@code cumba-oss-corej-ruletest}, which derives the
- * base with {@link OperationExecutor#unsplitNameFromData} from ten committed {@code AP*} /
- * {@code SQ*} / {@code SUPP*} dataset fixtures and also drives the selection end-to-end through
- * {@code RuleGenerator}. Keep the two in step.
+ * by {@code ApSqDomainScopeFromDataTest} in {@code corej-ruletest}, which derives the base with
+ * {@link OperationExecutor#unsplitNameFromData} from ten committed {@code AP*} / {@code SQ*} /
+ * {@code SUPP*} dataset fixtures and also drives the selection end-to-end through
+ * {@code DatasetRuleResolver}. Keep the two in step.
  * </p>
  */
 class ScopeMatcherSuppApFamilyTest
@@ -246,7 +246,7 @@ class ScopeMatcherSuppApFamilyTest
 
 
     @Test
-    void core000510_style_scope_keeps_working_on_its_own_family()
+    void cdiscCg0017_style_scope_keeps_working_on_its_own_family()
     {
         // CDISC-CG0017 shape: include_split_datasets=true, Exclude=[SUPP--, AP--]. Both tokens
         // are now present, so both families are excluded — explicitly, not by inference.

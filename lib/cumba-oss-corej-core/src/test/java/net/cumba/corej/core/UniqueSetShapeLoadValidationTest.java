@@ -21,11 +21,11 @@ import org.junit.jupiter.api.Test;
  * <p>
  * ⚠⚠ Both arms are asserted — accepting and rejecting — because a one-armed validator silently
  * becomes the only arm. Reachability: the validator enters an {@code Expr} only for a
- * {@link CheckConditionExpression} ({@code validateInlineMissingValues}); since Plan A Phase 2
- * {@code ExprLowering.functionOperatorLeaf} REFUSES the retired shapes for the pair, so the
- * deserializer keeps such a Check native and the validator is armed for every plain Check — which
- * is what {@link #rejected} proves by loading the bare old spelling with no conjunct (the Phase-1
- * {@code length()} device is kept only as a second arm, so the native-authored path stays covered).
+ * {@link CheckConditionExpression} ({@code validateInlineMissingValues}); since phase 7d (D121)
+ * every Check IS a {@code CheckConditionExpression} — the leaf model and its lowering are retired —
+ * so the validator is armed for every plain Check — which is what {@link #rejected} proves by
+ * loading the bare old spelling with no conjunct (the Phase-1 {@code length()} device is kept only
+ * as a second arm, so the native-authored path stays covered).
  * </p>
  */
 class UniqueSetShapeLoadValidationTest
@@ -58,8 +58,8 @@ class UniqueSetShapeLoadValidationTest
     {
         Rule bare = loadCheck(expression);
         assertTrue(bare.getCheck() instanceof CheckConditionExpression,
-                "⚠⚠ the retired spelling LOWERED — ExprLowering no longer refuses it, the old"
-                        + " grammar survives and the validator is unreachable: " + bare.getCheck());
+                "⚠⚠ the retired spelling stopped binding as an expression — the validator"
+                        + " would be unreachable: " + bare.getCheck());
         String error = bare.getLoadError();
         assertNotNull(error, "must be a LOAD error: " + expression);
         assertFalse(error.contains("unknown operation function"),

@@ -30,26 +30,23 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * &#9888;&#9888; <b>The absent-column fold is NOT "uniformly FALSE" — corrected 2026-09-14.</b>
- * This paragraph used to say that the fold mirrored the legacy missing-column fold (Fix #40,
- * {@code CheckConditionOptimizer.tryFoldOnMissingColumn}) and made a non-{@code exists} leaf over
- * an absent column uniformly {@code FALSE}. <b>EC-43 removed that</b>, and the code below has said
- * so since: only {@code empty} / {@code is_missing} short-circuit here, and they fold to
- * {@link Verdict#TRUE} (an absent column is empty for every row — their whole contract). <b>Every
- * other leaf returns {@link Verdict#UNKNOWN} and falls through to the row path</b>, where the
- * column reads all-missing and the operator computes its own polarity, so a negative leaf such as
- * {@code --OCCUR != "N"} <i>fires</i> — it is not folded false. See the EC-43 comment at
- * {@code foldLeaf}, which also records why: the two paths <b>report</b> differently (one
- * dataset-level finding versus one per row), so short-circuiting would make an ABSENT column report
- * once while a PRESENT-but-all-blank column reported per row, breaking the <i>absent == blank</i>
- * contract EC-43 exists to establish. Measured there: spec {@code EC43-not-equal-absent} emitted 1
- * violation against the control's 2.
- * </p>
- *
- * <p>
- * &#9873; The stale sentence is quoted here rather than deleted because it misled a design review
- * in 2026-09 into reporting a contradiction between this class and {@code Primitives}' per-row
- * <i>missing &rArr; negate</i>. There is none.
+ * &#9888;&#9888; <b>The absent-column fold is a DATASET-LEVEL fold for every operator — D111,
+ * 2026-09-17.</b> A leaf all of whose column reads bind at dataset level, at least one by
+ * <b>absence</b> ({@link #bindColumnLevel}: an absent column is a dataset-level constant, D34
+ * #3/#4), evaluates once and folds — {@code foldLeaf}'s {@code absentColumnLeafLevel} arm. The
+ * verdict is not per-operator: the compiled program folds the absent read to all-missing (EC-43)
+ * and the operator computes its own polarity, so a negative leaf such as {@code --OCCUR != "N"}
+ * folds {@link Verdict#TRUE} (one dataset-level finding) while {@code X == "A"} folds
+ * {@link Verdict#FALSE}. Two superseded shapes of this arm, kept for archaeology: pre-EC-43 the
+ * fold made every such leaf uniformly FALSE (Fix #40); from EC-43 until D111 only
+ * {@code empty}/{@code is_missing} short-circuited (the D38 allowlist) and every other leaf fell
+ * through to the row path, so an absent column reported <b>per row</b> exactly like a
+ * present-but-all-blank one — that reporting equivalence was EC-43's contract, and <b>D111
+ * knowingly retires it</b>: absence is a schema fact decidable before a row is read, blankness a
+ * data fact that needs the rows (the epistemic split of D111), and the per-dataset report is the
+ * corpus' gate-plus-sister-rule idiom collapsed into the engine (D111a). A present-but-all-blank
+ * column still reports per row; the specs {@code EC43-not-equal-absent-operator} /
+ * {@code EC43-absent-equals-blank-control} pin the pair (1 dataset finding vs 2 row findings).
  * </p>
  *
  * <p>
@@ -68,6 +65,22 @@ import org.jspecify.annotations.Nullable;
  * {@code RulePackageLoader.isBroadcastVerdictExpr} (load-time flagging) and of the runtime
  * {@code $}-operand safety walk previously private to {@code RuleRunner}, so the load-time flag,
  * the runtime guard, and the fold can never drift apart.
+ * </p>
+ *
+ * <p>
+ * ⭐ <b>Phase 5 (typed-expression plan) measured this fold against the STATIC level of the typed
+ * tree</b> ({@code exec.LevelInstrument} compares them at both {@code RuleRunner} fold sites) and
+ * the runtime probes here are <b>load-bearing, not redundant with the static level</b> — each
+ * decides cases the typed level cannot: {@code providersAvailable} (provider presence is a runtime
+ * fact the D7 SKIPPED contract depends on), {@code operationRefsSafe} and its mirror image (a
+ * {@code $}-binding's materialised kind is dataset-dependent — a cross-dataset operation over an
+ * absent domain degenerates to a scalar the static binding level calls per-row/group), and the
+ * Kleene combinators (a decided operand's <em>value</em> short-circuits around row-level operands,
+ * which no static level predicts — measured: every such decision was {@code FALSE}, where the fold
+ * and the row path are observationally identical). The one deliberate fold-vs-level disagreement
+ * phase 5 measured — EC-43's absent-column fall-through — was <b>closed by D111</b> (phase 7): the
+ * absent-column leaf now folds through the same bind-time level classification the typed walk reads
+ * ({@link #bindColumnLevel}), so that population reports {@code AGREE_DECIDED}.
  * </p>
  */
 public final class BroadcastFold
@@ -158,26 +171,177 @@ public final class BroadcastFold
         {
             return NativeExprEvaluator.evaluateBroadcast(leaf, ctx) ? Verdict.TRUE : Verdict.FALSE;
         }
-        if (foldsOnMissingColumn(leaf, ctx) && firesEmptyOnAbsentColumn(leaf))
+        if (absentColumnLeafLevel(leaf, ctx) == AbsentLeafLevel.DATASET_WITH_ABSENT
+                && NativeExprEvaluator.isSupported(leaf))
         {
-            // EC-43 (T2 reconciliation). `empty`/`is_missing` keep their broadcast TRUE — an absent
-            // column is empty for every row, that is their whole contract (FIRES_ON_ABSENT_COLUMN),
-            // and existing specs pin the single dataset-level finding it produces.
+            // D111 / D39 / D39a — the absent-column dataset-level fold, by the LEVEL CALCULUS.
+            // Every column this leaf reads binds at dataset level (bindColumnLevel: an absent
+            // column is a dataset-level constant per D34 #3/#4; a context scalar is a dataset
+            // fact), at least one of them by ABSENCE, and every other operand is a literal or a
+            // runtime-scalar $-ref — so the leaf's verdict is row-independent and evaluates once.
+            // The compiled program folds the absent read to ALL_MISSING (EC-43) and the operator
+            // computes its own polarity, exactly as the row path would on every row; what changes
+            // is REPORTING: one dataset-level finding instead of one per row.
             //
-            // EVERY OTHER operator must fall through to the row path. The verdict over an absent
-            // column is no longer a per-operator constant — the column folds to all-missing and the
-            // operator computes its own polarity — but more importantly the two paths REPORT
-            // differently: a broadcast TRUE yields one dataset-level finding, while the row path
-            // yields one finding per row. Short-circuiting here would therefore break the very
-            // contract EC-43 establishes, because a PRESENT-but-all-blank column (which never
-            // reaches this fold) would report per row while an ABSENT one reported once.
-            // Measured: spec EC43-not-equal-absent emitted 1 violation against the control's 2.
-            //
-            // Falling through costs the O(1) short-circuit for absent columns (see R12); that is
-            // the price of absent == blank, and correctness wins.
-            return Verdict.TRUE;
+            // This deliberately breaks EC-43's absent == present-but-all-blank REPORTING
+            // equivalence (the verdicts still agree): D111 rules the difference epistemic, not
+            // semantic — absence is a schema fact decidable before a row is read, blankness is a
+            // data fact that needs the rows. A present-but-all-blank column never reaches this
+            // arm (bindColumnLevel says ROW) and keeps reporting per row. The former shape of
+            // this arm — a D38 allowlist short-circuiting only `empty`/`is_missing` — is retired:
+            // the level classification decides for every operator, which is D39a's "the mechanism
+            // is the level calculus, not a special fold rule".
+            return NativeExprEvaluator.evaluateBroadcast(leaf, ctx) ? Verdict.TRUE : Verdict.FALSE;
         }
         return Verdict.UNKNOWN;
+    }
+
+    // ------------------------------------------------------------------
+    // D111 / D39a — the absent-column dataset-level leaf, classified by the
+    // same bind-time level calculus the typed walk uses (bindColumnLevel).
+    // ------------------------------------------------------------------
+
+    /** The D39a level class of one leaf's operand tree; see {@link #absentColumnLeafLevel}. */
+    private enum AbsentLeafLevel
+    {
+        /** Some operand is row/variable-level (or an unclassifiable shape) — not foldable here. */
+        ROW,
+        /** All operands are dataset-level facts, but none by absence — left to the other arms. */
+        DATASET,
+        /**
+         * All operands are dataset-level facts and at least one is an ABSENT column
+         * ({@link BindColumnLevel#DATASET_ABSENT}) — the D39 population; the leaf folds.
+         */
+        DATASET_WITH_ABSENT
+    }
+
+    /**
+     * Classifies {@code e}'s operand tree for the D39a absent-column fold: dataset-level iff every
+     * column reference binds at dataset level ({@link #bindColumnLevel} — absent, or a context
+     * scalar), every {@code $}-reference materialised as a runtime scalar, and every call is a pure
+     * value function / predicate of such operands.
+     *
+     * <p>
+     * The call cascade mirrors {@link DomainScan}'s: the families that read the table or the cursor
+     * rather than their operands — the exists family, broadcast column predicates, whole-column
+     * verdicts, library gates, metadata accessors, {@code vlm_*}, the varname-anchored calls,
+     * {@code value()}/{@code varname()}, and inline operations — decline
+     * ({@link AbsentLeafLevel#ROW}), leaving them to the arms that own them. Everything else is,
+     * per {@code DomainScan.call}'s fall-through, the join of its operands.
+     * </p>
+     *
+     * <p>
+     * ⚠ {@code DATASET} (dataset-level with <b>no</b> absence) deliberately does NOT fold in
+     * {@code foldLeaf}: D111 rules exactly the absent-column population, and the shapes the fold
+     * historically declines (the {@code UNSUPPORTED_SHAPE} instrument class) stay declined.
+     * </p>
+     */
+    private static AbsentLeafLevel absentColumnLeafLevel(Expr e, EvaluationContext ctx)
+    {
+        return switch (e)
+        {
+        case Expr.Lit lit -> lit.kind() == Expr.LitKind.LIST ? listLevel(lit, ctx)
+                : AbsentLeafLevel.DATASET;
+        case Expr.Ref r -> refLevel(r, ctx);
+        case Expr.Binary b -> joinLevels(absentColumnLeafLevel(b.left(), ctx),
+                absentColumnLeafLevel(b.right(), ctx));
+        case Expr.Call c -> callLevel(c, ctx);
+        // combinators are fold()'s business at leaf top level; nested in operand position
+        // they are not a shape this classification claims to understand.
+        default -> AbsentLeafLevel.ROW;
+        };
+    }
+
+
+    private static AbsentLeafLevel listLevel(Expr.Lit lit, EvaluationContext ctx)
+    {
+        // Parser-produced LIST literals hold Exprs; a synthetic literal may hold anything else —
+        // classify only what is provably understood and decline the rest (ROW = "not foldable
+        // here"), never cast blind: this walk runs on arbitrary runtime expressions.
+        if (!(lit.value() instanceof List<?> items))
+        {
+            return AbsentLeafLevel.ROW;
+        }
+        AbsentLeafLevel level = AbsentLeafLevel.DATASET;
+        for (Object item : items)
+        {
+            if (!(item instanceof Expr itemExpr))
+            {
+                return AbsentLeafLevel.ROW;
+            }
+            level = joinLevels(level, absentColumnLeafLevel(itemExpr, ctx));
+        }
+        return level;
+    }
+
+
+    private static AbsentLeafLevel refLevel(Expr.Ref r, EvaluationContext ctx)
+    {
+        return switch (r.kind())
+        {
+        case COLUMN -> switch (bindColumnLevel(r.name(), ctx))
+        {
+        case ROW -> AbsentLeafLevel.ROW;
+        case DATASET_CONTEXT_SCALAR -> AbsentLeafLevel.DATASET;
+        case DATASET_ABSENT -> AbsentLeafLevel.DATASET_WITH_ABSENT;
+        };
+        case WILDCARD_COLUMN ->
+        {
+            // D77b: an unresolved `--` name reaching the evaluator is a specialisation failure and
+            // errors loudly (the retired missing-column fold asserted the same); a `*` capture
+            // passes through and stays row/variable-level.
+            ExprCompiler.resolveDomainPrefix(r.name(), ctx);
+            yield AbsentLeafLevel.ROW;
+        }
+        // Mirrors operationRefsSafe's materialised-kind probe: only a runtime scalar is a
+        // dataset fact; GroupedResult / VariableMetadataResult refs decline.
+        case OPERATION_REF ->
+        {
+            Object v = ctx.resolveVariable(r.name());
+            yield v instanceof String || v instanceof Number || v instanceof Boolean
+                    ? AbsentLeafLevel.DATASET
+                    : AbsentLeafLevel.ROW;
+        }
+        default -> AbsentLeafLevel.ROW;
+        };
+    }
+
+
+    private static AbsentLeafLevel callLevel(Expr.Call c, EvaluationContext ctx)
+    {
+        String name = c.name();
+        boolean cursorNullary = ("value".equals(name) || "varname".equals(name))
+                && c.args().isEmpty() && c.kwargs().isEmpty();
+        if (cursorNullary || isExistsCall(c) || isBroadcastColumnPredicate(c)
+                || isWholeColumnVerdictCall(c) || isLibraryGateCall(c)
+                || MetadataAttribute.fromFunction(name) != null || name.startsWith("vlm_")
+                || DomainScan.VARNAME_ANCHORED_CALLS.contains(name)
+                || ExprCompiler.isInlineOperation(c))
+        {
+            return AbsentLeafLevel.ROW;
+        }
+        AbsentLeafLevel level = AbsentLeafLevel.DATASET;
+        for (Expr arg : c.args())
+        {
+            level = joinLevels(level, absentColumnLeafLevel(arg, ctx));
+        }
+        for (Expr kwarg : c.kwargs().values())
+        {
+            level = joinLevels(level, absentColumnLeafLevel(kwarg, ctx));
+        }
+        return level;
+    }
+
+
+    private static AbsentLeafLevel joinLevels(AbsentLeafLevel a, AbsentLeafLevel b)
+    {
+        if (a == AbsentLeafLevel.ROW || b == AbsentLeafLevel.ROW)
+        {
+            return AbsentLeafLevel.ROW;
+        }
+        return a == AbsentLeafLevel.DATASET_WITH_ABSENT || b == AbsentLeafLevel.DATASET_WITH_ABSENT
+                ? AbsentLeafLevel.DATASET_WITH_ABSENT
+                : AbsentLeafLevel.DATASET;
     }
 
 
@@ -223,8 +387,14 @@ public final class BroadcastFold
                             && isDatasetConstantLeaf(b.left(), ctx, allowVariableMetadata)));
             yield factPair || boolEqVerdict;
         }
-        case Expr.Call c -> isEvaluableExistsCall(c)
-                || (isDatasetFactBoolCall(c) && FOLD_EQUIVALENT_BOOL_CALLS.contains(c.name()));
+        // ⭐ D121/D121a (terminal review L1): the FOLD_EQUIVALENT_BOOL_CALLS roster is gone. It
+        // mirrored CheckConditionOptimizer.SUPPORTED_METADATA_OPERATORS so the fold would agree
+        // with the retired engine's Step-1; 7d deleted that reference copy, so the roster was a
+        // hand-written list with no authority and no drift gate — the shape D121a rules out. A
+        // BOOLEAN call whose every argument is a dataset fact HAS one value for the whole dataset,
+        // whichever function it is, so isDatasetFactBoolCall is the whole condition. ⚑ Measured
+        // free: no non-roster BOOLEAN call over dataset-fact-only arguments exists in rules-src.
+        case Expr.Call c -> isEvaluableExistsCall(c) || isDatasetFactBoolCall(c);
         case Expr.Ref r -> r.kind() == OperandKind.OPERATION_REF;
         case Expr.Lit lit -> lit.kind() == Expr.LitKind.BOOL;
         default -> false; // combinators are handled by fold(), never here
@@ -233,16 +403,6 @@ public final class BroadcastFold
                 && operationRefsSafe(e, ctx, allowVariableMetadata);
     }
 
-    /**
-     * BOOL calls whose legacy operators the Step-1 fold evaluates — the raised-form mirror of
-     * {@code CheckConditionOptimizer.SUPPORTED_METADATA_OPERATORS} (P6 review finding A1). Other
-     * BOOLEAN registrations ({@code is_integer}, the date predicates, …) are NOT legacy-foldable:
-     * the legacy leaf survives to the row path, so the fold must stay UNKNOWN to preserve the
-     * verdict multiplicity (per-row findings on a row-based rule, not one dataset violation).
-     */
-    private static final Set<String> FOLD_EQUIVALENT_BOOL_CALLS = Set.of("empty", "non_empty",
-            "contains", "does_not_contain", "starts_with", "ends_with", "prefix_matches",
-            "suffix_matches", "matches");
 
     /**
      * Whether every DEFINE / LIBRARY metadata level read by {@code e} has its provider configured
@@ -318,10 +478,9 @@ public final class BroadcastFold
      * source column's <em>distinct values</em> and broadcast a single boolean.
      *
      * <p>
-     * Both polarities are listed because the name reaching a caller depends on which side of
-     * {@code CheckToExpr.NEGATED_TO_POSITIVE} it is read from: the operator-leaf corpora spell
-     * {@code not_contains_all}, while the raised {@link Expr} spells the same thing
-     * {@code Not(contains_all(…))}.
+     * Both polarities are listed because the corpus historically spelled both: the retired
+     * operator-leaf form said {@code not_contains_all}, while the expression form spells the same
+     * thing {@code Not(contains_all(…))}.
      * </p>
      *
      * <p>
@@ -331,8 +490,8 @@ public final class BroadcastFold
      * </p>
      */
     public static final Set<String> WHOLE_COLUMN_VERDICT_OPERATORS = Set.of("has_same_values",
-            "has_different_values", "shares_no_elements_with", "shares_elements_with",
-            "is_ordered_subset_of", "is_not_ordered_subset_of", "contains_all", "not_contains_all");
+            "shares_no_elements_with", "shares_elements_with", "is_ordered_subset_of",
+            "is_not_ordered_subset_of", "contains_all", "not_contains_all");
 
     /**
      * Whether {@code c} is a {@linkplain #WHOLE_COLUMN_VERDICT_OPERATORS whole-column} verdict
@@ -554,10 +713,72 @@ public final class BroadcastFold
      * registered BOOL function it is.
      *
      * <p>
-     * Invariant (R-P7 review): every registered BOOLEAN function is a pure per-value predicate of
-     * its arguments. A future BOOLEAN registration that reads the table or context directly (the
-     * way the VALUE functions {@code value()}/{@code varname()}/{@code colref} do) must be excluded
-     * here, or it would be silently broadcast-flagged.
+     * Invariant (R-P7 review; <b>restated</b> round 3): every registered BOOLEAN function <em>with
+     * an implementation</em> is <b>row-independent given broadcast-constant arguments</b> — its
+     * verdict is a function of the argument values alone and cannot vary from row to row. A future
+     * BOOLEAN registration that reads the table <em>per row</em> (the way the VALUE functions
+     * {@code value()}/{@code varname()}/{@code colref} do) must be excluded here, or it would be
+     * silently broadcast-flagged.
+     * </p>
+     *
+     * <p>
+     * ⚠⚠ The invariant was written as "a pure per-value predicate … reads neither the table nor the
+     * evaluation context", and <b>that spelling is already false</b> for two shipped builtins:
+     * {@code library_available} and {@code dictionary_available} both carry an {@code fn()} and
+     * both reach {@code run.ctx().getLibraryProvider()} / {@code getDictionaryProvider()}. They are
+     * admitted by the test below and folding them is <b>correct</b> — a provider is a property of
+     * the run, not of the row. The property that licenses the fold is row-independence, not
+     * context-freedom. ⛔ Do not un-fold them on the strength of the old wording. ⛔ The
+     * {@code fn() == null} check below is that exclusion for the phase-7 compiler-dispatched
+     * boolean calls ({@code CompilerDispatchedCalls}): the group and presence operators are
+     * registered for their <em>signatures</em>, but every one of them reads the table or context,
+     * so admitting them here would silently broadcast-flag e.g. {@code contains_all($a, $b)} —
+     * exactly the hazard this invariant names.
+     * </p>
+     *
+     * <p>
+     * ⛔ <b>That invariant is a GATE, not prose</b> (R2-8, review round 2). {@code L1} replaced a
+     * hand-written roster of admissible names with the descriptor test above, which closed a real
+     * mirror mismatch — {@code RulePackageLoader.isBroadcastVerdictExpr} already asked this
+     * question with no roster, so the load-time flag and the runtime fold disagreed for every
+     * non-roster BOOL call — but it also made the default <b>fail-open</b>: an unknown BOOLEAN
+     * registration is now admitted where the roster left it {@code UNKNOWN}.
+     * {@code BroadcastBoolFunctionInvariantTest} narrows that: it enumerates every BOOLEAN
+     * descriptor <em>with</em> an implementation contributed by any SPI {@link FunctionProvider} on
+     * <b>this module's test classpath</b>, asserts every one of them comes from
+     * {@code BuiltinFunctions}, and re-asserts that every compiler-dispatched boolean has
+     * {@code fn() == null} — the exclusion the paragraph above relies on.
+     * </p>
+     *
+     * <p>
+     * ⚠⚠ <b>Be exact about what that gate does</b> (round 3): it gates <b>provenance</b>, not
+     * row-independence. No assertion in it inspects an {@code fn()}. A new BOOLEAN added to
+     * {@code BuiltinFunctions} whose implementation reads per-row table state passes it untouched —
+     * the only thing that reds is {@code BuiltinFunctionsRegistrationTest}'s name/arity roster,
+     * which the same edit updates <em>by construction</em>. This paragraph used to say "adding one
+     * is a reviewed edit that asserts purity"; the first half is true and the second half has no
+     * mechanism behind it. Row-independence is upheld by <b>review</b>, at the two doors the
+     * provenance gate names: a new {@code BuiltinFunctions} entry, and a foreign provider reaching
+     * this classpath.
+     * </p>
+     *
+     * <p>
+     * ⚑ <b>Residual, the classpath one</b>: the enumeration runs in this module, so it sees that
+     * module's test classpath only. A {@link FunctionProvider} shipped by a <em>downstream</em>
+     * module (the define-conformance module, or an embedder's jar) contributing an implemented
+     * BOOLEAN that reads the table per row would be picked up by {@link FunctionRegistry} at
+     * runtime and admitted here, with the gate green one module upstream. No such provider exists
+     * anywhere in the stack today (verified round 3); the hazard, when one appears, is the same
+     * multiplicity-not-value one as the embedder residual below.
+     * </p>
+     *
+     * <p>
+     * ⚑ <b>The one residual, deliberately accepted</b>: an embedder calling
+     * {@link FunctionRegistry#register(FunctionDescriptor)} at runtime with a table-reading BOOLEAN
+     * function is reachable by no test, because it exists only in that embedder's process. It is
+     * accepted rather than gated because the residual hazard is <b>multiplicity, not value</b>: a
+     * leaf that folds {@code TRUE} yields one dataset-level finding where the row path yielded N,
+     * and the {@code FALSE} direction is observationally identical either way.
      * </p>
      */
     public static boolean isDatasetFactBoolCall(Expr.Call c)
@@ -566,8 +787,8 @@ public final class BroadcastFold
         {
             return false;
         }
-        FunctionDescriptor d = FunctionRegistry.descriptor(c.name(), c.args().size());
-        return d != null && d.kind() == FunctionKind.BOOLEAN
+        FunctionDescriptor d = FunctionRegistry.descriptorAccepting(c.name(), c.args().size());
+        return d != null && d.kind() == FunctionKind.BOOLEAN && d.fn() != null
                 && c.args().stream().allMatch(BroadcastFold::isDatasetFactOperand);
     }
 
@@ -630,16 +851,6 @@ public final class BroadcastFold
     }
 
 
-    /**
-     * Whether any {@code $}-operation reference of {@code e} resolves to a per-row
-     * {@link GroupedResult} at runtime.
-     */
-    public static boolean hasGroupedOperationRef(Expr e, EvaluationContext ctx)
-    {
-        return hasOperationRefOfType(e, ctx, GroupedResult.class);
-    }
-
-
     private static boolean hasOperationRefOfType(Expr e, EvaluationContext ctx, Class<?> type)
     {
         return switch (e)
@@ -698,7 +909,8 @@ public final class BroadcastFold
         }
         case Expr.Ref r -> switch (r.kind())
         {
-        case COLUMN, WILDCARD_COLUMN, DOTTED_REF -> true;
+        // MATCHED_FLAG is a per-row verdict (spec §3.3: a boolean at level record) — a row read.
+        case COLUMN, WILDCARD_COLUMN, DOTTED_REF, MATCHED_FLAG -> true;
         case OPERATION_REF -> ctx.resolveVariable(r.name()) instanceof GroupedResult;
         case BUILTIN -> false;
         };
@@ -744,129 +956,17 @@ public final class BroadcastFold
     }
 
     // ------------------------------------------------------------------
-    // Missing-column fold — mirror of CheckConditionOptimizer.tryFoldOnMissingColumn
-    // (Fix #40). The two implementations share these helpers so they can never drift.
+    // Column-name eligibility and bind-time level classification — the
+    // level-calculus primitives shared with the typed walk (LevelInstrument's
+    // resolver delegates to bindColumnLevel) and with absentColumnLeafLevel.
     // ------------------------------------------------------------------
-
-
-    /**
-     * Whether the legacy missing-column fold (Fix #40) decides this leaf: its name-side column is a
-     * plain authored column reference that is absent from the primary table AND from every joined
-     * dataset. {@code --}-prefix names are resolved against the context's domain prefix first (the
-     * legacy fold runs after the phase-2c rewrite, so it always sees concrete names).
-     */
-    private static boolean foldsOnMissingColumn(Expr leaf, EvaluationContext ctx)
-    {
-        String raw = leafNameColumn(leaf);
-        if (raw == null)
-        {
-            return false;
-        }
-        String name = ExprCompiler.resolveDomainPrefix(raw, ctx);
-        if (!isFoldableColumnReference(name))
-        {
-            return false;
-        }
-        if (ctx.getTable().getMetaData().getColumnIndex(name) >= 0)
-        {
-            return false;
-        }
-        return !anyJoinedDatasetHasColumn(name, ctx);
-    }
-
-
-    /**
-     * Whether {@code leaf} is an {@code empty}/{@code is_missing} call — the two predicates that
-     * keep a <b>broadcast</b> TRUE on a wholly-absent column (it is empty for every row).
-     *
-     * <p>
-     * ⚠ <b>This is a statement about reporting granularity, not about polarity.</b> Since EC-43 /
-     * Fix #139 an absent column folds to <b>all-missing</b> and <b>every</b> operator computes its
-     * own polarity against it — so {@code X == ""}, {@code matches_regex(X, "^$")} and any other
-     * predicate that is true of an empty value is true for every row here too. What sets these two
-     * apart is only that they short-circuit to a broadcast verdict (one dataset-level finding)
-     * instead of falling through to the row path (one finding per row); see the call site in
-     * {@code foldLeaf} for why the short-circuit was narrowed to exactly these two.
-     * </p>
-     *
-     * <p>
-     * ⚠ The narrowing leaves a known asymmetry <b>for these two operators only</b>: {@code empty}
-     * over an <em>absent</em> column reports <b>once</b>, while {@code empty} over a
-     * <em>present-but-all-blank</em> column reports <b>per row</b> — identical semantics, different
-     * granularity.
-     * </p>
-     *
-     * <p>
-     * <b>Why that asymmetry is acceptable and not merely tolerated</b> (user, 2026-08-04): a
-     * present-but-all-blank column is <em>itself</em> a conformance finding, so the state it
-     * reports differently on is one that should not persist in conformant data. It is covered for
-     * every core designation:
-     * </p>
-     * <ul>
-     * <li><b>Required</b> — {@code CDISC-CG0014-B} / {@code FDA-SD0002} (<i>a Required variable is
-     * empty</i>)</li>
-     * <li><b>Expected</b> — {@code FDA-SD1149} (<i>empty for all records in the dataset</i>)</li>
-     * <li><b>Permissible</b> — {@code FDA-SD1078} / {@code PMDA-SD1078} (<i>present in the dataset
-     * but empty for all records</i>) — ⚠ the PMDA twin is only <i>Partially Executable</i>, the one
-     * gap in that coverage</li>
-     * </ul>
-     * <p>
-     * So do not "fix" the asymmetry by widening the short-circuit again: that would re-introduce
-     * the defect Fix #139 removed, in exchange for aligning the reporting of a state that another
-     * rule already flags.
-     * </p>
-     *
-     * <p>
-     * <em>Corrected 2026-08-04.</em> This javadoc previously read "as opposed to every other
-     * operator which yields no rows there", which described pre-EC-43 behaviour and directly
-     * contradicted the implementation comment at its own call site.
-     * </p>
-     */
-    private static boolean firesEmptyOnAbsentColumn(Expr leaf)
-    {
-        return leaf instanceof Expr.Call c
-                && ("empty".equals(c.name()) || "is_missing".equals(c.name()));
-    }
-
-
-    /**
-     * The leaf's NAME-side column, mirroring how the legacy leaf carries its name: the left operand
-     * of a comparison (descending through value-function wrappers and arithmetic), or the first
-     * positional argument of a non-{@code exists} operator call. {@code null} when the name side is
-     * not a plain/wildcard column reference.
-     */
-    private static @Nullable String leafNameColumn(Expr leaf)
-    {
-        return switch (leaf)
-        {
-        case Expr.Binary b -> nameSideColumn(b.left());
-        case Expr.Call c -> !isExistsCall(c) && !c.args().isEmpty()
-                ? nameSideColumn(c.args().get(0))
-                : null;
-        default -> null;
-        };
-    }
-
-
-    private static @Nullable String nameSideColumn(Expr e)
-    {
-        return switch (e)
-        {
-        case Expr.Ref r -> r.kind() == OperandKind.COLUMN || r.kind() == OperandKind.WILDCARD_COLUMN
-                ? r.name()
-                : null;
-        case Expr.Call c -> c.args().isEmpty() ? null : nameSideColumn(c.args().get(0));
-        case Expr.Binary b -> nameSideColumn(b.left()); // arithmetic keeps the name on the left
-        default -> null;
-        };
-    }
 
 
     /**
      * Returns {@code true} if {@code name} is a regular CDISC variable reference eligible for
      * column-presence folding. Conservative — only folds names that look like authored dataset
-     * columns. Single source for the legacy {@code tryFoldOnMissingColumn} eligibility (the
-     * optimizer delegates here).
+     * columns. Single source for column-presence eligibility ({@link #bindColumnLevel} and the
+     * typed walk's {@code TypeExpectations} delegate here).
      * <p>
      * Excludes: null / empty; names starting with anything but {@code A–Z} (engine meta such as
      * {@code variable_name} / {@code library_variable_*} starts lowercase); {@code $}-prefixed
@@ -903,11 +1003,62 @@ public final class BroadcastFold
         return true;
     }
 
+    /**
+     * The bind-time level class of a bare column-reference NAME (phase 5 of
+     * {@code PLAN-typed-expression-engine.md}) — the static counterpart of what this fold's leaf
+     * probes read off materialised values at run time.
+     */
+    public enum BindColumnLevel
+    {
+        /** An ordinary per-row column read. */
+        ROW,
+        /**
+         * The name resolves to a scalar CONTEXT VARIABLE (the Fix #10 {@code DOMAIN} injection):
+         * both engines resolve variables before columns, so the read is a dataset-level fact — the
+         * name-based sibling of {@code isScalarContextVarRef}.
+         */
+        DATASET_CONTEXT_SCALAR,
+        /**
+         * The name is a foldable column reference absent from the primary table AND every joined
+         * dataset — a dataset-level constant by D39a (D34 #3/#4: an absent column is a present
+         * column holding its type's default).
+         */
+        DATASET_ABSENT
+    }
+
+    /**
+     * Classifies a bare column-reference name against the RUNTIME context — the bind-time
+     * column-level primitive of the level calculus, read by the typed walk
+     * ({@code LevelInstrument}'s resolver) and by the D111 absent-column fold arm alike: context
+     * variables first (resolution order), then {@link #isFoldableColumnReference} eligibility, then
+     * primary-table and joined-dataset presence. A {@code --}-template or otherwise non-foldable
+     * name stays {@link BindColumnLevel#ROW} — never resolved here (D77b makes an unresolved
+     * {@code --} the evaluator's assertion, not this probe's).
+     */
+    public static BindColumnLevel bindColumnLevel(String name, EvaluationContext ctx)
+    {
+        Object v = ctx.resolveVariable(name);
+        if (v instanceof String || v instanceof Number || v instanceof Boolean)
+        {
+            return BindColumnLevel.DATASET_CONTEXT_SCALAR;
+        }
+        if (!isFoldableColumnReference(name))
+        {
+            return BindColumnLevel.ROW;
+        }
+        if (ctx.getTable().getMetaData().getColumnIndex(name) >= 0)
+        {
+            return BindColumnLevel.ROW;
+        }
+        return anyJoinedDatasetHasColumn(name, ctx) ? BindColumnLevel.ROW
+                : BindColumnLevel.DATASET_ABSENT;
+    }
+
 
     /**
      * Whether {@code columnName} is surfaceable from any {@code Match_Datasets} joined dataset.
-     * Single source for the legacy {@code tryFoldOnMissingColumn} reachability check (the optimizer
-     * delegates here).
+     * Single source for the column-presence reachability check {@link #bindColumnLevel} applies
+     * before classifying a name {@code DATASET_ABSENT}.
      */
     public static boolean anyJoinedDatasetHasColumn(String columnName, EvaluationContext ctx)
     {

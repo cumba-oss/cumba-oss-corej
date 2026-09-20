@@ -1,0 +1,185 @@
+package net.cumba.corej.core.exec;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import net.cumba.corej.core.model.MatchDataset;
+import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.testkit.MockTable;
+import org.junit.jupiter.api.Test;
+
+/**
+ * ⭐⭐ ⚑ TARGET-INVARIANT(null-free-value-channel), §1b: <b>a {@code MissingValue} is not a joinable
+ * key.</b> Two rows whose {@code Match_Datasets} key cell is MISSING do not join each other — they
+ * are two unknowns, not one value.
+ *
+ * <p>
+ * ⚠⚠ <b>Why this class exists: a real product join behaviour MOVED on 2026-09-18 and nothing
+ * recorded it or tested it.</b> {@code KeyMatchRowExpander.tuple} has guarded
+ * {@code dv.isMissingOrInvalid()} since the initial commit, but what a raw {@code null} CHARACTER
+ * cell wraps to changed underneath it in the datatable repository's {@code d4edd59} ("a null
+ * character cell is {@code MissingValue.MIS}, on both wrap paths"):
+ * </p>
+ * <table border="1">
+ * <caption>the composition that moved</caption>
+ * <tr>
+ * <th></th>
+ * <th>{@code getDataValue} for a raw-null char cell</th>
+ * <th>{@code isMissingOrInvalid()}</th>
+ * <th>the key {@code tuple} builds</th>
+ * <th>effect</th>
+ * </tr>
+ * <tr>
+ * <td>before</td>
+ * <td>{@code DataValueString("")}</td>
+ * <td>{@code false}</td>
+ * <td>an EMPTY segment</td>
+ * <td>two null-key rows JOINED each other</td>
+ * </tr>
+ * <tr>
+ * <td>at HEAD</td>
+ * <td>{@code DataValueMissing(MIS)}</td>
+ * <td>{@code true}</td>
+ * <td>{@code null} ⇒ no key</td>
+ * <td>they do not join at all</td>
+ * </tr>
+ * </table>
+ *
+ * <p>
+ * ⭐ <b>Reachable on real data, not a thought experiment:</b> an {@code .rds} dataset whose join-key
+ * character column carries an R {@code NA} — {@code factor(..., exclude = NULL)}, which
+ * {@code RdataTableProvider.copyFactorData} stores as an explicit null LEVEL. That is the one
+ * shipped read path where {@code d4edd59} is visible, and the shape
+ * {@code RdataTableProviderRealFixturesTest} was re-based for.
+ * </p>
+ *
+ * <p>
+ * ⭐ <b>The new behaviour is the CORRECT one and is deliberately not changed here</b> — §1b: a
+ * missing cell is that cell's own {@code MissingValue}, never the empty string, and an unknown
+ * identifier cannot be equal to another unknown identifier. It also restores agreement with the
+ * behaviour this class' enclosing file cites as its model: <i>"pandas drops NaN keys"</i>
+ * ({@code buildChildIndex}). What was missing was a test, so the next change to the wrap path
+ * cannot move a product join silently again.
+ * </p>
+ *
+ * <p>
+ * ⚠ <b>The fixture uses {@link MockTable#colSasMissing} and NOT a {@code null} element of
+ * {@link MockTable#col}, deliberately.</b> {@code MockTable.mockDataValue}'s null arm was itself
+ * corrected on the same day (the datatable repository's {@code d1585c9}), so a fixture built on it
+ * asserts one thing against a freshly installed testkit and the opposite against a stale one.
+ * {@code colSasMissing}'s missing cell has answered {@code MissingValue.MIS} / {@code "."} /
+ * {@code isMissingOrInvalid() == true} across that boundary, so this test measures the ENGINE and
+ * not which testkit jar happens to be in the local repository.
+ * </p>
+ */
+class KeyMatchMissingJoinKeyTest
+{
+
+    private static final String AE = "AE";
+
+    private static final String USUBJID = "USUBJID";
+
+    /** {@code USUBJID} is present on row 0 and MISSING on row 1, on both sides of the join. */
+    private static IDataTable withMissingKeyOnRowOne(String name, String payloadCol,
+            String... payload)
+    {
+        return MockTable.of().colSasMissing(USUBJID, "P1", null).col(payloadCol, payload).name(name)
+                .build();
+    }
+
+
+    private static MatchDataset md(String joinType)
+    {
+        MatchDataset m = new MatchDataset();
+        m.setName(AE);
+        m.setKeys(List.of(USUBJID));
+        m.setJoinType(joinType);
+        return m;
+    }
+
+
+    private static KeyMatchRowExpander.KeyMatchExpansion expand(String joinType)
+    {
+        IDataTable dm = withMissingKeyOnRowOne("DM", "AGE", "34", "51");
+        IDataTable ae = withMissingKeyOnRowOne(AE, "AETERM", "HEADACHE", "NAUSEA");
+        var exp = KeyMatchRowExpander.expand(dm, List.of(md(joinType)),
+                Map.of("DM", dm, AE, ae)::get, "R-TEST");
+        assertNotNull(exp, "the expansion must be built — one key entry is expandable");
+        return exp;
+    }
+
+
+    /** "primaryRow:childValue" per expanded row, the same reading as KeyMatchRowExpanderTest. */
+    private static List<String> rows(KeyMatchRowExpander.KeyMatchExpansion exp, String col)
+    {
+        IDataTable t = exp.table();
+        JoinLookup lk = exp.lookups().get(AE);
+        List<String> out = new ArrayList<>();
+        for (long i = 0; i < t.getRowCount(); i++)
+        {
+            out.add(t.getRealRowIndex(i) + ":" + lk.lookup(t, i, col));
+        }
+        return out;
+    }
+
+
+    /**
+     * ⭐ The discriminating assertion. Under an {@code inner} join the missing-key primary row is
+     * DROPPED, because it matched nothing — where before {@code d4edd59} it matched the child row
+     * whose key was equally missing, on an empty-string key both sides folded to.
+     */
+    @Test
+    void anInnerJoinDropsTheMissingKeyRowInsteadOfMatchingTheOtherMissingKeyRow()
+    {
+        assertEquals(List.of("0:HEADACHE"), rows(expand("inner"), "AETERM"),
+                "a MissingValue key is not joinable: only the P1/P1 pair may survive. Seeing"
+                        + " '1:NAUSEA' here means the two MISSING keys matched each other — the"
+                        + " pre-d4edd59 behaviour, in which tuple() built an EMPTY key segment"
+                        + " from a raw-null character cell (§1b: a missing cell is NOT \"\")");
+    }
+
+
+    /**
+     * ⭐ The same fact from the other side: under a {@code left} join the missing-key primary row
+     * SURVIVES — a left join keeps unmatched primary rows — but it is bound to NO child, so the
+     * dotted read answers "no match". This arm is what distinguishes "did not join" from "was
+     * dropped", which the inner arm alone cannot show.
+     */
+    @Test
+    void aLeftJoinKeepsTheMissingKeyRowUnboundRatherThanBindingItToTheOtherMissingKeyRow()
+    {
+        var exp = expand("left");
+        assertEquals(2, exp.table().getRowCount(), "a left join keeps the unmatched primary row");
+        assertEquals(List.of("0:HEADACHE", "1:null"), rows(exp, "AETERM"),
+                "the missing-key primary row must be bound to NO child row. '1:NAUSEA' would mean"
+                        + " the two missing keys joined");
+    }
+
+
+    /**
+     * ⭐ Non-vacuity control: the fixture must really carry a MISSING key on row 1 and a real one on
+     * row 0. Without this the two tests above would pass just as well over a fixture whose key
+     * column was absent, or whose row 1 held an ordinary value that simply did not match — neither
+     * of which measures the missing-key guard.
+     */
+    @Test
+    void theFixtureReallyCarriesAMissingKeyCellAndAPresentOne()
+    {
+        IDataTable dm = withMissingKeyOnRowOne("DM", "AGE", "34", "51");
+        int col = dm.getMetaData().getColumnIndex(USUBJID);
+        assertTrue(col >= 0, "CONTROL FAILED: the key column must be PRESENT — an absent column"
+                + " takes tuple()'s other arm (colIds[i] < 0) and would pass for the wrong reason");
+        assertTrue(!dm.getColumn(col).getDataValue(0).isMissingOrInvalid(),
+                "CONTROL FAILED: row 0's key must be a real value");
+        assertTrue(dm.getColumn(col).getDataValue(1).isMissingOrInvalid(),
+                "CONTROL FAILED: row 1's key must read as MISSING, or the guard under test is"
+                        + " never entered and both tests above are vacuous");
+        assertTrue(!(dm.getColumn(col).getDataValue(1).getValue() instanceof String),
+                "CONTROL FAILED: a missing key cell must not carry a String value — that is the"
+                        + " pre-d4edd59 encoding this test exists to keep out");
+    }
+}

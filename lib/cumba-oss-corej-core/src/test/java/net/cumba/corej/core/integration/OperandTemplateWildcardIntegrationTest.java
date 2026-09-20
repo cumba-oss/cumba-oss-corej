@@ -2,7 +2,6 @@ package net.cumba.corej.core.integration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.fasterxml.jackson.databind.node.TextNode;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,7 +9,6 @@ import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleRunner;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -47,6 +45,13 @@ import org.junit.jupiter.api.Test;
 class OperandTemplateWildcardIntegrationTest
 {
 
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
+
+
     private static Rule wildcardRule()
     {
         Rule rule = new Rule();
@@ -58,11 +63,8 @@ class OperandTemplateWildcardIntegrationTest
         md.setName("ADSL");
         md.setKeys(List.of("USUBJID"));
         rule.setMatchDatasets(List.of(md));
-        CheckConditionLeaf nonEmptyGuard = CheckConditionLeaf.builder().name("PHSDT")
-                .operator("non_empty").build();
-        CheckConditionLeaf isNotContained = CheckConditionLeaf.builder().name("PHSDT")
-                .operator("is_not_contained_by").value(TextNode.valueOf("ADSL.PH${*}SDT")).build();
-        CheckConditionAll all = new CheckConditionAll(List.of(nonEmptyGuard, isNotContained));
+        CheckConditionAll all = new CheckConditionAll(
+                List.of(expr("not empty(PHSDT)"), expr("PHSDT not in ADSL.PH${*}SDT")));
         rule.setCheck(all);
         net.cumba.corej.core.RulePackageLoader.installNativeExpr(rule);
         return rule;

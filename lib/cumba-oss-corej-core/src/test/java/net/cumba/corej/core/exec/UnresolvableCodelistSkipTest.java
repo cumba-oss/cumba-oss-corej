@@ -39,11 +39,10 @@ class UnresolvableCodelistSkipTest
         // The CDISC-SEND-0296 shape: value-check against the non-extensible library codelist.
         String json = "{\"Core\":{\"Id\":\"R1\"}," + ""
                 + "\"Sensitivity\":\"Record\",\"Check\":{\"all\":["
-                + "{\"name\":\"library_variable_codelist_extensible\",\"operator\":\"equal_to\",\"value\":false},"
-                + "{\"name\":\"library_variable_codelist_coded_values\",\"operator\":\"non_empty\"},"
-                + "{\"name\":\"variable_value\",\"operator\":\"non_empty\"},"
-                + "{\"name\":\"variable_value\",\"operator\":\"is_not_contained_by\","
-                + "\"value\":\"library_variable_codelist_coded_values\"}]},"
+                + "{\"expression\": \"var_codelist_extensible(\\\"LIBRARY\\\") == false\"},"
+                + "{\"expression\": \"not empty(var_codelist_coded_values(\\\"LIBRARY\\\"))\"},"
+                + "{\"expression\": \"not empty(value())\"},"
+                + "{\"expression\": \"value() not in var_codelist_coded_values(\\\"LIBRARY\\\")\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_name\",\"variable_value\"]}}";
         RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"R1\":" + json + "}}");
         Rule r = pkg.getRules().get("R1");

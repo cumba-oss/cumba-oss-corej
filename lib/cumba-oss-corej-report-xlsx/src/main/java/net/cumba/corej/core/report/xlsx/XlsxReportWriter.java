@@ -14,6 +14,7 @@ import net.cumba.corej.core.report.ReportSections;
 import net.cumba.corej.core.report.ReportWriter;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Row.MissingCellPolicy;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -108,8 +109,18 @@ public final class XlsxReportWriter implements ReportWriter
     private static final List<String> DETAIL_COLUMNS = List.of("core_id", "message",
             "executability", "dataset", "USUBJID", "row", "SEQ", "variables", "values");
 
+    /**
+     * D65: the three trailing count columns ({@code executed} / {@code skipped} / {@code errored})
+     * have no header in the shipped template (copied verbatim from the Python resources), so
+     * {@link #rulesReportSheet} appends their headers programmatically — the same pattern as the
+     * Java-only {@code Skipped Rules} sheet.
+     */
     private static final List<String> RULES_COLUMNS = List.of("core_id", "version", "cdisc_rule_id",
-            "fda_rule_id", "message", "status");
+            "fda_rule_id", "message", "status", "executed", "skipped", "errored");
+
+    /** Header labels for the D65 count columns appended to the {@code Rules Report} sheet. */
+    private static final List<String> RULES_COUNT_HEADERS = List.of("Executed", "Skipped",
+            "Errored");
 
     private static final List<String> SKIPPED_COLUMNS = List.of("core_id", "dataset", "reason");
 
@@ -117,7 +128,8 @@ public final class XlsxReportWriter implements ReportWriter
     private static final List<String> SKIPPED_HEADERS = List.of("Core ID", "Dataset", "Reason");
 
     /** Columns written as numeric cells when their value is a {@link Number}. */
-    private static final Set<String> NUMERIC_COLUMNS = Set.of("size_kb", "length", "issues", "row");
+    private static final Set<String> NUMERIC_COLUMNS = Set.of("size_kb", "length", "issues", "row",
+            "executed", "skipped", "errored");
 
     private final @Nullable Integer maxRowsPerSheet;
 
@@ -231,8 +243,7 @@ public final class XlsxReportWriter implements ReportWriter
                     SUMMARY_COLUMNS, wrapStyles);
             fillList(wb, wb.getSheet(SHEET_ISSUE_DETAILS), aSections.issueDetails(), DETAIL_COLUMNS,
                     wrapStyles);
-            fillList(wb, wb.getSheet(SHEET_RULES), aSections.rulesReport(), RULES_COLUMNS,
-                    wrapStyles);
+            fillList(wb, rulesReportSheet(wb), aSections.rulesReport(), RULES_COLUMNS, wrapStyles);
             fillList(wb, skippedRulesSheet(wb), aSections.skippedRules(), SKIPPED_COLUMNS,
                     wrapStyles);
 
@@ -274,6 +285,55 @@ public final class XlsxReportWriter implements ReportWriter
         sheet.setColumnWidth(0, 24 * 256);
         sheet.setColumnWidth(1, 16 * 256);
         sheet.setColumnWidth(2, 80 * 256);
+        return sheet;
+    }
+
+
+    /**
+     * Returns the {@code Rules Report} sheet with the three D65 count-column headers
+     * ({@code Executed} / {@code Skipped} / {@code Errored}) appended to its header row when they
+     * are not already present. The shipped template (copied verbatim from the Python resources)
+     * carries six header cells; the appended headers reuse the last template header's style so the
+     * row reads as one. A future template that ships the headers — or a second call on the same
+     * workbook — is used as-is.
+     */
+    static @Nullable Sheet rulesReportSheet(XSSFWorkbook aWorkbook)
+    {
+        Sheet sheet = aWorkbook.getSheet(SHEET_RULES);
+        if (sheet == null)
+        {
+            return null;
+        }
+        Row header = sheet.getRow(0);
+        if (header == null)
+        {
+            header = sheet.createRow(0);
+        }
+        int firstCountCol = RULES_COLUMNS.size() - RULES_COUNT_HEADERS.size();
+        // ⚠ Presence is a non-blank VALUE, not a non-null cell: the shipped template carries
+        // styled-but-empty placeholder cells beyond the six real headers, and POI returns those as
+        // non-null — a getCell(...) != null guard silently skipped the append (measured: the
+        // regenerated golden workbook came back with no Executed/Skipped/Errored headers at all).
+        Cell existing = header.getCell(firstCountCol);
+        if (existing != null && existing.getCellType() == CellType.STRING
+                && !existing.getStringCellValue().isBlank())
+        {
+            return sheet; // headers already present (a template that ships them, or a re-call)
+        }
+        // firstCountCol is structurally positive (RULES_COLUMNS is the six template columns plus
+        // the count columns), so the last template header is always a valid style source; it may
+        // still be a null CELL on a template without a header row.
+        Cell styleSource = header.getCell(firstCountCol - 1);
+        for (int i = 0; i < RULES_COUNT_HEADERS.size(); i++)
+        {
+            Cell cell = header.getCell(firstCountCol + i, MissingCellPolicy.CREATE_NULL_AS_BLANK);
+            if (styleSource != null)
+            {
+                cell.setCellStyle(styleSource.getCellStyle());
+            }
+            cell.setCellValue(RULES_COUNT_HEADERS.get(i));
+            sheet.setColumnWidth(firstCountCol + i, 12 * 256);
+        }
         return sheet;
     }
 

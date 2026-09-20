@@ -256,6 +256,36 @@ class XlsxReportWriterTest
         }
     }
 
+
+    /**
+     * D65 — the three execution-count columns. The headers are appended programmatically (the
+     * shipped template carries only the six Python headers, plus styled-but-EMPTY placeholder cells
+     * beyond them — a non-null-cell presence check silently skipped the append once), and the
+     * counts render as numeric cells.
+     */
+    @Test
+    void rulesReportSheetCarriesTheThreeExecutionCountColumns() throws Exception
+    {
+        ValidationReport report = ValidationReport.builder().members(List.of())
+                .skippedRules(List.of(net.cumba.datatable.report.SkippedRuleEntry.builder()
+                        .coreId(CORE_001).dataset("VS").reason("out of scope").build()))
+                .executedCoreIds(List.of(CORE_001, CORE_001)).build();
+        try (XSSFWorkbook wb = render(
+                new ReportAssembler().report(report).rules(List.of(rule(CORE_001))).sections(),
+                10_000))
+        {
+            Sheet rr = wb.getSheet("Rules Report");
+            Row header = rr.getRow(0);
+            assertEquals("Executed", header.getCell(6).getStringCellValue());
+            assertEquals("Skipped", header.getCell(7).getStringCellValue());
+            assertEquals("Errored", header.getCell(8).getStringCellValue());
+            Row row = rr.getRow(1);
+            assertEquals(2.0, row.getCell(6).getNumericCellValue());
+            assertEquals(1.0, row.getCell(7).getNumericCellValue());
+            assertEquals(0.0, row.getCell(8).getNumericCellValue());
+        }
+    }
+
     // ------------------------------------------------------------------
     // Skipped Rules (programmatically created sheet)
     // ------------------------------------------------------------------
@@ -284,7 +314,7 @@ class XlsxReportWriterTest
         {
             Sheet sk = wb.getSheet("Skipped Rules");
             Row r1 = sk.getRow(1);
-            assertEquals("CORE-000351", r1.getCell(0).getStringCellValue());
+            assertEquals("CDISC-CG0040", r1.getCell(0).getStringCellValue());
             assertEquals("EX", r1.getCell(1).getStringCellValue());
             assertEquals("domain EX not in Scope.Domains.Include [AE]",
                     r1.getCell(2).getStringCellValue());
@@ -348,7 +378,7 @@ class XlsxReportWriterTest
     }
 
     // ------------------------------------------------------------------
-    // Relocated with the writer (Fix #224): these lived in cumba-oss-corej-core, where they can no
+    // Relocated with the writer (Fix #224): these lived in corej-core, where they can no
     // longer reach the XLSX writer at all.
     // ------------------------------------------------------------------
 
@@ -474,7 +504,7 @@ class XlsxReportWriterTest
     {
         ValidationReport report = ValidationReport.builder().members(List.of())
                 .skippedRules(List.of(
-                        net.cumba.datatable.report.SkippedRuleEntry.builder().coreId("CORE-000351")
+                        net.cumba.datatable.report.SkippedRuleEntry.builder().coreId("CDISC-CG0040")
                                 .dataset("EX").reason("domain EX not in Scope.Domains.Include [AE]")
                                 .build(),
                         net.cumba.datatable.report.SkippedRuleEntry.builder().coreId(CORE_002)

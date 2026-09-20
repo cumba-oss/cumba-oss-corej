@@ -64,29 +64,16 @@ class PmdaAd0253TupleContainmentProbeTest
               Subclasses:
                 Include:
                 - "ADVERSE EVENT"
-            Operations:
-            - id: "$ae_keys"
-              operator: "distinct"
-              domain: "AE"
-              names:
-              - "STUDYID"
-              - "USUBJID"
-              - "AESEQ"
-            - id: "$adae_keys"
-              operator: "distinct"
-              names:
-              - "STUDYID"
-              - "USUBJID"
-              - "AESEQ"
-            - id: "$untraceable_ae_keys"
-              operator: "minus"
-              name: "$ae_keys"
-              subtract: "$adae_keys"
+            Bindings:
+            - name: "$ae_keys"
+              expression: 'distinct([STUDYID, USUBJID, AESEQ], domain="AE")'
+            - name: "$adae_keys"
+              expression: 'distinct([STUDYID, USUBJID, AESEQ])'
+            - name: "$untraceable_ae_keys"
+              expression: 'minus($ae_keys, subtract=$adae_keys)'
             Check:
               all:
-              - name: "$adae_keys"
-                operator: "not_contains_all"
-                value: "$ae_keys"
+              - expression: 'not contains_all($adae_keys, $ae_keys)'
             Outcome:
               Message: "One or more (STUDYID, USUBJID, AESEQ) combinations present in the SDTM AE
                 dataset have no corresponding record in the ADaM ADAE dataset."
@@ -98,7 +85,8 @@ class PmdaAd0253TupleContainmentProbeTest
     {
         Rule rule = MAPPER.readValue(RULE_YAML, Rule.class);
         // rules-src does not author Sensitivity — the loader derives it, so a
-        // hand-bound rule must be completed the same way.
+        // hand-bound rule must be completed the same way (and its Bindings materialised, 7b).
+        RulePackageLoader.normalizeOperations(rule);
         RulePackageLoader.deriveOmittedFields(rule);
         rule.setCheckExpr(CheckToExpr.toExpr(rule.getCheck()));
         return rule;

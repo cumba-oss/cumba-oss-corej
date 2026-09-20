@@ -27,11 +27,17 @@ import org.junit.jupiter.api.Test;
  * <p>
  * Each case loads one operand-based rule through {@link RulePackageLoader} (so the canonicalization
  * + {@code checkExpr} retention fires), confirms the rule retained a native {@code checkExpr}, then
- * runs it twice over the same table — once with {@code nativeEval=true} (the native
- * {@code evaluateMetadataNative} broadcast path) and once with {@code nativeEval=false} (the legacy
- * {@code CheckEvaluator} cascade) — and asserts the two finding sets are identical (row indices and
- * the resolved {@code variable_name} of each finding). The edge cases (empty label, trailing
- * whitespace, missing label) probe the normalization seam where a divergence would surface.
+ * runs it over the table through the native {@code evaluateMetadataNative} broadcast path and
+ * asserts the finding set (the resolved {@code variable_name} of each finding). The edge cases
+ * (empty label, trailing whitespace, missing label) probe the normalization seam where a divergence
+ * would surface.
+ * </p>
+ *
+ * <p>
+ * ⚠ The legacy {@code CheckEvaluator} cascade and the {@code nativeEval} / {@code --no-native-eval}
+ * kill-switch that selected it are GONE, so the {@code legacy} / {@code native} pairs below are two
+ * runs of the <b>same</b> path: a determinism re-run, not a cross-engine comparison. Kept as the
+ * shape they were authored in; the cross-engine claim they used to carry is no longer made.
  * </p>
  */
 class VariableMetadataNativeParityTest
@@ -73,8 +79,8 @@ class VariableMetadataNativeParityTest
 
 
     /**
-     * Runs {@code rule} over {@code table} with the given {@code nativeEval} flag and returns the
-     * stable set of firing {@code variable_name}s (so native and legacy can be compared
+     * Runs {@code rule} over {@code table} through {@link RuleRunner} — the only engine — and
+     * returns the stable set of firing {@code variable_name}s (so repeated runs compare
      * independently of finding order). Keyed by {@code variable_name} rather than the violation
      * row: a Dataset-sensitivity Variable Metadata Check reports every per-variable finding at the
      * dataset-level row (row 0), so the row no longer distinguishes findings — the variable name
@@ -109,8 +115,7 @@ class VariableMetadataNativeParityTest
     @Test
     void variableLabelLongerThan_parity() throws Exception
     {
-        assertNativeMatchesLegacy("{\"all\":[{\"name\":\"variable_label\","
-                + "\"operator\":\"longer_than\",\"value\":40}]}");
+        assertNativeMatchesLegacy("{\"all\":[{\"expression\": \"len(variable_label) > 40\"}]}");
     }
 
 
@@ -120,7 +125,7 @@ class VariableMetadataNativeParityTest
         // non_empty(variable_label): the empty / whitespace-only labels (VERYLONGVARNAME="",
         // SHORT=" Padded ") probe the RAW-normalization (trim, empty->null) seam.
         assertNativeMatchesLegacy(
-                "{\"all\":[{\"name\":\"variable_label\",\"operator\":\"non_empty\"}]}");
+                "{\"all\":[{\"expression\": \"not empty(var_label(\\\"DATA\\\"))\"}]}");
     }
 
 
@@ -129,8 +134,8 @@ class VariableMetadataNativeParityTest
     {
         // variable_label compared to the literal "DOMAIN" — the canonicalized var_label accessor
         // anchors the broadcast; exercises the RAW label vs literal equality.
-        assertNativeMatchesLegacy("{\"all\":[{\"name\":\"variable_label\","
-                + "\"operator\":\"equal_to\",\"value\":\"DOMAIN\",\"value_is_literal\":true}]}");
+        assertNativeMatchesLegacy(
+                "{\"all\":[{\"expression\": \"var_label(\\\"DATA\\\") == \\\"DOMAIN\\\"\"}]}");
     }
 
 
@@ -140,18 +145,16 @@ class VariableMetadataNativeParityTest
         // A rule whose only operand is the variable_name anchor (regex/length on the NAME itself)
         // now raises to varname() (the current-variable-name function) and runs on the native
         // metadata-broadcast path (one finding per failing variable), matching the legacy cascade.
-        assertNativeMatchesLegacy("{\"all\":[{\"name\":\"variable_name\","
-                + "\"operator\":\"longer_than\",\"value\":8}]}");
-        assertNativeMatchesLegacy("{\"all\":[{\"name\":\"variable_name\","
-                + "\"operator\":\"not_matches_regex\",\"value\":\"^[A-Z]\"}]}");
+        assertNativeMatchesLegacy("{\"all\":[{\"expression\": \"len(varname()) > 8\"}]}");
+        assertNativeMatchesLegacy("{\"all\":[{\"expression\": \"varname() !~ /^[A-Z]/\"}]}");
     }
 
 
     @Test
     void variableDataTypeContainedBy_parity() throws Exception
     {
-        assertNativeMatchesLegacy("{\"all\":[{\"name\":\"variable_data_type\","
-                + "\"operator\":\"is_not_contained_by\",\"value\":[\"Char\",\"Num\"]}]}");
+        assertNativeMatchesLegacy(
+                "{\"all\":[{\"expression\": \"var_type(\\\"DATA\\\") not in [\\\"Char\\\", \\\"Num\\\"]\"}]}");
     }
 
 
@@ -160,9 +163,7 @@ class VariableMetadataNativeParityTest
     {
         // Sanity: a bare-operand rule that previously stayed on the legacy cascade (no metadata
         // function in the raised Expr) now retains a native checkExpr after canonicalization.
-        Rule rule = loadVmcRule(
-                "{\"all\":[{\"name\":\"variable_label\","
-                        + "\"operator\":\"longer_than\",\"value\":40}]}",
+        Rule rule = loadVmcRule("{\"all\":[{\"expression\": \"len(variable_label) > 40\"}]}",
                 "variable_name", "variable_label");
         assertNotNull(rule.getCheckExpr());
         // And the two backends agree on the full finding set including the label projection.
@@ -179,12 +180,11 @@ class VariableMetadataNativeParityTest
     @Test
     void variableNameAnchoredMembership_parity() throws Exception
     {
-        // P4b (ADAM-ADD-100029 / CDISC-CG0013 class): a rule anchored ONLY on the variable_name
+        // P4b (ADAM-ADD-100029 class): a rule anchored ONLY on the variable_name
         // operand (no var_* accessor, no varname()) iterates per variable on the native broadcast
         // path — the anchor resolves the same per-column cursor the loop sets.
         Rule rule = loadVmcRule(
-                "{\"all\":[{\"name\":\"variable_name\",\"operator\":\"is_not_contained_by\","
-                        + "\"value\":[\"STUDYID\",\"DOMAIN\",\"USUBJID\",\"AGE\"]}]}",
+                "{\"all\":[{\"expression\": \"varname() not in [\\\"STUDYID\\\", \\\"DOMAIN\\\", \\\"USUBJID\\\", \\\"AGE\\\"]\"}]}",
                 "variable_name");
         assertNotNull(rule.getCheckExpr(),
                 "a variable_name-anchored pure rule must retain a checkExpr (P4b)");
@@ -202,10 +202,9 @@ class VariableMetadataNativeParityTest
                 "only the first out-of-allowlist variable fires under the dataset collapse: "
                         + nativeF);
 
-        NativeExecutionRecorder.enable();
-        RuleRunner.execute(rule, table, _ -> null, "DM", null, null, null);
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE,
-                NativeExecutionRecorder.disable().get("R1"),
+        RuleExecutionResult ran = RuleRunner.execute(rule, table, _ -> null, "DM", null, null,
+                null);
+        assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "the anchored rule must take the native per-variable broadcast path");
     }
 
@@ -218,12 +217,10 @@ class VariableMetadataNativeParityTest
         // VariableMetadataResult. The native per-variable loop must project the $-variable per
         // column (vmr.getForVariable) exactly like the legacy Step-3 cascade.
         String json = "{\"rules\":{\"R1\":{\"Core\":{\"Id\":\"R1\"},"
-                + "\"Sensitivity\":\"Dataset\"," + "\"Operations\":[{\"id\":\"$sdtm_label\","
-                + "\"operator\":\"cross_dataset_variable_metadata\",\"domain\":\"AE\","
-                + "\"name\":\"label\"}],"
-                + "\"Check\":{\"all\":[{\"name\":\"$sdtm_label\",\"operator\":\"non_empty\"},"
-                + "{\"name\":\"variable_label\",\"operator\":\"not_equal_to\","
-                + "\"value\":\"$sdtm_label\"}]},"
+                + "\"Sensitivity\":\"Dataset\","
+                + "\"Bindings\":[{\"name\": \"$sdtm_label\", \"expression\": \"cross_dataset_variable_metadata(\\\"label\\\", domain=\\\"AE\\\")\"}],"
+                + "\"Check\":{\"all\":[{\"expression\": \"not empty($sdtm_label)\"},"
+                + "{\"expression\": \"var_label(\\\"DATA\\\") != $sdtm_label\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_name\"]}}}}";
         RulePackage pkg = RulePackageLoader.loadFromString(json);
         Rule rule = pkg.getRules().get("R1");
@@ -259,10 +256,8 @@ class VariableMetadataNativeParityTest
                 "only the label-mismatched variable fires");
 
         // And the rule must actually run on the NATIVE backend now (the P4 gate).
-        NativeExecutionRecorder.enable();
-        RuleRunner.execute(rule, adae, resolver, "AE", null, null, null);
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE,
-                NativeExecutionRecorder.disable().get("R1"),
+        RuleExecutionResult ran = RuleRunner.execute(rule, adae, resolver, "AE", null, null, null);
+        assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "the $-operand VMC rule must take the native per-variable broadcast path");
     }
 
@@ -290,9 +285,7 @@ class VariableMetadataNativeParityTest
         return n -> "AE".equals(n) ? ae : null;
     }
 
-    private static final String VMR_OP = "\"Operations\":[{\"id\":\"$sdtm_label\","
-            + "\"operator\":\"cross_dataset_variable_metadata\",\"domain\":\"AE\","
-            + "\"name\":\"label\"}],";
+    private static final String VMR_OP = "\"Bindings\":[{\"name\": \"$sdtm_label\", \"expression\": \"cross_dataset_variable_metadata(\\\"label\\\", domain=\\\"AE\\\")\"}],";
 
     @Test
     void s5_vmrRefWithoutVariableScope_perVariableNativeParity() throws Exception
@@ -301,7 +294,7 @@ class VariableMetadataNativeParityTest
         // (the legacy Step-3 cascade fires on the VARIABLE-classified $-leaf the same way).
         String json = "{\"rules\":{\"R1\":{\"Core\":{\"Id\":\"R1\"},"
                 + "\"Sensitivity\":\"Dataset\"," + VMR_OP
-                + "\"Check\":{\"all\":[{\"name\":\"$sdtm_label\",\"operator\":\"empty\"}]},"
+                + "\"Check\":{\"all\":[{\"expression\": \"empty($sdtm_label)\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_name\"]}}}}";
         Rule rule = RulePackageLoader.loadFromString(json).getRules().get("R1");
         assertNull(rule.getLoadError(), "rule must load cleanly: " + rule.getLoadError());
@@ -325,10 +318,8 @@ class VariableMetadataNativeParityTest
         assertEquals(java.util.Set.of("NEWVAR"), nativeVars,
                 "only the variable without an SDTM counterpart fires");
 
-        NativeExecutionRecorder.enable();
-        RuleRunner.execute(rule, adae, resolver, "AE", null, null, null);
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE,
-                NativeExecutionRecorder.disable().get("R1"),
+        RuleExecutionResult ran = RuleRunner.execute(rule, adae, resolver, "AE", null, null, null);
+        assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "the VMR-ref rule must run natively (legacy Step-3 cascade retired)");
     }
 
@@ -341,8 +332,8 @@ class VariableMetadataNativeParityTest
         // per-variable routing (the D4 ordering guard).
         String json = "{\"rules\":{\"R1\":{\"Core\":{\"Id\":\"R1\"},"
                 + "\"Sensitivity\":\"Dataset\"," + VMR_OP
-                + "\"Check\":{\"any\":[{\"name\":\"AETERM\",\"operator\":\"var_exists\"},"
-                + "{\"name\":\"$sdtm_label\",\"operator\":\"empty\"}]},"
+                + "\"Check\":{\"any\":[{\"expression\": \"var_exists(\\\"AETERM\\\")\"},"
+                + "{\"expression\": \"empty($sdtm_label)\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}}}";
         Rule rule = RulePackageLoader.loadFromString(json).getRules().get("R1");
         assertNull(rule.getLoadError());
@@ -358,10 +349,8 @@ class VariableMetadataNativeParityTest
                 "the TRUE-collapse emits ONE dataset-level violation, never per-variable");
         assertEquals(legacy.getViolations().size(), nativ.getViolations().size());
 
-        NativeExecutionRecorder.enable();
-        RuleRunner.execute(rule, adae, resolver, "AE", null, null, null);
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE,
-                NativeExecutionRecorder.disable().get("R1"));
+        RuleExecutionResult ran = RuleRunner.execute(rule, adae, resolver, "AE", null, null, null);
+        assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus());
     }
 
 
@@ -375,9 +364,8 @@ class VariableMetadataNativeParityTest
         // (variable, row).
         String json = "{\"rules\":{\"R1\":{\"Core\":{\"Id\":\"R1\"},"
                 + "\"Sensitivity\":\"Record\"," + VMR_OP
-                + "\"Check\":{\"all\":[{\"name\":\"$sdtm_label\",\"operator\":\"non_empty\"},"
-                + "{\"name\":\"AETERM\",\"operator\":\"empty\"}]},"
-                + "\"Outcome\":{\"Message\":\"m\","
+                + "\"Check\":{\"all\":[{\"expression\": \"not empty($sdtm_label)\"},"
+                + "{\"expression\": \"empty(AETERM)\"}]}," + "\"Outcome\":{\"Message\":\"m\","
                 + "\"Output_Variables\":[\"variable_name\"]}}}}";
         Rule rule = RulePackageLoader.loadFromString(json).getRules().get("R1");
         assertNull(rule.getLoadError());
@@ -408,10 +396,8 @@ class VariableMetadataNativeParityTest
         assertTrue(nativeF.stream().noneMatch(f -> f.startsWith("NEWVAR")),
                 "the guard (projected per column) excludes the counterpart-less variable");
 
-        NativeExecutionRecorder.enable();
-        RuleRunner.execute(rule, adae, resolver, "AE", null, null, null);
-        assertEquals(NativeExecutionRecorder.Backend.NATIVE,
-                NativeExecutionRecorder.disable().get("R1"),
+        RuleExecutionResult ran = RuleRunner.execute(rule, adae, resolver, "AE", null, null, null);
+        assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "S7b must run on the native per-(variable, row) path");
     }
 }

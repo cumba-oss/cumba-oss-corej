@@ -65,7 +65,8 @@ class RegexRewriteEquivalenceTest
     @Test
     void notIsNumericMatchesLborresRegex()
     {
-        // LBORRES laxer numeric regex (CDISC-CG0180..CG0183): /^-?(\d+(\.\d+)?$)|(\.\d+$)/.
+        // The LBORRES laxer numeric regex, /^-?(\d+(\.\d+)?$)|(\.\d+$)/ — its named carriers
+        // were retired with the CORE family (2026-09-19); the regex itself is asserted below.
         // is_numeric is a superset, so it accepts leading zeros ("007") where the regex still
         // fired (the LBORRES regex requires no leading zero before a multi-digit integer? — it
         // tolerates leading zeros, but rejects a bare lone-dot fractional differently). Assert the
@@ -113,8 +114,8 @@ class RegexRewriteEquivalenceTest
     @Test
     void strictIntegerRewriteIsNotEquivalentSoRulesKeepRegex()
     {
-        // REVIEW REVERT (FIX #1): the strict-integer regexes (CDISC-CG0440, CDISC-CG0457 — the
-        // corpus's strict carriers, re-derived 2026-09-19)
+        // REVIEW REVERT (FIX #1): the strict-integer regexes (CDISC-AD0169 and, before the
+        // 2026-09-19 CORE-family retirement, four CORE siblings)
         // were reverted to regex because `is_integer` = ScalarSemantics.isIntegerString is
         // Double.parseDouble-backed and LENIENT — it accepts forms the strict regexes reject
         // (`5.0`, `1e5`, `+5`, ` 5 `, leading zeros), which would cause FALSE NEGATIVES. This test
@@ -151,7 +152,7 @@ class RegexRewriteEquivalenceTest
                 .build();
         BitSet regex = eval("X !~ /" + re + "/", t);
         BitSet rewrite = eval("invalid_duration(X)", t);
-        // DOCUMENTED divergence (CDISC-CG0376): the legacy regex's leading lookahead
+        // DOCUMENTED divergence: the legacy regex's leading lookahead
         // (?=\d+[YMWD]) requires a date component immediately after P, so it rejects a time-only
         // ISO-8601 duration such as "PT1H" (row 2) — firing the not_matches form. invalid_duration
         // correctly accepts "PT1H" as a valid duration, so it does not fire. Align the baseline.
@@ -162,10 +163,10 @@ class RegexRewriteEquivalenceTest
 
 
     @Test
-    void core000779TimeOnlyDurationsAreIntendedDivergence()
+    void timeOnlyDurationsAreIntendedDivergence()
     {
-        // CDISC-CG0376 keeps invalid_duration(TDSTOFF), an INTENDED, MORE-CORRECT divergence: the
-        // legacy lookahead regex wrongly REJECTED valid ISO-8601 time-only / multi-component /
+        // invalid_duration(X) is an INTENDED, MORE-CORRECT divergence from the legacy lookahead
+        // regex, which wrongly REJECTED valid ISO-8601 time-only / multi-component /
         // fractional durations (the leading lookahead requires a date component, and the time
         // lookahead `(?=\d+[HMS])` does not admit a fractional second). invalid_duration accepts
         // them as valid, so it does NOT fire on them. Assert the NEW behaviour explicitly.
@@ -177,13 +178,18 @@ class RegexRewriteEquivalenceTest
         expected.set(3);
         expected.set(4);
         assertEquals(expected, rewrite,
-                "CDISC-CG0376 invalid_duration — intended, more-correct divergence: time-only / "
+                "invalid_duration — intended, more-correct divergence: time-only / "
                         + "multi-component / fractional durations the legacy regex wrongly rejected");
+        // ⚠ 2026-09-19: the rule that carried this divergence into the corpus was retired with
+        // the CORE family, and the surviving TDSTOFF rule CDISC-CG0376 takes the OTHER route — a
+        // REPAIRED regex, /^P(?=\d+[YMWD]|T\d+[HMS])…/, whose lookahead now admits the time-only
+        // form. So the divergence above is the engine's, no longer any shipped rule's; 20 other
+        // rules-src rules do bind invalid_duration (measured), so the operator is not orphaned.
     }
 
 
     @Test
-    void core000335RandqtRangeIsIntendedDivergence()
+    void cdiscCg0280RandqtRangeIsIntendedDivergence()
     {
         // CDISC-CG0280 (RANDQT quotient) — the curated rewrite is an INTENDED, MORE-CORRECT
         // divergence from the buggy legacy regex pair `^(0.[0-9]+?)$` / `^[1]$` (unescaped `.`:
@@ -272,8 +278,12 @@ class RegexRewriteEquivalenceTest
     @Test
     void hasAlphaHasDigitMatchRegex()
     {
-        // matches /.*[a-zA-Z].*/ == has_alpha(X); matches /.*[0-9].*/ == has_digit(X)
-        // (no shipped carrier: measured 2026-09-19).
+        // matches /.*[a-zA-Z].*/ == has_alpha(X); matches /.*[0-9].*/ == has_digit(X).
+        // ⚠ 2026-09-19: the only rule that bound has_alpha / has_digit was retired with the CORE
+        // family, and its surviving twin CDISC-CG0185 authors a regex instead
+        // (`LBTOXGR !~ /^[0-9]+$/`). The equivalence below is therefore the engine's alone — which
+        // is exactly why it must keep being asserted: nothing in the corpus exercises the two
+        // builtins any more.
         IDataTable t = MockTable.of().col("X", "Grade2", "abc", "123", "!?", "", null).build();
         assertEquals(eval("X =~ /.*[a-zA-Z].*/", t), eval("has_alpha(X)", t),
                 "has_alpha(X) vs .*[a-zA-Z].*");
@@ -352,7 +362,8 @@ class RegexRewriteEquivalenceTest
     @Test
     void prefixNotInMatchesAffixRegex()
     {
-        // CDISC-CG0332: prefix(X,2) !~ /^(AP|FA)$/ vs prefix(X,2) not in ["AP","FA"]. The anchored
+        // CDISC-CG0332, which ships the membership form: prefix(X,2) !~ /^(AP|FA)$/ vs
+        // prefix(dataset_name,2) not in ["AP","FA"]. The anchored
         // affix regex matches exactly the 2-char prefix against "AP"/"FA", so negated membership is
         // equivalent.
         // ⚠ Both forms are case-SENSITIVE, so a lower-case-only column makes both sides all-true

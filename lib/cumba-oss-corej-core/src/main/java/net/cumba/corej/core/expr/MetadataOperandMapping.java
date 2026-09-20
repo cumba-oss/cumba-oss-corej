@@ -17,12 +17,11 @@ import org.jspecify.annotations.Nullable;
  * {@code ds_*} <em>accessor functions</em>.
  *
  * <p>
- * {@link CheckToExpr} uses {@link #forwardOperand} to prefer the function form when raising a Check
- * to the {@link Expr} IR; {@link ExprLowering} uses {@link #reverseToOperand} to lower the
- * {@code variable_name}-anchored / current-dataset function form back to the exact operand name, so
- * the {@code Check → Expr → Check} round-trip is preserved. The arbitrary-literal function form
- * (e.g. {@code var_label("AESTDTC", "DEFINE")}) has no operand and reverses to {@code null}
- * (native-only).
+ * {@link #forwardOperand} maps a bare operand name to its preferred function form (historically how
+ * {@code CheckToExpr} raised an operator leaf); {@link #reverseToOperand} maps the
+ * {@code variable_name}-anchored / current-dataset function form back to the exact operand name.
+ * The arbitrary-literal function form (e.g. {@code var_label("AESTDTC", "DEFINE")}) has no operand
+ * and reverses to {@code null} (native-only).
  * </p>
  *
  * <p>
@@ -183,11 +182,11 @@ public final class MetadataOperandMapping
      * This is the load-time bridge (Epic B4) that lets an operand-based Variable-Metadata-Check
      * rule whose operands were raised to bare references in non-comparison positions — inside
      * {@code len(variable_label)}, a regex match on {@code variable_label}, a {@code non_empty}
-     * predicate, a membership LHS, etc., where {@link CheckToExpr#leafToExpr} emits a plain
-     * {@code ref(name)} rather than the metadata-preferring {@code migratingRef} — still route to
-     * the native metadata-broadcast path, exactly as a rule whose operand sat in a plain comparison
-     * position already does. The rewrite is semantics-preserving: the bare operand and the accessor
-     * resolve to the same per-variable metadata cell (see {@code RuleRunner}'s
+     * predicate, a membership LHS, etc., where the retired {@code CheckToExpr} raise emitted a
+     * plain {@code ref(name)} rather than the metadata-preferring {@code migratingRef} — still
+     * route to the native metadata-broadcast path, exactly as a rule whose operand sat in a plain
+     * comparison position already does. The rewrite is semantics-preserving: the bare operand and
+     * the accessor resolve to the same per-variable metadata cell (see {@code RuleRunner}'s
      * {@code buildVariableMetadata} vs {@code ExprCompiler}'s {@code metadataPlan}).
      * </p>
      */
@@ -228,9 +227,8 @@ public final class MetadataOperandMapping
         {
             Expr left = canonicalizeMetadataOperands(b.left());
             Expr right = canonicalizeMetadataOperands(b.right());
-            // The varname()-literal class (e.g. FDA-SD1322's `varname() == "COUNTRY"`,
-            // CDISC-AD0042's `varname() != "ARELTM"`): in the metadata families a varname()
-            // comparison's textual RHS is
+            // The varname()-literal class (e.g. FDA-SD1322, CDISC-AD0042): in the metadata
+            // families a varname() comparison's textual RHS is
             // ALWAYS a literal in the legacy per-variable cascade (evaluateLeafAgainstMetadata
             // resolves the value against the metadata map and otherwise falls back to the literal
             // string — it never reads a data column). A rule authored without value_is_literal
@@ -258,23 +256,6 @@ public final class MetadataOperandMapping
             yield lit;
         }
         };
-    }
-
-
-    /**
-     * R-P2 ({@code plans/done/PLAN-native-engine-residuals.md}): the <b>dataset-facts-only</b>
-     * canonicalization for the NON-metadata rule types (Record Data, Domain Presence, …). Only the
-     * dataset-level facts the legacy Step-1 fold reads — {@code dataset_*} /
-     * {@code library_dataset_*} / {@code define_dataset_*} (→ their {@code ds_*} accessor) and
-     * {@code record_count} (→ the {@code record_count()} builtin) — are rewritten; every other
-     * reference (columns, {@code $}-operations, variable-scope operands) is preserved verbatim, so
-     * the row-level native path stays bit-identical. This makes pure dataset-fact checks
-     * broadcast-flaggable (fold-equivalent) and mixed checks evaluate the fact leaf natively with
-     * the same value the legacy fold substitutes.
-     */
-    public static Expr canonicalizeDatasetFacts(Expr e)
-    {
-        return canonicalizeFacts(e, false, false);
     }
 
     /**

@@ -67,7 +67,13 @@ public final class DomainScan
     {
     }
 
-    private static final Set<String> VARNAME_ANCHORED_CALLS = Set.of("max_value_length",
+    /**
+     * The varname-anchored calls: variable-cursor when unanchored (or anchored at the cursor),
+     * dataset-level when anchored at an explicit variable. Package-visible because
+     * {@code BroadcastFold.absentColumnLeafLevel} excludes the same family — a shared census, so
+     * the two cascades cannot drift.
+     */
+    static final Set<String> VARNAME_ANCHORED_CALLS = Set.of("max_value_length",
             "library_variable_code_pair_matches", "define_variable_decode_matches");
 
     /** The bare-operand names that are the current variable's per-row value. */
@@ -125,7 +131,8 @@ public final class DomainScan
     {
         return switch (r.kind())
         {
-        case COLUMN, WILDCARD_COLUMN, DOTTED_REF -> Domain.ROW;
+        // MATCHED_FLAG: a boolean at level record (spec §3.3) — a per-row verdict.
+        case COLUMN, WILDCARD_COLUMN, DOTTED_REF, MATCHED_FLAG -> Domain.ROW;
         case OPERATION_REF -> ofKind(kinds.kindOf(r.name()));
         case BUILTIN -> builtin(r.name());
         };

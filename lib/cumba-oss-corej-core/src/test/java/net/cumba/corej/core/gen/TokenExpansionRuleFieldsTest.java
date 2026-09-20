@@ -17,7 +17,6 @@ import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.ScopeVariableSource;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.ExpansionDirective;
 import net.cumba.corej.core.model.ExpansionSource;
 import net.cumba.corej.core.model.GroupingSpec;
@@ -54,9 +53,18 @@ class TokenExpansionRuleFieldsTest
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private static CheckConditionLeaf leaf(String name, String operator)
+    private static net.cumba.corej.core.model.CheckConditionExpression leaf(String name,
+            String operator)
     {
-        return CheckConditionLeaf.builder().name(name).operator(operator).build();
+        String ref = "`" + name + "`";
+        String source = switch (operator)
+        {
+        case "non_empty" -> "not empty(" + ref + ")";
+        case "var_exists" -> "var_exists(" + ref + ")";
+        default -> throw new IllegalArgumentException(operator);
+        };
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
     }
 
 
@@ -235,9 +243,9 @@ class TokenExpansionRuleFieldsTest
 
         CheckCondition precondition = expanded.getPrecondition();
         assertNotNull(precondition, "a dropped Precondition makes the rule run where it must not");
-        assertEquals("AGE",
-                ((CheckConditionLeaf) ((CheckConditionAll) precondition).getConditions().get(0))
-                        .getName(),
+        assertEquals("var_exists(AGE)", net.cumba.corej.core.expr.ExpressionPrinter.print(
+                ((net.cumba.corej.core.model.CheckConditionExpression) ((CheckConditionAll) precondition)
+                        .getConditions().get(0)).expr()),
                 "the Precondition is substituted too, or it tests a column named '&VAR'");
     }
 
@@ -409,9 +417,9 @@ class TokenExpansionRuleFieldsTest
 
         Rule expanded = expandOnce(template, adae(), Map.of("ADSL", adsl()));
 
-        CheckConditionLeaf got = (CheckConditionLeaf) ((CheckConditionAll) expanded.getCheck())
-                .getConditions().get(0);
-        assertEquals("AGE", got.getName(),
+        assertEquals("not empty(AGE)", net.cumba.corej.core.expr.ExpressionPrinter.print(
+                ((net.cumba.corej.core.model.CheckConditionExpression) ((CheckConditionAll) expanded
+                        .getCheck()).getConditions().get(0)).expr()),
                 "'&VX' must be replaced whole; substituting '&V' first leaves 'AGEX'");
     }
 

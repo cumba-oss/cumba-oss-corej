@@ -4,12 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.node.TextNode;
 import java.util.List;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
@@ -34,6 +32,12 @@ import org.junit.jupiter.api.Test;
  */
 class LibraryValidatorStudySensitivityTest
 {
+
+    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    {
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+    }
 
     private static final String STUDY_MESSAGE = "study-wide non-conformance";
 
@@ -93,9 +97,7 @@ class LibraryValidatorStudySensitivityTest
         outcome.setMessage(STUDY_MESSAGE);
         outcome.setOutputVariables(List.of("USUBJID"));
         r.setOutcome(outcome);
-        r.setCheck(new CheckConditionAll(
-                List.of(CheckConditionLeaf.builder().name("VAL").operator("equal_to")
-                        .value(TextNode.valueOf("BAD")).valueIsLiteral(true).build())));
+        r.setCheck(new CheckConditionAll(List.of(expr("VAL == \"BAD\""))));
         return r;
     }
 
@@ -185,9 +187,7 @@ class LibraryValidatorStudySensitivityTest
         outcome.setOutputVariables(List.of("STUDYID"));
         r.setOutcome(outcome);
         r.setOperations(List.of(defineOp));
-        r.setCheck(new CheckConditionAll(
-                List.of(CheckConditionLeaf.builder().name("STUDYID").operator("is_contained_by")
-                        .value(TextNode.valueOf("$define_dataset_names")).build())));
+        r.setCheck(new CheckConditionAll(List.of(expr("STUDYID in $define_dataset_names"))));
 
         // No .defineProvider(...) → the define-dependent rule is SKIPPED on both datasets.
         ValidationReport report = LibraryValidator.builder().provider(providerWithDmAndAe())

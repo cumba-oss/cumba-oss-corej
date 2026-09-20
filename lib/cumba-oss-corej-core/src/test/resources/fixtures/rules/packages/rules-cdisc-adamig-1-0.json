@@ -79,9 +79,9 @@
           "PARAMCD"
         ]
       },
-      "Operations": [
+      "Bindings": [
         {
-          "id": "$basetype_mixed",
+          "name": "$basetype_mixed",
           "expression": "has_mixed_emptiness_within_group(BASETYPE, group=[PARAMCD])"
         }
       ],

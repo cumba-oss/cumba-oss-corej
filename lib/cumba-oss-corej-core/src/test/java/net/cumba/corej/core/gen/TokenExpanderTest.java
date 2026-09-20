@@ -15,7 +15,6 @@ import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.exec.ScopeVariableSource;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
-import net.cumba.corej.core.model.CheckConditionLeaf;
 import net.cumba.corej.core.model.ExpansionDirective;
 import net.cumba.corej.core.model.ExpansionSource;
 import net.cumba.corej.core.model.MatchDataset;
@@ -67,15 +66,22 @@ class TokenExpanderTest
     }
 
 
-    private static CheckConditionLeaf leaf(String name, String operator, @Nullable String value)
+    private static net.cumba.corej.core.model.CheckConditionExpression leaf(String name,
+            String operator, @Nullable String value)
     {
-        CheckConditionLeaf.CheckConditionLeafBuilder b = CheckConditionLeaf.builder().name(name)
-                .operator(operator);
-        if (value != null)
+        // Backtick-quoted so expansion-token names (`&VAR`, `ADSL.&VAR`) lex as references —
+        // the spelling the authored rulespec templates use.
+        String ref = "`" + name + "`";
+        String source = switch (operator)
         {
-            b.value(new com.fasterxml.jackson.databind.node.TextNode(value));
-        }
-        return b.build();
+        case "non_empty" -> "not empty(" + ref + ")";
+        case "empty" -> "empty(" + ref + ")";
+        case "var_exists" -> "var_exists(" + ref + ")";
+        case "not_equal_to" -> ref + " != `" + value + "`";
+        default -> throw new IllegalArgumentException(operator);
+        };
+        return new net.cumba.corej.core.model.CheckConditionExpression(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
     }
 
 
