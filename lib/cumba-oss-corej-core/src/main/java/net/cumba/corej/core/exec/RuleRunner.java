@@ -3530,9 +3530,10 @@ public final class RuleRunner
      *
      * <p>
      * Deliberately untouched, with their anchor-row semantics: {@code $}-operation references
-     * (group-constant or wider for every corpus output — D94 (iii)), dotted joined references and
-     * unqualified joined fallbacks (per-row join reads), and the dataset-scope virtuals
-     * ({@code record_count}, {@code ds_*} facts), which are row-independent anyway.
+     * (group-constant or wider for every corpus output — D94 (iii)), dotted joined references and ⛔
+     * REMOVED 2026-09-21: the unqualified joined fallback (per-row join reads), and the
+     * dataset-scope virtuals ({@code record_count}, {@code ds_*} facts), which are row-independent
+     * anyway.
      * </p>
      */
     private static Map<String, String> extractGroupOutputValues(IDataTable table,

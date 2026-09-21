@@ -1171,7 +1171,8 @@ public final class ExprCompiler
             boolean negate, boolean caseInsensitive)
     {
         EvaluationContext ctx = run.ctx();
-        // R-P7 review M3: candidate-aware via Primitives.scan so an unqualified foreign LHS gets
+        // ⚠ R-P7 review M3 is HISTORY since 2026-09-21: Primitives.scan is no longer
+        // candidate-aware and an unqualified name never reaches a join. Formerly it got
         // the legacy forEachJoinedValue ANY-MATCH semantics here too.
         return Primitives.scan(v, run.rowCount(), (dv, r) ->
         {
@@ -1237,7 +1238,8 @@ public final class ExprCompiler
                 return new BitSet();
             }
             EvaluationContext ctx = run.ctx();
-            // R-P7 review M3: candidate-aware via Primitives.scan (foreign LHS → any-match OR).
+            // ⚠ R-P7 review M3 is HISTORY since 2026-09-21: scan is no longer candidate-aware and
+            // an unqualified name never reaches a join (formerly foreign LHS → any-match OR).
             return Primitives.scan(v, run.rowCount(), (dv, r) ->
             {
                 List<String> values = net.cumba.corej.core.exec.ValueResolver
@@ -1927,7 +1929,8 @@ public final class ExprCompiler
             {
                 return new BitSet();
             }
-            // R-P7 review M3: candidate-aware via Primitives.scan (foreign LHS → any-match OR).
+            // ⚠ R-P7 review M3 is HISTORY since 2026-09-21: scan is no longer candidate-aware and
+            // an unqualified name never reaches a join (formerly foreign LHS → any-match OR).
             return Primitives.scan(nameV, run.rowCount(), (dv, r) ->
             {
                 Object target = valueV.value(r).resolved();
@@ -3996,13 +3999,14 @@ public final class ExprCompiler
      * and the named column's value read — exactly the legacy semantics.
      *
      * <p>
-     * The two positions diverge in the legacy engine and so diverge here:
+     * ⛔ The two positions were DIVERGENT until 2026-09-21 and are now IDENTICAL (the uniformity
+     * ruling):
      * </p>
      * <ul>
      * <li><b>Value position</b> (Scalar) → {@code resolveColumnValue}: the resolved name is read as
-     * dotted-join / primary-table string / first-non-null across unqualified joins / {@code null}.
-     * There is no {@code resolveVariable} probe and no literal fallback (matching
-     * {@code resolveColumnValue}).</li>
+     * dotted-join / primary-table string / formerly first-non-null across unqualified joins -- that
+     * arm is deleted / {@code null}. There is no {@code resolveVariable} probe and no literal
+     * fallback (matching {@code resolveColumnValue}).</li>
      * <li><b>Name position</b>: the resolved name is read as dotted-join / primary-table cell /
      * {@code null} — with <em>no</em> unqualified-join fallback.</li>
      * </ul>
@@ -4299,14 +4303,14 @@ public final class ExprCompiler
 
     /**
      * Name-position reference: column fast path, dotted-join, or context variable. A
-     * {@code --}-prefix raw name is resolved against the context's domain prefix first. When
-     * {@code foldAbsentColumn} is set a name that resolves to no column in the primary table
-     * <em>and</em> to no {@code Match_Datasets} join yields an all-missing {@link ConstVector}
-     * instead of {@code null} — <b>an absent column is a column whose values are all missing</b>.
-     * The enclosing predicate then computes its OWN polarity over it: {@code X != "A"} and
-     * {@code X !~ /re/} fire (a blank is neither), while {@code X == "A"} does not, and a
-     * column-vs-column negative with BOTH sides absent does not (both fold to {@code ""} and
-     * compare equal — the legacy both-missing contract that {@link #compileNot}'s
+     * {@code --}-prefix raw name is resolved against the context's domain prefix first. When ⛔
+     * 2026-09-21: there is no {@code foldAbsentColumn} parameter any more and joins are NOT
+     * consulted. A name that resolves to no column in the primary table yields an all-missing
+     * {@link ConstVector} instead of {@code null} — <b>an absent column is a column whose values
+     * are all missing</b>. The enclosing predicate then computes its OWN polarity over it:
+     * {@code X != "A"} and {@code X !~ /re/} fire (a blank is neither), while {@code X == "A"} does
+     * not, and a column-vs-column negative with BOTH sides absent does not (both fold to {@code ""}
+     * and compare equal — the legacy both-missing contract that {@link #compileNot}'s
      * case-insensitive-equality interception exists to protect).
      *
      * <p>
@@ -4389,7 +4393,7 @@ public final class ExprCompiler
             // MHSTDTC` fired on every row while the mirrored `date(MHSTDTC) > ABSENT` correctly
             // reported nothing, and the present-but-blank twin reported nothing on both sides.
             //
-            // // ⭐⭐ UVC unqualified (owner): an unqualified name means a variable of the PRIMARY
+            // ⭐⭐ UVC unqualified (owner): an unqualified name means a variable of the PRIMARY
             // dataset, ALWAYS -- never a Match_Datasets join. And the UNIFORMITY ruling
             // (2026-09-21): "The variable reference should be handled the same way
             // everywhere. It should not depend on the location or surrounding framing (e.g.
@@ -4456,13 +4460,13 @@ public final class ExprCompiler
             // carries no longer keeps a per-row joined resolution, because the join is not what a
             // bare
             // name means.
-            // // ⭐⭐ UVC unqualified (owner): an unqualified name means a variable of the PRIMARY
+            // ⭐⭐ UVC unqualified (owner): an unqualified name means a variable of the PRIMARY
             // dataset, ALWAYS -- never a Match_Datasets join. And the UNIFORMITY ruling
             // (2026-09-21): "The variable reference should be handled the same way
             // everywhere. It should not depend on the location or surrounding framing (e.g.
             // function name or parameter position or anything else)."
             // ⇒ the `!anyJoinedDatasetHasColumn` probe is GONE: a name a join carries no longer
-            // keeps a per-row joined resolution, because the join is not what a bare name means.
+            // keeps a per-row joined resolution.
             if (absentFoldEnabled && BroadcastFold.isFoldableColumnReference(name))
             {
                 ctx.noteAbsentColumnFold(name);

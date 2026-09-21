@@ -1018,9 +1018,8 @@ public final class BroadcastFold
         /**
          * The name is a foldable column reference absent from the primary table (joins are NOT
          * consulted for a bare name since 2026-09-21; the phrase 'and every joined dataset' was
-         * true only of the retired fallback) -- formerly also every joined dataset — a
-         * dataset-level constant by D39a (D34 #3/#4: an absent column is a present column holding
-         * its type's default).
+         * true only of the retired fallback) — a dataset-level constant by D39a (D34 #3/#4: an
+         * absent column is a present column holding its type's default).
          */
         DATASET_ABSENT
     }
@@ -1030,9 +1029,12 @@ public final class BroadcastFold
      * column-level primitive of the level calculus, read by the typed walk
      * ({@code LevelInstrument}'s resolver) and by the D111 absent-column fold arm alike: context
      * variables first (resolution order), then {@link #isFoldableColumnReference} eligibility, then
-     * primary-table and joined-dataset presence. A {@code --}-template or otherwise non-foldable
-     * name stays {@link BindColumnLevel#ROW} — never resolved here (D77b makes an unresolved
-     * {@code --} the evaluator's assertion, not this probe's).
+     * primary-table presence ONLY. ⛔ This said "primary-table <b>and joined-dataset</b> presence"
+     * until 2026-09-21; joined presence is no longer consulted, which is the change
+     * {@code BindColumnLevelTest.aBareNameTheJoinCarriesIsStillDatasetAbsent} pins. A
+     * {@code --}-template or otherwise non-foldable name stays {@link BindColumnLevel#ROW} — never
+     * resolved here (D77b makes an unresolved {@code --} the evaluator's assertion, not this
+     * probe's).
      */
     public static BindColumnLevel bindColumnLevel(String name, EvaluationContext ctx)
     {

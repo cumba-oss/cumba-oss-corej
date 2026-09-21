@@ -399,9 +399,10 @@ public final class ScalarSemantics
      * {@link net.cumba.corej.core.expr.eval.ComputedVector#typed}'s producer,
      * {@link net.cumba.corej.core.expr.eval.TypedValue#typedCell}, {@link JoinLookup#lookupValue}
      * and the three private row functions of {@code ExprCompiler} ({@code arithmeticCell},
-     * {@code substitutedScalarCell}, {@code firstJoinedCell}) had their {@code @Nullable} removed;
-     * NullAway then reported exactly <b>11</b> producers returning {@code null}, all in this
-     * module, and all now return a value. A new violation there fails the compile.
+     * {@code substitutedScalarCell}, {@code firstJoinedCell (removed 2026-09-21)}) had their
+     * {@code @Nullable} removed; NullAway then reported exactly <b>11</b> producers returning
+     * {@code null}, all in this module, and all now return a value. A new violation there fails the
+     * compile.
      * <p>
      * ⚠ <b>Returning a value is not the same as returning the RIGHT value.</b> Eight of the eleven
      * were genuinely computed non-results and this method is their correct answer. The other
