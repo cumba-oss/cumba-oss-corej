@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.values.DataValueType;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -69,6 +70,24 @@ public final class ScopeVariableSource
     private final Map<String, List<DataTableMeta>> metaMemo = new ConcurrentHashMap<>();
 
     private final Map<String, Boolean> suppMemo = new ConcurrentHashMap<>();
+
+    /**
+     * Ruling D9's memo: the {@code QVAL} column type of each {@code SUPP<domain>} table.
+     * <p>
+     * ⚠ Keyed by the resolved qualifier <b>alone</b>, deliberately separate from {@link #suppMemo}:
+     * {@code QVAL}'s type does not depend on which variable is being looked for, so folding it into
+     * that memo's {@code resolved + KEY_SEP + column} key would re-read the metadata once per
+     * variable instead of once per dataset.
+     * </p>
+     * <p>
+     * ⚠⚠ A {@link ConcurrentHashMap} cannot hold a {@code null} value, and "no QVAL column" is a
+     * real answer here — so the absent case is stored as {@link DataValueType#MISSING}, which is
+     * the engine's own spelling of <em>unknown</em> ({@code JoinLookup.declaredTypeOf} uses it for
+     * exactly this) and which {@link net.cumba.corej.core.expr.eval.ColumnTypeGate#kindOf} maps to
+     * {@code null} anyway.
+     * </p>
+     */
+    private final Map<String, DataValueType> qvalMemo = new ConcurrentHashMap<>();
 
     private ScopeVariableSource(DatasetResolver.WithInventory resolver, IDataTable primary)
     {
@@ -165,6 +184,46 @@ public final class ScopeVariableSource
         {
             IDataTable supp = resolver.resolve("SUPP" + resolved);
             return supp != null && OperatorRegistry.existsInSuppQnam(supp, column);
+        });
+    }
+
+
+    /**
+     * Ruling <b>D9</b> — the declared type of {@code SUPP<qualifier>}'s {@code QVAL} column, which
+     * is the type of any variable that qualifier delivers through the QNAM pivot rather than as a
+     * column of its own.
+     *
+     * <p>
+     * The pivot ({@link #existsViaSuppQnam}) answers existence only — the variable arrives as a
+     * {@code QNAM} <b>row</b>, so it has no {@code DataTableColumnMeta}. Its values live in
+     * {@code QVAL}, so {@code QVAL}'s type is the delivered variable's type. Read from the SUPP
+     * table's own metadata (<b>D6</b>: the data's type, never the standard's assertion that
+     * {@code QVAL} is Char), so a study shipping something unusual is reported honestly.
+     * </p>
+     *
+     * @param qualifier
+     *            the qualifier half of the entry, {@code --} not yet resolved
+     * @return {@code QVAL}'s declared type, or {@link DataValueType#MISSING} when the SUPP table or
+     *         its {@code QVAL} column is absent — i.e. "unknown", which does not block (D2)
+     */
+    public DataValueType suppQvalType(String qualifier)
+    {
+        String resolved = resolveQualifierName(qualifier);
+        return qvalMemo.computeIfAbsent(resolved, name ->
+        {
+            IDataTable supp = resolver.resolve("SUPP" + name);
+            if (supp == null)
+            {
+                return DataValueType.MISSING;
+            }
+            DataTableMeta meta = supp.getMetaData();
+            int idx = meta.getColumnIndex("QVAL");
+            if (idx < 0)
+            {
+                return DataValueType.MISSING;
+            }
+            DataValueType type = meta.getColumn(idx).getType();
+            return type == null ? DataValueType.MISSING : type;
         });
     }
 

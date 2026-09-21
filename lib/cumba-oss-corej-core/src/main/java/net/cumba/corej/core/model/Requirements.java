@@ -25,7 +25,7 @@ import org.jspecify.annotations.Nullable;
  * <pre>{@code
  * Requirements:
  *   Variables:
- *     All:  ["USUBJID", "--DTC"]
+ *     All:  ["USUBJID", "--DTC", "--SEQ:N"]
  *     Any:  ["--STDTC", "--DTC"]
  *     None: ["POOLID"]
  *   Datasets: ["EX"]
@@ -38,6 +38,15 @@ import org.jspecify.annotations.Nullable;
  * ⛔ A requirement is for a thing whose absence means <b>nothing to check</b>, never for a thing
  * whose absence <b>is</b> the defect (owner ruling {@code M2-D24} / {@code M3-F.1}, 2026-08-21). A
  * presence rule must not require the thing it reports.
+ * </p>
+ *
+ * <p>
+ * ⭐ An {@code All} / {@code Any} entry may carry a {@code :N} / {@code :C} type suffix, demanding
+ * the column's type as well as its presence — see {@link VariableRequirement} for the full
+ * semantics. ⛔ The same doctrine binds twice as hard there: a rule that <em>reports</em> on a
+ * variable's type (as {@code CDISC-CG0012} does, through
+ * {@code var_type("DATA") != var_type("LIBRARY")}) must never guard on it, or it skips on exactly
+ * the datasets it exists to catch.
  * </p>
  *
  * <p>

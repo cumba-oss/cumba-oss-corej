@@ -2647,6 +2647,7 @@ public class RulePackageLoader
             // what lets this R3 arm keep finding them across ALL groups (§D7).
             checkRequirementEntries(rule, vars.anyUnion(), "Requirements.Variables.Any", errors);
             checkRequirementEntries(rule, vars.getNone(), "Requirements.Variables.None", errors);
+            checkTypeSuffixes(rule, vars, errors);
             checkAnyFacetShape(rule, vars, errors);
         }
         checkRequirementEntries(rule, req.getDatasets(), "Requirements.Datasets", errors);
@@ -2681,6 +2682,78 @@ public class RulePackageLoader
                 errors.add("[" + ruleId(rule) + "] " + where + " contains an empty/null entry —"
                         + " an empty entry names nothing; remove it or replace it with a name");
                 return;
+            }
+        }
+    }
+
+
+    /**
+     * Gate <b>R9</b> — the {@code :N} / {@code :C} type suffix
+     * ({@code plans/PLAN-variable-type-requirements.md}). Two arms:
+     *
+     * <ol>
+     * <li><b>D1</b> — a type suffix in {@code None} is a load error. {@code None: ["X:N"]} reads as
+     * <i>"no NUMERIC X may be present"</i>, which is satisfied when X is absent <b>or</b> when X is
+     * character — almost never what an author means, and the opposite of how it reads. ⚠ The
+     * ruling's first draft justified this with <i>"{@code None} has zero corpus carriers"</i>,
+     * which is <b>false</b>: 43 {@code rules-src} rules and 221 shipped instances carry the facet.
+     * What has zero carriers is the <em>suffix</em>, which is why rejecting it costs nothing.</li>
+     * <li>A malformed suffix in <b>any</b> facet — {@code X:}, {@code X:Z}, {@code X:NN},
+     * {@code X:Numeric}, {@code A:B:C}. ⚠ {@code :Numeric} / {@code :Character} are the near-misses
+     * ruling D7 makes likely by accepting {@code :Num} / {@code :Char}, so the message names all
+     * four legal tags rather than merely rejecting.</li>
+     * </ol>
+     *
+     * <p>
+     * ⛔ A third arm was proposed — an {@code Any} group whose entries differ only by type letter
+     * ({@code ["X:N","X:C"]}) — and <b>dropped</b>: {@link #checkAnyFacetShape}'s D3 arm counts
+     * distinct entries through {@link #normalizedFacet}, which folds the suffix, so R4 already
+     * errors on that shape. A second gate for it would have shipped with a test that could only
+     * pass while the fold was absent.
+     * </p>
+     */
+    private static void checkTypeSuffixes(Rule rule, VariableRequirement vars, List<String> errors)
+    {
+        reportTypeSuffixErrors(rule, vars.getAll(), "Requirements.Variables.All", false, errors);
+        reportTypeSuffixErrors(rule, vars.anyUnion(), "Requirements.Variables.Any", false, errors);
+        reportTypeSuffixErrors(rule, vars.getNone(), "Requirements.Variables.None", true, errors);
+    }
+
+
+    /**
+     * One facet's type-suffix errors.
+     *
+     * @param facet
+     *            the facet's full name, for the message
+     * @param rejectAnySuffix
+     *            whether a well-formed suffix is itself an error here — {@code true} for
+     *            {@code None} (D1)
+     */
+    private static void reportTypeSuffixErrors(Rule rule, @Nullable List<String> entries,
+            String facet, boolean rejectAnySuffix, List<String> errors)
+    {
+        if (entries == null)
+        {
+            return;
+        }
+        for (String entry : entries)
+        {
+            if (entry == null || entry.isBlank())
+            {
+                continue; // R3's error, not this gate's
+            }
+            String malformed = ScopeVariableEntry.malformedTypeSuffix(entry);
+            if (malformed != null)
+            {
+                errors.add("[" + ruleId(rule) + "] " + facet + " " + malformed);
+            }
+            else if (rejectAnySuffix && ScopeVariableEntry.hasTypeSuffix(entry))
+            {
+                errors.add("[" + ruleId(rule) + "] " + facet + " entry '" + entry.trim()
+                        + "' carries a type suffix, which None does not accept (ruling D1): it"
+                        + " would mean \"no variable of that type may be present\", which is also"
+                        + " satisfied by a variable of the OTHER type — the opposite of how it"
+                        + " reads. Drop the suffix, or express the type demand in All or Any");
             }
         }
     }
@@ -2736,12 +2809,21 @@ public class RulePackageLoader
             warnOnCrossGroupDuplicates(rule, anyGroups);
         }
         List<String> anyUnion = vars.anyUnion();
+        // ⚠⚠ The type suffix is folded in the two None arms and NOT in the Any×All arm, and the
+        // asymmetry is load-bearing (PLAN-variable-type-requirements M4). "Present and absent" is
+        // a contradiction whatever type is demanded, so `All: ["X:N"]` + `None: ["X"]` must be
+        // caught — unfolded it slips straight through. But the Any×All message is "the Any leg is
+        // then already satisfied by the All leg and says nothing", and that is FALSE of
+        // `All: ["X"]` + `Any: [["X:N","Y"]]`: the Any entry adds a type conjunct the All entry
+        // does not carry. Folding there would turn a legal rule into a load error under a reason
+        // that does not describe it.
         reportFacetOverlap(rule, "Any", anyUnion, "All", vars.getAll(),
-                "the Any leg is then already satisfied by the All leg and says nothing", errors);
+                "the Any leg is then already satisfied by the All leg and says nothing", false,
+                errors);
         reportFacetOverlap(rule, "Any", anyUnion, "None", vars.getNone(),
-                "the entry would have to be both present and absent", errors);
+                "the entry would have to be both present and absent", true, errors);
         reportFacetOverlap(rule, "All", vars.getAll(), "None", vars.getNone(),
-                "the entry would have to be both present and absent", errors);
+                "the entry would have to be both present and absent", true, errors);
     }
 
 
@@ -2798,21 +2880,31 @@ public class RulePackageLoader
     private static final int MIN_ANY_ENTRIES = 2;
 
     private static void reportFacetOverlap(Rule rule, String leftName, @Nullable List<String> left,
-            String rightName, @Nullable List<String> right, String why, List<String> errors)
+            String rightName, @Nullable List<String> right, String why, boolean foldTypeSuffix,
+            List<String> errors)
     {
         if (left == null || right == null)
         {
             return;
         }
-        java.util.Set<String> rightNormalized = normalizedFacet(right);
+        java.util.Set<String> rightNormalized = new java.util.LinkedHashSet<>();
+        for (String entry : right)
+        {
+            if (entry != null)
+            {
+                rightNormalized
+                        .add(normalizeFacetEntry(foldTypeSuffix ? stripTypeSuffix(entry) : entry));
+            }
+        }
         // ⚠ One error per DISTINCT offending entry: since Any flattens through anyUnion() here, an
         // entry duplicated across two Any groups and also present in All would otherwise emit the
         // identical error string twice — noise that reads like two defects.
         java.util.Set<String> reported = new java.util.LinkedHashSet<>();
         for (String entry : left)
         {
-            if (entry != null && rightNormalized.contains(normalizeFacetEntry(entry))
-                    && reported.add(normalizeFacetEntry(entry)))
+            String key = entry == null ? null
+                    : normalizeFacetEntry(foldTypeSuffix ? stripTypeSuffix(entry) : entry);
+            if (entry != null && rightNormalized.contains(key) && reported.add(key))
             {
                 errors.add("[" + ruleId(rule) + "] Requirements.Variables entry '" + entry.trim()
                         + "' appears in both " + leftName + " and " + rightName + " — " + why);
@@ -2855,7 +2947,11 @@ public class RulePackageLoader
         {
             if (entry != null)
             {
-                normalized.add(normalizeFacetEntry(entry));
+                // ⭐ Folds the type suffix, so an Any group of ["X:N","X:C"] counts as ONE distinct
+                // entry and R4's D3 arm rejects it: that disjunction is exactly "X present", the
+                // degenerate one-column group D3 exists to catch, wearing a disguise. This is why
+                // R9 needs no arm of its own for that shape.
+                normalized.add(normalizeFacetEntry(stripTypeSuffix(entry)));
             }
         }
         return normalized;
@@ -2866,6 +2962,23 @@ public class RulePackageLoader
     private static String normalizeFacetEntry(String entry)
     {
         return entry.trim().toUpperCase(java.util.Locale.ROOT);
+    }
+
+
+    /**
+     * The entry with any well-formed type suffix removed — its <b>variable identity</b>. Used where
+     * two entries naming the same variable must count as one: the {@code None} overlap arms and
+     * {@link #normalizedFacet}'s distinctness count.
+     *
+     * <p>
+     * ⛔ Deliberately NOT used by the {@code Any}×{@code All} arm — see {@link #checkAnyFacetShape}.
+     * </p>
+     */
+    private static String stripTypeSuffix(String entry)
+    {
+        ScopeVariableEntry parsed = ScopeVariableEntry.parse(entry);
+        return parsed.isQualified() ? parsed.qualifier() + "." + parsed.variable()
+                : parsed.variable();
     }
 
     // ---------------------------------------------------------------------

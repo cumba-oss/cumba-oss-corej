@@ -1,0 +1,34 @@
+# Fixtures for the `:N` / `:C` type suffix on a Requirements.Variables entry
+# (<meta>/plans/PLAN-variable-type-requirements.md).
+#
+# Two datasets carrying the SAME column names with the OPPOSITE types. That pairing is the
+# point: a requirement that answered off the column NAME rather than its type would give the
+# same verdict for both, and a fixture with only one of them could not tell the difference.
+#
+# ⛔⛔ Declare only `type=Char` and `type=Num` here. CdtValues.toDataValueType maps
+# NUM, DATE, TIME and DATETIME all to DataValueType.DOUBLE, so a `type=Date` column reads as
+# NUMERIC in a scenario — while a real ISO-8601 --DTC column arrives from every provider as
+# STRING, i.e. CHARACTER (measured: 28 of 313 columns in the shipped test study). A date column
+# here would therefore test a kind production never produces. See §5.6 F1 of the plan.
+
+dataset AETYPED label="Adverse Events with conforming types"
+col STUDYID type=Char label="Study Identifier"
+col DOMAIN  type=Char label="Domain Abbreviation"
+col USUBJID type=Char label="Unique Subject Identifier"
+col AESEQ   type=Num  label="Sequence Number"
+col AETERM  type=Char label="Reported Term for the Adverse Event"
+---
+S1 | AE | S1-001 | 1 | HEADACHE
+S1 | AE | S1-001 | 2 | NAUSEA
+---
+
+dataset AESWAPPED label="Adverse Events with the two types swapped"
+col STUDYID type=Char label="Study Identifier"
+col DOMAIN  type=Char label="Domain Abbreviation"
+col USUBJID type=Char label="Unique Subject Identifier"
+col AESEQ   type=Char label="Sequence Number, wrongly typed as character"
+col AETERM  type=Num  label="Reported Term, wrongly typed as numeric"
+---
+S1 | AE | S1-001 | 1 | 42
+S1 | AE | S1-001 | 2 | 43
+---

@@ -242,11 +242,15 @@ public final class WildcardExpander
      */
     public static @Nullable Pattern scopeVariableWildcardPattern(String entry)
     {
-        if (!isWildcard(entry))
+        // ⚠⚠ Compile the VARIABLE half. Compiling the raw entry put the `:N` inside the anchored
+        // regex, which then matched no column at all — the same silent universal skip as trap 2
+        // (PLAN-variable-type-requirements §6 trap 3).
+        String variable = ScopeVariableEntry.parse(entry).variable();
+        if (!isWildcard(variable))
         {
             return null;
         }
-        WildcardPattern pat = WildcardPattern.parse(entry);
+        WildcardPattern pat = WildcardPattern.parse(variable);
         return pat.groupNames().isEmpty() ? null : pat.regex();
     }
 
@@ -1487,17 +1491,41 @@ public final class WildcardExpander
             Map<String, String> tuple)
     {
         ScopeVariableEntry parsed = ScopeVariableEntry.parse(entry);
+        // ⚠⚠ The type tag is carried through the substitution and re-appended, never looked up.
+        // This branch used to be `wildcardToColumn.getOrDefault(entry, entry)` — a WHOLE-STRING
+        // lookup in a map keyed by the bare wildcard name — so `TRTxxP:N` missed the map, passed
+        // through unsubstituted, and the expanded rule required a column literally named
+        // "TRTxxP:N". No dataset has one, so the rule skipped everywhere, silently
+        // (PLAN-variable-type-requirements §6 trap 2).
+        String tag = typeTagOf(entry, parsed);
+        String variable = parsed.variable();
         if (!parsed.isQualified())
         {
-            return wildcardToColumn.getOrDefault(entry, entry);
+            return wildcardToColumn.getOrDefault(variable, variable) + tag;
         }
-        String variable = parsed.variable();
         String substituted = wildcardToColumn.get(variable);
         if (substituted == null && !isScopePatternHalf(variable))
         {
             substituted = concreteFromTuple(WildcardPattern.parse(variable), tuple);
         }
-        return substituted == null ? entry : parsed.qualifier() + "." + substituted;
+        return substituted == null ? entry : parsed.qualifier() + "." + substituted + tag;
+    }
+
+
+    /**
+     * The entry's trailing type tag including its {@code :}, or {@code ""} when it carries none.
+     * Reconstructed from the raw entry rather than from {@link ScopeVariableEntry#requiredKind()},
+     * so the author's own spelling survives expansion — an expanded {@code TRTxxP:Num} stays
+     * {@code TRT01P:Num}, not {@code TRT01P:N}.
+     */
+    private static String typeTagOf(String entry, ScopeVariableEntry parsed)
+    {
+        if (parsed.requiredKind() == null)
+        {
+            return "";
+        }
+        int colon = entry.lastIndexOf(':');
+        return colon < 0 ? "" : entry.substring(colon);
     }
 
 

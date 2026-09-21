@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
 
+import net.cumba.corej.core.expr.eval.ColumnTypeGate;
 import net.cumba.corej.core.gen.WildcardExpander;
 import net.cumba.corej.core.model.ClassScope;
 import net.cumba.corej.core.model.DatasetScope;
@@ -12,6 +13,7 @@ import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.Scope;
 import net.cumba.corej.core.model.VariableRequirement;
 import net.cumba.datatable.DataTableMeta;
+import net.cumba.datatable.values.DataValueType;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -842,6 +844,7 @@ public final class ScopeMatcher
         // undecidable entry in group 1 must never decorate group 2's genuinely-absent answer, and
         // an undecidable group must never be reported as merely absent.
         String undecidable = null;
+        String wrongType = null;
         for (String varName : group)
         {
             String reason = describeIncludeEntry(varName, meta, domainPrefix, foreign, policy,
@@ -854,10 +857,26 @@ public final class ScopeMatcher
             {
                 undecidable = reason;
             }
+            // ⚠⚠ M7: a group whose entries are all PRESENT but wrongly typed must not fall
+            // through to the "present in dataset" wording below — that says "absent" about a
+            // column the reader can see in the dataset, which is simply false. Remembered the
+            // same way the undecidable case is, and per group for the same reason.
+            if (wrongType == null && reason.contains(" is required to be "))
+            {
+                wrongType = reason;
+            }
         }
-        return undecidable != null ? undecidable
-                : "no variable of Requirements.Variables.Any group " + groupIndex + " " + group
-                        + " present in dataset";
+        if (undecidable != null)
+        {
+            return undecidable;
+        }
+        if (wrongType != null)
+        {
+            return "no variable of Requirements.Variables.Any group " + groupIndex + " " + group
+                    + " is of the required type — " + wrongType;
+        }
+        return "no variable of Requirements.Variables.Any group " + groupIndex + " " + group
+                + " present in dataset";
     }
 
 
@@ -964,6 +983,9 @@ public final class ScopeMatcher
             QualifiedEntryPolicy policy, String facet)
     {
         ScopeVariableEntry entry = ScopeVariableEntry.parse(varName);
+        // ⭐ PLAN-variable-type-requirements: the demanded type, or null for an untagged entry —
+        // in which case every branch below behaves exactly as it did before the feature (D5).
+        ColumnTypeGate.Kind required = entry.requiredKind();
         String qualifier = entry.qualifier();
         if (qualifier != null)
         {
@@ -992,7 +1014,7 @@ public final class ScopeMatcher
                 if (scopeEntryPattern(entry.variable()) == null
                         && foreign.existsViaSuppQnam(qualifier, entry.variable()))
                 {
-                    return null;
+                    return pivotTypeMismatch(facet, varName, dataset, required, foreign, qualifier);
                 }
                 return "Requirements.Variables." + facet + " variable " + varName
                         + " not present — dataset " + dataset + " not available";
@@ -1000,38 +1022,215 @@ public final class ScopeMatcher
             Pattern pattern = scopeEntryPattern(entry.variable());
             if (pattern != null)
             {
-                if (firstColumnMatching(metas, pattern) == null)
+                String nameHit = firstColumnMatching(metas, pattern);
+                if (nameHit == null)
                 {
                     return "no variable matching Requirements.Variables." + facet + " entry "
                             + varName + " present in dataset " + dataset;
                 }
+                if (required != null && firstColumnMatching(metas, pattern, required) == null)
+                {
+                    return "no variable matching Requirements.Variables." + facet + " entry "
+                            + varName + " present in dataset " + dataset + " — " + nameHit
+                            + " matches the name but is " + describeKind(kindOf(metas, nameHit));
+                }
             }
-            else if (!anyHasColumn(metas, entry.variable())
-                    && !foreign.existsViaSuppQnam(qualifier, entry.variable()))
+            else if (anyHasColumn(metas, entry.variable()))
+            {
+                // ⭐ D8: the type a JOIN would define for this qualifier. For a split domain that
+                // is the UNIONED type, so every member carrying the column must agree —
+                // agreedKind reproduces UnionDataTable's own comparison without calling
+                // SplitDomainResolution.resolveTableOrThrow, which THROWS and which this gate
+                // must not (the constraint JoinLookup.declaredTypeOf's decision D1 records).
+                // Disagreement therefore yields null = undecidable, the entry does not block, and
+                // the domain's own InvalidJoinedDomainException keeps reporting the clash.
+                return typeMismatch(facet, varName, required, agreedKind(metas, entry.variable()),
+                        " in dataset " + dataset);
+            }
+            else if (foreign.existsViaSuppQnam(qualifier, entry.variable()))
+            {
+                return pivotTypeMismatch(facet, varName, dataset, required, foreign, qualifier);
+            }
+            else
             {
                 return "Requirements.Variables." + facet + " variable " + varName
                         + " not present in dataset " + dataset;
             }
             return null;
         }
-        String resolved = resolveScopeVariable(varName, domainPrefix);
+        // ⚠⚠ H3: this arm never used to touch the parsed record — it passed the RAW entry to
+        // resolveScopeVariable and entryLabel. With a tag that resolves `--ORRES:N` to
+        // `AEORRES:N`, which matches no column, so the rule would skip everywhere, silently.
+        // Resolution runs on the VARIABLE half; the LABEL keeps the raw entry, tag included (M10).
+        String resolved = resolveScopeVariable(entry.variable(), domainPrefix);
         Pattern pattern = scopeEntryPattern(resolved);
         if (pattern != null)
         {
-            if (firstColumnMatching(meta, pattern) == null)
+            String nameHit = firstColumnMatching(meta, pattern);
+            if (nameHit == null)
             {
                 // no dataset variable matches the required pattern
                 return "no variable matching Requirements.Variables." + facet + " entry "
-                        + entryLabel(varName, resolved) + " present in dataset";
+                        + entryLabel(varName, entry.variable(), resolved) + " present in dataset";
+            }
+            if (required != null && firstColumnMatching(meta, pattern, required) == null)
+            {
+                // ⚠ The pattern is satisfied by NAME but by no column of the demanded type. Said
+                // apart from plain absence on purpose: "nothing matched" and "the match is the
+                // wrong type" send an author to different places.
+                return "no variable matching Requirements.Variables." + facet + " entry "
+                        + entryLabel(varName, entry.variable(), resolved) + " present in dataset — "
+                        + nameHit + " matches the name but is "
+                        + describeKind(kindOf(meta, nameHit));
             }
         }
         else if (meta.getColumnIndex(resolved) < 0)
         {
             // required variable missing
-            return "Requirements.Variables." + facet + " variable " + entryLabel(varName, resolved)
-                    + " not present in dataset";
+            return "Requirements.Variables." + facet + " variable "
+                    + entryLabel(varName, entry.variable(), resolved) + " not present in dataset";
+        }
+        else
+        {
+            return typeMismatch(facet, entryLabel(varName, entry.variable(), resolved), required,
+                    kindOf(meta, resolved), "");
         }
         return null;
+    }
+
+
+    /**
+     * The type-mismatch reason for a present column, or {@code null} when the entry is satisfied.
+     *
+     * <p>
+     * ⛔ Ruling <b>D2</b> lives here: an {@code actual} of {@code null} — a column whose
+     * {@link DataValueType} {@link ColumnTypeGate#kindOf} does not classify, or a split domain
+     * whose members disagree — is <b>not decidable</b> and therefore never blocks. The entry only
+     * fails on a positively contradicted type.
+     * </p>
+     *
+     * @param facet
+     *            the requirement facet, for the message
+     * @param label
+     *            the entry as it should be shown — the RAW entry, tag included (M10)
+     * @param required
+     *            the demanded kind, {@code null} for an untagged entry
+     * @param actual
+     *            the column's kind, {@code null} when not decidable
+     * @param where
+     *            a trailing location clause, or {@code ""}
+     * @return the reason, or {@code null}
+     */
+    private static @Nullable String typeMismatch(String facet, String label,
+            ColumnTypeGate.@Nullable Kind required, ColumnTypeGate.@Nullable Kind actual,
+            String where)
+    {
+        if (required == null || actual == null || required == actual)
+        {
+            return null;
+        }
+        return "Requirements.Variables." + facet + " variable " + label + " is required to be "
+                + describeKind(required) + " but is " + describeKind(actual) + where;
+    }
+
+
+    /**
+     * Ruling <b>D9</b> — the type of a variable delivered by the SUPP-QNAM pivot rather than by a
+     * column. The pivot ({@code OperatorRegistry.existsInSuppQnam}) answers existence only: the
+     * variable arrives as a {@code QNAM} <em>row</em>, so it has no column and no
+     * {@link DataValueType} of its own. Its values are delivered through {@code QVAL}, so
+     * {@code QVAL}'s declared type is the delivered variable's type — read from the SUPP table's
+     * own metadata (<b>D6</b>), never asserted from the standard. No {@code QVAL} column at all
+     * means no type, which is D2's undecidable and does not block.
+     *
+     * @return the reason, or {@code null} when the entry is satisfied
+     */
+    private static @Nullable String pivotTypeMismatch(String facet, String varName, String dataset,
+            ColumnTypeGate.@Nullable Kind required, ScopeVariableSource foreign, String qualifier)
+    {
+        if (required == null)
+        {
+            return null;
+        }
+        ColumnTypeGate.Kind actual = ColumnTypeGate.kindOf(foreign.suppQvalType(qualifier));
+        if (actual == null || actual == required)
+        {
+            return null;
+        }
+        return "Requirements.Variables." + facet + " variable " + varName + " is required to be "
+                + describeKind(required) + " but is delivered as a supplemental qualifier of "
+                + dataset + ", whose QVAL is " + describeKind(actual);
+    }
+
+
+    /** The author-facing spelling of a kind — the tags are N/C, so the words are the long ones. */
+    private static String describeKind(ColumnTypeGate.@Nullable Kind kind)
+    {
+        if (kind == null)
+        {
+            return "of no decidable type";
+        }
+        return kind == ColumnTypeGate.Kind.NUMERIC ? "Numeric" : "Character";
+    }
+
+
+    /** The gate-relevant kind of one column of one table, or {@code null} when not decidable. */
+    private static ColumnTypeGate.@Nullable Kind kindOf(DataTableMeta meta, String column)
+    {
+        int idx = meta.getColumnIndex(column);
+        return idx < 0 ? null : ColumnTypeGate.kindOf(meta.getColumn(idx).getType());
+    }
+
+
+    /** Multi-table variant: the kind of the first table carrying the column, for a message only. */
+    private static ColumnTypeGate.@Nullable Kind kindOf(List<DataTableMeta> metas, String column)
+    {
+        for (DataTableMeta meta : metas)
+        {
+            int idx = meta.getColumnIndex(column);
+            if (idx >= 0)
+            {
+                return ColumnTypeGate.kindOf(meta.getColumn(idx).getType());
+            }
+        }
+        return null;
+    }
+
+
+    /**
+     * Ruling <b>D8</b> — the kind every member of a (possibly split) qualifier agrees on, or
+     * {@code null} when they disagree, when no member carries the column, or when the agreed type
+     * is one {@link ColumnTypeGate#kindOf} does not classify.
+     *
+     * <p>
+     * ⚠ The comparison is on the raw {@link DataValueType}, not on the kind, because that is what
+     * {@code UnionDataTable}'s split constructor compares before refusing to union — <i>"a type
+     * clash is a submission defect the sponsor must see"</i>. Comparing kinds instead would let
+     * {@code LONG} and {@code DOUBLE} members union here while the engine refuses them.
+     * </p>
+     */
+    private static ColumnTypeGate.@Nullable Kind agreedKind(List<DataTableMeta> metas,
+            String column)
+    {
+        DataValueType agreed = null;
+        for (DataTableMeta meta : metas)
+        {
+            int idx = meta.getColumnIndex(column);
+            if (idx < 0)
+            {
+                continue;
+            }
+            DataValueType type = meta.getColumn(idx).getType();
+            if (agreed == null)
+            {
+                agreed = type;
+            }
+            else if (agreed != type)
+            {
+                return null;
+            }
+        }
+        return agreed == null ? null : ColumnTypeGate.kindOf(agreed);
     }
 
 
@@ -1091,7 +1290,10 @@ public final class ScopeMatcher
             }
             return null;
         }
-        String resolved = resolveScopeVariable(varName, domainPrefix);
+        // ⚑ Reads the variable half for the same reason the include arm does, even though ruling
+        // D1 makes a type tag in `None` a load error: if one ever reaches here, resolving the raw
+        // entry would silently match nothing and the exclusion would quietly stop excluding.
+        String resolved = resolveScopeVariable(entry.variable(), domainPrefix);
         Pattern pattern = scopeEntryPattern(resolved);
         if (pattern != null)
         {
@@ -1100,14 +1302,14 @@ public final class ScopeMatcher
             {
                 // a dataset variable matches the rejecting pattern
                 return "variable " + hit + " matches Requirements.Variables.None entry "
-                        + entryLabel(varName, resolved);
+                        + entryLabel(varName, entry.variable(), resolved);
             }
         }
         else if (meta.getColumnIndex(resolved) >= 0)
         {
             // excluded variable is present
-            return "Requirements.Variables.None variable " + entryLabel(varName, resolved)
-                    + " present in dataset";
+            return "Requirements.Variables.None variable "
+                    + entryLabel(varName, entry.variable(), resolved) + " present in dataset";
         }
         return null;
     }
@@ -1420,10 +1622,25 @@ public final class ScopeMatcher
     /**
      * Renders a variable-requirement entry for a mismatch message: the raw entry, plus the
      * {@code --}-resolved form when resolution changed it (e.g. {@code "--SEQ (resolved AESEQ)"}).
+     *
+     * <p>
+     * ⚠⚠ The "did resolution change it?" test is against the entry's <b>variable half</b>, not
+     * against the raw entry. Comparing against the raw made a type-tagged entry claim a resolution
+     * that never happened — {@code "AETERM:N (resolved AETERM)"} on a dataset with no {@code --}
+     * anywhere, because the tag alone made the two strings differ. Found by
+     * {@code ScopeMatcherTypeRequirementTest}.
+     * </p>
+     *
+     * @param rawEntry
+     *            the entry exactly as authored, tag included — what the reader typed
+     * @param variable
+     *            its variable half, tag stripped, before {@code --} resolution
+     * @param resolved
+     *            the variable half after {@code --} resolution
      */
-    private static String entryLabel(String rawEntry, String resolved)
+    private static String entryLabel(String rawEntry, String variable, String resolved)
     {
-        return resolved.equals(rawEntry) ? rawEntry : rawEntry + " (resolved " + resolved + ")";
+        return resolved.equals(variable) ? rawEntry : rawEntry + " (resolved " + resolved + ")";
     }
 
 
@@ -1461,6 +1678,49 @@ public final class ScopeMatcher
             if (pattern.matcher(column).matches())
             {
                 return column;
+            }
+        }
+        return null;
+    }
+
+
+    /**
+     * Kind-aware variant: the first column matching the pattern <b>and</b> acceptable for
+     * {@code required}. ⛔ It must scan on rather than answering about the first NAME match: a
+     * dataset carrying both {@code AEORRES} (Char) and {@code AEORRESN} (Num) satisfies
+     * {@code /^..ORRES.?$/:N} through the second, and testing only the first would skip it. A
+     * column whose kind is not decidable is accepted (D2).
+     */
+    private static @Nullable String firstColumnMatching(DataTableMeta meta, Pattern pattern,
+            ColumnTypeGate.Kind required)
+    {
+        for (int i = 0; i < meta.getColumnCount(); i++)
+        {
+            String column = meta.getColumn(i).getName();
+            if (!pattern.matcher(column).matches())
+            {
+                continue;
+            }
+            ColumnTypeGate.Kind kind = ColumnTypeGate.kindOf(meta.getColumn(i).getType());
+            if (kind == null || kind == required)
+            {
+                return column;
+            }
+        }
+        return null;
+    }
+
+
+    /** Multi-table kind-aware variant — see {@link #firstColumnMatching(List, Pattern)}. */
+    private static @Nullable String firstColumnMatching(List<DataTableMeta> metas, Pattern pattern,
+            ColumnTypeGate.Kind required)
+    {
+        for (DataTableMeta meta : metas)
+        {
+            String hit = firstColumnMatching(meta, pattern, required);
+            if (hit != null)
+            {
+                return hit;
             }
         }
         return null;

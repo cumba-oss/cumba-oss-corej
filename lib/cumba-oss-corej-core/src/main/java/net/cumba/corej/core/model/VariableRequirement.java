@@ -44,10 +44,39 @@ import org.jspecify.annotations.Nullable;
  * the rule on exactly the case it exists for.
  * </p>
  *
+ * <h2>The type suffix ({@code plans/PLAN-variable-type-requirements.md})</h2>
  * <p>
- * ⚠ {@code None} ships with <b>zero</b> corpus carriers (as did {@code Scope.Variables.Exclude}
- * before it), so every test of it is a hand-authored gate test: it proves the engine works and
- * never that a shipped rule carries it.
+ * An {@code All} or {@code Any} entry may end in <b>{@code :N}</b> / <b>{@code :C}</b> (or the
+ * equivalent {@code :Num} / {@code :Char}, case-insensitive — ruling D7), demanding that the column
+ * is numeric or character as well as present. An unmet type is a {@code SKIPPED} naming both types,
+ * never a finding.
+ * </p>
+ * <ul>
+ * <li>The type is the <b>dataset's</b> own declared type — {@code DataTableColumnMeta.getType()},
+ * classified by the one shipped mapping {@code ColumnTypeGate.kindOf}. ⛔ Never the CDISC Library's
+ * or the Define-XML's (ruling D6); the rule language names those apart as
+ * {@code var_type("LIBRARY")} / {@code var_type("DEFINE")}.</li>
+ * <li>A type the mapping does not classify does <b>not</b> block (ruling D2) — the entry fails only
+ * on a positively contradicted type.</li>
+ * <li>A qualified entry takes the qualifier's dataset; for a split domain, the type every member
+ * carrying the column agrees on, and none when they disagree (ruling D8).</li>
+ * <li>A variable delivered by the SUPP-QNAM pivot takes that {@code SUPPxx} table's {@code QVAL}
+ * type, since that is how its values arrive (ruling D9).</li>
+ * <li>⛔ A suffix in {@code None} is a <b>load error</b> (gate R9, ruling D1): it would mean "no
+ * variable of that type may be present", which a variable of the OTHER type also satisfies.</li>
+ * <li>⭐ An entry with no suffix means exactly what it always did, byte-for-byte, message text
+ * included (ruling D5).</li>
+ * </ul>
+ *
+ * <p>
+ * ⚠⚠ <b>Corrected 2026-09-21.</b> This javadoc said {@code None} ships with <b>zero</b> corpus
+ * carriers, "so every test of it is a hand-authored gate test". That is <b>false</b>, and the claim
+ * propagated into a plan and nearly into the authoritative specification before it was measured: at
+ * HEAD <b>43</b> {@code rules-src} rules carry a {@code None} facet and <b>221</b> shipped rule
+ * instances across <b>25</b> packages do ({@code FDA-SD0089-A} →
+ * {@code {"None":["TEDUR"],"All":["TEENRL"]}}). What genuinely has zero carriers is the <em>type
+ * suffix</em>, which is why rejecting it in {@code None} costs nothing — and that, not the facet,
+ * is the thing whose tests are all hand-authored.
  * </p>
  */
 @Data

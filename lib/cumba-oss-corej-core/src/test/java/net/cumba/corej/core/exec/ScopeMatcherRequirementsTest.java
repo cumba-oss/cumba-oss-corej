@@ -39,9 +39,14 @@ import org.junit.jupiter.api.Test;
  * </p>
  *
  * <p>
- * ⚠ {@code None} ships with <b>zero</b> corpus carriers, exactly as {@code Scope.Variables.Exclude}
- * did. Every test of it here is a hand-authored gate test: it proves the engine works and never
- * that a shipped rule carries it ({@code [[hand-authored-gate-tests-are-vacuous]]}).
+ * ⚠⚠ <b>Corrected 2026-09-21.</b> This said {@code None} ships with <b>zero</b> corpus carriers, so
+ * "every test of it here is a hand-authored gate test". <b>False</b> — measured at HEAD, <b>43</b>
+ * {@code rules-src} rules carry a {@code None} facet and <b>221</b> shipped instances across
+ * <b>25</b> packages do. The claim came from {@code VariableRequirement}'s javadoc, which carried
+ * it too and is corrected in the same pass. What genuinely has zero carriers is the {@code :N} /
+ * {@code :C} <em>type suffix</em> ({@code plans/PLAN-variable-type-requirements.md}), and it is
+ * that — not the facet — whose tests are all hand-authored
+ * ({@code [[hand-authored-gate-tests-are-vacuous]]}).
  * </p>
  */
 class ScopeMatcherRequirementsTest

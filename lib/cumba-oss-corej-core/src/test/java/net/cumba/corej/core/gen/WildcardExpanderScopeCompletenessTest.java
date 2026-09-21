@@ -498,4 +498,77 @@ class WildcardExpanderScopeCompletenessTest
         // is not a widening either.
     }
 
+
+    /**
+     * ⛔⛔ Trap 2 of {@code PLAN-variable-type-requirements}: the tag must SURVIVE expansion.
+     *
+     * <p>
+     * {@code substituteScopeEntry}'s unqualified branch was a whole-string
+     * {@code wildcardToColumn.getOrDefault(entry, entry)} over a map keyed by the bare wildcard
+     * name, so {@code TRTxxP:N} missed the map and passed through unsubstituted — the expanded rule
+     * then required a column literally called {@code TRTxxP:N}, which no dataset has, and skipped
+     * everywhere with nothing red.
+     * </p>
+     *
+     * <p>
+     * ⚠ This asserts the expanded ENTRY STRING, not an end-to-end verdict. The bug is invisible
+     * end-to-end on any dataset where the rule would skip anyway, which is most of them.
+     * </p>
+     */
+    @Test
+    @DisplayName("⛔ a type tag survives wildcard expansion, on both the plain and qualified halves")
+    void theTypeTagSurvivesExpansion()
+    {
+        Rule template = template(false);
+        Requirements req = fullRequirements(false);
+        VariableRequirement variables = new VariableRequirement();
+        variables.setAll(List.of("TRTxxP:C"));
+        variables.setAnyGroups(List.of(List.of("ADSL.TRTxxPN:N", "AESEV")));
+        req.setVariables(variables);
+        template.setRequirements(req);
+
+        List<Rule> expanded = WildcardExpander.expand(template, adaeMeta());
+        assertFalse(expanded.isEmpty());
+        List<String> alls = new ArrayList<>();
+        List<String> anys = new ArrayList<>();
+        for (Rule rule : expanded)
+        {
+            VariableRequirement vars = rule.getRequirements().getVariables();
+            assertNotNull(vars);
+            alls.addAll(vars.getAll());
+            anys.addAll(vars.anyUnion());
+        }
+        assertTrue(alls.contains("TRT01P:C"), "the tag must ride along, substituted: " + alls);
+        assertTrue(anys.contains("ADSL.TRT01PN:N"), "qualified half too: " + anys);
+        for (String entry : alls)
+        {
+            assertFalse(entry.contains("xx"),
+                    "an unsubstituted token makes the gate match literally and the rule skip on"
+                            + " every dataset: " + entry);
+        }
+    }
+
+
+    /**
+     * The author's own spelling survives too: {@code :Num} expands to {@code :Num}, not {@code :N}.
+     */
+    @Test
+    @DisplayName("the authored tag spelling survives expansion")
+    void theAuthoredTagSpellingSurvives()
+    {
+        Rule template = template(false);
+        Requirements req = fullRequirements(false);
+        VariableRequirement variables = new VariableRequirement();
+        variables.setAll(List.of("TRTxxP:Num"));
+        req.setVariables(variables);
+        template.setRequirements(req);
+
+        List<String> alls = new ArrayList<>();
+        for (Rule rule : WildcardExpander.expand(template, adaeMeta()))
+        {
+            alls.addAll(rule.getRequirements().getVariables().getAll());
+        }
+        assertTrue(alls.contains("TRT01P:Num"), alls.toString());
+    }
+
 }

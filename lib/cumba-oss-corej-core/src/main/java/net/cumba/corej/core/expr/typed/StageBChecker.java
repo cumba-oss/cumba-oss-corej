@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import net.cumba.corej.core.exec.ScopeVariableEntry;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.ColumnTypeGate;
@@ -721,9 +722,58 @@ public final class StageBChecker
     }
 
 
+    /**
+     * Whether any entry <b>names</b> {@code qualified} — compared on the entry's variable identity,
+     * never on its raw text.
+     *
+     * <p>
+     * ⛔⛔ <b>This used to be a bare {@code entries.contains(qualified)}, and a type-tagged entry
+     * broke it silently</b> ({@code PLAN-variable-type-requirements}, review finding H1). A rule
+     * filtering on {@code AE.AESEV} and declaring
+     * {@code Requirements.Variables.All: ["AE.AESEV:C"]} stopped being seen as declaring it, so
+     * D89's <i>"declare ⇒ skip"</i> contract broke the wrong way: the rule emitted an armed
+     * {@code FILTER_UNRESOLVABLE} finding where the author had asked for a clean skip. Nothing
+     * failed — only the disposition changed, which is the worst shape a defect can take here.
+     * </p>
+     *
+     * <p>
+     * ⚑ {@code declaresDataset} needs no such fix: its {@code startsWithAny(dataset + ".")} tests
+     * the FRONT of the entry, which a trailing tag cannot disturb.
+     * </p>
+     *
+     * @param entries
+     *            the facet's entries, as authored
+     * @param qualified
+     *            the {@code DATASET.COLUMN} name being looked for
+     * @return whether an entry names it, tag or no tag
+     */
     private static boolean contains(@Nullable List<String> entries, String qualified)
     {
-        return entries != null && entries.contains(qualified);
+        if (entries == null)
+        {
+            return false;
+        }
+        for (String entry : entries)
+        {
+            if (entry == null)
+            {
+                continue;
+            }
+            if (entry.equals(qualified) || identityOf(entry).equals(qualified))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    /** An entry's {@code DATASET.COLUMN} identity — the parsed halves, with any type tag gone. */
+    private static String identityOf(String entry)
+    {
+        ScopeVariableEntry parsed = ScopeVariableEntry.parse(entry);
+        return parsed.isQualified() ? parsed.qualifier() + "." + parsed.variable()
+                : parsed.variable();
     }
 
 }

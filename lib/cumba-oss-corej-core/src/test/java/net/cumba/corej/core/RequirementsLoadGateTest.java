@@ -1187,4 +1187,131 @@ class RequirementsLoadGateTest
         }
     }
 
+    // ------------------------------------------------------------------
+    // R9 — the type suffix (PLAN-variable-type-requirements, rulings D1 / D7)
+    // ------------------------------------------------------------------
+
+
+    @Nested
+    @DisplayName("R9 - the :N / :C type suffix")
+    class TypeSuffixGate
+    {
+
+        @Test
+        @DisplayName("a well-formed suffix loads clean in All and Any")
+        void wellFormedSuffixesLoad() throws IOException
+        {
+            assertNull(errorOf("\"Requirements\":{\"Variables\":{\"All\":[\"AESEQ:N\","
+                    + "\"AETERM:Char\"]}}," + CHECK));
+            assertNull(errorOf("\"Requirements\":{\"Variables\":{\"Any\":[\"AESTDY:N\","
+                    + "\"AEENDY:num\"]}}," + CHECK));
+        }
+
+
+        /**
+         * ⛔ Ruling D1. {@code None: ["X:N"]} means "no NUMERIC X may be present", which a character
+         * X also satisfies — the opposite of how it reads.
+         *
+         * <p>
+         * ⚠ The ruling's first draft justified itself with "None has zero corpus carriers", which
+         * is FALSE — 43 {@code rules-src} rules and 221 shipped instances carry the facet. What has
+         * zero carriers is the SUFFIX, which is why rejecting it costs nothing.
+         * </p>
+         */
+        @Test
+        @DisplayName("a type suffix in None is a load error (D1)")
+        void noneRejectsATypeSuffix() throws IOException
+        {
+            String error = errorOf(
+                    "\"Requirements\":{\"Variables\":{\"None\":[\"POOLID:N\"]}}," + CHECK);
+            assertNotNull(error);
+            assertTrue(error.contains("Requirements.Variables.None"), error);
+            assertTrue(error.contains("None does not accept"), error);
+            assertNull(errorOf("\"Requirements\":{\"Variables\":{\"None\":[\"POOLID\"]}}," + CHECK),
+                    "the untagged entry is untouched");
+        }
+
+
+        @Test
+        @DisplayName("a malformed suffix is rejected in any facet, naming the four legal tags")
+        void malformedSuffixesAreRejected() throws IOException
+        {
+            for (String entry : List.of("AESEQ:", "AESEQ:Z", "AESEQ:NN", "AESEQ:Numeric",
+                    "AETERM:Character", "A:B:C"))
+            {
+                String error = errorOf(
+                        "\"Requirements\":{\"Variables\":{\"All\":[\"" + entry + "\"]}}," + CHECK);
+                assertNotNull(error, entry + " must be rejected");
+                assertTrue(error.contains("N, C, Num, Char"),
+                        entry + " message must name the legal tags: " + error);
+            }
+        }
+
+
+        /**
+         * ⚑ A regex entry whose own syntax contains a colon ({@code (?:…)}) is legal and must not
+         * be caught by the malformed-suffix arm — without the regex carve-out in
+         * {@code ScopeVariableEntry.malformedTypeSuffix} this shape would stop loading.
+         */
+        @Test
+        @DisplayName("a regex containing a colon still loads")
+        void aRegexWithAColonIsNotMalformed() throws IOException
+        {
+            assertNull(errorOf("\"Requirements\":{\"Variables\":{\"All\":"
+                    + "[\"/^(?:AE|CM)TERM$/\"]}}," + CHECK));
+        }
+
+
+        /**
+         * ⭐ M4, the fold that MUST happen: All × None is "present and absent", a contradiction
+         * whatever type is demanded. Unfolded, the suffix makes the two entries different strings
+         * and the overlap arm misses it entirely.
+         */
+        @Test
+        @DisplayName("All:[X:N] + None:[X] is still the both-present-and-absent error")
+        void theNoneOverlapArmFoldsTheSuffix() throws IOException
+        {
+            String error = errorOf("\"Requirements\":{\"Variables\":{\"All\":[\"AESEV:N\"],"
+                    + "\"None\":[\"AESEV\"]}}," + CHECK);
+            assertNotNull(error);
+            assertTrue(error.contains("both present and absent"), error);
+        }
+
+
+        /**
+         * ⛔⛔ M4, the fold that must NOT happen. The Any × All arm's message is "the Any leg is then
+         * already satisfied by the All leg and says nothing" — false here, because {@code AESEV:N}
+         * adds a type conjunct {@code AESEV} does not carry. Folding the suffix in this arm would
+         * turn a legal rule into a load error under a reason that misdescribes it.
+         */
+        @Test
+        @DisplayName("All:[X] + Any:[[X:N, Y]] is legal - the Any entry says MORE, not nothing")
+        void theAnyOverAllArmDoesNotFoldTheSuffix() throws IOException
+        {
+            assertNull(errorOf("\"Requirements\":{\"Variables\":{\"All\":[\"AESEV\"],"
+                    + "\"Any\":[\"AESEV:N\",\"AEOUT\"]}}," + CHECK));
+            String error = errorOf("\"Requirements\":{\"Variables\":{\"All\":[\"AESEV\"],"
+                    + "\"Any\":[\"AESEV\",\"AEOUT\"]}}," + CHECK);
+            assertNotNull(error, "the UNtagged duplicate is still the pre-existing error");
+            assertTrue(error.contains("says nothing"), error);
+        }
+
+
+        /**
+         * ⭐ Why R9 needs no arm for this shape: the distinctness fold makes {@code ["X:N","X:C"]}
+         * ONE entry, so R4's existing D3 arm already rejects it as a degenerate one-column group. A
+         * second gate would have shipped with a test that could only pass while the fold was
+         * absent.
+         */
+        @Test
+        @DisplayName("Any:[[X:N, X:C]] is R4's one-entry-group error, not a new one")
+        void aGroupDifferingOnlyByTypeIsTheDegenerateGroupError() throws IOException
+        {
+            String error = errorOf("\"Requirements\":{\"Variables\":{\"Any\":"
+                    + "[\"AESEV:N\",\"AESEV:C\"]}}," + CHECK);
+            assertNotNull(error);
+            assertTrue(error.contains("distinct entries"), error);
+        }
+    }
+
 }

@@ -419,6 +419,53 @@ class StageBCheckerTest
     }
 
 
+    /**
+     * ⛔⛔ Review finding <b>H1</b> of {@code PLAN-variable-type-requirements}: a TYPE-TAGGED
+     * declaration must still count as declaring the column.
+     *
+     * <p>
+     * {@code declaresVariable} compared raw entry text with {@code List.contains}, so
+     * {@code All: ["AE.AESEV:C"]} stopped being recognised as declaring {@code AE.AESEV} and D89's
+     * <i>"declare ⇒ skip"</i> contract broke the wrong way — the rule emitted an armed
+     * {@code FILTER_UNRESOLVABLE} finding where the author had asked for a clean skip. Nothing
+     * failed; only the disposition changed. That is the exact ERROR-instead-of-SKIP outcome the
+     * type-requirement feature exists to remove, so shipping it from this plan would have been the
+     * plan defeating its own purpose.
+     * </p>
+     */
+    @Test
+    void aTypeTaggedDeclarationStillDeclaresTheFilterColumn()
+    {
+        for (String entry : List.of("AE.AESEV:C", "AE.AESEV:Char", "AE.AESEV:n", "AE.AESEV"))
+        {
+            VariableRequirement declared = new VariableRequirement();
+            declared.setAll(List.of(entry));
+            List<StageBFinding> findings = new ArrayList<>();
+            List<String> skips = new ArrayList<>();
+            StageBChecker.checkFilterBinding("AE", List.of("AESEV"), Set.of("USUBJID"), declared,
+                    findings, skips);
+            assertEquals(List.of(), findings,
+                    entry + " must declare AE.AESEV, so no armed finding");
+            assertEquals(1, skips.size(), entry + " must skip instead");
+        }
+    }
+
+
+    /** The mirror control: an unrelated tagged entry must NOT be read as declaring the column. */
+    @Test
+    void aTaggedDeclarationOfAnotherColumnDoesNotCount()
+    {
+        VariableRequirement declared = new VariableRequirement();
+        declared.setAll(List.of("AE.AEOUT:C"));
+        List<StageBFinding> findings = new ArrayList<>();
+        List<String> skips = new ArrayList<>();
+        StageBChecker.checkFilterBinding("AE", List.of("AESEV"), Set.of("USUBJID"), declared,
+                findings, skips);
+        assertEquals(1, findings.size(), "AE.AEOUT:C says nothing about AE.AESEV");
+        assertEquals(StageBErrorKind.FILTER_UNRESOLVABLE, findings.get(0).kind());
+    }
+
+
     @Test
     void aResolvableFilterColumnPassesSilently()
     {
