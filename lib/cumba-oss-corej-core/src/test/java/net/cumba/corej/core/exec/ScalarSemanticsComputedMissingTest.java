@@ -126,13 +126,12 @@ class ScalarSemanticsComputedMissingTest
         {
             violations.add("JoinLookup.lookupValue(numericExpected) return");
         }
-        Method firstNonNullCell = declared(
-                Class.forName("net.cumba.corej.core.expr.eval.JoinedCandidatesVector"),
-                "firstNonNullCell");
-        if (isNullable(firstNonNullCell.getAnnotatedReturnType()))
-        {
-            violations.add("JoinedCandidatesVector.firstNonNullCell return");
-        }
+        // ⚠ JoinedCandidatesVector.firstNonNullCell was censused here until 2026-09-21. The class
+        // is GONE: its only producer was ExprCompiler.joinedColumnVector, which resolved an
+        // unqualified name out of a join -- abolished by the uniformity ruling. ⛔ Review round 1
+        // caught that leaving it here would have made this census include a producer that can never
+        // produce, which is worse than omitting it: the roster would read complete while pinning a
+        // symbol nothing reaches.
 
         // Parameters: the carrier factory, and ComputedVector.typed's producer TYPE ARGUMENT --
         // the nullability that has to be read one level in, and the one a sweep would miss.
@@ -242,9 +241,8 @@ class ScalarSemanticsComputedMissingTest
         // the channel is about had moved out of the module.
         for (String required : List.of("ExprCompiler.substitutedScalarCell",
                 "ExprCompiler.arithmeticCell", "JoinLookup.lookupValue",
-                "JoinedCandidatesVector.firstNonNullCell", "ScalarSemantics.computedMissing",
-                "DatasetLookup.lookupValue", "KeyMatchExpandedLookup.lookupValue",
-                "RelrecExpandedLookup.lookupValue"))
+                "ScalarSemantics.computedMissing", "DatasetLookup.lookupValue",
+                "KeyMatchExpandedLookup.lookupValue", "RelrecExpandedLookup.lookupValue"))
         {
             assertTrue(found.contains(required),
                     "CONTROL FAILED: the discovery did not find " + required
@@ -368,8 +366,17 @@ class ScalarSemanticsComputedMissingTest
         java.util.Collections.sort(nullableElement);
 
         // --- non-vacuity control 1: the discovery must contain the channel it is about ----------
+        // ⚠ JoinedCandidatesVector is GONE (2026-09-21, PLAN-unqualified-name-primary-only's
+        // closure
+        // sweep): its only producer resolved an unqualified name out of a join, so with that
+        // removed
+        // nothing could construct one and the class went with it. Dropped from the roster rather
+        // than
+        // the assertion weakened -- a control that requires a symbol nothing can reach fails
+        // forever,
+        // and a count that includes it censuses a producer that can never produce.
         for (String required : List.of("DatasetLookup.lookupAllValues",
-                "JoinLookup.lookupAllValues", "JoinedCandidatesVector.candidateCells"))
+                "JoinLookup.lookupAllValues"))
         {
             assertTrue(found.contains(required),
                     "CONTROL FAILED: the discovery did not find " + required + ", so it is not"
@@ -400,7 +407,16 @@ class ScalarSemanticsComputedMissingTest
                         + " null (it may not: every element is an expression input)? — before this"
                         + " constant is bumped. Discovered: " + found);
 
-        assertEquals(List.of("JoinedCandidatesVector.candidateCells"), nullableList,
+        // ⭐⭐ EMPTY since 2026-09-21, and the assertion's own warning is what this documents: "a
+        // REMOVED one means that vote contract has been collapsed, which changes verdicts". It HAS
+        // been collapsed -- deliberately. candidateCells' three-way vote (null = no vote, empty
+        // list
+        // = a MISSING-probe vote, otherwise ANY-MATCH) existed only to let an UNQUALIFIED name vote
+        // per joined candidate, which the owner's uniformity ruling abolished; the class had no
+        // producer left and went with it. ⇒ The allowlist is empty, and that is now the contract:
+        // no
+        // multi-value declaration may hand back a nullable LIST.
+        assertEquals(List.of(), nullableList,
                 "the set of multi-value declarations whose LIST is @Nullable changed. Exactly one is"
                         + " allowed and its nullness is DELIBERATE: candidateCells answers null for"
                         + " \"no lookup is live\", which Primitives.scan reads as \"this row casts no"
@@ -510,11 +526,13 @@ class ScalarSemanticsComputedMissingTest
 
     /**
      * The measured number of declarations in this module returning a 0..N container of
-     * {@code IDataValue}, 2026-09-18 — three, all of them {@code List<IDataValue>}. ⛔ A ratchet,
-     * and deliberately SEPARATE from {@link #EXPECTED_VALUE_PRODUCERS}: folding the scalar and
+     * {@code IDataValue}, 2026-09-18 — three, all of them {@code List<IDataValue>}. ⚑ <b>3 → 2 on
+     * 2026-09-21</b>: {@code JoinedCandidatesVector.candidateCells} went with its class, which had
+     * no producer left once the unqualified-join fallback was removed. ⛔ A ratchet, and
+     * deliberately SEPARATE from {@link #EXPECTED_VALUE_PRODUCERS}: folding the scalar and
      * multi-value populations into one figure would hide which of two different contracts moved.
      */
-    private static final int EXPECTED_MULTI_VALUE_PRODUCERS = 3;
+    private static final int EXPECTED_MULTI_VALUE_PRODUCERS = 2;
 
     /**
      * ⛔ The permanent positive control for the element detector — a declaration carrying a
@@ -595,14 +613,15 @@ class ScalarSemanticsComputedMissingTest
      * </ul>
      *
      * <p>
-     * ⚑ <b>19 → 18 on 2026-09-21, and the deletion is ACCOUNTED FOR</b> as this ratchet's own
-     * failure message demands. {@code ExprCompiler.firstJoinedCell} was removed by
+     * ⚑ <b>19 → 18 → 17 on 2026-09-21, and BOTH deletions are ACCOUNTED FOR</b> as this ratchet's
+     * own failure message demands. {@code ExprCompiler.firstJoinedCell} was removed by
      * {@code PLAN-unqualified-name-primary-only}: it resolved an unqualified name out of a joined
      * dataset — the behaviour the uniformity ruling abolished — and it had exactly one caller, the
-     * site that was changed. No producer was added.
+     * site that was changed. Then {@code JoinedCandidatesVector.firstNonNullCell} went too, when
+     * review round 1 measured that the class had no producer left at all. No producer was added.
      * </p>
      */
-    private static final int EXPECTED_VALUE_PRODUCERS = 18;
+    private static final int EXPECTED_VALUE_PRODUCERS = 17;
 
     private static Method declared(Class<?> owner, String name)
     {

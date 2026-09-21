@@ -6,10 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
-import net.cumba.corej.core.exec.DatasetLookup;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.GroupedResult;
-import net.cumba.corej.core.exec.JoinLookup;
 import net.cumba.corej.core.exec.VariableMetadataResult;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
@@ -118,52 +116,21 @@ class BroadcastFoldSurvivorPinsTest
     }
 
     // ------------------------------------------------------------------
-    // anyJoinedDatasetHasColumn — a column that is absent from the primary table but
-    // surfaceable through a Match_Datasets join must NOT fold to absent; getting this
-    // wrong silently turns a joined comparison into an all-missing one.
+    // ⭐⭐ RETIRED SECTION, 2026-09-21 — anyJoinedDatasetHasColumn
+    //
+    // This section pinned the doctrine the owner's ruling ABOLISHED. Its own banner said it
+    // verbatim: "a column that is absent from the primary table but surfaceable through a
+    // Match_Datasets join must NOT fold to absent". Under `UVC unqualified` plus the uniformity
+    // ruling a bare name the primary lacks folds to the absent-column constant no matter what any
+    // join carries, and the method it pinned has been REMOVED (zero production callers).
+    // ⛔ A survivor pin whose survivor is dead, asserting the negation of the live ruling, is worse
+    // than no pin: the next reader takes it for the contract. Review round 1 found it; it was not
+    // among the 28 tests the change dispositioned, because nothing made it fail.
     // ------------------------------------------------------------------
 
+    // ------------------------------------------------------------------
 
-    private static EvaluationContext joinedCtx(List<String> joinedColumns, boolean withResolver)
-    {
-        SyntheticDataTable ex = new SyntheticDataTable("EX", joinedColumns, new String[]
-        {
-                "S1"
-        }, 1);
-        JoinLookup lookup = DatasetLookup.build("EX", ex, List.of("USUBJID"));
-        EvaluationContext.EvaluationContextBuilder b = EvaluationContext.builder()
-                .table(new SyntheticDataTable("AE", List.of("USUBJID", "AETERM"), new String[]
-                {
-                        "S1"
-                }, 1)).joinedDatasets(Map.of("EX", lookup));
-        if (withResolver)
-        {
-            b.datasetResolver(n -> "EX".equals(n) ? ex : null);
-        }
-        return b.build();
-    }
-
-
-    @Test
-    void joinedColumnReachability_isDecidedByTheJoinedTablesActualColumns()
-    {
-        // Reachable: EXDOSE sits at index 0 of the joined table — the index-0 case is the one a
-        // ">= 0" / "> 0" slip silently loses, and losing it makes a joined column read as absent.
-        EvaluationContext reachable = joinedCtx(List.of("EXDOSE", "USUBJID"), true);
-        assertTrue(BroadcastFold.anyJoinedDatasetHasColumn("EXDOSE", reachable),
-                "a joined column at index 0 is still reachable");
-        // Not reachable: same join, a column no dataset carries.
-        assertFalse(BroadcastFold.anyJoinedDatasetHasColumn("NOSUCH", reachable),
-                "a column on no joined dataset is not reachable");
-        // No joins at all.
-        assertFalse(BroadcastFold.anyJoinedDatasetHasColumn("EXDOSE", ctx()),
-                "with no Match_Datasets joins nothing is reachable");
-        // Joins declared but no resolver to materialise them.
-        assertFalse(
-                BroadcastFold.anyJoinedDatasetHasColumn("EXDOSE",
-                        joinedCtx(List.of("EXDOSE", "USUBJID"), false)),
-                "without a dataset resolver a declared join cannot surface any column");
-    }
+    // ⚠ The joinedCtx helper went with it -- it built a join-bearing context for no other test.
 
     // ------------------------------------------------------------------
     // leafNameColumn / nameSideColumn — which operand is the leaf's NAME side.

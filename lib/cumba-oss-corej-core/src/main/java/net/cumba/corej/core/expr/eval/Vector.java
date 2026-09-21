@@ -24,12 +24,7 @@ import org.jspecify.annotations.Nullable;
  * therefore single-thread / one-chunk scoped.
  * </p>
  */
-public sealed interface Vector
-        permits
-        ColumnVector,
-        ConstVector,
-        ComputedVector,
-        JoinedCandidatesVector
+public sealed interface Vector permits ColumnVector, ConstVector, ComputedVector
 {
 
     /** The row's operand as the uniform typed carrier. Never {@code null}. */

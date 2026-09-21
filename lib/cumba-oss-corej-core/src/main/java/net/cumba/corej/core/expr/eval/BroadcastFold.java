@@ -1,13 +1,10 @@
 package net.cumba.corej.core.expr.eval;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
-import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.GroupedResult;
-import net.cumba.corej.core.exec.JoinLookup;
 import net.cumba.corej.core.exec.VariableMetadataResult;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
@@ -1058,49 +1055,6 @@ public final class BroadcastFold
         // absentColumnLeafLevel -> foldLeaf -> DATASET_WITH_ABSENT), not just what a leaf reads.
         // ⇒ A bare name the primary lacks is a DATASET-LEVEL ABSENT column, full stop.
         return BindColumnLevel.DATASET_ABSENT;
-    }
-
-
-    /**
-     * Whether {@code columnName} is surfaceable from any {@code Match_Datasets} joined dataset.
-     * Single source for the column-presence reachability check {@link #bindColumnLevel} applies
-     * before classifying a name {@code DATASET_ABSENT}.
-     */
-    public static boolean anyJoinedDatasetHasColumn(String columnName, EvaluationContext ctx)
-    {
-        Map<String, JoinLookup> joins = ctx.getJoinedDatasets();
-        if (joins == null || joins.isEmpty())
-        {
-            return false;
-        }
-        DatasetResolver resolver = ctx.getDatasetResolver();
-        if (resolver == null)
-        {
-            return false;
-        }
-        for (JoinLookup lookup : joins.values())
-        {
-            String dsName = lookup.getDatasetName();
-            if (dsName == null)
-            {
-                continue;
-            }
-            // Fix #358 (review F1): exact name first, else the split-domain union — without this
-            // an UNQUALIFIED reference to a joined column (`empty(LBORRES)` behind a
-            // `Name: LB` join) folds to ALL_MISSING on a split submission even though the join
-            // itself resolved the union.
-            net.cumba.datatable.IDataTable joined = net.cumba.corej.core.exec.SplitDomainResolution
-                    .resolveTableOrThrow(resolver, dsName, ctx.getRuleId());
-            if (joined == null)
-            {
-                continue;
-            }
-            if (joined.getMetaData().getColumnIndex(columnName) >= 0)
-            {
-                return true;
-            }
-        }
-        return false;
     }
 
 }

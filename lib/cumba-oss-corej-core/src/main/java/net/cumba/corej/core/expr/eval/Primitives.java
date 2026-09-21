@@ -26,8 +26,8 @@ import org.jspecify.annotations.Nullable;
  * values. The temporal families deliberately keep the {@link TypedValue#resolved()} string read
  * (3b: a temporal value's runtime carrier is its ISO-8601 string). Every LHS row loop runs through
  * {@link #scan}, the native A plain vector tests its scalar cell, while an unqualified foreign
- * reference ({@link JoinedCandidatesVector}) votes with ANY-MATCH over all of the row's joined
- * candidate values — the legacy {@code forEachJoinedValue} contract (B2,
+ * reference ({@code JoinedCandidatesVector}, REMOVED 2026-09-21) voted with ANY-MATCH over the
+ * row's joined candidate values — the legacy {@code forEachJoinedValue} contract (B2,
  * {@code plans/done/PLAN-native-engine-residuals.md}). These primitives evaluate the full range;
  * candidate-mask short-circuiting and chunked ranges are layered on by the evaluator (Phase 3), not
  * here.
@@ -50,64 +50,25 @@ public final class Primitives
 
     /**
      * Runs {@code test} per row over {@code v} and collects the firing rows — the native sibling of
-     * the row loop. Candidate-aware: when {@code v} is a {@link JoinedCandidatesVector} (an
-     * unqualified foreign reference carried by a {@code Match_Datasets} join), each row votes with
-     * <b>ANY-MATCH</b> over all of its joined candidate values: a row with matches fires when ANY
-     * candidate satisfies the test; a row of the live lookup with NO matches votes once with a
-     * missing-value probe (so {@code empty}, {@code not_equal_to}-vs-concrete etc. still get a
-     * vote); and when no lookup matched anywhere the row casts no vote at all (the legacy
-     * empty-BitSet contract).
+     * the row loop. ⚠ It was candidate-aware until 2026-09-21: when {@code v} was a
+     * {@code JoinedCandidatesVector} (an unqualified foreign reference carried by a
+     * {@code Match_Datasets} join), each row votes with <b>ANY-MATCH</b> over all of its joined
+     * candidate values: a row with matches fires when ANY candidate satisfies the test; a row of
+     * the live lookup with NO matches votes once with a missing-value probe (so {@code empty},
+     * {@code not_equal_to}-vs-concrete etc. still get a vote); and when no lookup matched anywhere
+     * the row casts no vote at all (the legacy empty-BitSet contract).
      */
     static BitSet scan(Vector v, int rowCount, RowTest test)
     {
         BitSet result = new BitSet(rowCount);
-        if (v instanceof JoinedCandidatesVector jc)
-        {
-            for (int r = 0; r < rowCount; r++)
-            {
-                // Shape 3 (PLAN-joined-column-typing): typed candidates, so a joined numeric value
-                // used as the LHS reaches the row test as a number rather than as cleaned text.
-                // ⚠ The three-way VOTE CONTRACT is unchanged (D3): null => no vote at all; an empty
-                // list => one vote with a MISSING probe, so empty()/!=-vs-concrete still get a say;
-                // otherwise ANY-MATCH with a break. D3 also ruled the probe stays DataValues.of
-                // (null) rather than becoming a typed missing.
-                // ⚠ R2 / L1-5: the reason D3 gave for that -- "its TYPE is immaterial, because the
-                // only place a cell's type is read (isNumericTypedCell) sits behind a missing
-                // guard" -- no longer covers the code. Since fcab5dd the probe's missing
-                // IDENTITY is read FIRST and UNGUARDED by every row-test family that takes one:
-                // equality, order, date-order, time-order, regex, affix and membership alike.
-                // ⚠ Round 3: this note named four of them and said "FOUR"; there are eight such
-                // reads, the three order-family limbs having been missed. Grep
-                // `TypedValue.missingIdentityOf` in this file for the live roster rather than
-                // trusting a list written down here. The ruling still holds, for a different
-                // reason:
-                // DataValues.of(null).getValue() IS MissingValue.MIS, so the probe already
-                // presents the generic missing identity those four arms branch on. Changing it to
-                // a typed missing would change which identity they see, not merely its type.
-                List<IDataValue> candidates = jc.candidateCells(r);
-                if (candidates == null)
-                {
-                    continue; // no live lookup — no vote (legacy: empty BitSet)
-                }
-                if (candidates.isEmpty())
-                {
-                    if (test.test(DataValues.of(null), r))
-                    {
-                        result.set(r);
-                    }
-                    continue;
-                }
-                for (IDataValue value : candidates)
-                {
-                    if (test.test(value, r))
-                    {
-                        result.set(r);
-                        break;
-                    }
-                }
-            }
-            return result;
-        }
+        // ⭐⭐ REMOVED 2026-09-21 by PLAN-unqualified-name-primary-only's closure sweep. Its only
+        // producer was ExprCompiler.joinedColumnVector, which resolved an UNQUALIFIED name out of a
+        // Match_Datasets join -- the behaviour the owner's uniformity ruling abolished. With that
+        // gone
+        // nothing can construct a JoinedCandidatesVector, so this branch was unreachable.
+        // ⚠ Found by review round 1, not by the compiler: unreachable code behind an `instanceof`
+        // pattern is not a warning, and the class stayed alive only because its own mapped() called
+        // its constructor.
         for (int r = 0; r < rowCount; r++)
         {
             if (test.test(v.value(r).cell(), r))

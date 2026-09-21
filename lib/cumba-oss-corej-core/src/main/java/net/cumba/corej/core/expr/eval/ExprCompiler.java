@@ -4754,7 +4754,9 @@ public final class ExprCompiler
             ConstVector cv = ConstVector.of(folded == null ? null : folded.value(0).resolved());
             return _ -> cv;
         }
-        java.util.function.UnaryOperator<String> unary = pureUnaryTransform(c.name());
+        // ⚠ `pureUnaryTransform(c.name())` was read here to feed the B2 candidate-propagation
+        // branch removed above. With JoinedCandidatesVector gone the lookup has no consumer, and
+        // Error Prone's [UnusedVariable] is what said so -- the third cascade step of one removal.
         ValuePlan inner = run ->
         {
             List<Vector> args = new ArrayList<>(argPlans.size());
@@ -4772,20 +4774,17 @@ public final class ExprCompiler
                 }
                 args.add(v);
             }
-            // B2 candidate propagation: a pure unary string transform over an unqualified foreign
-            // reference keeps the per-row candidate list (each candidate transformed), so the
-            // enclosing predicate still applies the legacy any-match OR — e.g. `len(X) > 8`
-            // (longer_than) and `upper(X) in […]` (case-insensitive membership) evaluate per
-            // joined value exactly like the legacy forEachJoinedValue loop applying the operator's
-            // value logic per match.
-            if (unary != null && args.size() == 1
-                    && args.get(0) instanceof JoinedCandidatesVector jc)
-            {
-                DataValueType type = "len".equals(c.name()) || "length".equals(c.name())
-                        ? DataValueType.LONG
-                        : DataValueType.STRING;
-                return jc.mapped(unary, type);
-            }
+            // ⭐⭐ REMOVED 2026-09-21 by PLAN-unqualified-name-primary-only's closure sweep. Its only
+            // producer was ExprCompiler.joinedColumnVector, which resolved an UNQUALIFIED name out
+            // of a
+            // Match_Datasets join -- the behaviour the owner's uniformity ruling abolished. With
+            // that gone
+            // nothing can construct a JoinedCandidatesVector, so this branch was unreachable.
+            // ⚠ Found by review round 1, not by the compiler: unreachable code behind an
+            // `instanceof`
+            // pattern is not a warning, and the class stayed alive only because its own mapped()
+            // called
+            // its constructor.
             return (Vector) fn.apply(run, args, c.kwargs());
         };
         return cachedValue(c, inner);
@@ -4873,31 +4872,12 @@ public final class ExprCompiler
         return v;
     }
 
-
-    /**
-     * The per-value form of a pure unary string transform — the converter-emitted wrappers around
-     * name operands ({@code longer_than}/{@code shorter_than} → {@code len(X)}, the
-     * case-insensitive surfaces → {@code upper(X)}/{@code lower(X)}) — or {@code null} when the
-     * function is not in the (deliberately small) allowlist. Each mirrors the registered
-     * {@code BuiltinFunctions} implementation byte-for-byte for non-missing values; missing
-     * candidates never reach the transform ({@code JoinedCandidatesVector} maps non-null values
-     * only).
-     */
-    private static java.util.function.@Nullable UnaryOperator<String> pureUnaryTransform(
-            String name)
-    {
-        return switch (name)
-        {
-        // len("")=0 (operator-examples.md A.5 / function-examples.md): an empty-string candidate
-        // is length 0, so the length operators evaluate it literally — legacy
-        // evalLongerThan/ShorterThan now also fold "" to length 0, keeping legacy↔native parity.
-        case "len", "length" -> s -> String.valueOf(s.length());
-        case "upper", "upcase" -> s -> s.toUpperCase(Locale.ROOT);
-        case "lower", "lowcase" -> s -> s.toLowerCase(Locale.ROOT);
-        case "trim" -> String::strip;
-        default -> null;
-        };
-    }
+    // ⭐ `pureUnaryTransform` was removed here on 2026-09-21: it existed only to build the
+    // candidate-propagation branch of the deleted JoinedCandidatesVector, and became unreachable
+    // with it. ⚠ THE CASCADE WAS THREE STEPS DEEP -- delete the class, and Error Prone names the
+    // unread local; delete the local, and it names this method. Each step was found by the gate,
+    // not
+    // by reading, which is the argument for arming Error Prone rather than surveying by eye.
 
     /**
      * Pure value functions that may be constant-folded when every argument is a literal: a
