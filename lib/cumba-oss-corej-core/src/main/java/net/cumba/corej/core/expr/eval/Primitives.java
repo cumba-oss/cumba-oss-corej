@@ -1430,6 +1430,118 @@ public final class Primitives
         return scan(v, rowCount, (dv, _) -> negate != isMember(dv, set, caseInsensitive));
     }
 
+    /**
+     * A membership right-hand side that keeps a {@link MissingValue}'s <b>identity</b> instead of
+     * rendering it into a string.
+     *
+     * <p>
+     * ⭐⭐ <b>Why identity and not a rendering</b> ({@code PLAN-joined-value-accessor} §2b, owner
+     * 2026-09-21: <i>"A MissingValue is a value and can be in a list, therefore the check if a
+     * MissingValue is in a list is a valid check"</i>). Every set-builder for a data-derived
+     * membership right-hand side used {@code item.toString()}, and {@code MissingValue.toString()}
+     * renders its display string — so a {@code MIS} member would have become {@code "."}, and a
+     * <b>present</b> text cell holding a literal {@code "."} would have matched it. That is the
+     * collision class {@code JKM R5} eliminated from join keys; this type keeps it out of member
+     * sets for the same reason: a sealed identity <b>cannot</b> collide, a rendering merely is
+     * unlikely to.
+     * </p>
+     *
+     * <p>
+     * ⚠ A {@code null} item still folds to {@code ""}, exactly as before. These are raw
+     * {@code Object}s from an operation result, and {@code PLAN-null-free-value-channel} §5 ruled
+     * the raw channel {@code @Nullable} <b>by contract</b> — so re-classifying a raw {@code null}
+     * is a different axis and deliberately not touched here.
+     * </p>
+     *
+     * @param present
+     *            the members that are real values, folded for case-insensitivity by the caller
+     * @param missing
+     *            the members that are {@link MissingValue}s, by identity
+     */
+    public record MemberSet(Set<String> present, Set<MissingValue> missing)
+    {
+
+        /**
+         * ⚠ Both components are copied to immutable sets: a record over a mutable collection is a
+         * value in name only, and SpotBugs says so (`EI_EXPOSE_REP`/`EI_EXPOSE_REP2`, 4 findings on
+         * the first version of this type — two per component, for storing it and for handing it
+         * back).
+         */
+        public MemberSet
+        {
+            present = Set.copyOf(present);
+            missing = Set.copyOf(missing);
+        }
+
+        /** An empty set — no members at all, so nothing is a member of it. */
+        public static final MemberSet EMPTY = new MemberSet(Set.of(), Set.of());
+
+        /**
+         * Classifies a collection of raw member objects, keeping any {@link MissingValue} by
+         * identity.
+         *
+         * @param items
+         *            the raw members (an operation result, a resolved list, a grouped row's values)
+         * @param caseInsensitive
+         *            whether to upper-case the present members, as the comparison will
+         * @return the classified set
+         */
+        public static MemberSet of(Iterable<?> items, boolean caseInsensitive)
+        {
+            Set<String> present = new java.util.LinkedHashSet<>();
+            Set<MissingValue> missing = new java.util.LinkedHashSet<>();
+            for (Object item : items)
+            {
+                if (item instanceof MissingValue mv)
+                {
+                    missing.add(mv);
+                    continue;
+                }
+                String s = item != null ? item.toString() : "";
+                present.add(caseInsensitive ? s.toUpperCase(java.util.Locale.ROOT) : s);
+            }
+            return new MemberSet(present, missing);
+        }
+
+
+        /** Whether this set has no members at all. */
+        public boolean isEmpty()
+        {
+            return present.isEmpty() && missing.isEmpty();
+        }
+    }
+
+    /**
+     * {@code in} over a member set that can contain a {@link MissingValue} — the ruled equality,
+     * applied per member.
+     *
+     * <p>
+     * ⭐ <b>{@code D81}: "`in` IS DEFINED AS A DISJUNCTION OF `==`"</b>, and the register's gloss
+     * says everything ruled for {@code ==} reaches {@code in} <b>by construction</b> — <i>missing
+     * semantics</i> included. ⇒ a genuine {@link MissingValue} probe is a member of a set that
+     * contains <b>that same missing</b> ({@code D34 #5-2}: two missings are equal iff they are the
+     * same missing) and of no other. It is <b>not</b> a member of {@code ""}
+     * ({@code D11}/{@code D12}: a missing is not the empty string) nor of a present {@code "."}.
+     * </p>
+     *
+     * @param dv
+     *            the probe cell
+     * @param set
+     *            the classified member set
+     * @param caseInsensitive
+     *            whether the comparison folds case — applies to the present members only
+     * @return whether the probe is a member
+     */
+    public static boolean isMember(IDataValue dv, MemberSet set, boolean caseInsensitive)
+    {
+        MissingValue identity = TypedValue.missingIdentityOf(dv);
+        if (identity != null)
+        {
+            return set.missing().contains(identity);
+        }
+        return isMember(dv, set.present(), caseInsensitive);
+    }
+
 
     /**
      * D81's per-cell membership verdict: {@code ∃ member: cell == member}, with {@code ==}'s own
@@ -1467,8 +1579,26 @@ public final class Primitives
     {
         if (TypedValue.missingIdentityOf(dv) != null)
         {
-            // D13/D81 — a genuine MissingValue is a member of no list, "" included. Same arm as
-            // equalsTypedAware's, which is what "in IS a disjunction of ==" requires.
+            // ⭐ A STRING member set cannot contain a MissingValue, so a missing probe is a member
+            // of
+            // nothing here — and that is D13's actual scope: "a MissingValue is not a string …
+            // equals
+            // no string LITERAL including "" inside a membership list".
+            //
+            // ⛔⛔ This early return used to carry the comment "a genuine MissingValue is a member of
+            // no list, "" included. Same arm as equalsTypedAware's, which is what 'in IS a
+            // disjunction of ==' requires." BOTH halves were wrong, and the owner caught it
+            // (2026-09-21): it is NOT equalsTypedAware's arm — that one delegates to
+            // {@link #equalsWithMissing}, where two missings are equal iff they are the SAME
+            // missing
+            // — and D13 never said a missing is a member of no list, only of no string literal.
+            // What
+            // hid the over-generalisation is that an authored list has no spelling for a missing
+            // member, so the wrong case was unreachable: a reachability argument frozen as a
+            // semantic.
+            //
+            // ⇒ where a member set CAN hold a missing, callers use
+            // {@link #isMember(IDataValue, MemberSet, boolean)}, which applies the ruled equality.
             return false;
         }
         boolean missing = ScalarSemantics.isMissing(dv);

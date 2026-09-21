@@ -3,6 +3,8 @@ package net.cumba.corej.core.exec;
 import java.util.ArrayList;
 import java.util.List;
 import net.cumba.datatable.DataTableMeta;
+import net.cumba.datatable.values.IDataValue;
+import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -37,9 +39,11 @@ public final class ValueResolver
      *            the evaluation context
      * @param row
      *            the 0-based row index
-     * @return the matched column values for the row (never {@code null})
+     * @return the matched column values for the row (never {@code null}); a {@code String} for a
+     *         present value, a {@link MissingValue} for a missing one — the identity, never a
+     *         rendering, so {@code Primitives.MemberSet} can classify it
      */
-    public static List<String> resolveWildcardValues(OperandSubstitutor.Wildcard wild,
+    public static List<Object> resolveWildcardValues(OperandSubstitutor.Wildcard wild,
             java.util.regex.@Nullable Pattern cachedPattern, EvaluationContext ctx, long row)
     {
         java.util.regex.Pattern pattern = cachedPattern != null ? cachedPattern
@@ -48,7 +52,7 @@ public final class ValueResolver
     }
 
 
-    private static List<String> collectWildcardValues(OperandSubstitutor.Wildcard wild,
+    private static List<Object> collectWildcardValues(OperandSubstitutor.Wildcard wild,
             java.util.regex.Pattern pattern, EvaluationContext ctx, long row)
     {
         // Foreign-dataset wildcard — enumerate columns of the foreign dataset and pull values
@@ -84,22 +88,43 @@ public final class ValueResolver
             int[] matchingColIdx = WildcardForeignColumnCache.matchingColumns(foreignTable,
                     pattern);
             DataTableMeta meta = foreignTable.getMetaData();
-            List<String> result = new ArrayList<>(matchingColIdx.length);
+            List<Object> result = new ArrayList<>(matchingColIdx.length);
             for (int c : matchingColIdx)
             {
                 String colName = meta.getColumn(c).getName();
-                String v = lookup.lookup(ctx.getTable(), row, colName);
-                if (v != null)
-                {
-                    result.add(v);
-                }
+                // JOINED arm — the TYPED channel (PLAN-joined-value-accessor §2a; owner 2026-09-21:
+                // "I rule it's the same kind, so it's empty string or MIS as well"). This used to
+                // read the RAW lookup and drop a null, which was never a semantic — only an
+                // accident
+                // of a @Nullable accessor. lookupValue answers the column's TYPE DEFAULT for an
+                // unmatched row (D72/D72a-1), which IS the ruling.
+                //
+                // numericExpected=false decides the ABSENT-COLUMN arm only, and the column cannot
+                // be
+                // absent here: every colName comes from this very foreign dataset's metadata.
+                // Passing
+                // the rule's expectation would be unreachable-by-construction dressed as config.
+                IDataValue dv = lookup.lookupValue(ctx.getTable(), row, colName, false);
+                // The member's IDENTITY, never its rendering: MissingValue.toString() renders its
+                // display string, so adding the rendering would let a PRESENT text cell holding "."
+                // match a missing member — the JKM R5 collision class (Primitives.MemberSet).
+                result.add(dv.getValue() instanceof MissingValue mv ? mv : dv.getValueAsString());
             }
             return result;
         }
         // Local-table wildcard. Same pattern: cache by (table, Pattern).
+        // ⛔⛔ The LOCAL arm is DELIBERATELY UNCHANGED, and the divergence is recorded rather than
+        // silently harmonised. It drops a blank because that is its OWN owner ruling (2026-09-18,
+        // quoted below): a blank char cell is MissingValue.MIS and "contributes nothing, exactly
+        // like
+        // a blank numeric cell". §2a ruled the UNMATCHED-JOIN case, which has no counterpart here —
+        // a local column is never "unmatched".
+        // ⚠ The two arms therefore still disagree on a MATCHED-but-blank cell: the joined arm
+        // contributes its value, the local arm drops it. That predates this change — do not "align"
+        // it without a ruling.
         net.cumba.datatable.IDataTable localTable = ctx.getTable();
         int[] matchingColIdx = WildcardForeignColumnCache.matchingColumns(localTable, pattern);
-        List<String> result = new ArrayList<>(matchingColIdx.length);
+        List<Object> result = new ArrayList<>(matchingColIdx.length);
         for (int c : matchingColIdx)
         {
             // A blank resolves per ScalarSemantics.resolvedString, which is type-INDEPENDENT.

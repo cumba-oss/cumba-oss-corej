@@ -1,6 +1,7 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -9,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -82,9 +84,9 @@ class WildcardValueCollectionTest
         IDataTable t = MockTable.of().col("TRT01PN", "1", "2").col("TRT02PN", "3", "4")
                 .col("OTHER", "x", "y").build();
         EvaluationContext c = ctx(t, map(), Map.of());
-        List<String> row0 = ValueResolver.resolveWildcardValues(wildcard("TRT${*}PN"), null, c, 0);
+        List<Object> row0 = ValueResolver.resolveWildcardValues(wildcard("TRT${*}PN"), null, c, 0);
         assertEquals(List.of("1", "3"), row0, "both TRT..PN columns match, in schema order");
-        List<String> row1 = ValueResolver.resolveWildcardValues(wildcard("TRT${*}PN"), null, c, 1);
+        List<Object> row1 = ValueResolver.resolveWildcardValues(wildcard("TRT${*}PN"), null, c, 1);
         assertEquals(List.of("2", "4"), row1);
     }
 
@@ -136,17 +138,66 @@ class WildcardValueCollectionTest
     }
 
 
+    /**
+     * ⭐⭐ <b>INVERTED 2026-09-21 for {@code PLAN-joined-value-accessor} §2a.</b> An unmatched join
+     * contributes the joined column's <b>type default</b>, not nothing — owner: <i>"I rule it's the
+     * same kind, so it's empty string or MIS as well. So on this readong the set is {""}."</i>
+     *
+     * <p>
+     * ⛔ This test previously asserted {@code List.of("7")} with the message <i>"an unmatched join
+     * contributes nothing"</i>. That behaviour was never a semantic — it was the raw
+     * {@code @Nullable} accessor's {@code null} being dropped.
+     * </p>
+     *
+     * <p>
+     * ⚠⚠ <b>Why the expected element here is {@code MIS} and not {@code ""}:</b> this fixture's
+     * {@link JoinLookup} is a stub that overrides only {@code lookup}, so it inherits the
+     * interface's <b>type-blind</b> default — {@code JoinLookup.lookupValue} maps a {@code null}
+     * text to {@code ScalarSemantics.computedMissing()} regardless of the column's type. The
+     * PRODUCTION lookup is typed and answers the column's own default, {@code ""} for a character
+     * column ({@code DatasetLookup.lookupValue}, {@code D72}/{@code D72a-1}) — pinned by
+     * {@link #foreignDatasetWildcardContributesTheCharacterDefaultThroughARealLookup()} below,
+     * which is the assertion §2a actually rests on.
+     * </p>
+     */
     @Test
-    void foreignDatasetWildcardSkipsUnmatchedJoinValues()
+    void foreignDatasetWildcardContributesTheDefaultForAnUnmatchedJoin()
     {
         IDataTable primary = MockTable.of().name("ADAE").col("USUBJID", "S1").build();
         IDataTable adsl = MockTable.of().name("ADSL").col("TRT01PN", "7").col("TRT02PN", "9")
                 .build();
         JoinLookup lookup = joinReturning(Map.of("TRT01PN", "7"));
         EvaluationContext c = ctx(primary, map("ADSL", adsl), Map.of("ADSL", lookup));
-        assertEquals(List.of("7"),
+        assertEquals(List.of("7", MissingValue.MIS),
                 ValueResolver.resolveWildcardValues(wildcard("ADSL.TRT${*}PN"), null, c, 0),
-                "an unmatched join contributes nothing");
+                "§2a: the unmatched TRT02PN contributes a default, and it arrives as the MissingValue"
+                        + " IDENTITY rather than the text '.' — a rendering would let a present '.'"
+                        + " cell match it");
+    }
+
+
+    /**
+     * ⭐ The production path, and the case §2a is really about: a <b>real</b> {@link DatasetLookup}
+     * over a character column answers {@code ""} for an unmatched row, so the wildcard contributes
+     * {@code ""} — which is what makes {@code TRTP not in ADSL.TRT${*}P} stop firing for a subject
+     * whose own value is a stored blank.
+     */
+    @Test
+    void foreignDatasetWildcardContributesTheCharacterDefaultThroughARealLookup()
+    {
+        IDataTable primary = MockTable.of().name("ADAE").col("USUBJID", "S9").build();
+        // ADSL has no S9 row, so every primary row is unmatched.
+        IDataTable adsl = MockTable.of().name("ADSL").col("USUBJID", "S1").col("TRT01P", "DRUG A")
+                .col("TRT02P", "DRUG B").build();
+        DatasetLookup real = DatasetLookup.build("ADSL", adsl, List.of("USUBJID"));
+        assertNotNull(real, "a keyed lookup over a non-null table must be built");
+        EvaluationContext c = ctx(primary, map("ADSL", adsl), Map.of("ADSL", real));
+        assertEquals(List.of("", ""),
+                ValueResolver.resolveWildcardValues(wildcard("ADSL.TRT${*}P"), null, c, 0),
+                "D72/D72a-1 + §2a: an unmatched row yields each CHARACTER column's type default, so"
+                        + " the set is {\"\"} — the owner's own words. An empty list here is the"
+                        + " retired drop; a MissingValue here would mean the typed lookup was"
+                        + " bypassed");
     }
 
 

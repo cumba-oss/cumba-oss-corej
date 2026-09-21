@@ -188,22 +188,35 @@ class KeyMatchMissingJoinKeyTest
 
 
     /**
-     * ⭐⭐ {@code JKM R5}'s remaining two rows, which nothing in the tree pinned until the plan's
-     * non-harm review named the gap: <i>"a MIS_A will not join a record with a MIS or MIS_B."</i>
+     * ⛔⛔ <b>THIS TEST DOES NOT TEST WHAT ITS NAME SAYS, and the correction is recorded rather than
+     * the name quietly changed.</b> Measured 2026-09-21 while writing {@code MissingAsMemberTest}:
+     * {@code MockTable.colSasMissing} turns <b>only a {@code null}</b> entry into a
+     * {@code MissingValue}, and always into {@code MissingValue.MIS} — a string like {@code ".A"}
+     * is a <b>PRESENT string</b> ({@code MockTable.mockSasMissingDataValue}). So the fixture below
+     * pins <i>"the text `.A` does not join the text `.B`"</i>, not <i>"`MIS_A` does not join
+     * `MIS_B`"</i>.
      *
      * <p>
-     * ⚠ It holds by construction — {@code KeyPart.Missing} is a record over the
-     * {@code MissingValue} enum, so distinct markers are distinct parts — but "holds by
-     * construction" is what every unpinned property claims right up to the edit that breaks it. The
-     * rendered key makes it concrete: {@code Missing(MIS_A).reportingForm()} is
-     * {@code "\u0001MIS_A"} and {@code Missing(MIS).reportingForm()} is {@code "\u0001MIS"}.
+     * ⚠ It is still a live assertion — its sabotage (folding every key part into one bucket) reds
+     * it — but it reds for the PRESENT-value path, not the marker path. ⇒ <b>{@code JKM R5}'s
+     * marker-distinctness rows remain UNPINNED on the join path</b>, and the reason is a testkit
+     * limitation, not an oversight: nothing in {@code MockTable} can put a specific marker in a
+     * cell. Closing it needs a testkit capability (a {@code colMissingMarker(name, MissingValue…)}
+     * kind) in {@code cumba-datatable}, which is another repo and another plan.
+     * </p>
+     *
+     * <p>
+     * ⭐ Where the property IS pinned: {@code MissingAsMemberTest} asserts it from the <b>member</b>
+     * side, where a {@link net.cumba.datatable.values.MissingValue} can be named directly — a
+     * {@code MIS} cell is not a member of {@code {MIS_A}}.
      * </p>
      */
     @Test
-    void differentMissingMarkersAreDifferentKeys()
+    void differentPresentSasSpellingsAreDifferentKeys()
     {
-        // DM row 0 carries .A, row 1 carries .B; AE row 0 carries .A, row 1 carries a plain
-        // missing.
+        // ⚠ ".A" / ".B" / "." are PRESENT strings here — see the javadoc. The distinctness this
+        // pins
+        // is textual.
         IDataTable dm = MockTable.of().colSasMissing(USUBJID, ".A", ".B").col("AGE", "34", "51")
                 .name("DM").build();
         IDataTable ae = MockTable.of().colSasMissing(USUBJID, ".A", ".")
@@ -212,8 +225,8 @@ class KeyMatchMissingJoinKeyTest
                 "R-TEST");
         assertNotNull(exp);
         assertEquals(List.of("0:HEADACHE", "1:null"), rows(exp, "AETERM"),
-                "JKM R5: MIS_A joins MIS_A (row 0) and MIS_B joins neither MIS_A nor the plain MIS"
-                        + " (row 1). '1:NAUSEA' means two DIFFERENT markers were folded together");
+                "row 0 pairs \".A\" with \".A\"; row 1's \".B\" matches neither \".A\" nor"
+                        + " \".\". A '1:NAUSEA' means two different values were folded together");
     }
 
 

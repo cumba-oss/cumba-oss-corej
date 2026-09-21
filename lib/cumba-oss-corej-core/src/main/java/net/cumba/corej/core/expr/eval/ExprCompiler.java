@@ -1325,13 +1325,13 @@ public final class ExprCompiler
             // an unqualified name never reaches a join (formerly foreign LHS → any-match OR).
             return Primitives.scan(v, run.rowCount(), (dv, r) ->
             {
-                List<String> values = net.cumba.corej.core.exec.ValueResolver
+                List<Object> values = net.cumba.corej.core.exec.ValueResolver
                         .resolveWildcardValues(wild, compiledPattern, ctx, r);
-                Set<String> set = LinkedHashSet.newLinkedHashSet(values.size());
-                for (String s : values)
-                {
-                    set.add(caseInsensitive ? s.toUpperCase(Locale.ROOT) : s);
-                }
+                // ⭐ phase 0 + §2a: MemberSet classifies, so a MissingValue member keeps its
+                // IDENTITY
+                // and a present value is folded for case-insensitivity exactly as before. The
+                // hand-rolled upper-casing loop that stood here could only carry strings.
+                Primitives.MemberSet set = Primitives.MemberSet.of(values, caseInsensitive);
                 // D81 (phase 6b): the probe is =='s own per-member decision tree.
                 return negate != Primitives.isMember(dv, set, caseInsensitive);
             });

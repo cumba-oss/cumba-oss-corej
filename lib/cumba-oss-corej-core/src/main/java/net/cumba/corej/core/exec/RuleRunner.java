@@ -33,6 +33,7 @@ import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.report.Severity;
 import net.cumba.datatable.values.IDataValue;
+import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
 
 @CustomLog
@@ -4229,15 +4230,48 @@ public final class RuleRunner
                 JoinLookup lookup = ctx.getJoinedDatasets().get(dsName);
                 if (lookup != null)
                 {
-                    String val = lookup.lookup(table, row, colName);
-                    // Python omits a dot-qualified joined output variable whose target column does
-                    // not exist in the merged frame (e.g. RELREC.**TRT when the parent has no
-                    // AETRT); a present-but-missing value is kept as an empty/null value.
-                    if (val == null && !lookup.hasColumn(table, row, colName))
+                    // ⭐⭐ §2c (PLAN-joined-value-accessor; owner 2026-09-21): "if the variable is
+                    // available it might be empty or might not be empty, that's why empty is a
+                    // valuable information. if it's not present, there is no need to mention the
+                    // default value."
+                    //
+                    // ⇒ ask the two questions SEPARATELY, in that order: does the column EXIST, and
+                    // then what is its value. The behaviour is unchanged; what changes is that it
+                    // no
+                    // longer rides on a raw `null` doing double duty as "absent column" and "no
+                    // value".
+                    //
+                    // ⛔ The justification is replaced, not just reworded. This read "Python omits a
+                    // dot-qualified joined output variable whose target column does not exist in
+                    // the
+                    // merged frame" — and Python parity is RETIRED: it is provenance, never
+                    // authority. The reason now is the owner's: an empty value is INFORMATION about
+                    // a
+                    // variable that is there, while a manufactured default for an absent column is
+                    // noise.
+                    if (!lookup.hasColumn(table, row, colName))
                     {
                         continue;
                     }
-                    values.put(varName, val != null ? val : "");
+                    // The column exists, so it HAS a value to report — and the typed channel always
+                    // gives one (D72: "" for character, a MissingValue for numeric), so no null can
+                    // reach this line any more.
+                    IDataValue dv = lookup.lookupValue(table, row, colName, false);
+                    // ⛔⛔ A MISSING value keeps rendering as "" in the violation row, deliberately.
+                    // §2c ruled WHICH variables appear ("report an available, omit an absent"); it
+                    // did
+                    // NOT rule what a missing one renders as. Handing back getValueAsString() would
+                    // print the marker ("." for MIS) where every previous release printed "" — a
+                    // change to the CONTENT of every violation row carrying a missing joined
+                    // output,
+                    // which is a reporting decision and nobody's ruling yet.
+                    // ⚠ Recorded as PLAN-joined-value-accessor §7 question 5: is the marker more
+                    // informative than "" in a report, or is it noise? ⇒ until that is answered,
+                    // the
+                    // channel is byte-identical to before and only the ABSENT-column question
+                    // moved.
+                    values.put(varName,
+                            dv.getValue() instanceof MissingValue ? "" : dv.getValueAsString());
                     continue;
                 }
                 // Fix #18 — a rule evaluated per variable with no row cursor (the {VAR}
