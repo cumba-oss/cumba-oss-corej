@@ -1257,7 +1257,6 @@ public final class ScopeMatcher
             String column)
     {
         DataValueType agreed = null;
-        boolean seen = false;
         for (DataTableMeta meta : metas)
         {
             int idx = meta.getColumnIndex(column);
@@ -1269,9 +1268,12 @@ public final class ScopeMatcher
             // ⚠ Review round 1, finding 3: a member whose declared type is null used to leave
             // `agreed` null, so the NEXT member's type was adopted as "agreed" and the null member
             // dropped silently out of the comparison — where UnionDataTable compares against the
-            // first occurrence unconditionally and would refuse the union. A separate `seen` flag
-            // keeps "no member carries it" and "a member has no type" apart, so an untyped member
-            // makes the answer undecidable instead of deferring to its neighbour.
+            // first occurrence unconditionally and would refuse the union. THIS early return is
+            // what keeps "no member carries it" and "a member has no type" apart.
+            // ⚑ Round 2's nit: a `seen` flag was added alongside and was dead state — with the
+            // early return, `agreed == null` and `!seen` coincide everywhere. Removed, because two
+            // mechanisms claiming one mechanism's job is what later invites simplifying the wrong
+            // half.
             // ⚑ DataTableColumnMeta.type is not @Nullable, so this is a contract-defensive branch,
             // not a demonstrated input — but ScopeVariableSource.suppQvalType already guards the
             // same field, and the two must not hold different beliefs about it.
@@ -1279,10 +1281,9 @@ public final class ScopeMatcher
             {
                 return null;
             }
-            if (!seen)
+            if (agreed == null)
             {
                 agreed = type;
-                seen = true;
             }
             else if (agreed != type)
             {

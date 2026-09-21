@@ -2850,6 +2850,7 @@ public class RulePackageLoader
             return;
         }
         Map<String, Integer> firstGroupOf = new LinkedHashMap<>();
+        Map<String, String> firstEntryOf = new LinkedHashMap<>();
         for (int g = 0; g < anyGroups.size(); g++)
         {
             for (String entry : anyGroups.get(g))
@@ -2865,6 +2866,7 @@ public class RulePackageLoader
                 // identity is how one of them later stops checking.
                 String normalized = normalizeFacetEntry(stripTypeSuffix(entry));
                 Integer first = firstGroupOf.putIfAbsent(normalized, g + 1);
+                firstEntryOf.putIfAbsent(normalized, entry.trim());
                 if (first != null && first != g + 1)
                 {
                     // ⭐ Both channels, per the house idiom at :1219 and :2997 (review F2,
@@ -2873,10 +2875,19 @@ public class RulePackageLoader
                     // duplicate is invisible to Rule.getLoadWarning() and so to any corpus lint
                     // or report surface that reads load warnings — its single trace would be a
                     // JUL record nobody keeps.
-                    String warning = "[" + ruleId(rule) + "] Requirements.Variables.Any entry '"
-                            + entry.trim() + "' appears in group " + first + " and again in group "
-                            + (g + 1) + " — allowed (ruling D4), each group stays independently"
-                            + " satisfiable, but check the duplication is intended";
+                    // ⚠ Review round 2, finding 3: this said "entry 'X:C' appears in group 1 and
+                    // again in group 2", which folding made FALSE — group 1 may hold `X:N`, a
+                    // different demand. The warning reaches rule.setLoadWarning() and so any
+                    // corpus lint that reads load warnings, so it names the VARIABLE (what the
+                    // fold actually found) and quotes both spellings when they differ.
+                    String firstSpelling = firstEntryOf.get(normalized);
+                    String sameSpelling = entry.trim().equals(firstSpelling) ? ""
+                            : " (as '" + firstSpelling + "' and '" + entry.trim() + "')";
+                    String warning = "[" + ruleId(rule) + "] Requirements.Variables.Any variable '"
+                            + normalized + "'" + sameSpelling + " appears in group " + first
+                            + " and again in group " + (g + 1) + " — allowed (ruling D4), each"
+                            + " group stays independently satisfiable, but check the duplication"
+                            + " is intended";
                     rule.setLoadWarning(rule.getLoadWarning() == null ? warning
                             : rule.getLoadWarning() + "; " + warning);
                     LOGGER.log(System.Logger.Level.WARNING, "{0}", warning);
@@ -3042,7 +3053,12 @@ public class RulePackageLoader
      * {@link #normalizedFacet}'s distinctness count.
      *
      * <p>
-     * ⛔ Deliberately NOT used by the {@code Any}×{@code All} arm — see {@link #checkAnyFacetShape}.
+     * ⚠⚠ <b>Corrected after review round 2.</b> This said <i>"⛔ Deliberately NOT used by the
+     * {@code Any}×{@code All} arm"</i>, and that is no longer true: {@link #reportAnyImpliedByAll}
+     * calls it twice, to derive the variable identity on both sides. What that arm does NOT do is
+     * decide on identity <em>alone</em> — it compares the type demands as well, because its message
+     * is a claim about implication and implication has a direction. A ⛔-marked prohibition sitting
+     * on the method a future arm would reach for is worse than no note.
      * </p>
      */
     private static String stripTypeSuffix(String entry)

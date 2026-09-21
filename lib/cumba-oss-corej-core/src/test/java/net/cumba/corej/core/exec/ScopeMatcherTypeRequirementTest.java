@@ -281,16 +281,30 @@ class ScopeMatcherTypeRequirementTest
         }
 
 
-        /** A mixed group (one literal, one pattern) must behave the same way. */
+        /**
+         * ⛔ Round 2, finding 4: this test's first version paired a literal {@code AESEV:N} with a
+         * pattern entry — and could not fail for finding 1. The literal's message carries
+         * {@code " is required to be "}, so the OLD substring detector fired on iteration 1 and the
+         * assertion passed against the unfixed code. A mixed group can never discriminate while any
+         * literal entry rescues the detector.
+         *
+         * <p>
+         * So the literal here is <b>absent</b> rather than wrongly typed: its message is an absence
+         * one, carrying no phrase, and the only type verdict in the group comes from the PATTERN
+         * arm. Under the old detector {@code wrongType} stays null and the group falls through to
+         * the absence wording — which is what this asserts against.
+         * </p>
+         */
         @Test
-        void aMixedGroupUnmetByTypeDoesNotClaimAbsenceEither()
+        void aPatternEntryIsTheOnlyTypeVerdictInAMixedGroup()
         {
-            DataTableMeta meta = MockTable.of().name("AE").col("AESEV", "MILD").col("AEORRES", "5")
-                    .build().getMetaData();
-            String reason = describe(rule(null, List.of(List.of("AESEV:N", "/^AEORRES.?$/:N"))),
+            DataTableMeta meta = MockTable.of().name("AE").col("AEORRES", "5").build()
+                    .getMetaData();
+            String reason = describe(rule(null, List.of(List.of("NOSUCH:N", "/^AEORRES.?$/:N"))),
                     meta);
             assertNotNull(reason);
-            assertTrue(reason.contains("is of the required type"), reason);
+            assertTrue(reason.contains("is of the required type"),
+                    "the pattern arm's verdict must reach the group message: " + reason);
         }
 
 

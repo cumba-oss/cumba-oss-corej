@@ -303,6 +303,14 @@ class ScopeVariableEntryTest
 
         assertEquals("AESEQ ", ScopeVariableEntry.parse("AESEQ ").variable(),
                 "⛔ D5: an UNTAGGED entry is untouched, spaces and all");
+
+        // ⚠ Round 2, finding 5: the first fix closed only the TRAILING half, so " AESEQ:N" still
+        // asked for a column literally called " AESEQ" — word for word the same bug on the other
+        // end of the string. Both ends are stripped now, and only on the tag-found branch.
+        assertEquals("AESEQ", ScopeVariableEntry.parse(" AESEQ:N").variable(),
+                "leading whitespace must not become part of the column name either");
+        assertEquals(" AESEQ", ScopeVariableEntry.parse(" AESEQ").variable(),
+                "⛔ D5 again: the UNTAGGED twin keeps its spacing, as it always did");
     }
 
 }

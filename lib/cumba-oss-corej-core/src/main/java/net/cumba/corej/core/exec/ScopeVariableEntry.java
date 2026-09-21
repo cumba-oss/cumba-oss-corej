@@ -111,11 +111,13 @@ public record ScopeVariableEntry(@Nullable String qualifier, String variable,
      * what a tag is.
      *
      * <p>
-     * ⚠ The remainder is {@code stripTrailing()}ed: whitespace before the colon was tolerated on
-     * the tag's side but would otherwise have become part of the column name, so {@code AESEQ :N}
-     * asked for a column literally called {@code "AESEQ "} and skipped everywhere (review round 1,
-     * finding 6). Safe for ruling D5 — this branch is reached only when a valid tag was found, and
-     * an untagged entry returns {@code raw} untouched, spaces and all.
+     * ⚠ The remainder is {@code strip()}ed on BOTH sides (round 2 finding 5 — the first fix closed
+     * only the trailing half, so {@code " AESEQ:N"} still asked for a column called
+     * {@code " AESEQ"}): whitespace before the colon was tolerated on the tag's side but would
+     * otherwise have become part of the column name, so {@code AESEQ :N} asked for a column
+     * literally called {@code "AESEQ "} and skipped everywhere (review round 1, finding 6). Safe
+     * for ruling D5 — this branch is reached only when a valid tag was found, and an untagged entry
+     * returns {@code raw} untouched, spaces and all.
      * </p>
      *
      * @param raw
@@ -128,7 +130,7 @@ public record ScopeVariableEntry(@Nullable String qualifier, String variable,
         {
             return raw;
         }
-        return raw.substring(0, raw.lastIndexOf(':')).stripTrailing();
+        return raw.substring(0, raw.lastIndexOf(':')).strip();
     }
 
 
