@@ -339,20 +339,54 @@ final class KeyMatchRowExpander
      * have the authored flag and differ only in their DEFAULT: Check-level {@code Grouping:}
      * defaults to {@code GroupKeyPolicy.DROP_MISSING_KEYS} ({@code RuleRunner}), Operation-level
      * {@code group:} to {@code GroupKeyPolicy.KEEP_MISSING_KEYS} ({@code OperationExecutor}), each
-     * overridable per rule. ⇒ The join surface's default is therefore genuinely <b>UNRULED</b>, and
-     * nothing here may be read as having chosen it.
+     * overridable per rule.
      * </p>
      *
      * <p>
-     * ⚑ <b>The gap is known and tracked</b> — {@code PLAN-null-free-value-channel} §9j. Open work:
-     * wire the general include/exclude flag through {@code Match_Datasets}, and with it
-     * {@code KeyHashing.anyKeyMissing}, which has zero callers and is therefore the flag-OFF path
-     * of an unfinished feature rather than a guard nobody hooked up; the default that flag takes
-     * here is an owner decision. ⚠ One consequence recorded there rather than left to be
-     * rediscovered: for a KEY, "normal value" carries a fan-out that a compared variable does not —
-     * {@code k} primary and {@code m} joined rows sharing one missing key pair {@code k×m}, where
-     * grouping would make one group of {@code k+m}. That is what the flag is <i>for</i>, not an
-     * exception to the ruling.
+     * ⭐⭐ <b>The join surface's default IS RULED — it is KEEP</b> (owner, 2026-09-21,
+     * {@code PLAN-join-key-missing-semantics} §4; register {@code JKM R4}). This paragraph used to
+     * end <i>"the join surface's default is therefore genuinely UNRULED, and nothing here may be
+     * read as having chosen it"</i>, and the paragraph below used to end <i>"the default that flag
+     * takes here is an owner decision"</i>. <b>Both are withdrawn.</b> Verbatim: <i>"From my point
+     * of view the DROP is the bug we need to fix. There is no reason to remove a row from the merge
+     * because there is a missing value in one of the keys. … Therefore I rule KEEP is the default
+     * and DROP must explicitly be authored if needed."</i> ⇒ the hard-coded drop above is not a
+     * conservative default awaiting a decision; it is the defect.
+     * </p>
+     *
+     * <p>
+     * ⛔ <b>Two further rulings of the same day, because a reader who takes KEEP alone will build
+     * the wrong thing:</b> {@code JKM R5} — the flag governs <b>participation only</b>, never
+     * identity: <i>"if they are kept, they are kept as separate identities. a MIS will not join a
+     * record with an empty string and a MIS_A will not join a record with a MIS or MIS_B."</i> ⇒
+     * identity is exact, flag on or off. {@code JKM R7} — an <b>absent</b> key column is
+     * <i>present-but-empty</i>: absent on one side contributes the column's type default, absent on
+     * <b>both</b> sides drops the component from the key, and <b>all</b> components absent is a
+     * rule <b>ERROR</b>, because an empty key is a cartesian product rather than a join.
+     * </p>
+     *
+     * <p>
+     * ⚠⚠ <b>Implementing R5 here is NOT a matter of deleting the guard below.</b> This method
+     * builds a {@code \0}-joined STRING of {@code getValueAsString()}, and
+     * {@code MissingValue.toString()} renders its display string — so a participating {@code MIS}
+     * would key as {@code "."} and <b>collide with a present text cell containing a literal
+     * {@code "."}</b>, {@code NA} with the present string {@code "NA"}. That is the conflation R5
+     * forbids, and it is measured: {@link GroupKeyPolicy.KeyPart}'s javadoc records <i>"a naive
+     * distinct-as-strings encoding silently turned every missing into a participating value
+     * (measured: +9 528 findings, 8 rules)"</i>. ⇒ the key must be built from
+     * {@link GroupKeyPolicy#keyPart}, whose sealed type <b>cannot</b> collide by construction.
+     * </p>
+     *
+     * <p>
+     * ⚑ <b>Open work</b> — {@code PLAN-join-key-missing-semantics}: wire the flag through
+     * {@code Match_Datasets}, and with it {@code KeyHashing.anyKeyMissing}, which has zero callers
+     * and is therefore the flag-OFF path of an unfinished feature rather than a guard nobody hooked
+     * up. ⚠ One consequence recorded there rather than left to be rediscovered: for a KEY, "normal
+     * value" carries a fan-out that a compared variable does not — {@code k} primary and {@code m}
+     * joined rows sharing one missing key pair {@code k×m}, where grouping would make one group of
+     * {@code k+m}. That is what the flag is <i>for</i>, not an exception to the ruling; ⭐ and under
+     * R5 the fan-out is per <b>distinct marker</b>, so mixed blanks give several small blocks
+     * rather than one large one.
      * </p>
      *
      * <p>

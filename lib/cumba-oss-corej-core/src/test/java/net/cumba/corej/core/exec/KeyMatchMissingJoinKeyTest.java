@@ -13,9 +13,29 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * ⭐⭐ ⚑ TARGET-INVARIANT(null-free-value-channel), §1b: <b>a {@code MissingValue} is not a joinable
- * key.</b> Two rows whose {@code Match_Datasets} key cell is MISSING do not join each other — they
- * are two unknowns, not one value.
+ * ⭐⭐ ⚑ TARGET-INVARIANT(null-free-value-channel), §1b: <b>a {@code MissingValue} IS a joinable key,
+ * and this class pins what the engine does BEFORE that is implemented.</b>
+ *
+ * <p>
+ * ⛔⛔ <b>RETIRED CLAIM, corrected 2026-09-21.</b> This javadoc used to assert <i>"a
+ * {@code MissingValue} is not a joinable key. Two rows whose {@code Match_Datasets} key cell is
+ * MISSING do not join each other — they are two unknowns, not one value."</i> <b>The owner ruled
+ * the opposite</b> — twice. 2026-09-19: <i>"MissingValue can be a join key."</i> 2026-09-21, ruling
+ * the default: <i>"From my point of view the DROP is the bug we need to fix. … Therefore I rule
+ * KEEP is the default and DROP must explicitly be authored if needed."</i> ⇒ the claim was
+ * installed by a commit whose whole purpose was to PIN it, which is why it outlived its own
+ * retirement in the production javadoc by two days. See {@code PLAN-join-key-missing-semantics} §4
+ * and the register ({@code JKM R4}/{@code R5}/{@code R7}).
+ * </p>
+ *
+ * <p>
+ * ⭐ <b>What the cases below therefore are: a record of the DROP behaviour, not of the ruled
+ * semantics.</b> They stay because the behaviour they pin is still what ships until
+ * {@code PLAN-join-key-missing-semantics} phase 4 lands, and a silent change of it is exactly what
+ * this class exists to catch. ⛔ When phase 4 lands they must be INVERTED, not deleted — the join
+ * then keeps missing-keyed rows, with {@code MIS} joining {@code MIS} and joining neither
+ * {@code ""} nor {@code MIS_A} ({@code JKM R5}).
+ * </p>
  *
  * <p>
  * ⚠⚠ <b>Why this class exists: a real product join behaviour MOVED on 2026-09-18 and nothing
