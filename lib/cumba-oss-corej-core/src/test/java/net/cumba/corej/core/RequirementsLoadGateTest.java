@@ -1351,6 +1351,45 @@ class RequirementsLoadGateTest
 
 
         /**
+         * ⛔⛔ Review round 3's one finding, and it is the shape round 2's OWN finding 4 was about: a
+         * fix nothing can catch if it regresses.
+         *
+         * <p>
+         * The D4 cross-group duplicate warning was corrected twice by this plan — round 1 folded
+         * the type tag into its identity, round 2 stopped it naming an entry from the wrong group —
+         * and <b>neither correction was asserted</b>. The pre-existing test uses an untagged,
+         * case-differing pair, and both the old and the new wording satisfy every one of its
+         * {@code contains} assertions, so the whole of both hunks could be reverted with the suite
+         * still green.
+         * </p>
+         *
+         * <p>
+         * This is the discriminating input. It warns <b>only</b> because the fold makes the two
+         * spellings one identity, and its message can name both spellings <b>only</b> because of
+         * round 2's rewrite. ⚠ The variable is printed through {@code normalizeFacetEntry}, hence
+         * upper case — true of the variable, since every consumer of a requirement matches
+         * case-blind.
+         * </p>
+         */
+        @Test
+        @DisplayName("a cross-group duplicate differing only by TAG warns, and names both spellings")
+        void theDuplicateWarningFoldsTheTagAndQuotesBothSpellings() throws IOException
+        {
+            Rule rule = load("\"Requirements\":{\"Variables\":{\"Any\":"
+                    + "[[\"AESEV:N\",\"AEOUT\"],[\"AESEV:C\",\"AEDECOD\"]]}}," + CHECK);
+            String warning = rule.getLoadWarning();
+            assertNotNull(warning, "the fold is what makes these two entries ONE variable;"
+                    + " unfolded they are different strings and nothing warns");
+            assertTrue(warning.contains("AESEV"), warning);
+            assertTrue(warning.contains("AESEV:N") && warning.contains("AESEV:C"),
+                    "both spellings must appear — naming one of them alone is the round 2"
+                            + " finding: it attributes an entry to a group that does not hold it: "
+                            + warning);
+            assertTrue(warning.contains("group 1") && warning.contains("group 2"), warning);
+        }
+
+
+        /**
          * ⭐ Why R9 needs no arm for this shape: the distinctness fold makes {@code ["X:N","X:C"]}
          * ONE entry, so R4's existing D3 arm already rejects it as a degenerate one-column group. A
          * second gate would have shipped with a test that could only pass while the fold was
