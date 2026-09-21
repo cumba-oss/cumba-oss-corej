@@ -305,10 +305,13 @@ public final class WildcardExpander
         // with no "*N"/"*C" anchor is rejected here (guarded) so it can never explode.
         //
         // The bare-* machinery keys off a "*" in a NAME (target-variable) position only. A literal
-        // "*" appearing in a leaf VALUE / RHS position (e.g. the pre-existing
-        // `library_variable_label does_not_contain "*"` leaves of CDISC-AD0018/0708/0709 and
-        // PMDA-AD0018) is NOT a bare-* target and must neither trigger the guard/WARNING nor change
-        // the seed set — those rules expand exactly as they did before Fix #84.
+        // "*" appearing in a leaf VALUE / RHS position — `not contains(var_label("LIBRARY"), "*")`
+        // in CDISC-AD0018 / AD0708 / AD0709 / PMDA-AD0018, where the "*" is arg 1 of contains() —
+        // is NOT a bare-* target and must neither trigger the guard/WARNING nor change the seed
+        // set; those rules expand exactly as they did before Fix #84.
+        // ⚠ Spelling corrected 2026-09-21: this named `library_variable_label does_not_contain
+        // "*"`,
+        // the pre-typed-engine form, which is no longer in the corpus.
         boolean hasBareStar = templateRule.checkConditions().stream()
                 .anyMatch(WildcardExpander::hasNamePositionBareStar);
         if (hasBareStar)
@@ -686,7 +689,7 @@ public final class WildcardExpander
      * {@code value} / comparison RHS / membership-list position. Only a name-position bare
      * {@code *} engages the empty-suffix pairing machinery (guard, seed-skip, fallback-skip); a
      * value-position literal {@code "*"} (e.g. the pre-existing
-     * {@code library_variable_label does_not_contain "*"} leaves of CDISC-AD0018 / 0708 / 0709 and
+     * {@code not contains(var_label("LIBRARY"), "*")} leaves of CDISC-AD0018 / 0708 / 0709 and
      * PMDA-AD0018) must not.
      */
     private static boolean hasNamePositionBareStar(@Nullable CheckCondition condition)
@@ -1576,17 +1579,66 @@ public final class WildcardExpander
     static CheckCondition substituteNames(CheckCondition condition,
             java.util.function.UnaryOperator<String> rename)
     {
+        return substituteNames(condition, rename, StringLiteralPolicy.EXISTS_NAME_ONLY);
+    }
+
+    /**
+     * Which Check <b>string literals</b> a substitution pass may rewrite.
+     *
+     * <p>
+     * The two expansion mechanisms need different answers, and the difference is not a preference:
+     * the engine-owned markers ({@code *}, {@code xx}, {@code y}, …) are matched <em>inside</em> a
+     * name and are ambiguous by design, so rewriting an arbitrary string literal under them would
+     * corrupt values — {@code CDISC-AD0018} / {@code AD0708} / {@code AD0709} / {@code PMDA-AD0018}
+     * each carry a value-position {@code "*"} as arg 1 of {@code contains()}. A declared
+     * {@code Expansion:} token carries a mandatory non-alphanumeric sigil (enforced at load,
+     * {@code RulePackageLoader.validateExpansionDirective}) and therefore cannot collide with a
+     * CDISC name; rewriting it wherever it appears is what lets a rule say
+     * {@code var_label("&VAR", "DATA")}, whose name operand the compiler accepts only as a string
+     * literal.
+     * </p>
+     */
+    enum StringLiteralPolicy
+    {
+
+        /** Wildcard flavour: only arg 0 of the exists family. The pre-existing behaviour. */
+        EXISTS_NAME_ONLY,
+
+        /**
+         * Declared-token flavour: additionally, any scalar STRING literal that {@code rename}
+         * actually changes. {@code REGEX} is a separate {@link Expr.LitKind} and is never a
+         * candidate, so a regex literal cannot be corrupted.
+         */
+        DECLARED_TOKEN_BEARING
+    }
+
+    /**
+     * Rewrites every name-position string of a Check tree through {@code rename}, and — under
+     * {@link StringLiteralPolicy#DECLARED_TOKEN_BEARING} — every scalar STRING literal the rewriter
+     * actually changes.
+     *
+     * @param condition
+     *            the Check tree to rewrite
+     * @param rename
+     *            the name rewriter; must return its argument unchanged when there is nothing to do
+     * @param policy
+     *            which string literals this pass may rewrite
+     * @return a fresh, rewritten tree
+     */
+    static CheckCondition substituteNames(CheckCondition condition,
+            java.util.function.UnaryOperator<String> rename, StringLiteralPolicy policy)
+    {
         return switch (condition)
         {
         case CheckConditionAll all -> new CheckConditionAll(
-                all.getConditions().stream().map(c -> substituteNames(c, rename)).toList());
+                all.getConditions().stream().map(c -> substituteNames(c, rename, policy)).toList());
         case CheckConditionAny any -> new CheckConditionAny(
-                any.getConditions().stream().map(c -> substituteNames(c, rename)).toList());
+                any.getConditions().stream().map(c -> substituteNames(c, rename, policy)).toList());
         case CheckConditionNot not -> new CheckConditionNot(
-                substituteNames(not.getCondition(), rename));
+                substituteNames(not.getCondition(), rename, policy));
         case CheckConditionExpression e ->
         {
-            Expr substituted = substituteExpr(e.expr(), rename);
+            Expr substituted = substituteExpr(e.expr(), rename, policy);
             yield new CheckConditionExpression(substituted, ExpressionPrinter.print(substituted));
         }
         };
@@ -1608,20 +1660,21 @@ public final class WildcardExpander
      *            the name rewriter for one expansion binding
      * @return the rewritten expression (a fresh tree)
      */
-    private static Expr substituteExpr(Expr e, java.util.function.UnaryOperator<String> rename)
+    private static Expr substituteExpr(Expr e, java.util.function.UnaryOperator<String> rename,
+            StringLiteralPolicy policy)
     {
         return switch (e)
         {
         case Expr.And a -> new Expr.And(
-                a.parts().stream().map(p -> substituteExpr(p, rename)).toList());
+                a.parts().stream().map(p -> substituteExpr(p, rename, policy)).toList());
         case Expr.Or o -> new Expr.Or(
-                o.parts().stream().map(p -> substituteExpr(p, rename)).toList());
-        case Expr.Not n -> new Expr.Not(substituteExpr(n.inner(), rename));
-        case Expr.Binary b -> new Expr.Binary(b.op(), substituteExpr(b.left(), rename),
-                substituteExpr(b.right(), rename));
-        case Expr.Call c -> substituteCall(c, rename);
+                o.parts().stream().map(p -> substituteExpr(p, rename, policy)).toList());
+        case Expr.Not n -> new Expr.Not(substituteExpr(n.inner(), rename, policy));
+        case Expr.Binary b -> new Expr.Binary(b.op(), substituteExpr(b.left(), rename, policy),
+                substituteExpr(b.right(), rename, policy));
+        case Expr.Call c -> substituteCall(c, rename, policy);
         case Expr.Ref r -> substituteRef(r, rename);
-        case Expr.Lit l -> substituteLit(l, rename);
+        case Expr.Lit l -> substituteLit(l, rename, policy);
         };
     }
 
@@ -1642,15 +1695,41 @@ public final class WildcardExpander
     }
 
 
-    /** Recurses into a list literal's elements; a scalar value literal is returned unchanged. */
-    private static Expr substituteLit(Expr.Lit l, java.util.function.UnaryOperator<String> rename)
+    /**
+     * Recurses into a list literal's elements. A scalar value literal is returned unchanged, except
+     * that {@link StringLiteralPolicy#DECLARED_TOKEN_BEARING} rewrites a STRING literal the
+     * rewriter actually changes.
+     *
+     * <p>
+     * The predicate is deliberately <em>"{@code rename} changed it"</em> rather than a token-set
+     * membership test: {@code TokenExpander}'s rewriter is a substring substitution that returns
+     * its argument unchanged when no token matched (and {@code substituteNames} documents that as
+     * the contract every rewriter owes), so the two are equivalent and this one needs no token set
+     * threaded through the walk. {@code REGEX} is a distinct {@link Expr.LitKind} and never reaches
+     * this branch, so a regex literal cannot be corrupted.
+     * </p>
+     */
+    private static Expr substituteLit(Expr.Lit l, java.util.function.UnaryOperator<String> rename,
+            StringLiteralPolicy policy)
     {
+        if (l.kind() == Expr.LitKind.STRING)
+        {
+            if (policy != StringLiteralPolicy.DECLARED_TOKEN_BEARING)
+            {
+                return l;
+            }
+            String original = (String) l.value();
+            String substituted = rename.apply(original);
+            return substituted != null && !substituted.equals(original)
+                    ? new Expr.Lit(Expr.LitKind.STRING, substituted)
+                    : l;
+        }
         if (l.kind() != Expr.LitKind.LIST)
         {
             return l;
         }
         return new Expr.Lit(Expr.LitKind.LIST,
-                listElements(l).stream().map(el -> substituteExpr(el, rename)).toList());
+                listElements(l).stream().map(el -> substituteExpr(el, rename, policy)).toList());
     }
 
 
@@ -1660,7 +1739,8 @@ public final class WildcardExpander
      * bare wildcard refs anywhere — including group-operator name operands and {@code group=}/
      * {@code within=} list kwargs — are expanded).
      */
-    private static Expr substituteCall(Expr.Call c, java.util.function.UnaryOperator<String> rename)
+    private static Expr substituteCall(Expr.Call c, java.util.function.UnaryOperator<String> rename,
+            StringLiteralPolicy policy)
     {
         List<Expr> newArgs = new ArrayList<>(c.args().size());
         for (int i = 0; i < c.args().size(); i++)
@@ -1677,7 +1757,7 @@ public final class WildcardExpander
             }
             else
             {
-                newArgs.add(substituteExpr(arg, rename));
+                newArgs.add(substituteExpr(arg, rename, policy));
             }
         }
         Map<String, Expr> newKwargs = c.kwargs();
@@ -1686,7 +1766,7 @@ public final class WildcardExpander
             Map<String, Expr> rebuilt = new LinkedHashMap<>();
             for (Map.Entry<String, Expr> kw : newKwargs.entrySet())
             {
-                rebuilt.put(kw.getKey(), substituteExpr(kw.getValue(), rename));
+                rebuilt.put(kw.getKey(), substituteExpr(kw.getValue(), rename, policy));
             }
             newKwargs = rebuilt;
         }

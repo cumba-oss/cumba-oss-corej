@@ -265,16 +265,17 @@ class TryRaiseToExprGuardSurfaceTest
 
 
     @Test
-    void theGuardSurfaceIsSevenSitesAndSixNullGuards() throws IOException
+    void theGuardSurfaceIsEightSitesAndSevenNullGuards() throws IOException
     {
         List<Site> all = sites();
         List<Site> nullGuards = all.stream().filter(s -> "== null".equals(s.guard())).toList();
         List<Site> tolerant = all.stream().filter(s -> "!= null".equals(s.guard())).toList();
-        assertEquals(7, all.size(), "call sites changed: " + all);
-        assertEquals(6, nullGuards.size(),
-                "`== null` guards changed — this is the count 40947e5 recorded as 5 and a later"
-                        + " re-derivation confirmed as 5. Update it here, from this list: "
-                        + nullGuards);
+        assertEquals(8, all.size(), "call sites changed: " + all);
+        assertEquals(7, nullGuards.size(),
+                "`== null` guards changed — 40947e5 recorded 5, a re-derivation confirmed 5, the"
+                        + " leaf-scope work took it to 6, and PLAN-expansion-over-all-variables'"
+                        + " G3 added preconditionReadsCursor as the 7th. Update it here, from this"
+                        + " list: " + nullGuards);
         assertEquals(1, tolerant.size(), "null-tolerant `!= null` uses changed: " + tolerant);
     }
 }

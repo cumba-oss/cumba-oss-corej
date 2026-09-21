@@ -281,4 +281,159 @@ class RuleLoadValidationExpansionTest
         assertNull(rule.getExpansion());
     }
 
+    // ------------------------------------------------------------------
+    // The all_* sources take no selector
+    // ------------------------------------------------------------------
+
+
+    /**
+     * ⛔⛔ These three arms are guarded by <b>this test and nothing else</b>.
+     * {@code validateExpansionDirective}'s {@code switch (over)} is a switch <b>statement</b> with
+     * arrow arms, no {@code default} and no patterns, so it is NOT exhaustiveness-checked: a new
+     * {@link net.cumba.corej.core.model.ExpansionSource} compiles clean there with no arm and no
+     * warning, and a stray selector on it would then be read by nothing. The author's intended
+     * narrowing would vanish silently, which is the exact failure the rejection exists to prevent.
+     */
+    @Test
+    void anAllVariablesDirectiveRejectsAWithDataset() throws IOException
+    {
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-ALLVARS-WITH"},
+                  "Expansion": [{"token": "&VAR", "over": "all_variables", "with": "ADSL"}],
+                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
+                }
+                """);
+        assertTrue(error.contains("does not take a 'with'"), error);
+    }
+
+
+    @Test
+    void anAllNumericDirectiveRejectsAPattern() throws IOException
+    {
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-ALLNUM-PATTERN"},
+                  "Expansion": [
+                    {"token": "&VAR", "over": "all_numeric_variables", "pattern": "&VARSEQ"}
+                  ],
+                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
+                }
+                """);
+        assertTrue(error.contains("does not take a 'pattern'"), error);
+    }
+
+
+    @Test
+    void anAllCharacterDirectiveRejectsKnownDomainOnly() throws IOException
+    {
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-ALLCHAR-KDO"},
+                  "Expansion": [
+                    {"token": "&VAR", "over": "all_character_variables",
+                     "known_domain_only": true}
+                  ],
+                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
+                }
+                """);
+        assertTrue(error.contains("does not take 'known_domain_only'"), error);
+    }
+
+
+    /** The sensitivity arm: a well-formed all_* directive must NOT be rejected. */
+    @Test
+    void aBareAllVariablesDirectiveLoadsCleanly() throws IOException
+    {
+        Rule rule = load("""
+                {
+                  "Core": {"Id": "TEST-ALLVARS-OK"},
+                  "Expansion": [{"token": "&VAR", "over": "all_variables"}],
+                  "Check": {"all": [{"expression": "not empty(`&VAR`)"}]}
+                }
+                """);
+        assertNull(rule.getLoadError(), () -> "unexpected load error: " + rule.getLoadError());
+        assertNotNull(rule.getExpansion());
+    }
+
+    // ------------------------------------------------------------------
+    // G3 — an all_* expansion and the variable cursor are mutually exclusive
+    // ------------------------------------------------------------------
+
+
+    /**
+     * ⛔⛔ The defect review round 1 caught, pinned. This Check contains neither {@code varname()}
+     * nor {@code value()}, so a name-scanning guard passes it — yet {@code var_label("DATA")} is
+     * the arity-1 form whose name defaults to the cursor, so each of the N minted rules would still
+     * iterate every variable. The guard therefore keys on the evaluation DOMAIN.
+     */
+    @Test
+    void anAllVariablesRuleWhoseCheckReadsTheCursorIsRejected() throws IOException
+    {
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-G3-ARITY1"},
+                  "Expansion": [{"token": "&VAR", "over": "all_variables"}],
+                  "Check": {"all": [
+                    {"expression": "var_label(\\"DATA\\") != var_label(\\"LIBRARY\\")"}
+                  ]}
+                }
+                """);
+        assertTrue(error.contains("also reads the variable cursor"), error);
+    }
+
+
+    /** The spelling a name scan WOULD have caught — still rejected, for the same reason. */
+    @Test
+    void anAllNumericRuleUsingVarnameIsRejected() throws IOException
+    {
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-G3-VARNAME"},
+                  "Expansion": [{"token": "&VAR", "over": "all_numeric_variables"}],
+                  "Check": {"all": [{"expression": "ends_with(varname(), \\"DTC\\")"}]}
+                }
+                """);
+        assertTrue(error.contains("also reads the variable cursor"), error);
+    }
+
+
+    /**
+     * ⭐ The sensitivity arm. Without it the two tests above would still pass if the guard rejected
+     * <em>every</em> {@code all_*} rule, which would make the feature unusable while looking
+     * correct.
+     */
+    @Test
+    void anAllVariablesRuleWithNoCursorReadLoadsCleanly() throws IOException
+    {
+        Rule rule = load("""
+                {
+                  "Core": {"Id": "TEST-G3-OK"},
+                  "Expansion": [{"token": "&VAR", "over": "all_variables"}],
+                  "Check": {"all": [
+                    {"expression": "var_label(\\"&VAR\\", \\"DATA\\") != \\"\\""}
+                  ]}
+                }
+                """);
+        assertNull(rule.getLoadError(), () -> "unexpected load error: " + rule.getLoadError());
+    }
+
+
+    /**
+     * The guard must not fire on the two shipped {@code Expansion:} sources — they are not
+     * {@code all_*}, and a cursor read alongside them was always legal.
+     */
+    @Test
+    void aSharedVariablesRuleReadingTheCursorIsNotRejected() throws IOException
+    {
+        Rule rule = load("""
+                {
+                  "Core": {"Id": "TEST-G3-SHARED"},
+                  "Expansion": [{"token": "&VAR", "over": "shared_variables", "with": "ADSL"}],
+                  "Check": {"all": [{"expression": "ends_with(varname(), \\"DTC\\")"}]}
+                }
+                """);
+        assertNull(rule.getLoadError(), () -> "unexpected load error: " + rule.getLoadError());
+    }
+
 }

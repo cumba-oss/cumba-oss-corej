@@ -71,6 +71,14 @@ public final class TokenExpander
     /** Shared, thread-safe mapper for the structural (Match_Datasets / Operations) rewrite. */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /**
+     * The string-literal substitution policy of the declared-token flavour: a token is rewritten
+     * wherever it occurs, value positions included. See
+     * {@link WildcardExpander.StringLiteralPolicy} for why the wildcard flavour must keep the
+     * narrower one.
+     */
+    private static final WildcardExpander.StringLiteralPolicy TOKEN_POLICY = WildcardExpander.StringLiteralPolicy.DECLARED_TOKEN_BEARING;
+
     private TokenExpander()
     {
     }
@@ -138,7 +146,7 @@ public final class TokenExpander
             // folding in reasons accumulated by an earlier directive would attribute one
             // directive's drop to another.
             List<String> directiveReasons = new ArrayList<>();
-            List<Binding> bindings = bind(rule, directive, columns, ctx, directiveReasons);
+            List<Binding> bindings = bind(rule, directive, columns, meta, ctx, directiveReasons);
             if (bindings.isEmpty())
             {
                 return new WildcardExpander.ExpansionResult.NoMatch(
@@ -155,8 +163,25 @@ public final class TokenExpander
                     + " dropped some candidates: " + String.join("; ", reasons));
         }
 
+        // G1 (plan §D4) — the OPT-IN expansion cap. Counted on the CROSS PRODUCT, not on one
+        // directive's candidates: for a single-directive rule the two coincide, which is exactly
+        // why the ambiguity would survive every test. Default unlimited (owner, 2026-09-21): a
+        // findings cap truncates a list that is still REPORTED, a rule cap removes an execution
+        // and so yields no finding and no absence signal. Exceeding it SKIPS the rule with a
+        // stated reason — never a silent truncation.
+        List<List<Binding>> tuples = crossProduct(perDirective);
+        int cap = net.cumba.corej.core.exec.EngineLimits.maxExpansionsPerRule();
+        if (tuples.size() > cap)
+        {
+            return new WildcardExpander.ExpansionResult.NoMatch(rule.effectiveId()
+                    + ": expansion would mint " + tuples.size()
+                    + " rules, over the configured cap of " + cap
+                    + " (corej.maxExpansionsPerRule) — skipped rather than truncated, so the"
+                    + " missing coverage is visible");
+        }
+
         List<Rule> expanded = new ArrayList<>();
-        for (List<Binding> tuple : crossProduct(perDirective))
+        for (List<Binding> tuple : tuples)
         {
             Rule concrete = buildExpansion(rule, tuple);
             String survivor = firstSurvivingToken(concrete, tuple);
@@ -204,7 +229,7 @@ public final class TokenExpander
 
     /** Dispatches one directive to its source; appends any per-candidate drop reason. */
     private static List<Binding> bind(Rule rule, ExpansionDirective directive, List<String> columns,
-            Context ctx, List<String> reasons)
+            DataTableMeta meta, Context ctx, List<String> reasons)
     {
         if (directive.getOver() == null || directive.getToken() == null)
         {
@@ -217,7 +242,75 @@ public final class TokenExpander
         {
         case SHARED_VARIABLES -> bindSharedVariables(rule, directive, columns, ctx, reasons);
         case DOMAIN_FROM_VARIABLE -> bindDomainFromVariable(directive, columns, ctx, reasons);
+        case ALL_VARIABLES -> bindAllVariables(directive, meta, null, reasons);
+        case ALL_NUMERIC_VARIABLES -> bindAllVariables(directive, meta, "Num", reasons);
+        case ALL_CHARACTER_VARIABLES -> bindAllVariables(directive, meta, "Char", reasons);
         };
+    }
+
+
+    /**
+     * {@code over: all_variables} / {@code all_numeric_variables} / {@code all_character_variables}
+     * — every column of the dataset under validation, optionally filtered to one side of the
+     * DATA-level {@code Char} / {@code Num} fold.
+     *
+     * <p>
+     * ⛔ The fold is {@link net.cumba.corej.core.expr.eval.MetadataNormalizer#charOrNum}, the same
+     * function that answers {@code var_type("DATA")}. A second classification here could disagree
+     * with the accessor <em>inside the rule this expands</em>, and silently.
+     * </p>
+     *
+     * <p>
+     * ⚠ A column whose type folds to neither ({@code MISSING}, {@code OTHER}, and internally
+     * {@code COMPLEX} / {@code VARIABLE}) is bound by {@code all_variables} and by neither filtered
+     * source. Its exclusion is recorded as a drop reason rather than passing silently, so a corpus
+     * that unexpectedly carries untyped columns shows up in the audit instead of quietly expanding
+     * to fewer rules.
+     * </p>
+     *
+     * @param directive
+     *            the directive being bound
+     * @param meta
+     *            the dataset under validation
+     * @param requiredFold
+     *            {@code "Num"} / {@code "Char"} to filter, or {@code null} for every column
+     * @param reasons
+     *            per-candidate drop reasons, appended to
+     * @return one binding per surviving column, in column order
+     */
+    private static List<Binding> bindAllVariables(ExpansionDirective directive, DataTableMeta meta,
+            @Nullable String requiredFold, List<String> reasons)
+    {
+        String token = Objects.requireNonNull(directive.getToken(), "validated at load");
+        List<Binding> out = new ArrayList<>(meta.getColumnCount());
+        int skipped = 0;
+        for (int i = 0; i < meta.getColumnCount(); i++)
+        {
+            var column = meta.getColumn(i);
+            // getName() is @NonNull, so only the blank case is worth testing — SpotBugs flags the
+            // null half as RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE.
+            String name = column.getName();
+            if (name.isBlank())
+            {
+                continue;
+            }
+            if (requiredFold != null)
+            {
+                String fold = net.cumba.corej.core.expr.eval.MetadataNormalizer
+                        .charOrNum(column.getType());
+                if (!requiredFold.equals(fold))
+                {
+                    skipped++;
+                    continue;
+                }
+            }
+            out.add(new Binding(token, name, name));
+        }
+        if (requiredFold != null && skipped > 0)
+        {
+            reasons.add(skipped + " column(s) are not " + requiredFold + " at the DATA level");
+        }
+        return out;
     }
 
 
@@ -524,15 +617,23 @@ public final class TokenExpander
 
         CheckCondition check = Objects.requireNonNull(template.getCheck(),
                 "expansion template has no Check");
-        rule.setCheck(WildcardExpander.substituteNames(check, rename));
+        // A DECLARED token carries a mandatory non-alphanumeric sigil (validated at load), so it
+        // cannot collide with a CDISC name and is substituted wherever it appears — string
+        // literals included. That is what lets a template say `var_label("&VAR", "DATA")`:
+        // ExprCompiler.metadataPlan accepts a name operand ONLY as a string literal or the
+        // variable_name operand, so a backtick ref would substitute and then fail to compile.
+        // ⛔ The wildcard flavour must NOT get this policy — its markers match inside names, and
+        // value-position "*" literals ship today (CDISC-AD0018 / AD0708 / AD0709 / PMDA-AD0018).
+        rule.setCheck(WildcardExpander.substituteNames(check, rename, TOKEN_POLICY));
         // ⚠⚠ Plan C: every level gets the same substitution — see the Severity note below for why
         // an unnamed top-level field is silently and invisibly dropped here.
-        rule.setCheckLevels(net.cumba.corej.core.model.LevelCheck.mapConditions(
-                template.getCheckLevels(), c -> WildcardExpander.substituteNames(c, rename)));
+        rule.setCheckLevels(
+                net.cumba.corej.core.model.LevelCheck.mapConditions(template.getCheckLevels(),
+                        c -> WildcardExpander.substituteNames(c, rename, TOKEN_POLICY)));
         if (template.getPrecondition() != null)
         {
-            rule.setPrecondition(
-                    WildcardExpander.substituteNames(template.getPrecondition(), rename));
+            rule.setPrecondition(WildcardExpander.substituteNames(template.getPrecondition(),
+                    rename, TOKEN_POLICY));
         }
         rule.setDescription(template.getDescription() != null
                 ? WildcardExpander.substituteInText(template.getDescription(), substitutions)

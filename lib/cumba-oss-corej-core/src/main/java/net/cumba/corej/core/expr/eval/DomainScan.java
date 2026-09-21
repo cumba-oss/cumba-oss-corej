@@ -68,10 +68,19 @@ public final class DomainScan
     }
 
     /**
-     * The varname-anchored calls: variable-cursor when unanchored (or anchored at the cursor),
-     * dataset-level when anchored at an explicit variable. Package-visible because
-     * {@code BroadcastFold.absentColumnLeafLevel} excludes the same family — a shared census, so
-     * the two cascades cannot drift.
+     * The varname-anchored calls: variable-cursor when unanchored (or anchored at the cursor).
+     * Package-visible because {@code BroadcastFold.absentColumnLeafLevel} excludes the same family
+     * — a shared census, so the two cascades cannot drift.
+     *
+     * <p>
+     * ⚠ <b>Corrected 2026-09-21.</b> This said the family is <i>"dataset-level when anchored at an
+     * explicit variable"</i>. That holds for {@code max_value_length}, which does accept a column
+     * reference or a string literal, and the {@link Domain#DATASET} arm below serves it. It does
+     * <b>not</b> hold for {@code library_variable_code_pair_matches} or
+     * {@code define_variable_decode_matches}: both throw <i>"expects varname() or no argument"</i>
+     * at compile time, so their explicit-name form never reaches here. ⛔ The DATASET arm is
+     * therefore live and must not be removed as dead — it is {@code max_value_length}'s.
+     * </p>
      */
     static final Set<String> VARNAME_ANCHORED_CALLS = Set.of("max_value_length",
             "library_variable_code_pair_matches", "define_variable_decode_matches");

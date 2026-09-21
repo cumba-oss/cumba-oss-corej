@@ -5222,7 +5222,7 @@ public final class ExprCompiler
         // Char/Num. The Python parity harness mirrors this by giving each study variable the same
         // loaded type (see engine_adapter), so both engines agree without consulting nativeType —
         // a passive source-format record that must not drive rule logic.
-        case VAR_TYPE -> charOrNum(col.getType());
+        case VAR_TYPE -> MetadataNormalizer.charOrNum(col.getType());
         // A non-positive declared length is "unspecified" -> missing, matching the provider levels.
         case VAR_LENGTH -> col.getLength() > 0 ? Integer.toString(col.getLength()) : null;
         case VAR_FORMAT -> col.getDisplayFormat();
@@ -5731,24 +5731,9 @@ public final class ExprCompiler
 
 
     /** DATA-level data type folded to {@code Char} / {@code Num} (mirrors the provider mapping). */
-    private static @Nullable String charOrNum(@Nullable DataValueType type)
-    {
-        if (type == null)
-        {
-            return null;
-        }
-        return switch (type)
-        {
-        case STRING -> "Char";
-        case LONG, DOUBLE, BOOLEAN -> "Num";
-        default -> null;
-        };
-    }
-
     // ---------------------------------------------------------------------
     // Eval-time operand resolution helpers (mirror ValueResolver / forEachValue)
     // ---------------------------------------------------------------------
-
 
     private static Vector dottedVector(EvaluationContext ctx, int rowCount, String name)
     {

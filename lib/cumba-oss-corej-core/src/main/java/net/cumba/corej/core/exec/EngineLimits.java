@@ -51,6 +51,10 @@ public final class EngineLimits
 
     static final String ENV = "MAX_ERRORS_PER_RULE";
 
+    static final String EXPANSIONS_PROP = "corej.maxExpansionsPerRule";
+
+    static final String EXPANSIONS_ENV = "MAX_EXPANSIONS_PER_RULE";
+
     private EngineLimits()
     {
     }
@@ -68,6 +72,40 @@ public final class EngineLimits
         }
         int cap = v != null ? v : DEFAULT_MAX_ERRORS_PER_RULE;
         return cap <= 0 ? Integer.MAX_VALUE : cap;
+    }
+
+
+    /**
+     * The per-rule <b>expansion</b> cap: the maximum number of concrete rules one template may mint
+     * for one dataset. {@link Integer#MAX_VALUE} means unlimited, and unlimited is the
+     * <b>default</b>.
+     *
+     * <p>
+     * ⛔⛔ <b>The default differs from {@link #maxErrorsPerRule()} on purpose, and the reason is the
+     * whole point of this knob.</b> Owner ruling, 2026-09-21: <i>"Agree to a cap, but off by
+     * default. At default we want to see every finding. Limits to finding counts are different as
+     * they show up as findings anyway, but a cap on minted rules means the rule is not executed at
+     * all and no finding pops up."</i>
+     * </p>
+     *
+     * <p>
+     * A findings cap truncates a list that is <em>still reported</em> — the run says so. A cap on
+     * minted rules removes an execution, so it produces no finding <b>and no absence signal</b>.
+     * The two are not the same kind of limit and must not inherit the same default. ⛔ Never give
+     * this one a finite default "for safety": that is precisely the silent coverage loss the ruling
+     * names.
+     * </p>
+     *
+     * @return the configured cap, or {@link Integer#MAX_VALUE} when unset or non-positive
+     */
+    public static int maxExpansionsPerRule()
+    {
+        Integer v = parse(System.getProperty(EXPANSIONS_PROP));
+        if (v == null)
+        {
+            v = parse(System.getenv(EXPANSIONS_ENV));
+        }
+        return v == null || v <= 0 ? Integer.MAX_VALUE : v;
     }
 
 

@@ -1955,6 +1955,125 @@ public class RulePackageLoader
             "var_external_dictionary_version", "define_variable_decode_matches");
 
     /**
+     * Gate <b>G3</b> of {@code plans/PLAN-expansion-over-all-variables.md} — a rule may use an
+     * {@code over: all_*} expansion <b>or</b> the variable cursor, never both.
+     *
+     * <p>
+     * <b>Owner ruling, 2026-09-21:</b> <i>"The idea is to not use it this way, either use the
+     * {@code over: all_*} or use the {@code varname()} / {@code value()}. I would propose a check
+     * and a block that either or, not both."</i> Both together multiply: the expansion mints one
+     * rule per variable and each minted rule then iterates every variable again.
+     * </p>
+     *
+     * <p>
+     * ⛔⛔ <b>The test is the evaluation DOMAIN, not a scan for {@code varname()} / {@code value()}.
+     * </b> Those two names are a small fraction of the cursor readers — {@code DomainScan} also
+     * types an <em>arity-1</em> {@code var_*} accessor ({@code var_label("DATA")}, whose name
+     * defaults to the cursor), every bare {@code variable_*} / {@code library_variable_*} /
+     * {@code define_variable_*} operand, <b>any</b> {@code vlm_*} call regardless of its argument,
+     * a per-variable {@code $}-operation, and the zero-argument form of the varname-anchored calls.
+     * A name scan would pass {@code var_label("DATA") != var_label("LIBRARY")} and leave the
+     * multiplication in place. {@code domain.varCursor()} is the same predicate
+     * {@code BindingScope.of} routes on, so the guard and the runtime cannot disagree.
+     * </p>
+     *
+     * <p>
+     * ⚠ The {@code Precondition} is inferred <b>separately and explicitly</b>. This runs inside
+     * {@code installCompiledLevels}, which is called before {@code raisePrecondition}, so
+     * {@code getPreconditionExpr()} is still {@code null} here and the joined {@code domain} covers
+     * the Check and the CheckLevels only. Measured 2026-09-21: no rule in the shipped corpus
+     * authors a {@code Precondition} at all, so this arm is a no-op today — which is exactly why it
+     * is written rather than assumed. A cursor-reading Precondition <em>is</em> constructible
+     * ({@code var_exists(varname())} satisfies both {@code isBroadcastVerdictExpr} and
+     * {@code DomainScan.existsCall}'s VARIABLE answer), and {@code TokenExpander} copies the
+     * template's Precondition onto every minted rule.
+     * </p>
+     *
+     * @param rule
+     *            the rule being loaded
+     * @param domain
+     *            the evaluation domain joined across the Check's levels
+     */
+    private static void checkExpansionAndCursorAreExclusive(Rule rule,
+            net.cumba.corej.core.expr.eval.Domain domain)
+    {
+        List<net.cumba.corej.core.model.ExpansionDirective> directives = rule.getExpansion();
+        if (directives == null || directives.isEmpty())
+        {
+            return;
+        }
+        net.cumba.corej.core.model.ExpansionSource allSource = null;
+        for (net.cumba.corej.core.model.ExpansionDirective d : directives)
+        {
+            net.cumba.corej.core.model.ExpansionSource over = d.getOver();
+            if (over == net.cumba.corej.core.model.ExpansionSource.ALL_VARIABLES
+                    || over == net.cumba.corej.core.model.ExpansionSource.ALL_NUMERIC_VARIABLES
+                    || over == net.cumba.corej.core.model.ExpansionSource.ALL_CHARACTER_VARIABLES)
+            {
+                allSource = over;
+                break;
+            }
+        }
+        if (allSource == null)
+        {
+            return;
+        }
+        boolean cursor = domain.varCursor() || preconditionReadsCursor(rule);
+        if (!cursor)
+        {
+            return;
+        }
+        String error = "[" + ruleId(rule) + "] Expansion over '" + allSource.getJsonValue()
+                + "' on a rule whose Check also reads the variable cursor (evaluation domain "
+                + domain.label() + ") — the two multiply: one rule per variable, each iterating"
+                + " every variable again. Use the expansion OR the cursor (varname(), value(),"
+                + " an arity-1 var_* accessor, a vlm_* call, a per-variable $-operation), not both";
+        rule.setLoadError(rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
+    }
+
+
+    /**
+     * Whether the rule's authored {@code Precondition} reads the variable cursor — the third
+     * surface {@link #checkExpansionAndCursorAreExclusive} needs and the joined Check domain does
+     * not cover. Inferred here rather than read off {@code getPreconditionExpr()}, which
+     * {@code raisePrecondition} has not yet populated at this point in the load.
+     *
+     * @param rule
+     *            the rule being loaded
+     * @return {@code true} when a Precondition is present and carries a variable cursor
+     */
+    private static boolean preconditionReadsCursor(Rule rule)
+    {
+        if (rule.getPrecondition() == null)
+        {
+            return false;
+        }
+        try
+        {
+            net.cumba.corej.core.expr.ast.Expr pre = tryRaiseToExpr(rule.getPrecondition());
+            if (pre == null)
+            {
+                // No expression surface to infer over — the same disposition every other
+                // tryRaiseToExpr call site takes, and the shape TryRaiseToExprGuardSurfaceTest
+                // recognises as a guard (a return-expression `pre != null && …` reads as NONE
+                // there, which is the ratchet working, not a false positive).
+                return false;
+            }
+            return net.cumba.corej.core.expr.eval.DomainScan
+                    .infer(pre, net.cumba.corej.core.expr.eval.OperationKinds.forRule(rule))
+                    .varCursor();
+        }
+        catch (net.cumba.corej.core.expr.RuleDefinitionException
+                | net.cumba.corej.core.expr.ExpressionException ex)
+        {
+            // An unparseable / invalid Precondition is reported by raisePrecondition's own
+            // handling; this guard must not turn it into a different error.
+            return false;
+        }
+    }
+
+
+    /**
      * §3.7 validation of {@code Variable_Universe} against the inferred domain: {@code Define} on a
      * rule whose domain has no VAR cursor is a meaningless configuration and fails loud; a
      * define-item-only attribute read under the {@code Data} universe is legal and lint-surfaced.
@@ -1962,6 +2081,7 @@ public class RulePackageLoader
     private static void checkVariableUniverse(Rule rule,
             net.cumba.corej.core.expr.eval.Domain domain, net.cumba.corej.core.expr.ast.Expr expr)
     {
+        checkExpansionAndCursorAreExclusive(rule, domain);
         net.cumba.corej.core.model.VariableUniverse universe = rule.getVariableUniverse();
         if (universe == net.cumba.corej.core.model.VariableUniverse.DEFINE && !domain.varCursor())
         {
@@ -4819,6 +4939,45 @@ public class RulePackageLoader
                         + token + "' — nothing would be captured");
             }
         }
+        // ⚠⚠ This is a switch STATEMENT, not an expression: it is NOT exhaustiveness-checked, so a
+        // new ExpansionSource compiles clean here with no arm and NO WARNING, and a stray
+        // `with:` / `pattern:` on it would then be silently ignored. These three arms exist
+        // precisely because javac will not ask for them — the one guard is the test.
+        case ALL_VARIABLES, ALL_NUMERIC_VARIABLES, ALL_CHARACTER_VARIABLES -> rejectUnusedSelectors(
+                over, directive, errors);
+        }
+    }
+
+
+    /**
+     * The {@code all_*} sources enumerate the dataset under validation and take no selector, so a
+     * present {@code with:} / {@code pattern:} / {@code known_domain_only:} is an authoring
+     * mistake. Rejecting it is not pedantry: the field would otherwise be read by nothing, and the
+     * author's intent — a narrowing they believed they had expressed — would vanish without a
+     * trace.
+     *
+     * @param over
+     *            the source being validated, named in the message
+     * @param directive
+     *            the directive to inspect
+     * @param errors
+     *            load errors, appended to
+     */
+    private static void rejectUnusedSelectors(net.cumba.corej.core.model.ExpansionSource over,
+            net.cumba.corej.core.model.ExpansionDirective directive, List<String> errors)
+    {
+        String name = over.getJsonValue();
+        if (directive.getWith() != null)
+        {
+            errors.add("Expansion over '" + name + "' does not take a 'with' dataset name");
+        }
+        if (directive.getPattern() != null)
+        {
+            errors.add("Expansion over '" + name + "' does not take a 'pattern'");
+        }
+        if (directive.getKnownDomainOnly() != null)
+        {
+            errors.add("Expansion over '" + name + "' does not take 'known_domain_only'");
         }
     }
 

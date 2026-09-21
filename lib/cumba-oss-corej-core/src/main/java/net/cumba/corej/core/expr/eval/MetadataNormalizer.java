@@ -91,6 +91,49 @@ public final class MetadataNormalizer
     }
 
 
+    /**
+     * The DATA-level {@code Char} / {@code Num} fold of a column's loaded
+     * {@link net.cumba.datatable.values.DataValueType} — the authoritative answer
+     * {@code var_type("DATA")} gives, and the one the {@code all_numeric_variables} /
+     * {@code all_character_variables} expansion sources must agree with.
+     *
+     * <p>
+     * ⛔ <b>Not an overload of {@link #normalizeType(String)}, deliberately.</b> The two have
+     * <em>opposite</em> null contracts: the string form ends {@code default -> v}, passing an
+     * unknown vocabulary through and never returning null, whereas this one returns {@code null}
+     * for every type that is neither character nor numeric. The string form also folds the ISO
+     * date/time families to {@code Char}, which a loaded type cannot distinguish. Sharing one name
+     * would invite a caller to assume one contract and get the other.
+     * </p>
+     *
+     * <p>
+     * ⚠ The {@code null} bucket is real and reachable: {@code MISSING} and {@code OTHER} fall into
+     * it in every tree, and the internal {@code DataValueType} additionally has {@code COMPLEX} and
+     * {@code VARIABLE}, which the published one does not. A column of such a type is in
+     * {@code all_variables} but in <b>neither</b> type-filtered source — consistent with
+     * {@code var_type("DATA")} answering missing for it.
+     * </p>
+     *
+     * @param type
+     *            the column's loaded data type, or {@code null} when unknown
+     * @return {@code "Char"}, {@code "Num"}, or {@code null} for neither
+     */
+    public static @Nullable String charOrNum(
+            net.cumba.datatable.values.@Nullable DataValueType type)
+    {
+        if (type == null)
+        {
+            return null;
+        }
+        return switch (type)
+        {
+        case STRING -> "Char";
+        case LONG, DOUBLE, BOOLEAN -> "Num";
+        default -> null;
+        };
+    }
+
+
     private static String normalizeType(String v)
     {
         return switch (v.toLowerCase(Locale.ROOT))

@@ -77,7 +77,24 @@ public final class StageAChecker
      */
     private static final AtomicReference<@Nullable BiConsumer<Rule, StageAReport>> OBSERVER = new AtomicReference<>();
 
-    /** Names whose call form anchors on the variable cursor unless given an explicit name. */
+    /**
+     * Names whose call form anchors on the variable cursor.
+     *
+     * <p>
+     * ⚠ <b>Corrected 2026-09-21.</b> This said <i>"unless given an explicit name"</i>, which is
+     * true of {@code max_value_length} alone. The other two —
+     * {@code library_variable_code_pair_matches} and {@code define_variable_decode_matches} —
+     * <b>reject</b> an explicit name outright ({@code ExprCompiler}: <i>"expects varname() or no
+     * argument"</i>), so for them the cursor anchoring is unconditional and they are unusable in a
+     * {@code plans/PLAN-expansion-over-all-variables.md} expansion.
+     * </p>
+     *
+     * <p>
+     * ⚑ The same sentence is mirrored on {@code DomainScan.VARNAME_ANCHORED_CALLS}; both were
+     * corrected together, because a shared census with one stale half is how the two cascades
+     * drift.
+     * </p>
+     */
     private static final Set<String> VARNAME_ANCHORED_CALLS = Set.of("max_value_length",
             "library_variable_code_pair_matches", "define_variable_decode_matches");
 
