@@ -755,6 +755,44 @@ class StageACheckerTest
     }
 
 
+    /**
+     * ⭐ <b>Review round 1, finding 3</b> ({@code plans/done/PLAN-membership-as-equality.md} phase
+     * 1a). {@code StageAChecker.membership} now names the temporal/string mix the way
+     * {@code comparison} does, instead of the generic disagreement — and the branch was shipped
+     * with <b>no test at all</b>.
+     *
+     * <p>
+     * ⚠⚠ Two things are asserted, not one. The REJECTION is not new — {@code compatible(DATE,
+     * STRING)} was already false — so pinning only "this errors" would have passed either side of
+     * the change. What is new is the <b>kind</b>: {@code MIXED_DATE_STRING_COMPARISON} in place of
+     * {@code PARAMETER_TYPE}, which any consumer keying on the old kind silently stops seeing. Both
+     * the kind and the actionable wording are pinned here.
+     * </p>
+     */
+    @Test
+    void membershipNamesTheTemporalStringMixTheWayComparisonDoes()
+    {
+        StageAReport report = check("date(AESTDTC) in [\"2012-06-15\"]");
+        assertEquals(List.of(StageAErrorKind.MIXED_DATE_STRING_COMPARISON), kinds(report),
+                "the KIND changed from PARAMETER_TYPE — that is the half a rejection test misses");
+        assertTrue(report.findings().get(0).toString().contains("date/time and string"));
+        assertTrue(report.findings().get(0).toString().contains("date(...)"),
+                "the message must say how to fix it, which is why it replaced the generic one");
+    }
+
+
+    /**
+     * The other side of the same branch: the authoring the message prescribes must LOAD. ⛔ A
+     * type-error test without this arm cannot distinguish "rejects the mix" from "rejects
+     * membership over a date".
+     */
+    @Test
+    void aTemporalMembershipOverConvertedMembersIsClean()
+    {
+        assertEquals(List.of(), check("date(AESTDTC) in [date(\"2012-06-15\")]").findings());
+    }
+
+
     @Test
     void minDateAndMaxDateBindingsTypeAsDate()
     {

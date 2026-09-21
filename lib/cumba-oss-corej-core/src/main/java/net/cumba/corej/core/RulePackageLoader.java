@@ -999,11 +999,13 @@ public class RulePackageLoader
      */
     private static void validateTupleCorrespondence(Rule rule)
     {
+        // ⛔⛔ NO early return on an empty binding map. It was there, and it made the INLINE
+        // list-target path — `tuple(…) not in distinct([…], domain="D")`, with no `Bindings:`
+        // block at all — structurally UNREACHABLE: no bindings meant no map meant no walk.
+        // Found by writing the test review round 1 asked for (finding 6), which is the point of
+        // asking for it: the reviewer called the inline path "dead in the suite", and it was dead
+        // in the ENGINE.
         Map<String, List<String>> setColumns = tupleSetColumnsByBinding(rule);
-        if (setColumns.isEmpty())
-        {
-            return;
-        }
         for (CheckCondition level : rule.checkConditions())
         {
             validateTupleCorrespondence(level, setColumns);
@@ -1073,14 +1075,18 @@ public class RulePackageLoader
                             + " — the arities must match, or the comparison can never"
                             + " be true");
         }
-        List<String> probeFolded = foldCase(probe);
-        List<String> membersFolded = foldCase(members);
-        if (probeFolded.equals(membersFolded))
+        // ⭐ NO case folding, and that is measured rather than assumed. The expression parser
+        // refuses a lowercase operand outright — *"a lowercase or underscore-containing operand
+        // must be a registered built-in; column names are upper-case"* — so a mixed-case column
+        // name never reaches this method, and a fold here could not fire. It was written, and
+        // review round 1's test for it failed at the PARSER, proving the fold dead. A guard whose
+        // branches cannot execute is how a guard quietly stops meaning anything.
+        if (probe.equals(members))
         {
             return;
         }
-        List<String> probeSorted = new ArrayList<>(probeFolded);
-        List<String> membersSorted = new ArrayList<>(membersFolded);
+        List<String> probeSorted = new ArrayList<>(probe);
+        List<String> membersSorted = new ArrayList<>(members);
         java.util.Collections.sort(probeSorted);
         java.util.Collections.sort(membersSorted);
         if (probeSorted.equals(membersSorted))
@@ -1091,17 +1097,6 @@ public class RulePackageLoader
                             + " is positional, so it can never be true. Reorder the `tuple(...)`"
                             + " to match the reference set");
         }
-    }
-
-
-    private static List<String> foldCase(List<String> names)
-    {
-        List<String> out = new ArrayList<>(names.size());
-        for (String name : names)
-        {
-            out.add(name.toUpperCase(java.util.Locale.ROOT));
-        }
-        return out;
     }
 
 

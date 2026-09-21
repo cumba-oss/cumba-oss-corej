@@ -824,39 +824,6 @@ public final class ExprCompiler
         // temporally-marked probe, so this arm is LATENT — a capability for future authoring,
         // moving no shipped rule's verdict. It is unit-tested for exactly that reason; a corpus
         // differential has nothing to move and would be a vacuous green.
-        // ⛔⛔ NARROWED at terminal review, 2026-09-21 — the first spelling took this branch for
-        // EVERY right-hand side and that was a latent REGRESSION in two shapes, both of which
-        // `buildSet` cannot serve and which previously had working (if textual) paths:
-        // · a `${*}` wildcard set — `buildSet` handles only a Lit or a Ref, so it would have
-        // thrown `unsupported` where `wildcardMembershipPlan` used to answer;
-        // · a `$`-ref resolving to a per-row GroupedResult — routed to `groupedMembership`
-        // BELOW this point, so taking it here would have silently substituted an EMPTY set
-        // (`toSet`'s GroupedResult fold) for a per-row one.
-        // Population is zero either way (no temporal probe is authored anywhere), so nothing
-        // shipped was at risk — but "latent and wrong" is still wrong, and a list literal is the
-        // shape Q2's authoring actually prescribes: `date(--DTC) in [date("2020-01-01")]`.
-        // ⇒ The arm takes ONLY a list literal. A temporal probe against a dynamic set keeps its
-        // existing textual behaviour; that is a stated GAP, not a silent one, and closing it needs
-        // a temporal `groupedMembership` counterpart rather than a wider condition here.
-        String probeMarker = markerOf(b.left());
-        boolean temporalProbeOnLiteralSet = ("date".equals(probeMarker)
-                || "time".equals(probeMarker)) && b.right() instanceof Expr.Lit setLit
-                && setLit.kind() == Expr.LitKind.LIST;
-        if (temporalProbeOnLiteralSet)
-        {
-            ValuePlan temporalProbe = operandPlan(b.left(), true);
-            Expr temporalSet = b.right();
-            return run ->
-            {
-                Vector v = temporalProbe.eval(run);
-                if (v == null)
-                {
-                    return new BitSet();
-                }
-                return Primitives.temporalMembership(v, buildSet(run, temporalSet, false),
-                        run.rowCount(), negate);
-            };
-        }
         boolean caseInsensitive = isUpperCall(b.left());
         // Both the positive (is_contained_by_case_insensitive) and negative
         // (is_not_contained_by_case_insensitive) case-insensitive membership surfaces nativize:
@@ -942,6 +909,66 @@ public final class ExprCompiler
                     return Primitives.numericMembership(v, numericMembers, run.rowCount(), negate);
                 };
             }
+        }
+        // ⭐ Phase 1a — the TEMPORAL arm, and its POSITION is load-bearing twice over.
+        //
+        // ⛔ It sits AFTER the numeric-literal block (review round 1, finding 5): returning before
+        // `numericMemberSet` took Q3's mixed-list LOAD ERROR with it, so `date(D) in [1, "A"]`
+        // silently built {"1","A"} instead of being rejected — a ruled behaviour, lost to branch
+        // order. Running the numeric classification first restores it, and costs nothing: a
+        // `date("…")` member is a Call, never a NUMBER literal, so an authored temporal list never
+        // classifies as numeric.
+        //
+        // ⛔ It sits BEFORE the wildcard / inline-operation / buildSet tail because membership is
+        // selected on the IN/NOT_IN op BEFORE any temporal typing — unless the routing decision is
+        // taken here it cannot be taken at all.
+        //
+        // ⛔⛔ It takes a LIST LITERAL only (narrowed at the terminal review). Taken for every
+        // right-hand side it was a latent regression in two shapes `buildSet` cannot serve: a
+        // `${*}` wildcard (it would have thrown `unsupported` where `wildcardMembershipPlan`
+        // answers) and a `$`-ref resolving to a per-row GroupedResult (it would have substituted an
+        // EMPTY set for a per-row one). A temporal probe against a dynamic set keeps its textual
+        // behaviour — a STATED gap, pinned by a test, whose fix is a temporal counterpart to
+        // `groupedMembership` rather than a wider condition here.
+        //
+        // ⭐ `date` and `time` take DIFFERENT comparators (review round 1, finding 1): routing both
+        // through the date one made `time(X) in [time("09:15")]` answer false for an exact match
+        // and `not in` fire on every row.
+        //
+        // ⚠ Measured 2026-09-21: ZERO of the corpus's 464 membership occurrences carry a
+        // temporally-marked probe, so this arm is LATENT — a capability for future authoring,
+        // moving no shipped rule's verdict. It is unit-tested for exactly that reason; a corpus
+        // differential has nothing to move and would be a vacuous green.
+        String probeMarker = markerOf(b.left());
+        boolean temporalLiteralSet = b.right() instanceof Expr.Lit setLit
+                && setLit.kind() == Expr.LitKind.LIST;
+        if (temporalLiteralSet && "date".equals(probeMarker))
+        {
+            Expr temporalSet = b.right();
+            return run ->
+            {
+                Vector v = nameP.eval(run);
+                if (v == null)
+                {
+                    return new BitSet();
+                }
+                return Primitives.temporalMembership(v, buildSet(run, temporalSet, false),
+                        run.rowCount(), negate);
+            };
+        }
+        if (temporalLiteralSet && "time".equals(probeMarker))
+        {
+            Expr timeSet = b.right();
+            return run ->
+            {
+                Vector v = nameP.eval(run);
+                if (v == null)
+                {
+                    return new BitSet();
+                }
+                return Primitives.timeMembership(v, buildSet(run, timeSet, false), run.rowCount(),
+                        negate);
+            };
         }
         // `${*}` wildcard list operand (Fix #37 / Epic B1): the membership set is row-dependent —
         // it enumerates foreign/local columns whose names match the anchored pattern and reads the
@@ -5861,7 +5888,15 @@ public final class ExprCompiler
         }
         for (Expr item : items)
         {
-            if (!(item instanceof Expr.Lit m) || m.kind() != Expr.LitKind.STRING)
+            // ⭐ Review round 1, finding 4: a member written `date("2020-01-01")` is a STRING
+            // member for gating purposes. `setTerm` strips the temporal conversion when it builds
+            // the set, so the two spellings produce the IDENTICAL member text — and before this,
+            // only the bare one reached `requireCharacterRead`. A numeric probe therefore errored
+            // on `X in ["2020-01-01"]` and silently text-compared on `X in [date("2020-01-01")]`,
+            // one spelling apart. The gate must see what the set builder sees.
+            Expr member = temporalConversionOf(item) != null ? ((Expr.Call) item).args().get(0)
+                    : item;
+            if (!(member instanceof Expr.Lit m) || m.kind() != Expr.LitKind.STRING)
             {
                 return false;
             }

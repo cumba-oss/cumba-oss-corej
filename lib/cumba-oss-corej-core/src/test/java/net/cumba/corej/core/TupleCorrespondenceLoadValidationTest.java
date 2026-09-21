@@ -2,8 +2,10 @@ package net.cumba.corej.core;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonMappingException;
 import java.io.IOException;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
@@ -149,5 +151,71 @@ class TupleCorrespondenceLoadValidationTest
     void anUnreadableProbeStandsDown() throws IOException
     {
         accepted("tuple(upper(ARMCD), ARM) not in $set", "distinct([ARM, ARMCD], domain=\"TA\")");
+    }
+
+
+    /**
+     * ⛔⛔ <b>Review round 1, finding 6 — the gap that mattered most.</b> Every other fixture here is
+     * a bare top-level {@code tuple(…) not in $set}, yet <b>all 8 shipped sites are nested inside
+     * an {@code and}</b>: {@code not empty(ARM) and not empty(ARMCD) and tuple(ARMCD, ARM)
+     * not in $ta_arm_pairs}. The {@code Expr.And} descent every real rule depends on was exercised
+     * by nothing — so the guard could have stopped descending and this suite would have stayed
+     * green while going vacuous on the entire corpus.
+     */
+    @Test
+    void theGuardDescendsIntoAConjunction() throws IOException
+    {
+        String error = rejected(
+                "not empty(ARM) and not empty(ARMCD) and tuple(ARMCD, ARM) not in $set",
+                "distinct([ARM, ARMCD], domain=\"TA\")");
+        assertTrue(error.contains("different order"), error);
+    }
+
+
+    /** The same descent through {@code or} and {@code not}, the other two composite shapes. */
+    @Test
+    void theGuardDescendsIntoDisjunctionAndNegation() throws IOException
+    {
+        assertTrue(rejected("empty(ARM) or tuple(ARMCD, ARM) not in $set",
+                "distinct([ARM, ARMCD], domain=\"TA\")").contains("different order"));
+        assertTrue(
+                rejected("not (tuple(ARMCD, ARM) in $set)", "distinct([ARM, ARMCD], domain=\"TA\")")
+                        .contains("different order"));
+    }
+
+
+    /**
+     * ⭐ <b>Why the guard does NOT fold case, pinned at the layer that makes folding impossible.</b>
+     * This test was written to exercise a case-folding rejection and it failed at the PARSER, which
+     * refuses a lowercase operand outright — so the fold the guard carried could never have fired,
+     * and it has been removed. The assertion now pins the constraint the guard rests on: if the
+     * parser ever accepts lowercase column names, this test reds and the guard needs its fold back.
+     */
+    @Test
+    void aLowercaseColumnNameCannotReachTheGuardAtAll()
+    {
+        JsonMappingException thrown = assertThrows(JsonMappingException.class,
+                () -> load("tuple(arm, ARMCD) not in $set",
+                        "distinct([ARMCD, ARM], domain=\"TA\")"));
+        assertTrue(thrown.getMessage().contains("column names are upper-case"),
+                "the guard's no-fold decision rests on this parser rule: " + thrown.getMessage());
+    }
+
+
+    /**
+     * The INLINE right-hand side — {@code tupleSetColumns}' {@code listTargetColumns} fallback,
+     * which no other case reaches because all 8 shipped sites bind through a {@code $}-variable. ⚠
+     * Dead code in a guard is how the guard stops working without anything going red.
+     */
+    @Test
+    void anInlineListTargetIsReadWithoutABinding() throws IOException
+    {
+        String json = "{\"rules\":{\"X-1\":{\"Core\":{\"Id\":\"X-1\"},\"Check\":{\"expression\":\""
+                + "tuple(ARMCD, ARM) not in distinct([ARM, ARMCD], domain=\\\"TA\\\")" + "\"}}}}";
+        Rule rule = RulePackageLoader.loadFromString(json).getRules().get("X-1");
+        assertNotNull(rule, "fixture did not load");
+        String error = rule.getLoadError();
+        assertNotNull(error, "an inline list target must be read too");
+        assertTrue(error.contains("different order"), error);
     }
 }

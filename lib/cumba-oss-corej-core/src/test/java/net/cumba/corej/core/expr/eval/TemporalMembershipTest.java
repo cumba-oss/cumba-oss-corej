@@ -2,6 +2,7 @@ package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.BitSet;
@@ -10,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.expr.CheckExpressionParser;
+import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
@@ -44,7 +46,8 @@ class TemporalMembershipTest
 
     /** A date-declared column carrying the shapes the hull rule branches on. */
     private static final IDataTable T = MockTable.of()
-            .col("D", "2020-01-01", "2020-01", "", "2020-01-01T09:15", "2020-02-29").build();
+            .col("D", "2020-01-01", "2020-01", "", "2020-01-01T09:15", "2020-02-29")
+            .col("TM", "09:15", "09", "", "09:15:30", "23:59").build();
 
     private static final int ROWS = 5;
 
@@ -54,11 +57,27 @@ class TemporalMembershipTest
     }
 
 
+    private static Vector times()
+    {
+        return VectorLayerTest.col(T, "TM");
+    }
+
+
     /**
      * The construction pin: for every (cell, member) pair, temporal membership over the singleton
      * {@code {member}} answers exactly what {@link Primitives#dateComparison} answers for
      * {@code cell == member}. ⛔ This is the property that makes "membership IS a disjunction of
      * equality" true for the temporal family by construction rather than by assertion.
+     *
+     * <p>
+     * ⚠⚠ <b>The invariant is ISO-SHAPED MEMBERS ONLY, and review round 1 was right to say the
+     * original wording overclaimed.</b> {@link Primitives#dateComparison} passes
+     * {@code mixedVerdict = true} to {@code compareCells} and {@link Primitives#isTemporalMember}
+     * passes {@code false}, so on a malformed mixed numeric/ISO pair the two DELIBERATELY differ —
+     * the operator answers "this row is a finding", membership answers "not a member". That
+     * divergence is pinned by {@link #theMixedShapeVerdictDivergesFromTheOperatorOnPurpose()}
+     * rather than hidden by a fixture that cannot reach it.
+     * </p>
      */
     @Test
     void temporalMembershipOverASingletonIsExactlyTemporalEquality()
@@ -234,5 +253,83 @@ class TemporalMembershipTest
                 "row 0 (2020-01-01) must NOT match through a $-bound set — the temporal arm is"
                         + " deliberately restricted to a list literal");
         assertTrue(fires.get(3), "row 3 IS the literal text, so the textual arm matches it");
+    }
+
+
+    /**
+     * ⛔⛔ <b>Review round 1, finding 2 — the counterexample the construction pin's fixture could not
+     * reach.</b> A plainly non-ISO member drives {@code compareCells} into its mixed numeric/ISO
+     * arm, where the verdict is the CALLER's: the operator passes {@code true} (a malformed row is
+     * a finding regardless of direction), membership passes {@code false} (a malformed pair is
+     * simply not a member, so {@code not in} still fires). Asserted here so the gap is stated
+     * rather than avoided.
+     */
+    @Test
+    void theMixedShapeVerdictDivergesFromTheOperatorOnPurpose()
+    {
+        BitSet operator = Primitives.dateComparison(dates(), ConstVector.of("17"), ROWS, 0, false,
+                false);
+        assertTrue(operator.get(0), "the date OPERATOR reports a malformed mixed pair");
+        assertFalse(Primitives.isTemporalMember(dates().value(0).cell(), Set.of("17")),
+                "MEMBERSHIP answers 'not a member' for the same pair — the deliberate divergence");
+    }
+
+
+    /**
+     * ⛔⛔ <b>Review round 1, finding 1 — the HIGH.</b> A {@code time()}-marked probe was routed
+     * through the DATE comparator, whose {@code isoComponents} length gate rejects {@code "09:15"}
+     * outright, so {@code in} answered <b>false for an exact match</b> and {@code not in} fired on
+     * every row — a dataset-wide flood, and a live divergence from {@code ==}.
+     */
+    @Test
+    void aTimeProbeUsesTheTimeComparatorNotTheDateOne()
+    {
+        assertTrue(Primitives.isTimeMember(times().value(0).cell(), Set.of("09:15")),
+                "09:15 is exactly 09:15 — this answered FALSE through the date comparator");
+        assertFalse(Primitives.isTemporalMember(times().value(0).cell(), Set.of("09:15")),
+                "⚠ the DATE arm must still reject it — otherwise this test is not measuring the"
+                        + " time arm at all");
+    }
+
+
+    /** The time arm's own construction pin, against {@link Primitives#timeComparison}. */
+    @Test
+    void timeMembershipOverASingletonIsExactlyTimeEquality()
+    {
+        for (String member : List.of("09:15", "09", "09:15:30", "23:59", ""))
+        {
+            BitSet eq = Primitives.timeComparison(times(), ConstVector.of(member), ROWS, 0, false,
+                    false);
+            for (int row = 0; row < ROWS; row++)
+            {
+                boolean in = Primitives.isTimeMember(times().value(row).cell(), Set.of(member));
+                assertEquals(eq.get(row), in, "TM[" + row + "] vs \"" + member + "\"");
+            }
+        }
+    }
+
+
+    /** End to end: the compiler routes a {@code time()} probe to the time arm. */
+    @Test
+    void theCompilerRoutesATimeProbeToTheTimeArm()
+    {
+        BitSet fires = evaluate("time(TM) in [time(\"09:15\")]");
+        assertTrue(fires.get(0), "exact match must be a member");
+        assertFalse(fires.get(2), "blank is a member of nothing");
+    }
+
+
+    /**
+     * ⛔ <b>Review round 1, finding 5.</b> The temporal branch used to return before
+     * {@code numericMemberSet} ran, which took Q3's mixed-list LOAD ERROR with it. Moving the
+     * branch after the numeric classification restores it.
+     */
+    @Test
+    void aMixedLiteralListIsStillRejectedUnderATemporalProbe()
+    {
+        RuleDefinitionException thrown = assertThrows(RuleDefinitionException.class,
+                () -> evaluate("date(D) in [1, \"A\"]"));
+        assertTrue(thrown.getMessage().contains("mixes numeric and string"),
+                "Q3's rejection must survive the temporal branch: " + thrown.getMessage());
     }
 }

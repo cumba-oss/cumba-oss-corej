@@ -648,7 +648,7 @@ public final class Primitives
             {
                 return missingVerdict(lhsMissing, rhsMissing, direction, orEqual, negate);
             }
-            return compareTimeCells(dv, target.resolved(), direction, orEqual, negate);
+            return compareTimeCells(dv, target.resolved(), direction, orEqual, negate, true);
         });
     }
 
@@ -658,7 +658,7 @@ public final class Primitives
      * mirrored onto the time type (same missing short-circuits, same mixed-shape fallthrough).
      */
     private static boolean compareTimeCells(IDataValue aLhs, @Nullable Object aRhs, int aDirection,
-            boolean aOrEqual, boolean aNegate)
+            boolean aOrEqual, boolean aNegate, boolean aMixedVerdict)
     {
         if (ScalarSemantics.isMissing(aLhs))
         {
@@ -679,9 +679,12 @@ public final class Primitives
             return IsoTimeComparison.fires(aLhs.getValueAsString(), aRhs.toString(), aDirection,
                     aOrEqual, aNegate);
         }
-        // Mixed numeric/ISO — the data shape is malformed; a violation regardless of direction,
-        // exactly as the date operator rules it.
-        return true;
+        // Mixed numeric/ISO — the data shape is malformed. ⭐ The verdict is the CALLER's, exactly
+        // as {@link #compareCells}' has always been: the time OPERATOR passes {@code true} ("a
+        // violation regardless of direction", the date operator's rule), while MEMBERSHIP passes
+        // {@code false} — it answers "is this a member", and a malformed pair is simply not one, so
+        // {@code not in} still fires on it.
+        return aMixedVerdict;
     }
 
 
@@ -1540,6 +1543,44 @@ public final class Primitives
             }
         }
         return false;
+    }
+
+
+    /**
+     * ⛔⛔ <b>The TIME arm — added at review round 1, which found the first spelling routing a
+     * {@code time()}-marked probe through the DATE comparator.</b> That was a live divergence from
+     * {@code ==} of exactly the kind D81 forbids, in the change written to close it:
+     * {@code time(AESTTM) == time("09:15")} answers <b>true</b> through {@link #timeComparison} →
+     * {@code compareTimeCells} → {@code IsoTimeComparison}, while the membership probe reached
+     * {@code IsoDateComparison}, whose {@code isoComponents} length gate rejects {@code "09:15"}
+     * outright — so {@code in} answered <b>false for an exact match</b> and {@code not in} fired on
+     * <b>every row</b>.
+     *
+     * <p>
+     * ⚠ It is not enough to share {@link #compareCells}: the two families have different
+     * comparators ({@code IsoDateComparison} vs {@code IsoTimeComparison}) and different reroutes —
+     * {@code isTimeText} sends an hour-only {@code "10"} to the hull reading rather than letting it
+     * parse as a number. Membership must take the SAME path its own family's comparison takes,
+     * which is what this method exists to guarantee.
+     * </p>
+     */
+    public static boolean isTimeMember(IDataValue dv, Set<String> members)
+    {
+        for (String member : members)
+        {
+            if (compareTimeCells(dv, member, 0, false, false, false))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    /** Vectorised {@link #isTimeMember} — the time counterpart of {@link #temporalMembership}. */
+    public static BitSet timeMembership(Vector v, Set<String> members, int rowCount, boolean negate)
+    {
+        return scan(v, rowCount, (dv, _) -> negate != isTimeMember(dv, members));
     }
 
 
