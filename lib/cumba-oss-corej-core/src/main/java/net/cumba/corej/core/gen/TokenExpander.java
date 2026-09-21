@@ -184,6 +184,12 @@ public final class TokenExpander
             // cap configured, `cap` is Integer.MAX_VALUE — a projection past it is not an
             // operator's limit but a structural one (such an expansion cannot be held in a List at
             // all), and saying "the configured cap" would blame an operator who set nothing.
+            // ⚑ Known and accepted (review round 3): an operator who literally sets
+            // -Dcorej.maxExpansionsPerRule=2147483647, or any value <= 0, is folded to
+            // Integer.MAX_VALUE by EngineLimits and so reads "no cap is configured". They asked
+            // for unlimited and the skip really is structural, so the behaviour is right and only
+            // the wording is arguable; distinguishing them would mean EngineLimits exposing
+            // whether the property was present at all — new API for a cosmetic gain.
             boolean configured = cap != Integer.MAX_VALUE;
             return new WildcardExpander.ExpansionResult.NoMatch(rule.effectiveId()
                     + ": expansion would mint " + projected + " rules, over the "

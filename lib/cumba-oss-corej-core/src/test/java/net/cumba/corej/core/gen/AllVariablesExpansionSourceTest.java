@@ -351,6 +351,16 @@ class AllVariablesExpansionSourceTest
      * overflows {@code int} to exactly {@code 0} and then dies growing on the heap. Red-before,
      * green-after.
      * </p>
+     *
+     * <p>
+     * ⚑ <b>Repeating that experiment:</b> revert {@code projectedExpansionCount}'s body to
+     * {@code crossProduct(perDirective).size()} and run <em>this test alone, in its own fork, with
+     * a small heap</em> ({@code -Xmx512m}). Under Surefire an {@code OutOfMemoryError} otherwise
+     * surfaces as <i>"The forked VM terminated without properly saying goodbye"</i> and can take
+     * the rest of that fork's tests with it. ⚠ The failure is guaranteed rather than
+     * heap-dependent: an {@code ArrayList} cannot hold more than {@link Integer#MAX_VALUE}
+     * elements, so no heap makes the reverted code able to report this number.
+     * </p>
      */
     @Test
     void theCapFiresOnAProjectionThatCannotEvenBeCounted()
@@ -425,9 +435,21 @@ class AllVariablesExpansionSourceTest
     }
 
 
-    /** And a blank name alongside real ones drops only itself. */
+    /**
+     * And a blank name alongside real ones drops only itself.
+     *
+     * <p>
+     * ⚠ This one asserts the expansion SET, not the reason, and it would pass with the audit line
+     * reverted — by design: on the {@code Expanded} path the reasons reach only the logger. The
+     * discriminator for the audit line is
+     * {@link #aDatasetOfOnlyBlankNamedColumnsSkipsWithAStatedReason()}. ⚑ Renamed in review round
+     * 3: it was still called {@code aBlankColumnNameIsDroppedWithAStatedReason}, promising an
+     * assertion its body no longer made — so a later audit grepping for {@code StatedReason} would
+     * have counted two discriminators where there is one.
+     * </p>
+     */
     @Test
-    void aBlankColumnNameIsDroppedWithAStatedReason()
+    void aBlankColumnNameDoesNotStopTheOthersExpanding()
     {
         DataTableMeta withBlank = DataTableMeta.builder().name("AE").label("AE").rowCount(0)
                 .totalRowCount(0).columns(new DataTableColumnMeta[]
