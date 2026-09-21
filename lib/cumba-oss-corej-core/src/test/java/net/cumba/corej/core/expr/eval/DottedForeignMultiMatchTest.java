@@ -140,7 +140,7 @@ class DottedForeignMultiMatchTest
         return new ArrayList<>(rows);
     }
 
-    // (a) Unqualified foreign ref in a comparison (NAME position) ----------------------------
+    // Dotted DS.COL reference -- NAME position, then VALUE position ----------------------------
 
 
     @Test
@@ -148,8 +148,8 @@ class DottedForeignMultiMatchTest
     {
         // Dotted SUPP.QVAL in the NAME position. The dotted path is scalar first-match in BOTH
         // the native dottedVector calls
-        // JoinLookup.lookup), so it has no 1-to-many divergence — but native must still mirror
-        // legacy exactly. Row 0: first match is null -> joined value missing -> AVAL "1" does not
+        // JoinLookup.lookup), so it has no 1-to-many divergence — but the dotted contract must
+        // hold. Row 0: first match is null -> joined value missing -> AVAL "1" does not
         // match (no fire). Row 1: first match "2" == AVAL "2" -> fires. The later non-null match on
         // row 0 ("1") is intentionally NOT used by the dotted path; both engines ignore it.
         IDataTable primary = MockTable.of().col("AVAL", "1", "2").build();
@@ -186,7 +186,5 @@ class DottedForeignMultiMatchTest
         assertEquals(bits(1), r, "dotted value-position scalar first-match: only row 1 fires");
 
     }
-
-    // (c) Single-match case still works ------------------------------------------------------
 
 }

@@ -167,10 +167,11 @@ class SubstitutedScalarValueChannelTest
 
 
     /**
-     * ⛔ The {@code empty()} / {@code is_missing()} arm is NOT folded, and that is deliberate:
-     * {@code FIRES_ON_ABSENT_COLUMN} compiles its argument with {@code foldAbsentColumn=false},
-     * exactly as {@code nameRefPlan} is compiled, so whether that blank fold must change stays a
-     * separate, open question rather than being decided here by accident.
+     * ⭐ Rewritten 2026-09-21. This javadoc used to say <i>"⛔ The
+     * {@code empty()}/{@code is_missing()} arm is NOT folded … {@code FIRES_ON_ABSENT_COLUMN}
+     * compiles its argument with {@code foldAbsentColumn=false}"</i> — and the body six lines below
+     * already said the uniformity ruling removed that flag. Same file, opposite claims; the doc was
+     * the older half.
      */
     @Test
     void anAbsentNameAnswersTheSameThingInEveryPosition() throws ReflectiveOperationException

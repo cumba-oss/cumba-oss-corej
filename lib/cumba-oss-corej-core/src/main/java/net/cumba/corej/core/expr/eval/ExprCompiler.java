@@ -4138,12 +4138,19 @@ public final class ExprCompiler
         // point: the `${…}` form of an operand must not hold a different idea of "an absent
         // column" from the authored form. Same predicate
         // (BroadcastFold.isFoldableColumnReference), same schema probe
-        // (BroadcastFold.anyJoinedDatasetHasColumn — so a name a join carries keeps the per-row
-        // firstJoinedCell resolution below), same test hook (absentFoldEnabled), same
-        // ctx.noteAbsentColumnFold, and the same foldAbsentColumn gate in NAME position. That last
-        // one is load-bearing: FIRES_ON_ABSENT_COLUMN (`empty` / `is_missing`) compiles its
-        // argument with foldAbsentColumn=false, so the empty()/is_missing() arm is left EXACTLY as
-        // it was — whether that blank fold must change is a separate, open owner question.
+        // ⛔ CORRECTED 2026-09-21. This paragraph used to name
+        // `BroadcastFold.anyJoinedDatasetHasColumn`
+        // and `firstJoinedCell` as the live mechanism and called the `foldAbsentColumn` gate in
+        // NAME
+        // position "load-bearing", carving `empty`/`is_missing` out of the fold. All three symbols
+        // are
+        // DELETED and the carve-out was withdrawn by the owner ("include it, agree"), so the gate
+        // is
+        // gone: `empty(X)` on a bare name the primary lacks takes the absent-column contract like
+        // every
+        // other position. What remains shared is the predicate (isFoldableColumnReference), the
+        // test
+        // hook (absentFoldEnabled) and ctx.noteAbsentColumnFold.
         //
         // ⚠ This MOVES VERDICTS for an absent CHARACTER column: `X == ""` flips false → true, and
         // phase 6c's D34 #5 order arm sorts MIS below every value while "" is ordered normally, so
@@ -4355,14 +4362,15 @@ public final class ExprCompiler
                 return new ColumnVector(name, ctx.getTable().getColumn(idx),
                         meta.getColumn(idx).getType());
             }
-            // Unqualified name absent from the primary table: if a Match_Datasets join carries it,
-            // resolve it the same way the legacy engine does
-            // (the joined-dataset lookup) — the
-            // FIRST NON-NULL value across all lookupAll matches, scanning every join. This matters
-            // for 1-to-many joins where the first-wins matched row's cell is null/missing but a
-            // later matched row is non-null: scalar lookup() would return null and diverge from
-            // legacy. Genuinely-missing names (not in the primary table nor any join) stay null ⇒
-            // empty BitSet (Appendix-C missing contract).
+            // ⛔⛔ REMOVED 2026-09-21, and this is the paragraph that described it. A join fallback
+            // stood here: an unqualified name absent from the primary table was resolved out of a
+            // Match_Datasets join -- the FIRST NON-NULL value across all lookupAll matches,
+            // scanning
+            // every join, so a 1-to-many join whose first matched cell was null still found a later
+            // non-null one. `UVC unqualified` plus the owner's uniformity ruling abolished that: an
+            // unqualified name means the PRIMARY dataset, always. A genuinely-missing name still
+            // stays
+            // null => empty BitSet (Appendix-C missing contract).
             // (The former unresolved-`--` null exit is gone: since D77 resolveDomainPrefix throws
             // on an unresolved wildcard, so a raw `--` name can no longer reach this point.)
             // EC-43: fold only what could actually BE a dataset column. The engine's other
@@ -4444,8 +4452,10 @@ public final class ExprCompiler
             // reported nothing (the EC43-absent-equals-blank contract, D96a/D96c). Same
             // eligibility as nameRefPlan's fold (isFoldableColumnReference), same test hook
             // (absentFoldEnabled), and the same schema probe the level calculus uses
-            // (BroadcastFold.anyJoinedDatasetHasColumn), so a name a join carries keeps the
-            // per-row firstJoined resolution below.
+            // ⛔ `BroadcastFold.anyJoinedDatasetHasColumn` is DELETED (2026-09-21): a name a join
+            // carries no longer keeps a per-row joined resolution, because the join is not what a
+            // bare
+            // name means.
             // // ⭐⭐ UVC unqualified (owner): an unqualified name means a variable of the PRIMARY
             // dataset, ALWAYS -- never a Match_Datasets join. And the UNIFORMITY ruling
             // (2026-09-21): "The variable reference should be handled the same way

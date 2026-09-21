@@ -25,7 +25,7 @@ import org.jspecify.annotations.Nullable;
  * (exact value, never a text round-trip — D84) and the resolved payload only for literals/computed
  * values. The temporal families deliberately keep the {@link TypedValue#resolved()} string read
  * (3b: a temporal value's runtime carrier is its ISO-8601 string). Every LHS row loop runs through
- * {@link #scan}, the native A plain vector tests its scalar cell, while an unqualified foreign
+ * {@link #scan}, which tests each row's scalar cell. ⚠ Until 2026-09-21 an unqualified foreign
  * reference ({@code JoinedCandidatesVector}, REMOVED 2026-09-21) voted with ANY-MATCH over the
  * row's joined candidate values — the legacy {@code forEachJoinedValue} contract (B2,
  * {@code plans/done/PLAN-native-engine-residuals.md}). These primitives evaluate the full range;

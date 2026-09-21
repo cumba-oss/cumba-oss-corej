@@ -299,31 +299,32 @@ class ScalarSemanticsComputedMissingTest
      * assert one rule for both:
      * </p>
      * <ul>
-     * <li><b>A {@code null} LIST is legitimate and load-bearing</b>, not a violation.
-     * {@code JoinedCandidatesVector.candidateCells} publishes a documented THREE-WAY vote contract,
-     * and {@code Primitives.scan} consumes exactly that: {@code null} means <i>no lookup is live,
-     * so this row casts NO VOTE</i> and the consumer {@code continue}s; an EMPTY list means <i>the
-     * live lookup matched elsewhere but not here</i> and the row votes once with a missing probe; a
-     * non-empty list is ANY-MATCH over its cells. By §1b's boundary test the {@code null} never
-     * flows into expression evaluation as a value at all — it decides <em>whether</em> a vote
-     * happens. That is engine plumbing, and collapsing it into an empty list would silently convert
-     * every no-lookup row into a missing-probe vote.</li>
+     * <li><b>⛔ OUTDATED, kept for the history: a {@code null} LIST WAS legitimate and
+     * load-bearing</b>, not a violation. {@code JoinedCandidatesVector.candidateCells} publishes a
+     * documented THREE-WAY vote contract, and {@code Primitives.scan} consumes exactly that:
+     * {@code null} means <i>no lookup is live, so this row casts NO VOTE</i> and the consumer
+     * {@code continue}s; an EMPTY list means <i>the live lookup matched elsewhere but not here</i>
+     * and the row votes once with a missing probe; a non-empty list is ANY-MATCH over its cells. By
+     * §1b's boundary test the {@code null} never flows into expression evaluation as a value at all
+     * — it decides <em>whether</em> a vote happens. That is engine plumbing, and collapsing it into
+     * an empty list would silently convert every no-lookup row into a missing-probe vote.</li>
      * <li><b>A {@code null} ELEMENT would be a violation.</b> Every element is handed straight to
      * {@code RowTest.test(value, row)}, i.e. it IS an expression input, so it owes a real value or
-     * a {@code MissingValue}. Measured at all three producers and none can emit one today:
-     * {@code DatasetLookup.lookupAllValues} adds {@code getDataValue(row)} (non-null, and only when
-     * {@code !isMissingOrInvalid()}); {@code JoinLookup.lookupAllValues} wraps each non-null
-     * {@code String} of {@code lookupAll} through {@code DataValueSupport.getAsDataValue};
-     * {@code candidateCells}'s transform arm wraps through {@code DataValues.of}, which answers a
-     * {@code MissingValue.MIS} carrier even for a {@code null} input.</li>
+     * a {@code MissingValue}. Measured at the producers (three until 2026-09-21, two since) and
+     * none can emit one today: {@code DatasetLookup.lookupAllValues} adds {@code getDataValue(row)}
+     * (non-null, and only when {@code !isMissingOrInvalid()}); {@code JoinLookup.lookupAllValues}
+     * wraps each non-null {@code String} of {@code lookupAll} through
+     * {@code DataValueSupport.getAsDataValue}; {@code candidateCells}'s transform arm wraps through
+     * {@code DataValues.of}, which answers a {@code MissingValue.MIS} carrier even for a
+     * {@code null} input.</li>
      * </ul>
      *
      * <p>
      * ⇒ So the assertions below are: an EXACT-EQUALITY population count of its own; the set of
      * declarations whose LIST is {@code @Nullable} allow-listed WITH its reason; and no
-     * {@code @Nullable} element type argument anywhere. ⛔ Do not "harden" {@code candidateCells}'s
-     * nullable return to get a uniform rule — that is the one of the two halves the code and the
-     * owner's boundary test both say is correct.
+     * {@code @Nullable} element type argument anywhere. ⚠ Moot since 2026-09-21 -- the class is
+     * deleted. Do not "harden" {@code candidateCells}'s nullable return to get a uniform rule —
+     * that is the one of the two halves the code and the owner's boundary test both say is correct.
      * </p>
      */
     @Test
@@ -417,12 +418,12 @@ class ScalarSemanticsComputedMissingTest
         // no
         // multi-value declaration may hand back a nullable LIST.
         assertEquals(List.of(), nullableList,
-                "the set of multi-value declarations whose LIST is @Nullable changed. Exactly one is"
-                        + " allowed and its nullness is DELIBERATE: candidateCells answers null for"
-                        + " \"no lookup is live\", which Primitives.scan reads as \"this row casts no"
-                        + " vote\" — plumbing, not a value, so §1b does not reach it. A new nullable"
-                        + " LIST needs the same three-way justification; and a REMOVED one means"
-                        + " that vote contract has been collapsed, which changes verdicts");
+                "the set of multi-value declarations whose LIST is @Nullable changed. NONE is allowed"
+                        + " since 2026-09-21: the one that was -- JoinedCandidatesVector.candidateCells,"
+                        + " whose null meant \"no lookup is live\" and which Primitives.scan read as"
+                        + " \"this row casts no vote\" -- went with its class when the unqualified-join"
+                        + " fallback was removed. A NEW nullable LIST needs a three-way justification of"
+                        + " its own; do not re-add the old one to make this pass");
 
         assertTrue(nullableElement.isEmpty(),
                 "⛔ these multi-value declarations allow a NULL ELEMENT, and an element of one of"

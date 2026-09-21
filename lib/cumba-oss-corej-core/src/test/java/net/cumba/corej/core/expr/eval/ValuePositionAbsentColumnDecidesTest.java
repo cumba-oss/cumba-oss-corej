@@ -12,29 +12,26 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * EC-43 §4.2 — <b>the value-position null keeps its guard, by design</b>, and this test states the
- * consequence out loud so nobody has to rediscover it.
+ * ⭐⭐ <b>Renamed and rewritten 2026-09-21 — this class used to be
+ * {@code ValuePositionNullStillShortCircuitsTest}, and both its NAME and its javadoc stated the
+ * contract the owner's uniformity ruling ABOLISHED.</b>
  *
  * <p>
- * The fold is threaded into the <em>target</em> operand only. A comparison's right-hand side goes
- * through {@code valuePlan} &rarr; the two-argument {@code valueCallPlan}, whose argument plans are
- * built with {@code foldAbsentColumn = false}; an absent column there still yields {@code null},
- * {@code valueCallPlan} propagates it outward ("missing column propagates"), and the enclosing
- * comparison short-circuits to an empty {@link BitSet}. Those {@code v == null} branches are
- * therefore <b>live</b>, not dead code left behind by the fix — which is exactly why §4.2 kept all
- * of them.
+ * It read: <i>"the value-position null keeps its guard, by design … argument plans are built with
+ * {@code foldAbsentColumn = false}; an absent column there still yields null … those
+ * {@code v == null} branches are therefore LIVE."</i> ⛔ None of that is true any more. The flag is
+ * gone, an absent column folds to its type default in EVERY operand position, and the branches are
+ * not live. The tests inside had already been inverted; the class name and doc had not, which is
+ * worse than a stale comment — a reader takes the class name for the contract.
  * </p>
  *
  * <p>
- * <b>The scope limit:</b> in VALUE position, absent still does <em>not</em> equal blank. With
- * {@code TSVALREF} present and blank, {@code substring(TSVALREF, 1, 2)} is {@code ""} and
- * {@code TSPARMCD != ""} fires; with {@code TSVALREF} absent the whole leaf yields nothing. That is
- * a documented boundary of EC-43, not a bug: extending the fold to the value side would make an
- * unresolved {@code $}-operation and a never-merged join column indistinguishable from an absent
- * data column, which is the D4 contract the fold deliberately preserves.
+ * What it pins now: an absent column in VALUE position DECIDES rather than short-circuiting, and
+ * therefore agrees with a present-but-blank column. The absent-equals-blank scope limit this class
+ * was built to document is CLOSED.
  * </p>
  */
-class ValuePositionNullStillShortCircuitsTest
+class ValuePositionAbsentColumnDecidesTest
 {
 
     /** TS carrying TSPARMCD and an IDVAR-style pointer column, but no TSVALREF. */

@@ -424,13 +424,11 @@ class RuleRunnerSplitJoinTest
 
 
     @Test
-    void unqualifiedJoinedColumnReference_seesTheSplitUnion()
+    void unqualifiedJoinedColumnReference_doesNOTseeTheSplitUnion()
     {
-        // Review F1: the Check references the joined column UNQUALIFIED (`empty(LBORRES)`, not
-        // `empty(LB.LBORRES)`). The primary lacks the column, so BroadcastFold's missing-column
-        // fold asks whether any joined dataset carries it, and ExprCompiler's joinedColumnVector
-        // re-resolves the join by name — both re-resolved EXACTLY and, on a split submission,
-        // folded the leaf to ALL_MISSING even though the join itself had resolved the union.
+        // ⚠ The paragraph that stood here described `joinedColumnVector` re-resolving the join by
+        // name. That method is DELETED (2026-09-21) and the method name above was inverted with the
+        // assertion: an unqualified name does NOT see the union, because it means the primary.
         IDataTable primary = RealTables.of("ADLB").str("USUBJID", "U1", "U3").str("LBSEQ", "1", "7")
                 .build();
         Rule rule = new Rule();

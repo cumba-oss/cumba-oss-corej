@@ -1016,9 +1016,11 @@ public final class BroadcastFold
          */
         DATASET_CONTEXT_SCALAR,
         /**
-         * The name is a foldable column reference absent from the primary table AND every joined
-         * dataset — a dataset-level constant by D39a (D34 #3/#4: an absent column is a present
-         * column holding its type's default).
+         * The name is a foldable column reference absent from the primary table (joins are NOT
+         * consulted for a bare name since 2026-09-21; the phrase 'and every joined dataset' was
+         * true only of the retired fallback) -- formerly also every joined dataset — a
+         * dataset-level constant by D39a (D34 #3/#4: an absent column is a present column holding
+         * its type's default).
          */
         DATASET_ABSENT
     }
