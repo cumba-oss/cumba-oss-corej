@@ -942,6 +942,15 @@ public final class ExprCompiler
         // ⚠ The fallback is ORDERED exactly as `family()`'s: a probe marker WINS when present, so a
         // `num()`/`date_part` probe still reaches its own path rather than being pulled temporal by
         // its members.
+        // ⭐ Review round 3 recorded this rather than reporting it, and it is written down because
+        // the asymmetry is otherwise invisible: the numeric-literal branch above is guarded
+        // `!caseInsensitive && !listLhs`, and this arm is guarded by NEITHER. Round 2's widening to
+        // the members' marker therefore newly lets `upper(X) in [date("…")]` and a list-LHS
+        // accessor reach it. Neither is a defect: ISO text is case-neutral, so the fold `upper`
+        // drops is a no-op here, and a list-valued LHS against a date list is type-nonsense that
+        // Stage A's membership element check rejects before evaluation. Corpus instances: zero of
+        // each. ⛔ If a temporal comparison ever becomes case- or collection-sensitive, this arm
+        // needs those two guards and the numeric branch is the precedent for how to spell them.
         String probeMarker = markerOf(b.left());
         boolean temporalLiteralSet = b.right() instanceof Expr.Lit setLit
                 && setLit.kind() == Expr.LitKind.LIST;
