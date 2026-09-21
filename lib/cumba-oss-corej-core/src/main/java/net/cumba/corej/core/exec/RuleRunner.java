@@ -33,7 +33,6 @@ import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.report.Severity;
 import net.cumba.datatable.values.IDataValue;
-import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
 
 @CustomLog
@@ -4270,8 +4269,15 @@ public final class RuleRunner
                     // the
                     // channel is byte-identical to before and only the ABSENT-column question
                     // moved.
+                    // ⚠ TypedValue.missingIdentityOf, not `getValue() instanceof MissingValue`: the
+                    // canonical predicate also catches a NaN-carrying DataValueDouble, whose
+                    // getValueAsString() is "NaN" — which the weaker form would have printed into a
+                    // violation row where every previous release printed "" (terminal review,
+                    // MED-2).
                     values.put(varName,
-                            dv.getValue() instanceof MissingValue ? "" : dv.getValueAsString());
+                            net.cumba.corej.core.expr.eval.TypedValue.missingIdentityOf(dv) != null
+                                    ? ""
+                                    : dv.getValueAsString());
                     continue;
                 }
                 // Fix #18 — a rule evaluated per variable with no row cursor (the {VAR}

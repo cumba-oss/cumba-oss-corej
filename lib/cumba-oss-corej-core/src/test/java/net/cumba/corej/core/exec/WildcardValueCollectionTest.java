@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
-import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -66,6 +65,16 @@ class WildcardValueCollectionTest
                     long row, String columnName)
             {
                 return byColumn.get(columnName);
+            }
+
+
+            // ⚠ This stub models a per-COLUMN value, not a per-ROW match: a column absent from
+            // the map has no value, but the row is still matched. Saying so is what lets it
+            // exercise the MATCHED-but-missing arm — the one the terminal review found unpinned.
+            @Override
+            public boolean matchedRow(IDataTable primaryTable, long row)
+            {
+                return true;
             }
 
 
@@ -139,40 +148,38 @@ class WildcardValueCollectionTest
 
 
     /**
-     * ⭐⭐ <b>INVERTED 2026-09-21 for {@code PLAN-joined-value-accessor} §2a.</b> An unmatched join
-     * contributes the joined column's <b>type default</b>, not nothing — owner: <i>"I rule it's the
-     * same kind, so it's empty string or MIS as well. So on this readong the set is {""}."</i>
+     * ⭐⭐ <b>A MATCHED row whose joined cell yields no value contributes NOTHING</b> — the behaviour
+     * the terminal review found this change had silently altered (HIGH-1), and the reason
+     * {@code ValueResolver} consults {@code matchedRow} rather than reading the value alone.
      *
      * <p>
-     * ⛔ This test previously asserted {@code List.of("7")} with the message <i>"an unmatched join
-     * contributes nothing"</i>. That behaviour was never a semantic — it was the raw
-     * {@code @Nullable} accessor's {@code null} being dropped.
+     * ⛔ Read the fixture before the name: {@link #joinReturning} models a per-COLUMN value, so
+     * {@code TRT02PN}'s absence from the map means <i>"this column has no value on a matched
+     * row"</i>, NOT <i>"the row is unmatched"</i>. ⇒ this case pins the matched-missing DROP, which
+     * {@code ScalarSemantics.resolvedString} has always done on both wildcard arms. §2a's
+     * <b>unmatched</b> case is a different shape and needs a real lookup — see
+     * {@link #foreignDatasetWildcardContributesTheCharacterDefaultThroughARealLookup()}.
      * </p>
      *
      * <p>
-     * ⚠⚠ <b>Why the expected element here is {@code MIS} and not {@code ""}:</b> this fixture's
-     * {@link JoinLookup} is a stub that overrides only {@code lookup}, so it inherits the
-     * interface's <b>type-blind</b> default — {@code JoinLookup.lookupValue} maps a {@code null}
-     * text to {@code ScalarSemantics.computedMissing()} regardless of the column's type. The
-     * PRODUCTION lookup is typed and answers the column's own default, {@code ""} for a character
-     * column ({@code DatasetLookup.lookupValue}, {@code D72}/{@code D72a-1}) — pinned by
-     * {@link #foreignDatasetWildcardContributesTheCharacterDefaultThroughARealLookup()} below,
-     * which is the assertion §2a actually rests on.
+     * ⚠ An earlier version of this test expected {@code List.of("7", MissingValue.MIS)}, i.e. the
+     * matched missing contributing a member. That was the defect, not the contract: a finding would
+     * disappear for a subject that DOES match its ADSL row but whose {@code TRT02P} is blank, and
+     * no ruling covers that shape.
      * </p>
      */
     @Test
-    void foreignDatasetWildcardContributesTheDefaultForAnUnmatchedJoin()
+    void foreignDatasetWildcardDropsAMatchedButValuelessColumn()
     {
         IDataTable primary = MockTable.of().name("ADAE").col("USUBJID", "S1").build();
         IDataTable adsl = MockTable.of().name("ADSL").col("TRT01PN", "7").col("TRT02PN", "9")
                 .build();
         JoinLookup lookup = joinReturning(Map.of("TRT01PN", "7"));
         EvaluationContext c = ctx(primary, map("ADSL", adsl), Map.of("ADSL", lookup));
-        assertEquals(List.of("7", MissingValue.MIS),
+        assertEquals(List.of("7"),
                 ValueResolver.resolveWildcardValues(wildcard("ADSL.TRT${*}PN"), null, c, 0),
-                "§2a: the unmatched TRT02PN contributes a default, and it arrives as the MissingValue"
-                        + " IDENTITY rather than the text '.' — a rendering would let a present '.'"
-                        + " cell match it");
+                "a MATCHED row whose cell is missing contributes nothing — a MissingValue in this list"
+                        + " means the matched-missing drop was lost");
     }
 
 

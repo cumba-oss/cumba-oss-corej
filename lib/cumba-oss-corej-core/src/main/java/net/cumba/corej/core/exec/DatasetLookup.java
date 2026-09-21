@@ -403,6 +403,35 @@ public class DatasetLookup implements JoinLookup
 
 
     /**
+     * ⭐⭐ {@code §2c}'s <b>omit-an-absent-column</b> half needs a truthful answer here, and without
+     * this override it never got one: {@link JoinLookup#hasColumn} defaults to {@code true}
+     * (<i>"assume present, preserving the historical behaviour for key-based joins"</i>), and only
+     * the two row-expanded lookups overrode it. ⇒ for a plain named {@code Match_Datasets} key join
+     * — <b>the corpus's dominant shape</b> — a dotted output variable naming a column the joined
+     * dataset does not have was reported as {@code ""} instead of being omitted.
+     *
+     * <p>
+     * That is exactly the case the owner's ruling excludes (2026-09-21): <i>"if it's not present,
+     * there is no need to mention the default value."</i> Found by this plan's terminal review
+     * (MED-4), which noted the behaviour was unchanged by the phase that claims to implement §2c —
+     * true, and the reason was that the phase corrected the QUESTION while the answer stayed
+     * hard-coded.
+     * </p>
+     *
+     * <p>
+     * ⚠ The answer is row-independent for this lookup — a joined dataset's column set is a property
+     * of the dataset, not of a primary row — so the {@code row} parameter is unused, as it is in
+     * the interface's own default.
+     * </p>
+     */
+    @Override
+    public boolean hasColumn(IDataTable primaryTable, long row, String columnName)
+    {
+        return datasetMeta.getColumnIndex(columnName) >= 0;
+    }
+
+
+    /**
      * {@inheritDoc}
      *
      * <p>

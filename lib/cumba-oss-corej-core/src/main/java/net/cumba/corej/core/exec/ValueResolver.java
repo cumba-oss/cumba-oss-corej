@@ -2,6 +2,7 @@ package net.cumba.corej.core.exec;
 
 import java.util.ArrayList;
 import java.util.List;
+import net.cumba.corej.core.expr.eval.TypedValue;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.values.IDataValue;
 import net.cumba.datatable.values.MissingValue;
@@ -104,11 +105,47 @@ public final class ValueResolver
                 // absent here: every colName comes from this very foreign dataset's metadata.
                 // Passing
                 // the rule's expectation would be unreachable-by-construction dressed as config.
+                // ⭐⭐ §2a — an UNMATCHED row contributes the column's TYPE DEFAULT ("" for a
+                // character column, a MissingValue for a numeric one), owner 2026-09-21: "I rule
+                // it's
+                // the same kind, so it's empty string or MIS as well."
+                //
+                // ⛔⛔ A MATCHED row whose cell is a genuine MissingValue keeps being DROPPED, and
+                // that
+                // distinction is the whole reason matchedRow() is consulted here. Getting this
+                // wrong
+                // is what the terminal review caught (HIGH-1): the raw read this method used to do
+                // ended in ScalarSemantics.resolvedString, which answers null for a missing cell,
+                // so
+                // BOTH cases were dropped. §2a ruled only the unmatched one. Contributing a matched
+                // missing as well would make a finding disappear for a subject that DOES match its
+                // ADSL row but whose TRT02P is blank — a shape no ruling covers. And it is the
+                // local
+                // arm's own 2026-09-18 ruling read across: a blank cell "contributes nothing".
+                //
+                // ⚠ The two cases are indistinguishable from the VALUE alone on a numeric column —
+                // unmatched yields MIS and a matched missing may also be MIS — which is precisely
+                // why
+                // this asks the join, not the value. All three production JoinLookups answer
+                // matchedRow (DatasetLookup, KeyMatchExpandedLookup, RelrecExpandedLookup).
                 IDataValue dv = lookup.lookupValue(ctx.getTable(), row, colName, false);
+                MissingValue identity = TypedValue.missingIdentityOf(dv);
+                if (identity != null && lookup.matchedRow(ctx.getTable(), row))
+                {
+                    continue; // matched, but the cell is missing -> contributes nothing
+                }
                 // The member's IDENTITY, never its rendering: MissingValue.toString() renders its
                 // display string, so adding the rendering would let a PRESENT text cell holding "."
                 // match a missing member — the JKM R5 collision class (Primitives.MemberSet).
-                result.add(dv.getValue() instanceof MissingValue mv ? mv : dv.getValueAsString());
+                //
+                // ⚠ TypedValue.missingIdentityOf, not `getValue() instanceof MissingValue`: the
+                // canonical spelling has a SECOND arm for a NaN-carrying DataValueDouble, whose
+                // getValue() is a Double and whose getValueAsString() is "NaN". The weaker
+                // predicate
+                // would have put that rendering into the member set — the very collision two lines
+                // up
+                // (terminal review, MED-2).
+                result.add(identity != null ? identity : dv.getValueAsString());
             }
             return result;
         }

@@ -1469,6 +1469,11 @@ public final class Primitives
          */
         public MemberSet
         {
+            // ⚠ Set.copyOf REJECTS a null element, so a caller handing in a set containing null
+            // gets
+            // an NPE here rather than a silently broken member. {@link #of} cannot produce one (a
+            // null
+            // item folds to ""), so this is a future-caller guard, not a live path (review LOW-7).
             present = Set.copyOf(present);
             missing = Set.copyOf(missing);
         }
@@ -1488,8 +1493,14 @@ public final class Primitives
          */
         public static MemberSet of(Iterable<?> items, boolean caseInsensitive)
         {
-            Set<String> present = new java.util.LinkedHashSet<>();
-            Set<MissingValue> missing = new java.util.LinkedHashSet<>();
+            // ⚠ HashSet, not LinkedHashSet: the canonical constructor copies through Set.copyOf,
+            // which discards insertion order anyway, and nothing here depends on it — `contains`
+            // and
+            // the numeric linear scan are both order-free. The first version used LinkedHashSet out
+            // of
+            // habit from the builders it replaced (terminal review, LOW-5).
+            Set<String> present = new java.util.HashSet<>();
+            Set<MissingValue> missing = new java.util.HashSet<>();
             for (Object item : items)
             {
                 if (item instanceof MissingValue mv)
@@ -1503,12 +1514,6 @@ public final class Primitives
             return new MemberSet(present, missing);
         }
 
-
-        /** Whether this set has no members at all. */
-        public boolean isEmpty()
-        {
-            return present.isEmpty() && missing.isEmpty();
-        }
     }
 
     /**
