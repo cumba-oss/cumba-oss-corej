@@ -184,12 +184,12 @@ final class KeyMatchRowExpander
             // not of a row.
             KeySpec spec = keySpec(primaryTable, child, keys, Objects.requireNonNull(md.getName()),
                     md.keepMissingKeys());
-            Map<List<KeyPart>, List<Long>> childIndex = buildChildIndex(child, spec);
+            Map<List<String>, List<Long>> childIndex = buildChildIndex(child, spec);
 
             List<long[]> next = new ArrayList<>();
             for (long[] b : bindings)
             {
-                List<KeyPart> keyTuple = tuple(primaryTable, spec.primaryColIds(), spec, b[0]);
+                List<String> keyTuple = tuple(primaryTable, spec.primaryColIds(), spec, b[0]);
                 List<Long> matches = keyTuple == null ? null : childIndex.get(keyTuple);
                 if (matches == null || matches.isEmpty())
                 {
@@ -283,13 +283,13 @@ final class KeyMatchRowExpander
     }
 
 
-    private static Map<List<KeyPart>, List<Long>> buildChildIndex(IDataTable child, KeySpec spec)
+    private static Map<List<String>, List<Long>> buildChildIndex(IDataTable child, KeySpec spec)
     {
-        Map<List<KeyPart>, List<Long>> index = new LinkedHashMap<>();
+        Map<List<String>, List<Long>> index = new LinkedHashMap<>();
         long rows = child.getRowCount();
         for (long r = 0; r < rows; r++)
         {
-            List<KeyPart> t = tuple(child, spec.childColIds(), spec, r);
+            List<String> t = tuple(child, spec.childColIds(), spec, r);
             if (t == null)
             {
                 // Only reachable under an authored keep_missings:false — the flag-OFF path.
@@ -435,9 +435,33 @@ final class KeyMatchRowExpander
 
 
     /**
-     * The row's composite join key as a list of {@link KeyPart}s, or {@code null} when the row does
-     * not participate — which, since {@code JKM R4}, happens <b>only</b> under an authored
-     * {@code keep_missings: false}.
+     * The row's composite join key as a list of <b>rendered</b> {@link KeyPart}s, or {@code null}
+     * when the row does not participate — which, since {@code JKM R4}, happens <b>only</b> under an
+     * authored {@code keep_missings: false}.
+     *
+     * <p>
+     * ⭐⭐ <b>Why RENDERED and not the {@code KeyPart} itself — this is a deliberate choice on an
+     * UNRULED axis, corrected 2026-09-21 in the plan's own review round.</b> The first
+     * implementation put {@code KeyPart}s in the key, which is the stronger identity
+     * ({@code Present("5")} is then <b>not</b> {@code PresentNumber(5.0)}). ⛔ But this key used to
+     * be a {@code \0}-joined {@code getValueAsString()} string, in which a <b>character</b>
+     * {@code "5"} on one side and a <b>numeric</b> {@code 5} on the other DID match — routine
+     * across providers and across a split-domain union. Narrowing that is {@code D4} in the plan's
+     * divergence table, which has <b>four answers and no ruling</b>, and on a
+     * {@code Join_Type: left} entry it would mint a NEW false finding for every such row under an
+     * {@code empty(FOREIGN.X)} check — the shape of {@code SD1018} and its siblings. ⇒ <b>fix the
+     * ruled axis, leave the unruled one where it was</b>: {@code KeyPart} still does the
+     * classifying (so {@code MissingValue.MIS} keeps its {@code \u0001}-prefixed rendering and
+     * cannot collide with a present {@code "."} — the +9 528-finding bug class), and the rendering
+     * keeps {@code D4}'s historical answer.
+     * </p>
+     *
+     * <p>
+     * ⚠ The cost is the weaker guarantee, the same one {@code RelrecRowExpander.keyCell} and
+     * {@code GroupedResult.buildKey} accept: a rendering is <em>unlikely</em> to collide, a sealed
+     * type <em>cannot</em>. ⇒ when {@code D4} is ruled, this becomes one line — drop
+     * {@code .reportingForm()} and widen the list's type back.
+     * </p>
      *
      * <p>
      * ⭐⭐ <b>The RULED semantics: a {@code MissingValue} is a NORMAL value, and it CAN be a join
@@ -543,7 +567,7 @@ final class KeyMatchRowExpander
      * ({@link #buildChildIndex}).
      * </p>
      */
-    private static @Nullable List<KeyPart> tuple(IDataTable t, int[] colIds, KeySpec spec, long row)
+    private static @Nullable List<String> tuple(IDataTable t, int[] colIds, KeySpec spec, long row)
     {
         if (!spec.keepMissings() && anyActiveKeyBlank(t, colIds, spec, row))
         {
@@ -553,7 +577,7 @@ final class KeyMatchRowExpander
             // asking whether it is blank would drop every row of every such join.
             return null;
         }
-        List<KeyPart> parts = new ArrayList<>(colIds.length);
+        List<String> parts = new ArrayList<>(colIds.length);
         for (int i = 0; i < colIds.length; i++)
         {
             if (!spec.active()[i])
@@ -564,14 +588,14 @@ final class KeyMatchRowExpander
             {
                 // R7: absent on THIS side -> the column's type default, exactly as if every row
                 // carried a blank cell. It still participates and still compares by identity.
-                parts.add(spec.absentPart()[i]);
+                parts.add(spec.absentPart()[i].reportingForm());
                 continue;
             }
-            // R5: identity comes from the sealed KeyPart, never from a rendered string. A
-            // getValueAsString()-based key made MissingValue.MIS collide with a present "." —
-            // measured at +9 528 findings / 8 rules (GroupKeyPolicy.KeyPart's javadoc).
+            // R5: the identity is CLASSIFIED by the sealed KeyPart — which is what separates a
+            // MissingValue from a present "." — and then RENDERED. See the method javadoc for why
+            // the rendering, not the KeyPart itself, is what goes into the key.
             parts.add(GroupKeyPolicy.KEEP_MISSING_KEYS
-                    .keyPart(t.getColumn(colIds[i]).getDataValue(row)));
+                    .keyPart(t.getColumn(colIds[i]).getDataValue(row)).reportingForm());
         }
         return parts;
     }

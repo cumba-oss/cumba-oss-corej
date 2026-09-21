@@ -188,6 +188,36 @@ class KeyMatchMissingJoinKeyTest
 
 
     /**
+     * ⭐⭐ {@code JKM R5}'s remaining two rows, which nothing in the tree pinned until the plan's
+     * non-harm review named the gap: <i>"a MIS_A will not join a record with a MIS or MIS_B."</i>
+     *
+     * <p>
+     * ⚠ It holds by construction — {@code KeyPart.Missing} is a record over the
+     * {@code MissingValue} enum, so distinct markers are distinct parts — but "holds by
+     * construction" is what every unpinned property claims right up to the edit that breaks it. The
+     * rendered key makes it concrete: {@code Missing(MIS_A).reportingForm()} is
+     * {@code "\u0001MIS_A"} and {@code Missing(MIS).reportingForm()} is {@code "\u0001MIS"}.
+     * </p>
+     */
+    @Test
+    void differentMissingMarkersAreDifferentKeys()
+    {
+        // DM row 0 carries .A, row 1 carries .B; AE row 0 carries .A, row 1 carries a plain
+        // missing.
+        IDataTable dm = MockTable.of().colSasMissing(USUBJID, ".A", ".B").col("AGE", "34", "51")
+                .name("DM").build();
+        IDataTable ae = MockTable.of().colSasMissing(USUBJID, ".A", ".")
+                .col("AETERM", "HEADACHE", "NAUSEA").name(AE).build();
+        var exp = KeyMatchRowExpander.expand(dm, List.of(md("left")), Map.of("DM", dm, AE, ae)::get,
+                "R-TEST");
+        assertNotNull(exp);
+        assertEquals(List.of("0:HEADACHE", "1:null"), rows(exp, "AETERM"),
+                "JKM R5: MIS_A joins MIS_A (row 0) and MIS_B joins neither MIS_A nor the plain MIS"
+                        + " (row 1). '1:NAUSEA' means two DIFFERENT markers were folded together");
+    }
+
+
+    /**
      * ⭐⭐ {@code JKM R5} — the assertion the KEEP default makes load-bearing: <i>"a MIS will not
      * join a record with an empty string and a MIS_A will not join a record with a MIS or
      * MIS_B."</i>

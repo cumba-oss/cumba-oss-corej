@@ -476,6 +476,41 @@ public class DatasetLookup implements JoinLookup
 
 
     /**
+     * ⛔⛔ {@code JKM R7}: <b>every</b> key component absent from <b>both</b> sides is a rule
+     * <b>ERROR</b>, not a match-everything.
+     *
+     * <p>
+     * Owner, 2026-09-21: <i>"if all columns are absent, then the rule should fail with an
+     * error."</i> Without this, {@link KeyHashing#computeKeyHashSafe} skips every component,
+     * returns its constant {@code 1}, and {@code KeyHashing.KeyMatcher} is all-true — so
+     * {@code _matched_} would read <b>true for every row</b> and a dotted read would answer joined
+     * row 0's values for every primary row. An empty key is a cartesian product, not a join.
+     * </p>
+     *
+     * <p>
+     * ⚠⚠ <b>This arm was almost missed, and the reason is worth keeping.</b> The first
+     * implementation put the check only in {@code KeyMatchRowExpander.keySpec} and justified the
+     * omission here with <i>"caught by the expander's KeySpec, which runs first for every entry the
+     * expander accepts"</i>. That argument is <b>false</b>: {@code expandableEntries}
+     * <em>excludes</em> {@code Child:true}, {@code RELREC}, {@code SUPP*}, {@code SQ*} and
+     * {@code --} names, which is exactly the population that reaches this class — so <b>none</b> of
+     * those entries was protected. Found by the plan's non-harm review pass.
+     * </p>
+     */
+    private void requireUsableKey(int[] primaryKeyColIds)
+    {
+        for (int i = 0; i < primaryKeyColIds.length; i++)
+        {
+            if (primaryKeyColIds[i] >= 0 || joinedKeyColIds[i] >= 0)
+            {
+                return; // at least one component can still discriminate
+            }
+        }
+        throw new DegenerateJoinKeyException(datasetName, keyColumns);
+    }
+
+
+    /**
      * Builds the join map for the given primary table. The map is cached and reused for subsequent
      * lookups against the same primary table.
      * <p>
@@ -487,6 +522,7 @@ public class DatasetLookup implements JoinLookup
      * {@code joinMap}/{@code joinMapTable} fields to avoid the monitor on every call once the map
      * is built.
      */
+
     private void ensureJoinMap(IDataTable primaryTable)
     {
         // Lock-free fast-path: once another thread has published joinMap+joinMapTable, every
@@ -504,6 +540,7 @@ public class DatasetLookup implements JoinLookup
             int rowCount = Math.toIntExact(primaryTable.getRowCount());
             DataTableMeta primaryMeta = primaryTable.getMetaData();
             int[] primaryKeyColIds = KeyHashing.resolveColIds(primaryMeta, keyColumns);
+            requireUsableKey(primaryKeyColIds);
 
             // -1 encodes "no match", positives are joined row ids.
             IDataBufferNumeric map = DataBufferFactory.get().createForRange(-1,

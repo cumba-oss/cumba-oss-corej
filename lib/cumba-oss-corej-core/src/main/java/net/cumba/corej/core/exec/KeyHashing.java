@@ -5,23 +5,37 @@ import java.util.Objects;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.view.HashLookup;
-import net.cumba.datatable.values.DataValueType;
 
 /**
- * Shared zero-allocation key-hashing primitives for the CDISC engine. Used by both
- * {@link DatasetLookup} (cross-dataset joins) and the set-uniqueness operators in
- * {@code OperatorRegistry}.
+ * Shared key-hashing primitives for the CDISC engine — used by {@link DatasetLookup} (cross-dataset
+ * joins) and {@code KeyMatchRowExpander}.
+ *
+ * <p>
+ * ⚠ This heading said <b>"zero-allocation"</b> and named <i>"the set-uniqueness operators in
+ * {@code OperatorRegistry}"</i> as a consumer. Both were corrected 2026-09-21: since {@code JKM R5}
+ * moved the hash onto the typed channel, {@link #computeKeyHashSafe} allocates one
+ * {@code IDataValue} and one {@code KeyPart} per component per row (its own javadoc prices that),
+ * and a grep of {@code src/main} finds no {@code OperatorRegistry} consumer — that half was already
+ * stale before this change.
+ * </p>
  *
  * <h2>Equality semantics</h2>
  * <p>
  * Key equality is the ruled value identity of {@link GroupKeyPolicy.KeyPart}, never
  * {@link Objects#equals} on the raw column values. ⭐ Corrected 2026-09-21 ({@code JKM R5}): this
  * javadoc used to document the raw comparison, and the raw channel is {@code @Nullable} by
- * contract, cannot distinguish {@code STRING "5"} from {@code LONG 5}, and carries no
- * {@code MissingValue} — so it could not express the ruled identity at all. LONG column holding
- * {@code 5L} do not compare equal — in contrast to a String-coerced implementation. CDISC
- * join/uniqueness keys are always STRING in practice, so this change has no effect on real clinical
- * data.
+ * contract, cannot distinguish a {@code STRING "5"} from a {@code LONG 5}, and carries no
+ * {@code MissingValue} — so it could not express the ruled identity at all.
+ *
+ * <p>
+ * ⛔⛔ <b>This paragraph previously ended "CDISC join/uniqueness keys are always STRING in practice,
+ * so this change has no effect on real clinical data."</b> That sentence, and the ungrammatical
+ * fragment before it, were left behind by a botched edit of the pre-ruling text — and as spliced it
+ * asserted NON-HARM for the very change it sat on. It is deleted, not corrected: the claim is false
+ * (a numeric join key typed differently on the two sides is routine) and it is exactly the sentence
+ * a later reader would have cited to skip measuring. ⚠ Found by the plan's own non-harm review
+ * pass, which is what that pass is for.
+ * </p>
  * </p>
  */
 final class KeyHashing
@@ -113,34 +127,18 @@ final class KeyHashing
      * </p>
      *
      * <p>
-     * ⚠ <b>{@code JKM R7}:</b> when this side lacks the column the component is <em>present but
-     * empty</em> — the type default of the side that <em>does</em> carry it, since an absent column
-     * has no type of its own. {@code otherTable}/{@code otherCol} are passed for exactly that.
+     * ⚠ <b>Only reached for a component present on BOTH sides.</b> The caller settles both-absent
+     * (the component leaves the key, {@code JKM R7}) and one-side-absent (no match, pending the
+     * plan's D7) before getting here, which is why this needs no knowledge of the other side. An
+     * earlier version took the other side's table/column to derive an absent side's type default;
+     * that arm went with R7's one-side rule when the non-harm review reverted it, and its
+     * {@code DOUBLE || LONG} predicate went too — leaving that classification in ONE place
+     * ({@code KeyMatchRowExpander.isNumeric}) rather than two copies to keep in step.
      * </p>
      */
-    private static GroupKeyPolicy.KeyPart part(IDataTable table, int row, int col,
-            IDataTable otherTable, int otherCol)
+    private static GroupKeyPolicy.KeyPart part(IDataTable table, int row, int col)
     {
-        if (col < 0)
-        {
-            return isNumericColumn(otherTable, otherCol)
-                    ? GroupKeyPolicy.KeyPart.missing(net.cumba.datatable.values.MissingValue.MIS)
-                    : GroupKeyPolicy.KeyPart.EMPTY;
-        }
         return GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(table.getColumn(col).getDataValue(row));
-    }
-
-
-    private static boolean isNumericColumn(IDataTable table, int col)
-    {
-        if (col < 0)
-        {
-            // Unreachable: the caller only asks about the OTHER side, and the both-absent case left
-            // the key before this point. Defensive, and character is the safer default.
-            return false;
-        }
-        DataValueType type = table.getMetaData().getColumn(col).getType();
-        return type == DataValueType.DOUBLE || type == DataValueType.LONG;
     }
 
 
@@ -207,18 +205,43 @@ final class KeyHashing
                 if (c1 < 0 && c2 < 0)
                 {
                     // JKM R7: absent on BOTH sides -> the component leaves the key. Both sides
-                    // would carry the same constant, so it cannot discriminate. ⚠ This site was
-                    // already right when the other builder was wrong — and it is still wrong on the
-                    // degenerate case: if EVERY component is skipped the hash is a constant and
-                    // this
-                    // matcher is all-true, so `_matched_` would read true for every row where R7
-                    // rules a rule ERROR. That case is caught by the expander's KeySpec, which runs
-                    // first for every entry the expander accepts; the entries reaching HERE are the
-                    // Child:true ones, whose key always carries IDVAR/IDVARVAL.
+                    // would
+                    // carry the same constant, so it cannot discriminate. ⭐ This site already
+                    // implemented that when the other builder did not.
                     continue;
                 }
-                if (!Objects.equals(part(table1, row1, c1, table2, c2),
-                        part(table2, row2, c2, table1, c1)))
+                if (c1 < 0 || c2 < 0)
+                {
+                    // ⛔⛔ R7's ONE-SIDE-absent rule is deliberately NOT implemented here, and this
+                    // is not an oversight — it was implemented, measured, and REVERTED by the
+                    // plan's
+                    // own non-harm review (2026-09-21).
+                    //
+                    // R7 says an absent column contributes the other side's type default and
+                    // participates. Doing that HERE has a consequence R7 does not authorise: per
+                    // the
+                    // plan's D7, a `Child: true` entry ALSO gets a DatasetLookup built on
+                    // [USUBJID, IDVAR, IDVARVAL] against a primary (AE, DM…) that has neither IDVAR
+                    // nor IDVARVAL. That parasitic lookup matched NOTHING, ever, precisely because
+                    // of
+                    // this guard. With R7 applied, the primary's absent side contributes EMPTY and
+                    // a
+                    // subject-level CO comment or SUPPDM record — whose IDVAR/IDVARVAL are "" by
+                    // the
+                    // SDTM shape — also yields EMPTY, so it MATCHES: `_matched_` would flip false
+                    // ->
+                    // true on 5 shipped rules, and a dotted read would start answering the CO/SUPP
+                    // row's values instead of the absent-column default.
+                    //
+                    // D7 is bucket (4) of the plan's scope — "STILL UNDECIDED, deliberately".
+                    // Trading
+                    // one unruled wrong answer for a different unruled wrong answer is not this
+                    // plan's authorisation. ⇒ the conservative answer stays until D7 is ruled, and
+                    // R7's one-side rule lives on the expander arm (196 entries) where no parasite
+                    // rides along.
+                    return false;
+                }
+                if (!Objects.equals(part(table1, row1, c1), part(table2, row2, c2)))
                 {
                     return false;
                 }
