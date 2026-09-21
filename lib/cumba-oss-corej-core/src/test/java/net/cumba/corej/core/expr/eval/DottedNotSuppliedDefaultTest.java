@@ -91,13 +91,18 @@ class DottedNotSuppliedDefaultTest
     private static IDataValue substitutedCell(EvaluationContext ctx, String operand)
         throws ReflectiveOperationException
     {
+        // ⚠ THREE parameters since 2026-09-21, not five. `namePosition` and `foldAbsentColumn`
+        // were removed by PLAN-unqualified-name-primary-only: under the uniformity ruling a bare
+        // name resolves identically in every position, so a per-position/per-caller switch had no
+        // behaviour left to carry. ⛔ A reflective harness does not fail to COMPILE when the method
+        // it reaches changes shape -- it fails at run time with NoSuchMethodError, which is why
+        // seven tests in two classes went red together.
         Method m = ExprCompiler.class.getDeclaredMethod("substitutedScalarCell",
-                OperandSubstitutor.Scalar.class, EvaluationContext.class, long.class, boolean.class,
-                boolean.class);
+                OperandSubstitutor.Scalar.class, EvaluationContext.class, long.class);
         m.setAccessible(true);
         OperandSubstitutor.Scalar scalar = new OperandSubstitutor.Scalar(null,
                 List.of(new OperandSubstitutor.Literal(operand)));
-        IDataValue v = (IDataValue) m.invoke(null, scalar, ctx, 0L, false, false);
+        IDataValue v = (IDataValue) m.invoke(null, scalar, ctx, 0L);
         assertNotNull(v, "⚑ the value channel never answers null — that IS the rule");
         return v;
     }

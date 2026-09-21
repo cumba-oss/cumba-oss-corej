@@ -255,16 +255,26 @@ class RuleRunnerOutputProjectionHelpersTest
      * never emitted as a null-valued key.
      */
     @Test
-    void unqualifiedJoinedFallbackResolvesAndUnresolvedIsOmitted()
+    void anUnqualifiedNameIsNEVERResolvedFromAJoinedDatasetInTheReportedValues()
     {
         IDataTable t = MockTable.of().name("AE").col("AETERM", "x").build();
         EvaluationContext ctx = EvaluationContext.builder().table(t)
                 .joinedDatasets(Map.of("DM", lookupReturning("RFSTDTC", "2020-01-01", true)))
                 .build();
+        // ⭐⭐ INVERTED 2026-09-21 -- this is site S5 of PLAN-unqualified-name-primary-only, and
+        // the one a USER sees. RFSTDTC is absent from the primary AE table and present on the
+        // joined
+        // DM. This used to assert out.get("RFSTDTC") == "2020-01-01": the evaluator resolved the
+        // bare name as a primary-absent column while the violation row printed the JOINED dataset's
+        // value for it. Two different ideas of one name, in the reported output.
+        // ⇒ Under the uniformity ruling an unqualified Output_Variables entry the primary lacks is
+        // simply unresolved, and unresolved entries are omitted -- which is what the second half of
+        // this test always asserted for NOSUCH. Both now take the same path.
         Map<String, String> out = extract(t, ctx, List.of("RFSTDTC", "NOSUCH"), 0);
-        assertEquals("2020-01-01", out.get("RFSTDTC"));
+        assertFalse(out.containsKey("RFSTDTC"),
+                "a bare name is never read from a join, not even for the reported values");
         assertFalse(out.containsKey("NOSUCH"), "unresolved entries are omitted");
-        assertEquals(1, out.size());
+        assertEquals(0, out.size());
     }
 
 

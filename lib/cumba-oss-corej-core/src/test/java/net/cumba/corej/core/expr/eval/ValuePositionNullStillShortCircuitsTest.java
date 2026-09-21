@@ -60,34 +60,49 @@ class ValuePositionNullStillShortCircuitsTest
 
 
     @Test
-    @DisplayName("X != colref(ABSENT) short-circuits — the value-position null survives the fold")
-    void colrefOverAbsentColumnShortCircuits()
+    @DisplayName("X != colref(ABSENT) now DECIDES — the value-position short-circuit is gone")
+    void colrefOverAbsentColumnDecides()
     {
-        assertEquals(new BitSet(), eval("TSPARMCD != colref(TSVALREF)", absent()),
-                "colref's first hop is an argument plan built with foldAbsentColumn=false, so an "
-                        + "absent column still yields null and the comparison yields no rows");
+        // ⭐⭐ REWRITTEN 2026-09-21. This class existed to pin that the VALUE side kept a
+        // missing-column short-circuit while the TARGET side folded -- "colref's first hop is an
+        // argument plan built with foldAbsentColumn=false, so an absent column still yields null".
+        // That is one bare name meaning two different things depending on which operand position it
+        // occupied, which the uniformity ruling (owner, 2026-09-21) abolishes.
+        // ⚠ Derived from the contract, not read off the run: D34 #3 makes an absent character
+        // column a present empty string, so colref over it has a value to read and the comparison
+        // decides, exactly as it does over a present-but-blank column.
+        assertNotEquals(new BitSet(), eval("TSPARMCD != colref(TSVALREF)", absent()),
+                "an absent column folds in value position too, so the comparison decides");
     }
 
 
     @Test
-    @DisplayName("X != substring(ABSENT, 1, 2) short-circuits for the same reason")
-    void substringOverAbsentColumnShortCircuits()
+    @DisplayName("X != substring(ABSENT, 1, 2) likewise fires on every row")
+    void substringOverAbsentColumnDecides()
     {
-        assertEquals(new BitSet(), eval("TSPARMCD != substring(TSVALREF, 1, 2)", absent()));
+        // substring("", 1, 2) is "", and TSPARMCD differs from "" on both rows.
+        assertEquals(2, eval("TSPARMCD != substring(TSVALREF, 1, 2)", absent()).cardinality(),
+                "the absent column is the present empty string, so every row fires");
     }
 
 
     @Test
-    @DisplayName("and so absent != blank in VALUE position — the documented scope limit")
-    void absentAndBlankDisagreeInValuePosition()
+    @DisplayName("⭐ and so absent AGREES with blank in value position — the scope limit is CLOSED")
+    void absentAndBlankNowAgreeInValuePosition()
     {
+        // ⭐⭐ THE INVERSION THAT MATTERS. This assertion was assertNotEquals, with the message
+        // "EC-43's absent-equals-blank contract covers the TARGET operand only; the value side
+        // keeps
+        // the missing-column short-circuit (§4.2). Pinned so the boundary is a decision, not a
+        // surprise." The boundary was a consequence of the per-position flag; with the flag gone
+        // the
+        // absent-equals-blank contract holds in BOTH positions, which is what it always claimed to
+        // be about.
         BitSet onBlank = eval("TSPARMCD != substring(TSVALREF, 1, 2)", blank());
         assertEquals(2, onBlank.cardinality(),
                 "with the column present and blank the substring is \"\" and PLANSUB differs "
                         + "from it, so every row fires");
-        assertNotEquals(onBlank, eval("TSPARMCD != substring(TSVALREF, 1, 2)", absent()),
-                "EC-43's absent-equals-blank contract covers the TARGET operand only; the value "
-                        + "side keeps the missing-column short-circuit (§4.2). Pinned so the "
-                        + "boundary is a decision, not a surprise");
+        assertEquals(onBlank, eval("TSPARMCD != substring(TSVALREF, 1, 2)", absent()),
+                "absent and blank now answer identically in value position too");
     }
 }

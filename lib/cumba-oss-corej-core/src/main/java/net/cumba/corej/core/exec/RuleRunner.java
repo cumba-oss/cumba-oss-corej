@@ -4267,19 +4267,19 @@ public final class RuleRunner
                 }
                 IDataValue dv = table.getColumn(colIdx).getDataValue(row);
                 values.put(varName, dv.isMissingOrInvalid() ? "" : dv.getValueAsString());
-                continue;
+                // ⚠ No `continue` here any more, and Error Prone is what noticed: with the join
+                // fallback below removed there is nothing left to skip, so the statement became
+                // [RedundantControlFlow]. Left as a note because the removal is what made it so.
             }
-            // Fallback: try joined datasets for unqualified names (e.g., RFSTDTC
-            // which lives in DM but is referenced without the DM. prefix)
-            for (JoinLookup lookup : ctx.getJoinedDatasets().values())
-            {
-                String val = lookup.lookup(table, row, varName);
-                if (val != null)
-                {
-                    values.put(varName, val);
-                    break;
-                }
-            }
+            // ⭐⭐ UVC unqualified + the UNIFORMITY ruling (owner, 2026-09-21). A join fallback for
+            // an unqualified Output_Variables entry stood here -- "try joined datasets for
+            // unqualified names (e.g. RFSTDTC which lives in DM but is referenced without the DM.
+            // prefix)". ⛔ It is the SAME defect as the evaluator's, in the one place a user SEES:
+            // the evaluator resolved the bare name as a primary-absent column and the violation row
+            // then printed the JOINED dataset's value for it. Found by the plan's own review; the
+            // ruling's site list and the plan's first draft both missed it.
+            // ⇒ An unqualified Output_Variables entry the primary lacks is simply unresolved, and
+            // falls through to the omission the paragraph below describes.
             // Unresolved Output_Variables are intentionally omitted from the values map.
             // Historical rationale (the Python lane and its parity adapter were removed in
             // wave 33): Python's actions.py:272 emitted "Not in dataset" into

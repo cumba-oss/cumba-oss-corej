@@ -58,17 +58,21 @@ class SubstitutedScalarValueChannelTest
 {
 
     /** {@code substitutedScalarCell} is private; the ratchet test reaches it the same way. */
-    private static IDataValue cell(EvaluationContext ctx, String operand, boolean namePosition,
-            boolean foldAbsentColumn)
+    private static IDataValue cell(EvaluationContext ctx, String operand)
         throws ReflectiveOperationException
     {
+        // ⚠ THREE parameters since 2026-09-21, not five. `namePosition` and `foldAbsentColumn`
+        // were removed by PLAN-unqualified-name-primary-only: under the uniformity ruling a bare
+        // name resolves identically in every position, so a per-position/per-caller switch had no
+        // behaviour left to carry. ⛔ A reflective harness does not fail to COMPILE when the method
+        // it reaches changes shape -- it fails at run time with NoSuchMethodError, which is why
+        // seven tests in two classes went red together.
         Method m = ExprCompiler.class.getDeclaredMethod("substitutedScalarCell",
-                OperandSubstitutor.Scalar.class, EvaluationContext.class, long.class, boolean.class,
-                boolean.class);
+                OperandSubstitutor.Scalar.class, EvaluationContext.class, long.class);
         m.setAccessible(true);
         OperandSubstitutor.Scalar scalar = new OperandSubstitutor.Scalar(null,
                 List.of(new OperandSubstitutor.Literal(operand)));
-        IDataValue v = (IDataValue) m.invoke(null, scalar, ctx, 0L, namePosition, foldAbsentColumn);
+        IDataValue v = (IDataValue) m.invoke(null, scalar, ctx, 0L);
         assertNotNull(v, "⚑ the value channel never answers null — that IS the rule");
         return v;
     }
@@ -109,7 +113,7 @@ class SubstitutedScalarValueChannelTest
         EvaluationContext ctx = EvaluationContext.builder().table(tableWithMisACell("AVAL"))
                 .build();
 
-        IDataValue v = cell(ctx, "AVAL", false, false);
+        IDataValue v = cell(ctx, "AVAL");
 
         assertTrue(v.isMissingOrInvalid(), "the cell is missing");
         assertSame(MissingValue.MIS_A, v.getValue(),
@@ -135,7 +139,7 @@ class SubstitutedScalarValueChannelTest
         EvaluationContext ctx = EvaluationContext.builder()
                 .table(MockTable.of().col("OTHER", "x").build()).build();
 
-        IDataValue v = cell(ctx, "ABSENT", false, false);
+        IDataValue v = cell(ctx, "ABSENT");
 
         assertFalse(v.isMissingOrInvalid(),
                 "⛔ an absent CHARACTER column is PRESENT and empty, never missing — the computed"
@@ -155,7 +159,7 @@ class SubstitutedScalarValueChannelTest
                 .table(MockTable.of().col("OTHER", "x").build())
                 .numericExpectedColumns(Set.of("ABSENT")).build();
 
-        IDataValue v = cell(ctx, "ABSENT", false, false);
+        IDataValue v = cell(ctx, "ABSENT");
 
         assertTrue(v.isMissingOrInvalid(), "a numeric-expected absent column is all-MIS (D34 #4)");
         assertSame(MissingValue.MIS, v.getValue(), "the constant is MissingValue.MIS");
@@ -169,17 +173,24 @@ class SubstitutedScalarValueChannelTest
      * separate, open question rather than being decided here by accident.
      */
     @Test
-    void theNamePositionFoldHonoursTheFoldAbsentColumnGate() throws ReflectiveOperationException
+    void anAbsentNameAnswersTheSameThingInEveryPosition() throws ReflectiveOperationException
     {
         EvaluationContext ctx = EvaluationContext.builder()
                 .table(MockTable.of().col("OTHER", "x").build()).build();
 
-        assertSame(MissingValue.MIS, cell(ctx, "ABSENT", true, false).getValue(),
-                "name position + foldAbsentColumn=false ⇒ unchanged, the computed MIS");
-        assertFalse(ctx.getAbsentColumnFolds().contains("ABSENT"),
-                "and nothing is reported as folded, because nothing was");
-        assertEquals("", cell(ctx, "ABSENT", true, true).getValue(),
-                "name position + foldAbsentColumn=true ⇒ the same default the value position gets");
+        // ⭐⭐ REWRITTEN 2026-09-21. This test used to assert that the SAME absent name answered
+        // MissingValue.MIS with foldAbsentColumn=false and "" with it true -- i.e. that a caller's
+        // flag decided what the name meant. The uniformity ruling (owner) removed that flag, so
+        // there is exactly ONE answer now, and asserting the old pair would be asserting a
+        // contradiction: both calls below are the same call.
+        //
+        // The one answer is the absent-column contract (D34 #3): no numeric expectation is declared
+        // on this context, so an absent column is a CHARACTER column whose every row is the present
+        // empty string -- and the fold is REPORTED, which is what makes it auditable.
+        assertEquals("", cell(ctx, "ABSENT").getValue(),
+                "an absent name is the present empty string, in EVERY position");
+        assertTrue(ctx.getAbsentColumnFolds().contains("ABSENT"),
+                "and the fold is reported -- it is a fold now, not a silent non-decision");
     }
 
 

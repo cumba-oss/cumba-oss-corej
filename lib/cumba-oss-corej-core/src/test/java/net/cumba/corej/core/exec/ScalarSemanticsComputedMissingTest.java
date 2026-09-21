@@ -98,7 +98,11 @@ class ScalarSemanticsComputedMissingTest
 
         // Returns: the three ExprCompiler row functions and the JoinLookup value accessor.
         Class<?> compiler = Class.forName("net.cumba.corej.core.expr.eval.ExprCompiler");
-        for (String name : List.of("arithmeticCell", "substitutedScalarCell", "firstJoinedCell"))
+        // ⚠ firstJoinedCell was REMOVED 2026-09-21 (PLAN-unqualified-name-primary-only): it
+        // resolved an unqualified name out of a joined dataset, which the uniformity ruling
+        // abolished. Dropped from the roster rather than the assertion weakened -- this test
+        // says so itself: "this ratchet has lost its target and would pass vacuously".
+        for (String name : List.of("arithmeticCell", "substitutedScalarCell"))
         {
             Method m = declared(compiler, name);
             if (isNullable(m.getAnnotatedReturnType()))
@@ -237,10 +241,10 @@ class ScalarSemanticsComputedMissingTest
         // Without this the count could be satisfied by 19 unrelated methods while every signature
         // the channel is about had moved out of the module.
         for (String required : List.of("ExprCompiler.substitutedScalarCell",
-                "ExprCompiler.arithmeticCell", "ExprCompiler.firstJoinedCell",
-                "JoinLookup.lookupValue", "JoinedCandidatesVector.firstNonNullCell",
-                "ScalarSemantics.computedMissing", "DatasetLookup.lookupValue",
-                "KeyMatchExpandedLookup.lookupValue", "RelrecExpandedLookup.lookupValue"))
+                "ExprCompiler.arithmeticCell", "JoinLookup.lookupValue",
+                "JoinedCandidatesVector.firstNonNullCell", "ScalarSemantics.computedMissing",
+                "DatasetLookup.lookupValue", "KeyMatchExpandedLookup.lookupValue",
+                "RelrecExpandedLookup.lookupValue"))
         {
             assertTrue(found.contains(required),
                     "CONTROL FAILED: the discovery did not find " + required
@@ -589,8 +593,16 @@ class ScalarSemanticsComputedMissingTest
      * <li>anything outside this module — the ruletest module, the OSS twin, another repo
      * ({@link ProductionClasses#ofModule} carries the full blind-spot list).</li>
      * </ul>
+     *
+     * <p>
+     * ⚑ <b>19 → 18 on 2026-09-21, and the deletion is ACCOUNTED FOR</b> as this ratchet's own
+     * failure message demands. {@code ExprCompiler.firstJoinedCell} was removed by
+     * {@code PLAN-unqualified-name-primary-only}: it resolved an unqualified name out of a joined
+     * dataset — the behaviour the uniformity ruling abolished — and it had exactly one caller, the
+     * site that was changed. No producer was added.
+     * </p>
      */
-    private static final int EXPECTED_VALUE_PRODUCERS = 19;
+    private static final int EXPECTED_VALUE_PRODUCERS = 18;
 
     private static Method declared(Class<?> owner, String name)
     {

@@ -45,7 +45,7 @@ class NativeJoinedLhsTest
 
 
     @Test
-    void unqualifiedForeignLhsMatchesQualified()
+    void unqualifiedForeignLhsNoLongerMatchesQualified()
     {
         IDataTable primary = MockTable.of().col("AVAL", "1", "2", "3").build();
         IDataTable dm = MockTable.of().name("DM").col("DMVAL", "1", "X", "3").build();
@@ -83,8 +83,17 @@ class NativeJoinedLhsTest
         BitSet unq = NativeExprEvaluator.evaluate(unqualified, ctx);
         BitSet qua = NativeExprEvaluator.evaluate(qualified, ctx);
 
-        assertEquals(bits(0, 2), unq, "unqualified foreign LHS resolves via the join");
-        assertEquals(qua, unq, "qualified and unqualified foreign references behave identically");
+        // ⭐⭐ INVERTED 2026-09-21. The old assertions were bits(0, 2) for the unqualified form
+        // and unq == qua -- i.e. "qualified and unqualified foreign references behave identically".
+        // That equivalence IS what the ruling abolishes: an unqualified name means the PRIMARY
+        // domain, a qualified one names its dataset, and conflating them is the defect.
+        // ⇒ The unqualified LHS resolves against a primary that has no DMVAL, so it folds to the
+        // absent-column constant and the comparison decides nothing; the QUALIFIED form is
+        // untouched and still reads the join, which is the half that must keep working.
+        assertEquals(bits(), unq,
+                "an unqualified name resolves against the PRIMARY only -- absent here");
+        assertEquals(bits(0, 2), qua,
+                "and the QUALIFIED form still reads the join: that path is deliberately unchanged");
     }
 
 

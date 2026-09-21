@@ -636,7 +636,7 @@ public final class ExprCompiler
     private static ExprProgram.BoolPlan compileCaseInsensitiveEquality(Expr.Call c, boolean negate)
     {
         // EC-43: fold the target; the value operand keeps its own contract.
-        ValuePlan nameP = operandPlan(c.args().get(0), true, true);
+        ValuePlan nameP = operandPlan(c.args().get(0), true);
         ValuePlan valueP = valuePlan(c.args().get(1));
         return run ->
         {
@@ -779,7 +779,7 @@ public final class ExprCompiler
     {
         Pattern pattern = compilePattern(b.right());
         boolean negate = b.op() == Expr.BinOp.NMATCH;
-        ValuePlan nameP = operandPlan(b.left(), true, true);
+        ValuePlan nameP = operandPlan(b.left(), true);
         return run ->
         {
             Vector v = nameP.eval(run);
@@ -826,7 +826,7 @@ public final class ExprCompiler
         // unimplemented legacy no-op; PLAN-regex-rule-optimization Phase 1).
         Expr nameExpr = caseInsensitive ? ((Expr.Call) b.left()).args().get(0) : b.left();
         // EC-43: fold the probe column. The list/accessor sources below keep their own guards.
-        ValuePlan nameP = operandPlan(nameExpr, true, !isListAccessor(nameExpr));
+        ValuePlan nameP = operandPlan(nameExpr, true);
         // List-LHS membership (D4 of PLAN-define-item-metadata-parity-929-1081): a list-valued
         // metadata accessor (var_codelist_coded_codes) compares element-wise, mirroring Python's
         // is_column_of_iterables(target) branch. Detected statically from the accessor function.
@@ -1338,7 +1338,7 @@ public final class ExprCompiler
         // erased-tag + forceNumeric mechanism that R1's hard-NaN contract had quietly disarmed.
         Expr lp = stripModeTag(b.left());
         Expr rp = stripModeTag(b.right());
-        ValuePlan leftP = operandPlan(lp, true, true);
+        ValuePlan leftP = operandPlan(lp, true);
         // Affix-compare RHS (Phase 5): both EQ and NEQ resolve the RHS through the generic
         // valuePlan (value position), so `prefix(X,2) == REF` reads REF as a per-row column /
         // $-var identical to the != form and to plain ==. A quoted-literal RHS (`== "FA"`) still
@@ -1518,7 +1518,7 @@ public final class ExprCompiler
     private static ExprProgram.BoolPlan compileTypeInsensitiveEquality(Expr.Binary b)
     {
         boolean negate = b.op() == Expr.BinOp.NEQ;
-        ValuePlan leftP = operandPlan(((Expr.Call) b.left()).args().get(0), true, true);
+        ValuePlan leftP = operandPlan(((Expr.Call) b.left()).args().get(0), true);
         ValuePlan rightP = valuePlan(((Expr.Call) b.right()).args().get(0));
         return run ->
         {
@@ -1699,7 +1699,7 @@ public final class ExprCompiler
                 }
                 allowNegative = (Boolean) lit.value();
             }
-            ValuePlan operand = operandPlan(c.args().get(0), true, true);
+            ValuePlan operand = operandPlan(c.args().get(0), true);
             boolean allow = allowNegative;
             return run ->
             {
@@ -1863,7 +1863,7 @@ public final class ExprCompiler
         // qualified asymmetry Fix #126 built), and folding them would produce the identical verdict
         // by a different route — so the special case is kept rather than quietly replaced.
         boolean firesOnAbsentColumn = FIRES_ON_ABSENT_COLUMN.contains(name);
-        ValuePlan arg0 = operandPlan(bound.get(0), true, !firesOnAbsentColumn);
+        ValuePlan arg0 = operandPlan(bound.get(0), true);
         List<@Nullable ValuePlan> rest = new ArrayList<>(Math.max(0, bound.size() - 1));
         boolean literalArg1 = LITERAL_ARG1.contains(name);
         for (int i = 1; i < bound.size(); i++)
@@ -1917,7 +1917,7 @@ public final class ExprCompiler
             throw unsupported("does_not_equal_string_part requires a value operand");
         }
         Pattern pattern = Pattern.compile((String) lit.value());
-        ValuePlan nameP = operandPlan(c.args().get(0), true, true);
+        ValuePlan nameP = operandPlan(c.args().get(0), true);
         ValuePlan valueP = valuePlan(c.args().get(1));
         return run ->
         {
@@ -1974,7 +1974,7 @@ public final class ExprCompiler
         // Phase 3: the length is a per-row operand read via the shared exact-integer integral —
         // a numeric/string literal ("5"), a numeric column, or a char column parsing to an int.
         // A missing / non-integral length folds to 0 (legacy asInt parity).
-        ValuePlan nameP = operandPlan(c.args().get(0), true, true);
+        ValuePlan nameP = operandPlan(c.args().get(0), true);
         ValuePlan lenP = valuePlan(c.args().get(1));
         return run ->
         {
@@ -3810,26 +3810,26 @@ public final class ExprCompiler
     }
 
 
-    private static ValuePlan operandPlan(Expr e, boolean namePosition)
-    {
-        return operandPlan(e, namePosition, false);
-    }
-
-
     /**
-     * EC-43: as {@link #operandPlan(Expr, boolean)}, but when {@code foldAbsentColumn} is set a
-     * name-position column that resolves to nothing yields an all-missing vector instead of
-     * {@code null}, so the enclosing predicate computes its own polarity over it.
+     * ⭐⭐ <b>The {@code foldAbsentColumn} parameter is GONE (2026-09-21).</b> This method used to
+     * have a three-argument overload whose flag decided whether a name-position column resolving to
+     * nothing materialised as an absent COLUMN or stayed {@code null}. Its own javadoc explained
+     * the point: <i>"the fork materialises the COLUMN ({@code patched[target] = ""}) and lets every
+     * downstream function see it, so {@code len(X)} over an absent {@code X} must be {@code 0}, not
+     * missing."</i>
      *
      * <p>
-     * The flag is threaded into {@link #valueCallPlan}'s <em>argument</em> plans on purpose: the
-     * fork materialises the COLUMN ({@code patched[target] = ""}) and lets every downstream
-     * function see it, so {@code len(X)} over an absent {@code X} must be {@code 0}, not missing.
-     * Wrapping the composed operand plan instead would yield {@code MISSING} and
-     * {@code has_equal_length 0} would diverge.
+     * ⛔ Under the UNIFORMITY ruling (owner, 2026-09-21 — <i>"The variable reference should be
+     * handled the same way everywhere. It should not depend on the location or surrounding framing
+     * (e.g. function name or parameter position or anything else)"</i>) that materialisation is
+     * <b>unconditional</b>, so the flag has no behaviour left to carry. It was a per-caller switch
+     * on what a bare name MEANS — `empty()` passed {@code !firesOnAbsentColumn}, the list accessors
+     * passed {@code !isListAccessor} — which is precisely the surrounding-framing dependence the
+     * ruling forbids. Error Prone's {@code [UnusedVariable]} is what proved it dead rather than
+     * merely redundant.
      * </p>
      */
-    private static ValuePlan operandPlan(Expr e, boolean namePosition, boolean foldAbsentColumn)
+    private static ValuePlan operandPlan(Expr e, boolean namePosition)
     {
         return switch (e)
         {
@@ -3852,8 +3852,7 @@ public final class ExprCompiler
                 // decline so the rule falls back to the lowered legacy path.
                 if (isDomainPrefixWildcard(r.name()))
                 {
-                    yield namePosition ? nameRefPlan(r.name(), foldAbsentColumn)
-                            : valueRefPlan(r.name());
+                    yield namePosition ? nameRefPlan(r.name()) : valueRefPlan(r.name());
                 }
                 // `${VAR[:fmt]}` scalar operand-substitution (Fix #37): the concrete column name is
                 // a per-row function of the row's driver cells, so it cannot be resolved once at
@@ -3864,7 +3863,7 @@ public final class ExprCompiler
                 OperandSubstitutor.ParsedOperand parsed = parseScalarSubstitution(r.name());
                 if (parsed instanceof OperandSubstitutor.Scalar scalar && parsed.hasDrivers())
                 {
-                    yield substitutedScalarPlan(scalar, namePosition, foldAbsentColumn);
+                    yield substitutedScalarPlan(scalar);
                 }
                 // P5b: a dot-qualified `**` reference (RELREC.**TERM) resolves per row through the
                 // SAME engine-agnostic joined-dataset lookup the legacy ValueResolver consults —
@@ -3874,13 +3873,12 @@ public final class ExprCompiler
                 // read with no arity change.
                 if (isDottedStarStar(r.name()))
                 {
-                    yield namePosition ? nameRefPlan(r.name(), foldAbsentColumn)
-                            : valueRefPlan(r.name());
+                    yield namePosition ? nameRefPlan(r.name()) : valueRefPlan(r.name());
                 }
                 throw unsupported("wildcard/prefix operand '" + r.name()
                         + "' is resolved downstream; not native-supported");
             }
-            yield namePosition ? nameRefPlan(r.name(), foldAbsentColumn) : valueRefPlan(r.name());
+            yield namePosition ? nameRefPlan(r.name()) : valueRefPlan(r.name());
         }
         case Expr.Binary bin when isArith(bin.op()) ->
                 // Phase 3d (D83): first-class arithmetic in any operand position — comparison
@@ -3894,7 +3892,7 @@ public final class ExprCompiler
                 // R10: a conversion is a VALUE, not an erasable marker. A null inner plan (a
                 // $-name not in context, an unresolved -- wildcard) stays null, preserving the
                 // empty-BitSet contracts.
-                ValuePlan inner = operandPlan(c.args().get(0), namePosition, foldAbsentColumn);
+                ValuePlan inner = operandPlan(c.args().get(0), namePosition);
                 if ("num".equals(conversion))
                 {
                     // num(X) compiles to a per-cell parse publishing DOUBLE
@@ -3923,7 +3921,7 @@ public final class ExprCompiler
             }
             if (tagOf(c) != null)
             {
-                yield operandPlan(untag(c), namePosition, foldAbsentColumn);
+                yield operandPlan(untag(c), namePosition);
             }
             if (isInlineOperation(c))
             {
@@ -3950,7 +3948,7 @@ public final class ExprCompiler
             {
                 yield compileDefineVariableDecodeMatches(c);
             }
-            yield valueCallPlan(c, foldAbsentColumn);
+            yield valueCallPlan(c);
         }
         default -> throw unsupported("unsupported operand " + e.getClass().getSimpleName());
         };
@@ -4024,8 +4022,7 @@ public final class ExprCompiler
      * then reports is left, as always, to the rule's own guards.
      * </p>
      */
-    private static ValuePlan substitutedScalarPlan(OperandSubstitutor.Scalar scalar,
-            boolean namePosition, boolean foldAbsentColumn)
+    private static ValuePlan substitutedScalarPlan(OperandSubstitutor.Scalar scalar)
     {
         return run ->
         {
@@ -4042,7 +4039,7 @@ public final class ExprCompiler
             // it keeps this shape outside the J7 gate -- which is right, because a ${...}
             // substitution is not an authored column name.
             return ComputedVector.typed(rc, DataValueType.STRING,
-                    row -> substitutedScalarCell(scalar, ctx, row, namePosition, foldAbsentColumn));
+                    row -> substitutedScalarCell(scalar, ctx, row));
         };
     }
 
@@ -4056,7 +4053,8 @@ public final class ExprCompiler
      * {@link ScalarSemantics#resolvedString} first so the blank contract is taken from there rather
      * than re-derived; and an unqualified name absent from the primary folds to its D76 default
      * under {@code nameRefPlan}/{@code valueRefPlan}'s eligibility verbatim, or, when a join
-     * carries the name, resolves in value position through {@link #firstJoinedCell}.
+     * carries the name, resolves in value position through {@code firstJoinedCell} (removed
+     * 2026-09-21).
      * </p>
      *
      * <p>
@@ -4068,7 +4066,7 @@ public final class ExprCompiler
      * </p>
      */
     private static IDataValue substitutedScalarCell(OperandSubstitutor.Scalar scalar,
-            EvaluationContext ctx, long row, boolean namePosition, boolean foldAbsentColumn)
+            EvaluationContext ctx, long row)
     {
         String name;
         try
@@ -4151,18 +4149,22 @@ public final class ExprCompiler
         // phase 6c's D34 #5 order arm sorts MIS below every value while "" is ordered normally, so
         // any ordering or ranking over such an operand changes too. Intended (owner, 2026-09-18);
         // the numeric arm is unchanged, MIS being the constant it already produced.
-        if (absentFoldEnabled && (!namePosition || foldAbsentColumn)
-                && BroadcastFold.isFoldableColumnReference(name)
-                && !BroadcastFold.anyJoinedDatasetHasColumn(name, ctx))
+        // ⭐⭐ UVC unqualified + the UNIFORMITY ruling (owner, 2026-09-21): a variable reference is
+        // handled the same way everywhere, independent of location or surrounding framing. ⇒ BOTH
+        // the `(!namePosition || foldAbsentColumn)` gate and the `!anyJoinedDatasetHasColumn` probe
+        // are gone, so this predicate is now literally identical to nameRefPlan's and
+        // valueRefPlan's -- which is what the paragraph above always said it had to be.
+        if (absentFoldEnabled && BroadcastFold.isFoldableColumnReference(name))
         {
             ctx.noteAbsentColumnFold(name);
             return ctx.getNumericExpectedColumns().contains(name)
                     ? ScalarSemantics.computedMissing()
                     : DataValueSupport.defaultForType(DataValueType.STRING);
         }
-        // Reader 4: unqualified name absent from the primary, value position -- the first non-null
-        // across all joins, typed. The name position reads the local column only, as before.
-        return namePosition ? ScalarSemantics.computedMissing() : firstJoinedCell(ctx, row, name);
+        // ⚠ This used to be `namePosition ? computedMissing() : firstJoinedCell(...)`.
+        // firstJoinedCell answered computedMissing() when no join carried the name, so this IS that
+        // method's no-join behaviour, now given in both positions alike.
+        return ScalarSemantics.computedMissing();
     }
 
 
@@ -4262,35 +4264,6 @@ public final class ExprCompiler
 
 
     /**
-     * The typed sibling of {@link #firstJoined} (reader 4, shape 3's second reader).
-     *
-     * <p>
-     * ⚠ <b>The exhausted-scan case is a computed MIS on purpose, not a type-derived default.</b>
-     * This reader spans EVERY join, so on a row where no candidate is non-missing there is no
-     * single foreign column to take a declared type from and no single cell to take a missing
-     * identity from — the honest answer is the computed-missing identity (D36 #8). The
-     * absent-column case never reaches here: {@link #substitutedScalarCell} folds it one frame up,
-     * under the same eligibility {@code valueRefPlan} uses, so a name no join carries has already
-     * become its type-derived constant.
-     * </p>
-     */
-    private static IDataValue firstJoinedCell(EvaluationContext ctx, long row, String name)
-    {
-        for (JoinLookup lookup : ctx.getJoinedDatasets().values())
-        {
-            for (IDataValue v : lookup.lookupAllValues(ctx.getTable(), row, name))
-            {
-                if (!v.isMissingOrInvalid())
-                {
-                    return v;
-                }
-            }
-        }
-        return ScalarSemantics.computedMissing();
-    }
-
-
-    /**
      * <b>D77b — the engine ASSERTS concreteness here instead of resolving.</b> Until D77 this
      * method substituted a {@code --}-prefix wildcard in a NAME position against the context's
      * variable wildcard prefix (EC-36 / Python's {@code wildcard_replacement}). That substitution
@@ -4348,7 +4321,7 @@ public final class ExprCompiler
      * per-operator polarity table has to be maintained.
      * </p>
      */
-    private static ValuePlan nameRefPlan(String rawName, boolean foldAbsentColumn)
+    private static ValuePlan nameRefPlan(String rawName)
     {
         return run ->
         {
@@ -4390,11 +4363,6 @@ public final class ExprCompiler
             // later matched row is non-null: scalar lookup() would return null and diverge from
             // legacy. Genuinely-missing names (not in the primary table nor any join) stay null ⇒
             // empty BitSet (Appendix-C missing contract).
-            Vector joined = joinedColumnVector(ctx, rc, name);
-            if (joined != null)
-            {
-                return joined;
-            }
             // (The former unresolved-`--` null exit is gone: since D77 resolveDomainPrefix throws
             // on an unresolved wildcard, so a raw `--` name can no longer reach this point.)
             // EC-43: fold only what could actually BE a dataset column. The engine's other
@@ -4412,8 +4380,18 @@ public final class ExprCompiler
             // here made the two operand positions of one comparison disagree — `date(ABSENT) <
             // MHSTDTC` fired on every row while the mirrored `date(MHSTDTC) > ABSENT` correctly
             // reported nothing, and the present-but-blank twin reported nothing on both sides.
-            if (foldAbsentColumn && absentFoldEnabled
-                    && BroadcastFold.isFoldableColumnReference(name))
+            //
+            // // ⭐⭐ UVC unqualified (owner): an unqualified name means a variable of the PRIMARY
+            // dataset, ALWAYS -- never a Match_Datasets join. And the UNIFORMITY ruling
+            // (2026-09-21): "The variable reference should be handled the same way
+            // everywhere. It should not depend on the location or surrounding framing (e.g.
+            // function name or parameter position or anything else)."
+            // ⇒ `foldAbsentColumn` NO LONGER GATES THIS FOLD. It used to, and that made the same
+            // bare name mean different things in `empty(X)` (compiled with foldAbsentColumn=false,
+            // so control fell to `return null` and the FIRES_ON_ABSENT_COLUMN arm) than in
+            // `X == "Y"` -- the surrounding function deciding the name's meaning, which is what the
+            // ruling forbids. Owner, 2026-09-21, on widening this: "include it, agree."
+            if (absentFoldEnabled && BroadcastFold.isFoldableColumnReference(name))
             {
                 ctx.noteAbsentColumnFold(name);
                 return ctx.getNumericExpectedColumns().contains(name) ? ALL_MISSING
@@ -4421,42 +4399,6 @@ public final class ExprCompiler
             }
             return null;
         };
-    }
-
-
-    /**
-     * Scalar {@link Vector} over an unqualified column carried by a {@code Match_Datasets} join,
-     * resolved per row as the <b>first non-null value across all {@link JoinLookup#lookupAll}
-     * matches</b>, scanning every join — bit-for-bit the legacy semantics of the joined-dataset
-     * lookup in value and name position (single-value case). Using {@code lookupAll} instead of the
-     * scalar {@code lookup} fixes the 1-to-many divergence where the first-wins matched row's cell
-     * is null/missing but a later matched row is non-null.
-     * <p>
-     * Returns {@code null} when the name is carried by no join, so the enclosing predicate yields
-     * an empty {@link BitSet} (the missing-column contract). The probe uses each join's schema (via
-     * the {@link net.cumba.corej.core.exec.DatasetResolver}) to decide whether the name is carried,
-     * matching the previous behaviour and avoiding a needless {@code lookupAll} pass on joins that
-     * cannot contain it.
-     */
-    private static @Nullable Vector joinedColumnVector(EvaluationContext ctx, int rowCount,
-            String name)
-    {
-        for (Map.Entry<String, JoinLookup> entry : ctx.getJoinedDatasets().entrySet())
-        {
-            // Fix #358 (review F1): exact name first, else the split-domain union, so an
-            // unqualified joined-column reference is carried on a split submission too.
-            IDataTable foreign = net.cumba.corej.core.exec.SplitDomainResolution
-                    .resolveTableOrThrow(ctx.getDatasetResolver(), entry.getKey(), ctx.getRuleId());
-            if (foreign != null && foreign.getMetaData().getColumnIndex(name) >= 0)
-            {
-                // B2 (PLAN-native-engine-residuals): the foreign vector carries BOTH legacy views —
-                // the scalar first-non-null (value position) AND the per-row candidate list with
-                // the forEachJoinedValue live-lookup latch (name position). Predicate consumers
-                // apply ANY-MATCH over the candidates via Primitives.scan.
-                return new JoinedCandidatesVector(ctx, rowCount, name);
-            }
-        }
-        return null;
     }
 
 
@@ -4504,8 +4446,14 @@ public final class ExprCompiler
             // (absentFoldEnabled), and the same schema probe the level calculus uses
             // (BroadcastFold.anyJoinedDatasetHasColumn), so a name a join carries keeps the
             // per-row firstJoined resolution below.
-            if (absentFoldEnabled && BroadcastFold.isFoldableColumnReference(name)
-                    && !BroadcastFold.anyJoinedDatasetHasColumn(name, ctx))
+            // // ⭐⭐ UVC unqualified (owner): an unqualified name means a variable of the PRIMARY
+            // dataset, ALWAYS -- never a Match_Datasets join. And the UNIFORMITY ruling
+            // (2026-09-21): "The variable reference should be handled the same way
+            // everywhere. It should not depend on the location or surrounding framing (e.g.
+            // function name or parameter position or anything else)."
+            // ⇒ the `!anyJoinedDatasetHasColumn` probe is GONE: a name a join carries no longer
+            // keeps a per-row joined resolution, because the join is not what a bare name means.
+            if (absentFoldEnabled && BroadcastFold.isFoldableColumnReference(name))
             {
                 ctx.noteAbsentColumnFold(name);
                 return ctx.getNumericExpectedColumns().contains(name) ? ALL_MISSING
@@ -4513,7 +4461,12 @@ public final class ExprCompiler
             }
             // An unresolvable value-position identifier yields null, never the bareword itself:
             // bareword = column reference, quoted = literal.
-            return new ComputedVector(rc, DataValueType.STRING, row -> firstJoined(ctx, row, name));
+            // ⚠ This used to be `row -> firstJoined(ctx, row, name)`. `firstJoined` answered null
+            // when no join carried the name, so `row -> null` is that method's no-join behaviour
+            // EXACTLY -- the channel (a present ComputedVector of nulls, not an unresolved null
+            // Vector) is preserved deliberately, because a non-foldable bareword is not a variable
+            // reference and its handling is outside this ruling's scope.
+            return new ComputedVector(rc, DataValueType.STRING, row -> null);
         };
     }
 
@@ -4734,18 +4687,12 @@ public final class ExprCompiler
         return forced;
     }
 
-
     // Package-private (not private) so NativeExprEvaluatorTest can assert the Phase 10 literal-only
     // fold returns a broadcast ConstVector (single compile-time computation) rather than a per-row
     // ComputedVector.
+
+
     static ValuePlan valueCallPlan(Expr.Call c)
-    {
-        return valueCallPlan(c, false);
-    }
-
-
-    /** EC-43 variant: {@code foldAbsentColumn} reaches this call's ARGUMENT plans. */
-    static ValuePlan valueCallPlan(Expr.Call c, boolean foldAbsentColumn)
     {
         FunctionDescriptor descriptor = FunctionRegistry.descriptor(c.name());
         if (descriptor == null)
@@ -4784,7 +4731,7 @@ public final class ExprCompiler
         List<@Nullable ValuePlan> argPlans = new ArrayList<>(bound.size());
         for (Expr arg : bound)
         {
-            argPlans.add(arg == null ? null : operandPlan(arg, true, foldAbsentColumn));
+            argPlans.add(arg == null ? null : operandPlan(arg, true));
         }
         // Constant-fold a pure value function whose arguments are ALL literals: evaluate it once at
         // compile time (against a 1-row context-free run — the allowlisted transforms read only
@@ -5873,22 +5820,6 @@ public final class ExprCompiler
                     row -> grouped.getForRowOrDefault(ctx, row));
         }
         return ConstVector.of(var);
-    }
-
-
-    private static @Nullable String firstJoined(EvaluationContext ctx, long row, String name)
-    {
-        for (JoinLookup lookup : ctx.getJoinedDatasets().values())
-        {
-            for (String v : lookup.lookupAll(ctx.getTable(), row, name))
-            {
-                if (v != null)
-                {
-                    return v;
-                }
-            }
-        }
-        return null;
     }
 
 

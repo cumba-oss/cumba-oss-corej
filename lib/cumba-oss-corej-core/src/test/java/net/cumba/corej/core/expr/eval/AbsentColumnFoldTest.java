@@ -453,7 +453,18 @@ class AbsentColumnFoldTest
         // value function (0 occurrences in the shipped corpus), and BroadcastFold's
         // firesEmptyOnAbsentColumn would have to move in lockstep. Pinned so it is a known
         // boundary rather than a latent surprise.
-        assertEquals(bits(0, 1), eval("empty(len(TSVAL))", absent()));
+        // ⭐⭐ UPDATED 2026-09-21 — THE RESIDUAL IS GONE, and that is the point of the change.
+        // This assertion used to read bits(0, 1) for absent against an empty BitSet for blank: the
+        // ONE measured place where absent != blank, and it existed only because
+        // `empty`/`is_missing`
+        // were carved out of the EC-43 fold. The owner withdrew that carve-out (2026-09-21,
+        // "include it, agree"), so `len(ABSENT)` now folds to len("") = 0 exactly as `len(BLANK)`
+        // does, `empty(0)` is false on both, and the two AGREE.
+        // ⚠ Derived from the contract, not read off the run: D34 #3 makes an absent character
+        // column a present empty string, so any TOTAL function over it must answer what it answers
+        // over a blank one. The old value was the carve-out's footprint, not a property of `empty`.
+        assertEquals(new BitSet(), eval("empty(len(TSVAL))", absent()),
+                "absent now agrees with blank -- the carve-out was the only reason it did not");
         assertEquals(new BitSet(), eval("empty(len(TSVAL))", blank()));
     }
 

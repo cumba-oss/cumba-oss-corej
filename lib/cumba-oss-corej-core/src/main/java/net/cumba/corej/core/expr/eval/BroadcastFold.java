@@ -1050,8 +1050,14 @@ public final class BroadcastFold
         {
             return BindColumnLevel.ROW;
         }
-        return anyJoinedDatasetHasColumn(name, ctx) ? BindColumnLevel.ROW
-                : BindColumnLevel.DATASET_ABSENT;
+        // ⭐⭐ UVC unqualified + the UNIFORMITY ruling (owner, 2026-09-21). This used to answer
+        // `anyJoinedDatasetHasColumn(name, ctx) ? ROW : DATASET_ABSENT` -- i.e. a bare name absent
+        // from the primary was ROW-level purely because some JOIN carried a column of that name.
+        // That is the name's meaning varying with its surroundings, in the one place that decides
+        // BINDING SCOPE rather than a value: it changes how many findings a rule emits (via
+        // absentColumnLeafLevel -> foldLeaf -> DATASET_WITH_ABSENT), not just what a leaf reads.
+        // ⇒ A bare name the primary lacks is a DATASET-LEVEL ABSENT column, full stop.
+        return BindColumnLevel.DATASET_ABSENT;
     }
 
 

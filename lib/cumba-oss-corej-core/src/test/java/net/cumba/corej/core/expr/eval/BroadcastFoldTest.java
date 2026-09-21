@@ -280,10 +280,14 @@ class BroadcastFoldTest
 
 
     @Test
-    void joinedDatasetSurfaceableColumnDoesNotFold()
+    void joinedDatasetSurfaceableColumnNOWFolds()
     {
-        // AEXX is absent from the primary table but present on a joined dataset — the legacy
-        // fold leaves the leaf for row-level resolution, so the native fold must too.
+        // ⭐⭐ INVERTED 2026-09-21. AEXX is absent from the primary and present on a joined
+        // dataset. This used to assert UNKNOWN -- "the legacy fold leaves the leaf for row-level
+        // resolution, so the native fold must too" -- which is the level calculus deciding a bare
+        // name's meaning from what a JOIN happens to carry. Under the uniformity ruling (owner,
+        // 2026-09-21) a bare name the primary lacks is a DATASET-LEVEL ABSENT column whatever the
+        // joins hold, so the leaf folds and `AEXX == "A"` is decidably FALSE for the dataset.
         SyntheticDataTable ex = new SyntheticDataTable("EX", List.of("USUBJID", "AEXX"),
                 new String[]
                 {
@@ -298,7 +302,8 @@ class BroadcastFoldTest
                 .datasetResolver(n -> "EX".equals(n) ? ex : null).build();
         Expr viaJoin = new Expr.Binary(Expr.BinOp.EQ, new Expr.Ref("AEXX", OperandKind.COLUMN),
                 LIT_A);
-        assertEquals(Verdict.UNKNOWN, BroadcastFold.fold(viaJoin, joinedCtx, false));
+        assertEquals(Verdict.FALSE, BroadcastFold.fold(viaJoin, joinedCtx, false),
+                "a bare name the primary lacks folds, regardless of what a join carries");
     }
 
     // ------------------------------------------------------------------

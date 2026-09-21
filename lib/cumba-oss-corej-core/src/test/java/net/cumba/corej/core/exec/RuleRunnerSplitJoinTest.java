@@ -450,9 +450,60 @@ class RuleRunnerSplitJoinTest
         RuleExecutionResult res = RuleRunner.execute(rule, primary,
                 RealTables.inventoryOf(primary, lbch(), lbhe()), null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
-        // U1/1 binds lbch's res-ch-1 (non-empty); U3/7 binds no member -> null -> fires.
+        // ⭐⭐ INVERTED 2026-09-21 (D3 of PLAN-unqualified-name-primary-only). This asserted
+        // List.of(1L) with the message "the unqualified joined-column read must see the union, not
+        // fold to ALL_MISSING" -- the ruling's negation, added by an earlier review as a
+        // requirement. Under the owner's ruling the rule in this fixture is itself a RULE ERROR:
+        // `empty(LBORRES)` where only the joined LB carries LBORRES means the PRIMARY's LBORRES,
+        // which ADLB does not have.
+        // ⇒ LBORRES folds to the absent-column constant "" (D34 #3) on every row, and `empty("")`
+        // is true, so BOTH rows fire. Derived from the contract; the split union is irrelevant to a
+        // name that never reaches it.
+        // ⭐⭐ AND THE GRANULARITY CHANGES, which is site S4's doing and is the half my own
+        // contract derivation first got wrong: I predicted [0, 1] (both rows firing record-level)
+        // from the VALUE contract alone. The level calculus now answers DATASET_ABSENT for a bare
+        // name the primary lacks, so the leaf folds once for the dataset instead of per row, and a
+        // single finding replaces N. ⇒ ONE entry, not two.
+        // ⚑ Recorded because it is the plan's "granularity" attribution category observed in the
+        // wild: S4 does not change what a leaf reads, it changes how many findings a rule emits.
+        assertEquals(1, rows(res).size(),
+                "an unqualified name means the PRIMARY's column, absent here, so the leaf folds at"
+                        + " DATASET level and the rule emits one finding, not one per row");
+    }
+
+
+    /**
+     * ⭐ THE MECHANISM, not just the verdict — review round 1 of the plan required this. The test
+     * above would also pass if the bare name merely failed to resolve (the unresolved-operand
+     * channel, where {@code empty} takes its all-rows branch). That is the wrong reason for the
+     * right answer, so this pins that the QUALIFIED form still reads the split union: if the join
+     * had silently stopped working, this test fails while the one above still passes.
+     */
+    @Test
+    void theQualifiedFormStillReadsTheSplitUnion()
+    {
+        IDataTable primary = RealTables.of("ADLB").str("USUBJID", "U1", "U3").str("LBSEQ", "1", "7")
+                .build();
+        Rule rule = new Rule();
+        RuleCore core = new RuleCore();
+        core.setId("TEST-QUALIFIED");
+        rule.setCore(core);
+        rule.setScope(new Scope());
+        rule.setSensitivity(Sensitivity.RECORD);
+        Outcome outcome = new Outcome();
+        outcome.setMessage("joined LB.LBORRES is empty");
+        outcome.setOutputVariables(List.of("USUBJID"));
+        rule.setOutcome(outcome);
+        rule.setMatchDatasets(List.of(md("LB", "left", "USUBJID", "LBSEQ")));
+        rule.setCheck(new CheckConditionAll(List.of(expr("empty(LB.LBORRES)"))));
+        RulePackageLoader.installNativeExpr(rule);
+
+        RuleExecutionResult res = RuleRunner.execute(rule, primary,
+                RealTables.inventoryOf(primary, lbch(), lbhe()), null, null);
+        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
+        // U1/1 binds lbch's res-ch-1 (non-empty); U3/7 binds no member -> missing -> fires.
         assertEquals(List.of(1L), rows(res),
-                "the unqualified joined-column read must see the union, not fold to ALL_MISSING");
+                "the QUALIFIED read still sees the union -- that path is deliberately unchanged");
     }
 
 

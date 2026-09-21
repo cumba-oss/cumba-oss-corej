@@ -89,7 +89,16 @@ class ArithmeticFirstClassTest
         // Operand column NOPE is absent: the operand plan resolves to nothing, the arithmetic
         // plan yields no vector, the predicate makes no decision — the fused shapes' shipped
         // absent-operand verdict, deliberately preserved (no EC-43 fold on value operands).
-        assertEquals(bits(), eval("X != A / NOPE", t));
+        // ⭐⭐ UPDATED 2026-09-21. This was bits() -- an absent OPERAND column made no decision,
+        // "deliberately preserved (no EC-43 fold on value operands)". That preservation was exactly
+        // the position-dependence the uniformity ruling forbids: the assertion two lines below has
+        // always said an absent COMPARED column folds and `!=` fires. Same column, same absence,
+        // two answers, decided by which side of the operator it sat on.
+        // ⚠ Derived, not observed: the fold makes A / NOPE all-missing, and the negative-leaf
+        // contract (EC-43/EC-49) makes `!=` fire over it -- which is what the NEXT assertion
+        // already pins for the compared position. Uniformity means they must now match.
+        assertEquals(bits(0), eval("X != A / NOPE", t),
+                "an absent operand column folds exactly as an absent compared column does");
         // The COMPARED column absent takes the general EC-43/EC-49 negative-leaf contract the
         // fused special case used to bypass: fold to all-missing, and != fires.
         assertEquals(bits(0), eval("NOPE != A / 4", t),
