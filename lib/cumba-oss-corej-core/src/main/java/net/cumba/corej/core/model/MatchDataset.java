@@ -51,6 +51,53 @@ public class MatchDataset
     private @Nullable String joinType;
 
     /**
+     * Whether rows whose key is <b>blank</b> — {@code ""} or any
+     * {@link net.cumba.datatable.values.MissingValue} — take part in this join
+     * ({@code PLAN-join-key-missing-semantics}; register {@code JKM R4}).
+     *
+     * <p>
+     * ⭐⭐ <b>{@code null} means KEEP.</b> Owner, 2026-09-21: <i>"From my point of view the DROP is
+     * the bug we need to fix. There is no reason to remove a row from the merge because there is a
+     * missing value in one of the keys. Especially if both tables have rows that would match up.
+     * Therefore I rule KEEP is the default and DROP must explicitly be authored if needed."</i> ⇒
+     * the join surface's default is the <b>opposite</b> of the Check-level {@code Grouping:}
+     * default ({@link GroupingSpec#getKeepMissings()}, which stays <b>drop</b>) — deliberately,
+     * because grouping <em>collapses</em> blank-keyed rows into one bucket while a join
+     * <em>pairs</em> them, so the 2026-08 flood mechanism is not present in the same shape.
+     * </p>
+     *
+     * <p>
+     * ⛔ <b>This flag governs PARTICIPATION only, never IDENTITY</b> ({@code JKM R5}, owner: <i>"if
+     * they are kept, they are kept as separate identities. a MIS will not join a record with an
+     * empty string and a MIS_A will not join a record with a MIS or MIS_B."</i>). Identity is exact
+     * with the flag on <b>or</b> off, and it is carried by
+     * {@link net.cumba.corej.core.exec.GroupKeyPolicy.KeyPart} rather than by any rendered key — a
+     * stringified key would make a participating {@code MIS} collide with a present {@code "."}.
+     * </p>
+     *
+     * <p>
+     * ⚠ Under an authored {@code false}, a key column that is <b>absent on one side</b> makes every
+     * row on that side blank at that component, so the join matches nothing. That follows from the
+     * author's own declaration ({@code JKM R7} gives the absent column its type default, and DROP
+     * drops blanks) and is not a separate rule. JSON key {@code "keep_missings"} — the same
+     * spelling the two grouping surfaces use.
+     * </p>
+     */
+    @JsonProperty("keep_missings")
+    private @Nullable Boolean keepMissings;
+
+    /**
+     * The effective participation policy: {@code true} unless the rule authored {@code false}.
+     *
+     * @return whether blank-keyed rows take part in this join ({@code JKM R4}: the default is KEEP)
+     */
+    @JsonIgnore
+    public boolean keepMissingKeys()
+    {
+        return keepMissings == null || keepMissings;
+    }
+
+    /**
      * The pre-merge filter (phase 5b-J — spec §3.3 / D88c, {@code PLAN-join-match-flag.md} §8): a
      * {@code boolean}-typed expression evaluated against the joined dataset's <b>own</b> rows,
      * <b>before</b> the key index is built. Rows failing it can never become a join partner, so

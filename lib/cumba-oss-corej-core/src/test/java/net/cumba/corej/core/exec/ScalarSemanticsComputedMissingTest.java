@@ -621,8 +621,22 @@ class ScalarSemanticsComputedMissingTest
      * site that was changed. Then {@code JoinedCandidatesVector.firstNonNullCell} went too, when
      * review round 1 measured that the class had no producer left at all. No producer was added.
      * </p>
+     *
+     * <p>
+     * ⚑ <b>17 → 18 on 2026-09-21, and the ADDITION is ACCOUNTED FOR</b> — which is what this
+     * ratchet asks for and the reason it is not a formality.
+     * {@code JoinLookup.absentJoinedColumnValue} is the extraction of an arm that had <b>three</b>
+     * production implementations ({@code PLAN-join-key-missing-semantics} phase 6b(3)), and the
+     * ratchet caught it on the first run. <b>Read for its verdict:</b> it answers
+     * {@code ScalarSemantics.computedMissing()} for a numeric read and
+     * {@code DataValueSupport.defaultForType(STRING)} otherwise — both real values, never
+     * {@code null}, and its return type carries no {@code @Nullable}. ⇒ the net population is +1
+     * while the three <em>call sites</em> that used to spell this inline are unchanged in count,
+     * because each still declares its own {@code lookupValue}. The producer moved; it did not
+     * multiply.
+     * </p>
      */
-    private static final int EXPECTED_VALUE_PRODUCERS = 17;
+    private static final int EXPECTED_VALUE_PRODUCERS = 18;
 
     private static Method declared(Class<?> owner, String name)
     {

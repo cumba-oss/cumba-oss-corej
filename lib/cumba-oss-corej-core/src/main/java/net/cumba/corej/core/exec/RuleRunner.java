@@ -445,8 +445,13 @@ public final class RuleRunner
                     .violations(List.of()).totalRows(table != null ? table.getRowCount() : 0L)
                     .status(RuleExecutionStatus.SKIPPED).statusMessage(reason).build());
         }
-        catch (InvalidJoinedDomainException e)
+        catch (InvalidJoinedDomainException | DegenerateJoinKeyException e)
         {
+            // ⭐ DegenerateJoinKeyException joins this catch for JKM R7 (owner, 2026-09-21: "if all
+            // columns are absent, then the rule should fail with an error"). Same channel, same
+            // shape, same reason: a submission the sponsor must see, never a silent skip.
+            // Multi-catch
+            // rather than a shared supertype — two unrelated defects that happen to report alike.
             // Fix #358 (ruling 1): a Match_Datasets name / RDOMAIN value resolved to a split
             // domain whose members cannot be unioned (e.g. a column type clash). A malformed
             // split is a submission defect the sponsor must see, so the rule reports ERROR with

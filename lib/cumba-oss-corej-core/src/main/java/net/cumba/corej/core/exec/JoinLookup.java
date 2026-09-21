@@ -301,4 +301,49 @@ public interface JoinLookup
      */
     String getDatasetName();
 
+
+    /**
+     * The value a dotted read answers when the column is absent from the joined dataset
+     * <b>entirely</b> — the one implementation of an arm that had three.
+     *
+     * <p>
+     * ⭐⭐ §9c DOTTED PARITY (owner ruling, 2026-09-18): a joined variable behaves like a first-class
+     * primary one in every respect but the dotted access form, so an absent joined column takes the
+     * <b>RULE's expected default</b> exactly as an absent primary column does (D72/D76/§1b):
+     * numeric → {@code MissingValue.MIS}, otherwise the CONSTANT {@code ""} — a present empty
+     * string, never a computed MIS for a char read (the D96a absent-vs-blank regression, where a
+     * MIS sorted below every value under the D34 #5 order arm).
+     * </p>
+     *
+     * <p>
+     * ⛔ <b>Do not re-derive the flag here and do not read a declared type for it:</b> an absent
+     * column HAS no declared type, so the expectation is a property of the RULE and can only arrive
+     * from the call site. That is what {@code numericExpected} is.
+     * </p>
+     *
+     * <p>
+     * ⚠ {@link ScalarSemantics#computedMissing()} is the engine's single spelling of
+     * {@code MissingValue.MIS} and is byte-identical to what
+     * {@code ExprCompiler.dottedNotSuppliedDefault} answers for the sibling "no such joined
+     * dataset" case — the two must not drift.
+     * </p>
+     *
+     * <p>
+     * ⭐ <b>Extracted 2026-09-21</b> ({@code PLAN-join-key-missing-semantics} phase 6b(3)). It had
+     * THREE production implementations — {@link DatasetLookup}, {@code KeyMatchExpandedLookup} and
+     * {@code RelrecExpandedLookup} — and the third one's own comment recorded the reason to
+     * extract: <i>"THIS SITE WAS MISSED TWICE … ⛔ When this arm changes again, change all three or
+     * none."</i> Now there is nothing to keep in step.
+     * </p>
+     *
+     * @param numericExpected
+     *            whether the rule reads this column as numeric
+     * @return the ruled absent-joined-column value
+     */
+    static IDataValue absentJoinedColumnValue(boolean numericExpected)
+    {
+        return numericExpected ? ScalarSemantics.computedMissing()
+                : DataValueSupport.defaultForType(DataValueType.STRING);
+    }
+
 }

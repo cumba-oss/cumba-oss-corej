@@ -75,9 +75,7 @@ final class KeyMatchExpandedLookup implements JoinLookup
             // handed no EvaluationContext" — was correct about the mechanism and wrong about the
             // conclusion: §9c makes it a reason to change the channel, which the numericExpected
             // parameter is.
-            return numericExpected ? ScalarSemantics.computedMissing()
-                    : net.cumba.datatable.values.DataValueSupport
-                            .defaultForType(net.cumba.datatable.values.DataValueType.STRING);
+            return JoinLookup.absentJoinedColumnValue(numericExpected);
         }
         long cr = boundChildRow(row);
         if (cr < 0)

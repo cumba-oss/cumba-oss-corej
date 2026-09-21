@@ -4,8 +4,6 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.values.DataValueSupport;
-import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
@@ -136,8 +134,7 @@ final class RelrecExpandedLookup implements JoinLookup
             // ⚑ The previous rationale — "this seam cannot READ an expectation, lookupValue
             // receives no EvaluationContext" — was correct about the mechanism and wrong about the
             // conclusion: §9c makes it a reason to change the channel, which numericExpected is.
-            return numericExpected ? ScalarSemantics.computedMissing()
-                    : DataValueSupport.defaultForType(DataValueType.STRING);
+            return JoinLookup.absentJoinedColumnValue(numericExpected);
         }
         // ⛔ D75a case 4: a bound target cell that is a genuine MissingValue is a SUPPLIED value,
         // distinct from "" (D11/D12), and passes through unchanged — which is precisely what the

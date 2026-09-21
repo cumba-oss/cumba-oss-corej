@@ -196,8 +196,8 @@ final class RelrecRowExpander
             {
                 continue;
             }
-            String key = nz(cStudy >= 0 ? cell(relrec, cStudy, rr) : "") + '\0'
-                    + nz(cell(relrec, cUsubj, rr)) + '\0' + relid;
+            String key = keyCell(relrec, cStudy, rr) + '\0' + keyCell(relrec, cUsubj, rr) + '\0'
+                    + relid;
             groups.computeIfAbsent(key, _ -> new ArrayList<>()).add(rr);
         }
 
@@ -397,7 +397,7 @@ final class RelrecRowExpander
         long tRows = target.getRowCount();
         for (long r = 0; r < tRows; r++)
         {
-            String usubj = nz(cell(target, tUsubjIdx, r));
+            String usubj = keyCell(target, tUsubjIdx, r);
             if (isNonBlank(usubjId) && !usubj.equals(usubjId))
             {
                 continue;
@@ -412,7 +412,7 @@ final class RelrecRowExpander
             {
                 continue;
             }
-            String base = nz(tStudyIdx >= 0 ? cell(target, tStudyIdx, r) : "") + '\0' + usubj;
+            String base = keyCell(target, tStudyIdx, r) + '\0' + usubj;
             String key = recordLevel ? base : base + '\0' + idvNorm;
             targetIndex.computeIfAbsent(key, _ -> new ArrayList<>()).add(r);
         }
@@ -428,7 +428,7 @@ final class RelrecRowExpander
         long pRows = primary.getRowCount();
         for (long r = 0; r < pRows; r++)
         {
-            String usubj = nz(cell(primary, pUsubjIdx, r));
+            String usubj = keyCell(primary, pUsubjIdx, r);
             if (isNonBlank(usubjId) && !usubj.equals(usubjId))
             {
                 continue;
@@ -443,7 +443,7 @@ final class RelrecRowExpander
             {
                 continue;
             }
-            String base = nz(pStudyIdx >= 0 ? cell(primary, pStudyIdx, r) : "") + '\0' + usubj;
+            String base = keyCell(primary, pStudyIdx, r) + '\0' + usubj;
             String key = recordLevel ? base : base + '\0' + idvNorm;
             List<Long> matches = targetIndex.get(key);
             if (matches == null)
@@ -531,8 +531,12 @@ final class RelrecRowExpander
                 }
                 // v is non-null, so normKey is non-null.
                 String vn = Objects.requireNonNull(normKey(v));
-                String usubj = cell(table, usubjIdx, r);
-                String key = withStudy ? studySubjectKey(cell(table, studyIdx, r), usubj, vn)
+                // JKM R5: keyCell, not cell — this index is probed by subjectKey below, so the
+                // two MUST share one encoding. With cell()/nz() a row whose USUBJID is MISSING
+                // indexed under "" and conflated with a genuinely empty one on the withStudy arm,
+                // where both sides are built here.
+                String usubj = keyCell(table, usubjIdx, r);
+                String key = withStudy ? studySubjectKey(keyCell(table, studyIdx, r), usubj, vn)
                         : subjectKey(usubj, vn);
                 index.computeIfAbsent(key, _ -> new ArrayList<>()).add(r);
             }
@@ -540,21 +544,72 @@ final class RelrecRowExpander
         }
     }
 
-    private static String studySubjectKey(@Nullable String study, @Nullable String usubj,
-            String valueNorm)
+    /**
+     * ⚠ {@code study}/{@code usubj} arrive ALREADY key-encoded — from {@link #keyCell} when built
+     * from a table row, or as a present non-blank string from the {@code LinkSpec} probe, which are
+     * the same thing for a present value ({@code Present.reportingForm()} is the value itself). ⛔
+     * Do not re-introduce an {@code nz} collapse (since deleted) here: it is what made a MISSING
+     * key equal an empty one ({@code JKM R5}). The normalised value is kept verbatim to match the
+     * legacy scan.
+     */
+    private static String studySubjectKey(String study, String usubj, String valueNorm)
     {
-        // STUDYID/USUBJID are nz-collapsed (mirroring the legacy join base); the normalised value
-        // is kept verbatim to match the legacy scan and the Python oracle's float-merge keys.
-        return nz(study) + '\0' + nz(usubj) + '\0' + valueNorm;
+        return study + '\0' + usubj + '\0' + valueNorm;
     }
 
 
-    private static String subjectKey(@Nullable String usubj, String valueNorm)
+    /** @see #studySubjectKey — {@code usubj} is already key-encoded for the same reason. */
+    private static String subjectKey(String usubj, String valueNorm)
     {
-        return nz(usubj) + '\0' + valueNorm;
+        return usubj + '\0' + valueNorm;
     }
 
-    // ---- shared helpers (kept byte-identical to the manager twin, except nz) ----
+    // ---- shared helpers (kept byte-identical to the manager twin) ----
+    // ⭐ `nz` is GONE (2026-09-21, JKM R5): it mapped a missing cell to "", which is exactly
+    // the conflation the ruling forbids. Every key site now goes through keyCell instead, and
+    // Error Prone's UnusedMethod is what proved no key site was left behind.
+
+
+    /**
+     * One join-key component, encoded so that a <b>missing</b> cell is not the empty string.
+     *
+     * <p>
+     * ⭐⭐ <b>{@code JKM R5} (owner, 2026-09-21): <i>"a MIS will not join a record with an empty
+     * string and a MIS_A will not join a record with a MIS or MIS_B."</i></b> Every key site here
+     * used to read {@code nz(cell(...))}, and {@link #cell} answers {@code null} for a missing cell
+     * while the {@code nz} helper it fed mapped {@code null} to {@code ""} — so a MISSING
+     * {@code USUBJID} joined a genuinely <b>empty</b> one, and two different markers joined <b>each
+     * other</b>. That was a live violation on the RELREC path, independent of the DROP/KEEP
+     * question.
+     * </p>
+     *
+     * <p>
+     * ⚠ <b>{@code JKM R7}:</b> an <b>absent</b> column is present-but-empty, so it keeps answering
+     * {@code ""} — the character default. That is the ruled answer, not the old collapse surviving.
+     * </p>
+     *
+     * <p>
+     * ⛔⛔ <b>This is the WEAKER of the two identity forms in this engine, deliberately and only
+     * here.</b> {@link GroupKeyPolicy.KeyPart} is a sealed type that <b>cannot</b> collide;
+     * {@code reportingForm()} is a <em>rendering</em>, and its own javadoc says it must never be
+     * re-parsed to recover identity. This path is string-keyed by construction (the keys are
+     * {@code \0}-joined and the helpers below are kept byte-identical to a twin in
+     * {@code cumba-datatable-manager-local}), so the strong form is not available without changing
+     * both repos. {@code Missing.reportingForm()} prefixes {@code \u0001}, which no clinical text
+     * cell carries — <i>unlikely</i> to collide rather than <i>unable</i> to. ⇒ if this path is
+     * ever unified with the expander's, take the {@code KeyPart} identity and delete this method;
+     * {@code GroupedResult.buildKey} already makes the same trade for the same reason.
+     * </p>
+     */
+    private static String keyCell(IDataTable t, int col, long row)
+    {
+        if (col < 0)
+        {
+            return ""; // JKM R7: absent column -> the character type default
+        }
+        return GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(t.getColumn(col).getDataValue(row))
+                .reportingForm();
+    }
 
 
     private static @Nullable String cell(IDataTable t, int col, long row)
@@ -599,9 +654,4 @@ final class RelrecRowExpander
         }
     }
 
-
-    private static String nz(@Nullable String s)
-    {
-        return s == null ? "" : s;
-    }
 }

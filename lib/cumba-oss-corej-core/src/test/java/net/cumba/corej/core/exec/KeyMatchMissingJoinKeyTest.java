@@ -148,35 +148,72 @@ class KeyMatchMissingJoinKeyTest
 
 
     /**
-     * ⭐ The discriminating assertion. Under an {@code inner} join the missing-key primary row is
-     * DROPPED, because it matched nothing — where before {@code d4edd59} it matched the child row
-     * whose key was equally missing, on an empty-string key both sides folded to.
+     * ⭐⭐ The discriminating assertion, <b>INVERTED 2026-09-21 for {@code JKM R4}</b>. Both rows now
+     * survive an {@code inner} join, because both key cells carry <b>the same</b>
+     * {@code MissingValue} and a missing is a normal value: <i>"There is no reason to remove a row
+     * from the merge because there is a missing value in one of the keys. Especially if both tables
+     * have rows that would match up."</i>
+     *
+     * <p>
+     * ⛔ This test previously asserted {@code List.of("0:HEADACHE")} — the DROP behaviour — with the
+     * message <i>"a MissingValue key is not joinable"</i>. That claim is retired; the assertion is
+     * INVERTED rather than deleted, so the change of behaviour is visible in the diff of the very
+     * test that pinned the old one.
+     * </p>
      */
     @Test
-    void anInnerJoinDropsTheMissingKeyRowInsteadOfMatchingTheOtherMissingKeyRow()
+    void anInnerJoinKEEPSTheMissingKeyRowsAndPairsThemWithEachOther()
     {
-        assertEquals(List.of("0:HEADACHE"), rows(expand("inner"), "AETERM"),
-                "a MissingValue key is not joinable: only the P1/P1 pair may survive. Seeing"
-                        + " '1:NAUSEA' here means the two MISSING keys matched each other — the"
-                        + " pre-d4edd59 behaviour, in which tuple() built an EMPTY key segment"
-                        + " from a raw-null character cell (§1b: a missing cell is NOT \"\")");
+        assertEquals(List.of("0:HEADACHE", "1:NAUSEA"), rows(expand("inner"), "AETERM"),
+                "JKM R4: both sides carry the SAME MissingValue, so the rows pair. Seeing only"
+                        + " '0:HEADACHE' means the drop is back");
     }
 
 
     /**
-     * ⭐ The same fact from the other side: under a {@code left} join the missing-key primary row
-     * SURVIVES — a left join keeps unmatched primary rows — but it is bound to NO child, so the
-     * dotted read answers "no match". This arm is what distinguishes "did not join" from "was
-     * dropped", which the inner arm alone cannot show.
+     * ⭐ The same fact from the other side, also inverted: under a {@code left} join the missing-key
+     * primary row survives <b>bound</b>. ⚠ Both join types now give the same row count here, so
+     * this arm no longer distinguishes "survived because it matched" from "survived because left
+     * keeps unmatched rows" — the binding, not the count, is what it asserts.
      */
     @Test
-    void aLeftJoinKeepsTheMissingKeyRowUnboundRatherThanBindingItToTheOtherMissingKeyRow()
+    void aLeftJoinBindsTheMissingKeyRowToTheEquallyMissingChildRow()
     {
         var exp = expand("left");
-        assertEquals(2, exp.table().getRowCount(), "a left join keeps the unmatched primary row");
-        assertEquals(List.of("0:HEADACHE", "1:null"), rows(exp, "AETERM"),
-                "the missing-key primary row must be bound to NO child row. '1:NAUSEA' would mean"
-                        + " the two missing keys joined");
+        assertEquals(2, exp.table().getRowCount(), "both primary rows survive");
+        assertEquals(List.of("0:HEADACHE", "1:NAUSEA"), rows(exp, "AETERM"),
+                "JKM R4: the missing-key primary row is BOUND now. '1:null' would mean the drop is"
+                        + " back");
+    }
+
+
+    /**
+     * ⭐⭐ {@code JKM R5} — the assertion the KEEP default makes load-bearing: <i>"a MIS will not
+     * join a record with an empty string and a MIS_A will not join a record with a MIS or
+     * MIS_B."</i>
+     *
+     * <p>
+     * ⛔ <b>This is the case a stringified key gets WRONG</b>, and it is why the key is built from
+     * {@code GroupKeyPolicy.KeyPart}: {@code MissingValue.toString()} renders its display string,
+     * so a {@code \0}-joined {@code getValueAsString()} key would make a SAS missing on one side
+     * equal a genuine text cell holding that same rendering on the other — measured elsewhere at +9
+     * 528 findings over 8 rules.
+     * </p>
+     */
+    @Test
+    void aMissingKeyJoinsNeitherAPresentDotNorAnEmptyString()
+    {
+        IDataTable dm = MockTable.of().colSasMissing(USUBJID, "P1", null, null)
+                .col("AGE", "34", "51", "62").name("DM").build();
+        IDataTable ae = MockTable.of().col(USUBJID, "P1", ".", "")
+                .col("AETERM", "HEADACHE", "DOTTED", "BLANK").name(AE).build();
+        var exp = KeyMatchRowExpander.expand(dm, List.of(md("left")), Map.of("DM", dm, AE, ae)::get,
+                "R-TEST");
+        assertNotNull(exp);
+        assertEquals(List.of("0:HEADACHE", "1:null", "2:null"), rows(exp, "AETERM"),
+                "JKM R5: a MissingValue joins neither a present dot nor a present empty string."
+                        + " '1:DOTTED' is the stringified-key collision; '2:BLANK' is the"
+                        + " empty-string conflation");
     }
 
 

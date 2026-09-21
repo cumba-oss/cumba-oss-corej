@@ -6,14 +6,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-
+import net.cumba.corej.core.exec.GroupKeyPolicy.KeyPart;
 import net.cumba.corej.core.model.JoinType;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.databuffer.DataBufferFactory;
 import net.cumba.datatable.impl.databuffer.IDataBufferNumeric;
+import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.IDataValue;
+import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -175,13 +177,19 @@ final class KeyMatchRowExpander
             // Fix #236: same comparison, now sourced from the JoinType vocabulary so the constant
             // and the load-time gate cannot drift apart. Semantics for `inner` / `left` unchanged.
             boolean left = !JoinType.INNER.getJsonValue().equalsIgnoreCase(md.getJoinType());
-            int[] primaryColIds = resolveColIds(primaryTable.getMetaData(), keys);
-            Map<String, List<Long>> childIndex = buildChildIndex(child, keys);
+            // JKM R4/R5/R7 (PLAN-join-key-missing-semantics): the key's shape is decided ONCE per
+            // entry — which components survive (R7's both-sides-absent drop), what an absent side
+            // contributes, and whether blanks participate (R4's KEEP default). A per-row test could
+            // not express the drop, because "absent on both sides" is a property of the two tables,
+            // not of a row.
+            KeySpec spec = keySpec(primaryTable, child, keys, Objects.requireNonNull(md.getName()),
+                    md.keepMissingKeys());
+            Map<List<KeyPart>, List<Long>> childIndex = buildChildIndex(child, spec);
 
             List<long[]> next = new ArrayList<>();
             for (long[] b : bindings)
             {
-                String keyTuple = tuple(primaryTable, primaryColIds, b[0]);
+                List<KeyPart> keyTuple = tuple(primaryTable, spec.primaryColIds(), spec, b[0]);
                 List<Long> matches = keyTuple == null ? null : childIndex.get(keyTuple);
                 if (matches == null || matches.isEmpty())
                 {
@@ -275,21 +283,143 @@ final class KeyMatchRowExpander
     }
 
 
-    private static Map<String, List<Long>> buildChildIndex(IDataTable child, List<String> keys)
+    private static Map<List<KeyPart>, List<Long>> buildChildIndex(IDataTable child, KeySpec spec)
     {
-        int[] colIds = resolveColIds(child.getMetaData(), keys);
-        Map<String, List<Long>> index = new LinkedHashMap<>();
+        Map<List<KeyPart>, List<Long>> index = new LinkedHashMap<>();
         long rows = child.getRowCount();
         for (long r = 0; r < rows; r++)
         {
-            String t = tuple(child, colIds, r);
+            List<KeyPart> t = tuple(child, spec.childColIds(), spec, r);
             if (t == null)
             {
-                continue; // null/absent key -> no merge match (pandas drops NaN keys)
+                // Only reachable under an authored keep_missings:false — the flag-OFF path.
+                continue;
             }
             index.computeIfAbsent(t, _ -> new ArrayList<>()).add(r);
         }
         return index;
+    }
+
+    /**
+     * The shape of one entry's join key, computed once from the two tables' metadata.
+     *
+     * <p>
+     * ⭐⭐ <b>{@code JKM R7} lives here, not in {@link #tuple}.</b> <i>"Absent columns are treated
+     * like present, but empty (with default value). … Absent in both sides can be dropped from the
+     * join. if all columns are absent, then the rule should fail with an error."</i> (owner,
+     * 2026-09-21). Both halves are properties of the two <em>tables</em>, so deciding them per row
+     * would be both wasteful and unable to express the drop at all.
+     * </p>
+     *
+     * <b>Fields.</b>
+     * <ul>
+     * <li>{@code primaryColIds} — the key columns in the validated dataset; {@code -1} where
+     * absent</li>
+     * <li>{@code childColIds} — the key columns in the joined dataset; {@code -1} where absent</li>
+     * <li>{@code absentPart} — * per component, the {@link KeyPart} an <b>absent</b> side
+     * contributes — derived from the type of the side that <em>does</em> carry the column, because
+     * an absent column has no type of its own: {@link KeyPart#EMPTY} for a character column, the
+     * generic numeric missing for a numeric one. Unused where both sides carry the column.
+     * <li>{@code active} — * per component, whether it takes part in the key at all; {@code false}
+     * exactly where the column is absent from <b>both</b> sides
+     * <li>{@code keepMissings} — {@code JKM R4}: whether blank-keyed rows participate. Default
+     * {@code true}</li>
+     * </ul>
+     */
+    private static final class KeySpec
+    {
+
+        // ⚠ A record was the obvious spelling and Error Prone rejects it: ArrayRecordComponent —
+        // a record's generated equals/hashCode would compare arrays by IDENTITY. This carrier is
+        // never compared, but a class states that rather than relying on nobody trying.
+        private final int[] primaryColIds;
+
+        private final int[] childColIds;
+
+        private final KeyPart[] absentPart;
+
+        private final boolean[] active;
+
+        private final boolean keepMissings;
+
+        private KeySpec(int[] aPrimaryColIds, int[] aChildColIds, KeyPart[] aAbsentPart,
+                boolean[] aActive, boolean aKeepMissings)
+        {
+            primaryColIds = aPrimaryColIds;
+            childColIds = aChildColIds;
+            absentPart = aAbsentPart;
+            active = aActive;
+            keepMissings = aKeepMissings;
+        }
+
+
+        private int[] primaryColIds()
+        {
+            return primaryColIds;
+        }
+
+
+        private int[] childColIds()
+        {
+            return childColIds;
+        }
+
+
+        private KeyPart[] absentPart()
+        {
+            return absentPart;
+        }
+
+
+        private boolean[] active()
+        {
+            return active;
+        }
+
+
+        private boolean keepMissings()
+        {
+            return keepMissings;
+        }
+    }
+
+    private static KeySpec keySpec(IDataTable primary, IDataTable child, List<String> keys,
+            String childName, boolean keepMissings)
+    {
+        int[] primaryColIds = resolveColIds(primary.getMetaData(), keys);
+        int[] childColIds = resolveColIds(child.getMetaData(), keys);
+        KeyPart[] absentPart = new KeyPart[keys.size()];
+        boolean[] active = new boolean[keys.size()];
+        int nActive = 0;
+        for (int i = 0; i < keys.size(); i++)
+        {
+            boolean inPrimary = primaryColIds[i] >= 0;
+            boolean inChild = childColIds[i] >= 0;
+            active[i] = inPrimary || inChild;
+            if (!active[i])
+            {
+                continue;
+            }
+            nActive++;
+            // The present side's declared type decides what the absent side contributes. A
+            // character column's default is the empty string (a PRESENT value, D34 #1); a numeric
+            // column's is a MissingValue, since a numeric cell cannot hold "".
+            DataValueType type = inPrimary
+                    ? primary.getMetaData().getColumn(primaryColIds[i]).getType()
+                    : child.getMetaData().getColumn(childColIds[i]).getType();
+            absentPart[i] = isNumeric(type) ? KeyPart.missing(MissingValue.MIS) : KeyPart.EMPTY;
+        }
+        if (nActive == 0)
+        {
+            throw new DegenerateJoinKeyException(childName, keys);
+        }
+        return new KeySpec(primaryColIds, childColIds, absentPart, active, keepMissings);
+    }
+
+
+    private static boolean isNumeric(DataValueType type)
+    {
+        return type == DataValueType.DOUBLE || type == DataValueType.LONG;
     }
 
 
@@ -305,8 +435,9 @@ final class KeyMatchRowExpander
 
 
     /**
-     * Composite key string for a row, or {@code null} when any key column is absent or its cell is
-     * missing.
+     * The row's composite join key as a list of {@link KeyPart}s, or {@code null} when the row does
+     * not participate — which, since {@code JKM R4}, happens <b>only</b> under an authored
+     * {@code keep_missings: false}.
      *
      * <p>
      * ⭐⭐ <b>The RULED semantics: a {@code MissingValue} is a NORMAL value, and it CAN be a join
@@ -412,26 +543,74 @@ final class KeyMatchRowExpander
      * ({@link #buildChildIndex}).
      * </p>
      */
-    private static @Nullable String tuple(IDataTable t, int[] colIds, long row)
+    private static @Nullable List<KeyPart> tuple(IDataTable t, int[] colIds, KeySpec spec, long row)
     {
-        StringBuilder sb = new StringBuilder();
+        if (!spec.keepMissings() && anyActiveKeyBlank(t, colIds, spec, row))
+        {
+            // The flag-OFF path of JKM R4, and the first caller KeyHashing.anyKeyMissing has ever
+            // had: an authored keep_missings:false drops the row. ⚠ Only ACTIVE components are
+            // consulted — an inactive one is absent on both sides and is not part of the key, so
+            // asking whether it is blank would drop every row of every such join.
+            return null;
+        }
+        List<KeyPart> parts = new ArrayList<>(colIds.length);
         for (int i = 0; i < colIds.length; i++)
         {
+            if (!spec.active()[i])
+            {
+                continue; // R7: absent on both sides -> not part of the key
+            }
             if (colIds[i] < 0)
             {
-                return null;
+                // R7: absent on THIS side -> the column's type default, exactly as if every row
+                // carried a blank cell. It still participates and still compares by identity.
+                parts.add(spec.absentPart()[i]);
+                continue;
+            }
+            // R5: identity comes from the sealed KeyPart, never from a rendered string. A
+            // getValueAsString()-based key made MissingValue.MIS collide with a present "." —
+            // measured at +9 528 findings / 8 rules (GroupKeyPolicy.KeyPart's javadoc).
+            parts.add(GroupKeyPolicy.KEEP_MISSING_KEYS
+                    .keyPart(t.getColumn(colIds[i]).getDataValue(row)));
+        }
+        return parts;
+    }
+
+
+    /**
+     * {@code true} when any <b>active</b> key component of this row is blank — {@code ""} or a
+     * {@link MissingValue} — or its column is absent on this side (every row is then blank there).
+     *
+     * <p>
+     * Delegates per component to {@link KeyHashing#anyKeyMissing}, which reads the typed buffer's
+     * missing sentinel directly (no {@link IDataValue} allocation, no autoboxing). ⚠ It counts a
+     * {@code -1} column as blank, which is precisely right for this predicate: an absent column
+     * contributes its type default to <em>every</em> row, and a default is blank.
+     * </p>
+     */
+    private static boolean anyActiveKeyBlank(IDataTable t, int[] colIds, KeySpec spec, long row)
+    {
+        for (int i = 0; i < colIds.length; i++)
+        {
+            if (!spec.active()[i])
+            {
+                continue;
+            }
+            if (KeyHashing.anyKeyMissing(t, new int[]
+            {
+                    colIds[i]
+            }, row))
+            {
+                return true;
             }
             IDataValue dv = t.getColumn(colIds[i]).getDataValue(row);
-            if (dv.isMissingOrInvalid())
+            if (!GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(dv).present())
             {
-                return null;
+                // An empty string is not "missing" to isMissingOrNull but IS blank for a
+                // keep/drop-missing policy (D34 #6 rules "" and every MissingValue together).
+                return true;
             }
-            if (i > 0)
-            {
-                sb.append('\0');
-            }
-            sb.append(dv.getValueAsString());
         }
-        return sb.toString();
+        return false;
     }
 }

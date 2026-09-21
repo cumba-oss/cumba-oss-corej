@@ -344,8 +344,7 @@ public class DatasetLookup implements JoinLookup
             // ⚠ computedMissing() is the engine's single spelling of MissingValue.MIS (its own
             // javadoc), and is byte-identical to what ExprCompiler.dottedNotSuppliedDefault
             // answers for the sibling "no such joined dataset" case — the two must not drift.
-            return numericExpected ? ScalarSemantics.computedMissing()
-                    : DataValueSupport.defaultForType(DataValueType.STRING);
+            return JoinLookup.absentJoinedColumnValue(numericExpected);
         }
         ensureJoinMap(primaryTable);
         long joinedRow = Objects.requireNonNull(joinMap, "joinMap set by ensureJoinMap")
