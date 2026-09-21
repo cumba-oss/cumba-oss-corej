@@ -436,7 +436,23 @@ public final class StageAChecker
             }
             return;
         }
-        if (!ExprType.compatible(lt, ExprType.elementOf(rt)))
+        ExprType element = ExprType.elementOf(rt);
+        // ⭐ Phase 1a of PLAN-membership-as-equality: a temporal probe against string members is
+        // the SAME defect `comparison` names, so it gets the same actionable message instead of
+        // the generic disagreement. Q2 (owner, 2026-09-21): membership inherits whatever `==`
+        // does, and `==` makes this a type error rather than reinterpreting the untyped side ⇒
+        // the authoring is `date(--DTC) in [date("2020-01-01")]`.
+        // ⚠ The REJECTION itself is not new — `compatible(DATE, STRING)` was already false, so
+        // this shape already failed Stage A. What was missing is the instruction on how to fix it.
+        if (mixedTemporalString(lt, element) || mixedTemporalString(element, lt))
+        {
+            find(StageAErrorKind.MIXED_DATE_STRING_COMPARISON,
+                    "membership must not mix date/time and string operands (" + lt.describe()
+                            + " in " + rt.describe()
+                            + ") — convert the members with date(...) / time(...)");
+            return;
+        }
+        if (!ExprType.compatible(lt, element))
         {
             find(StageAErrorKind.PARAMETER_TYPE, "membership element type " + lt.describe()
                     + " disagrees with " + rt.describe());

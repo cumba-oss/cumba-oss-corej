@@ -815,6 +815,31 @@ public final class ExprCompiler
         // upper(X) in/not in […] is the (is_)(not_)contained_by_case_insensitive surface: read the
         // unwrapped column, build an upper-cased set, and fold the probe (Primitives.membership
         // upper-cases the cell), exactly as the legacy operator does.
+        // ⭐ Phase 1a — the TEMPORAL arm. A date/time-marked probe routes to the same per-pair
+        // comparator `==` reaches through compileDate, so the interval hull rule applies to
+        // membership too. It sits here, before every other branch, for the reason the defect
+        // existed: membership is selected on the IN/NOT_IN op BEFORE any temporal typing, so
+        // unless the routing decision is taken here it cannot be taken at all.
+        // ⚠ Measured 2026-09-21: ZERO of the corpus's 464 membership occurrences carry a
+        // temporally-marked probe, so this arm is LATENT — a capability for future authoring,
+        // moving no shipped rule's verdict. It is unit-tested for exactly that reason; a corpus
+        // differential has nothing to move and would be a vacuous green.
+        String probeMarker = markerOf(b.left());
+        if ("date".equals(probeMarker) || "time".equals(probeMarker))
+        {
+            ValuePlan temporalProbe = operandPlan(b.left(), true);
+            Expr temporalSet = b.right();
+            return run ->
+            {
+                Vector v = temporalProbe.eval(run);
+                if (v == null)
+                {
+                    return new BitSet();
+                }
+                return Primitives.temporalMembership(v, buildSet(run, temporalSet, false),
+                        run.rowCount(), negate);
+            };
+        }
         boolean caseInsensitive = isUpperCall(b.left());
         // Both the positive (is_contained_by_case_insensitive) and negative
         // (is_not_contained_by_case_insensitive) case-insensitive membership surfaces nativize:
@@ -5930,7 +5955,25 @@ public final class ExprCompiler
     private static String setTerm(Expr item, boolean caseInsensitive)
     {
         Expr inner = isUpperCall(item) ? ((Expr.Call) item).args().get(0) : item;
-        return fold(literalText(inner), caseInsensitive);
+        // Phase 1a: a TEMPORAL member is written `date("2020-01-01")` — the conversion spelling
+        // Q2 rules to be the authoring (a bare string member against a date probe is the
+        // MIXED_DATE_STRING_COMPARISON type error, never a reinterpretation). The conversion is
+        // interpretive: a temporal value's carrier IS the ISO string verbatim, so stripping it
+        // here yields exactly the member text the temporal arm compares, and the erased-tag and
+        // conversion spellings stay verdict-identical. ⚠ Without this, `literalText` reaches a
+        // Call and throws "expected a literal or reference operand" — a date list literal did not
+        // merely compare as text, it did not BUILD.
+        Expr unwrapped = temporalConversionOf(inner) != null ? ((Expr.Call) inner).args().get(0)
+                : inner;
+        return fold(literalText(unwrapped), caseInsensitive);
+    }
+
+
+    /** The {@code date}/{@code time} conversion name of {@code e}, or {@code null}. */
+    private static @Nullable String temporalConversionOf(Expr e)
+    {
+        String marker = markerOf(e);
+        return "date".equals(marker) || "time".equals(marker) ? marker : null;
     }
 
 

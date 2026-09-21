@@ -1495,6 +1495,65 @@ public final class Primitives
 
 
     /**
+     * ⭐ <b>The TEMPORAL arm of D81's {@code in}-is-a-disjunction-of-{@code ==}</b>
+     * ({@code plans/PLAN-membership-as-equality.md} phase 1a). {@link #isMember} has a textual and
+     * a numeric arm and <b>no temporal one</b>: {@code ==} reaches the interval hull rule through a
+     * separate compile path ({@code ExprCompiler.compileDate}), which membership — selected on the
+     * {@code IN}/{@code NOT_IN} op before any temporal typing — could never enter. So a date probe
+     * compared ISO text against ISO text, and {@code 2020-01} did not match {@code 2020-01-15}
+     * where {@code date(A) == date(B)} three lines away said it did.
+     *
+     * <p>
+     * This routes each member through {@link #compareCells} at {@code direction == 0} — the
+     * <b>same</b> per-pair comparator {@link #dateComparison} runs — so everything ruled for the
+     * temporal {@code ==} reaches membership by construction, the hull rule included.
+     * </p>
+     *
+     * <p>
+     * ⚠ <b>A linear scan by necessity</b>, exactly as D81c's numeric arm is: hull equality is not
+     * an equivalence over a hashable key, so there is no {@code Set.contains} fast path to take
+     * first. The member sets this arm sees are list literals and {@code $}-bound date lists, not
+     * thousand-element {@code distinct()} results.
+     * </p>
+     *
+     * <p>
+     * ⛔ <b>{@code mixedVerdict} is {@code false} here, unlike the {@code date_*} operators'
+     * {@code true}.</b> Those answer "is this row a finding?", where a malformed numeric/ISO pair
+     * must be reported; this answers "is this a member?", where a malformed pair is simply not one
+     * — so {@code not in} still fires on it, which is the contract {@link #membership} already has
+     * for a blank that is not in the set.
+     * </p>
+     *
+     * <p>
+     * ⚑ A missing cell is a member of no list, the D13 limb {@link #isMember} takes: it falls out
+     * of {@link #compareCells}'s own missing short-circuit, which returns {@code aNegate} — passed
+     * {@code false} here — rather than being written a second time.
+     * </p>
+     */
+    public static boolean isTemporalMember(IDataValue dv, Set<String> members)
+    {
+        for (String member : members)
+        {
+            if (compareCells(dv, member, 0, false, false, false))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    /**
+     * Vectorised {@link #isTemporalMember} — the temporal counterpart of {@link #membership}.
+     */
+    public static BitSet temporalMembership(Vector v, Set<String> members, int rowCount,
+            boolean negate)
+    {
+        return scan(v, rowCount, (dv, _) -> negate != isTemporalMember(dv, members));
+    }
+
+
+    /**
      * Numeric-membership variant (Phase 9b, decision D2) for an <b>all-numeric list literal</b>:
      * the probe is parsed to a number and tested against the numeric {@code members} via the shared
      * {@link ScalarSemantics#isNumericMember} parity anchor (the legacy the numeric membership

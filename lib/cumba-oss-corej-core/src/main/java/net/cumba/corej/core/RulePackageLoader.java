@@ -709,6 +709,7 @@ public class RulePackageLoader
             validateInlineMissingValues(level);
         }
         validateInlineMissingValues(rule.getPrecondition());
+        validateTupleCorrespondence(rule);
         Map<String, String> silencing = new LinkedHashMap<>();
         for (CheckCondition level : rule.checkConditions())
         {
@@ -946,6 +947,288 @@ public class RulePackageLoader
                     + lit.value() + "` on `" + call.name() + "`; expected one of "
                     + net.cumba.corej.core.model.NextRecordRelation.SPELLINGS);
         }
+    }
+
+    /** The composite-membership probe function: {@code tuple(a, b, …)}. */
+    private static final String TUPLE_FUNCTION = "tuple";
+
+    /**
+     * ⭐ <b>§4b of {@code plans/PLAN-membership-as-equality.md} (owner Q1 and Q4, 2026-09-21): a
+     * tuple comparison whose operands cannot correspond must not load.</b> Composite membership
+     * ({@code tuple(c1, …) [not] in $set}) is plain positional equality, with no check today that
+     * the probe and the reference set agree — so a probe whose columns are a <b>permutation</b> of
+     * the set's, or of a different <b>length</b>, can never match, and nothing says so.
+     *
+     * <p>
+     * Exactly two shapes are decidable as guaranteed-dead, and the guard is deliberately that
+     * narrow:
+     * </p>
+     * <ol>
+     * <li><b>different arity</b> — Q1 property 4: both arities are statically known, so a mismatch
+     * is an authoring mistake the loader can name, and answering {@code false} would hide it
+     * forever;</li>
+     * <li><b>the same multiset of column names in a different order</b> — Q4, ruled <b>(a) reject
+     * it</b>: a transposition check written this way is indistinguishable from the slip, and the
+     * corpus carries <b>zero</b> permutations, so nothing is lost today.</li>
+     * </ol>
+     *
+     * <p>
+     * ⛔ <b>Same length, different names is LEGAL and unchecked</b> — it is the normal use of the
+     * feature, and the corpus proves it: {@code CDISC-SEND-0333} pairs {@code (PPNOMDY, PPTPTREF)}
+     * against {@code (PCNOMDY, PCTPTREF)} and {@code PMDA-SD1143} pairs {@code (USUBJID, AESEQ)}
+     * against {@code (USUBJID, IDVARVAL)}. A name-equality check would red both.
+     * </p>
+     *
+     * <p>
+     * ⚠⚠ <b>Why the loader and not {@code ExprCompiler}</b> — the same reasoning
+     * {@link #validateInlineUniqueSetShape} carries: the compiler's throw <em>degrades</em> the
+     * rule (it stops running) where the author expects an error. ⚠ And it has to be here for a
+     * second reason the plan did not anticipate: <b>all 8 shipped sites bind the reference set
+     * through a {@code $}-variable</b>, never an inline {@code distinct(...)}, so the set's column
+     * list is only reachable with the rule's {@code Bindings:} in hand — which the compiler, whose
+     * entry point is {@code compile(Expr)}, does not have. A guard written inside the compiler
+     * would stand down on every site in the corpus and be <b>vacuous</b>.
+     * </p>
+     *
+     * <p>
+     * The guard stands down wherever either side is not statically known — a set bound to something
+     * other than a list-literal {@code distinct(...)}, a probe argument that is not a plain column
+     * reference — under the same partiality contract the rest of the checker uses: report
+     * known-vs-known conflicts only.
+     * </p>
+     */
+    private static void validateTupleCorrespondence(Rule rule)
+    {
+        Map<String, List<String>> setColumns = tupleSetColumnsByBinding(rule);
+        if (setColumns.isEmpty())
+        {
+            return;
+        }
+        for (CheckCondition level : rule.checkConditions())
+        {
+            validateTupleCorrespondence(level, setColumns);
+        }
+        validateTupleCorrespondence(rule.getPrecondition(), setColumns);
+    }
+
+
+    /**
+     * Walks a Check level for composite-membership comparisons. ⛔ An EXHAUSTIVE pattern switch over
+     * the sealed {@link CheckCondition}, never an {@code instanceof} chain, for
+     * {@link #validateInlineMissingValues}'s stated reason: this is a VALIDATOR, and a chain whose
+     * last branch fails to match simply stops validating.
+     */
+    private static void validateTupleCorrespondence(@Nullable CheckCondition condition,
+            Map<String, List<String>> setColumns)
+    {
+        if (condition == null)
+        {
+            return;
+        }
+        switch (condition)
+        {
+        case net.cumba.corej.core.model.CheckConditionExpression expression -> validateTupleCorrespondence(
+                expression.expr(), setColumns);
+        case CheckConditionAll all -> all.getConditions()
+                .forEach(c -> validateTupleCorrespondence(c, setColumns));
+        case CheckConditionAny any -> any.getConditions()
+                .forEach(c -> validateTupleCorrespondence(c, setColumns));
+        case CheckConditionNot not -> validateTupleCorrespondence(not.getCondition(), setColumns);
+        }
+    }
+
+
+    private static void validateTupleCorrespondence(net.cumba.corej.core.expr.ast.Expr expr,
+            Map<String, List<String>> setColumns)
+    {
+        if (expr instanceof net.cumba.corej.core.expr.ast.Expr.Binary binary
+                && (binary.op() == net.cumba.corej.core.expr.ast.Expr.BinOp.IN
+                        || binary.op() == net.cumba.corej.core.expr.ast.Expr.BinOp.NOT_IN)
+                && binary.left() instanceof net.cumba.corej.core.expr.ast.Expr.Call tupleCall
+                && TUPLE_FUNCTION.equals(tupleCall.name()))
+        {
+            List<String> probe = columnNames(tupleCall.args());
+            List<String> members = tupleSetColumns(binary.right(), setColumns);
+            if (probe != null && members != null)
+            {
+                checkCorrespondence(probe, members);
+            }
+        }
+        childrenOf(expr).forEach(child -> validateTupleCorrespondence(child, setColumns));
+    }
+
+
+    /**
+     * The two rejections of §4b. ⚠ Case is folded for the comparison: a case-only difference in the
+     * same multiset is still a permutation, and folding cannot create a false positive (a case-only
+     * difference in the same ORDER compares equal and is accepted).
+     */
+    private static void checkCorrespondence(List<String> probe, List<String> members)
+    {
+        if (probe.size() != members.size())
+        {
+            throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                    "a composite membership compares " + probe.size() + " probe column(s) " + probe
+                            + " against " + members.size() + " reference column(s) " + members
+                            + " — the arities must match, or the comparison can never"
+                            + " be true");
+        }
+        List<String> probeFolded = foldCase(probe);
+        List<String> membersFolded = foldCase(members);
+        if (probeFolded.equals(membersFolded))
+        {
+            return;
+        }
+        List<String> probeSorted = new ArrayList<>(probeFolded);
+        List<String> membersSorted = new ArrayList<>(membersFolded);
+        java.util.Collections.sort(probeSorted);
+        java.util.Collections.sort(membersSorted);
+        if (probeSorted.equals(membersSorted))
+        {
+            throw new net.cumba.corej.core.expr.RuleDefinitionException(
+                    "a composite membership probes " + probe + " against a reference set of the"
+                            + " same columns in a different order " + members + " — the comparison"
+                            + " is positional, so it can never be true. Reorder the `tuple(...)`"
+                            + " to match the reference set");
+        }
+    }
+
+
+    private static List<String> foldCase(List<String> names)
+    {
+        List<String> out = new ArrayList<>(names.size());
+        for (String name : names)
+        {
+            out.add(name.toUpperCase(java.util.Locale.ROOT));
+        }
+        return out;
+    }
+
+
+    /**
+     * The reference set's column list, resolved through the rule's {@code Bindings:} when the
+     * right-hand side is a {@code $}-variable (the shape all 8 shipped sites use), or read directly
+     * from an inline list-literal {@code distinct(...)}. {@code null} where it is not statically
+     * known — the guard then stands down.
+     */
+    private static @Nullable List<String> tupleSetColumns(net.cumba.corej.core.expr.ast.Expr right,
+            Map<String, List<String>> setColumns)
+    {
+        if (right instanceof net.cumba.corej.core.expr.ast.Expr.Ref ref)
+        {
+            return setColumns.get(ref.name());
+        }
+        return listTargetColumns(right);
+    }
+
+
+    /**
+     * Every {@code Bindings:} entry whose expression is a list-literal operation, as
+     * {@code $name -> [COL, …]}. ⚠ The binding's {@code name:} carries the {@code $}, and so does
+     * the {@link net.cumba.corej.core.expr.ast.Expr.Ref} that reads it, so the two key the same map
+     * without normalisation. A binding that fails to parse contributes nothing: this is a NARROW
+     * guard, and the parse error itself is raised by the operation materialisation, which is the
+     * code that owns it.
+     */
+    private static Map<String, List<String>> tupleSetColumnsByBinding(Rule rule)
+    {
+        List<net.cumba.corej.core.model.Binding> bindings = rule.getBindings();
+        if (bindings == null || bindings.isEmpty())
+        {
+            return Map.of();
+        }
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (net.cumba.corej.core.model.Binding binding : bindings)
+        {
+            String name = binding.getName();
+            String expression = binding.getExpression();
+            if (name == null || expression == null || expression.isBlank())
+            {
+                continue;
+            }
+            List<String> columns = staticListColumns(expression);
+            if (columns != null)
+            {
+                out.put(name, columns);
+            }
+        }
+        return out;
+    }
+
+
+    /**
+     * The statically-readable column list of a binding expression, or {@code null} when it is not
+     * one. ⚠ An expression that does not parse contributes nothing rather than failing here: the
+     * parse error is raised by the operation materialisation, which is the code that owns it, and
+     * re-raising it from a narrow membership guard would misattribute the cause.
+     */
+    private static @Nullable List<String> staticListColumns(String expression)
+    {
+        try
+        {
+            return listTargetColumns(
+                    net.cumba.corej.core.expr.CheckExpressionParser.parse(expression));
+        }
+        catch (RuntimeException _)
+        {
+            return null;
+        }
+    }
+
+
+    /**
+     * The column list of an operation call whose single positional argument is a list literal of
+     * plain column references — {@code distinct([A, B], domain="D")} and its siblings. {@code null}
+     * for every other shape.
+     */
+    private static @Nullable List<String> listTargetColumns(
+            net.cumba.corej.core.expr.ast.@Nullable Expr expr)
+    {
+        if (!(expr instanceof net.cumba.corej.core.expr.ast.Expr.Call call)
+                || call.args().size() != 1
+                || !(call.args().get(0) instanceof net.cumba.corej.core.expr.ast.Expr.Lit lit)
+                || lit.kind() != net.cumba.corej.core.expr.ast.Expr.LitKind.LIST)
+        {
+            return null;
+        }
+        if (!(lit.value() instanceof List<?> items))
+        {
+            return null;
+        }
+        List<net.cumba.corej.core.expr.ast.Expr> exprs = new ArrayList<>(items.size());
+        for (Object item : items)
+        {
+            if (!(item instanceof net.cumba.corej.core.expr.ast.Expr element))
+            {
+                return null;
+            }
+            exprs.add(element);
+        }
+        return columnNames(exprs);
+    }
+
+
+    /**
+     * The names of a list of expressions when <b>every</b> one is a plain column reference, else
+     * {@code null} — a computed probe argument is not statically known and the guard stands down.
+     */
+    private static @Nullable List<String> columnNames(
+            List<net.cumba.corej.core.expr.ast.Expr> exprs)
+    {
+        if (exprs.isEmpty())
+        {
+            return null;
+        }
+        List<String> names = new ArrayList<>(exprs.size());
+        for (net.cumba.corej.core.expr.ast.Expr e : exprs)
+        {
+            if (!(e instanceof net.cumba.corej.core.expr.ast.Expr.Ref ref))
+            {
+                return null;
+            }
+            names.add(ref.name());
+        }
+        return names;
     }
 
 
