@@ -281,4 +281,28 @@ class ScopeVariableEntryTest
                 ScopeVariableEntry.parse("AETERM:Char ").requiredKind());
     }
 
+
+    /**
+     * ⚠ Review round 1, finding 6: whitespace was tolerated to the RIGHT of the colon but not to
+     * the left, so {@code "AESEQ :N"} left the variable as {@code "AESEQ "} — a trailing space no
+     * {@code getColumnIndex} matches, loading clean and skipping the rule on every dataset.
+     *
+     * <p>
+     * ⛔ The control below is the half that matters for ruling D5: an UNTAGGED entry's spacing is
+     * still preserved exactly, because the strip happens only on the branch that found a tag.
+     * </p>
+     */
+    @Test
+    void whitespaceBeforeTheTagDoesNotSurviveIntoTheVariable()
+    {
+        ScopeVariableEntry e = ScopeVariableEntry.parse("AESEQ :N");
+        assertEquals("AESEQ", e.variable(),
+                "a space before the colon must not become part of the column name");
+        assertEquals(ColumnTypeGate.Kind.NUMERIC, e.requiredKind());
+        assertEquals("AESEQ :N", e.raw(), "the raw entry is still what the author typed");
+
+        assertEquals("AESEQ ", ScopeVariableEntry.parse("AESEQ ").variable(),
+                "⛔ D5: an UNTAGGED entry is untouched, spaces and all");
+    }
+
 }

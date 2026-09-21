@@ -2809,17 +2809,21 @@ public class RulePackageLoader
             warnOnCrossGroupDuplicates(rule, anyGroups);
         }
         List<String> anyUnion = vars.anyUnion();
-        // ⚠⚠ The type suffix is folded in the two None arms and NOT in the Any×All arm, and the
-        // asymmetry is load-bearing (PLAN-variable-type-requirements M4). "Present and absent" is
-        // a contradiction whatever type is demanded, so `All: ["X:N"]` + `None: ["X"]` must be
-        // caught — unfolded it slips straight through. But the Any×All message is "the Any leg is
-        // then already satisfied by the All leg and says nothing", and that is FALSE of
-        // `All: ["X"]` + `Any: [["X:N","Y"]]`: the Any entry adds a type conjunct the All entry
-        // does not carry. Folding there would turn a legal rule into a load error under a reason
-        // that does not describe it.
-        reportFacetOverlap(rule, "Any", anyUnion, "All", vars.getAll(),
-                "the Any leg is then already satisfied by the All leg and says nothing", false,
-                errors);
+        // ⚠⚠ The type suffix is folded in the two None arms. "Present and absent" is a
+        // contradiction whatever type is demanded, so `All: ["X:N"]` + `None: ["X"]` must be
+        // caught — unfolded it slips straight through.
+        //
+        // ⛔⛔ The Any×All arm is NEITHER folded nor unfolded: it is DIRECTIONAL, and the first
+        // implementation got that wrong in one direction (review round 1, finding 2). Its message
+        // is "the Any leg is then already satisfied by the All leg and says nothing", which is a
+        // claim about IMPLICATION, and implication has a direction:
+        // All: ["X"] + Any: [["X:N","Y"]] → the Any entry demands MORE. Legal, no error.
+        // All: ["X:N"] + Any: [["X","Y"]] → the All entry demands more, so the Any entry IS
+        // already satisfied. ERROR — and a blanket "never
+        // fold" missed it, leaving the gate open exactly
+        // where it was supposed to close.
+        // All: ["X:N"] + Any: [["X:C","Y"]] → neither implies the other. Not this arm's error.
+        reportAnyImpliedByAll(rule, anyUnion, vars.getAll(), errors);
         reportFacetOverlap(rule, "Any", anyUnion, "None", vars.getNone(),
                 "the entry would have to be both present and absent", true, errors);
         reportFacetOverlap(rule, "All", vars.getAll(), "None", vars.getNone(),
@@ -2854,7 +2858,12 @@ public class RulePackageLoader
                 {
                     continue; // R3's error, not a duplicate
                 }
-                String normalized = normalizeFacetEntry(entry);
+                // ⚑ Folds the tag, like normalizedFacet's distinctness count next door. Review
+                // round 1, finding 4: they disagreed about what "the same entry" means, so
+                // Any: [["X:N","A"], ["X:C","B"]] warned about nothing while its untagged twin
+                // warned. A WARNING is not a gate, but two checks holding different ideas of
+                // identity is how one of them later stops checking.
+                String normalized = normalizeFacetEntry(stripTypeSuffix(entry));
                 Integer first = firstGroupOf.putIfAbsent(normalized, g + 1);
                 if (first != null && first != g + 1)
                 {
@@ -2874,6 +2883,68 @@ public class RulePackageLoader
                 }
             }
         }
+    }
+
+
+    /**
+     * The {@code Any}×{@code All} overlap arm (R4), <b>directional</b> — see the comment at its
+     * call site. An {@code Any} entry is redundant when some {@code All} entry names the same
+     * variable and its demand is at least as strong: the {@code All} leg then guarantees the
+     * {@code Any} entry, so that entry contributes nothing to its group.
+     *
+     * @param anyUnion
+     *            every {@code Any} entry, flattened across groups
+     * @param all
+     *            the {@code All} entries
+     */
+    private static void reportAnyImpliedByAll(Rule rule, List<String> anyUnion,
+            @Nullable List<String> all, List<String> errors)
+    {
+        if (all == null || anyUnion.isEmpty())
+        {
+            return;
+        }
+        // variable identity -> the tags All demands for it (null tag = "presence only")
+        Map<String, java.util.Set<String>> allTags = new LinkedHashMap<>();
+        for (String entry : all)
+        {
+            if (entry != null)
+            {
+                allTags.computeIfAbsent(normalizeFacetEntry(stripTypeSuffix(entry)),
+                        _ -> new java.util.LinkedHashSet<>()).add(tagKeyOf(entry));
+            }
+        }
+        java.util.Set<String> reported = new java.util.LinkedHashSet<>();
+        for (String entry : anyUnion)
+        {
+            if (entry == null)
+            {
+                continue;
+            }
+            String identity = normalizeFacetEntry(stripTypeSuffix(entry));
+            java.util.Set<String> demanded = allTags.get(identity);
+            String anyTag = tagKeyOf(entry);
+            // Implied when All asks for presence only (any tag on the Any side would then be a
+            // strictly stronger demand — NOT implied) or when All asks for the very same type.
+            boolean implied = demanded != null
+                    && (NO_TAG.equals(anyTag) || demanded.contains(anyTag));
+            if (implied && reported.add(identity))
+            {
+                errors.add("[" + ruleId(rule) + "] Requirements.Variables entry '" + entry.trim()
+                        + "' appears in both Any and All — the Any leg is then already satisfied"
+                        + " by the All leg and says nothing");
+            }
+        }
+    }
+
+    /** Marker for "this entry demands presence only", so it can live in the same set as a tag. */
+    private static final String NO_TAG = "";
+
+    /** An entry's type demand as a comparable key: the normalised tag, or {@link #NO_TAG}. */
+    private static String tagKeyOf(String entry)
+    {
+        ScopeVariableEntry parsed = ScopeVariableEntry.parse(entry);
+        return parsed.requiredKind() == null ? NO_TAG : parsed.requiredKind().name();
     }
 
     /** The smallest {@code Any} list that means anything a plain {@code All} does not. */
@@ -5147,14 +5218,20 @@ public class RulePackageLoader
     {
         String prefix = "[" + ruleId(rule) + "] " + element + "." + which + " entry '" + entry
                 + "'";
-        boolean wholeEntryRegex = ScopeVariableEntry.isWholeEntryRegex(entry);
-        if (!wholeEntryRegex && (entry.startsWith(".") || entry.endsWith(".")))
+        ScopeVariableEntry parsed = ScopeVariableEntry.parse(entry);
+        // ⚠⚠ Test the VARIABLE half, not the raw entry. Review round 1, finding 5: with a tag the
+        // raw entry ends in the tag, so `AE.:N` slipped past the trailing-dot rejection — and then
+        // parsed UNqualified with the variable `AE.`, which no dataset carries, so the rule loaded
+        // clean and skipped on every dataset. Same mistake as H3/F2, one gate over.
+        String dotCheck = parsed.isQualified() ? parsed.qualifier() + "." + parsed.variable()
+                : parsed.variable();
+        boolean wholeEntryRegex = ScopeVariableEntry.isWholeEntryRegex(dotCheck);
+        if (!wholeEntryRegex && (dotCheck.startsWith(".") || dotCheck.endsWith(".")))
         {
             errors.add(prefix + " must not start or end with '.'"
                     + " (a qualified entry is DATASET.VARIABLE)");
             return;
         }
-        ScopeVariableEntry parsed = ScopeVariableEntry.parse(entry);
         String variable = parsed.variable();
         if (parsed.isQualified())
         {

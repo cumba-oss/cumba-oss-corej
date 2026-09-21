@@ -260,6 +260,41 @@ class ScopeMatcherTypeRequirementTest
 
 
         /**
+         * ⛔⛔ Review round 1, finding 1. The M7 arm first detected a type mismatch by testing the
+         * reason for the substring {@code " is required to be "} — and only TWO of the four
+         * mismatch messages carry it. The two PATTERN arms say
+         * {@code "<col> matches the name but is Character"} instead, so a group of pattern entries,
+         * all present by NAME and all of the wrong type, fell straight through to the absence
+         * wording M7 exists to suppress. Both columns below are visible in the dataset.
+         */
+        @Test
+        void aGroupOfPatternEntriesUnmetByTypeAlsoDoesNotClaimAbsence()
+        {
+            DataTableMeta meta = MockTable.of().name("AE").col("AEORRES", "5")
+                    .col("AEDECOD", "HEADACHE").build().getMetaData();
+            String reason = describe(
+                    rule(null, List.of(List.of("/^AEORRES.?$/:N", "/^AEDECOD$/:N"))), meta);
+            assertNotNull(reason);
+            assertTrue(reason.contains("is of the required type"), reason);
+            assertTrue(!reason.endsWith("present in dataset"),
+                    "both columns ARE present — the reader can see them: " + reason);
+        }
+
+
+        /** A mixed group (one literal, one pattern) must behave the same way. */
+        @Test
+        void aMixedGroupUnmetByTypeDoesNotClaimAbsenceEither()
+        {
+            DataTableMeta meta = MockTable.of().name("AE").col("AESEV", "MILD").col("AEORRES", "5")
+                    .build().getMetaData();
+            String reason = describe(rule(null, List.of(List.of("AESEV:N", "/^AEORRES.?$/:N"))),
+                    meta);
+            assertNotNull(reason);
+            assertTrue(reason.contains("is of the required type"), reason);
+        }
+
+
+        /**
          * The second axis: group 1 satisfied, group 2 unmet by type — the message names group 2.
          */
         @Test

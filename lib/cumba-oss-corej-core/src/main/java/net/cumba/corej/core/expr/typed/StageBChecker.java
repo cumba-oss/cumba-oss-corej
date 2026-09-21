@@ -759,7 +759,11 @@ public final class StageBChecker
             {
                 continue;
             }
-            if (entry.equals(qualified) || identityOf(entry).equals(qualified))
+            // ⚑ Review round 1, finding 8: the former `entry.equals(qualified) ||` fast path was
+            // DEAD and read as a guard. A column name carries no colon, so whenever the raw entry
+            // equalled the qualified name it had no tag — and `parse` then round-trips it to the
+            // same string. One comparison, one meaning.
+            if (identityOf(entry).equals(qualified))
             {
                 return true;
             }

@@ -1298,6 +1298,59 @@ class RequirementsLoadGateTest
 
 
         /**
+         * ⛔⛔ Review round 1, finding 2 — the Any × All arm is DIRECTIONAL, and "never fold" only
+         * covered one direction. Here the ALL entry is the tagged one: it guarantees AESEV is
+         * present AND numeric, so the untagged Any entry is satisfied unconditionally and the arm's
+         * own message ("already satisfied by the All leg and says nothing") is literally true.
+         * Unfolded, the two strings differ and the package loaded clean — a hole the tag opened in
+         * a gate that was closed.
+         */
+        @Test
+        @DisplayName("All:[X:N] + Any:[[X, Y]] IS the says-nothing error - All demands more")
+        void anAllTagMakesAnUntaggedAnyEntryRedundant() throws IOException
+        {
+            String error = errorOf("\"Requirements\":{\"Variables\":{\"All\":[\"AESEV:N\"],"
+                    + "\"Any\":[\"AESEV\",\"AEOUT\"]}}," + CHECK);
+            assertNotNull(error);
+            assertTrue(error.contains("says nothing"), error);
+        }
+
+
+        /**
+         * The third direction, which is neither: All demands Numeric and Any demands Character for
+         * the same variable. Neither implies the other, so this arm — whose message is about
+         * redundancy — must stay silent rather than borrow a reason that does not fit.
+         */
+        @Test
+        @DisplayName("All:[X:N] + Any:[[X:C, Y]] is not THIS arm's error")
+        void opposingTagsAreNotARedundancyError() throws IOException
+        {
+            assertNull(errorOf("\"Requirements\":{\"Variables\":{\"All\":[\"AESEV:N\"],"
+                    + "\"Any\":[\"AESEV:C\",\"AEOUT\"]}}," + CHECK));
+        }
+
+
+        /**
+         * ⛔ Review round 1, finding 5: the leading/trailing-dot gate tested the RAW entry, so a tag
+         * hid a trailing dot from it — {@code AE.:N} ends in {@code N}. It then parsed UNqualified
+         * with the variable {@code AE.}, which no dataset carries, so the rule loaded clean and
+         * skipped on every dataset. The same mistake as H3, one gate over.
+         */
+        @Test
+        @DisplayName("a trailing dot is still rejected when a type tag follows it")
+        void aTrailingDotIsRejectedBehindATag() throws IOException
+        {
+            String error = errorOf(
+                    "\"Requirements\":{\"Variables\":{\"All\":[\"AE.:N\"]}}," + CHECK);
+            assertNotNull(error, "AE.:N must not load clean");
+            assertTrue(error.contains("must not start or end with '.'"), error);
+            assertNotNull(
+                    errorOf("\"Requirements\":{\"Variables\":{\"All\":[\".AE:N\"]}}," + CHECK),
+                    "and the leading-dot form too");
+        }
+
+
+        /**
          * ⭐ Why R9 needs no arm for this shape: the distinctness fold makes {@code ["X:N","X:C"]}
          * ONE entry, so R4's existing D3 arm already rejects it as a degenerate one-column group. A
          * second gate would have shipped with a test that could only pass while the fold was

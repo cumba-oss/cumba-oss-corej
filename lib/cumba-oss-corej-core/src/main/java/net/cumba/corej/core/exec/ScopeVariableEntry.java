@@ -84,9 +84,39 @@ public record ScopeVariableEntry(@Nullable String qualifier, String variable,
     public static final String LEGAL_TYPE_TAGS = "N, C, Num, Char";
 
     /**
+     * The kind a <b>valid</b> trailing tag demands, or {@code null} when the entry carries none.
+     *
+     * <p>
+     * ⚠⚠ This and {@link #withoutTypeTag} must derive the colon the SAME way, and the first version
+     * of round 1's finding-6 fix broke exactly that: {@link #parse} recovered the colon's index as
+     * {@code body.length()}, which stopped being the colon once the body was
+     * {@code stripTrailing()}ed — so {@code "AESEQ :N"} parsed as carrying no tag at all. Both now
+     * route through this one {@code lastIndexOf}.
+     * </p>
+     *
+     * @param raw
+     *            the entry as authored
+     * @return the demanded kind, or {@code null}
+     */
+    private static ColumnTypeGate.@Nullable Kind tagKind(String raw)
+    {
+        int colon = raw.lastIndexOf(':');
+        return colon <= 0 ? null : kindOfTag(raw.substring(colon + 1).trim());
+    }
+
+
+    /**
      * Splits a <b>valid</b> trailing type tag off {@code raw}, or returns {@code raw} unchanged.
      * Shared by {@link #parse} and {@link #malformedTypeSuffix} so the two can never disagree about
      * what a tag is.
+     *
+     * <p>
+     * ⚠ The remainder is {@code stripTrailing()}ed: whitespace before the colon was tolerated on
+     * the tag's side but would otherwise have become part of the column name, so {@code AESEQ :N}
+     * asked for a column literally called {@code "AESEQ "} and skipped everywhere (review round 1,
+     * finding 6). Safe for ruling D5 — this branch is reached only when a valid tag was found, and
+     * an untagged entry returns {@code raw} untouched, spaces and all.
+     * </p>
      *
      * @param raw
      *            the entry as authored
@@ -94,12 +124,11 @@ public record ScopeVariableEntry(@Nullable String qualifier, String variable,
      */
     private static String withoutTypeTag(String raw)
     {
-        int colon = raw.lastIndexOf(':');
-        if (colon <= 0 || kindOfTag(raw.substring(colon + 1).trim()) == null)
+        if (tagKind(raw) == null)
         {
             return raw;
         }
-        return raw.substring(0, colon);
+        return raw.substring(0, raw.lastIndexOf(':')).stripTrailing();
     }
 
 
@@ -157,8 +186,7 @@ public record ScopeVariableEntry(@Nullable String qualifier, String variable,
         // is not a regex until the `:N` is gone — and the dot split would then corrupt it. Every
         // test below therefore runs on `body`, while `raw` is preserved verbatim for the messages.
         String body = withoutTypeTag(raw);
-        int colon = body.length() == raw.length() ? -1 : body.length();
-        ColumnTypeGate.Kind kind = colon < 0 ? null : kindOfTag(raw.substring(colon + 1).trim());
+        ColumnTypeGate.Kind kind = tagKind(raw);
         if (isWholeEntryRegex(body))
         {
             return new ScopeVariableEntry(null, body, kind, raw);

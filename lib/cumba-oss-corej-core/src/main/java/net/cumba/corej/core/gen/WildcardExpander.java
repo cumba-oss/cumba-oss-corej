@@ -245,7 +245,18 @@ public final class WildcardExpander
         // ⚠⚠ Compile the VARIABLE half. Compiling the raw entry put the `:N` inside the anchored
         // regex, which then matched no column at all — the same silent universal skip as trap 2
         // (PLAN-variable-type-requirements §6 trap 3).
-        String variable = ScopeVariableEntry.parse(entry).variable();
+        ScopeVariableEntry parsed = ScopeVariableEntry.parse(entry);
+        if (parsed.isQualified())
+        {
+            // ⚠ Review round 1, finding 7: reading the variable half WIDENED this method's
+            // contract without saying so. `DM.TRTxxP` used to answer null (the whole string is not
+            // a wildcard); reading the half would return a pattern that the caller then matches
+            // against the PRIMARY dataset's columns, with the qualifier silently gone. No caller
+            // passes a dotted value today — ScopeMatcher passes the variable half already — so
+            // this restores the old contract rather than fixing a live defect.
+            return null;
+        }
+        String variable = parsed.variable();
         if (!isWildcard(variable))
         {
             return null;

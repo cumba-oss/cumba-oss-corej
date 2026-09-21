@@ -751,11 +751,11 @@ public final class ScopeMatcher
         {
             for (String varName : all)
             {
-                String reason = describeIncludeEntry(varName, meta, domainPrefix, foreign, policy,
-                        "All");
-                if (reason != null)
+                EntryMismatch mismatch = describeIncludeEntry(varName, meta, domainPrefix, foreign,
+                        policy, "All");
+                if (mismatch != null)
                 {
-                    return reason;
+                    return mismatch.reason();
                 }
             }
         }
@@ -847,23 +847,30 @@ public final class ScopeMatcher
         String wrongType = null;
         for (String varName : group)
         {
-            String reason = describeIncludeEntry(varName, meta, domainPrefix, foreign, policy,
-                    "Any");
-            if (reason == null)
+            EntryMismatch mismatch = describeIncludeEntry(varName, meta, domainPrefix, foreign,
+                    policy, "Any");
+            if (mismatch == null)
             {
                 return null; // short-circuit: one present entry satisfies the whole group
             }
             if (undecidable == null && isUndecidableQualifiedEntry(varName, foreign, policy))
             {
-                undecidable = reason;
+                undecidable = mismatch.reason();
             }
             // ⚠⚠ M7: a group whose entries are all PRESENT but wrongly typed must not fall
             // through to the "present in dataset" wording below — that says "absent" about a
             // column the reader can see in the dataset, which is simply false. Remembered the
             // same way the undecidable case is, and per group for the same reason.
-            if (wrongType == null && reason.contains(" is required to be "))
+            //
+            // ⛔⛔ This used to test `reason.contains(" is required to be ")`. Review round 1,
+            // finding 1: the diff introduces FOUR mismatch messages and only TWO carry that
+            // phrase — the two PATTERN arms say "<col> matches the name but is Character"
+            // instead. So a group of pattern entries, all present by name and all wrongly typed,
+            // fell straight through to the absence wording this arm exists to suppress. The flag
+            // is now set where the verdict is MADE and cannot drift when a message is reworded.
+            if (wrongType == null && mismatch.typeMismatch())
             {
-                wrongType = reason;
+                wrongType = mismatch.reason();
             }
         }
         if (undecidable != null)
@@ -965,7 +972,6 @@ public final class ScopeMatcher
         return false;
     }
 
-
     /**
      * Include leg for one entry: {@code null} when the entry is satisfied, otherwise the mismatch
      * description. Splits the qualified case off first; the unqualified path is byte-for-byte the
@@ -978,7 +984,40 @@ public final class ScopeMatcher
      * inside it, and a hard-coded label is wrong half the time.
      * </p>
      */
-    private static @Nullable String describeIncludeEntry(String varName, DataTableMeta meta,
+    private record EntryMismatch(String reason, boolean typeMismatch)
+    {
+
+        /** A mismatch that is about PRESENCE — absent, or a dataset that could not be reached. */
+        static EntryMismatch absent(String reason)
+        {
+            return new EntryMismatch(reason, false);
+        }
+
+
+        /** A mismatch that is about the column's TYPE — the column is there, of the wrong kind. */
+        static EntryMismatch wrongType(String reason)
+        {
+            return new EntryMismatch(reason, true);
+        }
+    }
+
+    /**
+     * Lifts a nullable type-mismatch reason into the record; {@code null} stays "satisfied".
+     *
+     * <p>
+     * ⚑ Every caller of this is a site that produced the reason through {@link #typeMismatch} or
+     * {@link #pivotTypeMismatch}, so the {@code true} flag is set where the verdict is MADE. That
+     * is the whole point of the record: the previous design recovered the same fact by testing the
+     * message for a substring, and silently covered only half the message shapes.
+     * </p>
+     */
+    private static @Nullable EntryMismatch asTypeMismatch(@Nullable String reason)
+    {
+        return reason == null ? null : EntryMismatch.wrongType(reason);
+    }
+
+
+    private static @Nullable EntryMismatch describeIncludeEntry(String varName, DataTableMeta meta,
             @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign,
             QualifiedEntryPolicy policy, String facet)
     {
@@ -996,7 +1035,7 @@ public final class ScopeMatcher
                 // leg's own answer — so a hard-coded "All" made an `Any` rule report a facet it
                 // does not declare. Review finding 1, 2026-09-10.
                 return policy == QualifiedEntryPolicy.SKIP
-                        ? undecidableQualifiedReason(facet, varName)
+                        ? EntryMismatch.absent(undecidableQualifiedReason(facet, varName))
                         : null;
             }
             // Name the RESOLVED dataset in every message (SUPP-- -> SUPPAE), so the reader is
@@ -1014,10 +1053,11 @@ public final class ScopeMatcher
                 if (scopeEntryPattern(entry.variable()) == null
                         && foreign.existsViaSuppQnam(qualifier, entry.variable()))
                 {
-                    return pivotTypeMismatch(facet, varName, dataset, required, foreign, qualifier);
+                    return asTypeMismatch(pivotTypeMismatch(facet, varName, dataset, required,
+                            foreign, qualifier));
                 }
-                return "Requirements.Variables." + facet + " variable " + varName
-                        + " not present — dataset " + dataset + " not available";
+                return EntryMismatch.absent("Requirements.Variables." + facet + " variable "
+                        + varName + " not present — dataset " + dataset + " not available");
             }
             Pattern pattern = scopeEntryPattern(entry.variable());
             if (pattern != null)
@@ -1025,14 +1065,15 @@ public final class ScopeMatcher
                 String nameHit = firstColumnMatching(metas, pattern);
                 if (nameHit == null)
                 {
-                    return "no variable matching Requirements.Variables." + facet + " entry "
-                            + varName + " present in dataset " + dataset;
+                    return EntryMismatch.absent("no variable matching Requirements.Variables."
+                            + facet + " entry " + varName + " present in dataset " + dataset);
                 }
                 if (required != null && firstColumnMatching(metas, pattern, required) == null)
                 {
-                    return "no variable matching Requirements.Variables." + facet + " entry "
-                            + varName + " present in dataset " + dataset + " — " + nameHit
-                            + " matches the name but is " + describeKind(kindOf(metas, nameHit));
+                    return EntryMismatch.wrongType("no variable matching Requirements.Variables."
+                            + facet + " entry " + varName + " present in dataset " + dataset + " — "
+                            + nameHit + " matches the name but is "
+                            + describeKind(kindOf(metas, nameHit)));
                 }
             }
             else if (anyHasColumn(metas, entry.variable()))
@@ -1044,17 +1085,18 @@ public final class ScopeMatcher
                 // must not (the constraint JoinLookup.declaredTypeOf's decision D1 records).
                 // Disagreement therefore yields null = undecidable, the entry does not block, and
                 // the domain's own InvalidJoinedDomainException keeps reporting the clash.
-                return typeMismatch(facet, varName, required, agreedKind(metas, entry.variable()),
-                        " in dataset " + dataset);
+                return asTypeMismatch(typeMismatch(facet, varName, required,
+                        agreedKind(metas, entry.variable()), " in dataset " + dataset));
             }
             else if (foreign.existsViaSuppQnam(qualifier, entry.variable()))
             {
-                return pivotTypeMismatch(facet, varName, dataset, required, foreign, qualifier);
+                return asTypeMismatch(
+                        pivotTypeMismatch(facet, varName, dataset, required, foreign, qualifier));
             }
             else
             {
-                return "Requirements.Variables." + facet + " variable " + varName
-                        + " not present in dataset " + dataset;
+                return EntryMismatch.absent("Requirements.Variables." + facet + " variable "
+                        + varName + " not present in dataset " + dataset);
             }
             return null;
         }
@@ -1070,30 +1112,32 @@ public final class ScopeMatcher
             if (nameHit == null)
             {
                 // no dataset variable matches the required pattern
-                return "no variable matching Requirements.Variables." + facet + " entry "
-                        + entryLabel(varName, entry.variable(), resolved) + " present in dataset";
+                return EntryMismatch.absent("no variable matching Requirements.Variables." + facet
+                        + " entry " + entryLabel(varName, entry.variable(), resolved)
+                        + " present in dataset");
             }
             if (required != null && firstColumnMatching(meta, pattern, required) == null)
             {
                 // ⚠ The pattern is satisfied by NAME but by no column of the demanded type. Said
                 // apart from plain absence on purpose: "nothing matched" and "the match is the
                 // wrong type" send an author to different places.
-                return "no variable matching Requirements.Variables." + facet + " entry "
-                        + entryLabel(varName, entry.variable(), resolved) + " present in dataset — "
-                        + nameHit + " matches the name but is "
-                        + describeKind(kindOf(meta, nameHit));
+                return EntryMismatch.wrongType("no variable matching Requirements.Variables."
+                        + facet + " entry " + entryLabel(varName, entry.variable(), resolved)
+                        + " present in dataset — " + nameHit + " matches the name but is "
+                        + describeKind(kindOf(meta, nameHit)));
             }
         }
         else if (meta.getColumnIndex(resolved) < 0)
         {
             // required variable missing
-            return "Requirements.Variables." + facet + " variable "
-                    + entryLabel(varName, entry.variable(), resolved) + " not present in dataset";
+            return EntryMismatch.absent("Requirements.Variables." + facet + " variable "
+                    + entryLabel(varName, entry.variable(), resolved) + " not present in dataset");
         }
         else
         {
-            return typeMismatch(facet, entryLabel(varName, entry.variable(), resolved), required,
-                    kindOf(meta, resolved), "");
+            return asTypeMismatch(
+                    typeMismatch(facet, entryLabel(varName, entry.variable(), resolved), required,
+                            kindOf(meta, resolved), ""));
         }
         return null;
     }
@@ -1213,6 +1257,7 @@ public final class ScopeMatcher
             String column)
     {
         DataValueType agreed = null;
+        boolean seen = false;
         for (DataTableMeta meta : metas)
         {
             int idx = meta.getColumnIndex(column);
@@ -1221,9 +1266,23 @@ public final class ScopeMatcher
                 continue;
             }
             DataValueType type = meta.getColumn(idx).getType();
-            if (agreed == null)
+            // ⚠ Review round 1, finding 3: a member whose declared type is null used to leave
+            // `agreed` null, so the NEXT member's type was adopted as "agreed" and the null member
+            // dropped silently out of the comparison — where UnionDataTable compares against the
+            // first occurrence unconditionally and would refuse the union. A separate `seen` flag
+            // keeps "no member carries it" and "a member has no type" apart, so an untyped member
+            // makes the answer undecidable instead of deferring to its neighbour.
+            // ⚑ DataTableColumnMeta.type is not @Nullable, so this is a contract-defensive branch,
+            // not a demonstrated input — but ScopeVariableSource.suppQvalType already guards the
+            // same field, and the two must not hold different beliefs about it.
+            if (type == null)
+            {
+                return null;
+            }
+            if (!seen)
             {
                 agreed = type;
+                seen = true;
             }
             else if (agreed != type)
             {
