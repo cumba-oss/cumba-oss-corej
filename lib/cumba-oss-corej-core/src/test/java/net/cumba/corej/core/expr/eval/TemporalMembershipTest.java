@@ -332,4 +332,99 @@ class TemporalMembershipTest
         assertTrue(thrown.getMessage().contains("mixes numeric and string"),
                 "Q3's rejection must survive the temporal branch: " + thrown.getMessage());
     }
+
+
+    /**
+     * ⛔⛔ <b>Review round 2, finding 1 — the same D81 divergence as round 1's HIGH, one operand
+     * shape over.</b> {@code compileComparison} reads BOTH markers and {@code family(lt, rt)} falls
+     * back to the RIGHT one, so {@code X == date("…")} is temporal even when the left side carries
+     * no marker. Membership keyed on the probe alone, so the identical operands went textual —
+     * <b>false where the comparison answers true</b> — and it loaded clean, because
+     * {@code compatible(DATE, DATE)} holds. The members' shared conversion now routes too.
+     */
+    @Test
+    void anUnmarkedProbeAgainstConvertedMembersRoutesTemporally()
+    {
+        BitSet fires = evaluate("D in [date(\"2020-01-01T09:15\")]");
+        assertTrue(fires.get(0),
+                "2020-01-01 must match the datetime member at day precision — the members' own"
+                        + " date() conversion states the family, exactly as it does for `==`");
+        assertFalse(fires.get(1), "2020-01 is a month-long hull, not that point");
+    }
+
+
+    /**
+     * The fallback is ORDERED like {@code family()}'s: a probe marker WINS. A {@code num()} probe
+     * must not be pulled into the temporal family by its members. ⚠ Without this, the fix for
+     * finding 1 would have been a wider regression than the defect it closed.
+     *
+     * <p>
+     * ⚠⚠ Asserted by BEHAVIOUR, not by an exception. The first version of this test expected a
+     * throw and got none. ⛔ <b>And the first explanation of why was also wrong</b>, so it is
+     * written out here: {@code num()} is a <b>conversion function</b>, not a tag — {@code TAGS} is
+     * {@code date_part}/{@code time_part} alone, and a conversion compiles to a real value plan
+     * rather than being erased. The gate stays silent for a different reason:
+     * {@code ColumnTypeGate.gatedColumn} returns {@code null} unless the vector has a
+     * {@code gatedName()}, which only a plain column read has. {@code num(D)} is a COMPUTED vector,
+     * so {@code requireCharacterRead} is a no-op on it — nothing to do with tagging. The
+     * discriminating fact is simply that the temporal arm was not taken: row 0 would match under it
+     * and must not here.
+     * </p>
+     */
+    @Test
+    void aProbeMarkerOutranksTheMembers()
+    {
+        BitSet fires = evaluate("num(D) in [date(\"2020-01-01T09:15\")]");
+        assertFalse(fires.get(0),
+                "a num() probe states NUMERIC and keeps it — under the temporal arm row 0 would"
+                        + " match at day precision, which is exactly what must not happen");
+    }
+
+
+    /** A list that does not agree on one conversion states nothing, and stays textual. */
+    @Test
+    void membersMustAgreeOnOneConversionToStateAFamily()
+    {
+        BitSet fires = evaluate("D in [date(\"2020-01-01T09:15\"), \"2020-02-29\"]");
+        assertFalse(fires.get(0),
+                "a mixed list states no family — textual, so no day-precision" + " match");
+        assertTrue(fires.get(4), "…and the literal text still matches textually");
+    }
+
+
+    /**
+     * ⭐ <b>Review round 2, finding 4.</b> The TIME arm's {@code aMixedVerdict = false} was pinned
+     * by nothing — flipping it to {@code true} broke no test, so the divergence the design turns on
+     * was asserted only for {@code date}. This is its time counterpart: a numeric-shaped member
+     * against an ISO time cell reaches {@code compareTimeCells}' mixed arm, where the OPERATOR
+     * reports a finding and MEMBERSHIP answers "not a member".
+     */
+    @Test
+    void theTimeArmsMixedShapeVerdictIsPinnedToo()
+    {
+        BitSet operator = Primitives.timeComparison(times(), ConstVector.of("34200"), ROWS, 0,
+                false, false);
+        assertTrue(operator.get(0), "the time OPERATOR reports the malformed mixed pair");
+        assertFalse(Primitives.isTimeMember(times().value(0).cell(), Set.of("34200")),
+                "MEMBERSHIP answers 'not a member' — flipping aMixedVerdict must red HERE");
+    }
+
+
+    /**
+     * The time arm's negation pin. ⚠ {@code not in} firing on every row was the exact shape of
+     * round 1's HIGH, and the vectorised time form had no negative-polarity assertion at all.
+     */
+    @Test
+    void theTimeVectorisedFormNegatesTheWholeVerdict()
+    {
+        Set<String> members = Set.of("09:15");
+        BitSet in = Primitives.timeMembership(times(), members, ROWS, false);
+        BitSet notIn = Primitives.timeMembership(times(), members, ROWS, true);
+        for (int row = 0; row < ROWS; row++)
+        {
+            assertEquals(!in.get(row), notIn.get(row), "row " + row + " must invert");
+        }
+        assertTrue(in.get(0), "09:15 is a member of {09:15}");
+        assertFalse(notIn.get(0), "⛔ and `not in` must NOT fire on it — the HIGH's own shape");
+    }
 }

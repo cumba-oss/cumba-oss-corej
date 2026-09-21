@@ -815,15 +815,6 @@ public final class ExprCompiler
         // upper(X) in/not in […] is the (is_)(not_)contained_by_case_insensitive surface: read the
         // unwrapped column, build an upper-cased set, and fold the probe (Primitives.membership
         // upper-cases the cell), exactly as the legacy operator does.
-        // ⭐ Phase 1a — the TEMPORAL arm. A date/time-marked probe routes to the same per-pair
-        // comparator `==` reaches through compileDate, so the interval hull rule applies to
-        // membership too. It sits here, before every other branch, for the reason the defect
-        // existed: membership is selected on the IN/NOT_IN op BEFORE any temporal typing, so
-        // unless the routing decision is taken here it cannot be taken at all.
-        // ⚠ Measured 2026-09-21: ZERO of the corpus's 464 membership occurrences carry a
-        // temporally-marked probe, so this arm is LATENT — a capability for future authoring,
-        // moving no shipped rule's verdict. It is unit-tested for exactly that reason; a corpus
-        // differential has nothing to move and would be a vacuous green.
         boolean caseInsensitive = isUpperCall(b.left());
         // Both the positive (is_contained_by_case_insensitive) and negative
         // (is_not_contained_by_case_insensitive) case-insensitive membership surfaces nativize:
@@ -939,10 +930,24 @@ public final class ExprCompiler
         // temporally-marked probe, so this arm is LATENT — a capability for future authoring,
         // moving no shipped rule's verdict. It is unit-tested for exactly that reason; a corpus
         // differential has nothing to move and would be a vacuous green.
+        // ⛔⛔ Review round 2, finding 1: route on the probe's marker OR the MEMBERS', because
+        // `==` does. `compileComparison` reads BOTH operands and `family(lt, rt)` falls back to the
+        // right one (`String w = lt != null ? lt : rt`) — so `$min_dtc == date("2020-01-01T09:15")`
+        // enters the temporal family through the RIGHT operand alone. Keying membership on the
+        // probe only left `$min_dtc in [date("2020-01-01T09:15")]` textual: **false** where the
+        // comparison answers **true**, on a binding Stage A types DATE and that carries no marker
+        // of its own (`min_date`/`max_date`, `earliest_possible`/`latest_possible`). That is the
+        // same D81 divergence as round 1's HIGH, one operand shape over — and it loaded clean,
+        // because `compatible(DATE, DATE)` holds and nothing errored.
+        // ⚠ The fallback is ORDERED exactly as `family()`'s: a probe marker WINS when present, so a
+        // `num()`/`date_part` probe still reaches its own path rather than being pulled temporal by
+        // its members.
         String probeMarker = markerOf(b.left());
         boolean temporalLiteralSet = b.right() instanceof Expr.Lit setLit
                 && setLit.kind() == Expr.LitKind.LIST;
-        if (temporalLiteralSet && "date".equals(probeMarker))
+        String temporalMarker = probeMarker != null ? probeMarker
+                : sharedTemporalMemberMarker(b.right());
+        if (temporalLiteralSet && "date".equals(temporalMarker))
         {
             Expr temporalSet = b.right();
             return run ->
@@ -956,7 +961,7 @@ public final class ExprCompiler
                         run.rowCount(), negate);
             };
         }
-        if (temporalLiteralSet && "time".equals(probeMarker))
+        if (temporalLiteralSet && "time".equals(temporalMarker))
         {
             Expr timeSet = b.right();
             return run ->
@@ -6018,6 +6023,45 @@ public final class ExprCompiler
         Expr unwrapped = temporalConversionOf(inner) != null ? ((Expr.Call) inner).args().get(0)
                 : inner;
         return fold(literalText(unwrapped), caseInsensitive);
+    }
+
+
+    /**
+     * ⭐ Review round 2, finding 1 — the members' shared temporal conversion, or {@code null}. This
+     * is membership's half of {@code family()}'s right-operand fallback: a list every one of whose
+     * members is written {@code date("…")} states the temporal family just as firmly as a marked
+     * probe does, and {@code ==} already honours exactly that.
+     *
+     * <p>
+     * ⛔ <b>ALL members must agree.</b> A list mixing {@code date("…")} with a bare string, or with
+     * {@code time("…")}, states nothing coherent and falls through to the textual tail, where Stage
+     * A's type check is what reports it. Requiring unanimity is what keeps this from silently
+     * picking a family for a list that has not chosen one.
+     * </p>
+     */
+    private static @Nullable String sharedTemporalMemberMarker(Expr right)
+    {
+        if (!(right instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.LIST)
+        {
+            return null;
+        }
+        @SuppressWarnings("unchecked")
+        List<Expr> items = (List<Expr>) lit.value();
+        if (items.isEmpty())
+        {
+            return null;
+        }
+        String shared = null;
+        for (Expr item : items)
+        {
+            String marker = temporalConversionOf(item);
+            if (marker == null || (shared != null && !shared.equals(marker)))
+            {
+                return null;
+            }
+            shared = marker;
+        }
+        return shared;
     }
 
 

@@ -790,6 +790,10 @@ class StageACheckerTest
     void aTemporalMembershipOverConvertedMembersIsClean()
     {
         assertEquals(List.of(), check("date(AESTDTC) in [date(\"2012-06-15\")]").findings());
+        // ⭐ Review round 2, finding 4: the TIME spelling is the one the round-1 HIGH exists for,
+        // and nothing checked that it even loads. evaluate() in TemporalMembershipTest bypasses
+        // Stage A entirely, so this is the only place it is covered.
+        assertEquals(List.of(), check("time(AESTTM) in [time(\"09:15\")]").findings());
     }
 
 

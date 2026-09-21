@@ -1061,9 +1061,13 @@ public class RulePackageLoader
 
 
     /**
-     * The two rejections of §4b. ⚠ Case is folded for the comparison: a case-only difference in the
-     * same multiset is still a permutation, and folding cannot create a false positive (a case-only
-     * difference in the same ORDER compares equal and is accepted).
+     * The two rejections of §4b. ⭐ <b>No case folding</b>, and that is measured rather than
+     * assumed: the expression parser refuses a lowercase operand outright (<i>"column names are
+     * upper-case"</i>), so a mixed-case column name never reaches this method and a fold here could
+     * not fire. One was written, and review round 1's test for it failed at the PARSER — which is
+     * what proved it dead. {@code aLowercaseColumnNameCannotReachTheGuardAtAll} pins that parser
+     * rule, so if it ever admits lowercase names this decision reds rather than silently going
+     * wrong.
      */
     private static void checkCorrespondence(List<String> probe, List<String> members)
     {
