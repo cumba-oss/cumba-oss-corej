@@ -333,25 +333,36 @@ class AllVariablesExpansionSourceTest
 
     /**
      * ⛔⛔ Review round 1: the cap was applied AFTER {@code crossProduct} had built every tuple, so
-     * it could not bound the explosion it exists for. Two {@code all_variables} directives over
-     * this 512-column fixture are 262 144 tuples — enough that materialising them first is
-     * measurable, and the same shape at 3 000 columns is 9 000 000 two-element lists. The single
-     * directive case, the only shipped shape, is why every other test here passed.
+     * it could not bound the explosion it exists for.
      *
      * <p>
-     * This asserts the SKIP happens for a multi-directive rule, which is only possible if the size
-     * is projected rather than materialised.
+     * ⚠⚠ <b>Round 2 rejected this test's first version, and why is the point of it.</b> It used two
+     * directives over 512 columns — 262 144 tuples, which the OLD code builds happily in a fraction
+     * of a second, and whose {@code tuples.size()} is <em>also</em> 262 144, so the assertion held
+     * with the fix reverted. A green negative control is a failed experiment: it reproduced round
+     * 1's own failure mode ("the shipped shape is why every test passed") one directive higher.
+     * </p>
+     *
+     * <p>
+     * ⭐ <b>What discriminates:</b> a projection exceeding {@code Integer.MAX_VALUE}. Three
+     * directives over 2 048 columns project to {@code 2048³ = 8 589 934 592}, returned instantly as
+     * a {@code long}. The old code could not report that number at all — at stage 3
+     * {@code new ArrayList<>(tuples.size() * bindings.size())} is {@code 4 194 304 * 2 048}, which
+     * overflows {@code int} to exactly {@code 0} and then dies growing on the heap. Red-before,
+     * green-after.
      * </p>
      */
     @Test
-    void theCapFiresOnAMultiDirectiveRuleWithoutBuildingTheProduct()
+    void theCapFiresOnAProjectionThatCannotEvenBeCounted()
     {
-        ExpansionDirective a = new ExpansionDirective();
-        a.setToken("&A");
-        a.setOver(ExpansionSource.ALL_VARIABLES);
-        ExpansionDirective b = new ExpansionDirective();
-        b.setToken("&B");
-        b.setOver(ExpansionSource.ALL_VARIABLES);
+        List<ExpansionDirective> directives = new ArrayList<>();
+        for (String token : List.of("&A", "&B", "&C"))
+        {
+            ExpansionDirective d = new ExpansionDirective();
+            d.setToken(token);
+            d.setOver(ExpansionSource.ALL_VARIABLES);
+            directives.add(d);
+        }
 
         Rule rule = new Rule();
         RuleCore core = new RuleCore();
@@ -359,18 +370,20 @@ class AllVariablesExpansionSourceTest
         rule.setCore(core);
         String src = "var_label(\"&A\", \"DATA\") != var_label(\"&B\", \"DATA\")";
         rule.setCheck(new CheckConditionExpression(CheckExpressionParser.parse(src), src));
-        rule.setExpansion(List.of(a, b));
+        rule.setExpansion(directives);
 
         System.setProperty("corej.maxExpansionsPerRule", "1000");
         try
         {
             WildcardExpander.ExpansionResult result = TokenExpander.tryExpand(rule,
-                    wideFixture(512), new TokenExpander.Context(null, null, "WIDE"));
+                    wideFixture(2048), new TokenExpander.Context(null, null, "WIDE"));
 
             WildcardExpander.ExpansionResult.NoMatch noMatch = assertInstanceOf(
                     WildcardExpander.ExpansionResult.NoMatch.class, result,
                     () -> "the cap must fire before the product is built — got " + result);
-            assertTrue(noMatch.reason().contains("262144"), noMatch.reason());
+            assertTrue(noMatch.reason().contains("8589934592"),
+                    () -> "the reason must carry the PROJECTED count, which only the pre-product"
+                            + " computation can produce: " + noMatch.reason());
         }
         finally
         {
@@ -379,7 +392,40 @@ class AllVariablesExpansionSourceTest
     }
 
 
-    /** A blank column name is dropped, but never silently — the audit must say so. */
+    /**
+     * A blank column name is dropped, but never silently — the audit must say so.
+     *
+     * <p>
+     * ⚠ Round 2: the first version asserted only that the blank column did not expand, which was
+     * true before the audit line existed too — it passed with the fix reverted. On the
+     * {@code Expanded} path the reasons reach only the logger, so the assertable shape is the
+     * ALL-blank dataset, where {@code bindings.isEmpty()} routes the reason through
+     * {@code joinReasons} into {@code NoMatch.reason()}.
+     * </p>
+     */
+    @Test
+    void aDatasetOfOnlyBlankNamedColumnsSkipsWithAStatedReason()
+    {
+        DataTableMeta allBlank = DataTableMeta.builder().name("AE").label("AE").rowCount(0)
+                .totalRowCount(0).columns(new DataTableColumnMeta[]
+                {
+                        col(0, " ", DataValueType.STRING)
+                }).build();
+
+        WildcardExpander.ExpansionResult result = TokenExpander.tryExpand(
+                template(ExpansionSource.ALL_VARIABLES), allBlank,
+                new TokenExpander.Context(null, null, "AE"));
+
+        WildcardExpander.ExpansionResult.NoMatch noMatch = assertInstanceOf(
+                WildcardExpander.ExpansionResult.NoMatch.class, result,
+                () -> "a dataset of only blank-named columns must skip, not expand to zero: "
+                        + result);
+        assertTrue(noMatch.reason().contains("blank name"),
+                () -> "the drop must be stated, not silent: " + noMatch.reason());
+    }
+
+
+    /** And a blank name alongside real ones drops only itself. */
     @Test
     void aBlankColumnNameIsDroppedWithAStatedReason()
     {

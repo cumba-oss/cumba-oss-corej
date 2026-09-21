@@ -1494,6 +1494,13 @@ public class RulePackageLoader
                 // nothing: installing the levels that DID raise would silently drop a level's
                 // verdict, and a rule that reports fewer levels than it declares is worse than one
                 // that reports the "no native expression form" ERROR.
+                // ⚑ The call below is DEFENSIVE ONLY: measured 2026-09-21 (review round 2), this
+                // arm is UNREACHABLE — CheckToExpr switches exhaustively over the sealed
+                // CheckCondition and no arm throws, and CheckConditionExpression already carries
+                // its parsed Expr, so tryRaiseToExpr never returns null for a loaded rule. The
+                // live path is installCompiledLevels' isSupported return. Kept because the null
+                // contract is tryRaiseToExpr's rather than this caller's — but do not go looking
+                // for a test fixture that reaches it; none can be constructed.
                 rejectUndecidableAllExpansion(rule);
                 return;
             }

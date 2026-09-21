@@ -180,10 +180,17 @@ public final class TokenExpander
         int cap = net.cumba.corej.core.exec.EngineLimits.maxExpansionsPerRule();
         if (projected > cap)
         {
+            // ⚠ Two different reasons reach here and the audit must not conflate them. With no
+            // cap configured, `cap` is Integer.MAX_VALUE — a projection past it is not an
+            // operator's limit but a structural one (such an expansion cannot be held in a List at
+            // all), and saying "the configured cap" would blame an operator who set nothing.
+            boolean configured = cap != Integer.MAX_VALUE;
             return new WildcardExpander.ExpansionResult.NoMatch(rule.effectiveId()
-                    + ": expansion would mint " + projected + " rules, over the configured cap of "
-                    + cap + " (corej.maxExpansionsPerRule) — skipped rather than truncated, so the"
-                    + " missing coverage is visible");
+                    + ": expansion would mint " + projected + " rules, over the "
+                    + (configured ? "configured cap of " + cap + " (corej.maxExpansionsPerRule)"
+                            : "largest expansion the engine can hold (" + Integer.MAX_VALUE
+                                    + "); no cap is configured")
+                    + " — skipped rather than truncated, so the missing coverage is visible");
         }
 
         List<List<Binding>> tuples = crossProduct(perDirective);
