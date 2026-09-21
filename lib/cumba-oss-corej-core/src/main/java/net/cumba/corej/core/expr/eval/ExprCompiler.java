@@ -824,8 +824,25 @@ public final class ExprCompiler
         // temporally-marked probe, so this arm is LATENT — a capability for future authoring,
         // moving no shipped rule's verdict. It is unit-tested for exactly that reason; a corpus
         // differential has nothing to move and would be a vacuous green.
+        // ⛔⛔ NARROWED at terminal review, 2026-09-21 — the first spelling took this branch for
+        // EVERY right-hand side and that was a latent REGRESSION in two shapes, both of which
+        // `buildSet` cannot serve and which previously had working (if textual) paths:
+        // · a `${*}` wildcard set — `buildSet` handles only a Lit or a Ref, so it would have
+        // thrown `unsupported` where `wildcardMembershipPlan` used to answer;
+        // · a `$`-ref resolving to a per-row GroupedResult — routed to `groupedMembership`
+        // BELOW this point, so taking it here would have silently substituted an EMPTY set
+        // (`toSet`'s GroupedResult fold) for a per-row one.
+        // Population is zero either way (no temporal probe is authored anywhere), so nothing
+        // shipped was at risk — but "latent and wrong" is still wrong, and a list literal is the
+        // shape Q2's authoring actually prescribes: `date(--DTC) in [date("2020-01-01")]`.
+        // ⇒ The arm takes ONLY a list literal. A temporal probe against a dynamic set keeps its
+        // existing textual behaviour; that is a stated GAP, not a silent one, and closing it needs
+        // a temporal `groupedMembership` counterpart rather than a wider condition here.
         String probeMarker = markerOf(b.left());
-        if ("date".equals(probeMarker) || "time".equals(probeMarker))
+        boolean temporalProbeOnLiteralSet = ("date".equals(probeMarker)
+                || "time".equals(probeMarker)) && b.right() instanceof Expr.Lit setLit
+                && setLit.kind() == Expr.LitKind.LIST;
+        if (temporalProbeOnLiteralSet)
         {
             ValuePlan temporalProbe = operandPlan(b.left(), true);
             Expr temporalSet = b.right();

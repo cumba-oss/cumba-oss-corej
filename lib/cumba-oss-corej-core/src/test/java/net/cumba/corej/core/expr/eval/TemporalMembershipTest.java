@@ -151,8 +151,15 @@ class TemporalMembershipTest
 
     private static BitSet evaluate(String expression)
     {
+        return evaluate(expression, Map.of());
+    }
+
+
+    private static BitSet evaluate(String expression, Map<String, Object> variables)
+    {
         return ExprCompiler.compile(CheckExpressionParser.parse(expression))
                 .evaluate(EvalRun.fullRange(EvaluationContext.builder().table(T)
+                        .variables(new java.util.LinkedHashMap<>(variables))
                         .joinedDatasets(Map.of()).evaluationDomain(Domain.ROW).build()));
     }
 
@@ -200,5 +207,32 @@ class TemporalMembershipTest
                 "2020-01-01 IS a day-precision member of {2020-01-01T09:15}, so `not in` must not"
                         + " fire — the TEXTUAL arm would fire here");
         assertTrue(fires.get(1), "2020-01 is not that point, so `not in` fires");
+    }
+
+
+    /**
+     * ⛔⛔ <b>The narrowing, pinned.</b> The temporal arm takes a <b>list literal</b> only. Its first
+     * spelling took every right-hand side, which was a latent regression in two shapes
+     * {@code buildSet} cannot serve: a {@code ${*}} wildcard set (it would have thrown
+     * {@code unsupported} where {@code wildcardMembershipPlan} answered) and a {@code $}-ref
+     * resolving to a per-row {@code GroupedResult} (it would have substituted an EMPTY set for a
+     * per-row one).
+     *
+     * <p>
+     * This pins the {@code $}-ref half: a temporal probe against a {@code $}-bound list keeps its
+     * <b>textual</b> behaviour, so the datetime does <em>not</em> match the date. ⚠ That is a
+     * stated GAP, not an accident — closing it needs a temporal counterpart to
+     * {@code groupedMembership}, not a wider condition on this branch. The test exists so the gap
+     * is visible and so widening the branch without that counterpart reds here.
+     * </p>
+     */
+    @Test
+    void aTemporalProbeAgainstADynamicSetStaysTextual()
+    {
+        BitSet fires = evaluate("date(D) in $dates", Map.of("$dates", List.of("2020-01-01T09:15")));
+        assertFalse(fires.get(0),
+                "row 0 (2020-01-01) must NOT match through a $-bound set — the temporal arm is"
+                        + " deliberately restricted to a list literal");
+        assertTrue(fires.get(3), "row 3 IS the literal text, so the textual arm matches it");
     }
 }
