@@ -1591,11 +1591,18 @@ public final class WildcardExpander
      * name and are ambiguous by design, so rewriting an arbitrary string literal under them would
      * corrupt values — {@code CDISC-AD0018} / {@code AD0708} / {@code AD0709} / {@code PMDA-AD0018}
      * each carry a value-position {@code "*"} as arg 1 of {@code contains()}. A declared
-     * {@code Expansion:} token carries a mandatory non-alphanumeric sigil (enforced at load,
-     * {@code RulePackageLoader.validateExpansionDirective}) and therefore cannot collide with a
-     * CDISC name; rewriting it wherever it appears is what lets a rule say
-     * {@code var_label("&VAR", "DATA")}, whose name operand the compiler accepts only as a string
-     * literal.
+     * {@code Expansion:} token must carry a non-alphanumeric character (enforced at load,
+     * {@code RulePackageLoader.validateExpansionDirective}); rewriting it wherever it appears is
+     * what lets a rule say {@code var_label("&VAR", "DATA")}, whose name operand the compiler
+     * accepts only as a string literal.
+     * </p>
+     *
+     * <p>
+     * ⚠ That gate is weaker than <i>"cannot collide with a CDISC name"</i>, which an earlier draft
+     * of this javadoc claimed: it rejects an all-alphanumeric token and a {@code --}-bearing one,
+     * so {@code V_1} passes and {@code _} is in the SAS/CDISC name alphabet. Both shipped
+     * {@code Expansion:} rules use {@code &VAR} / {@code &DOM}, so nothing in the corpus is exposed
+     * — but this is a convention the authors keep, not an invariant the loader enforces.
      * </p>
      */
     enum StringLiteralPolicy

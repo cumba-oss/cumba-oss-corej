@@ -5,6 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import net.cumba.corej.core.expr.CheckExpressionParser;
@@ -175,10 +178,51 @@ class AllVariablesExpansionSourceTest
 
 
     /**
-     * The fold this plan must never re-derive: {@code charOrNum} is the same function that answers
-     * {@code var_type("DATA")}. If these two ever disagree, an {@code all_numeric_variables}
-     * expansion contradicts the accessor <em>inside the rule it expanded</em>.
+     * ⭐ The cross-component invariant, pinned <b>from source</b>. Review round 1 caught that the
+     * mapping assertions below — true but local — do not test what this name promises: someone
+     * could reinstate a private {@code charOrNum} in {@code ExprCompiler} and change it, and every
+     * assertion in this file would stay green while {@code var_type("X","DATA")} and
+     * {@code all_numeric_variables} disagreed about the same column.
+     *
+     * <p>
+     * So this asserts the delegation itself, the way {@code TryRaiseToExprGuardSurfaceTest} asserts
+     * its call sites: {@code ExprCompiler}'s {@code VAR_TYPE} arm must route through
+     * {@code MetadataNormalizer.charOrNum}, and {@code ExprCompiler} must declare no
+     * {@code charOrNum} of its own.
+     * </p>
+     *
+     * @throws IOException
+     *             if the source file cannot be read
      */
+    @Test
+    void varTypeDataDelegatesToTheSameFoldTheExpansionSourcesUse() throws IOException
+    {
+        Path source = Path.of("src/main/java/net/cumba/corej/core/expr/eval/ExprCompiler.java");
+        assertTrue(Files.exists(source), () -> "source not found at " + source.toAbsolutePath()
+                + " — this test must fail loudly rather than pass over a missing file");
+        List<String> lines = Files.readAllLines(source);
+
+        // ⚠ There are TWO `case VAR_TYPE ->` arms and only one is the DATA-level fold; the other
+        // yields the provider key "data_type". Filtering on the arm text alone gave a population
+        // of 2 and a red test on correct code — a grep's line count is not a population.
+        List<String> foldArms = lines.stream().map(String::strip)
+                .filter(l -> l.startsWith("case VAR_TYPE ->") && l.contains("col.getType()"))
+                .toList();
+        assertEquals(1, foldArms.size(),
+                () -> "expected exactly one DATA-level VAR_TYPE arm, found: " + foldArms);
+        assertTrue(foldArms.get(0).contains("MetadataNormalizer.charOrNum"),
+                () -> "var_type(\"DATA\") must use the shared fold, not a local one: "
+                        + foldArms.get(0));
+
+        List<String> localFolds = lines.stream().map(String::strip)
+                .filter(l -> l.contains("String charOrNum(") && l.contains("private")).toList();
+        assertTrue(localFolds.isEmpty(),
+                () -> "ExprCompiler must not declare its own charOrNum — that is the drift this"
+                        + " hoist removed: " + localFolds);
+    }
+
+
+    /** The fold's own mapping table, including the neither-bucket. */
     @Test
     void theFoldIsTheSameOneVarTypeDataAnswers()
     {
@@ -284,6 +328,74 @@ class AllVariablesExpansionSourceTest
         {
             System.clearProperty("corej.maxExpansionsPerRule");
         }
+    }
+
+
+    /**
+     * ⛔⛔ Review round 1: the cap was applied AFTER {@code crossProduct} had built every tuple, so
+     * it could not bound the explosion it exists for. Two {@code all_variables} directives over
+     * this 512-column fixture are 262 144 tuples — enough that materialising them first is
+     * measurable, and the same shape at 3 000 columns is 9 000 000 two-element lists. The single
+     * directive case, the only shipped shape, is why every other test here passed.
+     *
+     * <p>
+     * This asserts the SKIP happens for a multi-directive rule, which is only possible if the size
+     * is projected rather than materialised.
+     * </p>
+     */
+    @Test
+    void theCapFiresOnAMultiDirectiveRuleWithoutBuildingTheProduct()
+    {
+        ExpansionDirective a = new ExpansionDirective();
+        a.setToken("&A");
+        a.setOver(ExpansionSource.ALL_VARIABLES);
+        ExpansionDirective b = new ExpansionDirective();
+        b.setToken("&B");
+        b.setOver(ExpansionSource.ALL_VARIABLES);
+
+        Rule rule = new Rule();
+        RuleCore core = new RuleCore();
+        core.setId("CDISC-SEND-0049");
+        rule.setCore(core);
+        String src = "var_label(\"&A\", \"DATA\") != var_label(\"&B\", \"DATA\")";
+        rule.setCheck(new CheckConditionExpression(CheckExpressionParser.parse(src), src));
+        rule.setExpansion(List.of(a, b));
+
+        System.setProperty("corej.maxExpansionsPerRule", "1000");
+        try
+        {
+            WildcardExpander.ExpansionResult result = TokenExpander.tryExpand(rule,
+                    wideFixture(512), new TokenExpander.Context(null, null, "WIDE"));
+
+            WildcardExpander.ExpansionResult.NoMatch noMatch = assertInstanceOf(
+                    WildcardExpander.ExpansionResult.NoMatch.class, result,
+                    () -> "the cap must fire before the product is built — got " + result);
+            assertTrue(noMatch.reason().contains("262144"), noMatch.reason());
+        }
+        finally
+        {
+            System.clearProperty("corej.maxExpansionsPerRule");
+        }
+    }
+
+
+    /** A blank column name is dropped, but never silently — the audit must say so. */
+    @Test
+    void aBlankColumnNameIsDroppedWithAStatedReason()
+    {
+        DataTableMeta withBlank = DataTableMeta.builder().name("AE").label("AE").rowCount(0)
+                .totalRowCount(0).columns(new DataTableColumnMeta[]
+                {
+                        col(0, "USUBJID", DataValueType.STRING), col(1, " ", DataValueType.STRING)
+                }).build();
+
+        WildcardExpander.ExpansionResult result = TokenExpander.tryExpand(
+                template(ExpansionSource.ALL_VARIABLES), withBlank,
+                new TokenExpander.Context(null, null, "AE"));
+
+        WildcardExpander.ExpansionResult.Expanded expanded = assertInstanceOf(
+                WildcardExpander.ExpansionResult.Expanded.class, result);
+        assertEquals(1, expanded.rules().size(), "the blank-named column must not expand");
     }
 
 

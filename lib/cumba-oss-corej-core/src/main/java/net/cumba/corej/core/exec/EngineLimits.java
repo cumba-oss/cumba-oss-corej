@@ -3,12 +3,23 @@ package net.cumba.corej.core.exec;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Resolves engine-wide execution limits from configuration. Currently the per-rule findings cap:
- * the maximum number of {@link Violation}s a single rule execution (per dataset) materialises into
- * its {@link RuleExecutionResult}. The cap bounds heap use on high-cardinality rules — a
- * variable-level check with an {@code ALL}-domain scope flags one violation per char column of
- * every dataset, so a large {@code SUPPLB} alone can produce tens of thousands; without the cap the
- * unbounded {@code List<Violation>} can exhaust the JVM heap.
+ * Resolves engine-wide execution limits from configuration.
+ *
+ * <p>
+ * ⚠⚠ There are <b>two</b>, and their defaults differ on purpose. {@link #maxErrorsPerRule()}
+ * truncates a list of findings that is <em>still reported</em>, so the run says so, and it defaults
+ * to {@link #DEFAULT_MAX_ERRORS_PER_RULE}. {@link #maxExpansionsPerRule()} removes an
+ * <em>execution</em> — a rule that never ran yields no finding and no absence signal — so it
+ * defaults to <b>unlimited</b> (owner ruling, 2026-09-21; see that method). The {@code <= 0} and
+ * property-beats-env conventions below apply to both; the default does not.
+ * </p>
+ *
+ * <p>
+ * The findings cap: the maximum number of {@link Violation}s a single rule execution (per dataset)
+ * materialises into its {@link RuleExecutionResult}. The cap bounds heap use on high-cardinality
+ * rules — a variable-level check with an {@code ALL}-domain scope flags one violation per char
+ * column of every dataset, so a large {@code SUPPLB} alone can produce tens of thousands; without
+ * the cap the unbounded {@code List<Violation>} can exhaust the JVM heap.
  *
  * <p>
  * The cap is resolved (highest precedence first):

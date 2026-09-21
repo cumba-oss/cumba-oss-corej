@@ -5729,11 +5729,10 @@ public final class ExprCompiler
         return value;
     }
 
-
-    /** DATA-level data type folded to {@code Char} / {@code Num} (mirrors the provider mapping). */
     // ---------------------------------------------------------------------
     // Eval-time operand resolution helpers (mirror ValueResolver / forEachValue)
     // ---------------------------------------------------------------------
+
 
     private static Vector dottedVector(EvaluationContext ctx, int rowCount, String name)
     {

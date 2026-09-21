@@ -436,4 +436,47 @@ class RuleLoadValidationExpansionTest
         assertNull(rule.getLoadError(), () -> "unexpected load error: " + rule.getLoadError());
     }
 
+
+    /**
+     * ⛔ Review round 1: G3's domain test lives at the end of {@code installCompiledLevels}, and two
+     * earlier returns skip it — a level {@code tryRaiseToExpr} cannot raise, and one
+     * {@code NativeExprEvaluator} does not support. An {@code all_*} rule taking either path
+     * carried no load error, expanded to one rule per column, and each minted copy then reported
+     * the per-rule "no native expression form" ERROR: N duplicated rows where one belongs, and the
+     * R6 violation never reported at all. It is now a load error of its own.
+     */
+    @Test
+    void anAllVariablesRuleWithNoNativeFormIsRejected() throws IOException
+    {
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-G3-NONNATIVE"},
+                  "Expansion": [{"token": "&VAR", "over": "all_variables"}],
+                  "Check": {"all": [{"expression": "no_such_native_function_xyz(USUBJID)"}]}
+                }
+                """);
+        assertTrue(error.contains("no native expression form"), error);
+    }
+
+
+    /**
+     * The sensitivity arm for the one above: the SAME non-native Check without an {@code all_*}
+     * expansion must NOT acquire this error, or the new guard is just rejecting broken rules twice
+     * and says nothing about expansions.
+     */
+    @Test
+    void aNonNativeRuleWithoutAnAllExpansionIsNotRejectedByThisGuard() throws IOException
+    {
+        Rule rule = load("""
+                {
+                  "Core": {"Id": "TEST-G3-NONNATIVE-PLAIN"},
+                  "Check": {"all": [{"expression": "no_such_native_function_xyz(USUBJID)"}]}
+                }
+                """);
+        String error = rule.getLoadError();
+        assertTrue(error == null || !error.contains("no native expression form"),
+                () -> "this guard must be about all_* expansions, not about non-native rules: "
+                        + error);
+    }
+
 }

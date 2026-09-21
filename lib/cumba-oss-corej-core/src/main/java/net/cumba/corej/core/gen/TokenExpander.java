@@ -169,17 +169,24 @@ public final class TokenExpander
         // findings cap truncates a list that is still REPORTED, a rule cap removes an execution
         // and so yields no finding and no absence signal. Exceeding it SKIPS the rule with a
         // stated reason — never a silent truncation.
-        List<List<Binding>> tuples = crossProduct(perDirective);
+        // ⛔⛔ The size is computed WITHOUT materialising the product, and that ordering is the
+        // guard, not a detail. `crossProduct` allocates two lists per tuple per stage, so checking
+        // afterwards means the explosion the cap exists to bound has already happened: two
+        // `all_variables` directives over a 3 000-column extract are 9 000 000 tuples before the
+        // first comparison, and three over 2 048 columns overflow `tuples.size() * bindings.size()`
+        // to a negative ArrayList capacity. Review round 1 found this; the single-directive case —
+        // the only shipped shape — is why every test still passed.
+        long projected = projectedExpansionCount(perDirective);
         int cap = net.cumba.corej.core.exec.EngineLimits.maxExpansionsPerRule();
-        if (tuples.size() > cap)
+        if (projected > cap)
         {
             return new WildcardExpander.ExpansionResult.NoMatch(rule.effectiveId()
-                    + ": expansion would mint " + tuples.size()
-                    + " rules, over the configured cap of " + cap
-                    + " (corej.maxExpansionsPerRule) — skipped rather than truncated, so the"
+                    + ": expansion would mint " + projected + " rules, over the configured cap of "
+                    + cap + " (corej.maxExpansionsPerRule) — skipped rather than truncated, so the"
                     + " missing coverage is visible");
         }
 
+        List<List<Binding>> tuples = crossProduct(perDirective);
         List<Rule> expanded = new ArrayList<>();
         for (List<Binding> tuple : tuples)
         {
@@ -284,6 +291,7 @@ public final class TokenExpander
         String token = Objects.requireNonNull(directive.getToken(), "validated at load");
         List<Binding> out = new ArrayList<>(meta.getColumnCount());
         int skipped = 0;
+        int blankNamed = 0;
         for (int i = 0; i < meta.getColumnCount(); i++)
         {
             var column = meta.getColumn(i);
@@ -292,6 +300,10 @@ public final class TokenExpander
             String name = column.getName();
             if (name.isBlank())
             {
+                // Stated, not silent: this method's contract is that an excluded column shows up
+                // in the audit. A CSV/XLSX header with an empty cell would otherwise expand to
+                // fewer rules than the dataset has columns, with nothing to show for it.
+                blankNamed++;
                 continue;
             }
             if (requiredFold != null)
@@ -309,6 +321,10 @@ public final class TokenExpander
         if (requiredFold != null && skipped > 0)
         {
             reasons.add(skipped + " column(s) are not " + requiredFold + " at the DATA level");
+        }
+        if (blankNamed > 0)
+        {
+            reasons.add(blankNamed + " column(s) have a blank name");
         }
         return out;
     }
@@ -617,9 +633,13 @@ public final class TokenExpander
 
         CheckCondition check = Objects.requireNonNull(template.getCheck(),
                 "expansion template has no Check");
-        // A DECLARED token carries a mandatory non-alphanumeric sigil (validated at load), so it
-        // cannot collide with a CDISC name and is substituted wherever it appears — string
-        // literals included. That is what lets a template say `var_label("&VAR", "DATA")`:
+        // A DECLARED token must carry a non-alphanumeric character (validated at load), so it is
+        // substituted wherever it appears — string literals included.
+        // ⚠ That gate is weaker than "cannot collide with a CDISC name": it rejects an
+        // all-alphanumeric token and a `--`-bearing one, so `V_1` passes and `_` IS in the
+        // SAS/CDISC name alphabet. Both shipped Expansion: rules use `&VAR` / `&DOM`, so nothing
+        // in the corpus is exposed — but do not read this as a guarantee the loader provides. That
+        // is what lets a template say `var_label("&VAR", "DATA")`:
         // ExprCompiler.metadataPlan accepts a name operand ONLY as a string literal or the
         // variable_name operand, so a backtick ref would substitute and then fail to compile.
         // ⛔ The wildcard flavour must NOT get this policy — its markers match inside names, and
@@ -869,6 +889,40 @@ public final class TokenExpander
             columns.add(meta.getColumn(i).getName());
         }
         return columns;
+    }
+
+
+    /**
+     * The number of tuples {@link #crossProduct} would produce, computed <b>without building
+     * them</b> — the product of the per-directive binding counts, saturating at
+     * {@link Long#MAX_VALUE} rather than overflowing.
+     *
+     * <p>
+     * ⚠ Saturating, not wrapping: a wrapped product can come back small or negative and would let
+     * the very case the cap exists for slip through the comparison. {@code long} against an
+     * {@code int} cap means the comparison itself cannot overflow either.
+     * </p>
+     *
+     * @param perDirective
+     *            the bindings of each directive, in order
+     * @return the tuple count, saturated at {@link Long#MAX_VALUE}
+     */
+    private static long projectedExpansionCount(List<List<Binding>> perDirective)
+    {
+        long product = 1;
+        for (List<Binding> bindings : perDirective)
+        {
+            if (bindings.isEmpty())
+            {
+                return 0;
+            }
+            if (product > Long.MAX_VALUE / bindings.size())
+            {
+                return Long.MAX_VALUE;
+            }
+            product *= bindings.size();
+        }
+        return product;
     }
 
 

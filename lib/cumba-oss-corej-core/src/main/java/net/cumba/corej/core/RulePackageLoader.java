@@ -1494,6 +1494,7 @@ public class RulePackageLoader
                 // nothing: installing the levels that DID raise would silently drop a level's
                 // verdict, and a rule that reports fewer levels than it declares is worse than one
                 // that reports the "no native expression form" ERROR.
+                rejectUndecidableAllExpansion(rule);
                 return;
             }
             levels.put(level.getKey(), raised);
@@ -1601,6 +1602,7 @@ public class RulePackageLoader
         {
             if (!net.cumba.corej.core.expr.eval.NativeExprEvaluator.isSupported(level))
             {
+                rejectUndecidableAllExpansion(rule);
                 return;
             }
         }
@@ -1955,6 +1957,85 @@ public class RulePackageLoader
             "var_external_dictionary_version", "define_variable_decode_matches");
 
     /**
+     * The other half of gate <b>G3</b>: an {@code over: all_*} rule whose Check has <b>no native
+     * form</b> is rejected at load, because the exclusivity test cannot be decided for it.
+     *
+     * <p>
+     * ⚠ Found by review round 1 of {@code plans/PLAN-expansion-over-all-variables.md}. The domain
+     * test lives at the end of {@link #installCompiledLevels}, and two earlier returns skip it — a
+     * level whose {@code tryRaiseToExpr} yields {@code null}, and a level
+     * {@code NativeExprEvaluator} does not support. Without this, such a rule would carry no load
+     * error, expand to one rule per column, and each minted copy would then report the per-rule "no
+     * native expression form" ERROR: N duplicated error rows per dataset where one belongs, and the
+     * R6 violation never reported to the author at all.
+     * </p>
+     *
+     * <p>
+     * ⚑ It is a load error rather than a silent skip for the same reason the domain half is: the
+     * rule cannot be evaluated either way, so expanding it multiplies noise and tells the author
+     * nothing. Blocking says exactly what is wrong.
+     * </p>
+     *
+     * @param rule
+     *            the rule whose native installation is being abandoned
+     */
+    private static void rejectUndecidableAllExpansion(Rule rule)
+    {
+        if (!hasAllVariablesExpansion(rule))
+        {
+            return;
+        }
+        String error = "[" + ruleId(rule) + "] Expansion over an 'all_*' source on a rule whose"
+                + " Check has no native expression form — the expansion/cursor exclusivity cannot"
+                + " be decided, and the rule could not be evaluated in any case; fix the Check or"
+                + " drop the Expansion block";
+        rule.setLoadError(rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
+    }
+
+
+    /**
+     * Whether the rule declares an expansion over one of the three dataset-enumerating sources.
+     *
+     * @param rule
+     *            the rule to inspect
+     * @return {@code true} when at least one directive names an {@code all_*} source
+     */
+    private static boolean hasAllVariablesExpansion(Rule rule)
+    {
+        return allVariablesExpansionSource(rule) != null;
+    }
+
+
+    /**
+     * The first {@code all_*} expansion source the rule declares, or {@code null}.
+     *
+     * @param rule
+     *            the rule to inspect
+     * @return the source, or {@code null} when the rule declares none
+     */
+    private static net.cumba.corej.core.model.@Nullable ExpansionSource allVariablesExpansionSource(
+            Rule rule)
+    {
+        List<net.cumba.corej.core.model.ExpansionDirective> directives = rule.getExpansion();
+        if (directives == null || directives.isEmpty())
+        {
+            return null;
+        }
+        for (net.cumba.corej.core.model.ExpansionDirective d : directives)
+        {
+            net.cumba.corej.core.model.ExpansionSource over = d.getOver();
+            if (over == net.cumba.corej.core.model.ExpansionSource.ALL_VARIABLES
+                    || over == net.cumba.corej.core.model.ExpansionSource.ALL_NUMERIC_VARIABLES
+                    || over == net.cumba.corej.core.model.ExpansionSource.ALL_CHARACTER_VARIABLES)
+            {
+                return over;
+            }
+        }
+        return null;
+    }
+
+
+    /**
      * Gate <b>G3</b> of {@code plans/PLAN-expansion-over-all-variables.md} — a rule may use an
      * {@code over: all_*} expansion <b>or</b> the variable cursor, never both.
      *
@@ -1997,23 +2078,7 @@ public class RulePackageLoader
     private static void checkExpansionAndCursorAreExclusive(Rule rule,
             net.cumba.corej.core.expr.eval.Domain domain)
     {
-        List<net.cumba.corej.core.model.ExpansionDirective> directives = rule.getExpansion();
-        if (directives == null || directives.isEmpty())
-        {
-            return;
-        }
-        net.cumba.corej.core.model.ExpansionSource allSource = null;
-        for (net.cumba.corej.core.model.ExpansionDirective d : directives)
-        {
-            net.cumba.corej.core.model.ExpansionSource over = d.getOver();
-            if (over == net.cumba.corej.core.model.ExpansionSource.ALL_VARIABLES
-                    || over == net.cumba.corej.core.model.ExpansionSource.ALL_NUMERIC_VARIABLES
-                    || over == net.cumba.corej.core.model.ExpansionSource.ALL_CHARACTER_VARIABLES)
-            {
-                allSource = over;
-                break;
-            }
-        }
+        net.cumba.corej.core.model.ExpansionSource allSource = allVariablesExpansionSource(rule);
         if (allSource == null)
         {
             return;
