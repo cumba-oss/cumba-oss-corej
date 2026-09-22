@@ -74,11 +74,6 @@
          CDISC SDTMIG / ADaMIG / CT spec; locale-insensitive folding is
          intentional. -->
     <Match>
-        <Class name="net.cumba.corej.core.exec.CheckConditionOptimizer" />
-        <Method name="evaluateLeafAgainstMetadata" />
-        <Bug pattern="DM_CONVERT_CASE" />
-    </Match>
-    <Match>
         <Class name="net.cumba.corej.core.exec.OperationExecutor" />
         <Method name="applicableCtPackageTypes" />
         <Bug pattern="DM_CONVERT_CASE" />
@@ -338,11 +333,6 @@
          round-trip comparisons against well-defined integral / sentinel
          doubles; epsilon comparison would produce wrong answers here. -->
     <Match>
-        <Class name="net.cumba.corej.core.LibraryRuleMapper" />
-        <Method name="mapLeafValue" />
-        <Bug pattern="FE_FLOATING_POINT_EQUALITY" />
-    </Match>
-    <Match>
         <Class name="net.cumba.corej.core.exec.OperandSubstitutor" />
         <Method name="rawString" />
         <Bug pattern="FE_FLOATING_POINT_EQUALITY" />
@@ -376,47 +366,15 @@
         <Bug pattern="FE_FLOATING_POINT_EQUALITY" />
     </Match>
 
-    <!-- usubjId vs usubjid / filename vs fileName: unrelated nested
-         record accessors in different files; both follow their local
-         naming convention (CDISC variable name in lower case for the
-         RelrecLink record; CamelCase for the LibraryValidator record). -->
-    <!--
-        ⛔⛔ REGEX MATCHER — the dots below are ESCAPED, so this line contains no
-        contiguous "net.cumba.corej.core" and a package rename done by literal
-        search-and-replace WILL SILENTLY MISS IT. The suppression then stops matching and
-        the build reds on a finding nobody changed.
-
-        Measured 2026-09-03 in cumba-oss-corej: exactly this happened. The rename passed
-        local verification because spotbugs failOnError defaults to FALSE — SpotBugs found
-        the bug, printed it, and the build still exited 0 — and CI caught it one push
-        later. Grep the escaped form: git grep -n 'net\\.cumba\\.'
-    -->
-    <Match>
-        <!-- Regex fallback: RelrecLookup$1RelrecLink is a local class
-             whose javac-synthesised name carries a numeric prefix. -->
-        <Class name="~net\.cumba\.corej\.core\.exec\.RelrecLookup\$[0-9]+RelrecLink" />
-        <Method name="usubjId" />
-        <Bug pattern="NM_CONFUSING" />
-    </Match>
+    <!-- filename vs fileName: unrelated nested record accessors in different
+         files, each following its own local naming convention. -->
     <Match>
         <Class name="net.cumba.corej.core.report.ReportAssembler$DatasetInfo" />
         <Method name="filename" />
         <Bug pattern="NM_CONFUSING" />
     </Match>
     <Match>
-        <!-- The OTHER half of the same filename/fileName pair. SpotBugs reports
-             NM_CONFUSING once per pair and attributes it to whichever of the two
-             classes it visits first, so suppressing one side is not enough:
-             renaming DatasetInfo's owner from JsonReportWriter to ReportAssembler
-             flipped the attribution here and the single suppression above stopped
-             matching. Both sides are listed so the pair stays suppressed however
-             SpotBugs orders them. -->
-        <Class name="net.cumba.corej.core.report.LibraryValidator$CohortRunCtx" />
-        <Method name="fileName" />
-        <Bug pattern="NM_CONFUSING" />
-    </Match>
-    <Match>
-        <!-- Dictionary installer (Phase 8): a THIRD member of the same
+        <!-- Dictionary installer (Phase 8): the second member of the same
              filename/fileName family. Download.fileName is a record component
              naming the plain file a dictionary artefact is saved under — the
              natural name for it, camel-cased per this package's convention.
@@ -425,7 +383,7 @@
              relationship, so the case-confusion the pattern guards against
              (accidentally failing to override) cannot arise. Attribution
              lands on this class when SpotBugs visits it first, hence its own
-             entry alongside the pair above. -->
+             entry alongside DatasetInfo above. -->
         <Class name="net.cumba.corej.core.metadata.dictionary.HttpDictionarySource$Download" />
         <Method name="fileName" />
         <Bug pattern="NM_CONFUSING" />
@@ -434,16 +392,6 @@
     <!-- Documented tri-state Boolean: null = "leaf cannot be evaluated
          at this level". Refactor to Optional<Boolean> would ripple
          through hot rule paths. -->
-    <Match>
-        <Class name="net.cumba.corej.core.exec.CheckConditionOptimizer" />
-        <Method name="evaluateDatasetLeaf" />
-        <Bug pattern="NP_BOOLEAN_RETURN_NULL" />
-    </Match>
-    <Match>
-        <Class name="net.cumba.corej.core.exec.CheckConditionOptimizer" />
-        <Method name="tryFoldOnMissingColumn" />
-        <Bug pattern="NP_BOOLEAN_RETURN_NULL" />
-    </Match>
     <Match>
         <Class name="net.cumba.corej.core.exec.OperatorRegistry" />
         <Method name="dottedExists" />
