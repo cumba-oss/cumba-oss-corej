@@ -72,10 +72,34 @@ public final class JoinKeyTypes
      */
     public static boolean excludedFromKeyTypeCheck(MatchDataset aMatch)
     {
+        return aMatch.getName() == null || textCarriedForeignKeyFamily(aMatch);
+    }
+
+
+    /**
+     * Whether this entry belongs to the family that matches a <b>text-carried foreign key</b>
+     * against a typed column by design — {@code Child:true}, {@code RELREC}, a {@code --} wildcard
+     * name, or a {@code SUPP*}/{@code SQ*} qualifier dataset.
+     *
+     * <p>
+     * ⚠⚠ <b>This is {@link #excludedFromKeyTypeCheck} WITHOUT its {@code name == null} clause, and
+     * the difference matters.</b> A nameless entry is excluded from the type check because nothing
+     * resolves a joined dataset for it — not because it is one of these families. A caller that
+     * wants to say <i>"this is a Child/RELREC/SUPP entry"</i> and asks the wider predicate will say
+     * it, wrongly, about an entry that is none of them. That defect was written twice in one change
+     * before this decomposition existed.
+     * </p>
+     *
+     * @param aMatch
+     *            the {@code Match_Datasets} entry, never {@code null}.
+     * @return whether it is one of the text-carried foreign-key families.
+     */
+    public static boolean textCarriedForeignKeyFamily(MatchDataset aMatch)
+    {
         String name = aMatch.getName();
-        return name == null || Boolean.TRUE.equals(aMatch.getChild())
-                || "RELREC".equalsIgnoreCase(name) || name.contains("--")
-                || isSuppOrQualifier(name);
+        return name != null
+                && (Boolean.TRUE.equals(aMatch.getChild()) || "RELREC".equalsIgnoreCase(name)
+                        || name.contains("--") || isSuppOrQualifier(name));
     }
 
 

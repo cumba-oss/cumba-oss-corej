@@ -146,6 +146,23 @@ public class DatasetLookup implements JoinLookup
         {
             return null;
         }
+        // ⚠⚠ The two lists are paired POSITIONALLY, so different lengths silently pair the wrong
+        // columns (or drop the tail). The only producer of unequal lists is a malformed sided
+        // `Keys` element, which `RulePackageLoader.checkSidedKeys` rejects at load -- but this is
+        // the site BOTH join paths funnel through, and the expander's own backstop cannot see a
+        // rule that reaches here without being expandable at all (PLAN-join-key-type-identity,
+        // review round 2).
+        if (leftKeyColumns.size() != rightKeyColumns.size())
+        {
+            // ⚠ MalformedSidedKeyException, NOT IllegalArgumentException: this site is inside rule
+            // execution, and every other join defect reaches the operator through the `__error__`
+            // sentinel channel (RuleRunner's multi-catch). A generic RuntimeException would land
+            // wherever the nearest broad catch happens to be, which is not a contract.
+            throw new MalformedSidedKeyException(datasetName,
+                    "the left side declares " + leftKeyColumns.size()
+                            + " key column(s) and the right side " + rightKeyColumns.size()
+                            + ", so they cannot be paired positionally");
+        }
         int[] joinedKeyColIds = KeyHashing.resolveColIds(dataset.getMetaData(), rightKeyColumns);
         HashLookup index = buildIndex(dataset, joinedKeyColIds);
         return new DatasetLookup(datasetName, leftKeyColumns, joinedKeyColIds, index, dataset);

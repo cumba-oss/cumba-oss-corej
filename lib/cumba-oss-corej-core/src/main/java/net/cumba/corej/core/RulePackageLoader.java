@@ -3657,6 +3657,7 @@ public class RulePackageLoader
         checkCheckLevels(rule, errors);
         checkJoinTypes(rule, errors);
         checkJoinAsString(rule, errors);
+        checkSidedKeys(rule, errors);
         checkStudySensitivityScope(rule, errors);
         // Gate 3a (the Python one-frame-per-rule compatibility warning) is gone — phase 2 of
         // PLAN-leaf-scope-domain-inference.md: Java never needed the invariant it validated.
@@ -4984,6 +4985,75 @@ public class RulePackageLoader
 
 
     /**
+     * Tags a {@code Match_Datasets} entry whose {@code Keys} carry a <b>half-declared sided
+     * element</b> with a load error ({@code PLAN-join-key-type-identity}, review round 2).
+     *
+     * <p>
+     * ⚠⚠ A sided key is {@code {"left": "A", "right": "B"}}. {@code MatchDataset.getKeys()} and
+     * {@code getRightKeys()} each <b>skip</b> an object element that lacks their side, so
+     * {@code {"left": "A"}} alone makes the two lists different LENGTHS while
+     * {@code hasSidedKeys()} still answers {@code true}. Every consumer indexes them in lockstep,
+     * so the shape is unusable rather than merely odd — and before this check nothing rejected it
+     * at any layer.
+     * </p>
+     *
+     * <p>
+     * ⚑ No shipped rule uses the sided shape at all (measured 2026-09-22: all 252 key occurrences
+     * across 214 entries are bare strings), so this cannot reject anything that exists today.
+     * </p>
+     *
+     * @param rule
+     *            the rule to check.
+     * @param errors
+     *            the collector to append to.
+     */
+    private static void checkSidedKeys(Rule rule, List<String> errors)
+    {
+        List<net.cumba.corej.core.model.MatchDataset> matches = rule.getMatchDatasets();
+        if (matches == null)
+        {
+            return;
+        }
+        for (net.cumba.corej.core.model.MatchDataset md : matches)
+        {
+            if (md == null)
+            {
+                continue;
+            }
+            // ⚑ Round 3, L2 — a WELL-FORMED sided key on a Child/RELREC/SUPP entry passes every
+            // check above and is still wrong: ChildMatchPreMerger reads md.getKeys() (the LEFT
+            // names) on both sides, so the SUPP pivot would match on the wrong child columns.
+            // Unreachable in practice — the pivot is defined on SDTM-standard names that are
+            // identical on both sides by construction, and no corpus entry is sided at all — but
+            // un-guarded in principle, and one line closes the family.
+            // ⚠⚠ textCarriedForeignKeyFamily, NOT excludedFromKeyTypeCheck: the wider predicate
+            // also answers true for a NAMELESS entry, which is none of these families. Asking it
+            // here would blame Child/RELREC/SUPP for an entry that has no Name -- the very defect
+            // corrected in checkJoinAsStringOnExcludedEntry below, written twice in one change.
+            if (md.hasSidedKeys()
+                    && net.cumba.corej.core.exec.JoinKeyTypes.textCarriedForeignKeyFamily(md))
+            {
+                errors.add("[" + ruleId(rule) + "] Match_Datasets entry '" + md.getName()
+                        + "' combines sided Keys with a Child / RELREC / SUPP-- entry. That family"
+                        + " pivots on the standard IDVAR/IDVARVAL names, which are the same on both"
+                        + " sides, and its merge reads the left names only — a sided declaration"
+                        + " there would be silently ignored.");
+                continue;
+            }
+            String malformed = md.malformedKeyElement();
+            if (malformed == null)
+            {
+                continue;
+            }
+            errors.add("[" + ruleId(rule) + "] Match_Datasets entry '" + md.getName()
+                    + "' has a malformed Keys element: " + malformed
+                    + ". The two sides are indexed in lockstep, so an element either side cannot"
+                    + " read is unusable — not merely odd");
+        }
+    }
+
+
+    /**
      * Tags a {@code Join_As_String} that is present but not a boolean with a load error
      * ({@code PLAN-join-key-type-identity}, ruling {@code D4-R3}).
      *
@@ -5062,11 +5132,23 @@ public class RulePackageLoader
             }
             // ⚠ Two ways to be ungoverned, and the message must say WHICH — "has no effect" with
             // no reason sends the author looking at the wrong half of the entry.
-            String why = net.cumba.corej.core.exec.JoinKeyTypes.excludedFromKeyTypeCheck(md)
-                    ? "Child / RELREC / SUPP-- entries match a text-carried foreign key against a"
-                            + " typed column by design and are not subject to join-key type"
-                            + " identity"
-                    : "the entry declares no Keys, so it builds no key comparison at all";
+            // ⚠ THREE reasons, not two: a NAMELESS entry also satisfies excludedFromKeyTypeCheck
+            // (its `name == null` clause), so a two-way ternary blamed the Child/RELREC/SUPP
+            // family for an entry that is none of them.
+            String why;
+            if (md.getName() == null)
+            {
+                why = "the entry has no Name, so nothing resolves a joined dataset for it";
+            }
+            else if (net.cumba.corej.core.exec.JoinKeyTypes.excludedFromKeyTypeCheck(md))
+            {
+                why = "Child / RELREC / SUPP-- entries match a text-carried foreign key against a"
+                        + " typed column by design and are not subject to join-key type identity";
+            }
+            else
+            {
+                why = "the entry declares no Keys, so it builds no key comparison at all";
+            }
             errors.add("[" + ruleId(rule) + "] Join_As_String has no effect on Match_Datasets entry"
                     + " '" + md.getName() + "' — " + why + ". Remove it.");
         }

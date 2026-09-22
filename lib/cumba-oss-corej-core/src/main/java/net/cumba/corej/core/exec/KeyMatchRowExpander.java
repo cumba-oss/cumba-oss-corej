@@ -426,8 +426,18 @@ final class KeyMatchRowExpander
         // column that is not a key of this entry, or a real mismatch going undetected because the
         // left name is absent on the child). Zero corpus entries use the sided shape today, which
         // is why it stayed latent; it is fixed here rather than propagated.
-        List<String> childKeys = md.hasSidedKeys() && md.getRightKeys() != null
-                ? Objects.requireNonNull(md.getRightKeys())
+        // ⚠⚠ The two key lists are index-aligned ONLY when every element is readable from both
+        // sides. `MatchDataset.sidedKeys` SKIPS what it cannot read, so `{"left":"X"}` yields a
+        // SHORTER right list while `keys.size()` still drives every loop and array below -- an
+        // ArrayIndexOutOfBoundsException, not a diagnosis -- and `[{"left":"A"},{"right":"B"}]`
+        // yields two lists of EQUAL length describing different things, which a size check would
+        // wave through. ⇒ ask the same per-element predicate the loader asks.
+        String malformedKey = md.malformedKeyElement();
+        if (malformedKey != null)
+        {
+            throw new MalformedSidedKeyException(childName, malformedKey);
+        }
+        List<String> childKeys = md.hasSidedKeys() ? Objects.requireNonNull(md.getRightKeys())
                 : keys;
         int[] primaryColIds = resolveColIds(primary.getMetaData(), keys);
         int[] childColIds = resolveColIds(child.getMetaData(), childKeys);

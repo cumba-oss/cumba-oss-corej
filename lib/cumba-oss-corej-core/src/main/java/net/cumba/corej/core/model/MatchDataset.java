@@ -280,6 +280,51 @@ public class MatchDataset
     }
 
 
+    /**
+     * A description of the first malformed {@code Keys} element, or {@code null} when every element
+     * is usable ({@code PLAN-join-key-type-identity}, review round 2).
+     *
+     * <p>
+     * ⛔⛔ <b>Validated PER ELEMENT, and that is the point.</b> {@link #sidedKeys} <b>skips</b> an
+     * element it cannot read a side from, so the two lists can be equal in length while describing
+     * different things — {@code [{"left":"A"}, {"right":"B"}]} yields {@code ["A"]} and
+     * {@code ["B"]}, sizes 1 and 1, and the engine would join {@code A} against {@code B} as ONE
+     * component when the author declared two. A size comparison is a <em>proxy</em> for "every
+     * element is usable", and the proxy is satisfiable without the property. An element skipped on
+     * <b>both</b> sides ({@code {}}, a non-textual side, a {@code null} element) is the same class:
+     * sizes agree and the component silently leaves the join, widening every match.
+     * </p>
+     *
+     * @return the offending element's description, or {@code null} when the list is well formed.
+     */
+    @JsonIgnore
+    public @Nullable String malformedKeyElement()
+    {
+        if (keysNode == null || keysNode.isNull() || !keysNode.isArray())
+        {
+            return null;
+        }
+        for (JsonNode n : keysNode)
+        {
+            if (n.isTextual())
+            {
+                continue;
+            }
+            if (!n.isObject())
+            {
+                return "element " + n + " is neither a column name nor a {left, right} pair";
+            }
+            JsonNode left = n.get("left");
+            JsonNode right = n.get("right");
+            if (left == null || !left.isTextual() || right == null || !right.isTextual())
+            {
+                return "element " + n + " must declare BOTH \"left\" and \"right\" as strings";
+            }
+        }
+        return null;
+    }
+
+
     /** {@code true} when at least one key entry is a sided {@code {left, right}} object. */
     @JsonIgnore
     public boolean hasSidedKeys()

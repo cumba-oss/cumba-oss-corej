@@ -46,8 +46,9 @@ final class JoinKeyTypeMismatchException extends RuntimeException
                         : "its joined column " + aJoinedColumn + " is ")
                 + aJoinedKind + " in " + aDataset
                 + ". Declare the type this rule REQUIRES on BOTH sides in"
-                + " Requirements.Variables.All — e.g. \"" + aKeyColumn + ":N\" for the primary and"
-                + " \"" + aDataset + "." + aJoinedColumn + ":N\" for the joined dataset — so a"
+                + " Requirements.Variables.All — e.g. \"" + aKeyColumn + ":N\" (or \":C\") for the"
+                + " primary and \"" + aDataset + "." + aJoinedColumn + ":N\" for the joined"
+                + " dataset — so a"
                 + " study that does not meet it SKIPS instead. Declare the type the rule needs, not"
                 + " the one this study has: a tag that matches the divergent column is satisfied"
                 + " and does not skip. Or set Join_As_String: true on the entry to compare the keys"

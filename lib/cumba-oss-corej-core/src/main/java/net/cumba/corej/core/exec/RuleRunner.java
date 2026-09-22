@@ -446,7 +446,7 @@ public final class RuleRunner
                     .status(RuleExecutionStatus.SKIPPED).statusMessage(reason).build());
         }
         catch (InvalidJoinedDomainException | DegenerateJoinKeyException
-                | JoinKeyTypeMismatchException e)
+                | JoinKeyTypeMismatchException | MalformedSidedKeyException e)
         {
             // ⭐ JoinKeyTypeMismatchException joins this catch for D4-R2 (owner, 2026-09-22: "a
             // rule errors out if the types do not match … I do not want a silent mismatch"). Same
@@ -3697,6 +3697,17 @@ public final class RuleRunner
             if (originalName == null)
             {
                 continue;
+            }
+            // ⚠⚠ Per ELEMENT, not per list length. DatasetLookup.build can only compare the two
+            // lists' SIZES, and a size comparison is a proxy that `[{"left":"A"},{"right":"B"}]`
+            // satisfies without the property -- it would join A against B as ONE component where
+            // the author declared two. `md` is in hand here, so ask the real predicate, the same
+            // one the loader and KeyMatchRowExpander.keySpec ask
+            // (PLAN-join-key-type-identity, review round 4).
+            String malformedKey = md.malformedKeyElement();
+            if (malformedKey != null)
+            {
+                throw new MalformedSidedKeyException(originalName, malformedKey);
             }
             // Resolve -- wildcard in dataset name (e.g., SUPP-- → SUPPAE). resolveWildcard only
             // returns null for a null input; originalName is non-null here (guarded above).
