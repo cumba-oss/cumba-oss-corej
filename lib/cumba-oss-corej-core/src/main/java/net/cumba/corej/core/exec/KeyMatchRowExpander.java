@@ -258,13 +258,9 @@ final class KeyMatchRowExpander
         }
         for (MatchDataset md : mds)
         {
-            // ⭐ 2026-09-22: the five-clause test moved to JoinKeyTypes so the D4 type check and
-            // the loader's Join_As_String guard ask the SAME predicate. Behaviour unchanged.
-            if (JoinKeyTypes.excludedFromKeyTypeCheck(md))
-            {
-                continue;
-            }
-            if (md.getKeys() != null && !md.getKeys().isEmpty())
+            // ⭐ 2026-09-22: the test moved to JoinKeyTypes so the D4 type check, the expander and
+            // the loader's Join_As_String guard ask ONE predicate. Behaviour unchanged.
+            if (JoinKeyTypes.governedByKeyTypeCheck(md))
             {
                 out.add(md);
             }
@@ -423,8 +419,18 @@ final class KeyMatchRowExpander
         String childName = Objects.requireNonNull(md.getName());
         boolean asString = md.joinKeysAsString();
         boolean typeChecked = !JoinKeyTypes.excludedFromKeyTypeCheck(md);
+        // ⭐⭐ Sided keys ({left: .., right: ..}): the joined side is named by getRightKeys(), NOT
+        // by the left names. Before 2026-09-22 BOTH sides were resolved from md.getKeys() -- the
+        // LEFT list -- so a sided entry joined the child on a column the entry never named, and
+        // D4's type check would then have compared the wrong column's type (a false ERROR naming a
+        // column that is not a key of this entry, or a real mismatch going undetected because the
+        // left name is absent on the child). Zero corpus entries use the sided shape today, which
+        // is why it stayed latent; it is fixed here rather than propagated.
+        List<String> childKeys = md.hasSidedKeys() && md.getRightKeys() != null
+                ? Objects.requireNonNull(md.getRightKeys())
+                : keys;
         int[] primaryColIds = resolveColIds(primary.getMetaData(), keys);
-        int[] childColIds = resolveColIds(child.getMetaData(), keys);
+        int[] childColIds = resolveColIds(child.getMetaData(), childKeys);
         KeyPart[] absentPart = new KeyPart[keys.size()];
         boolean[] active = new boolean[keys.size()];
         int nActive = 0;
@@ -467,7 +473,7 @@ final class KeyMatchRowExpander
                 ColumnTypeGate.Kind childKind = ColumnTypeGate.kindOf(childType);
                 if (primaryKind != null && childKind != null && primaryKind != childKind)
                 {
-                    throw new JoinKeyTypeMismatchException(childName, keys.get(i),
+                    throw new JoinKeyTypeMismatchException(childName, keys.get(i), childKeys.get(i),
                             describeKind(primaryKind), describeKind(childKind));
                 }
             }

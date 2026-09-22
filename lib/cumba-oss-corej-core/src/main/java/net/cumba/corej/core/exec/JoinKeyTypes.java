@@ -1,5 +1,6 @@
 package net.cumba.corej.core.exec;
 
+import java.util.List;
 import java.util.Locale;
 import net.cumba.corej.core.model.MatchDataset;
 
@@ -75,6 +76,32 @@ public final class JoinKeyTypes
         return name == null || Boolean.TRUE.equals(aMatch.getChild())
                 || "RELREC".equalsIgnoreCase(name) || name.contains("--")
                 || isSuppOrQualifier(name);
+    }
+
+
+    /**
+     * Whether the join-key type identity of {@code D4-R1}/{@code D4-R2} — and therefore
+     * {@code Join_As_String} — applies to this entry at all.
+     *
+     * <p>
+     * ⭐⭐ <b>This is the predicate, and it has TWO halves.</b> An entry is governed only when it is
+     * not an excluded family <b>and</b> it actually carries keys: the flag is read at exactly one
+     * site ({@code KeyMatchRowExpander.keySpec}), reached only through
+     * {@link KeyMatchRowExpander#expandableEntries}, which requires both. ⚠ The loader's no-effect
+     * guard originally asked only {@link #excludedFromKeyTypeCheck}, so
+     * {@code Join_As_String: true} on a <b>keyless</b> entry loaded clean and did nothing — the
+     * silent no-op that guard exists to prevent, in the guard itself. The corpus carries 7 keyless
+     * entries, so the shape is real.
+     * </p>
+     *
+     * @param aMatch
+     *            the {@code Match_Datasets} entry, never {@code null}.
+     * @return whether the entry's keys are subject to the type check.
+     */
+    public static boolean governedByKeyTypeCheck(MatchDataset aMatch)
+    {
+        List<String> keys = aMatch.getKeys();
+        return !excludedFromKeyTypeCheck(aMatch) && keys != null && !keys.isEmpty();
     }
 
 

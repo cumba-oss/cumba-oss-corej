@@ -37,17 +37,21 @@ final class JoinKeyTypeMismatchException extends RuntimeException
     @Serial
     private static final long serialVersionUID = 1L;
 
-    JoinKeyTypeMismatchException(String aDataset, String aKeyColumn, String aPrimaryKind,
-            String aJoinedKind)
+    JoinKeyTypeMismatchException(String aDataset, String aKeyColumn, String aJoinedColumn,
+            String aPrimaryKind, String aJoinedKind)
     {
         super("Match_Datasets " + aDataset + ": join key " + aKeyColumn + " is " + aPrimaryKind
-                + " in the primary dataset and " + aJoinedKind + " in " + aDataset
-                + ". Declare the type this rule REQUIRES on BOTH sides in Requirements.Variables"
-                + " — e.g. \"" + aKeyColumn + ":N\" for the primary and \"" + aDataset + "."
-                + aKeyColumn + ":N\" for the joined dataset — so a study that does not meet it"
-                + " SKIPS instead. Declare the type the rule needs, not the one this study has: a"
-                + " tag that matches the divergent column is satisfied and does not skip. Or set"
-                + " Join_As_String: true on the entry to compare the keys as text.");
+                + " in the primary dataset and "
+                + (aKeyColumn.equals(aJoinedColumn) ? ""
+                        : "its joined column " + aJoinedColumn + " is ")
+                + aJoinedKind + " in " + aDataset
+                + ". Declare the type this rule REQUIRES on BOTH sides in"
+                + " Requirements.Variables.All — e.g. \"" + aKeyColumn + ":N\" for the primary and"
+                + " \"" + aDataset + "." + aJoinedColumn + ":N\" for the joined dataset — so a"
+                + " study that does not meet it SKIPS instead. Declare the type the rule needs, not"
+                + " the one this study has: a tag that matches the divergent column is satisfied"
+                + " and does not skip. Or set Join_As_String: true on the entry to compare the keys"
+                + " as text.");
     }
 
 }

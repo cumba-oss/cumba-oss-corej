@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
@@ -16,6 +17,7 @@ import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.values.DataValueType;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -34,9 +36,10 @@ import org.junit.jupiter.api.Test;
  * MATCHING.</b> {@code tuple()} put the <em>rendered</em> {@code KeyPart} in the key, so a
  * character {@code "5"} joined a numeric {@code 5} while {@code "05"}, {@code "5.0"} and
  * {@code " 5"} did not: whether a subject's records joined depended on the <b>spelling</b> of a
- * value whose type was already wrong. {@code keyTupleSpellingsNoLongerDecideTheJoin} is the pin on
- * that, and the corpus scenario {@code PMDA-AD0258-d4_key_type_divergence_char_vs_num-ADAE.cdt} is
- * its end-to-end twin.
+ * value whose type was already wrong. The corpus scenario
+ * {@code PMDA-AD0258-d4_key_type_divergence_char_vs_num-ADAE.cdt} is its end-to-end twin, and
+ * {@link #joinAsStringOverridesTheTypeCheckAndComparesTheRenderedForm} is the unit pin on the
+ * spelling behaviour the flag deliberately preserves.
  * </p>
  */
 class JoinKeyTypeIdentityTest
@@ -108,6 +111,10 @@ class JoinKeyTypeIdentityTest
         assertTrue(msg.contains(AESEQ), "the message must name the offending key: " + msg);
         assertTrue(msg.contains("Character") && msg.contains("Numeric"),
                 "the message must name BOTH kinds so the author knows which side to fix: " + msg);
+        assertFalse(msg.contains("its joined column"),
+                "⚠ for a SAME-NAMED key the joined column must not be spelled out again — "
+                        + "\"AESEQ is Character ... and AESEQ is Numeric\" reads as a typo. That "
+                        + "clause is for the sided shape only; was: " + msg);
     }
 
 
@@ -348,6 +355,77 @@ class JoinKeyTypeIdentityTest
                 "and a malformed value must not take effect in the meantime");
         assertTrue(bind("{\"Name\":\"AE\",\"Join_As_String\":1}").hasMalformedJoinAsString(),
                 "a number is malformed too");
+    }
+
+
+    /**
+     * ⭐⭐ {@code D4-R6a} reaching {@code keySpec} — the arm that protects every all-{@code NA} R
+     * column.
+     *
+     * <p>
+     * ⛔ {@link #anUnclassifiedColumnKindIsNotAMismatch} asserts only what {@code kindOf} answers;
+     * it never runs a join, so deleting the two {@code != null} guards in {@code keySpec} leaves it
+     * green. <b>This</b> test kills that mutant: a {@code BOOLEAN} key column against a
+     * {@code Char} one must NOT throw.
+     * </p>
+     */
+    @Test
+    void aKeyColumnWhoseKindIsUnclassifiedDoesNotError()
+    {
+        IDataTable adae = MockTable.of().col(USUBJID, "P1").col(AESEQ, "1").name("ADAE").build();
+        IDataTable ae = MockTable.of().col(USUBJID, "P1").col(AESEQ, "1").col("AETERM", "HA")
+                .name(AE).build();
+        // An all-NA R `logical` column arrives as BOOLEAN; MockTable cannot declare one, so the
+        // mock's own column type is re-stubbed. kindOf(BOOLEAN) is null -> not gated (D4-R6a).
+        int idx = ae.getMetaData().getColumnIndex(AESEQ);
+        when(ae.getMetaData().getColumn(idx).getType()).thenReturn(DataValueType.BOOLEAN);
+        Assertions.assertDoesNotThrow(() -> expand(adae, ae, md(AE, List.of(USUBJID, AESEQ))),
+                "D4-R6a: an unclassified kind is NOT a mismatch. If this throws, every .rds study"
+                        + " whose key variable is wholly missing ERRORs on every keyed rule");
+    }
+
+
+    /**
+     * ⭐ The absent-on-one-side arm reaching {@code keySpec}: there is only ONE type, so a mismatch
+     * is not expressible and {@code JKM R7}'s default stands.
+     */
+    @Test
+    void aKeyColumnAbsentOnOneSideDoesNotError()
+    {
+        IDataTable adae = MockTable.of().col(USUBJID, "P1").col(AESEQ, "1").name("ADAE").build();
+        IDataTable ae = MockTable.of().col(USUBJID, "P1").col("AETERM", "HA").name(AE).build();
+        Assertions.assertDoesNotThrow(() -> expand(adae, ae, md(AE, List.of(USUBJID, AESEQ))),
+                "AESEQ is absent on the joined side, so only the primary declares a type and there"
+                        + " is nothing to disagree with. A throw here would break JKM R7");
+    }
+
+
+    /**
+     * ⭐⭐ Sided keys — the review's H1, and it cut both ways.
+     *
+     * <p>
+     * ⛔ Before 2026-09-22 {@code keySpec} resolved <b>both</b> sides from {@code md.getKeys()},
+     * which is the <b>left</b> list. For a sided entry that meant the child was joined on a column
+     * the entry never named — and D4's check then compared that wrong column's type. Here
+     * {@code SV} carries a decoy {@code VISITNUM} of the opposite kind: the old code would throw a
+     * mismatch naming a column that is not a key of this entry, on data that joins correctly.
+     * </p>
+     */
+    @Test
+    void aSidedEntryResolvesTheJoinedSideFromItsRightHandName()
+    {
+        IDataTable lb = MockTable.of().col(USUBJID, "P1").colLong("VISITNUM", 1L).name("ADAE")
+                .build();
+        IDataTable sv = MockTable.of().col(USUBJID, "P1").colLong("VISIT_N", 1L)
+                .col("VISITNUM", "decoy").col("AETERM", "HA").name(AE).build();
+        MatchDataset sided = bind("{\"Name\":\"AE\",\"Keys\":[\"USUBJID\","
+                + "{\"left\":\"VISITNUM\",\"right\":\"VISIT_N\"}],\"Join_Type\":\"left\"}");
+        assertTrue(sided.hasSidedKeys(), "the fixture must actually be sided");
+        var exp = expand(lb, sv, sided);
+        assertEquals(List.of("HA"), matched(exp, "AETERM"),
+                "the joined side must be keyed on VISIT_N (Num, matches) — not on the decoy"
+                        + " VISITNUM (Char). A JoinKeyTypeMismatchException here is the pre-fix"
+                        + " behaviour: a false ERROR naming a column this entry never joined on");
     }
 
 }

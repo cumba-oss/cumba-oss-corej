@@ -5056,14 +5056,19 @@ public class RulePackageLoader
         for (net.cumba.corej.core.model.MatchDataset md : matches)
         {
             if (md == null || !md.joinKeysAsString()
-                    || !net.cumba.corej.core.exec.JoinKeyTypes.excludedFromKeyTypeCheck(md))
+                    || net.cumba.corej.core.exec.JoinKeyTypes.governedByKeyTypeCheck(md))
             {
                 continue;
             }
+            // ⚠ Two ways to be ungoverned, and the message must say WHICH — "has no effect" with
+            // no reason sends the author looking at the wrong half of the entry.
+            String why = net.cumba.corej.core.exec.JoinKeyTypes.excludedFromKeyTypeCheck(md)
+                    ? "Child / RELREC / SUPP-- entries match a text-carried foreign key against a"
+                            + " typed column by design and are not subject to join-key type"
+                            + " identity"
+                    : "the entry declares no Keys, so it builds no key comparison at all";
             errors.add("[" + ruleId(rule) + "] Join_As_String has no effect on Match_Datasets entry"
-                    + " '" + md.getName() + "' — Child / RELREC / SUPP-- entries match a"
-                    + " text-carried foreign key against a typed column by design and are not"
-                    + " subject to join-key type identity. Remove it.");
+                    + " '" + md.getName() + "' — " + why + ". Remove it.");
         }
     }
 

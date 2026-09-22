@@ -54,6 +54,44 @@ class JoinAsStringValidationTest
     }
 
 
+    /**
+     * The same fixture with the entry's {@code Name} changed — ⚠ replacing only the {@code "Name"}
+     * value, never blanket-replacing the string across the whole package, which would also rewrite
+     * {@code ADSL.AGE} inside the Check and silently change what is under test.
+     */
+    private static Rule loadNamed(String name) throws IOException
+    {
+        String json = pkg(",\"Join_As_String\":true").replace("\"Name\":\"ADSL\"",
+                "\"Name\":\"" + name + "\"");
+        Rule rule = RulePackageLoader.loadFromString(json).getRules().get("x");
+        assertNotNull(rule, "the renamed fixture must still bind");
+        return rule;
+    }
+
+
+    /** {@code Join_As_String} on a KEYLESS entry is also a no-op, and also a load error. */
+    @Test
+    void theFlagOnAKeylessEntryFilesALoadError() throws IOException
+    {
+        String json = """
+                {"rules":{"x":{"Core":{"Id":"T-JAS"},"Sensitivity":"Record",\
+                "Match_Datasets":[{"Name":"ADSL","Join_As_String":true}],\
+                "Outcome":{"Message":"m","Output_Variables":["USUBJID","AGE"]},\
+                "Check":{"all":[{"expression": "AGE != ADSL.AGE"}]}}}}""";
+        Rule rule = RulePackageLoader.loadFromString(json).getRules().get("x");
+        assertNotNull(rule, "the fixture must bind");
+        String error = String.valueOf(rule.getLoadError());
+        assertTrue(error.contains("no effect"),
+                "⛔ an entry with no Keys builds no key comparison, so the flag does nothing there."
+                        + " The guard originally asked only whether the entry was an EXCLUDED"
+                        + " family, so this shape loaded clean and silently did nothing — the exact"
+                        + " defect the guard exists to prevent, inside the guard; was: " + error);
+        assertTrue(error.contains("no Keys"),
+                "and it must say WHICH of the two reasons applies, or the author looks at the wrong"
+                        + " half of the entry; was: " + error);
+    }
+
+
     /** The legal spellings load clean and mean what they say. */
     @Test
     void anUnquotedBooleanLoadsCleanly() throws IOException
@@ -121,15 +159,9 @@ class JoinAsStringValidationTest
     @Test
     void theFlagOnRelrecOrSuppFilesALoadError() throws IOException
     {
-        assertTrue(
-                String.valueOf(RulePackageLoader
-                        .loadFromString(pkg(",\"Join_As_String\":true").replace("ADSL", "RELREC"))
-                        .getRules().get("x").getLoadError()).contains("no effect"),
+        assertTrue(String.valueOf(loadNamed("RELREC").getLoadError()).contains("no effect"),
                 "RELREC is excluded");
-        assertTrue(
-                String.valueOf(RulePackageLoader
-                        .loadFromString(pkg(",\"Join_As_String\":true").replace("ADSL", "SUPPAE"))
-                        .getRules().get("x").getLoadError()).contains("no effect"),
+        assertTrue(String.valueOf(loadNamed("SUPPAE").getLoadError()).contains("no effect"),
                 "SUPP-- is excluded");
         assertFalse(
                 String.valueOf(load(",\"Join_As_String\":true").getLoadError())
