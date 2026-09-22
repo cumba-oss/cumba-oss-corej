@@ -445,8 +445,13 @@ public final class RuleRunner
                     .violations(List.of()).totalRows(table != null ? table.getRowCount() : 0L)
                     .status(RuleExecutionStatus.SKIPPED).statusMessage(reason).build());
         }
-        catch (InvalidJoinedDomainException | DegenerateJoinKeyException e)
+        catch (InvalidJoinedDomainException | DegenerateJoinKeyException
+                | JoinKeyTypeMismatchException e)
         {
+            // ⭐ JoinKeyTypeMismatchException joins this catch for D4-R2 (owner, 2026-09-22: "a
+            // rule errors out if the types do not match … I do not want a silent mismatch"). Same
+            // channel, same shape; thrown from KeyMatchRowExpander.keySpec, which is the one site
+            // that holds BOTH sides' declared types.
             // ⭐ DegenerateJoinKeyException joins this catch for JKM R7 (owner, 2026-09-21: "if all
             // columns are absent, then the rule should fail with an error"). Same channel, same
             // shape, same reason: a submission the sponsor must see, never a silent skip.

@@ -3656,6 +3656,7 @@ public class RulePackageLoader
         checkSeverityField(rule, errors);
         checkCheckLevels(rule, errors);
         checkJoinTypes(rule, errors);
+        checkJoinAsString(rule, errors);
         checkStudySensitivityScope(rule, errors);
         // Gate 3a (the Python one-frame-per-rule compatibility warning) is gone — phase 2 of
         // PLAN-leaf-scope-domain-inference.md: Java never needed the invariant it validated.
@@ -4978,6 +4979,91 @@ public class RulePackageLoader
             errors.add("[" + ruleId(rule) + "] Invalid Join_Type '" + raw
                     + "' on Match_Datasets entry '" + md.getName() + "' — expected one of: "
                     + JOIN_TYPE_VALUES);
+        }
+    }
+
+
+    /**
+     * Tags a {@code Join_As_String} that is present but not a boolean with a load error
+     * ({@code PLAN-join-key-type-identity}, ruling {@code D4-R3}).
+     *
+     * <p>
+     * ⛔ Deliberately strict: the <b>strings</b> {@code "true"} / {@code "false"} are rejected too,
+     * not coerced. See {@link net.cumba.corej.core.model.MatchDataset#hasMalformedJoinAsString()}
+     * for why — a flag whose mis-spelling silently takes effect is worse than one that fails.
+     * </p>
+     *
+     * <p>
+     * ⚑ The companion check that the flag is <i>usable</i> on this entry is
+     * {@link #checkJoinAsStringOnExcludedEntry}, called from the same place.
+     * </p>
+     *
+     * @param rule
+     *            the rule to check.
+     * @param errors
+     *            the collector to append to.
+     */
+    private static void checkJoinAsString(Rule rule, List<String> errors)
+    {
+        List<net.cumba.corej.core.model.MatchDataset> matches = rule.getMatchDatasets();
+        if (matches == null)
+        {
+            return;
+        }
+        for (net.cumba.corej.core.model.MatchDataset md : matches)
+        {
+            if (md == null || !md.hasMalformedJoinAsString())
+            {
+                continue;
+            }
+            errors.add("[" + ruleId(rule) + "] Invalid Join_As_String '" + md.rawJoinAsString()
+                    + "' on Match_Datasets entry '" + md.getName()
+                    + "' — expected the boolean true or false, unquoted");
+        }
+        checkJoinAsStringOnExcludedEntry(rule, matches, errors);
+    }
+
+
+    /**
+     * Tags a {@code Join_As_String: true} authored on an entry the join-key type check does not
+     * govern — {@code Child:true} / {@code RELREC} / {@code SUPP--} / {@code SQ*}
+     * ({@code PLAN-join-key-type-identity}, ruling {@code D4-R5}).
+     *
+     * <p>
+     * ⭐⭐ <b>A load error, not a warning and not silence.</b> Those entries match a text-carried
+     * foreign key against a typed column by design, and their coercion is {@code JKM R6}'s, not
+     * this flag's. An author who writes the flag there believes they have controlled that join's
+     * type behaviour — and has not. Accepting it silently would be the same defect the strictness
+     * in {@link net.cumba.corej.core.model.MatchDataset#hasMalformedJoinAsString()} exists to
+     * prevent, one level up: a flag that appears to work and does nothing.
+     * </p>
+     *
+     * <p>
+     * ⚑ Strictness is free here: <b>zero</b> corpus entries carry the flag (measured 2026-09-22
+     * over all 3 435 rule files), so nothing shipped can trip this.
+     * </p>
+     *
+     * @param rule
+     *            the rule to check.
+     * @param matches
+     *            its {@code Match_Datasets} entries, never {@code null}.
+     * @param errors
+     *            the collector to append to.
+     */
+    private static void checkJoinAsStringOnExcludedEntry(Rule rule,
+            List<net.cumba.corej.core.model.MatchDataset> matches, List<String> errors)
+    {
+        for (net.cumba.corej.core.model.MatchDataset md : matches)
+        {
+            if (md == null || !md.joinKeysAsString()
+                    || !net.cumba.corej.core.exec.JoinKeyTypes.excludedFromKeyTypeCheck(md))
+            {
+                continue;
+            }
+            errors.add("[" + ruleId(rule) + "] Join_As_String has no effect on Match_Datasets entry"
+                    + " '" + md.getName() + "' — Child / RELREC / SUPP-- entries match a"
+                    + " text-carried foreign key against a typed column by design and are not"
+                    + " subject to join-key type identity. Remove it.");
         }
     }
 

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import net.cumba.corej.core.exec.GroupKeyPolicy.KeyPart;
+import net.cumba.corej.core.expr.eval.ColumnTypeGate;
 import net.cumba.corej.core.model.JoinType;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.datatable.DataTableMeta;
@@ -98,8 +99,6 @@ import org.jspecify.annotations.Nullable;
 final class KeyMatchRowExpander
 {
 
-    private static final String RELREC = "RELREC";
-
     /**
      * @param table
      *            the expanded evaluation table (row {@code i} maps back to its primary record).
@@ -182,14 +181,13 @@ final class KeyMatchRowExpander
             // contributes, and whether blanks participate (R4's KEEP default). A per-row test could
             // not express the drop, because "absent on both sides" is a property of the two tables,
             // not of a row.
-            KeySpec spec = keySpec(primaryTable, child, keys, Objects.requireNonNull(md.getName()),
-                    md.keepMissingKeys());
-            Map<List<String>, List<Long>> childIndex = buildChildIndex(child, spec);
+            KeySpec spec = keySpec(primaryTable, child, keys, md);
+            Map<List<KeyPart>, List<Long>> childIndex = buildChildIndex(child, spec);
 
             List<long[]> next = new ArrayList<>();
             for (long[] b : bindings)
             {
-                List<String> keyTuple = tuple(primaryTable, spec.primaryColIds(), spec, b[0]);
+                List<KeyPart> keyTuple = tuple(primaryTable, spec.primaryColIds(), spec, b[0]);
                 List<Long> matches = keyTuple == null ? null : childIndex.get(keyTuple);
                 if (matches == null || matches.isEmpty())
                 {
@@ -251,7 +249,7 @@ final class KeyMatchRowExpander
      * wildcard dataset name (those need name resolution and are left to the existing key-join
      * path).
      */
-    private static List<MatchDataset> expandableEntries(@Nullable List<MatchDataset> mds)
+    static List<MatchDataset> expandableEntries(@Nullable List<MatchDataset> mds)
     {
         List<MatchDataset> out = new ArrayList<>();
         if (mds == null)
@@ -260,9 +258,9 @@ final class KeyMatchRowExpander
         }
         for (MatchDataset md : mds)
         {
-            String name = md.getName();
-            if (name == null || Boolean.TRUE.equals(md.getChild()) || RELREC.equalsIgnoreCase(name)
-                    || name.contains("--") || isSuppOrQualifier(name))
+            // ⭐ 2026-09-22: the five-clause test moved to JoinKeyTypes so the D4 type check and
+            // the loader's Join_As_String guard ask the SAME predicate. Behaviour unchanged.
+            if (JoinKeyTypes.excludedFromKeyTypeCheck(md))
             {
                 continue;
             }
@@ -275,21 +273,47 @@ final class KeyMatchRowExpander
     }
 
 
-    /** SUPP / SQ qualifier datasets, which Python merges by pivot, not a plain key merge. */
-    private static boolean isSuppOrQualifier(String name)
+    /**
+     * The key part as it participates in the join: itself, or — under {@code Join_As_String}
+     * ({@code D4-R3}) — its rendered text as a {@link KeyPart.Present}.
+     *
+     * <p>
+     * ⛔⛔ <b>Only a PRESENT part is coerced.</b> {@link KeyPart.Missing} and {@link KeyPart#EMPTY}
+     * keep their own classification, because that classification is what stops a
+     * {@code MissingValue} colliding with a present {@code "."} — the {@code +9 528-finding} bug
+     * class this file's own javadoc records. ⚑ {@code Present}'s constructor rejects {@code ""}
+     * (GroupKeyPolicy:153), so the coercion cannot manufacture an {@code EMPTY} either.
+     * </p>
+     *
+     * <p>
+     * ⚠ Because the rendering cleans a double to <b>12 significant digits</b>, a flagged entry
+     * compares its numeric keys at that precision rather than exactly. That is a property the
+     * author opts into, and it is the behaviour every entry had before D4.
+     * </p>
+     *
+     * @param aPart
+     *            the classified key part.
+     * @param aAsString
+     *            whether the entry declares {@code Join_As_String: true}.
+     * @return the part to put in the key.
+     */
+    private static KeyPart coerce(KeyPart aPart, boolean aAsString)
     {
-        String upper = name.toUpperCase(java.util.Locale.ROOT);
-        return upper.startsWith("SUPP") || upper.startsWith("SQ");
+        if (!aAsString || !aPart.present())
+        {
+            return aPart;
+        }
+        return new KeyPart.Present(aPart.reportingForm());
     }
 
 
-    private static Map<List<String>, List<Long>> buildChildIndex(IDataTable child, KeySpec spec)
+    private static Map<List<KeyPart>, List<Long>> buildChildIndex(IDataTable child, KeySpec spec)
     {
-        Map<List<String>, List<Long>> index = new LinkedHashMap<>();
+        Map<List<KeyPart>, List<Long>> index = new LinkedHashMap<>();
         long rows = child.getRowCount();
         for (long r = 0; r < rows; r++)
         {
-            List<String> t = tuple(child, spec.childColIds(), spec, r);
+            List<KeyPart> t = tuple(child, spec.childColIds(), spec, r);
             if (t == null)
             {
                 // Only reachable under an authored keep_missings:false — the flag-OFF path.
@@ -342,14 +366,24 @@ final class KeyMatchRowExpander
 
         private final boolean keepMissings;
 
+        /** D4-R3: compare this entry's present key parts as rendered text. */
+        private final boolean asString;
+
         private KeySpec(int[] aPrimaryColIds, int[] aChildColIds, KeyPart[] aAbsentPart,
-                boolean[] aActive, boolean aKeepMissings)
+                boolean[] aActive, boolean aKeepMissings, boolean aAsString)
         {
             primaryColIds = aPrimaryColIds;
             childColIds = aChildColIds;
             absentPart = aAbsentPart;
             active = aActive;
             keepMissings = aKeepMissings;
+            asString = aAsString;
+        }
+
+
+        private boolean asString()
+        {
+            return asString;
         }
 
 
@@ -384,8 +418,11 @@ final class KeyMatchRowExpander
     }
 
     private static KeySpec keySpec(IDataTable primary, IDataTable child, List<String> keys,
-            String childName, boolean keepMissings)
+            MatchDataset md)
     {
+        String childName = Objects.requireNonNull(md.getName());
+        boolean asString = md.joinKeysAsString();
+        boolean typeChecked = !JoinKeyTypes.excludedFromKeyTypeCheck(md);
         int[] primaryColIds = resolveColIds(primary.getMetaData(), keys);
         int[] childColIds = resolveColIds(child.getMetaData(), keys);
         KeyPart[] absentPart = new KeyPart[keys.size()];
@@ -401,25 +438,85 @@ final class KeyMatchRowExpander
                 continue;
             }
             nActive++;
+            DataValueType primaryType = inPrimary
+                    ? primary.getMetaData().getColumn(primaryColIds[i]).getType()
+                    : null;
+            DataValueType childType = inChild
+                    ? child.getMetaData().getColumn(childColIds[i]).getType()
+                    : null;
+            // ⭐⭐ D4-R1/R2 — the join-key type identity, and THIS is the only site that holds both
+            // sides' declared types. ⛔ It cannot live in RuleRunner.buildJoinedDatasets: that
+            // method is reached only AFTER RuleRunner:918-920 removes every expanded entry, so a
+            // check sited there would fire on nothing and green every gate.
+            //
+            // Four ways this does NOT fire, each deliberate:
+            // - the entry is excluded (D4-R5): Child/RELREC/SUPP-- join a text-carried foreign
+            // key against a typed column BY DESIGN -- 11 keyed entries in 5 rule files;
+            // - the author declared Join_As_String (D4-R3): the divergence is understood and the
+            // keys compare as text below, in tuple();
+            // - the component is absent on one side: there is only ONE type, so a mismatch is not
+            // expressible, and JKM R7's absent-side default stands untouched;
+            // - either kind classifies null -- BOOLEAN/COMPLEX/MISSING/VARIABLE/OTHER (D4-R6a).
+            // ⚠⚠ That last arm is LOAD-BEARING, not a formality: an all-NA R column is
+            // `logical`, which RdataTableProvider maps to BOOLEAN, so an .rds study whose key
+            // variable is wholly missing would otherwise ERROR on every keyed rule. The engine
+            // itself also publishes MISSING for an absent joined column (JoinLookup:264).
+            if (typeChecked && !asString && primaryType != null && childType != null)
+            {
+                ColumnTypeGate.Kind primaryKind = ColumnTypeGate.kindOf(primaryType);
+                ColumnTypeGate.Kind childKind = ColumnTypeGate.kindOf(childType);
+                if (primaryKind != null && childKind != null && primaryKind != childKind)
+                {
+                    throw new JoinKeyTypeMismatchException(childName, keys.get(i),
+                            describeKind(primaryKind), describeKind(childKind));
+                }
+            }
             // The present side's declared type decides what the absent side contributes. A
             // character column's default is the empty string (a PRESENT value, D34 #1); a numeric
             // column's is a MissingValue, since a numeric cell cannot hold "".
-            DataValueType type = inPrimary
-                    ? primary.getMetaData().getColumn(primaryColIds[i]).getType()
-                    : child.getMetaData().getColumn(childColIds[i]).getType();
-            absentPart[i] = isNumeric(type) ? KeyPart.missing(MissingValue.MIS) : KeyPart.EMPTY;
+            DataValueType type = inPrimary ? primaryType : childType;
+            absentPart[i] = isNumeric(Objects.requireNonNull(type))
+                    ? KeyPart.missing(MissingValue.MIS)
+                    : KeyPart.EMPTY;
         }
         if (nActive == 0)
         {
             throw new DegenerateJoinKeyException(childName, keys);
         }
-        return new KeySpec(primaryColIds, childColIds, absentPart, active, keepMissings);
+        return new KeySpec(primaryColIds, childColIds, absentPart, active, md.keepMissingKeys(),
+                asString);
     }
 
 
+    /**
+     * The {@code Requirements.Variables} spelling of a kind, so the error message names the tag the
+     * author would actually write ({@code :N} / {@code :C}).
+     *
+     * @param aKind
+     *            the classified kind, never {@code null}.
+     * @return {@code "Numeric"} or {@code "Character"}.
+     */
+    private static String describeKind(ColumnTypeGate.Kind aKind)
+    {
+        return aKind == ColumnTypeGate.Kind.NUMERIC ? "Numeric" : "Character";
+    }
+
+
+    /**
+     * ⭐ Reconciled onto {@link ColumnTypeGate#kindOf} 2026-09-22 (D4 §6): this method WAS the
+     * single home of the numeric classification, and D4 added a second caller of the same question.
+     * Two classifiers for one question is how they drift, so there is now one. Behaviour is
+     * unchanged — {@code kindOf} answers {@code NUMERIC} for exactly {@code DOUBLE}/{@code LONG},
+     * and every other type (including the null-classifying {@code BOOLEAN}/{@code MISSING}/…) takes
+     * the same {@code false} branch it took before.
+     *
+     * @param type
+     *            the declared column type.
+     * @return whether the column is numeric.
+     */
     private static boolean isNumeric(DataValueType type)
     {
-        return type == DataValueType.DOUBLE || type == DataValueType.LONG;
+        return ColumnTypeGate.kindOf(type) == ColumnTypeGate.Kind.NUMERIC;
     }
 
 
@@ -567,7 +664,7 @@ final class KeyMatchRowExpander
      * ({@link #buildChildIndex}).
      * </p>
      */
-    private static @Nullable List<String> tuple(IDataTable t, int[] colIds, KeySpec spec, long row)
+    private static @Nullable List<KeyPart> tuple(IDataTable t, int[] colIds, KeySpec spec, long row)
     {
         if (!spec.keepMissings() && anyActiveKeyBlank(t, colIds, spec, row))
         {
@@ -577,7 +674,7 @@ final class KeyMatchRowExpander
             // asking whether it is blank would drop every row of every such join.
             return null;
         }
-        List<String> parts = new ArrayList<>(colIds.length);
+        List<KeyPart> parts = new ArrayList<>(colIds.length);
         for (int i = 0; i < colIds.length; i++)
         {
             if (!spec.active()[i])
@@ -588,14 +685,14 @@ final class KeyMatchRowExpander
             {
                 // R7: absent on THIS side -> the column's type default, exactly as if every row
                 // carried a blank cell. It still participates and still compares by identity.
-                parts.add(spec.absentPart()[i].reportingForm());
+                parts.add(coerce(spec.absentPart()[i], spec.asString()));
                 continue;
             }
             // R5: the identity is CLASSIFIED by the sealed KeyPart — which is what separates a
             // MissingValue from a present "." — and then RENDERED. See the method javadoc for why
             // the rendering, not the KeyPart itself, is what goes into the key.
-            parts.add(GroupKeyPolicy.KEEP_MISSING_KEYS
-                    .keyPart(t.getColumn(colIds[i]).getDataValue(row)).reportingForm());
+            parts.add(coerce(GroupKeyPolicy.KEEP_MISSING_KEYS
+                    .keyPart(t.getColumn(colIds[i]).getDataValue(row)), spec.asString()));
         }
         return parts;
     }

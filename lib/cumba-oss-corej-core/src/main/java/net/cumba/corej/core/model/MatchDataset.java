@@ -51,6 +51,46 @@ public class MatchDataset
     private @Nullable String joinType;
 
     /**
+     * Whether this entry's join keys are compared as <b>text</b> rather than by the sealed
+     * {@code KeyPart} type identity ({@code PLAN-join-key-type-identity}; ruling {@code D4-R3}).
+     *
+     * <p>
+     * ⭐⭐ <b>{@code null} means {@code false} — typed identity, which is the DEFAULT
+     * ({@code D4-R1}).</b> Owner, 2026-09-22: <i>"I take B 'typed identity everywhere' as default
+     * but with optional C 'declared coercion' to overrule … `Join_As_String: true` is agreed."</i>
+     * Two key columns whose {@link net.cumba.corej.core.expr.eval.ColumnTypeGate.Kind} differ are
+     * not the same key, and a rule that meets such a pair <b>errors</b> rather than joining
+     * silently ({@code D4-R2}: <i>"I do not want a silent mismatch"</i>).
+     * </p>
+     *
+     * <p>
+     * Setting this to {@code true} is the author's statement that the divergence is understood and
+     * the keys should be matched by their rendered text anyway. It applies to <b>every</b> key of
+     * the entry, not only a divergent component, so that an entry's behaviour cannot depend on the
+     * study. ⚠ Because the rendering is {@code KeyPart.reportingForm()}, a flagged entry compares
+     * its <b>numeric</b> keys at <b>12 significant digits</b> rather than exactly.
+     * </p>
+     *
+     * <p>
+     * ⛔ There is deliberately no numeric counterpart ({@code D4-R6}). Coercing text to a number is
+     * partial ({@code "ABC"} has no numeric value) and it invents identity ({@code "05"},
+     * {@code "5.0"} and {@code " 5"} would all collapse onto {@code 5}), so the character side —
+     * the wider type — is the only direction offered.
+     * </p>
+     *
+     * <p>
+     * ⛔⛔ It has no effect on a {@code Child:true} / {@code RELREC} / {@code SUPP--} entry
+     * ({@code D4-R5}): those join a text-carried foreign key against a typed column by design and
+     * are excluded from the type check altogether, with their own ruled coercions ({@code JKM R6}).
+     * JSON key {@code "Join_As_String"}.
+     * </p>
+     */
+    @JsonProperty("Join_As_String")
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private @Nullable JsonNode joinAsStringNode;
+
+    /**
      * Whether rows whose key is <b>blank</b> — {@code ""} or any
      * {@link net.cumba.datatable.values.MissingValue} — take part in this join
      * ({@code PLAN-join-key-missing-semantics}; register {@code JKM R4}).
@@ -95,6 +135,59 @@ public class MatchDataset
     public boolean keepMissingKeys()
     {
         return keepMissings == null || keepMissings;
+    }
+
+
+    /**
+     * Whether this entry's join keys compare as rendered text ({@code D4-R3}).
+     *
+     * <p>
+     * ⭐ The <b>absent</b> spelling and an explicit {@code false} mean the same thing — typed
+     * identity, the {@code D4-R1} default — mirroring {@link #keepMissingKeys()}, which bakes its
+     * own default in rather than leaving every caller to re-derive it from a {@code null}.
+     * </p>
+     *
+     * @return {@code true} only when the entry explicitly declares {@code Join_As_String: true}.
+     */
+    @JsonIgnore
+    public boolean joinKeysAsString()
+    {
+        return joinAsStringNode != null && joinAsStringNode.isBoolean()
+                && joinAsStringNode.booleanValue();
+    }
+
+
+    /**
+     * Whether {@code Join_As_String} is present but is <b>not</b> a JSON boolean.
+     *
+     * <p>
+     * ⚠⚠ Held as a raw {@link JsonNode} — like {@link #keysNode} — precisely so this can be
+     * answered. Bound as a {@code Boolean}, Jackson silently coerces the <b>strings</b>
+     * {@code "true"} / {@code "false"} and numeric {@code 1} / {@code 0}, so a typo'd spelling
+     * would take effect instead of being rejected. A flag whose wrong spelling silently works is
+     * the no-op shape this stack distrusts, and {@code D4-R2}'s whole point is that nothing about
+     * this axis happens silently.
+     * </p>
+     *
+     * @return {@code true} when the value is present and of a non-boolean JSON type.
+     */
+    @JsonIgnore
+    public boolean hasMalformedJoinAsString()
+    {
+        return joinAsStringNode != null && !joinAsStringNode.isNull()
+                && !joinAsStringNode.isBoolean();
+    }
+
+
+    /**
+     * The raw {@code Join_As_String} token, for a load-error message.
+     *
+     * @return its text form, or {@code null} when the field is absent.
+     */
+    @JsonIgnore
+    public @Nullable String rawJoinAsString()
+    {
+        return joinAsStringNode == null ? null : joinAsStringNode.asText();
     }
 
     /**
