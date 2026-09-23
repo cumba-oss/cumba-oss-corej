@@ -31,7 +31,33 @@
         <repo.root.dir>${project.basedir}/../..</repo.root.dir>
 
         <mockito.agent>-javaagent:${org.mockito:mockito-core:jar}</mockito.agent>
-        <pitest.excludedTestClasses>net.cumba.corej.core.exec.JoinCacheConcurrencyTest</pitest.excludedTestClasses>
+        <!--
+            ⚠ COMMA-SEPARATED, and the first entry must not be lost: JoinCacheConcurrencyTest was
+            already here. Adding a second is an append, never a replace.
+
+            StoreSeederRealDataConformanceTest added 2026-09-14 after a measured before/after
+            census of this module, cold both times, on an idle box:
+
+                            wall      mutants   killed
+              before      5047 s       15413    12947
+              with it     3636 s       15413    12941
+              excluded
+
+            23.5 minutes saved — 28% of the gate — for SIX mutants out of 15413 (0.04%). The test
+            costs that much because pitest re-runs it once per mutant it covers and it unpickles
+            ~420 MB twice; pitest's timeout is 4000 ms + 1.25x test time, so every mutant it
+            touches costs ~29 s.
+
+            ⭐⭐ EXCLUDING IT HERE DOES NOT WEAKEN VERIFICATION. The test still runs in every
+            surefire pass, so the byte-identity property it exists to prove is checked on every
+            build exactly as before. This only stops pitest using it as a mutant killer.
+
+            ⭐ The six it was killing were in Varint (5) and MetadataStoreWriter (4 candidates);
+            VarintTest was written in the same commit to kill its share directly. A 64-line binary
+            primitive had NO unit test and was being verified, incidentally, by the most expensive
+            test in the repository.
+        -->
+        <pitest.excludedTestClasses>net.cumba.corej.core.exec.JoinCacheConcurrencyTest,net.cumba.corej.core.metadata.store.seed.StoreSeederRealDataConformanceTest</pitest.excludedTestClasses>
         <!--
             Mutation ratchet. The parent's defaults (55 / 80) left ~24 points of
             slack over this module's actual score, so coverage added here could
