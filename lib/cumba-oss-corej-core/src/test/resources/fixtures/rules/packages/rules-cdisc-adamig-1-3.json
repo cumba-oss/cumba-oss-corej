@@ -415,6 +415,7 @@
       "Requirements": {
         "Variables": {
           "All": [
+            "AGE",
             "DM.AGE"
           ]
         }
@@ -464,6 +465,7 @@
       "Requirements": {
         "Variables": {
           "All": [
+            "ARM",
             "DM.ARM"
           ]
         }
@@ -513,6 +515,7 @@
       "Requirements": {
         "Variables": {
           "All": [
+            "ACTARM",
             "DM.ACTARM"
           ]
         }
