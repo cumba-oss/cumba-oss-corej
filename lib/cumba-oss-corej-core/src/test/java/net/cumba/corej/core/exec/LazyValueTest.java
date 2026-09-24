@@ -15,6 +15,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 class LazyValueTest
 {
@@ -105,7 +106,11 @@ class LazyValueTest
     }
 
 
+    // ⚠ The try-with-resources close() below awaits pool termination with no bound, and a worker
+    // deadlocked on LazyValue's monitor ignores shutdownNow()'s interrupt. This bound turns that
+    // hang into a red; the test normally finishes in well under a second.
     @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void concurrentGetsInvokeSupplierExactlyOnce() throws InterruptedException, ExecutionException
     {
         AtomicInteger calls = new AtomicInteger();

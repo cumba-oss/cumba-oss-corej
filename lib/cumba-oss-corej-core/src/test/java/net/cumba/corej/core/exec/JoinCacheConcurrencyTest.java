@@ -1,6 +1,8 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -21,20 +23,39 @@ import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 /**
- * Phase 1 thread-safety regression gate for the engine's per-dataset caches.
+ * Thread-safety regression gate for {@link RuleRunner#execute} driven from many worker threads
+ * against one shared {@link JoinCache} and one shared primary table.
  *
  * <p>
- * Drives {@link RuleRunner#execute} from many worker threads against one shared {@link JoinCache}
- * and one shared primary table, mirroring the future Phase 2 fan-out shape. Asserts that every
- * concurrent invocation produces the same result that a sequential baseline does — any
- * unsynchronised lazy-init in {@link JoinCache}, {@link DatasetLookup}, or
- * {@link RelrecExpandedLookup} that re-emerges in the future will surface here as missing
- * violations, mismatched row maps, or thrown exceptions.
+ * ⚠⚠ <b>Two join paths, and only one of them touches the cache.</b> A plain keyed
+ * {@code Match_Datasets} entry ({@link #buildJoinRule}: {@code {ADSL, [USUBJID]}}) is served by
+ * {@link KeyMatchRowExpander}'s row expansion — {@code KeyMatchRowExpander.expandableEntries}
+ * accepts it ({@code JoinKeyTypes.governedByKeyTypeCheck}) and {@code RuleRunner} removes it from
+ * the key-join build — so it <b>never reaches</b> {@code JoinCache.getOrBuildLookup},
+ * {@code SharedIndexCache} or {@code DatasetLookup.ensureJoinMap}. The {@code *_keyMatchExpansion*}
+ * cases therefore gate only the <b>determinism of the key-match expansion path</b> under
+ * concurrency (every parallel result equals the sequential baseline).
+ * </p>
+ *
+ * <p>
+ * The cache itself is gated by the {@code *_cachedKeyJoin*} cases, whose entry
+ * ({@link #buildCachedJoinRule}) carries {@code Child: true} with non-IDVAR keys: the expander
+ * excludes it, {@code ChildMatchPreMerger} leaves a non-IDVAR child untouched, and
+ * {@code RuleRunner.buildJoinedDatasets} takes its cached key-join branch. Those cases assert the
+ * rule fires, parallel equals baseline, and {@code JoinCache.get("ADSL|USUBJID")} holds one
+ * {@link DatasetLookup} that is the SAME instance across waves — i.e. {@code computeIfAbsent} in
+ * {@code getOrBuildLookup} really shares the entry, and the lazily built join map inside it
+ * ({@code ensureJoinMap}) is read concurrently by every worker.
+ * </p>
  */
 // Test awaits pool/executor termination explicitly; the per-task Future is intentionally ignored.
 @SuppressWarnings("FutureReturnValueIgnored")
+// ⚠ runParallel's try-with-resources close() awaits pool termination with no bound; a worker
+// deadlocked on a monitor ignores shutdownNow()'s interrupt. This bound turns that hang into a red.
+@Timeout(value = 120, unit = TimeUnit.SECONDS, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
 class JoinCacheConcurrencyTest
 {
 
@@ -49,11 +70,11 @@ class JoinCacheConcurrencyTest
     private static final int RULES_PER_THREAD = 16;
 
     @RepeatedTest(2)
-    void parallelRuleExecution_sharedJoinCache_sameDatasetLookupRule() throws Exception
+    void parallelRuleExecution_keyMatchExpansion_matchesSequentialBaseline() throws Exception
     {
         // Primary: BDS-style table where TRTP is checked against ADSL.TRT01P (joined by USUBJID).
-        // 1024 rows split across 4 subjects keeps the run cheap while still exercising the
-        // per-row joinMap that ensureJoinMap builds lazily.
+        // ⚠ This entry is served by KeyMatchRowExpander, not the JoinCache (see the class
+        // javadoc): this case gates the determinism of the expansion path only.
         IDataTable primary = makePrimary(1024);
         IDataTable adsl = makeAdsl();
 
@@ -85,12 +106,11 @@ class JoinCacheConcurrencyTest
 
 
     @RepeatedTest(2)
-    void parallelRuleExecution_sharedJoinCache_concurrentColdStart() throws Exception
+    void parallelRuleExecution_keyMatchExpansion_concurrentColdStart() throws Exception
     {
-        // Cold-start the JoinCache from N threads simultaneously — exercises the
-        // computeIfAbsent path in JoinCache.getOrBuildLookup and the synchronised
-        // ensureJoinMap in DatasetLookup. A fresh cache is created per outer run; without the
-        // Phase 1 fixes in place the first wave of threads can race on cache population.
+        // N threads start simultaneously on the key-match expansion path. ⚠ That path does not
+        // touch the JoinCache (see the class javadoc); the cold-start race on
+        // JoinCache.getOrBuildLookup / ensureJoinMap is gated by the *_cachedKeyJoin* cases.
         IDataTable primary = makePrimary(2048);
         IDataTable adsl = makeAdsl();
         DatasetResolver resolver = name -> "ADSL".equals(name) ? adsl : null;
@@ -112,11 +132,12 @@ class JoinCacheConcurrencyTest
 
 
     @Test
-    void joinCache_sharedDatasetLookupAcrossThreads() throws Exception
+    void keyMatchExpansion_twoRulesAcrossThreads_matchBaseline() throws Exception
     {
-        // Two rules with the same Match_Datasets ({ADSL, USUBJID}) running in parallel must
-        // observe the same DatasetLookup instance from JoinCache.lookupCache — confirming
-        // computeIfAbsent really shares the entry.
+        // Two rules with the same Match_Datasets ({ADSL, USUBJID}) running in parallel must each
+        // report the sequential baseline. The shared-instance claim is asserted by
+        // cachedKeyJoin_twoRulesAcrossThreads_shareOneDatasetLookup, whose entry reaches the
+        // JoinCache; this one does not (see the comment at the end).
         IDataTable primary = makePrimary(64);
         IDataTable adsl = makeAdsl();
         DatasetResolver resolver = name -> "ADSL".equals(name) ? adsl : null;
@@ -155,10 +176,105 @@ class JoinCacheConcurrencyTest
         // rule shape never populates that cache (measured 2026-09-24: empty after 16 waves).
     }
 
+
+    @RepeatedTest(2)
+    void parallelRuleExecution_cachedKeyJoin_concurrentColdStartMatchesBaseline() throws Exception
+    {
+        // The cached key-join branch (RuleRunner.buildJoinedDatasets → JoinCache.getOrBuildLookup
+        // → SharedIndexCache.getOrBuild, then DatasetLookup.ensureJoinMap per row lookup), cold-
+        // started from N threads on a fresh cache: the moment of maximum contention.
+        IDataTable primary = makePrimary(2048);
+        IDataTable adsl = makeAdsl();
+        DatasetResolver resolver = name -> "ADSL".equals(name) ? adsl : null;
+        Rule rule = buildCachedJoinRule();
+
+        JoinCache baselineCache = new JoinCache(new JoinCache.SharedIndexCache());
+        RuleExecutionResult baseline = RuleRunner.execute(rule, primary, resolver, "AD", null,
+                baselineCache);
+        assertTrue(baseline.getViolationCount() > 0, "the fixture must fire for SUBJ02: "
+                + baseline.getStatus() + " " + baseline.getStatusMessage());
+        // Non-vacuity of the path itself: had the entry gone to the key-match expander instead,
+        // this cache would be empty.
+        assertNotNull(baselineCache.get(ADSL_LOOKUP_KEY),
+                "the Child: true entry must be served by the JoinCache's key-join branch");
+
+        JoinCache cache = new JoinCache(new JoinCache.SharedIndexCache());
+        List<RuleExecutionResult> firstWave = runParallel(THREADS, 1,
+                () -> RuleRunner.execute(rule, primary, resolver, "AD", null, cache));
+        assertEquals(THREADS, firstWave.size(), "every worker must report");
+        for (RuleExecutionResult r : firstWave)
+        {
+            assertResultsEqual(baseline, r);
+        }
+        JoinLookup built = cache.get(ADSL_LOOKUP_KEY);
+        assertNotNull(built, "the cold-start wave must populate the JoinCache");
+
+        List<RuleExecutionResult> secondWave = runParallel(THREADS, RULES_PER_THREAD,
+                () -> RuleRunner.execute(rule, primary, resolver, "AD", null, cache));
+        assertEquals(THREADS * RULES_PER_THREAD, secondWave.size(), "every iteration must report");
+        for (RuleExecutionResult r : secondWave)
+        {
+            assertResultsEqual(baseline, r);
+        }
+        assertSame(built, cache.get(ADSL_LOOKUP_KEY),
+                "a warm JoinCache must keep serving the lookup the cold-start wave built");
+    }
+
+
+    @Test
+    void cachedKeyJoin_twoRulesAcrossThreads_shareOneDatasetLookup() throws Exception
+    {
+        // Two rules with the same cached Match_Datasets entry ({ADSL, USUBJID}, Child: true)
+        // running in parallel must observe the same DatasetLookup instance — confirming
+        // computeIfAbsent in JoinCache.getOrBuildLookup really shares the entry across rules and
+        // threads.
+        IDataTable primary = makePrimary(64);
+        IDataTable adsl = makeAdsl();
+        DatasetResolver resolver = name -> "ADSL".equals(name) ? adsl : null;
+
+        JoinCache cache = new JoinCache(new JoinCache.SharedIndexCache());
+
+        Rule a = buildCachedJoinRule();
+        a.getCore().setId("CORE-A");
+        Rule b = buildCachedJoinRule();
+        b.getCore().setId("CORE-B");
+
+        RuleExecutionResult baseline = RuleRunner.execute(buildCachedJoinRule(), primary, resolver,
+                "AD", null, new JoinCache(new JoinCache.SharedIndexCache()));
+        assertTrue(baseline.getViolationCount() > 0, "the fixture must fire for SUBJ02");
+
+        JoinLookup first = null;
+        for (int i = 0; i < 16; i++)
+        {
+            List<List<RuleExecutionResult>> pairs = runParallel(2, 1,
+                    () -> List.of(RuleRunner.execute(a, primary, resolver, "AD", null, cache),
+                            RuleRunner.execute(b, primary, resolver, "AD", null, cache)));
+            assertEquals(2, pairs.size(), "both workers must report");
+            for (List<RuleExecutionResult> pair : pairs)
+            {
+                for (RuleExecutionResult r : pair)
+                {
+                    assertEquals(baseline.getStatus(), r.getStatus(), "status");
+                    assertEquals(baseline.getViolationCount(), r.getViolationCount(),
+                            "violation count");
+                }
+            }
+            JoinLookup current = cache.get(ADSL_LOOKUP_KEY);
+            assertNotNull(current, "wave " + i + " must leave the lookup cached");
+            if (first == null)
+            {
+                first = current;
+            }
+            assertSame(first, current, "wave " + i + " must reuse the one cached DatasetLookup");
+        }
+    }
+
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
 
+    /** {@code JoinCache}'s lookup key for {@code ADSL} joined on {@code USUBJID}. */
+    private static final String ADSL_LOOKUP_KEY = "ADSL|USUBJID";
 
     private static IDataTable makePrimary(int rows)
     {
@@ -185,9 +301,9 @@ class JoinCacheConcurrencyTest
 
     private static Rule buildJoinRule()
     {
-        // Check: TRTP must equal ADSL.TRT01P. The foreign-dataset reference is what drives
-        // DatasetLookup.lookup per row, and Match_Datasets registers ADSL/USUBJID with the
-        // JoinCache.
+        // Check: TRTP must equal ADSL.TRT01P, joined by USUBJID. ⚠ As built here the entry is
+        // served by KeyMatchRowExpander and never registers with the JoinCache;
+        // buildCachedJoinRule is the variant that does.
         net.cumba.corej.core.model.CheckConditionExpression leaf = expr("TRTP != ADSL.TRT01P");
 
         Rule rule = new Rule();
@@ -208,6 +324,20 @@ class JoinCacheConcurrencyTest
         md.setName("ADSL");
         md.setKeys(List.of("USUBJID"));
         rule.setMatchDatasets(List.of(md));
+        return rule;
+    }
+
+
+    /**
+     * {@link #buildJoinRule} with {@code Child: true} on its entry. The flag takes it out of
+     * {@code KeyMatchRowExpander.expandableEntries}; with non-IDVAR keys
+     * {@code ChildMatchPreMerger} returns the primary unchanged; so the entry reaches the cached
+     * key-join branch of {@code RuleRunner.buildJoinedDatasets}.
+     */
+    private static Rule buildCachedJoinRule()
+    {
+        Rule rule = buildJoinRule();
+        rule.getMatchDatasets().get(0).setChild(true);
         return rule;
     }
 
