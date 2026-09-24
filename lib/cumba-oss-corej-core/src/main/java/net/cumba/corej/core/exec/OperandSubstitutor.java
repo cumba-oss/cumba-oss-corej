@@ -357,8 +357,8 @@ public final class OperandSubstitutor
         boolean ok = false;
         try
         {
-            // test if the format is able to format a numeric value
-            String.format(fmt, 1L);
+            // probe: can the format take a numeric value? Only a throw matters
+            String _ = String.format(fmt, 1L);
             ok = true;
         }
         catch (IllegalFormatException e)
@@ -369,8 +369,8 @@ public final class OperandSubstitutor
         {
             try
             {
-                // test if the format is able to format a numeric value
-                String.format(fmt, "x");
+                // probe: can the format take a string value? Only a throw matters
+                String _ = String.format(fmt, "x");
                 ok = true;
             }
             catch (IllegalFormatException e)
