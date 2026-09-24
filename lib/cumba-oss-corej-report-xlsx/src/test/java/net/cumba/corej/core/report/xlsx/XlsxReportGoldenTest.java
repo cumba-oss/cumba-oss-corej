@@ -2,6 +2,7 @@ package net.cumba.corej.core.report.xlsx;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -9,13 +10,16 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 import net.cumba.corej.core.report.ReportSections;
 import org.junit.jupiter.api.Test;
 
@@ -56,6 +60,16 @@ import org.junit.jupiter.api.Test;
  * and teach the next reader to disable it. What must be stable is the entry set and each entry's
  * decompressed content, which is what this asserts.
  * </p>
+ *
+ * <p>
+ * ⚠ <b>One byte is normalised before hashing, and only that one.</b> POI saves every XML part
+ * through XmlBeans, which ends the {@code <?xml …?>} declaration with the JVM's line separator —
+ * {@code \n} on Linux, where the golden was made, {@code \r\n} on Windows. Measured: on a Windows
+ * separator 11 of the 17 parts differ, each only there, so this test was red on every Windows build
+ * while the workbook was correct. A {@code \r\n} directly after the declaration is therefore read
+ * as {@code \n}. Nothing else is touched: a line break inside a cell is content, and still compared
+ * byte for byte.
+ * </p>
  */
 class XlsxReportGoldenTest
 {
@@ -63,8 +77,47 @@ class XlsxReportGoldenTest
     @Test
     void theWorkbookIsContentIdenticalToThePreSplitEngine() throws Exception
     {
+        assertContentIdenticalToGolden(render());
+    }
+
+
+    /**
+     * The Windows form of the workbook compares equal. Every XML part of the golden is rewritten
+     * the way a Windows JVM writes it — {@code \r\n} after the declaration — and the whole set must
+     * still match. ⚠ It rewrites the golden rather than rendering under a Windows separator because
+     * the separator cannot be switched reliably in-process: the XML serialisation chain caches it
+     * per JVM once anything has saved a part (measured — a render after another test's render still
+     * wrote {@code \n}). A real Windows render is exercised only by a build on Windows.
+     */
+    @Test
+    void theWindowsFormOfEveryPartIsContentIdentical() throws Exception
+    {
+        byte[] windows = withCrLfAfterEveryDeclaration(resource("/report/golden.xlsx"));
+        assertEquals(true, containsCrLfAfterDeclaration(windows),
+                "precondition: the rewritten parts must carry \\r\\n after the XML declaration");
+        assertContentIdenticalToGolden(windows);
+    }
+
+
+    @Test
+    void theNormalisationTouchesOnlyTheLineEndAfterTheDeclaration()
+    {
+        byte[] crlf = "<?xml version=\"1.0\"?>\r\n<a>x\r\ny</a>".getBytes(StandardCharsets.UTF_8);
+        assertEquals("<?xml version=\"1.0\"?>\n<a>x\r\ny</a>",
+                new String(declarationLineEndNormalised(crlf), StandardCharsets.UTF_8),
+                "only the declaration's line end is normalised; a CRLF in content stays");
+        byte[] lf = "<?xml version=\"1.0\"?>\n<a/>".getBytes(StandardCharsets.UTF_8);
+        assertSame(lf, declarationLineEndNormalised(lf), "an LF part is returned as is");
+        byte[] noDeclaration = "<a>\r\n</a>".getBytes(StandardCharsets.UTF_8);
+        assertSame(noDeclaration, declarationLineEndNormalised(noDeclaration),
+                "a part without a declaration is returned as is");
+    }
+
+
+    private static void assertContentIdenticalToGolden(byte[] aRendered) throws Exception
+    {
         Map<String, String> golden = entryDigests(resource("/report/golden.xlsx"));
-        Map<String, String> actual = entryDigests(render());
+        Map<String, String> actual = entryDigests(aRendered);
 
         assertEquals(golden.keySet(), actual.keySet(), "the zip entry set must not change");
         for (Map.Entry<String, String> e : golden.entrySet())
@@ -107,11 +160,90 @@ class XlsxReportGoldenTest
                     continue;
                 }
                 MessageDigest digest = MessageDigest.getInstance("SHA-256");
-                digest.update(in.readAllBytes());
+                digest.update(declarationLineEndNormalised(in.readAllBytes()));
                 digests.put(entry.getName(), HexFormat.of().formatHex(digest.digest()));
             }
         }
         return digests;
+    }
+
+
+    /**
+     * Rebuilds {@code aZip} with {@code \r\n} after every leading XML declaration (the Windows
+     * form).
+     */
+    private static byte[] withCrLfAfterEveryDeclaration(byte[] aZip) throws IOException
+    {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(aZip));
+                ZipOutputStream zip = new ZipOutputStream(out))
+        {
+            ZipEntry entry;
+            while ((entry = in.getNextEntry()) != null)
+            {
+                byte[] part = in.readAllBytes();
+                String text = new String(part, StandardCharsets.UTF_8);
+                if (text.startsWith("<?xml") && text.contains("?>\n"))
+                {
+                    int end = text.indexOf("?>\n") + 2;
+                    part = (text.substring(0, end) + "\r" + text.substring(end))
+                            .getBytes(StandardCharsets.UTF_8);
+                }
+                zip.putNextEntry(new ZipEntry(entry.getName()));
+                zip.write(part);
+                zip.closeEntry();
+            }
+        }
+        return out.toByteArray();
+    }
+
+
+    private static boolean containsCrLfAfterDeclaration(byte[] aZip) throws IOException
+    {
+        try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(aZip)))
+        {
+            ZipEntry entry;
+            while ((entry = in.getNextEntry()) != null)
+            {
+                String head = new String(in.readNBytes(80), StandardCharsets.UTF_8);
+                if (head.startsWith("<?xml") && head.contains("?>\r\n"))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+
+    /**
+     * Returns {@code aPart} with a {@code \r\n} that directly follows a leading {@code <?xml …?>}
+     * declaration replaced by {@code \n}; every other byte, and any part without such a
+     * declaration, is returned unchanged. See the class javadoc for why.
+     */
+    static byte[] declarationLineEndNormalised(byte[] aPart)
+    {
+        byte[] head = "<?xml".getBytes(StandardCharsets.US_ASCII);
+        if (aPart.length < head.length
+                || !Arrays.equals(aPart, 0, head.length, head, 0, head.length))
+        {
+            return aPart;
+        }
+        for (int i = head.length; i + 3 < aPart.length; i++)
+        {
+            if (aPart[i] == '?' && aPart[i + 1] == '>')
+            {
+                if (aPart[i + 2] != '\r' || aPart[i + 3] != '\n')
+                {
+                    return aPart;
+                }
+                byte[] out = new byte[aPart.length - 1];
+                System.arraycopy(aPart, 0, out, 0, i + 2);
+                System.arraycopy(aPart, i + 3, out, i + 2, aPart.length - i - 3);
+                return out;
+            }
+        }
+        return aPart;
     }
 
 
