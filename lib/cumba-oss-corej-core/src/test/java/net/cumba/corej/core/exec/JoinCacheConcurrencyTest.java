@@ -46,9 +46,12 @@ import org.junit.jupiter.api.Timeout;
  * excludes it, {@code ChildMatchPreMerger} leaves a non-IDVAR child untouched, and
  * {@code RuleRunner.buildJoinedDatasets} takes its cached key-join branch. Those cases assert the
  * rule fires, parallel equals baseline, and {@code JoinCache.get("ADSL|USUBJID")} holds one
- * {@link DatasetLookup} that is the SAME instance across waves — i.e. {@code computeIfAbsent} in
- * {@code getOrBuildLookup} really shares the entry, and the lazily built join map inside it
- * ({@code ensureJoinMap}) is read concurrently by every worker.
+ * {@link DatasetLookup} that is the SAME instance across waves, and the lazily built join map
+ * inside it ({@code ensureJoinMap}) is read concurrently by every worker. ⚠ The identity is
+ * observed only after each wave, so these cases catch a lookup that is replaced or evicted between
+ * waves. They would NOT catch a duplicate build during the cold-start race itself (a get-then-put
+ * regression whose last put wins still leaves one stable instance); catching that needs a build
+ * counter.
  * </p>
  */
 // Test awaits pool/executor termination explicitly; the per-task Future is intentionally ignored.
@@ -225,9 +228,9 @@ class JoinCacheConcurrencyTest
     void cachedKeyJoin_twoRulesAcrossThreads_shareOneDatasetLookup() throws Exception
     {
         // Two rules with the same cached Match_Datasets entry ({ADSL, USUBJID}, Child: true)
-        // running in parallel must observe the same DatasetLookup instance — confirming
-        // computeIfAbsent in JoinCache.getOrBuildLookup really shares the entry across rules and
-        // threads.
+        // running in parallel must observe the same DatasetLookup instance after every wave (the
+        // entry is shared across rules and never rebuilt; see the class javadoc for what this
+        // cannot see during the cold-start race itself).
         IDataTable primary = makePrimary(64);
         IDataTable adsl = makeAdsl();
         DatasetResolver resolver = name -> "ADSL".equals(name) ? adsl : null;
