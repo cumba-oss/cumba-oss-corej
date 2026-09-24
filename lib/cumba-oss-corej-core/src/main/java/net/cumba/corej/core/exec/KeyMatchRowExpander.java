@@ -31,10 +31,24 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * Join type is per the rule's {@link MatchDataset#getJoinType()}: {@code left} keeps a primary row
- * with no matching child and binds it to a {@code null} child (so a dotted reference resolves to
- * {@code null} — preserving the engine's historical scalar-lookup behaviour and firing
- * absence/empty checks); {@code inner} drops the unmatched primary row. Keys compare by exact
- * string value, matching pandas' object-dtype merge for CDISC string keys.
+ * with no matching child and binds it to no child row. A dotted reference then reads the joined
+ * column's TYPE default through the typed {@code lookupValue} (D72/D72a-1: {@code ""} for
+ * character, {@code MissingValue.MIS} for numeric), and {@code null} only through the text
+ * {@code lookup}; see {@link KeyMatchExpandedLookup}. That is what makes absence/empty checks fire.
+ * {@code inner} drops the unmatched primary row.
+ * </p>
+ *
+ * <p>
+ * Keys compare by the classified {@link GroupKeyPolicy.KeyPart} of each component, not by rendered
+ * text (see {@link #keyPart}). A {@code MissingValue} is a key of its own, distinct from {@code ""}
+ * and from every other marker (JKM R5), and a character key never equals a numeric one. A mismatch
+ * of the two sides' declared kinds is a rule ERROR (D4-R2) unless the entry declares
+ * {@code Join_As_String}, which compares present parts as text (D4-R3).
+ * </p>
+ *
+ * <p>
+ * The child side of each join is a {@link KeyMatchIndex}, shared across rules through
+ * {@link JoinCache.SharedIndexCache} ({@code PLAN-keymatch-shared-join-index}).
  * </p>
  *
  * <p>
@@ -47,6 +61,7 @@ import org.jspecify.annotations.Nullable;
  * that qualification is misleading: for the shipped corpus the effective default is {@code inner}.
  * ⚑ <b>That generator is now deleted</b> ({@code plans/done/PLAN-remove-rule-generator.md}), so no
  * <b>production</b> path reaches the fallback any more.
+ * </p>
  *
  * <p>
  * ⛔⛔ <b>Removing it was TRIED on 2026-09-15 (owner request) and REVERTED — measured, not
@@ -69,7 +84,6 @@ import org.jspecify.annotations.Nullable;
  * owner, not a cleanup, and it is the same open question as triage finding {@code S2}
  * ({@code plans/done/PLAN-expired-justifications-triage.md}). <b>Settle S2 first; do not retry the
  * deletion on its own.</b>
- * </p>
  * </p>
  *
  * <p>
