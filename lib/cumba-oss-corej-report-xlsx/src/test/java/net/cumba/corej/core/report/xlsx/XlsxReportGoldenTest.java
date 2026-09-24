@@ -16,9 +16,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
@@ -98,14 +100,29 @@ class XlsxReportGoldenTest
         throws Exception
     {
         Path out = aTmp.resolve("windows.xlsx");
-        Process fork = new ProcessBuilder(
-                Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-                "-Dline.separator=\r\n", "-cp", System.getProperty("java.class.path"),
-                XlsxWindowsSeparatorRender.class.getName(), out.toString())
-                        .redirectErrorStream(true).start();
-        String output = new String(fork.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        assertTrue(fork.waitFor(120, TimeUnit.SECONDS), "the forked render did not finish");
-        assertEquals(0, fork.exitValue(), () -> "the forked render failed: " + output);
+        Path log = aTmp.resolve("fork.log");
+        List<String> command = new ArrayList<>(
+                List.of(Path.of(System.getProperty("java.home"), "bin", "java").toString()));
+        if (!"\r\n".equals(System.lineSeparator()))
+        {
+            // On Windows \r\n already is the default, and a raw CR/LF in a command-line argument
+            // is best not relied upon there.
+            command.add("-Dline.separator=\r\n");
+        }
+        command.addAll(List.of("-cp", System.getProperty("java.class.path"),
+                XlsxWindowsSeparatorRender.class.getName(), out.toString()));
+        Process fork = new ProcessBuilder(command).redirectErrorStream(true)
+                .redirectOutput(log.toFile()).start();
+        try
+        {
+            assertTrue(fork.waitFor(120, TimeUnit.SECONDS), "the forked render did not finish");
+            assertEquals(0, fork.exitValue(),
+                    () -> "the forked render failed: " + readQuietly(log));
+        }
+        finally
+        {
+            fork.destroyForcibly();
+        }
 
         byte[] rendered = Files.readAllBytes(out);
         // Anti-vacuity: the Windows separator must really have reached the output — measured, 11 of
@@ -184,6 +201,19 @@ class XlsxReportGoldenTest
             }
         }
         return digests;
+    }
+
+
+    private static String readQuietly(Path aLog)
+    {
+        try
+        {
+            return Files.readString(aLog, StandardCharsets.UTF_8);
+        }
+        catch (IOException e)
+        {
+            return "(no output: " + e.getMessage() + ")";
+        }
     }
 
 

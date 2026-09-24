@@ -22,10 +22,10 @@ import org.jspecify.annotations.Nullable;
  * locale ({@code "cvc-complex-type.4: Attribut 'Mandatory' muss in Element 'ItemRef' vorkommen."}
  * on a German machine), and its {@code locale} property is accepted and ignored, so English cannot
  * be forced. Nothing here may therefore match English words. The one datum read from the prose, the
- * simple type of a {@code cvc-attribute.3} / {@code cvc-datatype-valid} error, is taken as the
- * <em>last</em> quoted token, which is the type in every locale the JDK ships (measured over all
- * 11; Italian quotes it in {@code "…"}). Matching English text here once sent every invalid integer
- * or datetime on a non-English JVM to the Reject-severity catch-all {@code PMDA-DD0001}.
+ * simple type of a {@code cvc-attribute.3} / {@code cvc-datatype-valid.1.2.1} error, is taken as
+ * the <em>last</em> quoted token, which is the type in every locale the JDK ships (measured over
+ * all 11; Italian quotes it in {@code "…"}). Matching English text here once sent every invalid
+ * integer or datetime on a non-English JVM to the Reject-severity catch-all {@code PMDA-DD0001}.
  * </p>
  *
  * <ul>
@@ -64,7 +64,7 @@ public final class SaxErrorClassifier
 
     /**
      * The last token quoted in {@code '…'} or {@code "…"}: in every JDK locale this is the simple
-     * type Xerces names in a {@code cvc-attribute.3} / {@code cvc-datatype-valid} message
+     * type Xerces names in a {@code cvc-attribute.3} / {@code cvc-datatype-valid.1.2.1} message
      * ({@code "… its type, 'integer'."}, {@code "… hat keinen gültigen Typ 'integer'."},
      * {@code "… valido per "integer"."}). Anchored at the END on purpose: Italian and French put
      * apostrophes inside ordinary words ({@code dell'attributo}, {@code n'est}), so a match
