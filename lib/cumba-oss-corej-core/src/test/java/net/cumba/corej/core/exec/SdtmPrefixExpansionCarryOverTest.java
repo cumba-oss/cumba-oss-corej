@@ -175,7 +175,7 @@ class SdtmPrefixExpansionCarryOverTest
                 "the seed must be cleared BEFORE the derivation runs — a surviving 'Record' seed "
                         + "looks authored and suppresses the classifier entirely");
         assertNotNull(expanded.getDerivationRationale().get("Sensitivity"),
-                "" + expanded.getDerivationRationale());
+                String.valueOf(expanded.getDerivationRationale()));
     }
 
 }

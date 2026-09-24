@@ -101,7 +101,7 @@ class EvaluationContextTest
     void resolveVariable_nullId_onNullTolerantMap()
     {
         IDataTable table = MockTable.of().col("X", "1").build();
-        java.util.Map<String, Object> vars = new java.util.HashMap<>();
+        Map<String, Object> vars = new java.util.HashMap<>();
         vars.put("$a", "1");
         EvaluationContext ctx = EvaluationContext.builder().table(table).variables(vars).build();
         assertNull(ctx.resolveVariable(null), "unchanged for a HashMap, which tolerates get(null)");
@@ -116,8 +116,8 @@ class EvaluationContextTest
     {
         IDataTable table = MockTable.of().col("X", "1").build();
         java.util.concurrent.atomic.AtomicInteger forced = new java.util.concurrent.atomic.AtomicInteger();
-        java.util.Map<String, Object> vars = new java.util.HashMap<>();
-        vars.put("$op", new LazyValue<Object>(() ->
+        Map<String, Object> vars = new java.util.HashMap<>();
+        vars.put("$op", new LazyValue<>(() ->
         {
             forced.incrementAndGet();
             return "computed";

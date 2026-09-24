@@ -652,8 +652,8 @@ class PrimitivesTest
         {
             boolean orEqual = c[1] == 1;
             boolean negate = c[2] == 1;
-            differential(t, "A", "B", 9, c[0], orEqual, negate);
-            differential(n, "L", "R", 4, c[0], orEqual, negate);
+            assertDifferential(t, "A", "B", 9, c[0], orEqual, negate);
+            assertDifferential(n, "L", "R", 4, c[0], orEqual, negate);
         }
     }
 
@@ -667,8 +667,8 @@ class PrimitivesTest
      * the opposite way by EC-87's D-1/D-3. Everywhere else the two must still agree exactly, which
      * is the property this method exists to protect.
      */
-    private static void differential(IDataTable t, String lhs, String rhs, int rows, int direction,
-            boolean orEqual, boolean negate)
+    private static void assertDifferential(IDataTable t, String lhs, String rhs, int rows,
+            int direction, boolean orEqual, boolean negate)
     {
         Vector rhsVector = col(t, rhs);
         BitSet vectorised = Primitives.dateComparison(col(t, lhs), rhsVector, rows, direction,

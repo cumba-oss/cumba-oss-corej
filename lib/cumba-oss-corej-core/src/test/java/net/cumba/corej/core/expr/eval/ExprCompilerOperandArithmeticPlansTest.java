@@ -67,9 +67,7 @@ class ExprCompilerOperandArithmeticPlansTest
         // exactly how the F1 divergence survived.
         IDataTable ae = MockTable.of().name("AE").col("AESEQ", "1", "2").build();
         EvaluationContext c = EvaluationContext.builder().table(ae).build();
-        org.junit.jupiter.api.Assertions.assertThrows(
-                net.cumba.corej.core.expr.ExpressionException.class,
-                () -> eval("--SEQ == \"1\"", c),
+        assertThrows(ExpressionException.class, () -> eval("--SEQ == \"1\"", c),
                 "an unresolved wildcard must never silently read (or miss) AESEQ");
     }
 
@@ -158,7 +156,7 @@ class ExprCompilerOperandArithmeticPlansTest
     {
         // The caller answers MIS before arithmetic runs (D85); reaching divide with a zero
         // denominator is an engine defect and must be loud, never a silent NaN.
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+        assertThrows(IllegalArgumentException.class,
                 () -> net.cumba.corej.core.exec.ArithmeticSemantics.divide(10.0, 0.0));
     }
 

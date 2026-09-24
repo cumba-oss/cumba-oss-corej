@@ -1,6 +1,8 @@
 package net.cumba.corej.core.exec;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -54,9 +56,12 @@ class OperandSubstitutorMoreCoverageTest
     void validate_scalar_alwaysOk()
     {
         OperandSubstitutor.ParsedOperand parsed = OperandSubstitutor.parse("AESEQ");
-        // Position.NAME / Position.VALUE both accept Scalar.
-        OperandSubstitutor.validate(parsed, "equal_to", OperandSubstitutor.Position.NAME);
-        OperandSubstitutor.validate(parsed, "is_contained_by", OperandSubstitutor.Position.VALUE);
+        assertInstanceOf(OperandSubstitutor.Scalar.class, parsed);
+        // Position.NAME / Position.VALUE both accept Scalar: acceptance is not throwing.
+        assertDoesNotThrow(() -> OperandSubstitutor.validate(parsed, "equal_to",
+                OperandSubstitutor.Position.NAME));
+        assertDoesNotThrow(() -> OperandSubstitutor.validate(parsed, "is_contained_by",
+                OperandSubstitutor.Position.VALUE));
     }
 
 
@@ -64,9 +69,12 @@ class OperandSubstitutorMoreCoverageTest
     void validate_wildcard_namePosition_existsAccepted()
     {
         OperandSubstitutor.ParsedOperand parsed = OperandSubstitutor.parse("${*}");
-        // exists / not_exists are OK in name position.
-        OperandSubstitutor.validate(parsed, "var_exists", OperandSubstitutor.Position.NAME);
-        OperandSubstitutor.validate(parsed, "var_not_exists", OperandSubstitutor.Position.NAME);
+        assertInstanceOf(OperandSubstitutor.Wildcard.class, parsed);
+        // exists / not_exists are OK in name position: acceptance is not throwing.
+        assertDoesNotThrow(() -> OperandSubstitutor.validate(parsed, "var_exists",
+                OperandSubstitutor.Position.NAME));
+        assertDoesNotThrow(() -> OperandSubstitutor.validate(parsed, "var_not_exists",
+                OperandSubstitutor.Position.NAME));
     }
 
 
@@ -83,11 +91,14 @@ class OperandSubstitutorMoreCoverageTest
     void validate_wildcard_valuePosition_listAwareAccepted()
     {
         OperandSubstitutor.ParsedOperand parsed = OperandSubstitutor.parse("${*}");
-        OperandSubstitutor.validate(parsed, "is_contained_by", OperandSubstitutor.Position.VALUE);
-        OperandSubstitutor.validate(parsed, "is_not_contained_by",
-                OperandSubstitutor.Position.VALUE);
-        OperandSubstitutor.validate(parsed, "is_contained_by_case_insensitive",
-                OperandSubstitutor.Position.VALUE);
+        assertInstanceOf(OperandSubstitutor.Wildcard.class, parsed);
+        // Acceptance is not throwing.
+        assertDoesNotThrow(() -> OperandSubstitutor.validate(parsed, "is_contained_by",
+                OperandSubstitutor.Position.VALUE));
+        assertDoesNotThrow(() -> OperandSubstitutor.validate(parsed, "is_not_contained_by",
+                OperandSubstitutor.Position.VALUE));
+        assertDoesNotThrow(() -> OperandSubstitutor.validate(parsed,
+                "is_contained_by_case_insensitive", OperandSubstitutor.Position.VALUE));
     }
 
 

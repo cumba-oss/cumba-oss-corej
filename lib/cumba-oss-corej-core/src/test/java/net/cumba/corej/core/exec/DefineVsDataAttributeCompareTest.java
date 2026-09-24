@@ -192,7 +192,7 @@ class DefineVsDataAttributeCompareTest
     // takes the legacy operand cascade — the exact path that reads buildVariableMetadata's map. The
     // define overlay declares DM.AGE integer (→Num) and DM.SEX text (→Char).
     private static final String LEGACY_TYPE_RULE = "{\"rules\":{\"L1\":{\"Core\":{\"Id\":\"L1\"},"
-            + "" + "\"Sensitivity\":\"Dataset\",\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
+            + "\"Sensitivity\":\"Dataset\",\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
             + "\"Check\":{\"all\":[" + "{\"expression\": \"not empty(var_name(\\\"DEFINE\\\"))\"},"
             + "{\"expression\": \"var_type(\\\"DATA\\\") != var_type(\\\"DEFINE\\\")\"}]},"
             + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[]}}}}";

@@ -230,7 +230,7 @@ class RuleRunnerEmptyDatasetTest
         // The subject here is the engine's row-path verdict on a guarded negative, not the
         // provenance of the guard.
         rule.setCheck(new net.cumba.corej.core.model.CheckConditionAll(
-                java.util.List.of(expr("var_exists(\"TSVAL\")"), expr("TSVAL != \"X\""))));
+                List.of(expr("var_exists(\"TSVAL\")"), expr("TSVAL != \"X\""))));
         rule.setSensitivity(Sensitivity.DATASET);
         Outcome outcome = new Outcome();
         outcome.setMessage("TSVAL is not X");

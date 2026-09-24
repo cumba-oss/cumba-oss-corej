@@ -97,8 +97,7 @@ class ExpressionResultCacheTest
         var k = key(mock(IDataTable.class), "VAR1");
         AtomicInteger calls = new AtomicInteger();
         int threads = 16;
-        ExecutorService pool = Executors.newFixedThreadPool(threads);
-        try
+        try (ExecutorService pool = Executors.newFixedThreadPool(threads))
         {
             List<Callable<Object>> tasks = new ArrayList<>();
             for (int i = 0; i < threads; i++)
@@ -114,10 +113,6 @@ class ExpressionResultCacheTest
             {
                 assertEquals("V", f.get());
             }
-        }
-        finally
-        {
-            pool.shutdownNow();
         }
         // Deliberately non-locking (unified-callable-surface §3.2 review): suppliers may nest,
         // so the mapping runs OUTSIDE the map lock — under contention it may execute more than
@@ -142,7 +137,7 @@ class ExpressionResultCacheTest
         // Default (mirrors libraryProvider): null when not set.
         EvaluationContext withoutCache = EvaluationContext.builder().table(table).build();
         assertNull(withoutCache.getExprCache());
-        assertTrue(withCache.getExprCache() == cache);
+        assertSame(cache, withCache.getExprCache());
     }
 
 }

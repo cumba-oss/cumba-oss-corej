@@ -1,6 +1,7 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -235,7 +236,7 @@ class MatchedFlagExecutionTest
         DatasetLookup lookup = DatasetLookup.build("DM", dm, List.of("USUBJID"));
         assertNotNull(lookup);
         assertTrue(lookup.matchedRow(primary, 0));
-        assertTrue(!lookup.matchedRow(primary, 1));
+        assertFalse(lookup.matchedRow(primary, 1));
         assertTrue(lookup.matchedRow(primary, 2));
     }
 }

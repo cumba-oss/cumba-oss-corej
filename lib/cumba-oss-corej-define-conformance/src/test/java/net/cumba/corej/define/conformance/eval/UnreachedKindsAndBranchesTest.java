@@ -2,6 +2,7 @@ package net.cumba.corej.define.conformance.eval;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -390,7 +391,7 @@ class UnreachedKindsAndBranchesTest
         // compare reads the FIRST Alias/@Name, which is the non-nci one: this pins that
         // Alias ordering is visible to the DSL, while nciCodeOf skips to the usable alias.
         assertEquals(List.of("X vs C66731"), values(result));
-        assertTrue(result.status() == ExecutionStatus.EXECUTED);
+        assertSame(ExecutionStatus.EXECUTED, result.status());
     }
 
 }

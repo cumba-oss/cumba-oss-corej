@@ -185,7 +185,7 @@ class CdiscLibraryMetadataLibraryAdamTest
         CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromAdam("adamig", "1-3", adamFixture(),
                 adamCt, sdtmCt);
 
-        assertEquals(java.util.List.of("adamct-2024-03-29", "sdtmct-2024-03-29"),
+        assertEquals(List.of("adamct-2024-03-29", "sdtmct-2024-03-29"),
                 lib.getMetaValue(MetadataKeys.CT_VERSION).orElse(null));
         assertEquals(List.of("adamct-2024-03-29", "sdtmct-2024-03-29"),
                 lib.getMetaValue(MetadataKeys.PUBLISHED_CT_PACKAGES).orElse(null));

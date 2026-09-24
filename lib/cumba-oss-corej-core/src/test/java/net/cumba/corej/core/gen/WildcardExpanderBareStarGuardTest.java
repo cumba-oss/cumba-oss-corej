@@ -41,9 +41,9 @@ import org.junit.jupiter.api.Test;
 class WildcardExpanderBareStarGuardTest
 {
 
-    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    private static CheckConditionExpression expr(String source)
     {
-        return new net.cumba.corej.core.model.CheckConditionExpression(
+        return new CheckConditionExpression(
                 net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
     }
 
@@ -55,7 +55,7 @@ class WildcardExpanderBareStarGuardTest
      * configurability that did not exist. Dropped rather than honoured: the guard is about HOW MANY
      * expansions a bare {@code *} produces, not about which operator they carry.
      */
-    private static net.cumba.corej.core.model.CheckConditionExpression leaf(String name)
+    private static CheckConditionExpression leaf(String name)
     {
         return expr("not empty(" + name + ")");
     }

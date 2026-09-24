@@ -1,6 +1,7 @@
 package net.cumba.corej.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -154,7 +155,7 @@ class ModelClassDeclarationTest
         }
         assertThrows(RuleDefinitionException.class, () -> normalize(
                 "get_model_filtered_variables(model_class=\"special-purpose datasets\")"));
-        assertTrue(!SdtmObservationClasses.isDetectable(null));
-        assertTrue(!SdtmObservationClasses.isDetectable("SPECIAL PURPOSE"));
+        assertFalse(SdtmObservationClasses.isDetectable(null));
+        assertFalse(SdtmObservationClasses.isDetectable("SPECIAL PURPOSE"));
     }
 }

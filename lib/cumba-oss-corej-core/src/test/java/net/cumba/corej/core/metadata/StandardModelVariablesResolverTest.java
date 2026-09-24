@@ -785,7 +785,7 @@ class StandardModelVariablesResolverTest
     {
         IMetadataLibrary study = lib("study").table(table("LB").build()).build();
         MetadataLibraryProvider provider = MetadataLibraryProvider.degraded(study,
-                new java.io.IOException("HTTP 503"));
+                new IOException("HTTP 503"));
 
         assertNull(provider.getStandardModelVariablesDetailed(mockTable("LB"), null));
     }

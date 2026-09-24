@@ -19,13 +19,10 @@ import org.junit.jupiter.params.provider.ValueSource;
 class MetadataStorePresenceTest
 {
 
-    @TempDir
-    static Path tempDir;
-
     private static MetadataStore store;
 
     @BeforeAll
-    static void openStore() throws IOException
+    static void openStore(@TempDir Path tempDir) throws IOException
     {
         Path file = tempDir.resolve("metadata-cache.zip");
         MetadataStoreFixtures.populatedWriter().write(file);

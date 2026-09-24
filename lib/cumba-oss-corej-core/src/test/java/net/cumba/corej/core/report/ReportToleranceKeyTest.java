@@ -24,7 +24,7 @@ class ReportToleranceKeyTest
      */
     private static ReportSections sections()
     {
-        java.util.Map<String, Object> cd = new java.util.LinkedHashMap<>();
+        Map<String, Object> cd = new java.util.LinkedHashMap<>();
         cd.put("CORE_Engine_Version", "x");
         cd.put("Numeric_Tolerance_Digits", ScalarSemantics.toleranceDigits());
         return new ReportSections(new java.util.LinkedHashMap<>(cd), List.of(), List.of(),

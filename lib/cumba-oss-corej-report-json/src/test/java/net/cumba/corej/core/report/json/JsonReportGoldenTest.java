@@ -1,7 +1,9 @@
 package net.cumba.corej.core.report.json;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -100,11 +102,11 @@ class JsonReportGoldenTest
         // neither and carries Issue_Details instead.
         String v1 = write(false);
         String v2 = write(true);
-        assertEquals(true, v2.startsWith("{\"Report_Version\":\"2.0\","), v2.substring(0, 40));
-        assertEquals(false, v1.contains("Report_Version"));
-        assertEquals(true, v1.contains("\"Issue_Details\""));
-        assertEquals(false, v1.contains("\"Findings\""));
-        assertEquals(true, v2.contains("\"Findings\""));
-        assertEquals(false, v2.contains("\"Issue_Details\""));
+        assertTrue(v2.startsWith("{\"Report_Version\":\"2.0\","), v2.substring(0, 40));
+        assertFalse(v1.contains("Report_Version"));
+        assertTrue(v1.contains("\"Issue_Details\""));
+        assertFalse(v1.contains("\"Findings\""));
+        assertTrue(v2.contains("\"Findings\""));
+        assertFalse(v2.contains("\"Issue_Details\""));
     }
 }

@@ -33,7 +33,7 @@ class Cx2FileFormatRulesProbeTest
         // Form-B operations (PLAN-retire-corpus-transforms phase 8) carry no operator
         // until normalized — the same pass the loader and RuleScaffold run.
         RulePackageLoader.normalizeOperations(rule);
-        net.cumba.corej.core.RulePackageLoader.installNativeExpr(rule);
+        RulePackageLoader.installNativeExpr(rule);
         return rule;
     }
 

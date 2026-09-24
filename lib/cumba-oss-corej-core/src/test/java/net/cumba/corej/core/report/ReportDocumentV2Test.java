@@ -115,6 +115,8 @@ class ReportDocumentV2Test
     }
 
 
+    // "0.5.0.0" is a CORE engine version string, not an IP address.
+    @SuppressWarnings("PMD.AvoidUsingHardCodedIP")
     @Test
     void metadataSections_identicalToV1()
     {

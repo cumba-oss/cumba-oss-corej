@@ -1,5 +1,6 @@
 package net.cumba.corej.core.run;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -143,8 +144,8 @@ class StudyValidationServiceTest
         String standard = base.substring(0, dash);
         String version = base.substring(dash + 1);
         new net.cumba.corej.core.RulePackageManifest("test",
-                java.util.List.of(new net.cumba.corej.core.RulePackageManifest.Entry(fileName,
-                        "CDISC", standard, version, 1))).writeTo(dir);
+                List.of(new net.cumba.corej.core.RulePackageManifest.Entry(fileName, "CDISC",
+                        standard, version, 1))).writeTo(dir);
         return dir;
     }
 
@@ -157,7 +158,7 @@ class StudyValidationServiceTest
     private Path writeFamilyRules(String... fams) throws IOException
     {
         Path dir = Files.createDirectory(tempDir.resolve("rules-" + System.nanoTime()));
-        java.util.List<net.cumba.corej.core.RulePackageManifest.Entry> entries = new java.util.ArrayList<>();
+        List<net.cumba.corej.core.RulePackageManifest.Entry> entries = new ArrayList<>();
         for (String fam : fams)
         {
             String file = "rules-" + fam.toLowerCase(java.util.Locale.ROOT) + "-custom-1-0.json";
@@ -236,7 +237,14 @@ class StudyValidationServiceTest
     /** Runs {@code aBody} with {@link AdamSubclassDetector}'s WARN output collected. */
     private static List<String> captureWarnings(Runnable aBody)
     {
-        Logger logger = Logger.getLogger(AdamSubclassDetector.class.getName());
+        return captureWarnings(AdamSubclassDetector.class, aBody);
+    }
+
+
+    /** Runs {@code aBody} with the WARN output of {@code aSource}'s logger collected. */
+    private static List<String> captureWarnings(Class<?> aSource, Runnable aBody)
+    {
+        Logger logger = Logger.getLogger(aSource.getName());
         List<LogRecord> records = new ArrayList<>();
         Handler handler = new Handler()
         {
@@ -1396,9 +1404,13 @@ class StudyValidationServiceTest
                 List.of(new net.cumba.corej.core.RulePackageManifest.Entry("rules-listed-1-0.json",
                         "CDISC", "custom", "1-0", 1))).writeTo(dir);
 
-        // Must NOT throw — the manifest has no veto.
-        StudyValidationService.validateManifestAgainstDisk(dir,
-                net.cumba.corej.core.RulePackageManifest.load(dir));
+        // Must NOT throw — the manifest has no veto — and the omission IS logged.
+        var manifest = net.cumba.corej.core.RulePackageManifest.load(dir);
+        List<String> warnings = captureWarnings(StudyValidationService.class,
+                () -> StudyValidationService.validateManifestAgainstDisk(dir, manifest));
+        assertEquals(1, warnings.size(), "one warning names the unmanifested package: " + warnings);
+        assertTrue(warnings.get(0).contains("rules-extra-2-0.json"), warnings.get(0));
+        assertFalse(warnings.get(0).contains("rules-listed-1-0.json"), warnings.get(0));
 
         // ... and the unmanifested package is still selectable and runnable.
         IDataTableManager mgr = managerWith(dmTable());
@@ -1414,8 +1426,11 @@ class StudyValidationServiceTest
     void noManifestAtAll_isNotReportedAsUnmanifested() throws IOException
     {
         Path dir = writeUnmanifestedPackages("loose-1-0");
-        StudyValidationService.validateManifestAgainstDisk(dir,
-                net.cumba.corej.core.RulePackageManifest.load(dir));
+        var manifest = net.cumba.corej.core.RulePackageManifest.load(dir);
+        assertTrue(manifest.packages().isEmpty(), "precondition: the directory has no manifest");
+        List<String> warnings = captureWarnings(StudyValidationService.class,
+                () -> StudyValidationService.validateManifestAgainstDisk(dir, manifest));
+        assertEquals(List.of(), warnings, "a manifest-less rules dir logs no unmanifested warning");
     }
 
     // ------------------------------------------------------------------
@@ -1500,7 +1515,7 @@ class StudyValidationServiceTest
         // Cache P4: the catalogue that refutes the token is the unified metadata store's, so the
         // refuting catalogue is a hermetic fixture now (pre-P4 this self-skipped without a real
         // pickle cache). The store holds dart-1-1 — a catalogue exists, and dart-1-2 is not in it.
-        java.nio.file.Path store = tempDir.resolve("refuting-store.zip");
+        Path store = tempDir.resolve("refuting-store.zip");
         new net.cumba.corej.core.metadata.store.MetadataStoreWriter()
                 .productCatalogue(List.of("standards/sendig/dart-1-1"))
                 .publishedCtPackages(List.of()).write(store);
@@ -1650,10 +1665,11 @@ class StudyValidationServiceTest
     @Test
     void aSingleLegOrNonTigDeclarationNeedsNoDisambiguation()
     {
-        StudyValidationService.requireDisambiguatedTigLeg(List.of(),
-                List.of("standards/tig/1-0/sdtm"));
-        StudyValidationService.requireDisambiguatedTigLeg(List.of(),
-                List.of("standards/adam/adamig-1-3", "standards/sdtmig/3-4"));
+        // The guard's whole contract here is to let the run through: it returns, never throws.
+        assertDoesNotThrow(() -> StudyValidationService.requireDisambiguatedTigLeg(List.of(),
+                List.of("standards/tig/1-0/sdtm")));
+        assertDoesNotThrow(() -> StudyValidationService.requireDisambiguatedTigLeg(List.of(),
+                List.of("standards/adam/adamig-1-3", "standards/sdtmig/3-4")));
     }
 
 

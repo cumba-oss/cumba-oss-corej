@@ -299,7 +299,7 @@ class RuleRunnerEdgeCaseTest
             {
                 rule.setCheckExpr(net.cumba.corej.core.expr.CheckToExpr.toExpr(rule.getCheck()));
             }
-            catch (net.cumba.corej.core.expr.ExpressionException _)
+            catch (net.cumba.corej.core.expr.ExpressionException ignored)
             {
                 // Unraisable Check: leave checkExpr null so the runner reports the
                 // no-native-form ERROR.

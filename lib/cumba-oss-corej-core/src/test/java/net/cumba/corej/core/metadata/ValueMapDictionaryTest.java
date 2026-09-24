@@ -1,5 +1,6 @@
 package net.cumba.corej.core.metadata;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -89,7 +90,7 @@ class ValueMapDictionaryTest
         assertTrue(p.codeDecodePair("neoplasm", "neoplasm", "Adenoma", "BENIGN", true));
         assertFalse(p.codeDecodePair("neoplasm", "neoplasm", "Carcinoma", "BENIGN", true));
         // termAttribute keeps its folded probe, so an upper-case term still resolves there.
-        assertTrue("BENIGN".equals(p.termAttribute("neoplasm", "neoplasm", "ADENOMA")));
+        assertEquals("BENIGN", p.termAttribute("neoplasm", "neoplasm", "ADENOMA"));
         assertNull(p.termAttribute("neoplasm", "neoplasm", "NOSUCH"));
         assertNull(p.termAttribute("nosuch", "neoplasm", "ADENOMA"));
     }

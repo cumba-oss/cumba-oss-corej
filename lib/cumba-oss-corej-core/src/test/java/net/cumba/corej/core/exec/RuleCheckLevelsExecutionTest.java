@@ -154,8 +154,7 @@ class RuleCheckLevelsExecutionTest
     @DisplayName("the DEFAULT threshold (Warning) evaluates REJECT+ERROR+WARNING and excludes INFO")
     void defaultThresholdExcludesInfo() throws IOException
     {
-        RuleExecutionResult r = run(entailedPair(),
-                net.cumba.corej.core.exec.EngineLimits.DEFAULT_SEVERITY_THRESHOLD);
+        RuleExecutionResult r = run(entailedPair(), EngineLimits.DEFAULT_SEVERITY_THRESHOLD);
 
         assertEquals(1, r.getViolationCount(),
                 "the INFO level was not evaluated at all, so row 'b' is not reported");
@@ -173,8 +172,7 @@ class RuleCheckLevelsExecutionTest
                   expression: >-
                     A == "a"
                 """);
-        RuleExecutionResult r = run(infoOnly,
-                net.cumba.corej.core.exec.EngineLimits.DEFAULT_SEVERITY_THRESHOLD);
+        RuleExecutionResult r = run(infoOnly, EngineLimits.DEFAULT_SEVERITY_THRESHOLD);
 
         assertEquals(RuleExecutionStatus.SKIPPED, r.getStatus(),
                 "a rule that reports PASS when it was never evaluated is a false assurance");
@@ -201,8 +199,7 @@ class RuleCheckLevelsExecutionTest
                 """);
         assertEquals(1, run(errorOnly, Severity.INFO).getViolationCount());
         assertEquals(1,
-                run(errorOnly, net.cumba.corej.core.exec.EngineLimits.DEFAULT_SEVERITY_THRESHOLD)
-                        .getViolationCount());
+                run(errorOnly, EngineLimits.DEFAULT_SEVERITY_THRESHOLD).getViolationCount());
     }
 
     // ------------------------------------------------------------------ the per-level Message
@@ -503,8 +500,7 @@ class RuleCheckLevelsExecutionTest
                       A == "a"
                     Message: "the level message"
                 """);
-        RuleExecutionResult result = run(rule,
-                net.cumba.corej.core.exec.EngineLimits.DEFAULT_SEVERITY_THRESHOLD);
+        RuleExecutionResult result = run(rule, EngineLimits.DEFAULT_SEVERITY_THRESHOLD);
 
         assertEquals(1, result.getViolationCount());
         assertEquals(Severity.WARNING, result.getViolations().getFirst().getLevel(),

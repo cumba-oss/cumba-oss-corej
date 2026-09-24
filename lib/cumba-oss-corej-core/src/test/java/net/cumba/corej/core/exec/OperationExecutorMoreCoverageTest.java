@@ -758,7 +758,7 @@ class OperationExecutorMoreCoverageTest
         assertEquals("^.+FL$", copy.getRegex());
         assertEquals(".+FL$", copy.getNamePattern());
         assertTrue(copy.getValueIsReference());
-        assertEquals(Integer.valueOf(200), copy.getMinLength());
+        assertEquals(200, copy.getMinLength());
         assertEquals("meddra", copy.getExternalDictionaryType());
         assertEquals("PT", copy.getDictionaryTermType());
         assertTrue(copy.getCaseSensitive());
@@ -1531,7 +1531,7 @@ class OperationExecutorMoreCoverageTest
         IDataTable ae = MockTable.of().col("AESTDTC", "x").col("USUBJID", "y").name("AE").build();
         IDataTable dm = MockTable.of().col("USUBJID", "y").name("DM").build();
 
-        java.util.Set<String> available = new java.util.LinkedHashSet<>();
+        Set<String> available = new LinkedHashSet<>();
         available.add("AE");
         available.add("DM");
 
@@ -1546,7 +1546,7 @@ class OperationExecutorMoreCoverageTest
 
 
             @Override
-            public java.util.Set<String> availableDatasets()
+            public Set<String> availableDatasets()
             {
                 return available;
             }
@@ -1571,7 +1571,7 @@ class OperationExecutorMoreCoverageTest
                 // no LNKGRP column at all
                 .col("USUBJID", "x").name("DM").build();
 
-        java.util.Set<String> available = new java.util.LinkedHashSet<>();
+        Set<String> available = new LinkedHashSet<>();
         available.add("AE");
         available.add("CM");
         available.add("DM");
@@ -1587,7 +1587,7 @@ class OperationExecutorMoreCoverageTest
 
 
             @Override
-            public java.util.Set<String> availableDatasets()
+            public Set<String> availableDatasets()
             {
                 return available;
             }
@@ -1614,7 +1614,7 @@ class OperationExecutorMoreCoverageTest
         IDataTable ae2 = MockTable.of().col("USUBJID", "S02").col("DOMAIN", "AE").name("AE2")
                 .build();
 
-        java.util.Set<String> available = new java.util.LinkedHashSet<>();
+        Set<String> available = new LinkedHashSet<>();
         available.add("AE1");
         available.add("AE2");
 
@@ -1629,7 +1629,7 @@ class OperationExecutorMoreCoverageTest
 
 
             @Override
-            public java.util.Set<String> availableDatasets()
+            public Set<String> availableDatasets()
             {
                 return available;
             }
@@ -1683,7 +1683,7 @@ class OperationExecutorMoreCoverageTest
     {
         IDataTable ae = MockTable.of().col("USUBJID", "x").name("AE").build();
 
-        java.util.Set<String> available = new java.util.LinkedHashSet<>();
+        Set<String> available = new LinkedHashSet<>();
         available.add("AE");
         available.add("MISSING");
 
@@ -1698,7 +1698,7 @@ class OperationExecutorMoreCoverageTest
 
 
             @Override
-            public java.util.Set<String> availableDatasets()
+            public Set<String> availableDatasets()
             {
                 return available;
             }

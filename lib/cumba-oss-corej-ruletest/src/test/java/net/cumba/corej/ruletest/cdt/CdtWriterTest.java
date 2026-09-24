@@ -2,6 +2,7 @@ package net.cumba.corej.ruletest.cdt;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import net.cumba.datatable.impl.support.OverlayDataTable;
 import org.junit.jupiter.api.Test;
@@ -55,6 +56,6 @@ class CdtWriterTest
     {
         OverlayDataTable table = CdtLoader.parse(SIMPLE, "test");
         String out = CdtWriter.toString(table);
-        assertEquals(true, out.startsWith("dataset ADSL"));
+        assertTrue(out.startsWith("dataset ADSL"));
     }
 }

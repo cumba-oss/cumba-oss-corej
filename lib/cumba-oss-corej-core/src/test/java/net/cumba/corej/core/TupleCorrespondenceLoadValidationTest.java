@@ -65,7 +65,7 @@ class TupleCorrespondenceLoadValidationTest
     }
 
 
-    private static void accepted(String checkExpression, String bindingExpression)
+    private static void assertAccepted(String checkExpression, String bindingExpression)
         throws IOException
     {
         Rule rule = load(checkExpression, bindingExpression);
@@ -81,9 +81,9 @@ class TupleCorrespondenceLoadValidationTest
     @Test
     void legalCrossPairingLoads() throws IOException
     {
-        accepted("tuple(PPNOMDY, PPTPTREF) not in $set",
+        assertAccepted("tuple(PPNOMDY, PPTPTREF) not in $set",
                 "distinct([PCNOMDY, PCTPTREF], domain=\"PC\")");
-        accepted("tuple(USUBJID, AESEQ) not in $set",
+        assertAccepted("tuple(USUBJID, AESEQ) not in $set",
                 "distinct([USUBJID, IDVARVAL], domain=\"SUPPAE\")");
     }
 
@@ -92,7 +92,8 @@ class TupleCorrespondenceLoadValidationTest
     @Test
     void identicalColumnsInOrderLoad() throws IOException
     {
-        accepted("tuple(USUBJID, VISIT) not in $set", "distinct([USUBJID, VISIT], domain=\"SV\")");
+        assertAccepted("tuple(USUBJID, VISIT) not in $set",
+                "distinct([USUBJID, VISIT], domain=\"SV\")");
     }
 
 
@@ -139,7 +140,7 @@ class TupleCorrespondenceLoadValidationTest
     @Test
     void anUnreadableReferenceSetStandsDown() throws IOException
     {
-        accepted("tuple(USUBJID, VISIT) not in $set", "distinct(USUBJID, domain=\"SV\")");
+        assertAccepted("tuple(USUBJID, VISIT) not in $set", "distinct(USUBJID, domain=\"SV\")");
     }
 
 
@@ -150,7 +151,8 @@ class TupleCorrespondenceLoadValidationTest
     @Test
     void anUnreadableProbeStandsDown() throws IOException
     {
-        accepted("tuple(upper(ARMCD), ARM) not in $set", "distinct([ARM, ARMCD], domain=\"TA\")");
+        assertAccepted("tuple(upper(ARMCD), ARM) not in $set",
+                "distinct([ARM, ARMCD], domain=\"TA\")");
     }
 
 

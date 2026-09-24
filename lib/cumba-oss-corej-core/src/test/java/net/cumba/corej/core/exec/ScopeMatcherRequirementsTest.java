@@ -61,7 +61,7 @@ class ScopeMatcherRequirementsTest
         rule.setCore(core);
         VariableRequirement vars = new VariableRequirement();
         vars.setAll(all);
-        vars.setAnyGroups(any == null ? null : java.util.List.of(any));
+        vars.setAnyGroups(any == null ? null : List.of(any));
         vars.setNone(none);
         Requirements req = new Requirements();
         req.setVariables(vars);

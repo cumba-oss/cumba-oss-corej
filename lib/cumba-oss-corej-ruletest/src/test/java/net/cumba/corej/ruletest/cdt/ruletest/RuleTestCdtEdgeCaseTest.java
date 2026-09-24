@@ -511,7 +511,7 @@ class RuleTestCdtEdgeCaseTest
 
             net.cumba.datatable.metadata.ICodeList cl = s.getLibrary().getCodelist("NY")
                     .orElseThrow();
-            assertEquals(java.util.List.of("C49488", "C49487"), cl.getEntries().stream()
+            assertEquals(List.of("C49488", "C49487"), cl.getEntries().stream()
                     .map(net.cumba.datatable.metadata.ICodelistEntry::getConceptId).toList());
         }
 

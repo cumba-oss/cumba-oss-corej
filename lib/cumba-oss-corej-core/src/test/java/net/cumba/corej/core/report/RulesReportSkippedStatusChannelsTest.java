@@ -13,6 +13,7 @@ import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.IMetadataLibrary;
+import net.cumba.datatable.report.SkippedRuleEntry;
 import net.cumba.datatable.report.ValidationReport;
 import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.testkit.TestMetadataFixtures;
@@ -235,7 +236,7 @@ class RulesReportSkippedStatusChannelsTest
                 "precondition: SCOPE-AE ran on AE");
         assertEquals(List.of("VS"),
                 report.getSkippedRules().stream().filter(e -> "SCOPE-AE".equals(e.getCoreId()))
-                        .map(e -> e.getDataset()).toList(),
+                        .map(SkippedRuleEntry::getDataset).toList(),
                 "precondition: SCOPE-AE was skipped on VS only");
 
         assertEquals("SUCCESS", statusOf(report, rules, "SCOPE-AE"),

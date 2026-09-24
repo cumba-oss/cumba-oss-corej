@@ -115,11 +115,10 @@ class OperationFieldRegistrationTest
         {
             return Map.of("FILTERCOL", "FILTERVAL");
         }
-        if (type == net.cumba.corej.core.expr.ast.Expr.class)
+        if (type == Expr.class)
         {
             // Phase 6b: the computed target expression (D3/D14) — any distinctive Expr node.
-            return new net.cumba.corej.core.expr.ast.Expr.Lit(
-                    net.cumba.corej.core.expr.ast.Expr.LitKind.STRING, "SENTINEL_" + f.getName());
+            return new Expr.Lit(Expr.LitKind.STRING, "SENTINEL_" + f.getName());
         }
         return fail("no sentinel defined for field `" + f.getName() + "` of type " + type.getName()
                 + " — extend sentinelFor() when adding a differently-typed Operation field");

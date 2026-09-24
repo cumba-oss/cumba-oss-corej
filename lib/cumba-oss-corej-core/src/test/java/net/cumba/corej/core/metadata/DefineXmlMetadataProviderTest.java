@@ -323,11 +323,11 @@ class DefineXmlMetadataProviderTest
         net.cumba.corej.core.exec.MetadataProvider fb = org.mockito.Mockito
                 .mock(net.cumba.corej.core.exec.MetadataProvider.class);
         org.mockito.Mockito.when(fb.declaredStructureKeyedProducts())
-                .thenReturn(java.util.List.of("standards/adam/adamig-1-3"));
-        assertEquals(java.util.List.of("standards/adam/adamig-1-3"),
+                .thenReturn(List.of("standards/adam/adamig-1-3"));
+        assertEquals(List.of("standards/adam/adamig-1-3"),
                 new DefineXmlMetadataProvider(stub(), fb).declaredStructureKeyedProducts());
         // ...and is empty for a define-only provider (nothing product-backed to cite).
-        assertEquals(java.util.List.of(),
+        assertEquals(List.of(),
                 new DefineXmlMetadataProvider(stub()).declaredStructureKeyedProducts());
     }
 
@@ -341,18 +341,18 @@ class DefineXmlMetadataProviderTest
         // every list would come from the base — with no exception and no log line.
         net.cumba.corej.core.exec.MetadataProvider fb = org.mockito.Mockito
                 .mock(net.cumba.corej.core.exec.MetadataProvider.class);
-        java.util.List<String> subclasses = java.util.List.of("ADVERSE EVENT");
+        List<String> subclasses = List.of("ADVERSE EVENT");
         org.mockito.Mockito
                 .when(fb.getRequiredVariablesForStructure("OCCURRENCE DATA STRUCTURE", subclasses))
-                .thenReturn(java.util.List.of("AEDECOD"));
+                .thenReturn(List.of("AEDECOD"));
         org.mockito.Mockito
                 .when(fb.getExpectedVariablesForStructure("OCCURRENCE DATA STRUCTURE", subclasses))
-                .thenReturn(java.util.List.of("AEDECOD", "AESEQ"));
+                .thenReturn(List.of("AEDECOD", "AESEQ"));
 
         DefineXmlMetadataProvider wrapped = new DefineXmlMetadataProvider(stub(), fb);
-        assertEquals(java.util.List.of("AEDECOD"),
+        assertEquals(List.of("AEDECOD"),
                 wrapped.getRequiredVariablesForStructure("OCCURRENCE DATA STRUCTURE", subclasses));
-        assertEquals(java.util.List.of("AEDECOD", "AESEQ"),
+        assertEquals(List.of("AEDECOD", "AESEQ"),
                 wrapped.getExpectedVariablesForStructure("OCCURRENCE DATA STRUCTURE", subclasses));
 
         // With no fallback there is no CDISC Library behind this provider: null, i.e. "cannot

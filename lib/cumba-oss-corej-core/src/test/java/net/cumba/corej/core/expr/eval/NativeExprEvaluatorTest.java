@@ -261,9 +261,7 @@ class NativeExprEvaluatorTest
                         net.cumba.corej.core.exec.ExprPrefixResolver.resolve(e, "AE", "AE"), c),
                 "the specialised AESTAT comparison matches the populated rows");
 
-        org.junit.jupiter.api.Assertions.assertThrows(
-                net.cumba.corej.core.expr.ExpressionException.class,
-                () -> NativeExprEvaluator.evaluate(e, c),
+        assertThrows(ExpressionException.class, () -> NativeExprEvaluator.evaluate(e, c),
                 "a raw --STAT reaching the evaluator is an error (D77b), never a resolution");
     }
 

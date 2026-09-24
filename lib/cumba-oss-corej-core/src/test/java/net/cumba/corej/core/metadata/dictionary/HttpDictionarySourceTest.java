@@ -1,8 +1,8 @@
 package net.cumba.corej.core.metadata.dictionary;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -400,24 +400,31 @@ class HttpDictionarySourceTest
     void closeRemovesTheDirectoryItCreatedAndNothingElse(@TempDir Path unrelated) throws IOException
     {
         Path bystander = Files.writeString(unrelated.resolve("bystander.txt"), "untouched");
-        HttpDictionarySource source = HttpDictionarySource.neoplasm(baseUri + "/ftp1/");
-        Path dir = source.resolve();
-        assertTrue(Files.isDirectory(dir));
+        try (HttpDictionarySource source = HttpDictionarySource.neoplasm(baseUri + "/ftp1/"))
+        {
+            Path dir = source.resolve();
+            assertTrue(Files.isDirectory(dir));
 
-        source.close();
+            source.close();
 
-        assertFalse(Files.exists(dir), "the temp directory this source created is removed");
-        assertTrue(Files.exists(bystander), "and nothing else is touched");
-        source.close(); // a second close is a no-op, not an error
+            assertFalse(Files.exists(dir), "the temp directory this source created is removed");
+            assertTrue(Files.exists(bystander), "and nothing else is touched");
+            source.close(); // a second close is a no-op, not an error
+        }
     }
 
 
     @Test
     void closeBeforeResolveDeletesNothing() throws IOException
     {
-        HttpDictionarySource source = HttpDictionarySource.medRt(baseUri + "/ftp1/");
-        source.close();
-        assertNotNull(source); // nothing to assert beyond "no exception, no side effect"
+        try (HttpDictionarySource source = HttpDictionarySource.medRt(baseUri + "/ftp1/"))
+        {
+            source.close();
+            // Nothing was fetched, so there is nothing recorded and nothing to delete...
+            assertTrue(source.artefacts().isEmpty(), "close() before resolve() fetches nothing");
+            // ...and a second close stays a no-op, not an error.
+            assertDoesNotThrow(source::close);
+        }
     }
 
     // ------------------------------------------------------------------

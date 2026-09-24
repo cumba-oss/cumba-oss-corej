@@ -57,11 +57,10 @@ class RulePackageLoaderTest
     }
 
 
-    private static net.cumba.corej.core.model.CheckConditionExpression cdiscCg0151Check()
+    private static CheckConditionExpression cdiscCg0151Check()
     {
         Rule rule = cdiscCg0151();
-        return assertInstanceOf(net.cumba.corej.core.model.CheckConditionExpression.class,
-                rule.getCheck());
+        return assertInstanceOf(CheckConditionExpression.class, rule.getCheck());
     }
 
 
@@ -112,7 +111,7 @@ class RulePackageLoaderTest
     @Test
     void testKnownRule_CORE000351_checkLeaf()
     {
-        net.cumba.corej.core.model.CheckConditionExpression check = cdiscCg0151Check();
+        CheckConditionExpression check = cdiscCg0151Check();
         assertEquals("not is_unique_set([USUBJID, DOMAIN])", check.source());
         assertNotNull(check.expr());
     }

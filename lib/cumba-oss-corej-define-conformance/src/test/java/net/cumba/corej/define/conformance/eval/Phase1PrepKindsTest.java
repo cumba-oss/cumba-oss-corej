@@ -8,6 +8,7 @@ import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import net.cumba.cdisc.define.DefineDomIo;
+import net.cumba.corej.define.conformance.report.ConformanceFinding;
 import net.cumba.corej.define.conformance.rule.ConformanceRule;
 import net.cumba.corej.define.conformance.rule.RuleRepository;
 import net.cumba.corej.define.conformance.tree.ElementNodeBuilder;
@@ -87,7 +88,7 @@ class Phase1PrepKindsTest
                 """, "test");
         RuleResult result = new RuleEvaluator().evaluate(rule, context(DOC));
         assertEquals(List.of("Variable IT.ORPHAN is not referenced."),
-                result.findings().stream().map(f -> f.getMessage()).toList());
+                result.findings().stream().map(ConformanceFinding::getMessage).toList());
     }
 
 

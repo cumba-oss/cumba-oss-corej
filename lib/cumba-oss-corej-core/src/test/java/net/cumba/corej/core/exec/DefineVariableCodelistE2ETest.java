@@ -52,8 +52,8 @@ class DefineVariableCodelistE2ETest
         String checkJson = "{\"all\":[{\"expression\": \"not empty(value())\"},"
                 + "{\"expression\": \"var_has_codelist(\\\"DEFINE\\\") == true\"},"
                 + "{\"expression\": \"value() not in var_codelist_coded_values(\\\"DEFINE\\\")\"}]}";
-        String json = "{\"Core\":{\"Id\":\"FDA-SD0037\"}," + ""
-                + "\"Sensitivity\":\"Record\",\"Check\":" + checkJson + ","
+        String json = "{\"Core\":{\"Id\":\"FDA-SD0037\"}," + "\"Sensitivity\":\"Record\",\"Check\":"
+                + checkJson + ","
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_name\",\"variable_value\"]}}";
         RulePackage pkg = RulePackageLoader
                 .loadFromString("{\"rules\":{\"FDA-SD0037\":" + json + "}}");

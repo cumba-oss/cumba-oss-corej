@@ -283,7 +283,7 @@ class CacheConformanceComparatorTest
     {
         Path pkl = Files.createDirectories(root.resolve("pkl"));
         PickleCacheKeysTest.writePickle(pkl, "sdtmct-2024-09-27",
-                new java.util.LinkedHashMap<>(Map.of("package", "sdtmct-2024-09-27", "codelists",
+                new LinkedHashMap<>(Map.of("package", "sdtmct-2024-09-27", "codelists",
                         List.of(Map.of("conceptId", "C1", "submissionValue", "AESEV", "extensible",
                                 false, "terms", List.of())))));
 

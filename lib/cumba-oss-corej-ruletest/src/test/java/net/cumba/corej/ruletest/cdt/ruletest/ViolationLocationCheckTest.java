@@ -257,10 +257,10 @@ class ViolationLocationCheckTest
     {
         Violation v = new Violation(2, Map.of(), "002", "1");
         Expectations e = ViolationLocationCheck.toExpectations(List.of(v), 1, false, true, "AE");
-        assertEquals(Integer.valueOf(1), e.count());
+        assertEquals(1, e.count());
         assertEquals(1, e.ats().size());
         ExpectedViolation ev = e.ats().get(0);
-        assertEquals(Integer.valueOf(3), ev.getRow());
+        assertEquals(3, ev.getRow());
         assertEquals("002", ev.getConstraints().get("USUBJID"));
         assertEquals("1", ev.getConstraints().get("AESEQ"));
     }
@@ -297,7 +297,7 @@ class ViolationLocationCheckTest
         Expectations e = ViolationLocationCheck.toExpectations(List.of(v), 1, false, true, "AE");
         assertEquals(1, e.ats().size());
         ExpectedViolation ev = e.ats().get(0);
-        assertEquals(Integer.valueOf(3), ev.getRow());
+        assertEquals(3, ev.getRow());
         assertEquals("002", ev.getConstraints().get("USUBJID"));
         assertEquals("1", ev.getConstraints().get("AESEQ"));
         assertEquals("6000000000", ev.getConstraints().get("$dataset_size"),
@@ -334,7 +334,7 @@ class ViolationLocationCheckTest
     {
         Expectations e = ViolationLocationCheck.toExpectations(List.of(row(2)), 99, true, true,
                 "AE");
-        assertEquals(Integer.valueOf(99), e.count());
+        assertEquals(99, e.count());
         assertTrue(e.ats().isEmpty());
     }
 
@@ -348,7 +348,7 @@ class ViolationLocationCheckTest
         Violation pinned = new Violation(1, Map.of("variable_name", "X"));
         Expectations e = ViolationLocationCheck.toExpectations(List.of(noPin, pinned), 2, false,
                 false, "AE");
-        assertEquals(Integer.valueOf(2), e.count());
+        assertEquals(2, e.count());
         assertTrue(e.ats().isEmpty());
     }
 
@@ -383,7 +383,7 @@ class ViolationLocationCheckTest
         // or a red here would prove nothing (a missing column misses for the wrong reason).
         assertTrue(primary(s).getMetaData().getColumnIndex("$dataset_size") >= 0,
                 "fixture must HAVE the same-named column");
-        assertEquals(Double.valueOf(6.0e9), primary(s).getDataValue(0, 1).getValue(),
+        assertEquals(6.0e9, primary(s).getDataValue(0, 1).getValue(),
                 "fixture column must hold exactly the pinned value");
 
         // The engine projected nothing: an empty payload.

@@ -434,7 +434,7 @@ class OperationExecutorDateDiffLastInGroupTest
                 new java.util.HashMap<>());
         // S1/M1 resolves; the blank-SPID S2 row produces no value.
         assertEquals(16L, gr.results().get("S1" + NUL + "M1"));
-        assertNull(gr.results().get("S2" + NUL + ""), "a blank --SPID row must not join");
+        assertNull(gr.results().get("S2" + NUL), "a blank --SPID row must not join");
     }
 
 

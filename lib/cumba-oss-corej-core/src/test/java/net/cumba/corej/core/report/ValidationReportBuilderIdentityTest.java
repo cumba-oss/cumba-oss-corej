@@ -1,6 +1,7 @@
 package net.cumba.corej.core.report;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -136,7 +137,7 @@ class ValidationReportBuilderIdentityTest
                 .violations(List.of(v)).build();
         b.add("AE", "ae.xpt", rule, result);
         ValidationReport rep = b.build();
-        assertTrue(rep.getMembers().size() >= 1);
+        assertFalse(rep.getMembers().isEmpty());
         return rep;
     }
 }

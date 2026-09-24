@@ -57,7 +57,7 @@ class StudyValidationResultTest
                 .libraryUri("file:///study").build();
         ReportAssembler.Conformance conformance = ReportAssembler.Conformance.builder()
                 .standard("custom").version("1-0").coreEngineVersion("0.0.0-test").build();
-        net.cumba.corej.core.model.Rule rule = new net.cumba.corej.core.model.Rule();
+        Rule rule = new Rule();
         net.cumba.corej.core.model.RuleCore core = new net.cumba.corej.core.model.RuleCore();
         core.setId("CORE-1");
         rule.setCore(core);

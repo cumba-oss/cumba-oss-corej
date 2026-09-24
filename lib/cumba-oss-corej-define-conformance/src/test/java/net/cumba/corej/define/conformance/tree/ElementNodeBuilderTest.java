@@ -153,6 +153,12 @@ class ElementNodeBuilderTest
     }
 
 
+    // The equals(null) contract is what this test pins; assertNotEquals(null, x) never calls
+    // x.equals(null), so the explicit call is the assertion.
+    @SuppressWarnings(
+    {
+            "PMD.EqualsNull", "PMD.SimplifiableTestAssertion"
+    })
     @Test
     void equalsAndHashCodeAreIdentityBased()
     {

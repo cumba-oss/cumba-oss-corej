@@ -1,6 +1,7 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -54,7 +55,7 @@ class VariableMetadataNativeParityTest
         {
             ov.append(i == 0 ? "" : ",").append('"').append(outputVars[i]).append('"');
         }
-        String json = "{\"rules\":{\"R1\":{" + "\"Core\":{\"Id\":\"R1\"}," + ""
+        String json = "{\"rules\":{\"R1\":{" + "\"Core\":{\"Id\":\"R1\"},"
                 + "\"Sensitivity\":\"Dataset\"," + "\"Check\":" + checkJson + ","
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[" + ov + "]}" + "}}}";
         RulePackage pkg = RulePackageLoader.loadFromString(json);
@@ -173,7 +174,7 @@ class VariableMetadataNativeParityTest
         List<Violation> legacyV = RuleRunner.execute(rule, table, _ -> null, "DM", null, null, null)
                 .getViolations();
         assertEquals(legacyV.size(), nativeV.size(), "same number of per-variable findings");
-        assertTrue(nativeV.size() >= 1, "the long-label AGE column must fire");
+        assertFalse(nativeV.isEmpty(), "the long-label AGE column must fire");
     }
 
 
@@ -302,20 +303,20 @@ class VariableMetadataNativeParityTest
 
         IDataTable adae = adaeFixture();
         DatasetResolver resolver = aeResolver();
-        java.util.Set<String> nativeVars = new java.util.TreeSet<>();
+        Set<String> nativeVars = new TreeSet<>();
         for (Violation v : RuleRunner.execute(rule, adae, resolver, "AE", null, null, null)
                 .getViolations())
         {
             nativeVars.add(v.getValues().get("variable_name"));
         }
-        java.util.Set<String> legacyVars = new java.util.TreeSet<>();
+        Set<String> legacyVars = new TreeSet<>();
         for (Violation v : RuleRunner.execute(rule, adae, resolver, "AE", null, null, null)
                 .getViolations())
         {
             legacyVars.add(v.getValues().get("variable_name"));
         }
         assertEquals(legacyVars, nativeVars, "per-variable verdicts must match the legacy cascade");
-        assertEquals(java.util.Set.of("NEWVAR"), nativeVars,
+        assertEquals(Set.of("NEWVAR"), nativeVars,
                 "only the variable without an SDTM counterpart fires");
 
         RuleExecutionResult ran = RuleRunner.execute(rule, adae, resolver, "AE", null, null, null);
@@ -377,13 +378,13 @@ class VariableMetadataNativeParityTest
                 .colMeta("NEWVAR", "Analysis Flag", 0, null).build();
         DatasetResolver resolver = aeResolver();
 
-        java.util.Set<String> nativeF = new java.util.TreeSet<>();
+        Set<String> nativeF = new TreeSet<>();
         for (Violation v : RuleRunner.execute(rule, adae, resolver, "AE", null, null, null)
                 .getViolations())
         {
             nativeF.add(v.getValues().get("variable_name") + "@" + v.getRow());
         }
-        java.util.Set<String> legacyF = new java.util.TreeSet<>();
+        Set<String> legacyF = new TreeSet<>();
         for (Violation v : RuleRunner.execute(rule, adae, resolver, "AE", null, null, null)
                 .getViolations())
         {

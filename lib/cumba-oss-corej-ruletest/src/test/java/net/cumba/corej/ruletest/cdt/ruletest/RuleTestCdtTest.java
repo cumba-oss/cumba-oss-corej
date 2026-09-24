@@ -835,7 +835,7 @@ class RuleTestCdtTest
     void parse_expectViolationCount_only()
     {
         RuleTestScenario s = parseLoc("#expectViolationCount 3");
-        assertEquals(Integer.valueOf(3), s.getExpectViolationCount());
+        assertEquals(3, s.getExpectViolationCount());
         assertTrue(s.getExpectedViolations().isEmpty());
     }
 
@@ -855,7 +855,7 @@ class RuleTestCdtTest
         RuleTestScenario s = parseLoc("#expectViolationAt row=3");
         assertEquals(1, s.getExpectedViolations().size());
         ExpectedViolation ev = s.getExpectedViolations().get(0);
-        assertEquals(Integer.valueOf(3), ev.getRow());
+        assertEquals(3, ev.getRow());
         assertTrue(ev.getConstraints().isEmpty());
     }
 
@@ -876,7 +876,7 @@ class RuleTestCdtTest
     {
         RuleTestScenario s = parseLoc("#expectViolationAt row=4 AESER=Maybe");
         ExpectedViolation ev = s.getExpectedViolations().get(0);
-        assertEquals(Integer.valueOf(4), ev.getRow());
+        assertEquals(4, ev.getRow());
         assertEquals("Maybe", ev.getConstraints().get("AESER"));
     }
 
@@ -896,7 +896,7 @@ class RuleTestCdtTest
                 #expectViolationCount 2
                 #expectViolationAt row=1
                 #expectViolationAt row=2""");
-        assertEquals(Integer.valueOf(2), s.getExpectViolationCount());
+        assertEquals(2, s.getExpectViolationCount());
         assertEquals(2, s.getExpectedViolations().size());
     }
 

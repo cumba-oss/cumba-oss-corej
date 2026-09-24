@@ -1,6 +1,7 @@
 package net.cumba.corej.core.expr.eval;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
@@ -53,15 +54,15 @@ class IsoTimeComparisonTest
     {
         // The SPEC-CHOICE minute floor: 10:30 vs 10:30:45 is the time analogue of
         // 2012-06-15 vs 2012-06-15T14:00 — equal at the coarser precision, not a finding.
-        assertEquals(true, eq("10:30", "10:30:45"));
-        assertEquals(false, ne("10:30", "10:30:45"));
-        assertEquals(true, ge("10:30", "10:30:45"));
-        assertEquals(true, le("10:30", "10:30:45"));
-        assertEquals(false, lt("10:30", "10:30:45"));
-        assertEquals(true, eq("08:30:00", "08:30:00"));
-        assertEquals(true, ne("08:30:00", "09:30:00"));
-        assertEquals(true, lt("08:30:00", "09:30:00"));
-        assertEquals(false, gt("08:30:00", "09:30:00"));
+        assertTrue(eq("10:30", "10:30:45"));
+        assertFalse(ne("10:30", "10:30:45"));
+        assertTrue(ge("10:30", "10:30:45"));
+        assertTrue(le("10:30", "10:30:45"));
+        assertFalse(lt("10:30", "10:30:45"));
+        assertTrue(eq("08:30:00", "08:30:00"));
+        assertTrue(ne("08:30:00", "09:30:00"));
+        assertTrue(lt("08:30:00", "09:30:00"));
+        assertFalse(gt("08:30:00", "09:30:00"));
     }
 
 
@@ -70,10 +71,10 @@ class IsoTimeComparisonTest
     {
         // The regression the date fast path exists for, mirrored: an equal pair must satisfy
         // >= and <=.
-        assertEquals(true, ge("10:30", "10:30"));
-        assertEquals(true, le("10:30", "10:30"));
-        assertEquals(false, gt("10:30", "10:30"));
-        assertEquals(false, lt("10:30", "10:30"));
+        assertTrue(ge("10:30", "10:30"));
+        assertTrue(le("10:30", "10:30"));
+        assertFalse(gt("10:30", "10:30"));
+        assertFalse(lt("10:30", "10:30"));
     }
 
 
@@ -81,20 +82,20 @@ class IsoTimeComparisonTest
     void hourPartialTakesTheHullRule()
     {
         // T10 spans [10:00:00, 10:59:59] (D22): nothing inside the hour is definite...
-        assertEquals(false, eq("10", "10:30"));
-        assertEquals(false, ne("10", "10:30"));
-        assertEquals(false, lt("10", "10:30"));
-        assertEquals(false, gt("10", "10:30"));
+        assertFalse(eq("10", "10:30"));
+        assertFalse(ne("10", "10:30"));
+        assertFalse(lt("10", "10:30"));
+        assertFalse(gt("10", "10:30"));
         // ...but a disjoint hour is definitely different and definitely ordered.
-        assertEquals(true, ne("10", "11:30"));
-        assertEquals(true, lt("10", "11:30"));
-        assertEquals(true, gt("12", "11:30"));
+        assertTrue(ne("10", "11:30"));
+        assertTrue(lt("10", "11:30"));
+        assertTrue(gt("12", "11:30"));
         // Two equal hour partials are not definitely equal (both hulls span the hour).
-        assertEquals(false, eq("10", "10"));
-        assertEquals(false, ne("10", "10"));
+        assertFalse(eq("10", "10"));
+        assertFalse(ne("10", "10"));
         // ∀ boundary: every candidate of "10" is <= every candidate of "11" — adjacent hours.
-        assertEquals(true, le("10", "11"));
-        assertEquals(false, ge("10", "11"));
+        assertTrue(le("10", "11"));
+        assertFalse(ge("10", "11"));
     }
 
 
@@ -102,9 +103,9 @@ class IsoTimeComparisonTest
     void offsetsNormaliseBeforeComparing()
     {
         // D25 on the time family: 13:30+02:00 is 11:30Z.
-        assertEquals(true, eq("13:30+02:00", "11:30"));
-        assertEquals(true, eq("13:30:00+02:00", "T11:30:00Z"));
-        assertEquals(false, ne("13:30+02:00", "11:30"));
+        assertTrue(eq("13:30+02:00", "11:30"));
+        assertTrue(eq("13:30:00+02:00", "T11:30:00Z"));
+        assertFalse(ne("13:30+02:00", "11:30"));
     }
 
 
@@ -121,14 +122,14 @@ class IsoTimeComparisonTest
                 "", "  ", "UNKNOWN", "25:00", "10:60", "2012-06-15T10:30"
         })
         {
-            assertEquals(false, eq("10:30", junk), junk);
-            assertEquals(true, ne("10:30", junk), junk);
-            assertEquals(false, lt("10:30", junk), junk);
-            assertEquals(false, le("10:30", junk), junk);
-            assertEquals(false, gt("10:30", junk), junk);
-            assertEquals(false, ge("10:30", junk), junk);
-            assertEquals(false, eq(junk, "10:30"), junk);
-            assertEquals(true, ne(junk, "10:30"), junk);
+            assertFalse(eq("10:30", junk), junk);
+            assertTrue(ne("10:30", junk), junk);
+            assertFalse(lt("10:30", junk), junk);
+            assertFalse(le("10:30", junk), junk);
+            assertFalse(gt("10:30", junk), junk);
+            assertFalse(ge("10:30", junk), junk);
+            assertFalse(eq(junk, "10:30"), junk);
+            assertTrue(ne(junk, "10:30"), junk);
         }
     }
 

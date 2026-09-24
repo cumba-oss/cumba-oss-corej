@@ -153,8 +153,7 @@ class ExprCompilerExistsModesTest
                 NativeExprEvaluator.evaluate(net.cumba.corej.core.exec.ExprPrefixResolver
                         .resolve(parse("var_not_exists(--ENDTC)"), "AE", "AE"), c),
                 "the specialised var_not_exists(AEENDTC) fires — the column is missing");
-        org.junit.jupiter.api.Assertions.assertThrows(
-                net.cumba.corej.core.expr.ExpressionException.class,
+        assertThrows(ExpressionException.class,
                 () -> NativeExprEvaluator.evaluate(parse("var_exists(--SEQ)"), c),
                 "an unspecialised --SEQ reaching the evaluator is an error (D77b)");
     }

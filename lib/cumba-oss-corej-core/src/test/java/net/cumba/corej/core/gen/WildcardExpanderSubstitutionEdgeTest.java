@@ -38,17 +38,15 @@ import org.junit.jupiter.api.Test;
 class WildcardExpanderSubstitutionEdgeTest
 {
 
-    private static net.cumba.corej.core.model.CheckConditionExpression leaf(String name,
-            String operator)
+    private static CheckConditionExpression leaf(String name, String operator)
     {
         return expr("empty".equals(operator) ? "empty(" + name + ")" : "not empty(" + name + ")");
     }
 
 
-    private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
+    private static CheckConditionExpression expr(String source)
     {
-        return new net.cumba.corej.core.model.CheckConditionExpression(
-                CheckExpressionParser.parse(source), source);
+        return new CheckConditionExpression(CheckExpressionParser.parse(source), source);
     }
 
 
@@ -74,8 +72,7 @@ class WildcardExpanderSubstitutionEdgeTest
 
     private static String renderedPart(CheckCondition condition)
     {
-        return ExpressionPrinter
-                .print(((net.cumba.corej.core.model.CheckConditionExpression) condition).expr());
+        return ExpressionPrinter.print(((CheckConditionExpression) condition).expr());
     }
 
 
@@ -105,8 +102,7 @@ class WildcardExpanderSubstitutionEdgeTest
     {
         DataTableMeta meta = MockTable.of().name("ADAE").col("TRT01P", "PLACEBO").build()
                 .getMetaData();
-        net.cumba.corej.core.model.CheckConditionExpression comparison = expr(
-                "TRTxxP == \"PLACEBO\"");
+        CheckConditionExpression comparison = expr("TRTxxP == \"PLACEBO\"");
 
         Rule expanded = expandOnce(template("WC-SUB-1", new CheckConditionAll(List.of(comparison))),
                 meta);
@@ -130,8 +126,7 @@ class WildcardExpanderSubstitutionEdgeTest
     {
         DataTableMeta meta = MockTable.of().name("ADAE").col("TRT01P", "A").col("USUBJID", "U")
                 .build().getMetaData();
-        net.cumba.corej.core.model.CheckConditionExpression untouched = leaf("USUBJID",
-                "non_empty");
+        CheckConditionExpression untouched = leaf("USUBJID", "non_empty");
 
         Rule expanded = expandOnce(
                 template("WC-SUB-2",
@@ -158,8 +153,7 @@ class WildcardExpanderSubstitutionEdgeTest
     {
         DataTableMeta meta = MockTable.of().name("ADAE").col("TRT01P", "A").col("USUBJID", "U")
                 .build().getMetaData();
-        net.cumba.corej.core.model.CheckConditionExpression membership = expr(
-                "TRTxxP in [TRTxxP, USUBJID]");
+        CheckConditionExpression membership = expr("TRTxxP in [TRTxxP, USUBJID]");
 
         Rule expanded = expandOnce(template("WC-SUB-3", new CheckConditionAll(List.of(membership))),
                 meta);

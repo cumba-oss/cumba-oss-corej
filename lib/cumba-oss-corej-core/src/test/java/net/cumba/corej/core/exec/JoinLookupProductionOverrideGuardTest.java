@@ -266,7 +266,7 @@ class JoinLookupProductionOverrideGuardTest
     {
         IDataValue numeric = p.lookup().lookupValue(p.primary(), p.row(), ABSENT_COLUMN, true);
         IDataValue character = p.lookup().lookupValue(p.primary(), p.row(), ABSENT_COLUMN, false);
-        return numeric.isMissingOrInvalid() && MissingValue.MIS.equals(numeric.getValue())
+        return numeric.isMissingOrInvalid() && MissingValue.MIS == numeric.getValue()
                 && !character.isMissingOrInvalid() && "".equals(character.getValueAsString());
     }
 

@@ -14,6 +14,7 @@ import net.cumba.corej.core.model.RulePackage;
 import net.cumba.corej.core.run.DatasetExecutionSummary;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.IMetadataLibrary;
+import net.cumba.datatable.report.ValidationFinding;
 import net.cumba.datatable.report.ValidationReport;
 import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.testkit.TestMetadataFixtures;
@@ -101,7 +102,8 @@ class StudyAnchorPassTest
     private static List<String> studyFindings(ValidationReport report)
     {
         return report.getMembers().stream().filter(m -> "STUDY".equals(m.getDomain()))
-                .flatMap(m -> m.getFindings().stream()).map(f -> f.getMessage()).sorted().toList();
+                .flatMap(m -> m.getFindings().stream()).map(ValidationFinding::getMessage).sorted()
+                .toList();
     }
 
 

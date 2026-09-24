@@ -37,7 +37,7 @@ class GroupFindingKeyTest
     private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
     {
         return new net.cumba.corej.core.model.CheckConditionExpression(
-                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+                CheckExpressionParser.parse(source), source);
     }
 
 

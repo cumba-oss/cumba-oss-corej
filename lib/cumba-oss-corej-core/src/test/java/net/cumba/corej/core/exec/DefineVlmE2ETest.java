@@ -54,9 +54,9 @@ class DefineVlmE2ETest
 
     private static Rule rule(String id, String checkJson, String outputVars) throws IOException
     {
-        String json = "{\"Core\":{\"Id\":\"" + id + "\"}," + ""
-                + "\"Sensitivity\":\"Record\",\"Check\":" + checkJson + ","
-                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[" + outputVars + "]}}";
+        String json = "{\"Core\":{\"Id\":\"" + id + "\"}," + "\"Sensitivity\":\"Record\",\"Check\":"
+                + checkJson + "," + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":["
+                + outputVars + "]}}";
         RulePackage pkg = RulePackageLoader
                 .loadFromString("{\"rules\":{\"" + id + "\":" + json + "}}");
         Rule r = pkg.getRules().get(id);

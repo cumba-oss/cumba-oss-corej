@@ -2,7 +2,9 @@ package net.cumba.corej.define.conformance.xsd;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -60,8 +62,8 @@ class XsdValidatorHardeningTest
     @Test
     void theTwoVersionsResolveToDifferentSchemas()
     {
-        assertFalse(XsdValidator.schemaFor(DefineXmlConverter.Version.V2_0)
-                .equals(XsdValidator.schemaFor(DefineXmlConverter.Version.V2_1)));
+        assertNotEquals(XsdValidator.schemaFor(DefineXmlConverter.Version.V2_0),
+                XsdValidator.schemaFor(DefineXmlConverter.Version.V2_1));
         // A 2.0 document is rejected by the 2.1 package, which is what makes them distinguishable.
         assertTrue(XsdValidator.validate(clean20(), DefineXmlConverter.Version.V2_1).stream()
                 .anyMatch(p -> p.kind() == SaxProblem.Kind.ERROR));
@@ -73,9 +75,9 @@ class XsdValidatorHardeningTest
     void schemaForMemoisesPerVersionAndTheResetSeamDefeatsIt()
     {
         var first = XsdValidator.schemaFor(DefineXmlConverter.Version.V2_1);
-        assertTrue(first == XsdValidator.schemaFor(DefineXmlConverter.Version.V2_1));
+        assertSame(first, XsdValidator.schemaFor(DefineXmlConverter.Version.V2_1));
         XsdValidator.resetSchemaCache();
-        assertFalse(first == XsdValidator.schemaFor(DefineXmlConverter.Version.V2_1));
+        assertNotSame(first, XsdValidator.schemaFor(DefineXmlConverter.Version.V2_1));
     }
 
 

@@ -667,7 +667,7 @@ class WildcardExpanderTest
 
         assertEquals(2, expanded.size(),
                 "wildcards.xx.min=2 drops xx=01; xx=02 and xx=03 expansions remain");
-        java.util.Set<String> ids = new java.util.LinkedHashSet<>();
+        Set<String> ids = new java.util.LinkedHashSet<>();
         for (Rule r : expanded)
             ids.add(r.getCore().getId());
         assertTrue(ids.contains("CDISC-AD0078-TRT02P"));
@@ -899,7 +899,7 @@ class WildcardExpanderTest
     {
         CheckConditionAll all = new CheckConditionAll(
                 List.of(expr("var_exists(\"TRTxxP\")"), expr("not empty(*GRy)")));
-        java.util.Set<String> groups = WildcardExpander.collectAvailableCaptureGroups(all);
+        Set<String> groups = WildcardExpander.collectAvailableCaptureGroups(all);
         assertTrue(groups.contains("xx"));
         assertTrue(groups.contains("*"));
         assertTrue(groups.contains("y"));

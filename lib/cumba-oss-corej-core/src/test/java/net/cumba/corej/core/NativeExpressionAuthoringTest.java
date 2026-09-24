@@ -34,7 +34,7 @@ class NativeExpressionAuthoringTest
 
     private static Rule loadSingle(String expression) throws Exception
     {
-        String pkg = "{\"rules\": {\"R1\": {" + "\"Core\": {\"Id\": \"CORE-NATIVE-AUTH\"}," + ""
+        String pkg = "{\"rules\": {\"R1\": {" + "\"Core\": {\"Id\": \"CORE-NATIVE-AUTH\"},"
                 + "\"Sensitivity\": \"Dataset\"," + "\"Check\": {\"expression\": \""
                 + expression.replace("\"", "\\\"") + "\"},"
                 + "\"Outcome\": {\"Message\": \"native authoring test\"}}}}";

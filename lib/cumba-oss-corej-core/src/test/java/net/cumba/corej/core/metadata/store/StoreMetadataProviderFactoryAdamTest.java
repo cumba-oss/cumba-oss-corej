@@ -295,14 +295,15 @@ class StoreMetadataProviderFactoryAdamTest
 
     private static @Nullable StoreMetadataProviderFactory realStore;
 
-    private static @Nullable StoreMetadataProviderFactory realStoreFactory() throws IOException
+    private static synchronized @Nullable StoreMetadataProviderFactory realStoreFactory()
+        throws IOException
     {
         // ⭐ F5 (final cross-plan review): resolved through RealCorpusLocator — the SAME
         // resolution StoreSeederRealDataConformanceTest uses — instead of the environment
         // variable alone, which silently skipped these two tests on every machine that carries
         // the corpus at the well-known path. A named-but-broken corpus now fails loudly in the
         // locator; only a corpus absent everywhere still skips (named message).
-        java.util.Optional<Path> dir = RealCorpusLocator.locate();
+        Optional<Path> dir = RealCorpusLocator.locate();
         if (dir.isEmpty())
         {
             return null;

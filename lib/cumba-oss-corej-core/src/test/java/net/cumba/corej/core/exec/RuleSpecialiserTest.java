@@ -223,7 +223,7 @@ class RuleSpecialiserTest
         RuleExecutionResult result = RuleRunner.execute(rule, ae, inventory(ae, cm), "AE", null,
                 null);
 
-        assertFalse(result.isError(), result.getStatusMessage() + "");
+        assertFalse(result.isError(), String.valueOf(result.getStatusMessage()));
         assertFalse(result.hasViolations(),
                 "a violation here means the --LNKGRP template was specialised away and the fold "
                         + "counted only the current domain (D92a)");
@@ -248,7 +248,7 @@ class RuleSpecialiserTest
         RuleExecutionResult result = RuleRunner.execute(rule, ae, inventory(ae, cm), "AE", null,
                 null);
 
-        assertFalse(result.isError(), result.getStatusMessage() + "");
+        assertFalse(result.isError(), String.valueOf(result.getStatusMessage()));
         assertFalse(result.hasViolations(),
                 "a violation here means the inline --LNKGRP operand was specialised away (D92a)");
     }

@@ -1,6 +1,7 @@
 package net.cumba.corej.core.integration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -254,16 +255,13 @@ class CdiscAd0498And0592ThroughTo0615IntegrationTest
         Rule rule = findByCoreId("CDISC-AD0592");
         assertTrue(ScopeMatcher.matchesDataStructure(rule, "BASIC DATA STRUCTURE"));
         assertTrue(ScopeMatcher.matchesDataStructure(rule, "OCCURRENCE DATA STRUCTURE"));
-        assertEquals(false,
-                ScopeMatcher.matchesDataStructure(rule, "SUBJECT LEVEL ANALYSIS DATASET"));
+        assertFalse(ScopeMatcher.matchesDataStructure(rule, "SUBJECT LEVEL ANALYSIS DATASET"));
 
         Rule rule0498 = findByCoreId("CDISC-AD0498");
-        assertEquals(false,
-                ScopeMatcher.matchesDataStructure(rule0498, "SUBJECT LEVEL ANALYSIS DATASET"));
+        assertFalse(ScopeMatcher.matchesDataStructure(rule0498, "SUBJECT LEVEL ANALYSIS DATASET"));
 
         Rule rule0604 = findByCoreId("CDISC-AD0604");
-        assertEquals(false,
-                ScopeMatcher.matchesDataStructure(rule0604, "SUBJECT LEVEL ANALYSIS DATASET"));
+        assertFalse(ScopeMatcher.matchesDataStructure(rule0604, "SUBJECT LEVEL ANALYSIS DATASET"));
     }
 
 }

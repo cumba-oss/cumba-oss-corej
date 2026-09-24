@@ -1,7 +1,9 @@
 package net.cumba.corej.core.exec;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -224,9 +226,11 @@ class OperandSubstitutorTest
     void validate_scalarAccepts_anyOperator_inEitherPosition()
     {
         ParsedOperand scalar = OperandSubstitutor.parse("AP${APERIOD:%02d}SDT");
-        OperandSubstitutor.validate(scalar, "equal_to", Position.NAME);
-        OperandSubstitutor.validate(scalar, "equal_to", Position.VALUE);
-        OperandSubstitutor.validate(scalar, "var_exists", Position.NAME);
+        assertInstanceOf(Scalar.class, scalar);
+        // Acceptance is not throwing.
+        assertDoesNotThrow(() -> OperandSubstitutor.validate(scalar, "equal_to", Position.NAME));
+        assertDoesNotThrow(() -> OperandSubstitutor.validate(scalar, "equal_to", Position.VALUE));
+        assertDoesNotThrow(() -> OperandSubstitutor.validate(scalar, "var_exists", Position.NAME));
     }
 
 
@@ -234,8 +238,11 @@ class OperandSubstitutorTest
     void validate_wildcardInName_acceptsExistsAndNotExists()
     {
         ParsedOperand wild = OperandSubstitutor.parse("PH${*}SDT");
-        OperandSubstitutor.validate(wild, "var_exists", Position.NAME);
-        OperandSubstitutor.validate(wild, "var_not_exists", Position.NAME);
+        assertInstanceOf(Wildcard.class, wild);
+        // Acceptance is not throwing.
+        assertDoesNotThrow(() -> OperandSubstitutor.validate(wild, "var_exists", Position.NAME));
+        assertDoesNotThrow(
+                () -> OperandSubstitutor.validate(wild, "var_not_exists", Position.NAME));
     }
 
 
@@ -254,9 +261,14 @@ class OperandSubstitutorTest
     void validate_wildcardInValue_acceptsContainedByOperators()
     {
         ParsedOperand wild = OperandSubstitutor.parse("ADSL.PH${*}SDT");
-        OperandSubstitutor.validate(wild, "is_contained_by", Position.VALUE);
-        OperandSubstitutor.validate(wild, "is_not_contained_by", Position.VALUE);
-        OperandSubstitutor.validate(wild, "is_contained_by_case_insensitive", Position.VALUE);
+        assertInstanceOf(Wildcard.class, wild);
+        // Acceptance is not throwing.
+        assertDoesNotThrow(
+                () -> OperandSubstitutor.validate(wild, "is_contained_by", Position.VALUE));
+        assertDoesNotThrow(
+                () -> OperandSubstitutor.validate(wild, "is_not_contained_by", Position.VALUE));
+        assertDoesNotThrow(() -> OperandSubstitutor.validate(wild,
+                "is_contained_by_case_insensitive", Position.VALUE));
     }
 
 

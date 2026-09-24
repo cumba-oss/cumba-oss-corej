@@ -26,7 +26,7 @@ class ValueCheckAgainstLibraryCodelistTest
 
     private static Rule rule() throws Exception
     {
-        String json = "{\"Core\":{\"Id\":\"R1\"}," + ""
+        String json = "{\"Core\":{\"Id\":\"R1\"},"
                 + "\"Sensitivity\":\"Record\",\"Check\":{\"all\":["
                 + "{\"expression\": \"var_codelist_extensible(\\\"LIBRARY\\\") == false\"},"
                 + "{\"expression\": \"not empty(var_codelist_coded_values(\\\"LIBRARY\\\"))\"},"

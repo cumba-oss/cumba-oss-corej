@@ -362,9 +362,9 @@ class OperationExecutorCodelistTermsShapesTest
 
 
         @Override
-        public java.util.Optional<Boolean> isCodelistExtensible(String aCodelistName)
+        public Optional<Boolean> isCodelistExtensible(String aCodelistName)
         {
-            return java.util.Optional.of(false);
+            return Optional.of(false);
         }
 
 

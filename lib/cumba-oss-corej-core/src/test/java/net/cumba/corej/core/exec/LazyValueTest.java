@@ -126,31 +126,34 @@ class LazyValueTest
         });
 
         int threads = 16;
-        ExecutorService exec = Executors.newFixedThreadPool(threads);
-        try
+        // shutdownNow() first, so a stuck worker is interrupted before close() waits for it.
+        try (ExecutorService exec = Executors.newFixedThreadPool(threads))
         {
-            Future<?>[] futures = new Future<?>[threads];
-            for (int i = 0; i < threads; i++)
+            try
             {
-                futures[i] = exec.submit(() ->
+                Future<?>[] futures = new Future<?>[threads];
+                for (int i = 0; i < threads; i++)
                 {
-                    start.await();
-                    return lazy.get();
-                });
+                    futures[i] = exec.submit(() ->
+                    {
+                        start.await();
+                        return lazy.get();
+                    });
+                }
+                start.countDown();
+                for (Future<?> f : futures)
+                {
+                    assertEquals(7, f.get(2, TimeUnit.SECONDS));
+                }
             }
-            start.countDown();
-            for (Future<?> f : futures)
+            catch (java.util.concurrent.TimeoutException e)
             {
-                assertEquals(7, f.get(2, TimeUnit.SECONDS));
+                throw new AssertionError(e);
             }
-        }
-        catch (java.util.concurrent.TimeoutException e)
-        {
-            throw new AssertionError(e);
-        }
-        finally
-        {
-            exec.shutdownNow();
+            finally
+            {
+                exec.shutdownNow();
+            }
         }
         assertEquals(1, calls.get(), "supplier must run exactly once across all threads");
     }

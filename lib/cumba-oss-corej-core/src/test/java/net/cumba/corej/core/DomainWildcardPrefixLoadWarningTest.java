@@ -56,7 +56,7 @@ class DomainWildcardPrefixLoadWarningTest
             List<String> exclude)
     {
         Rule rule = scoped(include, exclude);
-        java.util.List<String> warnings = new java.util.ArrayList<>();
+        List<String> warnings = new java.util.ArrayList<>();
         RulePackageLoader.checkDomainWildcardPrefix(rule, warnings);
         return warnings.isEmpty() ? null : String.join("; ", warnings);
     }
@@ -128,7 +128,7 @@ class DomainWildcardPrefixLoadWarningTest
     {
         assertNull(warn(null, null));
         Rule bare = new Rule();
-        java.util.List<String> warnings = new java.util.ArrayList<>();
+        List<String> warnings = new java.util.ArrayList<>();
         RulePackageLoader.checkDomainWildcardPrefix(bare, warnings);
         assertTrue(warnings.isEmpty());
     }

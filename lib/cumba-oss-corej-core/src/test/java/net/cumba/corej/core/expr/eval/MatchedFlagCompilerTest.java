@@ -1,6 +1,7 @@
 package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -51,7 +52,7 @@ class MatchedFlagCompilerTest
         Expr expr = CheckExpressionParser.parse("DM._matched_");
         BitSet matched = NativeExprEvaluator.evaluate(expr, ctx(Map.of("DM", dmLookup())));
         assertTrue(matched.get(0));
-        assertTrue(!matched.get(1));
+        assertFalse(matched.get(1));
         assertTrue(matched.get(2));
     }
 

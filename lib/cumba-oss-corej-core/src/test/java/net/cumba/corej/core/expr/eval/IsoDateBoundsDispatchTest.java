@@ -920,7 +920,7 @@ class IsoDateBoundsDispatchTest
             }
             assertEquals(new TreeSet<>(THE_DETERMINED_BUT_UNPOSITIONABLE_SET), wasBroken,
                     "Fix #220 broke the invariant for a different set than the one recorded");
-            assertEquals(new TreeSet<String>(), stillBroken,
+            assertEquals(new TreeSet<>(), stillBroken,
                     "Fix #226 must leave isDetermined && !canPosition empty — see "
                             + "IsoDateBoundsTest.Determinacy");
             assertTrue(

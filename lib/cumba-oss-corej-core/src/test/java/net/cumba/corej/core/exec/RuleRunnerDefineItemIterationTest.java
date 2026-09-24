@@ -131,7 +131,7 @@ class RuleRunnerDefineItemIterationTest
                 var("AGE", "Identifier"));
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").build();
 
-        List<net.cumba.corej.core.exec.Violation> v = run(library, define, dm).getViolations();
+        List<Violation> v = run(library, define, dm).getViolations();
         assertTrue(v.isEmpty());
     }
 }

@@ -152,20 +152,20 @@ class DatasetRuleResolverTest
     void testSdtmPrefixExpansion()
     {
         // Create a static rule with -- prefix
-        net.cumba.corej.core.model.Rule staticRule = new net.cumba.corej.core.model.Rule();
-        net.cumba.corej.core.model.RuleCore core = new net.cumba.corej.core.model.RuleCore();
+        Rule staticRule = new Rule();
+        RuleCore core = new RuleCore();
         core.setId("CDISC-CG0176");
         staticRule.setCore(core);
         staticRule.setDescription("--DTC must not be empty");
-        staticRule.setSensitivity(net.cumba.corej.core.model.Sensitivity.RECORD);
+        staticRule.setSensitivity(Sensitivity.RECORD);
         staticRule.setExecutability(net.cumba.corej.core.model.Executability.FULLY_EXECUTABLE);
         staticRule.setCheck(expr("empty(--DTC)"));
-        net.cumba.corej.core.model.Outcome outcome = new net.cumba.corej.core.model.Outcome();
+        Outcome outcome = new Outcome();
         outcome.setMessage("--DTC is empty");
-        outcome.setOutputVariables(java.util.List.of("--DTC"));
+        outcome.setOutputVariables(List.of("--DTC"));
         staticRule.setOutcome(outcome);
 
-        generator.setStaticRules(java.util.List.of(staticRule));
+        generator.setStaticRules(List.of(staticRule));
 
         IDataTable table = MockTable.of().name("AE").col("STUDYID", "S001")
                 .col("AEDTC", "2024-01-01").build();
@@ -202,14 +202,14 @@ class DatasetRuleResolverTest
     void testSdtmPrefixExpansion_skipsNonPrefixRules()
     {
         // A rule without -- should not be expanded
-        net.cumba.corej.core.model.Rule staticRule = new net.cumba.corej.core.model.Rule();
-        net.cumba.corej.core.model.RuleCore core = new net.cumba.corej.core.model.RuleCore();
+        Rule staticRule = new Rule();
+        RuleCore core = new RuleCore();
         core.setId("CDISC-CG0208");
         staticRule.setCore(core);
         staticRule.setDescription("STUDYID must exist");
         staticRule.setCheck(expr("var_exists(\"STUDYID\")"));
 
-        generator.setStaticRules(java.util.List.of(staticRule));
+        generator.setStaticRules(List.of(staticRule));
 
         IDataTable table = MockTable.of().name("DM").col("STUDYID", "S001").build();
 
@@ -225,17 +225,17 @@ class DatasetRuleResolverTest
     // ---- Fix #117/#118: Scope.Data_Structures / Scope.Subclasses gates ----
 
 
-    private static Rule structureScopedRule(java.util.List<String> structureInclude,
-            java.util.List<String> subclassInclude)
+    private static Rule structureScopedRule(List<String> structureInclude,
+            List<String> subclassInclude)
     {
         Rule rule = new Rule();
         rule.setId("44444444-4444-4444-4444-444444444444");
-        net.cumba.corej.core.model.RuleCore core = new net.cumba.corej.core.model.RuleCore();
+        RuleCore core = new RuleCore();
         core.setId("TEST-DSGATE");
         core.setStatus("Published");
         core.setVersion("1");
         rule.setCore(core);
-        rule.setSensitivity(net.cumba.corej.core.model.Sensitivity.RECORD);
+        rule.setSensitivity(Sensitivity.RECORD);
         net.cumba.corej.core.model.Scope scope = new net.cumba.corej.core.model.Scope();
         if (structureInclude != null)
         {
@@ -251,7 +251,7 @@ class DatasetRuleResolverTest
         }
         rule.setScope(scope);
         rule.setCheck(expr("empty(STUDYID)"));
-        net.cumba.corej.core.model.Outcome outcome = new net.cumba.corej.core.model.Outcome();
+        Outcome outcome = new Outcome();
         outcome.setMessage("gate test");
         rule.setOutcome(outcome);
         return rule;
@@ -262,8 +262,7 @@ class DatasetRuleResolverTest
     void dataStructureScope_gatesAtGenerationTime()
     {
         DatasetRuleResolver gen = new DatasetRuleResolver(new AdamMockLibraryProvider());
-        gen.setStaticRules(java.util.List
-                .of(structureScopedRule(java.util.List.of("BASIC DATA STRUCTURE"), null)));
+        gen.setStaticRules(List.of(structureScopedRule(List.of("BASIC DATA STRUCTURE"), null)));
 
         // BDS dataset (PARAMCD/AVAL): the rule is admitted.
         GeneratedRulePackage bds = gen(gen, MockTable.of().name("ADLBC").col("STUDYID", "S1")
@@ -273,8 +272,7 @@ class DatasetRuleResolverTest
 
         // Structure-less dataset: skipped with the structure reason.
         DatasetRuleResolver gen2 = new DatasetRuleResolver(new AdamMockLibraryProvider());
-        gen2.setStaticRules(java.util.List
-                .of(structureScopedRule(java.util.List.of("BASIC DATA STRUCTURE"), null)));
+        gen2.setStaticRules(List.of(structureScopedRule(List.of("BASIC DATA STRUCTURE"), null)));
         GeneratedRulePackage other = gen(gen2,
                 MockTable.of().name("ADXX").col("STUDYID", "S1").build(), "ADXX",
                 "BASIC DATA STRUCTURE");
@@ -290,8 +288,7 @@ class DatasetRuleResolverTest
     void subclassScope_gatesAtGenerationTime()
     {
         DatasetRuleResolver gen = new DatasetRuleResolver(new AdamMockLibraryProvider());
-        gen.setStaticRules(
-                java.util.List.of(structureScopedRule(null, java.util.List.of("TIME-TO-EVENT"))));
+        gen.setStaticRules(List.of(structureScopedRule(null, List.of("TIME-TO-EVENT"))));
 
         // BDS + CNSR: detected TIME-TO-EVENT — admitted.
         GeneratedRulePackage tte = gen(gen,
@@ -303,8 +300,7 @@ class DatasetRuleResolverTest
 
         // Plain BDS: no subclass detected — skipped (Q1 null semantics).
         DatasetRuleResolver gen2 = new DatasetRuleResolver(new AdamMockLibraryProvider());
-        gen2.setStaticRules(
-                java.util.List.of(structureScopedRule(null, java.util.List.of("TIME-TO-EVENT"))));
+        gen2.setStaticRules(List.of(structureScopedRule(null, List.of("TIME-TO-EVENT"))));
         GeneratedRulePackage plain = gen2.generate(MockTable.of().name("ADLBC").col("STUDYID", "S1")
                 .col("PARAMCD", "P").col("AVAL", "1").build());
         List<SkippedSourceRule> skipped = plain.getSkippedSourceRules().stream()
@@ -327,29 +323,29 @@ class DatasetRuleResolverTest
     {
         Rule template = new Rule();
         template.setId("22222222-2222-2222-2222-222222222222");
-        net.cumba.corej.core.model.RuleCore core = new net.cumba.corej.core.model.RuleCore();
+        RuleCore core = new RuleCore();
         core.setId("TEST-WCSCOPE");
         core.setStatus("Published");
         core.setVersion("1");
         template.setCore(core);
         template.setDescription("TRTPGy populated but TRTPGyN missing");
-        template.setSensitivity(net.cumba.corej.core.model.Sensitivity.RECORD);
+        template.setSensitivity(Sensitivity.RECORD);
 
         net.cumba.corej.core.model.Scope scope = new net.cumba.corej.core.model.Scope();
         net.cumba.corej.core.model.ClassScope classes = new net.cumba.corej.core.model.ClassScope();
-        classes.setInclude(java.util.List.of("BASIC DATA STRUCTURE"));
+        classes.setInclude(List.of("BASIC DATA STRUCTURE"));
         scope.setClasses(classes);
         template.setScope(scope);
         net.cumba.corej.core.model.VariableRequirement variables = new net.cumba.corej.core.model.VariableRequirement();
-        variables.setAll(java.util.List.of("TRTPGy", "TRTPGyN"));
+        variables.setAll(List.of("TRTPGy", "TRTPGyN"));
         net.cumba.corej.core.model.Requirements requirements = new net.cumba.corej.core.model.Requirements();
         requirements.setVariables(variables);
         template.setRequirements(requirements);
 
         template.setCheck(new net.cumba.corej.core.model.CheckConditionAll(
-                java.util.List.of(expr("not empty(TRTPGy)"), expr("empty(TRTPGyN)"))));
+                List.of(expr("not empty(TRTPGy)"), expr("empty(TRTPGyN)"))));
 
-        net.cumba.corej.core.model.Outcome outcome = new net.cumba.corej.core.model.Outcome();
+        Outcome outcome = new Outcome();
         outcome.setMessage("TRTPGy populated but TRTPGyN missing");
         template.setOutcome(outcome);
         return template;
@@ -360,7 +356,7 @@ class DatasetRuleResolverTest
     void wildcardScopeVariables_templateExpandsWhenConcreteColumnExists()
     {
         DatasetRuleResolver gen = new DatasetRuleResolver(new AdamMockLibraryProvider());
-        gen.setStaticRules(java.util.List.of(wildcardScopedTemplate()));
+        gen.setStaticRules(List.of(wildcardScopedTemplate()));
 
         GeneratedRulePackage pkg = gen(gen,
                 MockTable.withColumns("STUDYID", "USUBJID", "TRTPG1", "TRTPG1N"), "ADLBC",
@@ -377,7 +373,7 @@ class DatasetRuleResolverTest
         net.cumba.corej.core.model.VariableRequirement expandedVars = expanded.getFirst()
                 .effectiveVariableRequirement();
         assertNotNull(expandedVars);
-        assertEquals(java.util.List.of("TRTPG1", "TRTPG1N"), expandedVars.getAll());
+        assertEquals(List.of("TRTPG1", "TRTPG1N"), expandedVars.getAll());
     }
 
 
@@ -385,7 +381,7 @@ class DatasetRuleResolverTest
     void wildcardScopeVariables_templateSkippedNamingEntryWhenNoColumnMatches()
     {
         DatasetRuleResolver gen = new DatasetRuleResolver(new AdamMockLibraryProvider());
-        gen.setStaticRules(java.util.List.of(wildcardScopedTemplate()));
+        gen.setStaticRules(List.of(wildcardScopedTemplate()));
 
         GeneratedRulePackage pkg = gen(gen, MockTable.withColumns("STUDYID", "USUBJID", "AVAL"),
                 "ADLBC", "BASIC DATA STRUCTURE");
@@ -430,11 +426,11 @@ class DatasetRuleResolverTest
     {
         Rule rule = new Rule();
         rule.setId(coreId);
-        net.cumba.corej.core.model.RuleCore core = new net.cumba.corej.core.model.RuleCore();
+        RuleCore core = new RuleCore();
         core.setId(coreId);
         rule.setCore(core);
         net.cumba.corej.core.model.VariableRequirement vr = new net.cumba.corej.core.model.VariableRequirement();
-        vr.setAll(java.util.List.of(includeEntries));
+        vr.setAll(List.of(includeEntries));
         net.cumba.corej.core.model.Requirements req = new net.cumba.corej.core.model.Requirements();
         req.setVariables(vr);
         rule.setRequirements(req);
@@ -446,7 +442,7 @@ class DatasetRuleResolverTest
     @Test
     void testVariablesPatternScope_generatedWhenAColumnMatches()
     {
-        generator.setStaticRules(java.util.List.of(variableScopedRule("CORE-P4-VARS", "*DY")));
+        generator.setStaticRules(List.of(variableScopedRule("CORE-P4-VARS", "*DY")));
         IDataTable table = MockTable.of().name("AE").col("STUDYID", "S001").col("AESTDY", "5")
                 .build();
 
@@ -461,7 +457,7 @@ class DatasetRuleResolverTest
     @Test
     void testVariablesPatternScope_skipReasonNamesThePattern()
     {
-        generator.setStaticRules(java.util.List.of(variableScopedRule("CORE-P4-VARS", "*DY")));
+        generator.setStaticRules(List.of(variableScopedRule("CORE-P4-VARS", "*DY")));
         IDataTable table = MockTable.of().name("AE").col("STUDYID", "S001")
                 .col("AESTDTC", "2024-01-01").build();
 
@@ -478,7 +474,7 @@ class DatasetRuleResolverTest
     @Test
     void testVariablesDashDashScope_resolvedViaFirstRowDomainColumn()
     {
-        generator.setStaticRules(java.util.List.of(variableScopedRule("CORE-P4-SEQ", "--SEQ")));
+        generator.setStaticRules(List.of(variableScopedRule("CORE-P4-SEQ", "--SEQ")));
         // Split dataset AE1: the prefix comes from the first-row DOMAIN value ("AE"),
         // so the Requirements.Variables entry --SEQ resolves to AESEQ.
         IDataTable table = MockTable.of().name("AE1").col("DOMAIN", "AE").col("AESEQ", "1").build();
@@ -494,7 +490,7 @@ class DatasetRuleResolverTest
     @Test
     void testVariablesDashDashScope_unresolvablePrefixSkips()
     {
-        generator.setStaticRules(java.util.List.of(variableScopedRule("CORE-P4-SEQ", "--SEQ")));
+        generator.setStaticRules(List.of(variableScopedRule("CORE-P4-SEQ", "--SEQ")));
         // No DOMAIN column and a 4-char table name: no 2-char prefix can be derived, so the
         // entry keeps its raw --SEQ form and the lookup misses even though AESEQ is present.
         IDataTable table = MockTable.of().name("ADAE").col("AESEQ", "1").build();
@@ -596,7 +592,7 @@ class DatasetRuleResolverTest
 
     // ---- Mock Library Provider ----
 
-    private static class MockLibraryProvider implements net.cumba.corej.core.exec.MetadataProvider
+    private static class MockLibraryProvider implements MetadataProvider
     {
 
         @Override
@@ -727,12 +723,12 @@ class DatasetRuleResolverTest
     }
 
     /** Builds a minimal static rule scoped by {@code Scope.Datasets}. */
-    private static Rule datasetScopedRule(String coreId, java.util.List<String> include,
-            java.util.@org.jspecify.annotations.Nullable List<String> exclude)
+    private static Rule datasetScopedRule(String coreId, List<String> include,
+            @org.jspecify.annotations.Nullable List<String> exclude)
     {
         Rule rule = new Rule();
         rule.setId(coreId);
-        net.cumba.corej.core.model.RuleCore core = new net.cumba.corej.core.model.RuleCore();
+        RuleCore core = new RuleCore();
         core.setId(coreId);
         rule.setCore(core);
         net.cumba.corej.core.model.Scope scope = new net.cumba.corej.core.model.Scope();
@@ -749,8 +745,7 @@ class DatasetRuleResolverTest
     @Test
     void scopeDatasets_generatedWhenTheMemberNameMatches()
     {
-        generator.setStaticRules(
-                java.util.List.of(datasetScopedRule("CORE-DS-IN", java.util.List.of("AE"), null)));
+        generator.setStaticRules(List.of(datasetScopedRule("CORE-DS-IN", List.of("AE"), null)));
         IDataTable table = MockTable.of().name("AE").col("STUDYID", "S001").build();
 
         GeneratedRulePackage pkg = gen(table, "AE", "EVENTS");
@@ -763,8 +758,7 @@ class DatasetRuleResolverTest
     @Test
     void scopeDatasets_skipReasonNamesTheAxis()
     {
-        generator.setStaticRules(java.util.List
-                .of(datasetScopedRule("CORE-DS-IN", java.util.List.of("ADSL"), null)));
+        generator.setStaticRules(List.of(datasetScopedRule("CORE-DS-IN", List.of("ADSL"), null)));
         IDataTable table = MockTable.of().name("AE").col("STUDYID", "S001").build();
 
         GeneratedRulePackage pkg = gen(table, "AE", "EVENTS");
@@ -787,8 +781,7 @@ class DatasetRuleResolverTest
     @Test
     void scopeDatasets_matchesTheMemberNameNotTheDomainCode()
     {
-        generator.setStaticRules(
-                java.util.List.of(datasetScopedRule("CORE-DS-MEM", java.util.List.of("AE"), null)));
+        generator.setStaticRules(List.of(datasetScopedRule("CORE-DS-MEM", List.of("AE"), null)));
         IDataTable split = MockTable.of().name("AE1").col("DOMAIN", "AE").col("STUDYID", "S001")
                 .build();
 
@@ -801,8 +794,7 @@ class DatasetRuleResolverTest
                 pkg.getSkippedSourceRules().getFirst().reason());
 
         // Control: the same member IS selected when the entry names the file.
-        generator.setStaticRules(java.util.List
-                .of(datasetScopedRule("CORE-DS-MEM", java.util.List.of("AE1"), null)));
+        generator.setStaticRules(List.of(datasetScopedRule("CORE-DS-MEM", List.of("AE1"), null)));
         GeneratedRulePackage byMember = gen(split, "AE", "EVENTS");
         assertTrue(byMember.getRules().stream()
                 .anyMatch(r -> "CORE-DS-MEM".equals(r.getCore().getId())));
@@ -812,8 +804,8 @@ class DatasetRuleResolverTest
     @Test
     void scopeDatasets_excludeSkipsWithTheEntryNamed()
     {
-        generator.setStaticRules(java.util.List
-                .of(datasetScopedRule("CORE-DS-EX", java.util.List.of(), java.util.List.of("AE"))));
+        generator
+                .setStaticRules(List.of(datasetScopedRule("CORE-DS-EX", List.of(), List.of("AE"))));
         IDataTable table = MockTable.of().name("AE").col("STUDYID", "S001").build();
 
         GeneratedRulePackage pkg = gen(table, "AE", "EVENTS");

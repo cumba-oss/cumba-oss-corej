@@ -1,5 +1,6 @@
 package net.cumba.corej.core.exec;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -9,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.OperandKind;
@@ -36,7 +38,7 @@ class LevelInstrumentTest
     private static net.cumba.corej.core.model.CheckConditionExpression expr(String source)
     {
         return new net.cumba.corej.core.model.CheckConditionExpression(
-                net.cumba.corej.core.expr.CheckExpressionParser.parse(source), source);
+                CheckExpressionParser.parse(source), source);
     }
 
 
@@ -366,25 +368,37 @@ class LevelInstrumentTest
     void aThrowingObserverNeverEscapesTheEntryPoints()
     {
         // The instrument contract: a defect in it must never affect an execution.
+        AtomicInteger foldCalls = new AtomicInteger();
+        AtomicInteger granularityCalls = new AtomicInteger();
+        AtomicInteger groupCalls = new AtomicInteger();
         LevelInstrument.setFoldObserver(obs ->
         {
+            foldCalls.incrementAndGet();
             throw new IllegalStateException("fold observer boom");
         });
         LevelInstrument.setGranularityObserver(obs ->
         {
+            granularityCalls.incrementAndGet();
             throw new IllegalStateException("granularity observer boom");
         });
         LevelInstrument.setGroupOutputObserver(obs ->
         {
+            groupCalls.incrementAndGet();
             throw new IllegalStateException("group observer boom");
         });
         Rule rule = new Rule();
         rule.setSensitivity(Sensitivity.RECORD);
         EvaluationContext ctx = ctx(ae(), Map.of());
         Expr expr = CheckExpressionParser.parse("AETERM == \"x\"");
-        LevelInstrument.onFold(rule, ctx, expr, "check", BroadcastFold.Verdict.UNKNOWN);
-        LevelInstrument.onEffectiveGranularity(rule, ctx, expr);
-        LevelInstrument.onGroupOutputs(ctx, java.util.Set.of("AEDECOD"));
+        assertDoesNotThrow(() -> LevelInstrument.onFold(rule, ctx, expr, "check",
+                BroadcastFold.Verdict.UNKNOWN));
+        assertDoesNotThrow(() -> LevelInstrument.onEffectiveGranularity(rule, ctx, expr));
+        assertDoesNotThrow(() -> LevelInstrument.onGroupOutputs(ctx, java.util.Set.of("AEDECOD")));
+        // Non-vacuity: each observer was really reached and really threw, so the containment
+        // above was exercised rather than skipped.
+        assertEquals(1, foldCalls.get(), "the fold observer must have been reached");
+        assertEquals(1, granularityCalls.get(), "the granularity observer must have been reached");
+        assertEquals(1, groupCalls.get(), "the group-output observer must have been reached");
     }
 
 

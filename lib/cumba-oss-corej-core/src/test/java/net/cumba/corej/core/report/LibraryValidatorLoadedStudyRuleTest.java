@@ -15,6 +15,7 @@ import net.cumba.corej.core.model.RulePackage;
 import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.IMetadataLibrary;
+import net.cumba.datatable.report.ValidationFinding;
 import net.cumba.datatable.report.ValidationReport;
 import net.cumba.datatable.report.ValidationReportMember;
 import net.cumba.datatable.testkit.MockTable;
@@ -146,7 +147,7 @@ class LibraryValidatorLoadedStudyRuleTest
 
         List<String> messages = report.getMembers().stream()
                 .filter(m -> "STUDY".equals(m.getDomain())).flatMap(m -> m.getFindings().stream())
-                .map(f -> f.getMessage()).sorted().toList();
+                .map(ValidationFinding::getMessage).sorted().toList();
         assertEquals(List.of("DM missing", "TS missing"), messages,
                 "each study rule collapses to its own single finding");
     }

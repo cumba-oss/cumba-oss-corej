@@ -57,7 +57,7 @@ class DefineVariableDecodeMatchesE2ETest
     {
         String checkJson = "{\"all\":[{\"expression\": \"not empty(value())\"},"
                 + "{\"expression\": \"define_variable_decode_matches(variable_name) == false\"}]}";
-        String json = "{\"Core\":{\"Id\":\"DRAFT-900025\"}," + ""
+        String json = "{\"Core\":{\"Id\":\"DRAFT-900025\"},"
                 + "\"Sensitivity\":\"Record\",\"Check\":" + checkJson + ","
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_name\",\"variable_value\"]}}";
         RulePackage pkg = RulePackageLoader

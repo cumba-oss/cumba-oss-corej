@@ -20,6 +20,8 @@ import org.junit.jupiter.api.Test;
 class ReportAssemblerToleranceTest
 {
 
+    // "0.5.0.0" is a CORE engine version string, not an IP address.
+    @SuppressWarnings("PMD.AvoidUsingHardCodedIP")
     @Test
     @DisplayName("the assembler records the effective tolerance, and the default is 12")
     void assemblerRecordsTolerance()

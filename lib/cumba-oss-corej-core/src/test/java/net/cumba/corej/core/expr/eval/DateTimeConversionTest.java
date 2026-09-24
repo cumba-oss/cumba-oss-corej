@@ -1,6 +1,7 @@
 package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.BitSet;
 import net.cumba.corej.core.exec.EvaluationContext;
@@ -145,7 +146,7 @@ class DateTimeConversionTest
         {
             assertEquals(bits(0), eval("date(ADT) != date(AEDT)", c));
             assertEquals(2, seen.size(), "both numeric operands observed");
-            assertEquals(true, seen.get(0).contains("D55"));
+            assertTrue(seen.get(0).contains("D55"));
             seen.clear();
             eval("time(ADT) == time(AEDT)", c);
             assertEquals(2, seen.size(), "time() observes the same shape");

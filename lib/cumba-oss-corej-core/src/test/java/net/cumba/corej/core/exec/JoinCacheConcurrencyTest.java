@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -65,6 +66,9 @@ class JoinCacheConcurrencyTest
         JoinCache baselineCache = new JoinCache(baselineShared);
         RuleExecutionResult baseline = RuleRunner.execute(rule, primary, resolver, "AD", null,
                 baselineCache);
+        // Guard against a vacuous comparison: the baseline must actually run and fire.
+        assertTrue(baseline.getViolationCount() > 0, "the fixture must fire for SUBJ02: "
+                + baseline.getStatus() + " " + baseline.getStatusMessage());
 
         // Concurrent: many threads, one shared JoinCache, one shared rule.
         JoinCache.SharedIndexCache shared = new JoinCache.SharedIndexCache();
@@ -125,16 +129,30 @@ class JoinCacheConcurrencyTest
         Rule b = buildJoinRule();
         b.getCore().setId("CORE-B");
 
+        RuleExecutionResult baseline = RuleRunner.execute(buildJoinRule(), primary, resolver, "AD",
+                null, new JoinCache(new JoinCache.SharedIndexCache()));
+        assertTrue(baseline.getViolationCount() > 0, "the fixture must fire for SUBJ02");
+
         // Run both in parallel a few times so any cache-rebuild race surfaces.
         for (int i = 0; i < 16; i++)
         {
-            runParallel(2, 1, () ->
+            List<List<RuleExecutionResult>> pairs = runParallel(2, 1,
+                    () -> List.of(RuleRunner.execute(a, primary, resolver, "AD", null, cache),
+                            RuleRunner.execute(b, primary, resolver, "AD", null, cache)));
+            assertEquals(2, pairs.size(), "both workers must report");
+            for (List<RuleExecutionResult> pair : pairs)
             {
-                RuleRunner.execute(a, primary, resolver, "AD", null, cache);
-                RuleRunner.execute(b, primary, resolver, "AD", null, cache);
-                return null;
-            });
+                for (RuleExecutionResult r : pair)
+                {
+                    assertEquals(baseline.getStatus(), r.getStatus(), "status");
+                    assertEquals(baseline.getViolationCount(), r.getViolationCount(),
+                            "violation count");
+                }
+            }
         }
+        // ⚠ No assertion on JoinCache.lookupCache: a key-based Match_Datasets entry is served by
+        // KeyMatchRowExpander's row expansion, which removes it from the lookup build, so this
+        // rule shape never populates that cache (measured 2026-09-24: empty after 16 waves).
     }
 
     // ------------------------------------------------------------------
@@ -152,11 +170,8 @@ class JoinCacheConcurrencyTest
         };
         String[] usubjid = new String[rows];
         String[] trtp = new String[rows];
-        for (int i = 0; i < rows; i++)
-        {
-            usubjid[i] = subjects[i % subjects.length];
-            trtp[i] = "PLACEBO";
-        }
+        Arrays.setAll(usubjid, i -> subjects[i % subjects.length]);
+        Arrays.fill(trtp, "PLACEBO");
         return MockTable.of().col("USUBJID", usubjid).col("TRTP", trtp).name("ADLB").build();
     }
 
@@ -184,6 +199,10 @@ class JoinCacheConcurrencyTest
         outcome.setOutputVariables(List.of("USUBJID", "TRTP", "ADSL.TRT01P"));
         rule.setOutcome(outcome);
         rule.setCheck(new CheckConditionAll(List.of(leaf)));
+        // The engine runs only the native expression form; without it every execution ERRORs
+        // ("the Check has no native expression form") and each comparison below is vacuous.
+        rule.setCheckExpr(
+                net.cumba.corej.core.expr.CheckExpressionParser.parse("TRTP != ADSL.TRT01P"));
 
         MatchDataset md = new MatchDataset();
         md.setName("ADSL");
@@ -197,53 +216,56 @@ class JoinCacheConcurrencyTest
             java.util.concurrent.Callable<T> work)
         throws Exception
     {
-        ExecutorService pool = Executors.newFixedThreadPool(threads);
-        try
+        // shutdownNow() first, so a stuck worker is interrupted before close() waits for it.
+        try (ExecutorService pool = Executors.newFixedThreadPool(threads))
         {
-            CountDownLatch ready = new CountDownLatch(threads);
-            CountDownLatch start = new CountDownLatch(1);
-            CountDownLatch done = new CountDownLatch(threads);
-            List<T> results = java.util.Collections.synchronizedList(new ArrayList<>());
-            AtomicReference<Throwable> failure = new AtomicReference<>();
-            for (int t = 0; t < threads; t++)
+            try
             {
-                pool.submit(() ->
+                CountDownLatch ready = new CountDownLatch(threads);
+                CountDownLatch start = new CountDownLatch(1);
+                CountDownLatch done = new CountDownLatch(threads);
+                List<T> results = java.util.Collections.synchronizedList(new ArrayList<>());
+                AtomicReference<Throwable> failure = new AtomicReference<>();
+                for (int t = 0; t < threads; t++)
                 {
-                    ready.countDown();
-                    try
+                    pool.submit(() ->
                     {
-                        start.await();
-                        for (int i = 0; i < iterationsPerThread; i++)
+                        ready.countDown();
+                        try
                         {
-                            T r = work.call();
-                            if (r != null)
+                            start.await();
+                            for (int i = 0; i < iterationsPerThread; i++)
                             {
-                                results.add(r);
+                                T r = work.call();
+                                if (r != null)
+                                {
+                                    results.add(r);
+                                }
                             }
                         }
-                    }
-                    catch (Throwable e)
-                    {
-                        failure.compareAndSet(null, e);
-                    }
-                    finally
-                    {
-                        done.countDown();
-                    }
-                });
+                        catch (Throwable e)
+                        {
+                            failure.compareAndSet(null, e);
+                        }
+                        finally
+                        {
+                            done.countDown();
+                        }
+                    });
+                }
+                assertTrue(ready.await(10, TimeUnit.SECONDS), "workers did not start");
+                start.countDown();
+                assertTrue(done.await(60, TimeUnit.SECONDS), "workers did not finish");
+                if (failure.get() != null)
+                {
+                    fail("Worker threw: " + failure.get(), failure.get());
+                }
+                return results;
             }
-            assertTrue(ready.await(10, TimeUnit.SECONDS), "workers did not start");
-            start.countDown();
-            assertTrue(done.await(60, TimeUnit.SECONDS), "workers did not finish");
-            if (failure.get() != null)
+            finally
             {
-                fail("Worker threw: " + failure.get(), failure.get());
+                pool.shutdownNow();
             }
-            return results;
-        }
-        finally
-        {
-            pool.shutdownNow();
         }
     }
 

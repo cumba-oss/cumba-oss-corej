@@ -359,7 +359,7 @@ class StageACheckerTest
     {
         StageAReport report = check(ruleJoining("DM", "left", "USUBJID"), "not AE._matched_");
         assertEquals(List.of(StageAErrorKind.MATCHED_FLAG_INVALID), kinds(report));
-        assertTrue(report.armedFindings().size() == 1);
+        assertEquals(1, report.armedFindings().size());
     }
 
 

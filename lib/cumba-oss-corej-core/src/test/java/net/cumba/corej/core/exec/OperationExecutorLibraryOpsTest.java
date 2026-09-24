@@ -690,13 +690,13 @@ class OperationExecutorLibraryOpsTest
     private static final class Provider implements MetadataProvider
     {
 
-        List<String> requiredVariables = List.of();
+        final List<String> requiredVariables = List.of();
 
         List<String> expectedVariables = List.of();
 
         List<String> columnOrder = List.of();
 
-        List<String> modelColumnOrder = List.of();
+        final List<String> modelColumnOrder = List.of();
 
         boolean domainCustom = false;
 
@@ -704,7 +704,7 @@ class OperationExecutorLibraryOpsTest
 
         List<String> codelistAttribute = List.of();
 
-        Map<String, String> variableMetadata = Map.of();
+        final Map<String, String> variableMetadata = Map.of();
 
         List<Map<String, String>> domainVariables = List.of();
 
@@ -714,9 +714,9 @@ class OperationExecutorLibraryOpsTest
 
         Map<String, String> datasetMetadata = Map.of();
 
-        boolean codelistExtensible = false;
+        final boolean codelistExtensible = false;
 
-        Map<String, String> codelistTermMappings = Map.of();
+        final Map<String, String> codelistTermMappings = Map.of();
 
         String standard;
 
@@ -839,9 +839,9 @@ class OperationExecutorLibraryOpsTest
 
 
         @Override
-        public java.util.Optional<Boolean> isCodelistExtensible(String cl)
+        public Optional<Boolean> isCodelistExtensible(String cl)
         {
-            return java.util.Optional.of(codelistExtensible);
+            return Optional.of(codelistExtensible);
         }
 
 

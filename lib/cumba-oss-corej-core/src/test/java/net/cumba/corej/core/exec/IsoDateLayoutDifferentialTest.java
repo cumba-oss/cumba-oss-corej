@@ -348,11 +348,7 @@ class IsoDateLayoutDifferentialTest
         {
             return false;
         }
-        if (len == 16)
-        {
-            return true;
-        }
-        return s.charAt(16) == ':' && digit(s, 17) && digit(s, 18);
+        return len == 16 || (s.charAt(16) == ':' && digit(s, 17) && digit(s, 18));
     }
 
     @Nested

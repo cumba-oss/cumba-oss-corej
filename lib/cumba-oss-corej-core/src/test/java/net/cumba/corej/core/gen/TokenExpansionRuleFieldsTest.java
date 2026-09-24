@@ -303,7 +303,7 @@ class TokenExpansionRuleFieldsTest
         assertNotNull(derived.getDerivationRationale(),
                 "…and the rationale is the receipt that the derivation actually ran");
         assertNotNull(derived.getDerivationRationale().get("Sensitivity"),
-                "" + derived.getDerivationRationale());
+                String.valueOf(derived.getDerivationRationale()));
     }
 
 

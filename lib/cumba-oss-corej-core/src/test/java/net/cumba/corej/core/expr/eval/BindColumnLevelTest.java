@@ -60,7 +60,7 @@ class BindColumnLevelTest
     {
         // A per-row GroupedResult is not a scalar fact; the name then classifies by presence.
         assertEquals(BindColumnLevel.DATASET_ABSENT, BroadcastFold.bindColumnLevel("ZZFOO",
-                ctx(Map.of("ZZFOO", new GroupedResult(java.util.List.of("USUBJID"), Map.of())))));
+                ctx(Map.of("ZZFOO", new GroupedResult(List.of("USUBJID"), Map.of())))));
     }
 
 

@@ -100,7 +100,7 @@ class OperationExecutorRowExtremeTest
         IDataTable ds = MockTable.of().col("TR01EDT", "2020-01-10", null)
                 .col("TR02EDT", "", "2021-05-05").name("TR").build();
         GroupedResult gr = run(rowOp("row_max", "^TR\\d+EDT$"), ds);
-        assertEquals("2020-01-10", gr.results().get("2020-01-10" + NUL + ""));
+        assertEquals("2020-01-10", gr.results().get("2020-01-10" + NUL));
         assertEquals("2021-05-05", gr.results().get("\u0001MIS" + NUL + "2021-05-05"));
     }
 
@@ -139,7 +139,7 @@ class OperationExecutorRowExtremeTest
         GroupedResult gr = run(rowOp("row_max", "^TR\\d+EDT$"), ds);
         assertTrue(gr.results().containsKey("2020-01-10" + NUL + "2020-02-01"));
         // Row 2 (both empty/missing) produced no result entry.
-        assertNull(gr.results().get("" + NUL + ""));
+        assertNull(gr.results().get(NUL));
         assertEquals(1, gr.results().size());
     }
 

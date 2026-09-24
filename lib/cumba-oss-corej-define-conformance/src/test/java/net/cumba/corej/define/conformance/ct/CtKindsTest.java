@@ -12,6 +12,7 @@ import net.cumba.cdisc.define.DefineDomIo;
 import net.cumba.corej.define.conformance.eval.DocumentContext;
 import net.cumba.corej.define.conformance.eval.RuleEvaluator;
 import net.cumba.corej.define.conformance.eval.RuleResult;
+import net.cumba.corej.define.conformance.report.ConformanceFinding;
 import net.cumba.corej.define.conformance.report.ExecutionStatus;
 import net.cumba.corej.define.conformance.rule.RuleRepository;
 import net.cumba.corej.define.conformance.tree.ElementNode;
@@ -93,7 +94,7 @@ class CtKindsTest
 
     private static List<String> messages(RuleResult aResult)
     {
-        return aResult.findings().stream().map(f -> f.getMessage()).toList();
+        return aResult.findings().stream().map(ConformanceFinding::getMessage).toList();
     }
 
     // ------------------------------------------------------------------

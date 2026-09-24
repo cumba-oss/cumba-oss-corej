@@ -1058,7 +1058,7 @@ class ChildMatchPreMergerTest
         @Override
         public long getRowCount()
         {
-            return (long) Integer.MAX_VALUE + 1L;
+            return Integer.MAX_VALUE + 1L;
         }
 
 

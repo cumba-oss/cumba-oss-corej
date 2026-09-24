@@ -688,7 +688,7 @@ class PickleCacheSeederTest
     {
         Path dir = pickleDir(root);
         Files.write(dir.resolve("badct-2024-09-27.pkl"),
-                "not a pickle".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                "not a pickle".getBytes(StandardCharsets.UTF_8));
         Path cache = root.resolve("cache");
 
         SeedReport report = seed(dir, cache);
@@ -779,14 +779,9 @@ class PickleCacheSeederTest
         }
 
         List<Future<SeedReport>> futures;
-        ExecutorService pool = Executors.newFixedThreadPool(runs);
-        try
+        try (ExecutorService pool = Executors.newFixedThreadPool(runs))
         {
             futures = pool.invokeAll(tasks);
-        }
-        finally
-        {
-            pool.shutdown();
         }
 
         for (int i = 0; i < runs; i++)

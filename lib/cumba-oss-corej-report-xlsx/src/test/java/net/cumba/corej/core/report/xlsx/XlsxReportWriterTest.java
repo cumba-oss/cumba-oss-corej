@@ -75,6 +75,8 @@ class XlsxReportWriterTest
     // ------------------------------------------------------------------
 
 
+    // "0.5.0.0" is a CORE engine version string, not an IP address.
+    @SuppressWarnings("PMD.AvoidUsingHardCodedIP")
     @Test
     void conformanceValuesLandInColumnBAtMappedRows() throws Exception
     {
@@ -459,6 +461,8 @@ class XlsxReportWriterTest
     }
 
 
+    // "0.5.0.0" is a CORE engine version string, not an IP address.
+    @SuppressWarnings("PMD.AvoidUsingHardCodedIP")
     private static ReportSections sampleSections()
     {
         List<String> aeNames = List.of("USUBJID", "SEQ", "AESTDY", "DOMAIN");

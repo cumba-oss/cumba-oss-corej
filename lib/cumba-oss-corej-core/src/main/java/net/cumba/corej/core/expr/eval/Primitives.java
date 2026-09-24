@@ -45,6 +45,8 @@ public final class Primitives
     interface RowTest
     {
 
+        // A production row predicate (the functional method of RowTest), not a unit test.
+        @SuppressWarnings("PMD.UnitTestShouldUseTestAnnotation")
         boolean test(IDataValue dv, int row);
     }
 

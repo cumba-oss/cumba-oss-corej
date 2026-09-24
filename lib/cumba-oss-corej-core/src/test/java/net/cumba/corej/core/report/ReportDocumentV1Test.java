@@ -41,6 +41,8 @@ class ReportDocumentV1Test
 
     private static final String CORE_003_NO_ISSUES = "CORE-003";
 
+    // "0.5.0.0" is a CORE engine version string, not an IP address.
+    @SuppressWarnings("PMD.AvoidUsingHardCodedIP")
     @Test
     void emptyReport_emitsAllSectionsAndPlaceholders()
     {
@@ -82,6 +84,8 @@ class ReportDocumentV1Test
      * (AE with two findings, DM with one) and three rules (CORE-001 / CORE-002 both with findings,
      * CORE-003 with none).
      */
+    // "0.5.0.0" is a CORE engine version string, not an IP address.
+    @SuppressWarnings("PMD.AvoidUsingHardCodedIP")
     private static Map<String, Object> populatedReportExport()
     {
         ValidationReport report = sampleReport();

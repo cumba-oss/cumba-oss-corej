@@ -206,7 +206,7 @@ class CdiscLibraryMetadataLibrarySdtmTest
         CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
                 ct);
 
-        assertEquals(java.util.List.of("sdtmct-2024-03-29"),
+        assertEquals(List.of("sdtmct-2024-03-29"),
                 lib.getMetaValue(MetadataKeys.CT_VERSION).orElse(null));
         assertEquals(List.of("sdtmct-2024-03-29"),
                 lib.getMetaValue(MetadataKeys.PUBLISHED_CT_PACKAGES).orElse(null));
@@ -242,7 +242,7 @@ class CdiscLibraryMetadataLibrarySdtmTest
         CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
                 sdtmCtFixture(), published);
 
-        assertEquals(java.util.List.of("sdtmct-2024-03-29"),
+        assertEquals(List.of("sdtmct-2024-03-29"),
                 lib.getMetaValue(MetadataKeys.CT_VERSION).orElse(null));
         assertEquals(published, lib.getMetaValue(MetadataKeys.PUBLISHED_CT_PACKAGES).orElse(null));
     }
@@ -258,7 +258,7 @@ class CdiscLibraryMetadataLibrarySdtmTest
         assertEquals("3-4", lib.getVersion());
         assertEquals("sdtmig", lib.getMetaValue(MetadataKeys.STANDARD_NAME).orElse(null));
         assertEquals("3-4", lib.getMetaValue(MetadataKeys.STANDARD_VERSION).orElse(null));
-        assertEquals(java.util.List.of("sdtmct-2024-03-29"),
+        assertEquals(List.of("sdtmct-2024-03-29"),
                 lib.getMetaValue(MetadataKeys.CT_VERSION).orElse(null));
     }
 

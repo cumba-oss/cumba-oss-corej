@@ -126,7 +126,7 @@ class VlmResolverTest
         VlmResolver.VlmMatch m = r.resolve("LB", "LBSTRESC", row(Map.of("LBTESTCD", "GLUC")));
         assertNotNull(m, "LBTESTCD=GLUC must match the GLUC value-level ItemDef");
         assertEquals("float", m.dataType());
-        assertEquals(Integer.valueOf(3), m.length());
+        assertEquals(3, m.length());
         assertEquals("Yes", m.mandatory());
         assertEquals(List.of("mg/dL", "mmol/L"), m.codedValues());
         assertEquals("C67", m.codelistCCode());
@@ -143,7 +143,7 @@ class VlmResolverTest
                 row(Map.of("LBTESTCD", "SODIUM", "LBSPEC", "URINE")));
         assertNotNull(hit);
         assertEquals("text", hit.dataType());
-        assertEquals(Integer.valueOf(8), hit.length());
+        assertEquals(8, hit.length());
         // First predicate holds but the second (LBSPEC=URINE) does not -> NO match (parity guard:
         // Python previously ignored the second RangeCheck; both engines now AND all).
         assertNull(

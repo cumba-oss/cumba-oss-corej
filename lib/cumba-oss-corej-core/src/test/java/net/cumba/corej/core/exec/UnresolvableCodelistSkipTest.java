@@ -37,7 +37,7 @@ class UnresolvableCodelistSkipTest
     private static Rule rule() throws Exception
     {
         // The CDISC-SEND-0296 shape: value-check against the non-extensible library codelist.
-        String json = "{\"Core\":{\"Id\":\"R1\"}," + ""
+        String json = "{\"Core\":{\"Id\":\"R1\"},"
                 + "\"Sensitivity\":\"Record\",\"Check\":{\"all\":["
                 + "{\"expression\": \"var_codelist_extensible(\\\"LIBRARY\\\") == false\"},"
                 + "{\"expression\": \"not empty(var_codelist_coded_values(\\\"LIBRARY\\\"))\"},"

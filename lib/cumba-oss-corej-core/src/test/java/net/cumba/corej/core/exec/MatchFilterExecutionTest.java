@@ -129,7 +129,7 @@ class MatchFilterExecutionTest
         IDataTable primary = dm();
         RuleExecutionResult result = RuleRunner.execute(r, primary, inventory(study(primary, ae())),
                 "DM", null, null, null);
-        assertEquals(java.util.List.of("P1", "P3"), firedSubjects(result, primary));
+        assertEquals(List.of("P1", "P3"), firedSubjects(result, primary));
     }
 
 
