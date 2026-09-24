@@ -40,8 +40,7 @@ class SaxErrorClassifierTest
             "cvc-attribute.3: The value 'yesterday' of attribute 'CreationDateTime' on element 'ODM' is not valid with respect to its type, 'datetime'.|PMDA-OD0017|WARNING",
             "cvc-datatype-valid.1.2.1: 'yesterday' is not a valid value for 'dateTime'.|PMDA-OD0017|WARNING",
             "cvc-attribute.3: The value 'Nonsense' of attribute 'FileType' on element 'ODM' is not valid with respect to its type, 'FileType'.|PMDA-DD0001|REJECT",
-            // Localised JDK Xerces output, captured from xsd-invalid-{integer,datetime}-21.xml with
-            // the
+            // Localised JDK Xerces output, captured from the two xsd-invalid-* fixtures with the
             // default locale set: the type is the LAST quoted token, in '...' or "..." (it quotes
             // cvc-datatype-valid in "..."), and it/fr use apostrophes inside words (dell'attributo,
             // n'est), so only an end-anchored match finds it. English prose appears in none of
@@ -63,6 +62,12 @@ class SaxErrorClassifierTest
             "cvc-attribute.3 : La valeur 'yesterday' de l'attribut 'CreationDateTime' de l'élément 'ODM' n'est pas valide par rapport à son type, 'datetime'.|PMDA-OD0017|WARNING",
             "cvc-datatype-valid.1.2.1 : 'yesterday' n'est pas une valeur valide pour 'dateTime'.|PMDA-OD0017|WARNING",
             // A localised enum violation: the last quoted token is the type 'FileType' ⇒ catch-all.
+            // A UNION type (cvc-datatype-valid.1.2.3, e.g. ODM's durationDatetime) is not a
+            // datetime
+            // violation: it keeps the catch-all it always had in English, in every locale.
+            "cvc-datatype-valid.1.2.3: 'xx' is not a valid value of union type 'durationDatetime'.|PMDA-DD0001|REJECT",
+            // Its VALUE is 'datetime' here: the type, not any quoted token, decides the rule.
+            "cvc-attribute.3: Wert 'datetime' des Attributs 'FileType' bei Element 'ODM' hat keinen gültigen Typ 'FileType'.|PMDA-DD0001|REJECT",
             "cvc-attribute.3: Wert 'Nonsense' des Attributs 'FileType' bei Element 'ODM' hat keinen gültigen Typ 'FileType'.|PMDA-DD0001|REJECT",
             "cvc-enumeration-valid: Value 'Nonsense' is not facet-valid with respect to enumeration '[Snapshot, Transactional]'.|PMDA-DD0001|REJECT",
             "cvc-attribute.3: mangled message without the quoted type|PMDA-DD0001|REJECT",

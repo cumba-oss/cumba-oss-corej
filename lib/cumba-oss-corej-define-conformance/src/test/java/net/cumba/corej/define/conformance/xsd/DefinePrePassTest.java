@@ -193,9 +193,10 @@ class DefinePrePassTest
         assertEquals(Category.XSD, finding.getCategory());
         assertEquals(Severity.REJECT, finding.getSeverity());
         assertEquals(10, finding.getLine());
-        // A well-formedness error carries no cvc key; the unclosed element's name is the stable
-        // part.
-        assertDetail(finding, "Study");
+        // A well-formedness error carries no cvc key. "</Study>" (the expected end tag) appears
+        // verbatim in this message in all 11 JDK locales; a bare "Study" would also match
+        // StudyName, StudyDescription, ...
+        assertDetail(finding, "</Study>");
     }
 
 

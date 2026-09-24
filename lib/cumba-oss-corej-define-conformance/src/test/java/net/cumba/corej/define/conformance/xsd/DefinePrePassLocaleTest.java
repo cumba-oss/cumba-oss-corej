@@ -31,7 +31,11 @@ class DefinePrePassLocaleTest
 
     private static ConformanceFinding soleFinding(String aFixture, Locale aLocale)
     {
+        // All three: setDefault(Locale) also resets FORMAT and DISPLAY, which a Windows JVM with
+        // regional settings different from its UI language holds separately.
         Locale saved = Locale.getDefault();
+        Locale savedFormat = Locale.getDefault(Locale.Category.FORMAT);
+        Locale savedDisplay = Locale.getDefault(Locale.Category.DISPLAY);
         try (InputStream in = DefinePrePassLocaleTest.class
                 .getResourceAsStream("/fixtures/" + aFixture))
         {
@@ -48,6 +52,8 @@ class DefinePrePassLocaleTest
         finally
         {
             Locale.setDefault(saved);
+            Locale.setDefault(Locale.Category.FORMAT, savedFormat);
+            Locale.setDefault(Locale.Category.DISPLAY, savedDisplay);
         }
     }
 
@@ -55,7 +61,7 @@ class DefinePrePassLocaleTest
     @ParameterizedTest
     @ValueSource(strings =
     {
-            "en", "de", "it", "ja", "fr"
+            "en", "de", "fr", "es", "it", "ja", "ko", "pt-BR", "sv", "zh-CN", "zh-TW"
     })
     void anInvalidIntegerIsOd0013InEveryLocale(String aLanguageTag)
     {
@@ -70,7 +76,7 @@ class DefinePrePassLocaleTest
     @ParameterizedTest
     @ValueSource(strings =
     {
-            "en", "de", "it", "ja", "fr"
+            "en", "de", "fr", "es", "it", "ja", "ko", "pt-BR", "sv", "zh-CN", "zh-TW"
     })
     void anInvalidDatetimeIsOd0017InEveryLocale(String aLanguageTag)
     {

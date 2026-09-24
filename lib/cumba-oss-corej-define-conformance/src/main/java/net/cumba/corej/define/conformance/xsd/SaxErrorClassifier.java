@@ -40,7 +40,7 @@ import org.jspecify.annotations.Nullable;
  * {@code cvc-complex-type.2.4.a} message — the sheet's DD0007 message is that Xerces text verbatim,
  * so DD0007 is the source-true id for both. (DD0008's ordering semantics are covered by the
  * CDISC-sheet global ordering rule, its sheet twin.)</li>
- * <li>{@code cvc-attribute.3}/{@code cvc-datatype-valid*} whose reported simple type contains
+ * <li>{@code cvc-attribute.3}/{@code cvc-datatype-valid.1.2.1} whose reported simple type contains
  * {@code integer} → {@code PMDA-OD0013}, contains {@code datetime} → {@code PMDA-OD0017} (both
  * Warning). Xerces reports one bad value twice (datatype + attribute view) at the same location;
  * the classifier deduplicates on (rule, line, column), preferring the {@code cvc-attribute.3}
@@ -158,7 +158,10 @@ public final class SaxErrorClassifier
     /** The simple type Xerces quoted in a datatype-violation message, or {@code null}. */
     private static @Nullable String reportedSimpleType(String aMessage)
     {
-        if (!aMessage.startsWith("cvc-attribute.3") && !aMessage.startsWith("cvc-datatype-valid"))
+        // Exactly the two keys the English-prose regexes used to reach: cvc-datatype-valid.1.2.2 /
+        // .1.2.3 (list / union types, e.g. ODM's durationDatetime) keep landing on the catch-all.
+        if (!aMessage.startsWith("cvc-attribute.3")
+                && !aMessage.startsWith("cvc-datatype-valid.1.2.1"))
         {
             return null;
         }

@@ -3,6 +3,7 @@ package net.cumba.corej.core.report.xlsx;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,17 +12,20 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
-import java.util.zip.ZipOutputStream;
 import net.cumba.corej.core.report.ReportSections;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * <b>R2 — byte-identity across the module split, for the workbook.</b>
@@ -82,20 +86,35 @@ class XlsxReportGoldenTest
 
 
     /**
-     * The Windows form of the workbook compares equal. Every XML part of the golden is rewritten
-     * the way a Windows JVM writes it — {@code \r\n} after the declaration — and the whole set must
-     * still match. ⚠ It rewrites the golden rather than rendering under a Windows separator because
-     * the separator cannot be switched reliably in-process: the XML serialisation chain caches it
-     * per JVM once anything has saved a part (measured — a render after another test's render still
-     * wrote {@code \n}). A real Windows render is exercised only by a build on Windows.
+     * A render on a Windows line separator matches the golden. The workbook is rendered in a FORKED
+     * JVM started with {@code -Dline.separator=\r\n} ({@link XlsxWindowsSeparatorRender}): the XML
+     * serialisation caches the separator per JVM once anything has saved a part, so switching it
+     * in-process after another test's render is unreliable (measured). This is the real writer's
+     * Windows output, not a rewrite of the golden, so a POI/XmlBeans change that moved a
+     * {@code \r\n} anywhere else would turn it red here, on any host.
      */
     @Test
-    void theWindowsFormOfEveryPartIsContentIdentical() throws Exception
+    void aRenderOnAWindowsLineSeparatorIsContentIdenticalToTheGolden(@TempDir Path aTmp)
+        throws Exception
     {
-        byte[] windows = withCrLfAfterEveryDeclaration(resource("/report/golden.xlsx"));
-        assertEquals(true, containsCrLfAfterDeclaration(windows),
-                "precondition: the rewritten parts must carry \\r\\n after the XML declaration");
-        assertContentIdenticalToGolden(windows);
+        Path out = aTmp.resolve("windows.xlsx");
+        Process fork = new ProcessBuilder(
+                Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-Dline.separator=\r\n", "-cp", System.getProperty("java.class.path"),
+                XlsxWindowsSeparatorRender.class.getName(), out.toString())
+                        .redirectErrorStream(true).start();
+        String output = new String(fork.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertTrue(fork.waitFor(120, TimeUnit.SECONDS), "the forked render did not finish");
+        assertEquals(0, fork.exitValue(), () -> "the forked render failed: " + output);
+
+        byte[] rendered = Files.readAllBytes(out);
+        // Anti-vacuity: the Windows separator must really have reached the output — measured, 11 of
+        // the 17 parts carry an XML declaration.
+        int crLfParts = crLfDeclarationCount(rendered);
+        assertTrue(crLfParts >= 11,
+                () -> "precondition: expected >= 11 parts with \\r\\n after the declaration, saw "
+                        + crLfParts);
+        assertContentIdenticalToGolden(rendered);
     }
 
 
@@ -131,7 +150,7 @@ class XlsxReportGoldenTest
     }
 
 
-    private static byte[] render() throws IOException
+    static byte[] render() throws IOException
     {
         Map<String, Object> document;
         try (InputStream in = resourceStream("/report/report-sections-fixture.json"))
@@ -168,51 +187,22 @@ class XlsxReportGoldenTest
     }
 
 
-    /**
-     * Rebuilds {@code aZip} with {@code \r\n} after every leading XML declaration (the Windows
-     * form).
-     */
-    private static byte[] withCrLfAfterEveryDeclaration(byte[] aZip) throws IOException
+    private static int crLfDeclarationCount(byte[] aZip) throws IOException
     {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(aZip));
-                ZipOutputStream zip = new ZipOutputStream(out))
-        {
-            ZipEntry entry;
-            while ((entry = in.getNextEntry()) != null)
-            {
-                byte[] part = in.readAllBytes();
-                String text = new String(part, StandardCharsets.UTF_8);
-                if (text.startsWith("<?xml") && text.contains("?>\n"))
-                {
-                    int end = text.indexOf("?>\n") + 2;
-                    part = (text.substring(0, end) + "\r" + text.substring(end))
-                            .getBytes(StandardCharsets.UTF_8);
-                }
-                zip.putNextEntry(new ZipEntry(entry.getName()));
-                zip.write(part);
-                zip.closeEntry();
-            }
-        }
-        return out.toByteArray();
-    }
-
-
-    private static boolean containsCrLfAfterDeclaration(byte[] aZip) throws IOException
-    {
+        int count = 0;
         try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(aZip)))
         {
             ZipEntry entry;
             while ((entry = in.getNextEntry()) != null)
             {
                 String head = new String(in.readNBytes(80), StandardCharsets.UTF_8);
-                if (head.startsWith("<?xml") && head.contains("?>\r\n"))
+                if (!entry.isDirectory() && head.startsWith("<?xml") && head.contains("?>\r\n"))
                 {
-                    return true;
+                    count++;
                 }
             }
         }
-        return false;
+        return count;
     }
 
 
