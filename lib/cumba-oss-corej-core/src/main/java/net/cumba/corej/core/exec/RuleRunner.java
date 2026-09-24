@@ -897,8 +897,11 @@ public final class RuleRunner
         // expanded row per (primary, matched child) pair, honoring join_type (default left); each
         // expanded row binds its matching child, served by the KeyMatchExpandedLookup added below —
         // so a dot-qualified AE.AESDTH predicate sees the matching child, not a first-wins guess.
+        // ⭐ PLAN-keymatch-shared-join-index: the child indexes come from the run's shared cache, so
+        // DM's USUBJID index is built once per DM table rather than once per rule and dataset.
         KeyMatchRowExpander.KeyMatchExpansion keyExpansion = KeyMatchRowExpander.expand(evalTable,
-                joinMatchDatasets, resolver, ruleId);
+                joinMatchDatasets, resolver, ruleId,
+                joinCache != null ? joinCache.getSharedIndexCache() : null);
         if (keyExpansion != null)
         {
             if (relrecExpansion != null)

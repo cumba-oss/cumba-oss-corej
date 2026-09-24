@@ -30,14 +30,22 @@ import org.junit.jupiter.api.Timeout;
  * against one shared {@link JoinCache} and one shared primary table.
  *
  * <p>
- * ⚠⚠ <b>Two join paths, and only one of them touches the cache.</b> A plain keyed
+ * ⚠⚠ <b>Two join paths, and they use different parts of the cache.</b> A plain keyed
  * {@code Match_Datasets} entry ({@link #buildJoinRule}: {@code {ADSL, [USUBJID]}}) is served by
  * {@link KeyMatchRowExpander}'s row expansion — {@code KeyMatchRowExpander.expandableEntries}
  * accepts it ({@code JoinKeyTypes.governedByKeyTypeCheck}) and {@code RuleRunner} removes it from
- * the key-join build — so it <b>never reaches</b> {@code JoinCache.getOrBuildLookup},
- * {@code SharedIndexCache} or {@code DatasetLookup.ensureJoinMap}. The {@code *_keyMatchExpansion*}
- * cases therefore gate only the <b>determinism of the key-match expansion path</b> under
- * concurrency (every parallel result equals the sequential baseline).
+ * the key-join build — so it never reaches {@code JoinCache.getOrBuildLookup} or
+ * {@code DatasetLookup.ensureJoinMap}. ⭐ Since {@code PLAN-keymatch-shared-join-index} it DOES
+ * reach {@code SharedIndexCache}: its child index is built once per (table, key shape) through
+ * {@code getOrBuildKeyMatchIndex}. The {@code *_keyMatchExpansion*} cases therefore gate the
+ * determinism of the expansion path under concurrency (every parallel result equals the sequential
+ * baseline), and assert {@code keyMatchIndexBuildCount() == 1} as a <b>best-effort</b> duplicate
+ * check. ⚠ Best-effort only: the raced index here is a 4-row ADSL, built in microseconds, while
+ * each worker spends milliseconds in {@code RuleRunner.execute} setup before reaching the cache, so
+ * a get-then-put regression would still count one build on most runs. The deterministic check is
+ * {@code KeyMatchSharedIndexTest.aColdStartRaceBuildsOnceAndHandsEveryThreadTheSameIndex}, which
+ * parks the first build until every thread has arrived (negative-controlled: get-then-put counts
+ * 8).
  * </p>
  *
  * <p>
@@ -51,7 +59,8 @@ import org.junit.jupiter.api.Timeout;
  * observed only after each wave, so these cases catch a lookup that is replaced or evicted between
  * waves. They would NOT catch a duplicate build during the cold-start race itself (a get-then-put
  * regression whose last put wins still leaves one stable instance); catching that needs a build
- * counter.
+ * counter for {@code DatasetLookup} / {@code SharedIndexCache.getOrBuild}, which still does not
+ * exist — {@code keyMatchIndexBuildCount()} counts key-match indexes only.
  * </p>
  */
 // Test awaits pool/executor termination explicitly; the per-task Future is intentionally ignored.
@@ -76,8 +85,8 @@ class JoinCacheConcurrencyTest
     void parallelRuleExecution_keyMatchExpansion_matchesSequentialBaseline() throws Exception
     {
         // Primary: BDS-style table where TRTP is checked against ADSL.TRT01P (joined by USUBJID).
-        // ⚠ This entry is served by KeyMatchRowExpander, not the JoinCache (see the class
-        // javadoc): this case gates the determinism of the expansion path only.
+        // This entry is served by KeyMatchRowExpander, whose child index comes from the shared
+        // key-match cache (see the class javadoc); this case gates the determinism of that path.
         IDataTable primary = makePrimary(1024);
         IDataTable adsl = makeAdsl();
 
@@ -111,9 +120,9 @@ class JoinCacheConcurrencyTest
     @RepeatedTest(2)
     void parallelRuleExecution_keyMatchExpansion_concurrentColdStart() throws Exception
     {
-        // N threads start simultaneously on the key-match expansion path. ⚠ That path does not
-        // touch the JoinCache (see the class javadoc); the cold-start race on
-        // JoinCache.getOrBuildLookup / ensureJoinMap is gated by the *_cachedKeyJoin* cases.
+        // N threads start simultaneously on the key-match expansion path, all cold on the shared
+        // key-match index. The cold-start race on JoinCache.getOrBuildLookup / ensureJoinMap is
+        // gated by the *_cachedKeyJoin* cases.
         IDataTable primary = makePrimary(2048);
         IDataTable adsl = makeAdsl();
         DatasetResolver resolver = name -> "ADSL".equals(name) ? adsl : null;
@@ -131,6 +140,10 @@ class JoinCacheConcurrencyTest
         {
             assertResultsEqual(reference, r);
         }
+        // The counter, not identity observed after the race — but best-effort here (see the class
+        // javadoc): the deterministic race check is in KeyMatchSharedIndexTest.
+        assertEquals(1, shared.keyMatchIndexBuildCount(),
+                "the shared ADSL index must be built once, however many threads race for it");
     }
 
 
@@ -138,9 +151,9 @@ class JoinCacheConcurrencyTest
     void keyMatchExpansion_twoRulesAcrossThreads_matchBaseline() throws Exception
     {
         // Two rules with the same Match_Datasets ({ADSL, USUBJID}) running in parallel must each
-        // report the sequential baseline. The shared-instance claim is asserted by
-        // cachedKeyJoin_twoRulesAcrossThreads_shareOneDatasetLookup, whose entry reaches the
-        // JoinCache; this one does not (see the comment at the end).
+        // report the sequential baseline, and share one key-match index (asserted at the end).
+        // The DatasetLookup-sharing claim is asserted by
+        // cachedKeyJoin_twoRulesAcrossThreads_shareOneDatasetLookup, whose entry takes that path.
         IDataTable primary = makePrimary(64);
         IDataTable adsl = makeAdsl();
         DatasetResolver resolver = name -> "ADSL".equals(name) ? adsl : null;
@@ -177,6 +190,9 @@ class JoinCacheConcurrencyTest
         // ⚠ No assertion on JoinCache.lookupCache: a key-based Match_Datasets entry is served by
         // KeyMatchRowExpander's row expansion, which removes it from the lookup build, so this
         // rule shape never populates that cache (measured 2026-09-24: empty after 16 waves).
+        // It does populate the shared key-match index — once, for both rules and all waves.
+        assertEquals(1, shared.keyMatchIndexBuildCount(),
+                "two rules with the same {ADSL, [USUBJID]} entry share one key-match index");
     }
 
 
@@ -305,8 +321,9 @@ class JoinCacheConcurrencyTest
     private static Rule buildJoinRule()
     {
         // Check: TRTP must equal ADSL.TRT01P, joined by USUBJID. ⚠ As built here the entry is
-        // served by KeyMatchRowExpander and never registers with the JoinCache;
-        // buildCachedJoinRule is the variant that does.
+        // served by KeyMatchRowExpander: it uses the SharedIndexCache's key-match index but never
+        // registers a DatasetLookup with the JoinCache; buildCachedJoinRule is the variant that
+        // does.
         net.cumba.corej.core.model.CheckConditionExpression leaf = expr("TRTP != ADSL.TRT01P");
 
         Rule rule = new Rule();

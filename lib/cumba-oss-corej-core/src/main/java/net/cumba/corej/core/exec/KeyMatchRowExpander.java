@@ -2,6 +2,7 @@ package net.cumba.corej.core.exec;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -122,6 +123,31 @@ final class KeyMatchRowExpander
             @Nullable List<MatchDataset> matchDatasets, DatasetResolver resolver,
             @Nullable String ruleId)
     {
+        return expand(primaryTable, matchDatasets, resolver, ruleId, null);
+    }
+
+
+    /**
+     * The row expansion, with the child indexes taken from — and left in — {@code aShared} when one
+     * is given ({@code PLAN-keymatch-shared-join-index}). With {@code null} every index is built
+     * for this call only; the result is identical either way.
+     *
+     * <p>
+     * ⭐ Built for big tables and many rules (D7, proposals P1–P6 in
+     * {@code plans/findings/FINDINGS-keymatch-data-structures.md}): the child index is a shared,
+     * compact {@link KeyMatchIndex}; a {@code Filter} is a per-rule {@link BitSet} over the
+     * <b>unfiltered</b> child rather than a filtered copy, so it does not split the cache; and the
+     * bindings are {@code int} columns — one for the primary row, one per entry — with no object
+     * per binding and no per-row key list.
+     * </p>
+     *
+     * @param aShared
+     *            the run's shared index cache, or {@code null} to build every index locally.
+     */
+    static @Nullable KeyMatchExpansion expand(IDataTable primaryTable,
+            @Nullable List<MatchDataset> matchDatasets, DatasetResolver resolver,
+            @Nullable String ruleId, JoinCache.@Nullable SharedIndexCache aShared)
+    {
         List<MatchDataset> entries = expandableEntries(matchDatasets);
         if (entries.isEmpty())
         {
@@ -129,19 +155,22 @@ final class KeyMatchRowExpander
         }
 
         int nEntries = entries.size();
-        long primaryRows = primaryTable.getRowCount();
+        // P5: the key-match path indexes rows as int; a table past 2^31 rows fails loudly here
+        // (rule ERROR) instead of wrapping silently further down.
+        int primaryRows = Math.toIntExact(primaryTable.getRowCount());
 
-        // Each binding: [primaryRow, childRow_0, ..., childRow_{n-1}]; childRow = -1 when unbound.
-        List<long[]> bindings = new ArrayList<>();
-        for (long p = 0; p < primaryRows; p++)
+        // The bindings, column-wise: expanded row i binds primary row primaryCol[i] and, for entry
+        // e, child row childCols[e][i] (-1 when unbound). A null column is unbound throughout —
+        // an entry not yet folded in, or one whose child did not resolve.
+        int size = primaryRows;
+        int[] primaryCol = new int[size];
+        for (int i = 0; i < size; i++)
         {
-            long[] b = new long[nEntries + 1];
-            Arrays.fill(b, -1L);
-            b[0] = p;
-            bindings.add(b);
+            primaryCol[i] = i;
         }
+        int[][] childCols = new int[nEntries][];
 
-        Map<Integer, IDataTable> resolvedChildren = new LinkedHashMap<>();
+        IDataTable[] resolvedChildren = new IDataTable[nEntries];
         for (int ei = 0; ei < nEntries; ei++)
         {
             MatchDataset md = entries.get(ei);
@@ -155,12 +184,15 @@ final class KeyMatchRowExpander
                 // Python: related dataset not found -> skip the merge (leave bindings unchanged).
                 continue;
             }
-            // 5b-J: the pre-merge Filter (spec §3.3) restricts the child BEFORE the key index is
-            // built — a dropped row can never become a join partner, and an unmatched-by-filter
-            // primary row reads exactly like an unmatched-by-key one (left keeps it null-bound,
-            // inner drops it, D._matched_ reads false).
-            child = Objects.requireNonNull(MatchFilter.apply(md, child, ruleId));
-            resolvedChildren.put(ei, child);
+            // 5b-J: the pre-merge Filter (spec §3.3) restricts the child BEFORE any row is bound —
+            // a dropped row can never become a join partner, and an unmatched-by-filter primary
+            // row reads exactly like an unmatched-by-key one (left keeps it null-bound, inner
+            // drops it, D._matched_ reads false). Q1: it is a MASK over the unfiltered child,
+            // skipped at probe time, so the shared index never depends on it. ⚠ Evaluated before
+            // keySpec, as it always was: a rule whose filter and key check both throw keeps
+            // reporting the filter's error.
+            BitSet keep = MatchFilter.mask(md, child, ruleId);
+            resolvedChildren[ei] = child;
             List<String> keys = Objects.requireNonNull(md.getKeys());
             // Default LEFT, honoring an explicit join_type=inner. Left preserves the engine's
             // historical scalar-lookup behaviour (an unmatched primary row keeps a null-valued
@@ -182,41 +214,48 @@ final class KeyMatchRowExpander
             // not express the drop, because "absent on both sides" is a property of the two tables,
             // not of a row.
             KeySpec spec = keySpec(primaryTable, child, keys, md);
-            Map<List<KeyPart>, List<Long>> childIndex = buildChildIndex(child, spec);
+            // P5, as for the primary. After keySpec, so a rule whose key check throws keeps
+            // reporting that error first, as it did when the row count was first read in the build.
+            int childRows = Math.toIntExact(child.getRowCount());
+            KeyMatchIndex index = aShared == null ? buildChildIndex(child, childRows, spec)
+                    : aShared.getOrBuildKeyMatchIndex(child, spec.cacheKey(),
+                            () -> buildChildIndex(child, childRows, spec));
+            KeyPart[] probe = spec.nActive() > 1 ? new KeyPart[spec.nActive()] : null;
 
-            List<long[]> next = new ArrayList<>();
-            for (long[] b : bindings)
+            Bindings next = new Bindings(size, primaryCol, childCols, ei);
+            for (int i = 0; i < size; i++)
             {
-                List<KeyPart> keyTuple = tuple(primaryTable, spec.primaryColIds(), spec, b[0]);
-                List<Long> matches = keyTuple == null ? null : childIndex.get(keyTuple);
-                if (matches == null || matches.isEmpty())
+                int id = probeKeyId(primaryTable, spec, primaryCol[i], index, probe);
+                boolean bound = false;
+                if (id != KeyMatchIndex.NOT_FOUND)
                 {
-                    if (left)
+                    for (int pos = index.start(id), end = index.end(id); pos < end; pos++)
                     {
-                        next.add(b.clone()); // child stays -1 (null-bound)
-                    }
-                    // inner: drop the unmatched primary row
-                }
-                else
-                {
-                    for (long cr : matches)
-                    {
-                        long[] nb = b.clone();
-                        nb[ei + 1] = cr;
-                        next.add(nb);
+                        int cr = index.row(pos);
+                        if (keep == null || keep.get(cr))
+                        {
+                            next.add(i, cr);
+                            bound = true;
+                        }
                     }
                 }
+                if (!bound && left)
+                {
+                    next.add(i, -1); // child stays unbound (null-bound)
+                }
+                // inner: an unmatched primary row is dropped
             }
-            bindings = next;
+            size = next.size;
+            primaryCol = next.primary();
+            childCols = next.children();
         }
 
-        int n = bindings.size();
         IDataBufferNumeric rowMap = DataBufferFactory.get().createForRange(0,
                 Math.max(0, primaryRows - 1L));
-        rowMap.setExpectedSize(n);
-        for (long[] b : bindings)
+        rowMap.setExpectedSize(size);
+        for (int i = 0; i < size; i++)
         {
-            rowMap.addValue(b[0]);
+            rowMap.addValue(primaryCol[i]);
         }
         IDataTable expandedTable = new RelrecExpandedTable(primaryTable, rowMap);
 
@@ -224,23 +263,104 @@ final class KeyMatchRowExpander
         List<MatchDataset> expandedEntries = new ArrayList<>();
         for (int ei = 0; ei < nEntries; ei++)
         {
-            IDataTable child = resolvedChildren.get(ei);
+            IDataTable child = resolvedChildren[ei];
             if (child == null)
             {
                 continue; // unresolved child: not expanded, no lookup
             }
-            long[] bound = new long[n];
-            for (int i = 0; i < n; i++)
-            {
-                bound[i] = bindings.get(i)[ei + 1];
-            }
+            // Bound rows index the UNFILTERED child (Q1): the mask chose which rows may bind, the
+            // lookup reads them straight from the table.
             String name = Objects.requireNonNull(entries.get(ei).getName());
-            lookups.put(name, new KeyMatchExpandedLookup(name, child, bound));
+            lookups.put(name,
+                    new KeyMatchExpandedLookup(name, child, Objects.requireNonNull(childCols[ei])));
             expandedEntries.add(entries.get(ei));
         }
         return new KeyMatchExpansion(expandedTable, lookups, expandedEntries);
     }
 
+    /**
+     * One fold step's output bindings, column-wise (P4): appending expanded row {@code i} of the
+     * previous step copies its primary row and every other entry's binding, and sets this step's
+     * entry. Grows by doubling; nothing is allocated per binding.
+     */
+    private static final class Bindings
+    {
+
+        private final int[] prevPrimary;
+
+        private final int[][] prevChildren;
+
+        private final int entry;
+
+        private int[] primary;
+
+        private final int[][] children;
+
+        private int size;
+
+        private Bindings(int aExpected, int[] aPrevPrimary, int[][] aPrevChildren, int aEntry)
+        {
+            prevPrimary = aPrevPrimary;
+            prevChildren = aPrevChildren;
+            entry = aEntry;
+            int capacity = Math.max(aExpected, 1);
+            primary = new int[capacity];
+            children = new int[aPrevChildren.length][];
+            for (int e = 0; e < children.length; e++)
+            {
+                if (e == aEntry || aPrevChildren[e] != null)
+                {
+                    children[e] = new int[capacity];
+                }
+            }
+        }
+
+
+        private void add(int aPrevRow, int aChildRow)
+        {
+            if (size == primary.length)
+            {
+                int capacity = Math.addExact(primary.length, Math.max(primary.length >> 1, 16));
+                primary = Arrays.copyOf(primary, capacity);
+                for (int e = 0; e < children.length; e++)
+                {
+                    if (children[e] != null)
+                    {
+                        children[e] = Arrays.copyOf(children[e], capacity);
+                    }
+                }
+            }
+            primary[size] = prevPrimary[aPrevRow];
+            for (int e = 0; e < children.length; e++)
+            {
+                int[] column = children[e];
+                if (column != null)
+                {
+                    column[size] = e == entry ? aChildRow : prevChildren[e][aPrevRow];
+                }
+            }
+            size++;
+        }
+
+
+        private int[] primary()
+        {
+            return primary.length == size ? primary : Arrays.copyOf(primary, size);
+        }
+
+
+        private int[][] children()
+        {
+            int[][] out = new int[children.length][];
+            for (int e = 0; e < children.length; e++)
+            {
+                int[] column = children[e];
+                out[e] = column == null || column.length == size ? column
+                        : Arrays.copyOf(column, size);
+            }
+            return out;
+        }
+    }
 
     /**
      * Key-based entries eligible for row expansion: a non-blank {@code Keys} list, not
@@ -303,28 +423,56 @@ final class KeyMatchRowExpander
     }
 
 
-    private static Map<List<KeyPart>, List<Long>> buildChildIndex(IDataTable child, KeySpec spec)
+    /**
+     * The child's key index for {@code spec} — the one build routine, used with and without the
+     * shared cache. A row dropped by an authored {@code keep_missings: false} is not indexed.
+     */
+    private static KeyMatchIndex buildChildIndex(IDataTable child, int childRows, KeySpec spec)
     {
-        Map<List<KeyPart>, List<Long>> index = new LinkedHashMap<>();
-        long rows = child.getRowCount();
-        for (long r = 0; r < rows; r++)
+        int[] colIds = spec.childColIds();
+        return KeyMatchIndex.build(childRows, row ->
         {
-            List<KeyPart> t = tuple(child, spec.childColIds(), spec, r);
-            if (t == null)
+            if (!spec.keepMissings() && anyActiveKeyBlank(child, colIds, spec, row))
             {
-                // Only reachable under an authored keep_missings:false — the flag-OFF path.
-                continue;
+                return null;
             }
-            index.computeIfAbsent(t, _ -> new ArrayList<>()).add(r);
+            if (spec.nActive() == 1)
+            {
+                return keyPart(child, colIds, spec, spec.singleActive(), row);
+            }
+            KeyPart[] parts = new KeyPart[spec.nActive()];
+            fillKeyParts(child, colIds, spec, row, parts);
+            return new KeyMatchIndex.CompositeKey(parts);
+        });
+    }
+
+
+    /**
+     * The key id of a primary row in {@code index}, or {@link KeyMatchIndex#NOT_FOUND} when the row
+     * matches nothing — including a row an authored {@code keep_missings: false} drops (P3: no key
+     * object is built for the lookup beyond the parts themselves).
+     */
+    private static int probeKeyId(IDataTable primary, KeySpec spec, int row, KeyMatchIndex index,
+            KeyPart @Nullable [] scratch)
+    {
+        int[] colIds = spec.primaryColIds();
+        if (!spec.keepMissings() && anyActiveKeyBlank(primary, colIds, spec, row))
+        {
+            return KeyMatchIndex.NOT_FOUND;
         }
-        return index;
+        if (scratch == null)
+        {
+            return index.find(keyPart(primary, colIds, spec, spec.singleActive(), row));
+        }
+        fillKeyParts(primary, colIds, spec, row, scratch);
+        return index.find(scratch);
     }
 
     /**
      * The shape of one entry's join key, computed once from the two tables' metadata.
      *
      * <p>
-     * ⭐⭐ <b>{@code JKM R7} lives here, not in {@link #tuple}.</b> <i>"Absent columns are treated
+     * ⭐⭐ <b>{@code JKM R7} lives here, not in {@link #keyPart}.</b> <i>"Absent columns are treated
      * like present, but empty (with default value). … Absent in both sides can be dropped from the
      * join. if all columns are absent, then the rule should fail with an error."</i> (owner,
      * 2026-09-21). Both halves are properties of the two <em>tables</em>, so deciding them per row
@@ -365,6 +513,12 @@ final class KeyMatchRowExpander
         /** D4-R3: compare this entry's present key parts as rendered text. */
         private final boolean asString;
 
+        /** The number of active components — at least one, or keySpec had thrown. */
+        private final int nActive;
+
+        /** The first active component; the only one when {@link #nActive} is 1. */
+        private final int singleActive;
+
         private KeySpec(int[] aPrimaryColIds, int[] aChildColIds, KeyPart[] aAbsentPart,
                 boolean[] aActive, boolean aKeepMissings, boolean aAsString)
         {
@@ -374,6 +528,54 @@ final class KeyMatchRowExpander
             active = aActive;
             keepMissings = aKeepMissings;
             asString = aAsString;
+            int count = 0;
+            int first = -1;
+            for (int i = 0; i < aActive.length; i++)
+            {
+                if (aActive[i])
+                {
+                    count++;
+                    first = first < 0 ? i : first;
+                }
+            }
+            nActive = count;
+            singleActive = first;
+        }
+
+
+        private int nActive()
+        {
+            return nActive;
+        }
+
+
+        private int singleActive()
+        {
+            return singleActive;
+        }
+
+
+        /**
+         * The child-side half of this shape — everything {@link #buildChildIndex} reads besides the
+         * table ({@code PLAN-keymatch-shared-join-index} D2, see {@link KeyMatchIndex.SpecKey}).
+         * {@code primaryColIds}, and {@code absentPart} where the child HAS the column, are
+         * deliberately left out: the child's index never reads them.
+         */
+        private KeyMatchIndex.SpecKey cacheKey()
+        {
+            List<Integer> cols = new ArrayList<>(childColIds.length);
+            List<Boolean> act = new ArrayList<>(active.length);
+            List<KeyPart> childAbsent = new ArrayList<>();
+            for (int i = 0; i < childColIds.length; i++)
+            {
+                cols.add(childColIds[i]);
+                act.add(active[i]);
+                if (active[i] && childColIds[i] < 0)
+                {
+                    childAbsent.add(absentPart[i]);
+                }
+            }
+            return new KeyMatchIndex.SpecKey(cols, act, childAbsent, keepMissings, asString);
         }
 
 
@@ -469,7 +671,7 @@ final class KeyMatchRowExpander
             // - the entry is excluded (D4-R5): Child/RELREC/SUPP-- join a text-carried foreign
             // key against a typed column BY DESIGN -- 11 keyed entries in 5 rule files;
             // - the author declared Join_As_String (D4-R3): the divergence is understood and the
-            // keys compare as text below, in tuple();
+            // keys compare as text below, in keyPart();
             // - the component is absent on one side: there is only ONE type, so a mismatch is not
             // expressible, and JKM R7's absent-side default stands untouched;
             // - either kind classifies null -- BOOLEAN/COMPLEX/MISSING/VARIABLE/OTHER (D4-R6a).
@@ -548,169 +750,60 @@ final class KeyMatchRowExpander
 
 
     /**
-     * The row's composite join key as a list of <b>rendered</b> {@link KeyPart}s, or {@code null}
-     * when the row does not participate — which, since {@code JKM R4}, happens <b>only</b> under an
-     * authored {@code keep_missings: false}.
+     * One key component of a row: the {@link KeyPart} it contributes to the join key.
      *
      * <p>
-     * ⭐⭐ <b>Why RENDERED and not the {@code KeyPart} itself — this is a deliberate choice on an
-     * UNRULED axis, corrected 2026-09-21 in the plan's own review round.</b> The first
-     * implementation put {@code KeyPart}s in the key, which is the stronger identity
-     * ({@code Present("5")} is then <b>not</b> {@code PresentNumber(5.0)}). ⛔ But this key used to
-     * be a {@code \0}-joined {@code getValueAsString()} string, in which a <b>character</b>
-     * {@code "5"} on one side and a <b>numeric</b> {@code 5} on the other DID match — routine
-     * across providers and across a split-domain union. Narrowing that is {@code D4} in the plan's
-     * divergence table, which has <b>four answers and no ruling</b>, and on a
-     * {@code Join_Type: left} entry it would mint a NEW false finding for every such row under an
-     * {@code empty(FOREIGN.X)} check — the shape of {@code SD1018} and its siblings. ⇒ <b>fix the
-     * ruled axis, leave the unruled one where it was</b>: {@code KeyPart} still does the
-     * classifying (so {@code MissingValue.MIS} keeps its {@code \u0001}-prefixed rendering and
-     * cannot collide with a present {@code "."} — the +9 528-finding bug class), and the rendering
-     * keeps {@code D4}'s historical answer.
+     * ⭐⭐ <b>The key is the classified {@code KeyPart} itself, not a rendering.</b> Identity is the
+     * sealed type's: a {@code MissingValue} can never collide with a present {@code "."} (the +9
+     * 528-finding bug class {@link GroupKeyPolicy.KeyPart} records), and a character {@code "5"} is
+     * not a numeric {@code 5} — a mismatch of the two sides' declared kinds is a rule ERROR raised
+     * in {@link #keySpec} (D4-R1/R2), unless the entry declares {@code Join_As_String}, which
+     * compares present parts as text ({@link #coerce}, D4-R3).
      * </p>
      *
      * <p>
-     * ⚠ The cost is the weaker guarantee, the same one {@code RelrecRowExpander.keyCell} and
-     * {@code GroupedResult.buildKey} accept: a rendering is <em>unlikely</em> to collide, a sealed
-     * type <em>cannot</em>. ⇒ when {@code D4} is ruled, this becomes one line — drop
-     * {@code .reportingForm()} and widen the list's type back.
+     * ⭐⭐ <b>A {@code MissingValue} is a NORMAL key value</b> (⚑
+     * TARGET-INVARIANT(null-free-value-channel); owner, 2026-09-19,
+     * {@code PLAN-null-free-value-channel} §9j): <i>"MissingValue can be a join key. We have ruled,
+     * that a general flag is available if missing values (incl "") are considered on a join /
+     * grouping, but if they are in, then different missing values are different keys."</i> The join
+     * surface's flag defaults to KEEP ({@code JKM R4}, owner 2026-09-21: <i>"KEEP is the default
+     * and DROP must explicitly be authored if needed"</i>); an authored
+     * {@code keep_missings: false} drops the row before any key is built
+     * ({@link #anyActiveKeyBlank}). Identity is exact either way ({@code JKM R5}: <i>"a MIS will
+     * not join a record with an empty string and a MIS_A will not join a record with a MIS or
+     * MIS_B"</i>).
      * </p>
      *
      * <p>
-     * ⭐⭐ <b>The RULED semantics: a {@code MissingValue} is a NORMAL value, and it CAN be a join
-     * key</b> (⚑ TARGET-INVARIANT(null-free-value-channel); owner, 2026-09-19, recorded with its
-     * derivation in {@code PLAN-null-free-value-channel} §9j). Verbatim: <i>"MissingValue can be a
-     * join key. We have ruled, that a general flag is available if missing values (incl "") are
-     * considered on a join / grouping, but if they are in, then different missing values are
-     * different keys."</i> and <i>"a missing value is not something special at all … So a Missing
-     * and a "" are expected values and should be treated as such."</i> Every part of that was
-     * already ruled elsewhere: a {@code MissingValue} is <i>"a value with meaning, expected in any
-     * column or expression result — not a special case"</i> ({@code D34 #2}); <i>"two missings are
-     * equal iff they are the same missing"</i> ({@code D34 #5-2}) is the equality that <i>different
-     * missings are different keys</i> rests on, and it is taken EXACTLY rather than tolerantly
-     * because keys are <i>"ASSIGNED values, not calculated ones"</i> and <i>"key identity always
-     * exact"</i> ({@code D64f}/{@code D64h}); and an empty string is a PRESENT value, not a missing
-     * one ({@code D34 #1}/{@code #3}) — it appears in the ruling only because it is governed by the
-     * same flag ({@code D34 #6}).
-     * </p>
-     *
-     * <p>
-     * ⛔⛔ <b>What THIS implementation does today is NOT that, and the paragraph above must not be
-     * read as a description of the code below.</b> Every row whose key tuple has a missing — or
-     * absent — component is DROPPED from the join: {@link #buildChildIndex} does not index such a
-     * child row, and the primary loop treats it as matching nothing (kept unbound under
-     * {@code left}, dropped under {@code inner}). That holds on both sides of the join and under
-     * both join types. It is the <i>missings-excluded</i> setting of the ruled flag, <b>hard-coded
-     * here rather than authored</b>: {@link MatchDataset} declares {@code Name}, {@code Keys},
-     * {@code Wildcard}, {@code Child}, {@code Join_Type} and {@code Filter} — there is <b>no
-     * {@code keep_missings} channel on the join surface at all</b>. The two grouping surfaces do
-     * have the authored flag and differ only in their DEFAULT: Check-level {@code Grouping:}
-     * defaults to {@code GroupKeyPolicy.DROP_MISSING_KEYS} ({@code RuleRunner}), Operation-level
-     * {@code group:} to {@code GroupKeyPolicy.KEEP_MISSING_KEYS} ({@code OperationExecutor}), each
-     * overridable per rule.
-     * </p>
-     *
-     * <p>
-     * ⭐⭐ <b>The join surface's default IS RULED — it is KEEP</b> (owner, 2026-09-21,
-     * {@code PLAN-join-key-missing-semantics} §4; register {@code JKM R4}). This paragraph used to
-     * end <i>"the join surface's default is therefore genuinely UNRULED, and nothing here may be
-     * read as having chosen it"</i>, and the paragraph below used to end <i>"the default that flag
-     * takes here is an owner decision"</i>. <b>Both are withdrawn.</b> Verbatim: <i>"From my point
-     * of view the DROP is the bug we need to fix. There is no reason to remove a row from the merge
-     * because there is a missing value in one of the keys. … Therefore I rule KEEP is the default
-     * and DROP must explicitly be authored if needed."</i> ⇒ the hard-coded drop above is not a
-     * conservative default awaiting a decision; it is the defect.
-     * </p>
-     *
-     * <p>
-     * ⛔ <b>Two further rulings of the same day, because a reader who takes KEEP alone will build
-     * the wrong thing:</b> {@code JKM R5} — the flag governs <b>participation only</b>, never
-     * identity: <i>"if they are kept, they are kept as separate identities. a MIS will not join a
-     * record with an empty string and a MIS_A will not join a record with a MIS or MIS_B."</i> ⇒
-     * identity is exact, flag on or off. {@code JKM R7} — an <b>absent</b> key column is
-     * <i>present-but-empty</i>: absent on one side contributes the column's type default, absent on
-     * <b>both</b> sides drops the component from the key, and <b>all</b> components absent is a
-     * rule <b>ERROR</b>, because an empty key is a cartesian product rather than a join.
-     * </p>
-     *
-     * <p>
-     * ⚠⚠ <b>Implementing R5 here is NOT a matter of deleting the guard below.</b> This method
-     * builds a {@code \0}-joined STRING of {@code getValueAsString()}, and
-     * {@code MissingValue.toString()} renders its display string — so a participating {@code MIS}
-     * would key as {@code "."} and <b>collide with a present text cell containing a literal
-     * {@code "."}</b>, {@code NA} with the present string {@code "NA"}. That is the conflation R5
-     * forbids, and it is measured: {@link GroupKeyPolicy.KeyPart}'s javadoc records <i>"a naive
-     * distinct-as-strings encoding silently turned every missing into a participating value
-     * (measured: +9 528 findings, 8 rules)"</i>. ⇒ the key must be built from
-     * {@link GroupKeyPolicy#keyPart}, whose sealed type <b>cannot</b> collide by construction.
-     * </p>
-     *
-     * <p>
-     * ⚑ <b>Open work</b> — {@code PLAN-join-key-missing-semantics}: wire the flag through
-     * {@code Match_Datasets}, and with it {@code KeyHashing.anyKeyMissing}, which has zero callers
-     * and is therefore the flag-OFF path of an unfinished feature rather than a guard nobody hooked
-     * up. ⚠ One consequence recorded there rather than left to be rediscovered: for a KEY, "normal
-     * value" carries a fan-out that a compared variable does not — {@code k} primary and {@code m}
-     * joined rows sharing one missing key pair {@code k×m}, where grouping would make one group of
-     * {@code k+m}. That is what the flag is <i>for</i>, not an exception to the ruling; ⭐ and under
-     * R5 the fan-out is per <b>distinct marker</b>, so mixed blanks give several small blocks
-     * rather than one large one.
-     * </p>
-     *
-     * <p>
-     * ⚠⚠ <b>A real join behaviour MOVED underneath this guard on 2026-09-18 and nothing recorded
-     * it.</b> The {@code isMissingOrInvalid()} test has been here since the initial commit, but
-     * what a raw {@code null} CHARACTER cell wraps to changed in the datatable repository's {@code
-     * d4edd59} ("a null character cell is {@code MissingValue.MIS}, on both wrap paths"). Before
-     * it, such a cell arrived as {@code DataValueString("")} — {@code isMissingOrInvalid() ==
-     * false} — so the key was built with an EMPTY SEGMENT and <b>two rows with a null key joined
-     * each other</b>. At HEAD they do not join at all. ⇒ The composition changed even though this
-     * file did not. ⭐ Reachable on real data: an {@code .rds} dataset whose join-key character
-     * column carries an R {@code NA} ({@code factor(..., exclude = NULL)}, stored as an explicit
-     * null level by {@code RdataTableProvider.copyFactorData}).
-     * </p>
-     *
-     * <p>
-     * ⛔ <b>The behaviour below is UNCHANGED by this correction — only the doctrine sentence was
-     * wrong.</b> {@code KeyMatchMissingJoinKeyTest} pins it from both join types plus a fixture
-     * control, and removing the guard reds that class; what it pins is <b>what the engine does</b>
-     * — one hard-coded setting of the flag — and not the ruled semantics. ⚠ That class' own javadoc
-     * still asserts the retired claim and needs the same correction. The mechanical note this
-     * file's model cites survives either reading: <i>pandas drops NaN keys</i>
-     * ({@link #buildChildIndex}).
+     * {@code JKM R7}: a column absent on <b>this</b> side contributes the type default the spec
+     * derived from the other side, exactly as if every row carried a blank cell; a component absent
+     * on both sides is inactive and is never asked for.
      * </p>
      */
-    private static @Nullable List<KeyPart> tuple(IDataTable t, int[] colIds, KeySpec spec, long row)
+    private static KeyPart keyPart(IDataTable t, int[] colIds, KeySpec spec, int component, int row)
     {
-        if (!spec.keepMissings() && anyActiveKeyBlank(t, colIds, spec, row))
+        if (colIds[component] < 0)
         {
-            // The flag-OFF path of JKM R4, and the first caller KeyHashing.anyKeyMissing has ever
-            // had: an authored keep_missings:false drops the row. ⚠ Only ACTIVE components are
-            // consulted — an inactive one is absent on both sides and is not part of the key, so
-            // asking whether it is blank would drop every row of every such join.
-            return null;
+            return coerce(spec.absentPart()[component], spec.asString());
         }
-        List<KeyPart> parts = new ArrayList<>(colIds.length);
+        return coerce(GroupKeyPolicy.KEEP_MISSING_KEYS
+                .keyPart(t.getColumn(colIds[component]).getDataValue(row)), spec.asString());
+    }
+
+
+    /** Fills {@code out} with the row's active key components, in key order. */
+    private static void fillKeyParts(IDataTable t, int[] colIds, KeySpec spec, int row,
+            KeyPart[] out)
+    {
+        int j = 0;
         for (int i = 0; i < colIds.length; i++)
         {
-            if (!spec.active()[i])
+            if (spec.active()[i])
             {
-                continue; // R7: absent on both sides -> not part of the key
+                out[j++] = keyPart(t, colIds, spec, i, row);
             }
-            if (colIds[i] < 0)
-            {
-                // R7: absent on THIS side -> the column's type default, exactly as if every row
-                // carried a blank cell. It still participates and still compares by identity.
-                parts.add(coerce(spec.absentPart()[i], spec.asString()));
-                continue;
-            }
-            // R5: the identity is CLASSIFIED by the sealed KeyPart — which is what separates a
-            // MissingValue from a present "." — and then RENDERED. See the method javadoc for why
-            // the rendering, not the KeyPart itself, is what goes into the key.
-            parts.add(coerce(GroupKeyPolicy.KEEP_MISSING_KEYS
-                    .keyPart(t.getColumn(colIds[i]).getDataValue(row)), spec.asString()));
         }
-        return parts;
     }
 
 

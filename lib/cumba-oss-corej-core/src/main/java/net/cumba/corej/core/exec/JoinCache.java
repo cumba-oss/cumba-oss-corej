@@ -1,7 +1,10 @@
 package net.cumba.corej.core.exec;
 
+import java.lang.ref.WeakReference;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 import net.cumba.corej.core.exec.DatasetLookup.SharedJoinedIndex;
 import net.cumba.datatable.IDataTable;
@@ -61,6 +64,40 @@ public final class JoinCache
         private final ConcurrentHashMap<String, ChildMatchIndexHolder> childMatchCache = new ConcurrentHashMap<>();
 
         /**
+         * Key-match child indexes ({@link KeyMatchRowExpander}), per child table and then per
+         * {@link KeyMatchIndex.SpecKey}.
+         *
+         * <p>
+         * ⭐ <b>Tied to the child table's lifetime</b> ({@code PLAN-keymatch-shared-join-index} Q3,
+         * ruled (d)): the outer key holds the table <b>weakly</b> and compares it by
+         * <b>identity</b>. Target and reference datasets are soft-memoised
+         * ({@code StudyValidationService.softMemoised}), so under heap pressure a table can be
+         * dropped and reloaded as a <em>new</em> instance mid-run. Its indexes then go with it, and
+         * the reloaded instance gets a fresh, correct one — never a stale hit, and never an index
+         * pinning a table the dataset cache has let go. ⚠ This is why the key is not the
+         * {@code identityHashCode} string {@link #indexCacheKey} uses: a hash can collide, and a
+         * strong reference would pin every joined table for the whole run.
+         * </p>
+         *
+         * <p>
+         * ⚠ The index is freed one collection AFTER its table, not with it: the map holds the table
+         * weakly but its indexes strongly, so the collection that takes a table only clears the
+         * key; the next call's sweep drops the entry, and the collection after that frees the
+         * indexes. This holds for any weak-keyed map (including {@code WeakHashMap}) and is bounded
+         * by the index-to-table size ratio, since the table itself is freed at once.
+         * </p>
+         *
+         * <p>
+         * A separate map from {@link #cache} on purpose: {@code computeIfAbsent} holds a bin lock
+         * for the whole O(rows) build, and an index build must not stall unrelated lookups.
+         * </p>
+         */
+        private final ConcurrentHashMap<TableRef, ConcurrentHashMap<KeyMatchIndex.SpecKey, KeyMatchIndex>> keyMatchIndexes = new ConcurrentHashMap<>();
+
+        /** How many key-match indexes this cache has built — the sharing tests' instrument. */
+        private final AtomicInteger keyMatchIndexBuilds = new AtomicInteger();
+
+        /**
          * Returns a cached index or builds and caches one.
          *
          * @param dataset
@@ -103,12 +140,115 @@ public final class JoinCache
         }
 
 
+        /**
+         * Returns the key-match index for {@code aChild} under {@code aSpec}, building it with
+         * {@code aBuild} on first use. Built once per (table instance, spec) even under a
+         * concurrent cold start, and immutable afterwards.
+         *
+         * @param aChild
+         *            the joined table, <b>unfiltered</b> — a {@code Filter} is applied per rule as
+         *            a mask over the shared index (Q1), never baked into it.
+         * @param aSpec
+         *            the child-side key shape.
+         * @param aBuild
+         *            builds the index when it is not cached; must not touch this cache.
+         * @return the index, never {@code null}.
+         */
+        KeyMatchIndex getOrBuildKeyMatchIndex(IDataTable aChild, KeyMatchIndex.SpecKey aSpec,
+                Supplier<KeyMatchIndex> aBuild)
+        {
+            purgeCollectedTables();
+            ConcurrentHashMap<KeyMatchIndex.SpecKey, KeyMatchIndex> perTable = keyMatchIndexes
+                    .get(new TableRef(aChild));
+            if (perTable == null)
+            {
+                perTable = keyMatchIndexes.computeIfAbsent(new TableRef(aChild),
+                        _ -> new ConcurrentHashMap<>());
+            }
+            return perTable.computeIfAbsent(aSpec, _ ->
+            {
+                keyMatchIndexBuilds.incrementAndGet();
+                return aBuild.get();
+            });
+        }
+
+
+        /** Returns how many key-match indexes this cache has built so far. */
+        int keyMatchIndexBuildCount()
+        {
+            return keyMatchIndexBuilds.get();
+        }
+
+
+        /** Returns how many child tables currently hold key-match indexes. */
+        int keyMatchIndexedTableCount()
+        {
+            purgeCollectedTables();
+            return keyMatchIndexes.size();
+        }
+
+
+        /**
+         * Drops the indexes of every child table the collector has taken. A sweep rather than a
+         * {@code ReferenceQueue}: the GC clears a weak reference the moment its table becomes
+         * unreachable, but queueing it is left to the JVM's reference-handler thread, which was
+         * measured to lag by more than 14 s behind a large heap (2026-09-24) — the indexes would
+         * have outlived their table by exactly that. The map holds one entry per joined table in
+         * the run, so the sweep is a handful of null checks per rule entry.
+         */
+        private void purgeCollectedTables()
+        {
+            keyMatchIndexes.keySet().removeIf(ref -> ref.get() == null);
+        }
+
+
         private static String indexCacheKey(IDataTable dataset, List<String> keyColumns)
         {
             // Use identity hash of the table object + key columns as cache key.
             // Identity hash is sufficient because IDataTable instances are stable
             // within a validation run (same object reference = same data).
             return System.identityHashCode(dataset) + "|" + String.join(",", keyColumns);
+        }
+    }
+
+
+    /**
+     * A weak, identity-compared reference to a table, usable as a map key. Two refs are equal when
+     * they refer to the <b>same</b> live table; a cleared ref equals only itself, and is removed by
+     * {@code SharedIndexCache.purgeCollectedTables}.
+     */
+    private static final class TableRef extends WeakReference<IDataTable>
+    {
+
+        private final int hash;
+
+        TableRef(IDataTable aTable)
+        {
+            super(aTable);
+            hash = System.identityHashCode(aTable);
+        }
+
+
+        @Override
+        public boolean equals(@Nullable Object aOther)
+        {
+            if (this == aOther)
+            {
+                return true;
+            }
+            if (!(aOther instanceof TableRef other))
+            {
+                return false;
+            }
+            IDataTable table = get();
+            return table != null && table == other.get();
+        }
+
+
+        @Override
+        public int hashCode()
+        {
+            return hash;
         }
     }
 

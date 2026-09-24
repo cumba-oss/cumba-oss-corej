@@ -37,7 +37,7 @@ class KeyMatchExpandedLookupTest
     {
         IDataTable child = MockTable.of().col("ARM", "A", null).col("SITE", "", "S2").name("DM")
                 .build();
-        return new KeyMatchExpandedLookup("DM", child, new long[]
+        return new KeyMatchExpandedLookup("DM", child, new int[]
         {
                 0, 1, -1
         });

@@ -101,7 +101,7 @@ class JoinLookupProductionOverrideGuardTest
                                 "DatasetLookup.build answered null for a non-null dataset"),
                         primary, 0));
         out.put("KeyMatchExpandedLookup",
-                new Probe(new KeyMatchExpandedLookup("DM", child, new long[]
+                new Probe(new KeyMatchExpandedLookup("DM", child, new int[]
                 {
                         0
                 }), primary, 0));

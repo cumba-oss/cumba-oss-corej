@@ -29,9 +29,9 @@ final class KeyMatchExpandedLookup implements JoinLookup
     private final IDataTable child;
 
     /** Per expanded row: bound child row index, or {@code -1} for a left-join row with no match. */
-    private final long[] boundRow;
+    private final int[] boundRow;
 
-    KeyMatchExpandedLookup(String datasetName, IDataTable child, long[] boundRow)
+    KeyMatchExpandedLookup(String datasetName, IDataTable child, int[] boundRow)
     {
         this.datasetName = datasetName;
         this.child = child;
@@ -127,7 +127,7 @@ final class KeyMatchExpandedLookup implements JoinLookup
         {
             return null;
         }
-        long cr = boundRow[r];
+        int cr = boundRow[r];
         if (cr < 0)
         {
             return null; // left-only row: no child bound
