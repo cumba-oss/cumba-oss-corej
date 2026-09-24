@@ -20,6 +20,14 @@ import org.junit.jupiter.api.Test;
  * End-to-end pre-pass over the {@code xsd-*} fixtures: every expectation below was pinned
  * empirically against the vendored schemas (JDK Xerces) before the fixtures were committed, so a
  * failing assertion means the classifier or the schema packaging drifted — not the fixture.
+ *
+ * <p>
+ * ⚠ Message assertions name only locale-stable parts: the Xerces key ({@code cvc-…}) and the XML
+ * names Xerces quotes. The prose around them follows the JVM's default locale (a German machine
+ * prints {@code "Attribut 'Mandatory' muss in Element 'ItemRef' vorkommen"}), and the quote style
+ * differs by language, so an English phrase or a quoted name made this class red on every
+ * non-English build. {@link DefinePrePassLocaleTest} runs the classification under forced locales.
+ * </p>
  */
 class DefinePrePassTest
 {
@@ -33,6 +41,17 @@ class DefinePrePassTest
         catch (IOException e)
         {
             throw new UncheckedIOException("cannot load fixture " + aFixture, e);
+        }
+    }
+
+
+    /** The finding's message carries every given locale-stable token (a cvc key or an XML name). */
+    private static void assertDetail(ConformanceFinding aFinding, String... aTokens)
+    {
+        for (String token : aTokens)
+        {
+            assertTrue(aFinding.getMessage().contains(token),
+                    () -> "missing '" + token + "' in: " + aFinding.getMessage());
         }
     }
 
@@ -88,8 +107,7 @@ class DefinePrePassTest
         assertEquals(26, finding.getLine());
         assertNotNull(finding.getColumn());
         assertNull(finding.getElement());
-        assertTrue(finding.getMessage().contains("'Mandatory' must appear on element 'ItemRef'"),
-                finding.getMessage());
+        assertDetail(finding, "cvc-complex-type.4", "Mandatory", "ItemRef");
     }
 
 
@@ -127,8 +145,7 @@ class DefinePrePassTest
         ConformanceFinding finding = sole(run("xsd-incomplete-content-21.xml"));
         assertEquals("PMDA-DD0006", finding.getRuleId());
         assertEquals(Severity.REJECT, finding.getSeverity());
-        assertTrue(finding.getMessage().contains("'GlobalVariables' is not complete"),
-                finding.getMessage());
+        assertDetail(finding, "cvc-complex-type.2.4.b", "GlobalVariables");
     }
 
 
@@ -176,8 +193,9 @@ class DefinePrePassTest
         assertEquals(Category.XSD, finding.getCategory());
         assertEquals(Severity.REJECT, finding.getSeverity());
         assertEquals(10, finding.getLine());
-        assertTrue(finding.getMessage().contains("must be terminated by the matching end-tag"),
-                finding.getMessage());
+        // A well-formedness error carries no cvc key; the unclosed element's name is the stable
+        // part.
+        assertDetail(finding, "Study");
     }
 
 
@@ -187,7 +205,7 @@ class DefinePrePassTest
         ConformanceFinding finding = sole(run("xsd-wrong-root-21.xml"));
         assertEquals("PMDA-OD0012", finding.getRuleId());
         assertEquals(Severity.REJECT, finding.getSeverity());
-        assertTrue(finding.getMessage().contains("'NotODM'"), finding.getMessage());
+        assertDetail(finding, "cvc-elt.1", "NotODM");
     }
 
 
@@ -199,7 +217,7 @@ class DefinePrePassTest
         assertEquals("PMDA-OD0013", finding.getRuleId());
         assertEquals(Severity.WARNING, finding.getSeverity());
         assertEquals(26, finding.getLine());
-        assertTrue(finding.getMessage().contains("attribute 'OrderNumber'"), finding.getMessage());
+        assertDetail(finding, "cvc-attribute.3", "OrderNumber");
     }
 
 
@@ -209,8 +227,7 @@ class DefinePrePassTest
         ConformanceFinding finding = sole(run("xsd-invalid-datetime-21.xml"));
         assertEquals("PMDA-OD0017", finding.getRuleId());
         assertEquals(Severity.WARNING, finding.getSeverity());
-        assertTrue(finding.getMessage().contains("attribute 'CreationDateTime'"),
-                finding.getMessage());
+        assertDetail(finding, "cvc-attribute.3", "CreationDateTime");
     }
 
 
@@ -222,7 +239,7 @@ class DefinePrePassTest
         assertEquals("PMDA-DD0001", finding.getRuleId());
         assertEquals(Category.XSD, finding.getCategory());
         assertEquals(Severity.REJECT, finding.getSeverity());
-        assertTrue(finding.getMessage().contains("attribute 'FileType'"), finding.getMessage());
+        assertDetail(finding, "cvc-attribute.3", "FileType");
     }
 
 }

@@ -40,6 +40,30 @@ class SaxErrorClassifierTest
             "cvc-attribute.3: The value 'yesterday' of attribute 'CreationDateTime' on element 'ODM' is not valid with respect to its type, 'datetime'.|PMDA-OD0017|WARNING",
             "cvc-datatype-valid.1.2.1: 'yesterday' is not a valid value for 'dateTime'.|PMDA-OD0017|WARNING",
             "cvc-attribute.3: The value 'Nonsense' of attribute 'FileType' on element 'ODM' is not valid with respect to its type, 'FileType'.|PMDA-DD0001|REJECT",
+            // Localised JDK Xerces output, captured from xsd-invalid-{integer,datetime}-21.xml with
+            // the
+            // default locale set: the type is the LAST quoted token, in '...' or "..." (it quotes
+            // cvc-datatype-valid in "..."), and it/fr use apostrophes inside words (dell'attributo,
+            // n'est), so only an end-anchored match finds it. English prose appears in none of
+            // them.
+            "cvc-attribute.3: Wert 'abc' des Attributs 'OrderNumber' bei Element 'ItemRef' hat keinen gültigen Typ 'integer'.|PMDA-OD0013|WARNING",
+            "cvc-datatype-valid.1.2.1: 'abc' ist kein gültiger Wert für 'integer'.|PMDA-OD0013|WARNING",
+            "cvc-attribute.3: Wert 'yesterday' des Attributs 'CreationDateTime' bei Element 'ODM' hat keinen gültigen Typ 'datetime'.|PMDA-OD0017|WARNING",
+            "cvc-datatype-valid.1.2.1: 'yesterday' ist kein gültiger Wert für 'dateTime'.|PMDA-OD0017|WARNING",
+            "cvc-attribute.3: il valore 'abc' dell'attributo 'OrderNumber' sull'elemento 'ItemRef' non è valido rispetto al suo tipo 'integer'.|PMDA-OD0013|WARNING",
+            "cvc-datatype-valid.1.2.1: \"abc\" non è un valore valido per \"integer\".|PMDA-OD0013|WARNING",
+            "cvc-attribute.3: il valore 'yesterday' dell'attributo 'CreationDateTime' sull'elemento 'ODM' non è valido rispetto al suo tipo 'datetime'.|PMDA-OD0017|WARNING",
+            "cvc-datatype-valid.1.2.1: \"yesterday\" non è un valore valido per \"dateTime\".|PMDA-OD0017|WARNING",
+            "cvc-attribute.3: 要素'ItemRef'の属性'OrderNumber'の値'abc'は、そのタイプ'integer'に対して無効です。|PMDA-OD0013|WARNING",
+            "cvc-datatype-valid.1.2.1: 'abc'は'integer'の有効な値ではありません。|PMDA-OD0013|WARNING",
+            "cvc-attribute.3: 要素'ODM'の属性'CreationDateTime'の値'yesterday'は、そのタイプ'datetime'に対して無効です。|PMDA-OD0017|WARNING",
+            "cvc-datatype-valid.1.2.1: 'yesterday'は'dateTime'の有効な値ではありません。|PMDA-OD0017|WARNING",
+            "cvc-attribute.3 : La valeur 'abc' de l'attribut 'OrderNumber' de l'élément 'ItemRef' n'est pas valide par rapport à son type, 'integer'.|PMDA-OD0013|WARNING",
+            "cvc-datatype-valid.1.2.1 : 'abc' n'est pas une valeur valide pour 'integer'.|PMDA-OD0013|WARNING",
+            "cvc-attribute.3 : La valeur 'yesterday' de l'attribut 'CreationDateTime' de l'élément 'ODM' n'est pas valide par rapport à son type, 'datetime'.|PMDA-OD0017|WARNING",
+            "cvc-datatype-valid.1.2.1 : 'yesterday' n'est pas une valeur valide pour 'dateTime'.|PMDA-OD0017|WARNING",
+            // A localised enum violation: the last quoted token is the type 'FileType' ⇒ catch-all.
+            "cvc-attribute.3: Wert 'Nonsense' des Attributs 'FileType' bei Element 'ODM' hat keinen gültigen Typ 'FileType'.|PMDA-DD0001|REJECT",
             "cvc-enumeration-valid: Value 'Nonsense' is not facet-valid with respect to enumeration '[Snapshot, Transactional]'.|PMDA-DD0001|REJECT",
             "cvc-attribute.3: mangled message without the quoted type|PMDA-DD0001|REJECT",
             "some completely unrecognised parser error|PMDA-DD0001|REJECT"

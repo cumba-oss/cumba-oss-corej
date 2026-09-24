@@ -17,6 +17,17 @@ import org.jspecify.annotations.Nullable;
  * (empirically verified, e.g. {@code "cvc-complex-type.4: Attribute 'Mandatory' must appear on
  * element 'ItemRef'."}), so classification pattern-matches on those key prefixes:
  *
+ * <p>
+ * ⚠ Only the key is stable, not the prose after it: JDK Xerces renders that in the JVM's default
+ * locale ({@code "cvc-complex-type.4: Attribut 'Mandatory' muss in Element 'ItemRef' vorkommen."}
+ * on a German machine), and its {@code locale} property is accepted and ignored, so English cannot
+ * be forced. Nothing here may therefore match English words. The one datum read from the prose, the
+ * simple type of a {@code cvc-attribute.3} / {@code cvc-datatype-valid} error, is taken as the
+ * <em>last</em> quoted token, which is the type in every locale the JDK ships (measured over all
+ * 11; Italian quotes it in {@code "…"}). Matching English text here once sent every invalid integer
+ * or datetime on a non-English JVM to the Reject-severity catch-all {@code PMDA-DD0001}.
+ * </p>
+ *
  * <ul>
  * <li>fatal (well-formedness, no cvc key) → {@code PMDA-OD0001} (Reject)</li>
  * <li>{@code cvc-elt.1*} (undeclared root element) → {@code PMDA-OD0012} (Reject)</li>
@@ -51,15 +62,15 @@ public final class SaxErrorClassifier
     /** Generic rule id for findings not attributable to a PMDA sheet row. */
     public static final String GENERIC_RULE_ID = "DEFINE-XML-XSD";
 
-    /** Xerces quotes the offending simple type: {@code "… its type, 'integer'."}. */
-    private static final Pattern ATTRIBUTE_TYPE = Pattern
-            .compile("not valid with respect to its type, '([^']+)'");
-
     /**
-     * Xerces quotes the offending simple type: {@code "… is not a valid value for 'dateTime'."}.
+     * The last token quoted in {@code '…'} or {@code "…"}: in every JDK locale this is the simple
+     * type Xerces names in a {@code cvc-attribute.3} / {@code cvc-datatype-valid} message
+     * ({@code "… its type, 'integer'."}, {@code "… hat keinen gültigen Typ 'integer'."},
+     * {@code "… valido per "integer"."}). Anchored at the END on purpose: Italian and French put
+     * apostrophes inside ordinary words ({@code dell'attributo}, {@code n'est}), so a match
+     * searched from the start would pair the wrong quotes.
      */
-    private static final Pattern DATATYPE_TYPE = Pattern
-            .compile("is not a valid value for '([^']+)'");
+    private static final Pattern LAST_QUOTED_TOKEN = Pattern.compile("['\"]([^'\"]+)['\"][^'\"]*$");
 
     private SaxErrorClassifier()
     {
@@ -147,17 +158,12 @@ public final class SaxErrorClassifier
     /** The simple type Xerces quoted in a datatype-violation message, or {@code null}. */
     private static @Nullable String reportedSimpleType(String aMessage)
     {
-        if (aMessage.startsWith("cvc-attribute.3"))
+        if (!aMessage.startsWith("cvc-attribute.3") && !aMessage.startsWith("cvc-datatype-valid"))
         {
-            Matcher matcher = ATTRIBUTE_TYPE.matcher(aMessage);
-            return matcher.find() ? matcher.group(1) : null;
+            return null;
         }
-        if (aMessage.startsWith("cvc-datatype-valid"))
-        {
-            Matcher matcher = DATATYPE_TYPE.matcher(aMessage);
-            return matcher.find() ? matcher.group(1) : null;
-        }
-        return null;
+        Matcher matcher = LAST_QUOTED_TOKEN.matcher(aMessage);
+        return matcher.find() ? matcher.group(1) : null;
     }
 
 
