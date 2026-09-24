@@ -5,6 +5,7 @@ import java.util.Objects;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.view.HashLookup;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Shared key-hashing primitives for the CDISC engine — used by {@link DatasetLookup} (cross-dataset
@@ -112,33 +113,30 @@ final class KeyHashing
 
 
     /**
-     * One key component's identity, as a {@link GroupKeyPolicy.KeyPart}.
+     * {@link #computeKeyHashSafe(IDataTable, long, int[])} over pre-built readers — the same hash,
+     * for the per-row loops that build a join index or map ({@code PLAN-identity-safe-join-caches}
+     * Phase 3b). A {@code null} reader is an absent column ({@code -1}).
      *
-     * <p>
-     * ⭐⭐ <b>{@code JKM R5} — why this is not {@code Objects.equals} on the raw value.</b> This
-     * matcher used to read {@link IDataTable#getValue(long, int)}, which is declared
-     * {@code @Nullable}, and compare the boxed raw objects. Three defects in one line: a raw
-     * {@code null} compared equal to another raw {@code null} (reachable today — an {@code .rds}
-     * null factor level, {@code RdataTableProvider.copyFactorData}), which is a {@code null} in a
-     * value comparison and so a null-free-channel violation; a {@code STRING "5"} could never equal
-     * a {@code LONG 5}; and the ruled missing-value identity was not applied at all, because the
-     * raw channel carries no {@link net.cumba.datatable.values.MissingValue}. Routing through
-     * {@link GroupKeyPolicy#keyPart} makes the comparison the ruled one, by construction.
-     * </p>
-     *
-     * <p>
-     * ⚠ <b>Only reached for a component present on BOTH sides.</b> The caller settles both-absent
-     * (the component leaves the key, {@code JKM R7}) and one-side-absent (no match, pending the
-     * plan's D7) before getting here, which is why this needs no knowledge of the other side. An
-     * earlier version took the other side's table/column to derive an absent side's type default;
-     * that arm went with R7's one-side rule when the non-harm review reverted it, and its
-     * {@code DOUBLE || LONG} predicate went too — leaving that classification in ONE place
-     * ({@code KeyMatchRowExpander.isNumeric}) rather than two copies to keep in step.
-     * </p>
+     * @param readers
+     *            one reader per key column, from {@link KeyCellReader#of(IDataTable, int[])}.
+     * @param row
+     *            the row.
+     * @return the same hash the table-based overload answers.
      */
-    private static GroupKeyPolicy.KeyPart part(IDataTable table, int row, int col)
+    static int computeKeyHashSafe(@Nullable KeyCellReader[] readers, long row)
     {
-        return GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(table.getColumn(col).getDataValue(row));
+        int h = 0;
+        for (KeyCellReader reader : readers)
+        {
+            if (reader == null)
+            {
+                h = 31 * h; // absent column: the blank sentinel, same as any blank cell
+                continue;
+            }
+            GroupKeyPolicy.KeyPart part = reader.read(row);
+            h = 31 * h + (part.present() ? part.hashCode() : 0);
+        }
+        return h != 0 ? h : 1;
     }
 
 
@@ -178,31 +176,57 @@ final class KeyHashing
     static final class KeyMatcher implements HashLookup.BiRowMatcher
     {
 
-        private final IDataTable table1;
+        /** One reader per key column of each side, built once — {@code null} where absent. */
+        private final @Nullable KeyCellReader[] readers1;
 
-        private final int[] colIds1;
-
-        private final IDataTable table2;
-
-        private final int[] colIds2;
+        private final @Nullable KeyCellReader[] readers2;
 
         KeyMatcher(IDataTable table1, int[] colIds1, IDataTable table2, int[] colIds2)
         {
-            this.table1 = table1;
-            this.colIds1 = colIds1;
-            this.table2 = table2;
-            this.colIds2 = colIds2;
+            // Phase 3b: the readers are built once per matcher (a matcher serves a whole loop),
+            // never per row. They answer exactly the keyPart the per-cell path did.
+            readers1 = KeyCellReader.of(table1, colIds1);
+            readers2 = KeyCellReader.of(table2, colIds2);
         }
 
 
+        /**
+         * Whether two rows' keys are equal, component by component, as
+         * {@link GroupKeyPolicy.KeyPart}s read through {@link KeyCellReader} (exactly
+         * {@code KEEP_MISSING_KEYS.keyPart} of each cell).
+         *
+         * <p>
+         * ⭐⭐ <b>{@code JKM R5} — why this is not {@code Objects.equals} on the raw value.</b> This
+         * matcher used to read {@link IDataTable#getValue(long, int)}, which is declared
+         * {@code @Nullable}, and compare the boxed raw objects. Three defects in one line: a raw
+         * {@code null} compared equal to another raw {@code null} (reachable today — an
+         * {@code .rds} null factor level, {@code RdataTableProvider.copyFactorData}), which is a
+         * {@code null} in a value comparison and so a null-free-channel violation; a
+         * {@code STRING "5"} could never equal a {@code LONG 5}; and the ruled missing-value
+         * identity was not applied at all, because the raw channel carries no
+         * {@link net.cumba.datatable.values.MissingValue}. Routing through
+         * {@link GroupKeyPolicy#keyPart} makes the comparison the ruled one, by construction.
+         * </p>
+         *
+         * <p>
+         * ⚠ <b>The value comparison is only reached for a component present on BOTH sides.</b> The
+         * two arms above it settle both-absent (the component leaves the key, {@code JKM R7}) and
+         * one-side-absent (no match, pending the plan's D7) first, which is why the comparison
+         * needs no knowledge of the other side's type. An earlier version took the other side's
+         * table/column to derive an absent side's type default; that arm went with R7's one-side
+         * rule when the non-harm review reverted it, and its {@code DOUBLE || LONG} predicate went
+         * too — leaving that classification in ONE place ({@code KeyMatchRowExpander.isNumeric})
+         * rather than two copies to keep in step.
+         * </p>
+         */
         @Override
         public boolean matches(int row1, int row2)
         {
-            for (int i = 0; i < colIds1.length; i++)
+            for (int i = 0; i < readers1.length; i++)
             {
-                int c1 = colIds1[i];
-                int c2 = colIds2[i];
-                if (c1 < 0 && c2 < 0)
+                KeyCellReader r1 = readers1[i];
+                KeyCellReader r2 = readers2[i];
+                if (r1 == null && r2 == null)
                 {
                     // JKM R7: absent on BOTH sides -> the component leaves the key. Both sides
                     // would
@@ -210,7 +234,7 @@ final class KeyHashing
                     // implemented that when the other builder did not.
                     continue;
                 }
-                if (c1 < 0 || c2 < 0)
+                if (r1 == null || r2 == null)
                 {
                     // ⛔⛔ R7's ONE-SIDE-absent rule is deliberately NOT implemented here, and this
                     // is not an oversight — it was implemented, measured, and REVERTED by the
@@ -241,7 +265,7 @@ final class KeyHashing
                     // rides along.
                     return false;
                 }
-                if (!Objects.equals(part(table1, row1, c1), part(table2, row2, c2)))
+                if (!Objects.equals(r1.read(row1), r2.read(row2)))
                 {
                     return false;
                 }

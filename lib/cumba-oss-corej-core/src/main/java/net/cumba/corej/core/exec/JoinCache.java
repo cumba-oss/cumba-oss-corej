@@ -1,9 +1,7 @@
 package net.cumba.corej.core.exec;
 
-import java.lang.ref.WeakReference;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 import net.cumba.corej.core.exec.DatasetLookup.SharedJoinedIndex;
@@ -48,54 +46,78 @@ public final class JoinCache
     /**
      * Thread-safe cache for joined-side indexes. Shared across dataset validation threads so that a
      * reference dataset (e.g., DM) is indexed only once for the entire validation run.
+     *
+     * <p>
+     * ⭐⭐ <b>Every table-keyed cache here is identity-exact</b>
+     * ({@code PLAN-identity-safe-join-caches} D1/D2): each is an {@link IdentityWeakCache}, which
+     * compares the table by reference identity and holds it weakly, under a sub-key naming every
+     * other input of the build. Before, three of them keyed on {@code System.identityHashCode}
+     * alone — at most 31 bits, not unique — and validated nothing on a hit, so a collision handed
+     * one table another table's index: a silent no-match (and false absence findings), a false
+     * match, or an index out of bounds.
+     * </p>
+     *
+     * <ul>
+     * <li><b>Lookup indexes</b> ({@link #getOrBuild}) — sub-key: the key column names in order.
+     * {@code DatasetLookup.buildSharedIndex} reads only the table and those names.</li>
+     * <li><b>Child-match indexes</b> ({@link #getOrBuildChildMatchIndex}) — sub-key: the standard
+     * keys in order and the IDVAR column. A {@code null} build (the parent lacks a column) is
+     * cached too, through {@link ChildMatchIndexHolder}.</li>
+     * <li><b>Key-match indexes</b> ({@link #getOrBuildKeyMatchIndex}) — sub-key:
+     * {@link KeyMatchIndex.SpecKey}.</li>
+     * <li><b>Wildcard column sets</b> ({@link #wildcardColumns}) — sub-key: regex and flags.</li>
+     * </ul>
+     *
+     * <p>
+     * Each lives exactly as long as its table ({@code PLAN-keymatch-shared-join-index} Q3 (d)):
+     * tables are soft-memoised and may reload as a new instance mid-run, which gets fresh entries
+     * and never a stale hit. ⚠ A cached value must never hold its own table strongly, or it pins it
+     * — which is why {@code ChildMatchIndex} no longer carries its parent (D3). Each cache is its
+     * own map, so a long {@code computeIfAbsent} build never holds a bin lock over another cache's
+     * entries.
+     * </p>
      */
     public static final class SharedIndexCache
     {
 
-        private final ConcurrentHashMap<String, SharedJoinedIndex> cache = new ConcurrentHashMap<>();
+        /** Every input of {@code ChildMatchIndex.build} besides the parent table. */
+        record ChildKey(List<String> standardKeys, String idvarCol)
+        {
+
+            ChildKey
+            {
+                standardKeys = List.copyOf(standardKeys);
+            }
+        }
+
+        private final IdentityWeakCache<List<String>, SharedJoinedIndex> lookupIndexes;
+
+        private final IdentityWeakCache<ChildKey, ChildMatchIndexHolder> childMatchIndexes;
+
+        private final IdentityWeakCache<KeyMatchIndex.SpecKey, KeyMatchIndex> keyMatchIndexes;
+
+        private final WildcardForeignColumnCache wildcardColumns;
+
+        /** A cache for one validation run. */
+        public SharedIndexCache()
+        {
+            this(System::identityHashCode);
+        }
+
 
         /**
-         * Child-match indexes cached per {@code (parent identity, IDVAR column)} pair.
-         * {@link ChildMatchIndex#build} may return {@code null} when the parent lacks the named
-         * IDVAR or {@code USUBJID} column; {@code null} values are intentionally cached so repeated
-         * {@code preMerge} calls on the same un-buildable combination do not re-scan the parent.
-         * The map therefore stores an {@code Optional}-equivalent wrapper.
+         * A cache whose tables are bucketed by {@code aIdentityHash} — ⭐ the test seam that proves
+         * every hit is exact: a test forces every table into ONE bucket.
          */
-        private final ConcurrentHashMap<String, ChildMatchIndexHolder> childMatchCache = new ConcurrentHashMap<>();
+        SharedIndexCache(java.util.function.ToIntFunction<Object> aIdentityHash)
+        {
+            lookupIndexes = new IdentityWeakCache<>(aIdentityHash);
+            childMatchIndexes = new IdentityWeakCache<>(aIdentityHash);
+            keyMatchIndexes = new IdentityWeakCache<>(aIdentityHash);
+            wildcardColumns = new WildcardForeignColumnCache(
+                    new IdentityWeakCache<>(aIdentityHash));
+        }
 
-        /**
-         * Key-match child indexes ({@link KeyMatchRowExpander}), per child table and then per
-         * {@link KeyMatchIndex.SpecKey}.
-         *
-         * <p>
-         * ⭐ <b>Tied to the child table's lifetime</b> ({@code PLAN-keymatch-shared-join-index} Q3,
-         * ruled (d)): the outer key holds the table <b>weakly</b> and compares it by
-         * <b>identity</b>. Target and reference datasets are soft-memoised
-         * ({@code StudyValidationService.softMemoised}), so under heap pressure a table can be
-         * dropped and reloaded as a <em>new</em> instance mid-run. Its indexes then go with it, and
-         * the reloaded instance gets a fresh, correct one — never a stale hit, and never an index
-         * pinning a table the dataset cache has let go. ⚠ This is why the key is not the
-         * {@code identityHashCode} string {@link #indexCacheKey} uses: a hash can collide, and a
-         * strong reference would pin every joined table for the whole run.
-         * </p>
-         *
-         * <p>
-         * ⚠ The index is freed one collection AFTER its table, not with it: the map holds the table
-         * weakly but its indexes strongly, so the collection that takes a table only clears the
-         * key; the next call's sweep drops the entry, and the collection after that frees the
-         * indexes. This holds for any weak-keyed map (including {@code WeakHashMap}) and is bounded
-         * by the index-to-table size ratio, since the table itself is freed at once.
-         * </p>
-         *
-         * <p>
-         * A separate map from {@link #cache} on purpose: {@code computeIfAbsent} holds a bin lock
-         * for the whole O(rows) build, and an index build must not stall unrelated lookups.
-         * </p>
-         */
-        private final ConcurrentHashMap<TableRef, ConcurrentHashMap<KeyMatchIndex.SpecKey, KeyMatchIndex>> keyMatchIndexes = new ConcurrentHashMap<>();
-
-        /** How many key-match indexes this cache has built — the sharing tests' instrument. */
-        private final AtomicInteger keyMatchIndexBuilds = new AtomicInteger();
 
         /**
          * Returns a cached index or builds and caches one.
@@ -108,18 +130,15 @@ public final class JoinCache
          */
         SharedJoinedIndex getOrBuild(IDataTable dataset, List<String> keyColumns)
         {
-            String cacheKey = indexCacheKey(dataset, keyColumns);
-            return cache.computeIfAbsent(cacheKey,
-                    _ -> DatasetLookup.buildSharedIndex(dataset, keyColumns));
+            return lookupIndexes.getOrBuild(dataset, List.copyOf(keyColumns),
+                    keys -> DatasetLookup.buildSharedIndex(dataset, keys));
         }
 
 
         /**
          * Returns the cached child-match index for {@code (parent, standardKeys, idvarCol)} or
-         * builds and caches one. Identity-hash keying is safe within a validation run for the same
-         * reason as {@link #getOrBuild(IDataTable, List)} — the production resolver hands out a
-         * stable {@code IDataTable} instance per domain. The standard-key list is part of the cache
-         * key so two rules declaring different keys do not share an index.
+         * builds and caches one. The standard-key list is part of the key so two rules declaring
+         * different keys do not share an index.
          * <p>
          * May return {@code null} when the parent lacks the named IDVAR column or a declared
          * standard-key column; the {@code null} is itself cached so the failed build is not retried
@@ -130,12 +149,9 @@ public final class JoinCache
         ChildMatchIndex getOrBuildChildMatchIndex(IDataTable aParent, List<String> aStandardKeyCols,
                 String aIdvarCol)
         {
-            String key = "childmatch|" + System.identityHashCode(aParent) + "|"
-                    + String.join(",", aStandardKeyCols) + "|" + aIdvarCol;
-            return childMatchCache
-                    .computeIfAbsent(key,
-                            _ -> new ChildMatchIndexHolder(
-                                    ChildMatchIndex.build(aParent, aStandardKeyCols, aIdvarCol)))
+            return childMatchIndexes.getOrBuild(aParent, new ChildKey(aStandardKeyCols, aIdvarCol),
+                    key -> new ChildMatchIndexHolder(
+                            ChildMatchIndex.build(aParent, key.standardKeys(), key.idvarCol())))
                     .index();
         }
 
@@ -147,7 +163,7 @@ public final class JoinCache
          *
          * @param aChild
          *            the joined table, <b>unfiltered</b> — a {@code Filter} is applied per rule as
-         *            a mask over the shared index (Q1), never baked into it.
+         *            a mask over the shared index, never baked into it.
          * @param aSpec
          *            the child-side key shape.
          * @param aBuild
@@ -157,98 +173,63 @@ public final class JoinCache
         KeyMatchIndex getOrBuildKeyMatchIndex(IDataTable aChild, KeyMatchIndex.SpecKey aSpec,
                 Supplier<KeyMatchIndex> aBuild)
         {
-            purgeCollectedTables();
-            ConcurrentHashMap<KeyMatchIndex.SpecKey, KeyMatchIndex> perTable = keyMatchIndexes
-                    .get(new TableRef(aChild));
-            if (perTable == null)
-            {
-                perTable = keyMatchIndexes.computeIfAbsent(new TableRef(aChild),
-                        _ -> new ConcurrentHashMap<>());
-            }
-            return perTable.computeIfAbsent(aSpec, _ ->
-            {
-                keyMatchIndexBuilds.incrementAndGet();
-                return aBuild.get();
-            });
+            return keyMatchIndexes.getOrBuild(aChild, aSpec, _ -> aBuild.get());
+        }
+
+
+        /** Returns the run's wildcard column cache, shared by every rule of the run. */
+        WildcardForeignColumnCache wildcardColumns()
+        {
+            return wildcardColumns;
         }
 
 
         /** Returns how many key-match indexes this cache has built so far. */
         int keyMatchIndexBuildCount()
         {
-            return keyMatchIndexBuilds.get();
+            return keyMatchIndexes.buildCount();
         }
 
 
         /** Returns how many child tables currently hold key-match indexes. */
         int keyMatchIndexedTableCount()
         {
-            purgeCollectedTables();
-            return keyMatchIndexes.size();
+            return keyMatchIndexes.tableCount();
         }
 
 
-        /**
-         * Drops the indexes of every child table the collector has taken. A sweep rather than a
-         * {@code ReferenceQueue}: the GC clears a weak reference the moment its table becomes
-         * unreachable, but queueing it is left to the JVM's reference-handler thread, which was
-         * measured to lag by more than 14 s behind a large heap (2026-09-24) — the indexes would
-         * have outlived their table by exactly that. The map holds one entry per joined table in
-         * the run, so the sweep is a handful of null checks per rule entry.
-         */
-        private void purgeCollectedTables()
+        /** Returns how many lookup indexes this cache has built so far. */
+        int lookupIndexBuildCount()
         {
-            keyMatchIndexes.keySet().removeIf(ref -> ref.get() == null);
+            return lookupIndexes.buildCount();
         }
 
 
-        private static String indexCacheKey(IDataTable dataset, List<String> keyColumns)
+        /** Returns how many live tables currently hold lookup indexes. */
+        int lookupIndexedTableCount()
         {
-            // Use identity hash of the table object + key columns as cache key.
-            // Identity hash is sufficient because IDataTable instances are stable
-            // within a validation run (same object reference = same data).
-            return System.identityHashCode(dataset) + "|" + String.join(",", keyColumns);
-        }
-    }
-
-
-    /**
-     * A weak, identity-compared reference to a table, usable as a map key. Two refs are equal when
-     * they refer to the <b>same</b> live table; a cleared ref equals only itself, and is removed by
-     * {@code SharedIndexCache.purgeCollectedTables}.
-     */
-    private static final class TableRef extends WeakReference<IDataTable>
-    {
-
-        private final int hash;
-
-        TableRef(IDataTable aTable)
-        {
-            super(aTable);
-            hash = System.identityHashCode(aTable);
+            return lookupIndexes.tableCount();
         }
 
 
-        @Override
-        public boolean equals(@Nullable Object aOther)
+        /** Returns how many child-match indexes (including cached failed builds) are cached. */
+        int childMatchIndexCount()
         {
-            if (this == aOther)
-            {
-                return true;
-            }
-            if (!(aOther instanceof TableRef other))
-            {
-                return false;
-            }
-            IDataTable table = get();
-            return table != null && table == other.get();
+            return childMatchIndexes.valueCount();
         }
 
 
-        @Override
-        public int hashCode()
+        /** Returns how many child-match indexes this cache has built so far. */
+        int childMatchIndexBuildCount()
         {
-            return hash;
+            return childMatchIndexes.buildCount();
+        }
+
+
+        /** Returns how many live parent tables currently hold child-match indexes. */
+        int childMatchIndexedTableCount()
+        {
+            return childMatchIndexes.tableCount();
         }
     }
 
@@ -324,12 +305,22 @@ public final class JoinCache
             return null;
         }
         String key = lookupCacheKey(dsName, keys);
-        // computeIfAbsent guarantees the build runs once per key even under concurrent access from
+        // compute guarantees the build runs once per key even under concurrent access from
         // multiple rule threads. The mapping function may briefly block other threads asking for
         // the same key — acceptable since DatasetLookup construction is fast (it defers the
         // multi-MB row map to ensureJoinMap, called outside this lock).
-        JoinLookup existing = lookupCache.computeIfAbsent(key, _ ->
+        // ⭐ PLAN-identity-safe-join-caches D5: a cached lookup is reused ONLY for the very table
+        // instance it was built over. The key is a NAME, and a name could resolve to a different
+        // instance (a split union rebuilt for another resolver, a reloaded table); serving the old
+        // lookup would then read the other instance's rows. Today the instance is always the same
+        // (the cached lookup pins its table, one JoinCache per target dataset), so this check
+        // never fires in production — and when it holds, the result is byte-identical.
+        JoinLookup existing = lookupCache.compute(key, (_, current) ->
         {
+            if (current instanceof DatasetLookup dl ? dl.dataset() == dataset : current != null)
+            {
+                return current; // same instance, or a non-key lookup registered under this name
+            }
             SharedJoinedIndex prebuiltIndex = sharedIndex != null
                     ? sharedIndex.getOrBuild(dataset, keys)
                     : null;

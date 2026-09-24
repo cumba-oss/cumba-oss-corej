@@ -86,8 +86,7 @@ public final class ValueResolver
             }
             // Phase 7: cache the matching column-name lookup once per (foreignTable, Pattern).
             // Without this we'd regex-match every foreign-dataset column on every row.
-            int[] matchingColIdx = WildcardForeignColumnCache.matchingColumns(foreignTable,
-                    pattern);
+            int[] matchingColIdx = ctx.getWildcardColumns().matchingColumns(foreignTable, pattern);
             DataTableMeta meta = foreignTable.getMetaData();
             List<Object> result = new ArrayList<>(matchingColIdx.length);
             for (int c : matchingColIdx)
@@ -160,7 +159,7 @@ public final class ValueResolver
         // contributes its value, the local arm drops it. That predates this change — do not "align"
         // it without a ruling.
         net.cumba.datatable.IDataTable localTable = ctx.getTable();
-        int[] matchingColIdx = WildcardForeignColumnCache.matchingColumns(localTable, pattern);
+        int[] matchingColIdx = ctx.getWildcardColumns().matchingColumns(localTable, pattern);
         List<Object> result = new ArrayList<>(matchingColIdx.length);
         for (int c : matchingColIdx)
         {

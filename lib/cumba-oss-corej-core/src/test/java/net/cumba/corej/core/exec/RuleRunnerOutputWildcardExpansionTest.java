@@ -9,7 +9,6 @@ import java.util.Map;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.values.IDataValue;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -19,13 +18,6 @@ import org.junit.jupiter.api.Test;
  */
 class RuleRunnerOutputWildcardExpansionTest
 {
-
-    @BeforeEach
-    void resetCaches()
-    {
-        WildcardForeignColumnCache.clearForTesting();
-    }
-
 
     /** A JoinLookup that reads the single ADSL row for whichever column is asked. */
     private static JoinLookup adslLookup(IDataTable adsl)

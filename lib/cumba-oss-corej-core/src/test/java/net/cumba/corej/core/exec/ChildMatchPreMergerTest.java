@@ -5,12 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.datatable.DataTableColumnMeta;
 import net.cumba.datatable.DataTableMeta;
@@ -667,15 +665,17 @@ class ChildMatchPreMergerTest
 
         ChildMatchPreMerger.preMerge(primary, List.of(md("AE", true)), resolver("AE", parent),
                 "rule-1", cache);
-        int sizeAfter1 = childMatchCacheSize(shared);
+        int sizeAfter1 = shared.childMatchIndexCount();
 
         ChildMatchPreMerger.preMerge(primary, List.of(md("AE", true)), resolver("AE", parent),
                 "rule-2", cache);
-        int sizeAfter2 = childMatchCacheSize(shared);
+        int sizeAfter2 = shared.childMatchIndexCount();
 
         assertEquals(1, sizeAfter1, "first preMerge must add exactly one (parent, IDVAR) entry");
         assertEquals(1, sizeAfter2,
                 "second preMerge with same primary/parent/IDVAR must NOT rebuild the index");
+        assertEquals(1, shared.childMatchIndexBuildCount(),
+                "one build for both rules — the counter, not the size, is what sees a rebuild");
     }
 
     // ----------------------------------------------------------------------------------------
@@ -948,16 +948,6 @@ class ChildMatchPreMergerTest
     private static DatasetResolver multi(Map<String, IDataTable> tables)
     {
         return tables::get;
-    }
-
-
-    @SuppressWarnings("unchecked")
-    private static int childMatchCacheSize(JoinCache.SharedIndexCache shared) throws Exception
-    {
-        Field f = JoinCache.SharedIndexCache.class.getDeclaredField("childMatchCache");
-        f.setAccessible(true);
-        ConcurrentHashMap<String, ?> map = (ConcurrentHashMap<String, ?>) f.get(shared);
-        return map.size();
     }
 
     // ----------------------------------------------------------------------------------------

@@ -64,8 +64,9 @@ final class ChildMatchIndex
     /** Pre-stringified IDVAR-named column on the parent — missing cell becomes {@code null}. */
     final @Nullable String[] joinValueStr;
 
-    /** The parent table; carried for downstream column access. */
-    final IDataTable parent;
+    // ⭐ PLAN-identity-safe-join-caches D3: the parent table is NOT held. It was carried "for
+    // downstream column access" and read by nothing, and a cached value that holds its own table
+    // strongly pins it in the identity-weak cache — the index would outlive a soft-memoised table.
 
     /**
      * Whether the parent {@code IDVAR}-named column is numeric — drives the type-gated coercion in
@@ -75,12 +76,11 @@ final class ChildMatchIndex
     final boolean parentIdvarNumeric;
 
     private ChildMatchIndex(HashLookup aLookup, @Nullable String[][] aKeyStr,
-            @Nullable String[] aJoinValueStr, IDataTable aParent, boolean aParentIdvarNumeric)
+            @Nullable String[] aJoinValueStr, boolean aParentIdvarNumeric)
     {
         lookup = aLookup;
         keyStr = aKeyStr;
         joinValueStr = aJoinValueStr;
-        parent = aParent;
         parentIdvarNumeric = aParentIdvarNumeric;
     }
 
@@ -170,7 +170,7 @@ final class ChildMatchIndex
                             + "first-wins per CDISC convention",
                     pm.getName(), dupes, aIdvarCol);
         }
-        return new ChildMatchIndex(lookup, keyStr, joinValueStr, aParent, parentIdvarNumeric);
+        return new ChildMatchIndex(lookup, keyStr, joinValueStr, parentIdvarNumeric);
     }
 
 

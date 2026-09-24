@@ -43,9 +43,9 @@ public final class RuleRunner
 
     /**
      * EC-12: compiled column-match {@link Pattern} per {@code ${*}} Output_Variables template.
-     * Keyed by the template string so the same Pattern object reaches
-     * {@link WildcardForeignColumnCache} across rows (that cache is keyed on Pattern identity),
-     * making the foreign-column enumeration effectively once-per-execution rather than per-row.
+     * Keyed by the template string so the pattern is compiled once per template, not per row. (The
+     * {@link WildcardForeignColumnCache} itself is keyed on the regex TEXT and flags since
+     * {@code PLAN-identity-safe-join-caches}, so a recompiled pattern would hit it anyway.)
      */
     private static final ConcurrentHashMap<String, Pattern> OV_WILDCARD_PATTERNS = new ConcurrentHashMap<>();
 
@@ -1256,7 +1256,11 @@ public final class RuleRunner
                 .evaluationDomain(rule.getEvaluationDomain()).maxErrorsPerRule(maxErrorsPerRule)
                 .libraryProvider(libraryProvider).dictionaryProvider(dictionaryProvider)
                 .exprCache(exprCache).checkExprOverride(absentSkip.effectiveCheckExpr())
-                .severityThreshold(severityThreshold).build();
+                .severityThreshold(severityThreshold)
+                // PLAN-identity-safe-join-caches D4: the run's wildcard column cache, so every rule
+                // of a validation run shares it; without a run cache the context's own default is
+                // used (per-execute scope, still cached).
+                .wildcardColumns(runWildcardColumns(joinCache)).build();
         try
         {
             // ⭐ `null` for every single-level rule — the entire shipped corpus — so executeAgainst
@@ -4119,6 +4123,18 @@ public final class RuleRunner
 
 
     /**
+     * The run's wildcard column cache when a shared index cache exists, otherwise a fresh one
+     * scoped to this execution ({@code PLAN-identity-safe-join-caches} D4).
+     */
+    private static WildcardForeignColumnCache runWildcardColumns(@Nullable JoinCache joinCache)
+    {
+        JoinCache.SharedIndexCache shared = joinCache != null ? joinCache.getSharedIndexCache()
+                : null;
+        return shared != null ? shared.wildcardColumns() : new WildcardForeignColumnCache();
+    }
+
+
+    /**
      * EC-12 (Option A): expands any {@code ${*}} wildcard Output_Variables entry to one concrete
      * {@code <foreign>.<column>} entry per matching foreign-dataset column. The expansion is
      * row-invariant (the foreign table's column set is fixed for the run), so the resulting
@@ -4180,7 +4196,7 @@ public final class RuleRunner
             Pattern p = OV_WILDCARD_PATTERNS.computeIfAbsent(v,
                     _ -> OperandSubstitutor.toColumnPattern(w, null, 0L));
             DataTableMeta fm = ft.getMetaData();
-            for (int c : WildcardForeignColumnCache.matchingColumns(ft, p))
+            for (int c : ctx.getWildcardColumns().matchingColumns(ft, p))
             {
                 String col = fm.getColumn(c).getName();
                 expanded.add(foreign != null ? foreign + '.' + col : col);

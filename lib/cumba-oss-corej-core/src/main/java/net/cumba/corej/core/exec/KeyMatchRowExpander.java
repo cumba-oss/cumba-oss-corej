@@ -235,11 +235,25 @@ final class KeyMatchRowExpander
                     : aShared.getOrBuildKeyMatchIndex(child, spec.cacheKey(),
                             () -> buildChildIndex(child, childRows, spec));
             KeyPart[] probe = spec.nActive() > 1 ? new KeyPart[spec.nActive()] : null;
+            // D6: the primary side's readers, once per entry.
+            @Nullable
+            KeyCellReader[] primaryReaders = KeyCellReader.of(primaryTable, spec.primaryColIds());
 
             Bindings next = new Bindings(size, primaryCol, childCols, ei);
+            // #5(a), PLAN-identity-safe-join-caches Phase 2: a one-slot probe memo, declared HERE
+            // so it is reset for every entry. The probe is a pure function of the PRIMARY row
+            // (nothing an earlier entry bound reaches it), and the rows expanded from one primary
+            // row are contiguous (Bindings appends in ascending i, starting from the identity), so
+            // a primary row fanned out k times by an earlier entry is probed once, not k times.
+            int memoPrimary = -1;
+            int memoId = KeyMatchIndex.NOT_FOUND;
             for (int i = 0; i < size; i++)
             {
-                int id = probeKeyId(primaryTable, spec, primaryCol[i], index, probe);
+                int p = primaryCol[i];
+                int id = p == memoPrimary ? memoId
+                        : probeKeyId(primaryTable, primaryReaders, spec, p, index, probe);
+                memoPrimary = p;
+                memoId = id;
                 boolean bound = false;
                 if (id != KeyMatchIndex.NOT_FOUND)
                 {
@@ -444,6 +458,9 @@ final class KeyMatchRowExpander
     private static KeyMatchIndex buildChildIndex(IDataTable child, int childRows, KeySpec spec)
     {
         int[] colIds = spec.childColIds();
+        // D6: one reader per key column, built once per index build — never per row.
+        @Nullable
+        KeyCellReader[] readers = KeyCellReader.of(child, colIds);
         return KeyMatchIndex.build(childRows, row ->
         {
             if (!spec.keepMissings() && anyActiveKeyBlank(child, colIds, spec, row))
@@ -452,10 +469,10 @@ final class KeyMatchRowExpander
             }
             if (spec.nActive() == 1)
             {
-                return keyPart(child, colIds, spec, spec.singleActive(), row);
+                return keyPart(readers, spec, spec.singleActive(), row);
             }
             KeyPart[] parts = new KeyPart[spec.nActive()];
-            fillKeyParts(child, colIds, spec, row, parts);
+            fillKeyParts(readers, spec, row, parts);
             return new KeyMatchIndex.CompositeKey(parts);
         });
     }
@@ -466,8 +483,8 @@ final class KeyMatchRowExpander
      * matches nothing — including a row an authored {@code keep_missings: false} drops (P3: no key
      * object is built for the lookup beyond the parts themselves).
      */
-    private static int probeKeyId(IDataTable primary, KeySpec spec, int row, KeyMatchIndex index,
-            KeyPart @Nullable [] scratch)
+    private static int probeKeyId(IDataTable primary, @Nullable KeyCellReader[] readers,
+            KeySpec spec, int row, KeyMatchIndex index, KeyPart @Nullable [] scratch)
     {
         int[] colIds = spec.primaryColIds();
         if (!spec.keepMissings() && anyActiveKeyBlank(primary, colIds, spec, row))
@@ -476,9 +493,9 @@ final class KeyMatchRowExpander
         }
         if (scratch == null)
         {
-            return index.find(keyPart(primary, colIds, spec, spec.singleActive(), row));
+            return index.find(keyPart(readers, spec, spec.singleActive(), row));
         }
-        fillKeyParts(primary, colIds, spec, row, scratch);
+        fillKeyParts(readers, spec, row, scratch);
         return index.find(scratch);
     }
 
@@ -795,27 +812,30 @@ final class KeyMatchRowExpander
      * on both sides is inactive and is never asked for.
      * </p>
      */
-    private static KeyPart keyPart(IDataTable t, int[] colIds, KeySpec spec, int component, int row)
+    private static KeyPart keyPart(@Nullable KeyCellReader[] readers, KeySpec spec, int component,
+            int row)
     {
-        if (colIds[component] < 0)
+        KeyCellReader reader = readers[component];
+        if (reader == null)
         {
             return coerce(spec.absentPart()[component], spec.asString());
         }
-        return coerce(GroupKeyPolicy.KEEP_MISSING_KEYS
-                .keyPart(t.getColumn(colIds[component]).getDataValue(row)), spec.asString());
+        // D6: exactly KEEP_MISSING_KEYS.keyPart(t.getColumn(c).getDataValue(row)), read directly
+        // for a present cell (KeyCellReader).
+        return coerce(reader.read(row), spec.asString());
     }
 
 
     /** Fills {@code out} with the row's active key components, in key order. */
-    private static void fillKeyParts(IDataTable t, int[] colIds, KeySpec spec, int row,
+    private static void fillKeyParts(@Nullable KeyCellReader[] readers, KeySpec spec, int row,
             KeyPart[] out)
     {
         int j = 0;
-        for (int i = 0; i < colIds.length; i++)
+        for (int i = 0; i < readers.length; i++)
         {
             if (spec.active()[i])
             {
-                out[j++] = keyPart(t, colIds, spec, i, row);
+                out[j++] = keyPart(readers, spec, i, row);
             }
         }
     }
@@ -826,10 +846,11 @@ final class KeyMatchRowExpander
      * {@link MissingValue} — or its column is absent on this side (every row is then blank there).
      *
      * <p>
-     * Delegates per component to {@link KeyHashing#anyKeyMissing}, which reads the typed buffer's
-     * missing sentinel directly (no {@link IDataValue} allocation, no autoboxing). ⚠ It counts a
-     * {@code -1} column as blank, which is precisely right for this predicate: an absent column
-     * contributes its type default to <em>every</em> row, and a default is blank.
+     * Per component it applies exactly {@link KeyHashing#anyKeyMissing}'s one-column test —
+     * {@code colId < 0 || isMissingOrNull} — inline, so no one-element {@code int[]} is allocated
+     * per component and row. ⚠ It counts a {@code -1} column as blank, which is precisely right for
+     * this predicate: an absent column contributes its type default to <em>every</em> row, and a
+     * default is blank.
      * </p>
      */
     private static boolean anyActiveKeyBlank(IDataTable t, int[] colIds, KeySpec spec, long row)
@@ -840,10 +861,9 @@ final class KeyMatchRowExpander
             {
                 continue;
             }
-            if (KeyHashing.anyKeyMissing(t, new int[]
-            {
-                    colIds[i]
-            }, row))
+            // #5(b) step 1: exactly KeyHashing.anyKeyMissing for one column, without allocating a
+            // one-element int[] per component and row.
+            if (colIds[i] < 0 || t.isMissingOrNull(row, colIds[i]))
             {
                 return true;
             }

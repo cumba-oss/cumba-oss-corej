@@ -67,17 +67,35 @@ public class DatasetLookup implements JoinLookup
     private final HashLookup index;
 
     /**
-     * Pre-computed mapping: primaryRow &rarr; joinedRow (or -1 if no match). Built lazily on the
-     * first {@link #lookup} call. Backed by a plain int- or long-array buffer from
-     * {@link DataBufferFactory#createForRange(long, long)}.
+     * Pre-computed mapping: primaryRow &rarr; joinedRow (or -1 if no match), together with the
+     * primary table it was built for. Built lazily on the first {@link #lookup} call. Backed by a
+     * plain int- or long-array buffer from {@link DataBufferFactory#createForRange(long, long)}.
+     *
      * <p>
-     * {@code volatile} so the lock-free fast-path in {@link #ensureJoinMap} can safely observe a
-     * fully-published {@code joinMap}/{@code joinMapTable} pair set by another thread.
+     * ⭐⭐ <b>ONE volatile holding BOTH, and {@link #ensureJoinMap} RETURNS the map it validated</b>
+     * ({@code PLAN-identity-safe-join-caches} D9). The map and its table used to be two volatile
+     * fields, and every caller re-read the map field after {@code ensureJoinMap} returned. With
+     * {@code ruleThreads > 1}, rules of one dataset share this lookup through the {@link JoinCache}
+     * over DIFFERENT primary tables (the raw table, or a key-match-expanded one), so another thread
+     * could publish its own map between the check and the read — and a rule would read another
+     * rule's row map: a wrong joined row, or an index out of bounds. Now the pair is published
+     * atomically, and a caller only ever uses the map it checked.
+     * </p>
      */
-    private volatile @Nullable IDataBufferNumeric joinMap;
+    private volatile @Nullable JoinMap joinMap;
 
-    /** The primary table that {@link #joinMap} was built for. */
-    private volatile @Nullable IDataTable joinMapTable;
+    /** A row map and the primary table it maps; published as one unit. */
+    private record JoinMap(IDataTable primaryTable, IDataBufferNumeric rows)
+    {
+    }
+
+    /**
+     * Test seam for D9, run on the lock-free fast path after {@link #ensureJoinMap} validated the
+     * published map and before the caller reads it — lets a test hold one thread exactly there
+     * while another publishes a different primary table's map. Never run under the monitor.
+     * {@code null} in production.
+     */
+    private volatile @Nullable Runnable afterJoinMapEnsuredForTest;
 
     /**
      * All joined rows that share a hash bucket, built once per joined dataset and shared across all
@@ -86,6 +104,13 @@ public class DatasetLookup implements JoinLookup
      * first-wins pick stored in {@link #index}.
      */
     private volatile @Nullable Map<Integer, int[]> joinedRowsByHash;
+
+    /** The joined table this lookup was built over — {@link JoinCache}'s D5 identity check. */
+    IDataTable dataset()
+    {
+        return dataset;
+    }
+
 
     private DatasetLookup(String datasetName, List<String> keyColumns, int[] joinedKeyColIds,
             HashLookup index, IDataTable dataset)
@@ -223,9 +248,12 @@ public class DatasetLookup implements JoinLookup
         // colId arrays are the joined dataset itself.
         KeyMatcher selfMatcher = new KeyMatcher(dataset, joinedKeyColIds, dataset, joinedKeyColIds);
 
+        // Phase 3b: readers built once for the loop, never per row.
+        @Nullable
+        KeyCellReader[] readers = KeyCellReader.of(dataset, joinedKeyColIds);
         for (int r = 0; r < rowCount; r++)
         {
-            int h = KeyHashing.computeKeyHashSafe(dataset, r, joinedKeyColIds);
+            int h = KeyHashing.computeKeyHashSafe(readers, r);
             // First-wins semantics: skip if a row with an equal key is already present.
             if (lookup.get(r, h, selfMatcher) == -1)
             {
@@ -250,11 +278,8 @@ public class DatasetLookup implements JoinLookup
     @Override
     public @Nullable String lookup(IDataTable primaryTable, long row, String columnName)
     {
-        ensureJoinMap(primaryTable);
-
-        // ensureJoinMap publishes a non-null joinMap before returning.
-        long joinedRow = Objects.requireNonNull(joinMap, "joinMap set by ensureJoinMap")
-                .getValueAsLong((int) row);
+        IDataBufferNumeric rows = ensureJoinMap(primaryTable);
+        long joinedRow = rows.getValueAsLong((int) row);
         if (joinedRow < 0)
         {
             return null;
@@ -363,9 +388,7 @@ public class DatasetLookup implements JoinLookup
             // answers for the sibling "no such joined dataset" case — the two must not drift.
             return JoinLookup.absentJoinedColumnValue(numericExpected);
         }
-        ensureJoinMap(primaryTable);
-        long joinedRow = Objects.requireNonNull(joinMap, "joinMap set by ensureJoinMap")
-                .getValueAsLong((int) row);
+        long joinedRow = ensureJoinMap(primaryTable).getValueAsLong((int) row);
         if (joinedRow < 0)
         {
             // ⭐ D72/D72a-1: an unmatched join row yields the column's TYPE default — a merged
@@ -462,9 +485,7 @@ public class DatasetLookup implements JoinLookup
     @Override
     public boolean matchedRow(IDataTable primaryTable, long row)
     {
-        ensureJoinMap(primaryTable);
-        return Objects.requireNonNull(joinMap, "joinMap set by ensureJoinMap")
-                .getValueAsLong((int) row) >= 0;
+        return ensureJoinMap(primaryTable).getValueAsLong((int) row) >= 0;
     }
 
 
@@ -491,9 +512,11 @@ public class DatasetLookup implements JoinLookup
         }
         int rc = Math.toIntExact(dataset.getRowCount());
         Map<Integer, List<Integer>> builder = new HashMap<>();
+        @Nullable
+        KeyCellReader[] readers = KeyCellReader.of(dataset, joinedKeyColIds);
         for (int r = 0; r < rc; r++)
         {
-            int h = KeyHashing.computeKeyHashSafe(dataset, r, joinedKeyColIds);
+            int h = KeyHashing.computeKeyHashSafe(readers, r);
             builder.computeIfAbsent(h, _ -> new ArrayList<>()).add(r);
         }
         Map<Integer, int[]> compact = HashMap.newHashMap(builder.size());
@@ -564,24 +587,28 @@ public class DatasetLookup implements JoinLookup
      * {@link HashLookup} — no composite {@code String} keys are allocated.
      * <p>
      * Synchronised so concurrent rule threads (Phase 2 fan-out) building the map for the same
-     * primary table see exactly one build. The lock-free fast-path uses the {@code volatile}
-     * {@code joinMap}/{@code joinMapTable} fields to avoid the monitor on every call once the map
-     * is built.
+     * primary table see exactly one build. The lock-free fast-path reads the one {@code volatile}
+     * {@link JoinMap} pair to avoid the monitor on every call once the map is built.
+     *
+     * @return the row map for {@code primaryTable} — the caller must use THIS, never re-read the
+     *         field (D9)
      */
 
-    private void ensureJoinMap(IDataTable primaryTable)
+    private IDataBufferNumeric ensureJoinMap(IDataTable primaryTable)
     {
-        // Lock-free fast-path: once another thread has published joinMap+joinMapTable, every
-        // subsequent caller observes them via volatile reads and skips the synchronized block.
-        if (joinMap != null && joinMapTable == primaryTable)
+        // Lock-free fast-path: ONE volatile read of the published pair — the map returned is the
+        // one whose table was just checked (D9).
+        JoinMap published = joinMap;
+        if (published != null && published.primaryTable() == primaryTable)
         {
-            return;
+            return ensured(published.rows());
         }
         synchronized (this)
         {
-            if (joinMap != null && joinMapTable == primaryTable)
+            published = joinMap;
+            if (published != null && published.primaryTable() == primaryTable)
             {
-                return;
+                return published.rows();
             }
             int rowCount = Math.toIntExact(primaryTable.getRowCount());
             DataTableMeta primaryMeta = primaryTable.getMetaData();
@@ -597,17 +624,37 @@ public class DatasetLookup implements JoinLookup
             KeyMatcher matcher = new KeyMatcher(dataset, joinedKeyColIds, primaryTable,
                     primaryKeyColIds);
 
+            @Nullable
+            KeyCellReader[] readers = KeyCellReader.of(primaryTable, primaryKeyColIds);
             for (int r = 0; r < rowCount; r++)
             {
-                int h = KeyHashing.computeKeyHashSafe(primaryTable, r, primaryKeyColIds);
+                int h = KeyHashing.computeKeyHashSafe(readers, r);
                 int matchedRow = index.get(r, h, matcher);
                 map.addValue(matchedRow);
             }
-            // Publish in this order so a reader that observes joinMapTable == primaryTable always
-            // sees a non-null joinMap.
-            joinMap = map;
-            joinMapTable = primaryTable;
+            // Publish the map and its table as ONE unit (D9).
+            joinMap = new JoinMap(primaryTable, map);
+            return map;
         }
+    }
+
+
+    /** Sets (or, with {@code null}, clears) the D9 test seam — test use only. */
+    void setAfterJoinMapEnsuredForTest(@Nullable Runnable aHook)
+    {
+        afterJoinMapEnsuredForTest = aHook;
+    }
+
+
+    /** Runs the D9 test seam, if set, and hands back the validated map. */
+    private IDataBufferNumeric ensured(IDataBufferNumeric aRows)
+    {
+        Runnable hook = afterJoinMapEnsuredForTest;
+        if (hook != null)
+        {
+            hook.run();
+        }
+        return aRows;
     }
 
     /**

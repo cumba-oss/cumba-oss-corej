@@ -103,6 +103,18 @@ public class EvaluationContext
     ExpressionResultCache exprCache;
 
     /**
+     * Column sets of {@code ${*}} wildcards per (table instance, regex) — see
+     * {@link WildcardForeignColumnCache} ({@code PLAN-identity-safe-join-caches} D4). ⭐ Never
+     * {@code null}, deliberately unlike {@link #exprCache}: a context built without one gets its
+     * own, so a construction site that does not pass the run's instance still caches (over its own
+     * lifetime) instead of silently regex-matching every column on every row. {@link RuleRunner}
+     * passes the run's instance from {@link JoinCache.SharedIndexCache}; {@code toBuilder} copies
+     * it into every derived context.
+     */
+    @Builder.Default
+    WildcardForeignColumnCache wildcardColumns = new WildcardForeignColumnCache();
+
+    /**
      * Phase 6 of {@code PLAN-typed-expression-engine.md} — the <b>binding-hoist memo</b>: a
      * per-execution store for the results of binding-invariant pure subtrees, armed by
      * {@code RuleRunner} around a variable-cursor binding loop (D8/D92e) and shared by every
