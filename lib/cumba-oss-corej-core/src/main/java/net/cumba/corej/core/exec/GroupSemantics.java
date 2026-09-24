@@ -933,11 +933,7 @@ public final class GroupSemantics
      */
     public static void sortByOrderColumn(int[] rows, IDataTableColumn orderCol)
     {
-        Integer[] boxed = new Integer[rows.length];
-        for (int i = 0; i < rows.length; i++)
-        {
-            boxed[i] = rows[i];
-        }
+        Integer[] boxed = Arrays.stream(rows).boxed().toArray(Integer[]::new);
         Arrays.sort(boxed, (a, b) ->
         {
             IDataValue dvA = orderCol.getDataValue(a);
@@ -946,10 +942,7 @@ public final class GroupSemantics
             String sb = ScalarSemantics.isMissing(dvB) ? "" : dvB.getValueAsString();
             return sa.compareTo(sb);
         });
-        for (int i = 0; i < rows.length; i++)
-        {
-            rows[i] = boxed[i];
-        }
+        Arrays.setAll(rows, i -> boxed[i]);
     }
 
     // -------------------------------------------------------------------------
@@ -1232,9 +1225,9 @@ public final class GroupSemantics
             // distinct tuples cannot collide by construction (W38-A1; the SOH-joined string this
             // replaces was collision-free only for folded cell text).
             List<KeyPart> tuple = new ArrayList<>(valueCols.size());
-            for (int i = 0; i < valueCols.size(); i++)
+            for (IDataTableColumn valueCol : valueCols)
             {
-                KeyPart comp = keyPart(valueCols.get(i), r);
+                KeyPart comp = keyPart(valueCol, r);
                 if (!comp.present())
                 {
                     ok = false;
@@ -1648,7 +1641,7 @@ public final class GroupSemantics
             boolean includeEmpty)
     {
         KeyPart v = keyPart(nameCol, r);
-        if (v.present() && !v.reportingForm().strip().isEmpty())
+        if (v.present() && !v.reportingForm().isBlank())
         {
             return v;
         }

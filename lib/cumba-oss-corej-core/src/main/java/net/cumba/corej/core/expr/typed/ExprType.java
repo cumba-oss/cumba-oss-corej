@@ -133,11 +133,7 @@ public sealed interface ExprType
         {
             return b.isCollection() && compatible(sa.element(), elementOf(b));
         }
-        if (b.isCollection())
-        {
-            return false;
-        }
-        return a == b;
+        return !b.isCollection() && a == b;
     }
 
 

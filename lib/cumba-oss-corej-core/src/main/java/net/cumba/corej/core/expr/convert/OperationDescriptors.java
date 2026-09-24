@@ -1,6 +1,7 @@
 package net.cumba.corej.core.expr.convert;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -159,10 +160,7 @@ public final class OperationDescriptors
 
     private static void add(List<Parameter> params, Parameter... more)
     {
-        for (Parameter p : more)
-        {
-            params.add(p);
-        }
+        Collections.addAll(params, more);
     }
 
 

@@ -209,14 +209,11 @@ public final class StudyRuleClassifier
             return true;
         }
         Expr precondition = rule.getPreconditionExpr();
-        if (precondition != null && readsPrimaryDataset(precondition, rule))
-        {
-            return true;
-        }
         // Output_Variables can name `$`-operations that are executed and rendered into the
         // finding. One of those reading the dataset under evaluation would silently emit an empty
         // or wrong value on the anchor, so they gate eligibility too.
-        return outputVariablesReadPrimaryDataset(rule);
+        return (precondition != null && readsPrimaryDataset(precondition, rule))
+                || outputVariablesReadPrimaryDataset(rule);
     }
 
 

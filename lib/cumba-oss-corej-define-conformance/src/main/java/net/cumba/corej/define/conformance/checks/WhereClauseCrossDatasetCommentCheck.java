@@ -55,12 +55,9 @@ public final class WhereClauseCrossDatasetCommentCheck implements CustomCheck
         {
             common.retainAll(datasets);
         }
-        if (!common.isEmpty())
-        {
-            // All referenced items can live in one dataset — not provably cross-dataset.
-            return true;
-        }
-        return aNode.attribute("CommentOID").filter(v -> !v.isBlank()).isPresent();
+        // All referenced items can live in one dataset — not provably cross-dataset.
+        return !common.isEmpty()
+                || aNode.attribute("CommentOID").filter(v -> !v.isBlank()).isPresent();
     }
 
 

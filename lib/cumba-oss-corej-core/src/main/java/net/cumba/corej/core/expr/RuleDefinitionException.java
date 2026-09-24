@@ -29,4 +29,10 @@ public class RuleDefinitionException extends RuntimeException
         super(message);
     }
 
+
+    public RuleDefinitionException(String message, Throwable cause)
+    {
+        super(message, cause);
+    }
+
 }

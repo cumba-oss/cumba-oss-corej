@@ -101,11 +101,7 @@ public final class SplitDatasetUtil
         {
             return false;
         }
-        if (!name.startsWith("SUPP"))
-        {
-            return false;
-        }
-        return isAllUpperLetters(name);
+        return name.startsWith("SUPP") && isAllUpperLetters(name);
     }
 
 
@@ -120,11 +116,7 @@ public final class SplitDatasetUtil
         {
             return false;
         }
-        if (!name.startsWith("AP"))
-        {
-            return false;
-        }
-        return isAllUpperLetters(name);
+        return name.startsWith("AP") && isAllUpperLetters(name);
     }
 
 

@@ -176,15 +176,12 @@ public final class ScopeVariableSource
     public boolean existsViaSuppQnam(String qualifier, String column)
     {
         String resolved = resolveQualifierName(qualifier);
-        if (resolved.toUpperCase(Locale.ROOT).startsWith("SUPP"))
-        {
-            return false;
-        }
-        return suppMemo.computeIfAbsent(resolved + KEY_SEP + column, _ ->
-        {
-            IDataTable supp = resolver.resolve("SUPP" + resolved);
-            return supp != null && OperatorRegistry.existsInSuppQnam(supp, column);
-        });
+        return !resolved.toUpperCase(Locale.ROOT).startsWith("SUPP")
+                && suppMemo.computeIfAbsent(resolved + KEY_SEP + column, _ ->
+                {
+                    IDataTable supp = resolver.resolve("SUPP" + resolved);
+                    return supp != null && OperatorRegistry.existsInSuppQnam(supp, column);
+                });
     }
 
 

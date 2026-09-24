@@ -28,11 +28,7 @@ public final class SplitDatasetClassCheck implements CustomCheck
     @Override
     public boolean satisfied(ElementNode aNode, DocumentContext aContext)
     {
-        if (!SplitDatasets.isSplitPart(aNode, aContext))
-        {
-            return true;
-        }
-        return SplitDatasets.datasetClass(aNode)
+        return !SplitDatasets.isSplitPart(aNode, aContext) || SplitDatasets.datasetClass(aNode)
                 .map(c -> GENERAL_OBSERVATION_CLASSES.contains(c.toUpperCase(Locale.ROOT)))
                 .orElse(true);
     }

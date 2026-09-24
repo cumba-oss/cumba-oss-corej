@@ -338,13 +338,10 @@ public final class Primitives
                 return false;
             }
             Double targetVal = targetAsDouble(target);
-            if (targetVal == null)
-            {
-                return false;
-            }
             // Step C: the four order operators carry the same tolerance as equality, or a pair
             // could be both "equal" and "less than" at once.
-            return ScalarSemantics.compareNumericTolerant(dvVal, targetVal, direction, orEqual);
+            return targetVal != null
+                    && ScalarSemantics.compareNumericTolerant(dvVal, targetVal, direction, orEqual);
         });
     }
 

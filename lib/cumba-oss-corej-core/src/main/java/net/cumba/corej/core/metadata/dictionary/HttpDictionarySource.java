@@ -226,7 +226,10 @@ public final class HttpDictionarySource implements DictionarySource
         }
         catch (UncheckedIOException e)
         {
-            throw e.getCause();
+            // Rethrow the checked cause; the wrapper's trace survives as a suppressed exception.
+            IOException cause = Objects.requireNonNull(e.getCause());
+            cause.addSuppressed(e);
+            throw cause;
         }
     }
 

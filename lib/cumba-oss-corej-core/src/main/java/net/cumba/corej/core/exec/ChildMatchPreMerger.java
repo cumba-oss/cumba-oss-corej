@@ -384,12 +384,9 @@ public final class ChildMatchPreMerger
         {
             return false;
         }
-        if (name.equals(primaryName))
-        {
-            return true;
-        }
         // SUPP--/SQAP-- wildcard entry matches any SUPP<x>/SQAP<x> primary.
-        return name.endsWith("--") && primaryName.startsWith(name.substring(0, name.length() - 2));
+        return name.equals(primaryName) || (name.endsWith("--")
+                && primaryName.startsWith(name.substring(0, name.length() - 2)));
     }
 
 

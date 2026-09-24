@@ -477,7 +477,7 @@ public record GroupKeyPolicy(boolean keepMissings, Blankness blankness)
         {
         case MISSING_OR_EMPTY -> ScalarSemantics.isMissing(dv);
         case MISSING_OR_WHITESPACE -> ScalarSemantics.isMissing(dv)
-                || dv.getValueAsString().strip().isEmpty();
+                || dv.getValueAsString().isBlank();
         };
     }
 

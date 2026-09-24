@@ -108,9 +108,8 @@ public final class PathResolver
         List<ElementNode> current = new ArrayList<>();
         current.add(aContext);
         String[] segments = aPath.split("/", -1);
-        for (int i = 0; i < segments.length; i++)
+        for (String step : segments)
         {
-            String step = segments[i];
             if (step.isEmpty())
             {
                 continue;

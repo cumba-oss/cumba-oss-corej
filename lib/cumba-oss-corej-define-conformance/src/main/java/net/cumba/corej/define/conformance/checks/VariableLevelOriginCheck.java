@@ -27,12 +27,8 @@ public final class VariableLevelOriginCheck implements CustomCheck
             return true;
         }
         String oid = aNode.attribute("OID").orElse(null);
-        if (oid == null)
-        {
-            // No identity: the missing-OID defect belongs to sheet id 137, not here.
-            return true;
-        }
-        return isValueLevelMember(oid, aContext);
+        // No identity: the missing-OID defect belongs to sheet id 137, not here.
+        return oid == null || isValueLevelMember(oid, aContext);
     }
 
 

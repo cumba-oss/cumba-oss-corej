@@ -62,6 +62,9 @@ public final class DomainClassMap
 
 
     /** Lazily-loaded, cached process-wide instance. */
+    // Double-checked lazy load into a volatile field: only the first call builds an instance, every
+    // later call returns the cached one. PMD reads the local copy as "always a new object".
+    @SuppressWarnings("PMD.SingletonClassReturningNewInstance")
     public static DomainClassMap getInstance()
     {
         DomainClassMap local = instance;

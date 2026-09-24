@@ -208,6 +208,8 @@ public final class LevelInstrument
     /** Closes and clears the file writer so a test's directory configuration does not leak. */
     static void resetWriterForTests()
     {
+        // Closed below when present; PMD does not follow the null-guarded close.
+        @SuppressWarnings("PMD.CloseResource")
         PrintWriter writer = WRITER.getAndSet(null);
         if (writer != null)
         {
@@ -560,6 +562,8 @@ public final class LevelInstrument
     private static void emit(String line)
     {
         LOGGER.log(System.Logger.Level.DEBUG, "{0}", line);
+        // Borrowed: the process-wide writer lives in WRITER and is closed by resetWriterForTests.
+        @SuppressWarnings("PMD.CloseResource")
         PrintWriter writer = writer();
         if (writer != null)
         {

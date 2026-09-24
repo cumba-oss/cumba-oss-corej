@@ -219,6 +219,8 @@ public final class ExprCompiler
      * hand-list — exactly what the design avoids. Package-private and flipped only by that test.
      * </p>
      */
+    // Deliberate package-private test seam: AbsentColumnContractTest flips it; nothing else writes.
+    @SuppressWarnings("PMD.MutableStaticState")
     static boolean absentFoldEnabled = true;
 
     /**
@@ -3374,8 +3376,7 @@ public final class ExprCompiler
                 return switch (fn)
                 {
                 case "vlm_data_type" -> m.dataType();
-                case "vlm_length" -> m.length() == null ? null
-                        : Long.valueOf(m.length().longValue());
+                case "vlm_length" -> m.length() == null ? null : m.length().longValue();
                 case "vlm_mandatory" -> m.mandatory();
                 case "vlm_codelist_coded_values" -> m.codedValues();
                 case "vlm_codelist_coded_codes" -> m.codedCodes();
@@ -3385,7 +3386,7 @@ public final class ExprCompiler
                         m.codelistCCode());
                 case "vlm_value_length" -> vlmValueLength(m.dataType(),
                         cellString(table, meta, targetVar, row));
-                case "vlm_has_codelist" -> Boolean.valueOf(!m.codedValues().isEmpty());
+                case "vlm_has_codelist" -> !m.codedValues().isEmpty();
                 case "vlm_decode_matches" -> vlmDecodeMatches(m, targetVar, vlmDecodeVar, table,
                         meta, row);
                 default -> throw unsupported("unknown vlm accessor " + fn);
@@ -3512,7 +3513,7 @@ public final class ExprCompiler
         {
             return null;
         }
-        return Boolean.valueOf(expectedDecode.equals(cellString(table, meta, decodeVar, row)));
+        return expectedDecode.equals(cellString(table, meta, decodeVar, row));
     }
 
 
@@ -3583,7 +3584,7 @@ public final class ExprCompiler
                 {
                     return null;
                 }
-                return Boolean.valueOf(expected.equals(cellString(table, meta, decodeColumn, row)));
+                return expected.equals(cellString(table, meta, decodeColumn, row));
             });
         };
     }
@@ -3861,7 +3862,7 @@ public final class ExprCompiler
                 {
                     return null;
                 }
-                return Boolean.valueOf(codeCcode.equals(decodeCcode));
+                return codeCcode.equals(decodeCcode);
             });
         };
     }
@@ -5190,12 +5191,9 @@ public final class ExprCompiler
      */
     public static boolean isCurrentVariableName(Expr e)
     {
-        if (e instanceof Expr.Ref ref && "variable_name".equals(ref.name()))
-        {
-            return true;
-        }
-        return e instanceof Expr.Call c && "varname".equals(c.name()) && c.args().isEmpty()
-                && c.kwargs().isEmpty();
+        return (e instanceof Expr.Ref ref && "variable_name".equals(ref.name()))
+                || (e instanceof Expr.Call c && "varname".equals(c.name()) && c.args().isEmpty()
+                        && c.kwargs().isEmpty());
     }
 
 

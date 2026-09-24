@@ -564,7 +564,7 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
             ItemDef def = seq != null ? defs.get(ref.getItemOID()) : null;
             if (def != null && def.getName() != null)
             {
-                keyVars.add(new KeyVar(seq.intValue(), def.getName()));
+                keyVars.add(new KeyVar(seq, def.getName()));
             }
         }
         keyVars.sort(java.util.Comparator.comparingInt(KeyVar::sequence));

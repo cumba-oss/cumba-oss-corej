@@ -577,7 +577,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
         {
             return columnNamesWhere(aDomain, col -> "Req".equals(coreOf(col)));
         }
-        return resolvedNamesWhereCore(aDomain, core -> "Req".equals(core));
+        return resolvedNamesWhereCore(aDomain, "Req"::equals);
     }
 
 
@@ -626,7 +626,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
     public @Nullable List<String> getRequiredVariablesForStructure(String aStructureToken,
             List<String> aSubclassTokens)
     {
-        return adamNamesWhereCore(aStructureToken, aSubclassTokens, core -> "Req".equals(core));
+        return adamNamesWhereCore(aStructureToken, aSubclassTokens, "Req"::equals);
     }
 
 

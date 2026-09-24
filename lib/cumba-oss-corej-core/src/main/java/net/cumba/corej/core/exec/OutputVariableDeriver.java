@@ -318,11 +318,8 @@ public final class OutputVariableDeriver
      */
     private static boolean readsVlm(@Nullable Rule rule)
     {
-        if (rule == null)
-        {
-            return false;
-        }
-        return checkExprsOf(rule).stream().anyMatch(OutputVariableDeriver::readsVlm);
+        return rule != null
+                && checkExprsOf(rule).stream().anyMatch(OutputVariableDeriver::readsVlm);
     }
 
 

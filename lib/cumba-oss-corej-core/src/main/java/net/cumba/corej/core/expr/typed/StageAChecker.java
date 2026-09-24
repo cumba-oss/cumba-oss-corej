@@ -1912,12 +1912,9 @@ public final class StageAChecker
 
     private static boolean isCurrentVariableName(Expr e)
     {
-        if (e instanceof Expr.Ref ref && "variable_name".equals(ref.name()))
-        {
-            return true;
-        }
-        return e instanceof Expr.Call c && "varname".equals(c.name()) && c.args().isEmpty()
-                && c.kwargs().isEmpty();
+        return (e instanceof Expr.Ref ref && "variable_name".equals(ref.name()))
+                || (e instanceof Expr.Call c && "varname".equals(c.name()) && c.args().isEmpty()
+                        && c.kwargs().isEmpty());
     }
 
 }

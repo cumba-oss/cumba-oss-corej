@@ -235,12 +235,9 @@ public final class DatasetExpressionCache
                             : ctx.getDomainPrefix());
         }
         // §3.6 #3 (fine): a name shadowed by a context variable is not a pure table read.
-        if (ctx.getVariables().containsKey(name))
-        {
-            return false;
-        }
         // §3.6 #2: must resolve to a column of the local table.
-        return ctx.getTable().getMetaData().getColumnIndex(name) >= 0;
+        return !ctx.getVariables().containsKey(name)
+                && ctx.getTable().getMetaData().getColumnIndex(name) >= 0;
     }
 
 

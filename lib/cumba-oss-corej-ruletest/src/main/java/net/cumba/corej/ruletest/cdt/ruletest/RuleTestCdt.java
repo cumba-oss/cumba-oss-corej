@@ -1817,7 +1817,9 @@ public final class RuleTestCdt
     {
         for (int i = 0; i < aLines.length; i++)
         {
-            if (!aLines[i].trim().isEmpty())
+            // trim(), not isBlank(): a line of control characters (below U+0020) counts as empty.
+            String trimmed = aLines[i].trim();
+            if (!trimmed.isEmpty())
             {
                 return i;
             }

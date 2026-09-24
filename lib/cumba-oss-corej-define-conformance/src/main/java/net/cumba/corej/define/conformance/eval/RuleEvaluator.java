@@ -1187,7 +1187,8 @@ public final class RuleEvaluator
         {
             return byOid;
         }
-        for (ElementNode current = aItemGroupDef;;)
+        ElementNode current = aItemGroupDef;
+        while (true)
         {
             Optional<ElementNode> parent = current.parent();
             if (parent.isEmpty())

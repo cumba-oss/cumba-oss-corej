@@ -2396,6 +2396,9 @@ public class RulePackageLoader
      *            the rule being loaded
      * @return {@code true} when a Precondition is present and carries a variable cursor
      */
+    // TryRaiseToExprGuardSurfaceTest reads this source and needs the `if (pre == null)` exit after
+    // the tryRaiseToExpr call; folded into the return it would read as an unguarded site.
+    @SuppressWarnings("PMD.SimplifyBooleanReturns")
     private static boolean preconditionReadsCursor(Rule rule)
     {
         if (rule.getPrecondition() == null)
@@ -3732,7 +3735,7 @@ public class RulePackageLoader
     private static void checkProviderFlag(Rule rule, String name, @Nullable Boolean declared,
             boolean derived, String what, List<String> errors)
     {
-        if (declared == null || declared.booleanValue() == derived)
+        if (declared == null || declared == derived)
         {
             return;
         }

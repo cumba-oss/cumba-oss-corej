@@ -1666,11 +1666,7 @@ public final class ScalarSemantics
         Pattern pattern = allowNegative ? ISO_8601_DURATION_WITH_NEGATIVE
                 : ISO_8601_DURATION_POSITIVE;
         Matcher m = pattern.matcher(s);
-        if (!m.matches())
-        {
-            return true;
-        }
-        return !isValidDurationPostMatch(m);
+        return !m.matches() || !isValidDurationPostMatch(m);
     }
 
 

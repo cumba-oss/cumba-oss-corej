@@ -411,6 +411,9 @@ public final class RuleRunner
      *            the weakest rung to evaluate
      * @return the execution result
      */
+    // One catch per ERROR reason on purpose: EngineErrorMessageContractTest counts these sites
+    // and maps each to an ErrorReason classifier key, so identical bodies stay separate.
+    @SuppressWarnings("PMD.IdenticalCatchBranches")
     public static RuleExecutionResult execute(Rule rule, IDataTable table, DatasetResolver resolver,
             @Nullable String domainPrefix, @Nullable MetadataProvider libraryProvider,
             @Nullable JoinCache joinCache, @Nullable MetadataProvider defineProvider,

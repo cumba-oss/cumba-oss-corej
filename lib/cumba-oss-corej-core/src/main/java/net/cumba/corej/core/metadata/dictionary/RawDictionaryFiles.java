@@ -91,9 +91,8 @@ final class RawDictionaryFiles
         CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPLACE)
                 .onUnmappableCharacter(CodingErrorAction.REPLACE);
-        Reader raw = new InputStreamReader(Files.newInputStream(aFile), decoder);
-        BufferedReader in = new BufferedReader(
-                new ReplacementCountingReader(raw, REPLACEMENTS.get()));
+        BufferedReader in = new BufferedReader(new ReplacementCountingReader(
+                new InputStreamReader(Files.newInputStream(aFile), decoder), REPLACEMENTS.get()));
         in.mark(1);
         if (in.read() != BOM)
         {

@@ -1070,10 +1070,7 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
         public Builder publishedCtPackages(String... aIds)
         {
             publishedCtPackages.clear();
-            for (String id : aIds)
-            {
-                publishedCtPackages.add(id);
-            }
+            Collections.addAll(publishedCtPackages, aIds);
             return this;
         }
 

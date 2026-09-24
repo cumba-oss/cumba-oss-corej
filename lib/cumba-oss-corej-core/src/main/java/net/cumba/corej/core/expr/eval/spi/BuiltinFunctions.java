@@ -275,11 +275,11 @@ public final class BuiltinFunctions implements FunctionProvider
         value(fns, "abs", (run, args) -> numericValue(run.rowCount(), args.get(0),
                 DataValueType.DOUBLE, Math::abs));
         value(fns, "round", (run, args) -> numericValue(run.rowCount(), args.get(0),
-                DataValueType.LONG, d -> (double) Math.round(d)));
+                DataValueType.LONG, Math::round));
         value(fns, "floor", (run, args) -> numericValue(run.rowCount(), args.get(0),
-                DataValueType.LONG, d -> Math.floor(d)));
+                DataValueType.LONG, Math::floor));
         value(fns, "ceil", (run, args) -> numericValue(run.rowCount(), args.get(0),
-                DataValueType.LONG, d -> Math.ceil(d)));
+                DataValueType.LONG, Math::ceil));
 
         // -- VALUE string / null helpers (native-only) -----------------------
         value(fns, "trim", (run, args) ->

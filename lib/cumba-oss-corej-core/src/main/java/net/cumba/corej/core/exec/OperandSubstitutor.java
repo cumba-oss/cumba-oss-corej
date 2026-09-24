@@ -3,8 +3,10 @@ package net.cumba.corej.core.exec;
 import static java.lang.System.Logger.Level.TRACE;
 
 import java.util.ArrayList;
+import java.util.Formatter;
 import java.util.IllegalFormatException;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -339,10 +341,6 @@ public final class OperandSubstitutor
     }
 
 
-    @SuppressWarnings(
-    {
-            "PMD.UselessPureMethodCall", "ReturnValueIgnored"
-    })
     private static void validateFormatSpec(String fmt, String wholeOperand)
     {
         // Reject specs that don't contain a `%` conversion — `String.format("zz", x)` would
@@ -355,10 +353,10 @@ public final class OperandSubstitutor
         }
         // Probe with a numeric and string sample. If neither works, reject.
         boolean ok = false;
-        try
+        try (Formatter probe = new Formatter(Locale.getDefault(Locale.Category.FORMAT)))
         {
             // probe: can the format take a numeric value? Only a throw matters
-            String _ = String.format(fmt, 1L);
+            probe.format(fmt, 1L);
             ok = true;
         }
         catch (IllegalFormatException e)
@@ -367,10 +365,10 @@ public final class OperandSubstitutor
         }
         if (!ok)
         {
-            try
+            try (Formatter probe = new Formatter(Locale.getDefault(Locale.Category.FORMAT)))
             {
                 // probe: can the format take a string value? Only a throw matters
-                String _ = String.format(fmt, "x");
+                probe.format(fmt, "x");
                 ok = true;
             }
             catch (IllegalFormatException e)
@@ -627,7 +625,7 @@ public final class OperandSubstitutor
                 catch (IllegalFormatException _)
                 {
                     throw new SubstitutionException("format spec `" + fmt + "` rejected value " + d
-                            + " for driver `" + driver.varName() + "`: " + ife.getMessage());
+                            + " for driver `" + driver.varName() + "`: " + ife.getMessage(), ife);
                 }
             }
         }
@@ -640,7 +638,8 @@ public final class OperandSubstitutor
         {
             throw new SubstitutionException(
                     "format spec `" + fmt + "` rejected string value `" + dv.getValueAsString()
-                            + "` for driver `" + driver.varName() + "`: " + ife.getMessage());
+                            + "` for driver `" + driver.varName() + "`: " + ife.getMessage(),
+                    ife);
         }
     }
 
@@ -686,6 +685,12 @@ public final class OperandSubstitutor
         public SubstitutionException(String message)
         {
             super(message);
+        }
+
+
+        public SubstitutionException(String message, Throwable cause)
+        {
+            super(message, cause);
         }
     }
 

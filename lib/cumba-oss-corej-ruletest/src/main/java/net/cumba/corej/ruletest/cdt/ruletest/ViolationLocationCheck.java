@@ -116,7 +116,7 @@ public final class ViolationLocationCheck
             return new Result(true, "");
         }
         String prefix = aScenario.getCoreId() + ": ";
-        if (wantCount != null && aEffectiveCount != wantCount.longValue())
+        if (wantCount != null && aEffectiveCount != wantCount)
         {
             return new Result(false, prefix + "expected " + wantCount
                     + " violation(s) but rule fired " + aEffectiveCount);
@@ -180,8 +180,7 @@ public final class ViolationLocationCheck
     private static boolean matches(ExpectedViolation aExpected, Violation aObserved,
             IDataTable aPrimary, DataTableMeta aMeta)
     {
-        if (aExpected.getRow() != null
-                && aExpected.getRow().longValue() != aObserved.getRowNumber())
+        if (aExpected.getRow() != null && aExpected.getRow() != aObserved.getRowNumber())
         {
             return false;
         }
@@ -325,7 +324,7 @@ public final class ViolationLocationCheck
         }
         if (aRaw instanceof Float f)
         {
-            return canonDouble(f.doubleValue());
+            return canonDouble(f);
         }
         String s = String.valueOf(aRaw);
         return s.isEmpty() ? null : s;
@@ -358,7 +357,8 @@ public final class ViolationLocationCheck
     {
         if (aRaw instanceof Double || aRaw instanceof Float)
         {
-            double d = aRaw instanceof Float f ? f.doubleValue() : (Double) aRaw;
+            // Guarded above to Double or Float, so the Number view is exact for both.
+            double d = ((Number) aRaw).doubleValue();
             String have = canonDouble(d);
             Double dw = tryDouble(aWant);
             return dw != null && have != null && have.equals(canonDouble(dw));

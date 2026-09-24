@@ -104,7 +104,7 @@ public final class OperationExpressionParser
         catch (ExpressionException ex)
         {
             throw new RuleDefinitionException(
-                    "invalid operation expression `" + expression + "`: " + ex.getMessage());
+                    "invalid operation expression `" + expression + "`: " + ex.getMessage(), ex);
         }
         if (!(parsed instanceof Expr.Call call))
         {

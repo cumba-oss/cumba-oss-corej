@@ -67,10 +67,6 @@ public final class ServiceReportManager implements ReportManager
     {
 
         private static final ServiceReportManager INSTANCE = new ServiceReportManager();
-
-        private Holder()
-        {
-        }
     }
 
     /** Format name (lower-cased) → supplier, in discovery order. */

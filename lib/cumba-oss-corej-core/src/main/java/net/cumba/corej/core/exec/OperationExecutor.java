@@ -1399,8 +1399,8 @@ public final class OperationExecutor
         case TS_PARAMETER_VALUE -> evalTsParameterValue(op, resolver);
         case SUPP_QNAM_PRESENT -> evalSuppQnamJoin(op, resolver, true);
         case SUPP_QNAM_VALUE -> evalSuppQnamJoin(op, resolver, false);
-        case DICTIONARY_AVAILABLE -> Boolean.valueOf(dictionaryProvider != null
-                && dictionaryProvider.isAvailable(op.getExternalDictionaryType()));
+        case DICTIONARY_AVAILABLE -> dictionaryProvider != null
+                && dictionaryProvider.isAvailable(op.getExternalDictionaryType());
         case VALID_EXTERNAL_DICTIONARY_VALUE, VALID_EXTERNAL_DICTIONARY_CODE -> evalValidExternalDictionaryValue(
                 op, table, dictionaryProvider);
         case VALID_EXTERNAL_DICTIONARY_CODE_TERM_PAIR -> evalValidExternalDictionaryCodeTermPair(op,
@@ -2199,7 +2199,7 @@ public final class OperationExecutor
         String column = domain == null || domain.isEmpty() ? name : domain + "." + name;
         EvaluationContext ctx = EvaluationContext.builder().table(table).datasetResolver(resolver)
                 .variables(new LinkedHashMap<>()).build();
-        return Boolean.valueOf(OperatorRegistry.existsAsVariable(ctx, column));
+        return OperatorRegistry.existsAsVariable(ctx, column);
     }
 
 
@@ -2698,7 +2698,7 @@ public final class OperationExecutor
             Integer suffix = null;
             if (base != null && base.equals(name))
             {
-                suffix = Integer.valueOf(0);
+                suffix = 0;
             }
             else if (compiled.matcher(name).matches())
             {
@@ -2706,7 +2706,7 @@ public final class OperationExecutor
             }
             if (suffix != null)
             {
-                lengthBySuffix.putIfAbsent(suffix, Integer.valueOf(colMeta.getLength()));
+                lengthBySuffix.putIfAbsent(suffix, colMeta.getLength());
             }
         }
         if (lengthBySuffix.size() < 2)
@@ -2727,7 +2727,7 @@ public final class OperationExecutor
         {
             for (Map.Entry<Integer, Integer> e : lengthBySuffix.entrySet())
             {
-                if (e.getKey().intValue() != hi && e.getValue().intValue() < minLength.intValue())
+                if (e.getKey() != hi && e.getValue() < minLength)
                 {
                     return true;
                 }
@@ -3816,7 +3816,7 @@ public final class OperationExecutor
             if (dv != null && !dv.isMissingOrInvalid())
             {
                 String s = dv.getValueAsString();
-                if (s != null && !s.strip().isEmpty())
+                if (s != null && !s.isBlank())
                 {
                     return true;
                 }
@@ -4084,11 +4084,8 @@ public final class OperationExecutor
         {
             return false;
         }
-        if (!provider.isLibraryUnavailable())
-        {
-            return true;
-        }
-        return defineFallbackPreference() && provider.getDefineVersion() != null;
+        return !provider.isLibraryUnavailable()
+                || (defineFallbackPreference() && provider.getDefineVersion() != null);
     }
 
     /**
@@ -4174,10 +4171,7 @@ public final class OperationExecutor
      * applied and its result returned verbatim.
      * </p>
      */
-    @SuppressWarnings(
-    {
-            "PMD.UnusedFormalParameter", "unused"
-    })
+    @SuppressWarnings("unused")
     private static @Nullable Object evalLibrary(@Nullable MetadataProvider provider, Operation op,
             IDataTable table, Function<MetadataProvider, @Nullable Object> fn,
             @Nullable String ruleId)
@@ -4191,10 +4185,7 @@ public final class OperationExecutor
      * arm's explicit {@link LibraryArmAnswer} contract, for the arms whose result is not a
      * collection.
      */
-    @SuppressWarnings(
-    {
-            "PMD.UnusedFormalParameter", "unused"
-    })
+    @SuppressWarnings("unused")
     private static @Nullable Object evalLibrary(@Nullable MetadataProvider provider, Operation op,
             IDataTable table, Function<MetadataProvider, @Nullable Object> fn,
             @Nullable String ruleId, LibraryArmAnswer answerKind)
@@ -4917,10 +4908,7 @@ public final class OperationExecutor
     }
 
 
-    @SuppressWarnings(
-    {
-            "PMD.UnusedFormalParameter", "unused"
-    })
+    @SuppressWarnings("unused")
     private static List<String> evalDatasetNames(IDataTable table, DatasetResolver resolver)
     {
         if (resolver instanceof DatasetResolver.WithInventory inv)
@@ -5297,7 +5285,7 @@ public final class OperationExecutor
                 }
             }
             String key = GroupedResult.buildKey(meta, table, keyCols, r);
-            results.put(key, Long.valueOf(diff + offset));
+            results.put(key, diff + offset);
         }
         return declaredGrouped(op, keyCols, results);
     }
@@ -5423,7 +5411,7 @@ public final class OperationExecutor
                 return false;
             }
             String v = dv.getValueAsString();
-            if (v == null || v.strip().isEmpty())
+            if (v == null || v.isBlank())
             {
                 return false;
             }
