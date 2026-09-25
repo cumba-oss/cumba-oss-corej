@@ -319,21 +319,6 @@ class CdiscLibraryMetadataLibrarySdtmTest
 
 
     @Test
-    void modelColumnOrderIsPopulatedFromClassVariables()
-    {
-        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),
-                sdtmCtFixture());
-
-        IDataTableMetadata ae = lib.getDataTable("AE").orElseThrow();
-        Object mco = ae.getMetaValue(MetadataKeys.MODEL_COLUMN_ORDER).orElseThrow();
-        assertTrue(mco instanceof List<?>);
-        @SuppressWarnings("unchecked")
-        List<String> mcoList = (List<String>) mco;
-        assertEquals(List.of("STUDYID", "DOMAIN", "USUBJID"), mcoList);
-    }
-
-
-    @Test
     void isCustomDomainIsFalseForStandardDatasets()
     {
         CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromSdtm("sdtmig", "3-4", sdtmFixture(),

@@ -559,11 +559,13 @@ public final class ScalarSemantics
      * checks it, finds it correct, and carries away a type-independent rule that is false. See
      * {@link DatasetLookup#lookupValue}'s {@code colIdx < 0} arm and
      * {@link KeyMatchExpandedLookup#lookupValue} — both take the expectation from
-     * {@code JoinLookup.lookupValue(IDataTable, long, String, boolean)}, the <b>4-arg overload that
-     * IS that channel</b>; the 3-arg form answers as if nothing numeric were expected. The reason
-     * the arm is type-dependent is the dotted-parity ruling (owner, 2026-09-18): a joined variable
-     * and a primary variable differ in <b>exactly one</b> respect — the dotted access form — and in
-     * every other respect, <b>available or absent</b>, they behave identically.
+     * {@code JoinLookup.lookupValue(IDataTable, long, String, boolean)}, <b>the method whose
+     * {@code numericExpected} flag IS that channel</b> (its former 3-arg form, which answered as if
+     * nothing numeric were expected, is retired — U14 of
+     * {@code PLAN-retire-dead-multi-match-lookup}). The reason the arm is type-dependent is the
+     * dotted-parity ruling (owner, 2026-09-18): a joined variable and a primary variable differ in
+     * <b>exactly one</b> respect — the dotted access form — and in every other respect,
+     * <b>available or absent</b>, they behave identically.
      * </p>
      * <p>
      * ⚑ None of this moves {@code resolvedString}: it is only ever reached with a column that
@@ -1054,7 +1056,8 @@ public final class ScalarSemantics
         // Match the Python is_complete_date oracle (datetime.fromisoformat, with a Z->+00:00
         // fallback): a day-precision-or-finer value carrying a timezone or fractional seconds is
         // still "complete". Strip those decorations before the structural length gate. An interval
-        // is never complete, so — unlike isPartialDate — there is no "/" handling here.
+        // is never complete, so — unlike CalendarDates.isValidDate — there is no "/" handling
+        // here.
         s = stripFractionalSeconds(stripTimezone(s));
         int len = s.length();
         if (len != 10 && len != 16 && len != 19)
@@ -1115,62 +1118,12 @@ public final class ScalarSemantics
 
 
     /**
-     * Hand-rolled validator for <b>every valid partial date form</b> — the ISO-8601
-     * right-truncation prefixes (lengths 4, 7, 10, 13, 16, 19) <b>and</b> the SDTM masked forms of
-     * {@link #isMaskedDate} ({@code 2012-06--}, {@code 2012---15}, {@code ----06-15}). No calendar
-     * validation: {@code 2026-02-30} and {@code 2012---32} are both structurally fine here and are
-     * {@code CalendarDates}' business to reject.
-     *
-     * <p>
-     * &#9873; <b>The masked forms were admitted by {@code Fix #215}</b>
-     * ({@code PLAN-is-partial-date-masked-forms.md} Phase 3, owner ruling 2026-08-09 option (a):
-     * <i>widen in place</i>). Before it, this predicate modelled ISO-8601 <b>truncation</b> only —
-     * dropping <em>trailing</em> components — and rejected a hyphen placeholder for a
-     * <em>middle</em> unknown, so a legitimately partial {@code --DTC} was reported as an invalid
-     * date. {@code plans/done/PLAN-partial-date-extreme-selection.md} (and the retired
-     * {@code CORE-RULES-JAVA-EXTENSIONS.md} &#167;21, indexed in
-     * {@code corej-rules/documentation/expression-docs-disposition.md} &#167;A) state that
-     * {@code --DTC} variables <b>legally</b> carry masked components, so that rejection was a false
-     * positive. &#9888; The name is now the contract: <em>this answers "is {@code s} a partial
-     * date", not "is {@code s} a truncation prefix"</em>. When you need the narrower question, ask
-     * {@link #isoComponents(String)} whether the layout it returns has an <em>interior</em>
-     * {@link IsoDateComponents#ABSENT}, or ask {@link #isMaskedDate(String)} directly.
-     * </p>
-     *
-     * <p>
-     * The structural walk itself lives in {@link #isoComponents(String)}: this predicate is that
-     * decoder's {@code != null}, plus the interval and normalisation handling below. They are
-     * deliberately <b>one</b> implementation — a consumer that needs the components must not be
-     * able to disagree with the gate about which strings are well-formed, which is exactly the
-     * split that produced the crash documented on {@link IsoDateComponents}.
-     * </p>
-     */
-    public static boolean isPartialDate(String s)
-    {
-        if (s == null)
-        {
-            return false;
-        }
-        // ISO interval "a/b": valid iff both halves are valid partial dates (Python date_regex
-        // parity — an interval of uncertainty is accepted by the Python is_valid_date oracle).
-        int slash = s.indexOf('/');
-        if (slash >= 0)
-        {
-            return isPartialDate(s.substring(0, slash)) && isPartialDate(s.substring(slash + 1));
-        }
-        // Strip an optional trailing timezone (Z / ±HH:MM) then fractional seconds (.<digits>)
-        // before the structural length gate, so a --DTC carrying a legitimate offset / fractional
-        // second is not flagged invalid (Python accepts these; Java previously over-reported).
-        return isoComponents(stripFractionalSeconds(stripTimezone(s))) != null;
-    }
-
-
-    /**
      * Decodes {@code s} as a partial ISO-8601 date and returns the components it carries, or
-     * {@code null} when it is not one. The structural contract is {@link #isPartialDate}'s: either
-     * a <b>right-truncation prefix</b> — length 4, 7, 10, 13, 16 or 19, ASCII digits in the
-     * component positions and {@code -} / {@code T} / {@code :} separators between them — or one of
-     * the SDTM <b>masked</b> shapes {@link #isMaskedDate} accepts. No calendar validation:
+     * {@code null} when it is not one. This is the engine's structural partial-date contract (no
+     * calendar validation — {@code CalendarDates.isValidDate} builds on it): either a
+     * <b>right-truncation prefix</b> — length 4, 7, 10, 13, 16 or 19, ASCII digits in the component
+     * positions and {@code -} / {@code T} / {@code :} separators between them — or one of the SDTM
+     * <b>masked</b> shapes {@link #isMaskedDate} accepts. No calendar validation:
      * {@code 2026-02-30} and {@code 2012---32} both decode happily and are {@code CalendarDates}'
      * business to reject.
      *
@@ -1179,7 +1132,8 @@ public final class ScalarSemantics
      * timezone offset and fractional-seconds tail already stripped. This method does <b>not</b>
      * re-normalise, so the components it returns are always positions of the string it was handed —
      * a caller can never read a component out of a string the gate did not actually inspect.
-     * {@link #isPartialDate} performs that normalisation before delegating here.
+     * {@code CalendarDates.isValidDate} performs that normalisation (and splits an interval) before
+     * delegating here.
      * </p>
      *
      * <p>
@@ -1373,26 +1327,29 @@ public final class ScalarSemantics
      * </table>
      *
      * <p>
-     * &#9873; <b>Why this is still a separate predicate from {@link #isPartialDate}.</b> It used to
-     * be the <em>only</em> one that accepted these shapes: {@code isPartialDate} modelled ISO-8601
-     * <b>truncation</b> — dropping <em>trailing</em> components ({@code 2012}, {@code 2012-06}) —
-     * and rejected a hyphen placeholder for a <em>middle</em> unknown as a different convention.
-     * {@code Fix #215} widened it, so <b>{@code isMaskedDate(s)} now implies
-     * {@code isPartialDate(s)}</b> and the two are no longer opposites. &#9888; With one asymmetry
-     * that predates both and is deliberately not changed here: <b>this predicate trims and
-     * {@code isPartialDate} does not</b>, so a value padded with whitespace is masked here and not
-     * a partial date there. Nothing routes on that — {@code IsoDateBounds.core} trims before it
-     * asks — but do not read the implication as unconditional. What this one still answers alone is
-     * <em>which</em> of the two conventions a value uses — the question {@code IsoDateBounds.bound}
-     * dispatches on, because a masked value's hull is a non-contiguous set rather than a right-open
-     * interval. {@code plans/done/PLAN-partial-date-extreme-selection.md} records that
-     * {@code --DTC} variables <b>legally</b> carry masked components, which is why widening was the
-     * right call.
+     * &#9873; <b>Why this is still a separate predicate from the structural partial-date gate</b>
+     * ({@link #isoComponents} over the normalised value — the gate
+     * {@code CalendarDates.isValidDate} applies; the standalone {@code isPartialDate(String)} that
+     * also wrapped it had no production caller and was removed by the fixpoint pass of
+     * {@code PLAN-retire-dead-multi-match-lookup}). It used to be the <em>only</em> one that
+     * accepted these shapes: the structural gate modelled ISO-8601 <b>truncation</b> — dropping
+     * <em>trailing</em> components ({@code 2012}, {@code 2012-06}) — and rejected a hyphen
+     * placeholder for a <em>middle</em> unknown as a different convention. {@code Fix #215} widened
+     * it, so <b>a value {@code isMaskedDate} accepts now decodes structurally</b> and the two are
+     * no longer opposites. &#9888; With one asymmetry that predates both and is deliberately not
+     * changed here: <b>this predicate trims and the structural gate does not</b>, so a value padded
+     * with whitespace is masked here and not a partial date there. Nothing routes on that —
+     * {@code IsoDateBounds.core} trims before it asks — but do not read the implication as
+     * unconditional. What this one still answers alone is <em>which</em> of the two conventions a
+     * value uses — the question {@code IsoDateBounds.bound} dispatches on, because a masked value's
+     * hull is a non-contiguous set rather than a right-open interval.
+     * {@code plans/done/PLAN-partial-date-extreme-selection.md} records that {@code --DTC}
+     * variables <b>legally</b> carry masked components, which is why widening was the right call.
      * </p>
      * <p>
      * &#9888; A hyphen is legal only as a <b>whole</b> component: {@code 2012---15} yes,
      * {@code 2012-0--15} no. Structural only — no calendar validation, exactly like
-     * {@link #isPartialDate}, so {@code 2012---32} is masked-shaped here and is separately rejected
+     * {@link #isoComponents}, so {@code 2012---32} is masked-shaped here and is separately rejected
      * by {@code CalendarDates} / {@code IsoDateBounds}.
      * </p>
      * <p>
@@ -1409,7 +1366,8 @@ public final class ScalarSemantics
             return false;
         }
         // ⚠⚠ Fix #215 — strip a trailing timezone / fractional-seconds tail before matching the
-        // shape, exactly as isPartialDate and isCompleteDate do. This is NOT cosmetic symmetry:
+        // shape, exactly as CalendarDates.isValidDate and isCompleteDate do. This is NOT cosmetic
+        // symmetry:
         // IsoDateBounds.bound dispatches on this predicate and sends everything it rejects to
         // truncatedBound, which reads fixed substrings of the string it was handed. Its own core()
         // strips only ONE decoration, so a doubly-decorated masked value ("2012-06--ZZ") arrived

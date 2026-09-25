@@ -73,15 +73,6 @@ public final class MetadataKeys
     public static final String IS_CUSTOM_DOMAIN = "IsCustomDomain";
 
     /**
-     * {@code List<String>} — the ordered list of variable names defined at the observation class
-     * level (SDTM) or data-structure level (ADaM). This is distinct from the dataset's own column
-     * order returned by {@link IDataTableMetadata#getColumns()}.
-     *
-     * @see IDataTableMetadata
-     */
-    public static final String MODEL_COLUMN_ORDER = "ModelColumnOrder";
-
-    /**
      * {@code List<Map<String,String>>} — Model-level variable metadata for the observation class of
      * this dataset. Each entry uses the same key set as the per-variable map returned by
      * {@code MetadataLibraryProvider.getDomainVariables} (name, label, simpleDatatype, core, role,

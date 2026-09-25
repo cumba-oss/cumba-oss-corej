@@ -10,13 +10,12 @@ import net.cumba.corej.core.exec.ScalarSemantics;
 /**
  * Calendar-validating ISO-8601 date predicates — the native enhancement over the legacy
  * structural-only checks (decision #4, three-predicate model). On top of the structural shape check
- * ({@link ScalarSemantics#isoComponents(String)}, the decoder behind
- * {@link ScalarSemantics#isPartialDate(String)}: lengths 4/7/10/13/16/19 with the right separators
- * and ASCII digits, plus the SDTM masked shapes), these additionally reject calendar-impossible
- * values: month outside 1–12, an impossible day-of-month (leap-year aware via {@link LocalDate}),
- * and out-of-range hour/minute/second. So {@code 2024-13}, {@code 2023-02-29} and
- * {@code 2024-01-01T25:00} are <i>invalid</i> here even though the legacy structural validators
- * accept them — an intentional, parity-whitelisted divergence (Phase 5).
+ * ({@link ScalarSemantics#isoComponents(String)}, the structural decoder: lengths 4/7/10/13/16/19
+ * with the right separators and ASCII digits, plus the SDTM masked shapes), these additionally
+ * reject calendar-impossible values: month outside 1–12, an impossible day-of-month (leap-year
+ * aware via {@link LocalDate}), and out-of-range hour/minute/second. So {@code 2024-13},
+ * {@code 2023-02-29} and {@code 2024-01-01T25:00} are <i>invalid</i> here even though the legacy
+ * structural validators accept them — an intentional, parity-whitelisted divergence (Phase 5).
  *
  * <p>
  * &#9873;&#9873; <b>{@code Fix #215} made these mask-aware.</b> An SDTM masked value

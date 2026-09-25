@@ -146,13 +146,11 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
         {
             String className = klass.name();
             List<StoredVariable> classVariables = sortByOrdinal(klass.classVariables());
-            List<String> modelColumnOrder = classVariables.stream().map(StoredVariable::name)
-                    .filter(Objects::nonNull).toList();
             List<Map<String, String>> modelVariables = sdtmModelVariables(classVariables);
 
             for (StoredDataset dataset : klass.datasets())
             {
-                tables.add(buildSdtmTable(dataset, className, modelColumnOrder, modelVariables,
+                tables.add(buildSdtmTable(dataset, className, modelVariables,
                         conceptIdToSubmissionValue));
             }
         }
@@ -238,11 +236,9 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
                 flattened.addAll(set.variables());
             }
             List<StoredVariable> ordered = sortByOrdinal(flattened);
-            List<String> modelColumnOrder = ordered.stream().map(StoredVariable::name)
-                    .filter(Objects::nonNull).toList();
             List<Map<String, String>> modelVariables = adamModelVariables(ordered);
 
-            tables.add(buildAdamTable(ds, className, ordered, modelColumnOrder, modelVariables,
+            tables.add(buildAdamTable(ds, className, ordered, modelVariables,
                     conceptIdToSubmissionValue));
         }
 
@@ -344,8 +340,7 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
 
 
     private static IDataTableMetadata buildSdtmTable(StoredDataset aDataset,
-            @Nullable String aClassName, List<String> aModelColumnOrder,
-            List<Map<String, String>> aModelVariables,
+            @Nullable String aClassName, List<Map<String, String>> aModelVariables,
             Map<String, String> aConceptIdToSubmissionValue)
     {
         String name = aDataset.name() == null ? "" : aDataset.name();
@@ -372,10 +367,6 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
         if (structure != null)
         {
             tableMeta.put(MetadataKeys.DATASET_STRUCTURE, structure);
-        }
-        if (!aModelColumnOrder.isEmpty())
-        {
-            tableMeta.put(MetadataKeys.MODEL_COLUMN_ORDER, aModelColumnOrder);
         }
         if (!aModelVariables.isEmpty())
         {
@@ -447,7 +438,7 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
 
     private static IDataTableMetadata buildAdamTable(StoredDataStructure aDs,
             @Nullable String aClassName, List<StoredVariable> aOrderedVariables,
-            List<String> aModelColumnOrder, List<Map<String, String>> aModelVariables,
+            List<Map<String, String>> aModelVariables,
             Map<String, String> aConceptIdToSubmissionValue)
     {
         String name = aDs.name() == null ? "" : aDs.name();
@@ -468,10 +459,6 @@ public final class CdiscLibraryMetadataLibrary implements IMetadataLibrary
         if (aClassName != null)
         {
             tableMeta.put(MetadataKeys.CLASS_NAME, aClassName);
-        }
-        if (!aModelColumnOrder.isEmpty())
-        {
-            tableMeta.put(MetadataKeys.MODEL_COLUMN_ORDER, aModelColumnOrder);
         }
         if (!aModelVariables.isEmpty())
         {

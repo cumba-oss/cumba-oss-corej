@@ -17,8 +17,11 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Fix #209, Phase 2b prerequisite A — {@link ScalarSemantics#isoComponents(String)} is the single
- * structural walk behind {@link ScalarSemantics#isPartialDate(String)}, and replacing the old
- * hand-inlined walk moved <b>nothing</b>.
+ * structural walk behind the structural partial-date gate, and replacing the old hand-inlined walk
+ * moved <b>nothing</b>. ⚑ The gate was {@code ScalarSemantics.isPartialDate(String)}; it had no
+ * production caller and was removed (fixpoint pass of {@code PLAN-retire-dead-multi-match-lookup}),
+ * so it is exercised here through {@link StructuralPartialDate}, the same composition of live
+ * primitives.
  *
  * <p>
  * The proof is differential: {@link #legacyIsPartialDate(String)} below is the pre-Fix-#209
@@ -30,8 +33,8 @@ import org.junit.jupiter.params.provider.ValueSource;
  *
  * <p>
  * &#9873; This is the guard the widening phase has to keep green while it deliberately changes one
- * side: the point is that a future edit to {@code isoComponents} can never move
- * {@code isPartialDate} <em>by accident</em>.
+ * side: the point is that a future edit to {@code isoComponents} can never move the structural gate
+ * <em>by accident</em>.
  * </p>
  */
 class IsoDateLayoutDifferentialTest
@@ -131,7 +134,7 @@ class IsoDateLayoutDifferentialTest
     }
 
     @Nested
-    @DisplayName("isPartialDate moved on EXACTLY the masked class, and nowhere else")
+    @DisplayName("the structural gate moved on EXACTLY the masked class, and nowhere else")
     class WidenedByExactlyTheMasks
     {
 
@@ -151,12 +154,12 @@ class IsoDateLayoutDifferentialTest
             List<String> movers = new ArrayList<>();
             for (String s : IsoDateCorpus.all())
             {
-                if (legacyIsPartialDate(s) == ScalarSemantics.isPartialDate(s))
+                if (legacyIsPartialDate(s) == StructuralPartialDate.accepts(s))
                 {
                     continue;
                 }
                 movers.add(s);
-                if (!ScalarSemantics.isPartialDate(s))
+                if (!StructuralPartialDate.accepts(s))
                 {
                     wrongDirection.add(s);
                 }
@@ -179,7 +182,7 @@ class IsoDateLayoutDifferentialTest
         {
             // Neuter-and-watch control: the corpus must contain both verdicts, or the loop above
             // would pass against any implementation that answers a constant.
-            long accepted = IsoDateCorpus.all().stream().filter(ScalarSemantics::isPartialDate)
+            long accepted = IsoDateCorpus.all().stream().filter(StructuralPartialDate::accepts)
                     .count();
             // Measured 2026-08-11: 413 of 73 056 (338 before Fix #215, +75 masked). Both verdicts
             // must be well represented, or the differential loop above would pass against an
@@ -201,20 +204,13 @@ class IsoDateLayoutDifferentialTest
         {
             for (String s : IsoDateCorpus.all())
             {
-                if (legacyIsPartialDate(s) == ScalarSemantics.isPartialDate(s))
+                if (legacyIsPartialDate(s) == StructuralPartialDate.accepts(s))
                 {
                     continue;
                 }
                 assertFalse(ScalarSemantics.isCompleteDate(s),
                         "a newly-accepted partial date must never be COMPLETE: " + s);
             }
-        }
-
-
-        @Test
-        void nullIsStillFalse()
-        {
-            assertFalse(ScalarSemantics.isPartialDate(null));
         }
     }
 
@@ -235,7 +231,7 @@ class IsoDateLayoutDifferentialTest
                 }
                 String core = ScalarSemantics
                         .stripFractionalSeconds(ScalarSemantics.stripTimezone(s));
-                assertEquals(ScalarSemantics.isPartialDate(s),
+                assertEquals(StructuralPartialDate.accepts(s),
                         ScalarSemantics.isoComponents(core) != null,
                         () -> "gate/layout disagree on \"" + s + "\" (core \"" + core + "\")");
             }
@@ -288,7 +284,7 @@ class IsoDateLayoutDifferentialTest
                                     + s + "\"");
                 }
                 // (b) …and every masked value decodes once it is normalised, which is exactly the
-                // string isPartialDate and CalendarDates.isValidDate hand it.
+                // string CalendarDates.isValidDate (and StructuralPartialDate) hand it.
                 if (ScalarSemantics.isMaskedDate(s))
                 {
                     String core = ScalarSemantics

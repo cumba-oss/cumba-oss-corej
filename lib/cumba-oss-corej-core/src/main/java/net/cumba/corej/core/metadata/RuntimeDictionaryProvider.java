@@ -22,8 +22,9 @@ import org.jspecify.annotations.Nullable;
  * deliver that, and {@link #isAvailable(String)} is the test in both: a <b>declared</b>
  * ({@code $}-ref) dictionary operation — the form the whole shipped corpus uses — is caught by
  * {@code RuleRunner}'s eager dictionary arm ({@code Fix #268}), an <b>inlined</b> one by the
- * {@code dictionary_available(type)} precondition gate the converter injects for it. This mirrors
- * the CDISC-Library skip-gate. Note that a non-null provider proves nothing on its own: a bundle
+ * {@code dictionary_available(type)} precondition gate the loader's
+ * {@code RulePackageLoader.injectInlineOperationGates} injects for it. This mirrors the
+ * CDISC-Library skip-gate. Note that a non-null provider proves nothing on its own: a bundle
  * holding only MedDRA leaves a UNII rule exactly as unanswerable as no bundle at all.
  * </p>
  */
@@ -31,33 +32,17 @@ public final class RuntimeDictionaryProvider
 {
 
     /**
-     * D13 item 2 — why a dictionary type is not loaded, recorded so the per-rule SKIP can tell the
-     * operator what to <em>do</em> rather than repeating one catch-all "no external dictionary
-     * loaded" for four different situations. Only operator-fixable states appear here: an
-     * <em>operation</em> that names no dictionary type at all is an authoring defect and is
-     * rejected at load ({@code RulePackageLoader.validateDictionaryOperationTypes}), never reported
-     * as an installation problem.
-     */
-    public enum UnavailabilityReason
-    {
-        /** No installation of the type was found at all — the implicit default. */
-        NOT_INSTALLED,
-        /** Installed, but the D10 content guard dropped it: empty or malformed. */
-        NO_USABLE_CONTENT,
-        /** Installed (possibly several versions), but nothing selected a version. */
-        NO_VERSION_SELECTED,
-        /** A version was selected, but that version is not installed. */
-        VERSION_NOT_INSTALLED
-    }
-
-
-    /**
-     * One unavailable dictionary type's diagnosis: the operator-actionable {@code detail} for
-     * callers that report (⚑ the {@link UnavailabilityReason} it also carried had no reader that
-     * branched on it — PLAN-retire-dead-multi-match-lookup U12, D-B10). The detail is a predicate
-     * continuing "external dictionary {@code <type>} …" (e.g. <em>"is installed but carries no
-     * usable terms (empty or malformed) — reinstall it"</em>), composed by whoever diagnosed the
-     * state — {@link #loadDirectory} for the content guard, {@code DictionaryStore} for the
+     * One unavailable dictionary type's diagnosis (D13 item 2): the operator-actionable
+     * {@code detail}, so the per-rule SKIP can tell the operator what to <em>do</em> rather than
+     * repeating one catch-all "no external dictionary loaded". Only operator-fixable states are
+     * diagnosed: an <em>operation</em> that names no dictionary type at all is an authoring defect
+     * and is rejected at load ({@code RulePackageLoader.validateDictionaryOperationTypes}). ⚑ The
+     * record once also carried an {@code UnavailabilityReason} enum; nothing branched on it, and
+     * the field (U12, D-B10) and then the enum itself went with
+     * {@code PLAN-retire-dead-multi-match-lookup}. The detail is a predicate continuing "external
+     * dictionary {@code <type>} …" (e.g. <em>"is installed but carries no usable terms (empty or
+     * malformed) — reinstall it"</em>), composed by whoever diagnosed the state —
+     * {@link #loadDirectory} for the content guard, {@code DictionaryStore} for the
      * version-selection states — because only they know the specifics (which versions are
      * installed, where the selection came from).
      */
@@ -93,8 +78,8 @@ public final class RuntimeDictionaryProvider
      *            the loaded dictionaries, keyed by type (case-insensitive)
      * @param unavailable
      *            per-type diagnoses for types that could <em>not</em> be loaded, keyed by type
-     *            (case-insensitive); a type absent from both maps reads as
-     *            {@link UnavailabilityReason#NOT_INSTALLED}
+     *            (case-insensitive); a type absent from both maps reads as not installed
+     *            ({@link #notInstalledDetail()})
      */
     public RuntimeDictionaryProvider(Map<String, ValueMapDictionary> byType,
             Map<String, Unavailability> unavailable)
@@ -134,12 +119,12 @@ public final class RuntimeDictionaryProvider
      * <p>
      * <b>An <em>unreadable</em> file degrades the same way — per file, never whole-directory.</b> A
      * file that fails to read at all (a truncated {@code .gz} that is not valid gzip, a JSON parse
-     * error, a permissions problem) is caught here, logged at WARNING and recorded as
-     * {@link UnavailabilityReason#NO_USABLE_CONTENT} for that key — and the loop continues, so one
-     * corrupt {@code unii.json.gz} costs the run its UNII rules and nothing else. Letting the
-     * {@link IOException} propagate would discard every sibling that had already loaded fine and
-     * collapse the whole provider to "not installed" for every type — the exact catch-all message
-     * this class's diagnoses exist to eliminate.
+     * error, a permissions problem) is caught here, logged at WARNING and recorded as an
+     * {@link Unavailability} ("its file could not be read") for that key — and the loop continues,
+     * so one corrupt {@code unii.json.gz} costs the run its UNII rules and nothing else. Letting
+     * the {@link IOException} propagate would discard every sibling that had already loaded fine
+     * and collapse the whole provider to "not installed" for every type — the exact catch-all
+     * message this class's diagnoses exist to eliminate.
      * </p>
      */
     public static RuntimeDictionaryProvider loadDirectory(Path dir) throws IOException

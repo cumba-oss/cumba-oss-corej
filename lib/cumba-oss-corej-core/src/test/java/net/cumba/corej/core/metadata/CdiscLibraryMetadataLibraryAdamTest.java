@@ -251,20 +251,6 @@ class CdiscLibraryMetadataLibraryAdamTest
 
 
     @Test
-    void modelColumnOrderIsPopulatedFromAllVariables()
-    {
-        CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromAdam("adamig", "1-3", adamFixture(),
-                adamCtFixture(), null);
-
-        IDataTableMetadata adsl = lib.getDataTable("ADSL").orElseThrow();
-        Object mco = adsl.getMetaValue(MetadataKeys.MODEL_COLUMN_ORDER).orElseThrow();
-        @SuppressWarnings("unchecked")
-        List<String> mcoList = (List<String>) mco;
-        assertEquals(List.of("STUDYID", "USUBJID", "SUBJID", "AGE", "SEX", "RACE"), mcoList);
-    }
-
-
-    @Test
     void sdtmCtFallbackExposesSdtmCodelists()
     {
         CdiscLibraryMetadataLibrary lib = ApiModelLibraries.fromAdam("adamig", "1-3", adamFixture(),

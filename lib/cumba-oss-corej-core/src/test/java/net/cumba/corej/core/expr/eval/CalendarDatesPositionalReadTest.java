@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import net.cumba.corej.core.exec.IsoDateCorpus;
 import net.cumba.corej.core.exec.ScalarSemantics;
+import net.cumba.corej.core.exec.StructuralPartialDate;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,7 @@ import org.junit.jupiter.params.provider.ValueSource;
  * The old body gated on {@code ScalarSemantics.isPartialDate(core)} and then read components with
  * {@code charAt} at offsets 5/8/11/14/17, under the comment <i>"the structural check guarantees
  * ASCII digits at these positions, so no parse failure"</i>. It did not: {@code isPartialDate}
- * normalises its <em>own</em> argument before validating, so the gate judged
+ * normalised its <em>own</em> argument before validating, so the gate judged
  * {@code strip(strip(s))} while the reads indexed {@code strip(s)}. Any value carrying <b>two</b>
  * timezone decorations therefore passed the gate at one precision tier and was then read at the
  * next tier's offsets, off the end of the string. The handler caught {@link DateTimeException}
@@ -127,7 +128,7 @@ class CalendarDatesPositionalReadTest
                     "2012-06-", "2012-06--"
             })
             {
-                assertTrue(ScalarSemantics.isPartialDate(masked),
+                assertTrue(StructuralPartialDate.accepts(masked),
                         "precondition: Fix #215 widened the gate to admit " + masked);
                 assertThrows(StringIndexOutOfBoundsException.class,
                         () -> widenedGateLegacyBody(masked),
@@ -142,7 +143,7 @@ class CalendarDatesPositionalReadTest
         private boolean widenedGateLegacyBody(String s)
         {
             String core = strip(s);
-            if (!ScalarSemantics.isPartialDate(core))
+            if (!StructuralPartialDate.accepts(core))
             {
                 return false;
             }
@@ -417,8 +418,9 @@ class CalendarDatesPositionalReadTest
                     && legacyIsValidDate(s.substring(slash + 1));
         }
         String core = strip(s);
-        // ⚠⚠ Fix #215 — this MUST be the pinned pre-#215 gate, not the live
-        // ScalarSemantics.isPartialDate. Calling the live one made the oracle track the code it is
+        // ⚠⚠ Fix #215 — this MUST be the pinned pre-#215 gate, not the live structural gate
+        // (ScalarSemantics.isPartialDate then; StructuralPartialDate since that method was removed
+        // as dead). Calling the live one made the oracle track the code it is
         // supposed to be an oracle for: once the gate was widened, the old body sailed past it on
         // "2012-06-" and crashed at parse2(core, 8), so the differential comparison below died
         // instead of reporting. See theWidenedGateWouldHaveCrashedTheOldBody.

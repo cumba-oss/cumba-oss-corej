@@ -11,16 +11,18 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@code PLAN-is-partial-date-masked-forms.md} <b>Phase 1</b> — the mask-aware structural validator
- * {@link ScalarSemantics#isMaskedDate} — <b>and Phase 3</b> ({@code Fix #215}), which widened
- * {@link ScalarSemantics#isPartialDate} to accept the same shapes.
+ * {@link ScalarSemantics#isMaskedDate} — <b>and Phase 3</b> ({@code Fix #215}), which widened the
+ * structural partial-date gate ({@code ScalarSemantics.isPartialDate} then, whose shape is
+ * {@link ScalarSemantics#isoComponents} and which is pinned through {@link StructuralPartialDate}
+ * since that method was removed as dead) to accept the same shapes.
  *
  * <p>
  * &#9873; Phase 1 was deliberately additive: {@code isMaskedDate} was a second predicate and no
- * existing consumer moved. Phase 3 is the flip — {@code isMaskedDate(s)} now <b>implies</b>
- * {@code isPartialDate(s)} (&#9888; for an <em>untrimmed</em> value — {@code isMaskedDate} trims
- * and {@code isPartialDate} does not, a pre-existing asymmetry nothing routes on), so the two are
- * no longer opposites, and what {@code isMaskedDate} answers alone is <em>which</em> convention a
- * value uses (the question {@code IsoDateBounds.bound} dispatches on).
+ * existing consumer moved. Phase 3 is the flip — {@code isMaskedDate(s)} now <b>implies</b> the
+ * structural gate (&#9888; for an <em>untrimmed</em> value — {@code isMaskedDate} trims and the
+ * gate does not, a pre-existing asymmetry nothing routes on), so the two are no longer opposites,
+ * and what {@code isMaskedDate} answers alone is <em>which</em> convention a value uses (the
+ * question {@code IsoDateBounds.bound} dispatches on).
  * </p>
  *
  * <p>
@@ -58,7 +60,7 @@ class ScalarSemanticsMaskedDateTest
         {
                 "2012-0--15", // ⚠ half a month masked — the plan's named counter-example
                 "2012-06-1-", "20-2---15", "UNKNOWN", "NA", "", "   ", "-", "----------",
-                // Not masked: unmasked values are isPartialDate's business, not this predicate's.
+                // Not masked: unmasked values are the structural gate's business, not this one's.
                 "2026", "2026-01", "2026-01-17", "2026-01-17T10:30", "2026-02-30",
         })
         {
@@ -92,7 +94,7 @@ class ScalarSemanticsMaskedDateTest
                 "2012-06--", "2012-06-", "2012---15", "2012--15", "----06-15", "--06-15"
         })
         {
-            assertTrue(ScalarSemantics.isPartialDate(masked),
+            assertTrue(StructuralPartialDate.accepts(masked),
                     "a masked date IS a partial date since Fix #215: " + masked);
             assertTrue(CalendarDates.isValidDate(masked), "…and so is every gate above it");
             assertTrue(CalendarDates.isPartialDate(masked), "valid, and not complete");
@@ -120,7 +122,8 @@ class ScalarSemanticsMaskedDateTest
 
     /**
      * {@code Fix #215} — {@link ScalarSemantics#isMaskedDate} strips a trailing timezone /
-     * fractional-seconds tail before matching, exactly as {@code isPartialDate} does.
+     * fractional-seconds tail before matching, exactly as the structural gate
+     * ({@link StructuralPartialDate}) does.
      *
      * <p>
      * &#9888;&#9888; This is load-bearing, not cosmetic. {@code IsoDateBounds.bound} dispatches on
@@ -135,7 +138,7 @@ class ScalarSemanticsMaskedDateTest
      * </p>
      */
     @Test
-    void isMaskedDateToleratesTheSameDecorationsIsPartialDateDoes()
+    void isMaskedDateToleratesTheSameDecorationsTheStructuralGateDoes()
     {
         for (String decorated : new String[]
         {
@@ -144,8 +147,8 @@ class ScalarSemanticsMaskedDateTest
         })
         {
             assertTrue(ScalarSemantics.isMaskedDate(decorated), decorated);
-            assertTrue(ScalarSemantics.isPartialDate(decorated),
-                    "isMaskedDate ⇒ isPartialDate: " + decorated);
+            assertTrue(StructuralPartialDate.accepts(decorated),
+                    "isMaskedDate ⇒ structurally a partial date: " + decorated);
         }
         // A value carrying TWO decorations is not masked-shaped even here (one strip still leaves
         // a residual tail), and it does not need to be: bound()'s own core() has already removed
@@ -194,13 +197,13 @@ class ScalarSemanticsMaskedDateTest
     @Test
     void theStructuralVersusCalendarSplitIsPreserved()
     {
-        assertTrue(ScalarSemantics.isPartialDate("2026-02-30"), "structurally well-formed");
+        assertTrue(StructuralPartialDate.accepts("2026-02-30"), "structurally well-formed");
         assertFalse(CalendarDates.isValidDate("2026-02-30"), "calendar-impossible");
         assertFalse(ScalarSemantics.isMaskedDate("2026-02-30"), "and it carries no mask");
         assertFalse(IsoDateBounds.canPosition("2026-02-30"), "⇒ it has no hull");
 
         // The control: the same day in a month that has one is accepted by both.
-        assertTrue(ScalarSemantics.isPartialDate("2026-01-30"));
+        assertTrue(StructuralPartialDate.accepts("2026-01-30"));
         assertTrue(CalendarDates.isValidDate("2026-01-30"));
         assertEquals("2026-01-30T00:00:00", IsoDateBounds.lower("2026-01-30"));
     }

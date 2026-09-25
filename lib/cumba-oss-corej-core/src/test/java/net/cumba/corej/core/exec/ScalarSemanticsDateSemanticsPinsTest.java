@@ -200,25 +200,6 @@ class ScalarSemanticsDateSemanticsPinsTest
     }
 
     // -------------------------------------------------------------------------
-    // isPartialDate interval handling (documents the line-820 equivalence basis)
-    // -------------------------------------------------------------------------
-
-
-    /**
-     * An interval is partial iff BOTH halves are; a leading-slash value is invalid either way — the
-     * {@code slash >= 0}→{@code slash > 0} mutant is equivalent because the empty first half and
-     * the un-split "/..." string are both rejected. These pins document that basis.
-     */
-    @Test
-    void isPartialDateIntervalNeedsBothHalvesValid()
-    {
-        assertTrue(ScalarSemantics.isPartialDate("2024-01/2024-02"));
-        assertFalse(ScalarSemantics.isPartialDate("2024-01/garbage"));
-        assertFalse(ScalarSemantics.isPartialDate("/2024"));
-        assertFalse(ScalarSemantics.isPartialDate("2024/"));
-    }
-
-    // -------------------------------------------------------------------------
     // differsFromStringPart — does_not_equal_string_part verdict
     // -------------------------------------------------------------------------
 

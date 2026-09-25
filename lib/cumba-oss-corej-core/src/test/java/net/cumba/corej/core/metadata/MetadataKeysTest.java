@@ -15,9 +15,9 @@ class MetadataKeysTest
         String[] keys =
         {
                 MetadataKeys.STANDARD_NAME, MetadataKeys.STANDARD_VERSION, MetadataKeys.CT_VERSION,
-                MetadataKeys.IS_CUSTOM_DOMAIN, MetadataKeys.MODEL_COLUMN_ORDER,
-                MetadataKeys.CLASS_NAME, MetadataKeys.DATASET_STRUCTURE, MetadataKeys.CORE,
-                MetadataKeys.ROLE, MetadataKeys.CODELIST, MetadataKeys.CODELIST_CONCEPT_ID,
+                MetadataKeys.IS_CUSTOM_DOMAIN, MetadataKeys.CLASS_NAME,
+                MetadataKeys.DATASET_STRUCTURE, MetadataKeys.CORE, MetadataKeys.ROLE,
+                MetadataKeys.CODELIST, MetadataKeys.CODELIST_CONCEPT_ID,
                 MetadataKeys.CODELIST_SUBMISSION_VALUE,
         };
         for (String k : keys)
@@ -43,7 +43,6 @@ class MetadataKeysTest
         assertEquals("StandardVersion", MetadataKeys.STANDARD_VERSION);
         assertEquals("CtVersion", MetadataKeys.CT_VERSION);
         assertEquals("IsCustomDomain", MetadataKeys.IS_CUSTOM_DOMAIN);
-        assertEquals("ModelColumnOrder", MetadataKeys.MODEL_COLUMN_ORDER);
         assertEquals("ClassName", MetadataKeys.CLASS_NAME);
         assertEquals("DatasetStructure", MetadataKeys.DATASET_STRUCTURE);
         assertEquals("Core", MetadataKeys.CORE);

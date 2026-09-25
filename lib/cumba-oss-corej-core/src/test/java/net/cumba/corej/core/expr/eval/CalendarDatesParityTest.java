@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import net.cumba.corej.core.exec.ScalarSemantics;
+import net.cumba.corej.core.exec.StructuralPartialDate;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -109,10 +110,10 @@ class CalendarDatesParityTest
         assertFalse(CalendarDates.isPartialDate(INVERTED_INTERVAL),
                 "EC-73: not a date at any completeness");
         assertFalse(CalendarDates.isCompleteDate(INVERTED_INTERVAL));
-        // ⚠ The STRUCTURAL predicate is untouched — it is the legacy shape check, and Fix #212
-        // deliberately did not widen its blast radius beyond CalendarDates.
-        assertTrue(ScalarSemantics.isPartialDate(INVERTED_INTERVAL),
-                "the structural predicate stays syntactic, exactly like Python's date_regex");
+        // ⚑ This test also pinned that the STRUCTURAL predicate (ScalarSemantics.isPartialDate)
+        // stayed syntactic and accepted the backwards interval. That predicate had no production
+        // caller and was removed (fixpoint pass of PLAN-retire-dead-multi-match-lookup), so there
+        // is no second answer left to contrast.
     }
 
 
@@ -256,17 +257,22 @@ class CalendarDatesParityTest
     // ---- structural predicates (invalidDateStructural / OperatorRegistry) ---
 
 
+    /**
+     * The structural shape the calendar gate builds on accepts every decorated form. ⚑ This pinned
+     * {@code ScalarSemantics.isPartialDate} until that method was removed as dead (fixpoint pass of
+     * {@code PLAN-retire-dead-multi-match-lookup}); its interval arm went with it, so only the
+     * non-interval shapes are pinned, through the live composition in
+     * {@link StructuralPartialDate}.
+     */
     @Test
-    void scalarPartialDate_acceptsDecoratedAndInterval()
+    void structuralShape_acceptsDecoratedForms()
     {
-        assertTrue(ScalarSemantics.isPartialDate(ZULU));
-        assertTrue(ScalarSemantics.isPartialDate(OFFSET));
-        assertTrue(ScalarSemantics.isPartialDate(FRACTIONAL));
-        assertTrue(ScalarSemantics.isPartialDate(FRACTIONAL_ZULU));
-        assertTrue(ScalarSemantics.isPartialDate(INTERVAL));
-        assertFalse(ScalarSemantics.isPartialDate(BAD));
-        assertFalse(ScalarSemantics.isPartialDate(null));
-        assertFalse(ScalarSemantics.isPartialDate(""));
+        assertTrue(StructuralPartialDate.accepts(ZULU));
+        assertTrue(StructuralPartialDate.accepts(OFFSET));
+        assertTrue(StructuralPartialDate.accepts(FRACTIONAL));
+        assertTrue(StructuralPartialDate.accepts(FRACTIONAL_ZULU));
+        assertFalse(StructuralPartialDate.accepts(BAD));
+        assertFalse(StructuralPartialDate.accepts(""));
     }
 
 
