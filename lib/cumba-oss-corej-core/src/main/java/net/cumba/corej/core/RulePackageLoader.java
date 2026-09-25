@@ -341,9 +341,10 @@ public class RulePackageLoader
             }
             it.remove();
             // The rule's own Core.Id first, the map key only as a fallback. ⚠ The two are NOT
-            // interchangeable: in a shipped package the key IS the Core.Id, but on the
-            // CDISC-Library path (LibraryRuleMapper.mapRuleMap) it is the rule's UUID — naming
-            // that in a warning tells the reader nothing. The key still beats ruleId()'s
+            // interchangeable: in a shipped package the key IS the Core.Id, but on the retired
+            // CDISC-Library path (LibraryRuleMapper.mapRuleMap, gone with cache P4) it was the
+            // rule's UUID — naming that in a warning told the reader nothing. The key still beats
+            // ruleId()'s
             // "<unknown>" literal for a body that omits `Core` altogether, which is the only case
             // where a multi-rule summary would otherwise degrade to "<unknown>, <unknown>".
             String id = ruleId(rule);
@@ -470,8 +471,8 @@ public class RulePackageLoader
      *
      * <p>
      * Public so a harness that bypasses {@link #load} can apply the identical normalisation a
-     * production load performs rather than re-implementing it. Its only caller is
-     * {@code RuleScaffold}, the {@code rulespec} drift-guard harness in the rule-corpus
+     * production load performs rather than re-implementing it. Its only caller outside this class
+     * is {@code RuleScaffold}, the {@code rulespec} drift-guard harness in the rule-corpus
      * repository's tests.
      * </p>
      *
@@ -1794,10 +1795,14 @@ public class RulePackageLoader
         // OperationInliner, was deleted 2026-08-26.)
         inlineVariableExistsOps(rule, levels);
         // T9: lower a `split_by` operation into the per-row split_by(<col>, "<delim>") value
-        // function, via SplitByInliner, so a rule that still declares the operation form evaluates
-        // the split per row exactly as one authored with the function does. (The offline converter
-        // that once applied the same mapping to the corpus, OperationInliner, was deleted
-        // 2026-08-26.)
+        // function, via SplitByInliner. ⚠ No authored rule can DECLARE that operation form any
+        // more — the Operations: key is rejected at deserialisation
+        // (Rule.rejectRetiredOperationsKey) and a Bindings: call has no split_by descriptor
+        // (OperationExpressionParser.fromCall). The one way an Operation whose operator is
+        // "split_by" still arises is TokenExpander's token substitution, which rewrites every text
+        // value of a bound Operation, the operator included; that is why the seam is kept
+        // (PLAN-retire-dead-multi-match-lookup §1.2 E-1). (The offline converter that once applied
+        // the same mapping to the corpus, OperationInliner, was deleted 2026-08-26.)
         inlineSplitByOps(rule, levels);
         // ⚠ The two seams above stayed no-ops for production rules/ across
         // plans/done/PLAN-operations-no-inline.md (D31, 2026-08-08), which stopped OperationInliner
@@ -1962,8 +1967,8 @@ public class RulePackageLoader
 
     /**
      * P6b: raises a fold-equivalent {@code Precondition} so the skip-on-false decision evaluates
-     * natively. Non-broadcast preconditions stay {@code null} — the legacy fold cannot decide them
-     * either ("not fully resolvable ⇒ continue"), so both engines continue identically.
+     * natively. Non-broadcast preconditions stay {@code null} ("not fully resolvable ⇒ continue"),
+     * exactly as the retired legacy fold left them.
      */
     private static void raisePrecondition(Rule rule)
     {
@@ -3001,8 +3006,9 @@ public class RulePackageLoader
 
     /**
      * Whether every AND-term of {@code precondition} is one of the machine-emitted availability
-     * gates — the exact shape {@code injectInlineOperationGates}, {@code inlineVariableExistsOps},
-     * {@code inlineSplitByOps} write, and the retired {@code OperationInliner}'s
+     * gates — the exact shape {@code injectInlineOperationGates} writes (the two inliners,
+     * {@code inlineVariableExistsOps} and {@code inlineSplitByOps}, rewrite the Check and write no
+     * gate), and the shape the retired {@code OperationInliner}'s
      * {@code addLibraryPreconditionGate} wrote.
      *
      * <p>
@@ -3014,7 +3020,7 @@ public class RulePackageLoader
      * process's</em> injection) is null. Recognising the gate shape is the only test that separates
      * the two. It is green in both directions today — both corpora carry zero {@code Precondition}
      * keys — which is precisely why it must be written down rather than left to be discovered the
-     * first time the generator inlines an availability-dependent call.
+     * first time an availability-dependent call is inlined into a package.
      * </p>
      *
      * <p>
@@ -4024,11 +4030,11 @@ public class RulePackageLoader
      * cause keeps its first diagnosis.
      *
      * <p>
-     * ⚠ Deliberately <b>not</b> wired into {@code LibraryRuleMapper}, unlike its two neighbours:
-     * {@code LibraryRuleMapper.mapOperation} binds neither {@code reference} nor {@code ordering}
-     * nor {@code offset} (the CDISC-Library operation model has no such members), so every
-     * library-sourced operation carries {@code null} in all three and the call would be
-     * unconditionally vacuous.
+     * ⚠ History: while the CDISC-Library ingestion existed this was deliberately <b>not</b> wired
+     * into {@code LibraryRuleMapper} (retired by cache P4), unlike its two neighbours: its
+     * {@code mapOperation} bound neither {@code reference} nor {@code ordering} nor {@code offset}
+     * (the CDISC-Library operation model had no such members), so every library-sourced operation
+     * carried {@code null} in all three and the call would have been unconditionally vacuous.
      * </p>
      *
      * @param rule
@@ -4197,9 +4203,9 @@ public class RulePackageLoader
      *
      * <p>
      * The shipped corpus is untouched: all 98 {@code rules-src} dictionary rules (417 generated
-     * package operations) name a type. This guard protects site/custom rules, and the
-     * library-sourced path is wired through {@code LibraryRuleMapper} beside
-     * {@link #validateOperationReferences(RulePackage)}.
+     * package operations) name a type. This guard protects site/custom rules. (The library-sourced
+     * path, while it existed — {@code LibraryRuleMapper}, retired by cache P4 — was wired beside
+     * {@link #validateOperationReferences(RulePackage)}.)
      * </p>
      *
      * @param pkg

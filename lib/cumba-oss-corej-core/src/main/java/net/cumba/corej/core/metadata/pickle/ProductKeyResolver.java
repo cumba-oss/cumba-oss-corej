@@ -150,9 +150,9 @@ public final class ProductKeyResolver
     /**
      * Resolves every token in order against {@code catalogue}, or throws with <b>all</b> failures
      * listed at once. A not-found token's message explains why it did not resolve — no catalogue
-     * available, a TIG token against a store that holds no TIG products (TIG enters a store only
-     * via pickle seeding), or otherwise the nearest candidate keys; an ambiguous token's message
-     * names its matches. No message names the source that was consulted.
+     * available, a TIG token the store does not hold (TIG enters a store only via pickle seeding),
+     * or otherwise the nearest candidate keys; an ambiguous token's message names its matches. No
+     * message names the source that was consulted.
      *
      * @param tokens
      *            the user tokens, in precedence order

@@ -36,7 +36,7 @@ import org.jspecify.annotations.Nullable;
  * OTHER" class fallback ({@link MetadataLibraryProvider}). One deliberate deviation from the
  * upstream constant: upstream's {@code bds_indicators} lists {@code ARAMCD}, a known typo of
  * {@code PARAMCD}; the house engines correct it ({@code PARAMCD}, user decision 2026-07-26 — the
- * parity fork's constant carries the same correction).
+ * retired Python parity fork's constant carried the same correction).
  * </p>
  *
  * <h2>Fix #179 — a dataset carries a SET of structures, not one</h2>
@@ -238,8 +238,8 @@ public final class AdamDataStructureDetector
      * column-only predicate {@link #hasNoStructureIndicators} is unaffected.
      * </p>
      * <p>
-     * Java-only: the parity fork's {@code get_data_structure} has no name gate. Java is therefore
-     * <em>narrower</em> here.
+     * Java-only: the retired Python parity fork's {@code get_data_structure} had no name gate, so
+     * Java is <em>narrower</em> here.
      * </p>
      */
     private static final List<String> ADAM_NAME_PREFIXES = List.of("AD", "AX");

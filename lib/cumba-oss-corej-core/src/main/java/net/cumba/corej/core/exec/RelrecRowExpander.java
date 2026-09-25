@@ -107,9 +107,8 @@ final class RelrecRowExpander
         String primaryDomain = primaryTable.getMetaData().getName();
         IDataTable relrec = resolver.resolve(RELREC);
 
-        // Growable expansion rows: {primaryRow, targetOrdinal, targetRow}. Dedup identical triples
-        // (canonical-equivalent to Python's concat), so duplicates from overlapping RELID pairs
-        // collapse here.
+        // Growable expansion rows: {primaryRow, targetOrdinal, targetRow}. Dedup identical triples,
+        // so duplicates from overlapping RELID pairs collapse here.
         List<long[]> expanded = new ArrayList<>();
         List<IDataTable> targetTables = new ArrayList<>();
 

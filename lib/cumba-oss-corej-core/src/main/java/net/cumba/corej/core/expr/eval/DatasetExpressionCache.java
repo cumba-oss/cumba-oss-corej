@@ -159,8 +159,9 @@ public final class DatasetExpressionCache
      * <li><b>No joins</b> — {@code ctx.getJoinedDatasets().isEmpty()}. ⚑ Kept as a conservative
      * guard. Its original reason — an absent-locally column ref resolving through the join fallback
      * — is gone (that fallback was removed 2026-09-21, {@code PLAN-unqualified-name-primary-only}),
-     * and rule 3 alone already keeps every joined read ({@code DOTTED_REF}, {@code MATCHED_FLAG})
-     * out of the cache. Relaxing it is a performance change, not made here.</li>
+     * and rules 3 and 4 already keep every joined read out of the cache — a {@code DOTTED_REF} /
+     * {@code MATCHED_FLAG} ref by rule 3, a {@code ${…}} substitution that may resolve to a dotted
+     * name by rule 4. Relaxing it is a performance change, not made here.</li>
      * <li><b>The {@code {ROW}} evaluation domain</b> — not one with a VAR cursor, whose
      * per-variable loop binds the variable name into the context and re-evaluates per variable (so
      * a leaf's result need not even be constant within one rule), and not the broadcast {@code {}}

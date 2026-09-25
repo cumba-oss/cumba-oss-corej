@@ -3,16 +3,17 @@ package net.cumba.corej.core.model;
 import net.cumba.corej.core.expr.ast.Expr;
 
 /**
- * A <strong>native-only</strong> expression Check: an {@code {"expression": …}} leaf whose parsed
- * {@link Expr} has no legacy lowering (it uses native-only constructs such as the {@code var_*} /
- * {@code ds_*} metadata accessors with an arbitrary-literal name). Carries the parsed {@code expr}
- * (for native evaluation via {@code NativeExprEvaluator}) and the original {@code source} text (for
- * serialization). It is never lowered to operator-leaf form.
+ * An expression Check: an {@code {"expression": …}} leaf kept AS the expression it was written as
+ * (phase 7 of {@code PLAN-typed-expression-engine}). Carries the parsed {@link Expr} (for native
+ * evaluation via {@code NativeExprEvaluator}) and the original {@code source} text (for
+ * serialization).
  *
  * <p>
- * Produced by {@link CheckConditionDeserializer} when {@code ExprLowering} cannot lower an
- * expression-form Check; consumed by the native evaluation path. It is evaluated through the native
- * backend wherever it is reached.
+ * Produced by {@link CheckConditionDeserializer} for <b>every</b> {@code expression:} node and
+ * consumed by the native evaluation path; it is the only leaf form of {@link CheckCondition} the
+ * engine evaluates. ⚑ History: until phase 7 a v1 lowering pass ({@code ExprLowering}, deleted with
+ * the operator-leaf model) stood between parse and evaluation and this record was minted only for
+ * the expressions it could not lower; there is no "cannot lower" case any more.
  * </p>
  */
 public record CheckConditionExpression(Expr expr, String source) implements CheckCondition

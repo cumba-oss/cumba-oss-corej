@@ -6,11 +6,12 @@ import net.cumba.corej.core.expr.OperandKind;
 
 /**
  * The expression intermediate representation. The parser produces an {@code Expr} tree from
- * expression text; the v1 lowering pass ({@code ExprLowering}) compiles a (boolean-typed)
- * {@code Expr} into the existing {@link net.cumba.corej.core.model.CheckCondition} AST so the
- * current engine evaluates it unchanged. {@code Expr} is intentionally richer than the operator-
- * leaf AST — it is the seam for the future native evaluator, which will evaluate {@code Expr}
- * directly and remove the v1 lowering restrictions.
+ * expression text, and the native backend ({@code ExprCompiler}) compiles and evaluates it
+ * directly. ⚑ History: until phase 7 of {@code PLAN-typed-expression-engine} a v1 lowering pass
+ * ({@code ExprLowering}, deleted with the operator-leaf model) compiled a boolean-typed
+ * {@code Expr} into the operator-leaf {@link net.cumba.corej.core.model.CheckCondition} AST for the
+ * then-current engine; {@code Expr} was always richer than that AST, and it is now the only
+ * evaluated form.
  *
  * <p>
  * Nodes are immutable records. Value-typed nodes ({@link Lit}, {@link Ref}, value {@link Call}s)

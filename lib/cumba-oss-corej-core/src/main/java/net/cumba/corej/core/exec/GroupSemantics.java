@@ -455,7 +455,7 @@ public final class GroupSemantics
      * dependent value ({@code nameCol}) across the sequence. A position whose key <b>or</b>
      * dependent is blank ({@code ""} or a genuine missing — not {@link KeyPart.Present}) is
      * excluded from the dependency entirely — it neither seeds a key nor ever fires
-     * (operator-examples.md D.13). Both engines apply this exclusion identically.
+     * (operator-examples.md D.13).
      * </p>
      *
      * @param nameCol
@@ -960,9 +960,11 @@ public final class GroupSemantics
      * target column, or {@code rowCount <= 1} yields no violations.
      *
      * <p>
-     * This deliberately uses its own value-keyed grouping (not {@link #partition}) because the
-     * retired legacy operator pooled missing/empty within values into the {@code ""} bucket rather
-     * than dropping them, and the native evaluator keeps that contract.
+     * This deliberately uses its own value-keyed grouping (not {@link #partition}) because blank
+     * within values are KEPT rather than dropped — each blank kind its own bucket ({@code W38-A1},
+     * above), where {@link #partition} excludes a blank-keyed row. (The retired legacy operator
+     * pooled every blank into one {@code ""} bucket; W38-A1 replaced that pooling with the per-kind
+     * buckets.)
      * </p>
      *
      * @param table

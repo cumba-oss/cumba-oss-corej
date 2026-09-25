@@ -145,7 +145,7 @@ public record GroupedResult(List<String> groupColumns, Map<String, Object> resul
      * group with zero matching rows counts as 0, not "no value"), {@code List.of()} for
      * {@code distinct}, {@code null} for a date extremum. The default is fixed at construction from
      * the operation — see {@link #missingKeyDefault} — so the comparison LHS/RHS and the report
-     * output all coalesce identically and the two engines cannot drift.
+     * output all coalesce identically, from one definition.
      */
     public @Nullable Object defaultForMissingKey()
     {

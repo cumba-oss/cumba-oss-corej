@@ -1014,9 +1014,8 @@ public final class ExprCompiler
                 ColumnTypeGate.requireCharacterRead(v, "membership in a string list");
             }
             // A $-reference may resolve to a per-row GroupedResult (e.g. CDISC-CG0034's
-            // $sv_visitnum, a distinct-per-USUBJID operation). The legacy engine resolves the
-            // membership set PER ROW (
-            // GroupedResult.getForRow); mirror that with a per-row loop instead of the broadcast
+            // $sv_visitnum, a distinct-per-USUBJID operation). The membership set is then resolved
+            // PER ROW (GroupedResult.getForRow) with a per-row loop instead of the broadcast
             // constant set.
             if (right instanceof Expr.Ref ref
                     && run.ctx().resolveVariable(ref.name()) instanceof GroupedResult grouped)
@@ -1297,10 +1296,10 @@ public final class ExprCompiler
 
     /**
      * Per-row {@code ${*}} membership plan. For each row the matching foreign/local column values
-     * are collected (via {@code ValueResolver.resolveWildcardValues}, the same code the legacy
-     * {@code is_(not_)contained_by} path runs) into a set, then the name-side cell is tested for
-     * membership — per {@code evalIsContainedBy[CaseInsensitive]}: a missing name never fires, the
-     * probe is upper-cased (and the set built upper-cased) only for the case-insensitive surface.
+     * are collected (via {@code ValueResolver.resolveWildcardValues}) into a set, then the
+     * name-side cell is tested for membership — per {@code evalIsContainedBy[CaseInsensitive]}: a
+     * missing name never fires, the probe is upper-cased (and the set built upper-cased) only for
+     * the case-insensitive surface.
      *
      * <p>
      * A driver-free wildcard compiles its column-name pattern once (invariant across rows); a
@@ -2491,9 +2490,9 @@ public final class ExprCompiler
      *
      * <p>
      * ⛔ The pre-2026-08-23 spelling {@code f(A, keys=[…])} / {@code f(A, B)} / {@code f(A)} is not
-     * accepted here. It is refused by {@code ExprLowering.functionOperatorLeaf} and rejected at
-     * LOAD ({@code RulePackageLoader.validateInlineUniqueSetShape}) so the author gets an error,
-     * not a degraded rule — the {@code unsupported(...)} on this path only degrades.
+     * accepted here. It is rejected at LOAD
+     * ({@code RulePackageLoader.validateInlineUniqueSetShape}) so the author gets an error, not a
+     * degraded rule — the {@code unsupported(...)} on this path only degrades.
      * </p>
      */
     private static List<String> uniqueSetMembers(Expr.Call c)
@@ -3929,12 +3928,14 @@ public final class ExprCompiler
                 // `--`-prefix domain wildcard (e.g. `--SEQ`): since D77 the bind-time stage
                 // (RuleSpecialiser) rewrites these before execution, so the plan built here is
                 // reached only by the load-time support probe (isSupported compiles, never
-                // evaluates) — at evaluation resolveDomainPrefix ASSERTS and throws. Other
-                // wildcards — `*`/`**`/ADaM-capture column enumeration (arity-changing, expanded
-                // to N rules by WildcardExpander), `${...}` substitution, and dot-qualified
-                // RELREC.`**` per-row forms — need downstream machinery the native backend lacks;
-                // they are rejected as unsupported, and the rule then reports the "no native
-                // expression form" ERROR — there is no other evaluator to fall back to.
+                // evaluates) — at evaluation resolveDomainPrefix ASSERTS and throws. Of the other
+                // wildcards, a scalar `${VAR[:fmt]}` substitution compiles to a per-row
+                // substitutedScalarPlan and a dot-qualified RELREC.`**` reference to a per-row
+                // dotted plan (both below). What remains — `*`/`**`/ADaM-capture column
+                // enumeration (arity-changing, expanded to N rules by WildcardExpander) and the
+                // list-valued `${*}` — needs machinery the native backend lacks and is rejected as
+                // unsupported, so the rule reports the "no native expression form" ERROR; there is
+                // no other evaluator to fall back to.
                 if (isDomainPrefixWildcard(r.name()))
                 {
                     yield namePosition ? nameRefPlan(r.name()) : valueRefPlan(r.name());
@@ -4054,8 +4055,10 @@ public final class ExprCompiler
     /**
      * Parses a {@code ${...}} operand at compile time, returning the {@link OperandSubstitutor}
      * parsed form, or {@code null} when the name carries no placeholder or fails to parse. A parse
-     * failure (malformed placeholder, illegal format spec) returns {@code null} so the caller
-     * rejects the operand as unsupported rather than compiling an invalid one.
+     * failure (malformed placeholder, illegal format spec) returns {@code null}; what that means is
+     * the caller's: {@link #operandPlan} rejects the operand as unsupported rather than compiling
+     * an invalid one, while {@link #wildcardOperand} falls through to the other membership-set
+     * paths.
      */
     private static OperandSubstitutor.@Nullable ParsedOperand parseScalarSubstitution(String name)
     {
@@ -4632,15 +4635,18 @@ public final class ExprCompiler
      *
      * <p>
      * The {@link Operation} is built once at compile time from the call (the
-     * {@link OperationExpressionParser} mapping shared with the Form-B loader path).
-     * Library-dependent operations and {@code cross_dataset_variable_metadata} are <em>not</em>
-     * inlinable (decision D3): they carry SKIP / per-variable semantics the expression operand path
-     * cannot express, so they must stay authored as {@code Operations} entries. An inline use of
-     * one is a {@link RuleDefinitionException} — a definitional rule error (loud {@code loadError}
-     * / ERROR) — rather than a decline, because it is a definitional fault of the rule: an
+     * {@link OperationExpressionParser} mapping shared with the Form-B loader path). Only
+     * {@code cross_dataset_variable_metadata} is refused here: it resolves per variable
+     * ({@code VariableMetadataResult}) and has no inline operand surface, so an inline use of it is
+     * a {@link RuleDefinitionException} — a definitional rule error (loud {@code loadError} /
+     * ERROR) — rather than a decline, because it is a definitional fault of the rule: an
      * {@link ExpressionException} would surface only as the generic "no native expression form"
      * ERROR, while a {@link RuleDefinitionException} becomes a load error naming the fault
-     * ({@code RulePackageLoader}'s catch around {@code installCompiledLevels}).
+     * ({@code RulePackageLoader}'s catch around {@code installCompiledLevels}). Library-dependent
+     * operations <b>do</b> compile inline on this path (§9.C): their SKIP-on-missing-Library
+     * semantics are restored by the {@code library_available() and available(<op-call>)}
+     * Precondition that {@code RulePackageLoader.injectInlineOperationGates} adds at load. (On the
+     * membership-set path, {@link #inlineSetOperation}, a library-dependent call is not inlined.)
      * </p>
      *
      * <p>
@@ -4664,9 +4670,10 @@ public final class ExprCompiler
         // cross_dataset_variable_metadata resolves per-variable (VariableMetadataResult) and has no
         // inline operand surface — author it as a var_*(dataset=) accessor (§9.D) instead.
         // Library-dependent operations DO compile inline (§9.C); their SKIP-on-missing-Library
-        // semantics are restored by the `library_available() and available(<op>)` Precondition the
-        // converter adds — a library op produces LIBRARY_NOT_AVAILABLE here only when the gate has
-        // already skipped the rule, so the check never reaches it.
+        // semantics are restored by the `library_available() and available(<op>)` Precondition
+        // RulePackageLoader.injectInlineOperationGates adds at load — a library op produces
+        // LIBRARY_NOT_AVAILABLE here only when the gate has already skipped the rule, so the check
+        // never reaches it.
         if (type == OperationType.CROSS_DATASET_VARIABLE_METADATA)
         {
             throw new RuleDefinitionException("operation '" + c.name()
@@ -4695,11 +4702,15 @@ public final class ExprCompiler
     private static @Nullable Object inlineOperationResult(Operation op, EvaluationContext ctx)
     {
         // Resolve `--` domain wildcards in name/domain/group against the run's domain prefix before
-        // executing. A declared Operation is resolved once per (rule × dataset) by
-        // RuleSpecialiser.specialise; an inline operation call lives inside the compiled program,
-        // which is domain-agnostic and shared across domains, so it must resolve here.
-        // Without it a `--`-prefixed group/name column (e.g. record_count(group=[…, --TESTCD, …]))
-        // names a non-existent column and the operation silently resolves to null.
+        // executing. Since D77 the compiled program is per (rule × dataset), NOT shared across
+        // domains: RuleSpecialiser.specialise runs ExprPrefixResolver over the Check, so a `--` in
+        // an inline call is normally already resolved by the time it is compiled. What
+        // ExprPrefixResolver deliberately leaves as a TEMPLATE still has to resolve here, per
+        // iterated dataset: the name operand of variable_count / variable_value_count (D92a, the
+        // inventory fold — `--LNKGRP` re-resolves per dataset) and the keyword-argument KEYS of a
+        // filter= map, which travel into the Operation's filter map and are resolved only by
+        // OperationExecutor.resolvePrefixes. Without this call such an operand names a
+        // non-existent column and the operation silently resolves to null.
         Operation resolved = OperationExecutor.resolvePrefixes(op, ctx.getDomainPrefix(),
                 ctx.getVariableWildcardPrefix());
         return OperationExecutor.executeOne(resolved, ctx.getTable(), ctx.getDatasetResolver(),
@@ -5927,10 +5938,10 @@ public final class ExprCompiler
      * <p>
      * "Numeric member" is exactly an {@code Expr.Lit} of kind {@link Expr.LitKind#NUMBER}; "non-
      * numeric" is any other member (a {@code STRING}/{@code BOOL} literal, or an {@code upper(...)}
-     * wrapper from the case-insensitive surface — though that surface never reaches here). This
-     * mirrors the legacy classification over the source JSON-array nodes
-     * ({@code JsonNode.isNumber()} vs not), so both engines agree element-for-element on the
-     * shipped corpus (15 all-integer lists).
+     * wrapper from the case-insensitive surface — though that surface never reaches here). This is
+     * the same classification the retired legacy fold applied over the source JSON-array nodes
+     * ({@code JsonNode.isNumber()} vs not), kept so the shipped corpus's verdicts (15 all-integer
+     * lists) did not move when the fold went.
      * </p>
      */
     private static @Nullable Set<Double> numericMemberSet(Expr right)

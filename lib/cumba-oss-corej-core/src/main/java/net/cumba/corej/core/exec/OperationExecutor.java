@@ -346,8 +346,11 @@ public final class OperationExecutor
      * PASS/FAIL) when no Define-XML is supplied: {@link RuleRunner} reports the rule SKIPPED before
      * any supplier fires when {@code defineProvider == null} and any operation is define-dependent,
      * the same input-availability discipline as {@link #isLibraryDependent}. Kept distinct from
-     * {@code isLibraryDependent} so these operations are neither spuriously skipped for a missing
-     * CDISC Library nor inlined to a native function (they stay {@code $}-ref Operations).
+     * {@code isLibraryDependent} so these operations are not spuriously skipped for a missing CDISC
+     * Library. They DO compile inline on the operand path ({@code
+     * ExprCompiler.operationCallPlan}); {@code RulePackageLoader.injectInlineOperationGates} then
+     * guards such a Check with {@code available(<op-call>)}, so the skip-when-absent discipline
+     * survives inlining.
      */
     public static boolean isDefineDependent(@Nullable OperationType type)
     {

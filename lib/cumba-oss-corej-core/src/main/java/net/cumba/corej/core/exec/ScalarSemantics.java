@@ -862,8 +862,8 @@ public final class ScalarSemantics
      * {@code --ORNRHI}/{@code --ORNRLO} reference-range case, where the SDTM variable is
      * {@code Char} but carries a number and the rule guards with {@code is_numeric}) is parsed from
      * its string form — matching the Python oracle, which parses both sides. A non-numeric cell ⇒
-     * {@code null} (no violation), so genuinely textual data is unaffected. Used by both the native
-     * ({@code Primitives.comparison}) paths so the two engines cannot drift.
+     * {@code null} (no violation), so genuinely textual data is unaffected. Used by the native
+     * comparison path ({@code Primitives.comparison}).
      */
     public static @Nullable Double comparisonLhsAsDouble(IDataValue dv)
     {

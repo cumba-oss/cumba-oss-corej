@@ -23,11 +23,14 @@ import org.jspecify.annotations.Nullable;
  * result is <em>broadcast</em> to every row ({@code ExprCompiler.operationCallPlan} →
  * {@code ConstVector}), so it cannot carry a per-row-<em>varying</em> list. Instead coreJ evaluates
  * the split per row as a value function ({@code split_by(--VAR, "/")}, like {@code upper}/
- * {@code substring}), and this class rewrites the authored operation form into that function so it
- * is evaluated natively. It is the one mapping, invoked from
- * {@code RulePackageLoader.inlineSplitByOps} at load (the {@link VariableExistsInliner} pattern).
- * (The offline converter {@code OperationInliner}, deleted 2026-08-26, applied the same mapping to
- * the corpus.)
+ * {@code substring}), and this class rewrites an Operation whose operator is {@code split_by} into
+ * that function so it is evaluated natively. No authored rule can declare that operation any more
+ * ({@code Operations:} is rejected at deserialisation, {@code Bindings:} has no {@code split_by}
+ * descriptor); such an Operation arises only through {@code TokenExpander}'s token substitution,
+ * which rewrites the operator text too — which is why the mapping is kept. It is the one mapping,
+ * invoked from {@code RulePackageLoader.inlineSplitByOps} at load (the
+ * {@link VariableExistsInliner} pattern). (The offline converter {@code OperationInliner}, deleted
+ * 2026-08-26, applied the same mapping to the corpus.)
  * </p>
  *
  * <p>

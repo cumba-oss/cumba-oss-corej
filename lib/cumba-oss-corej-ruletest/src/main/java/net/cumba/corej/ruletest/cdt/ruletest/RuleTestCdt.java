@@ -703,8 +703,8 @@ public final class RuleTestCdt
             }
             // Plan C: `severity=` is a RESERVED key, not a column constraint, so it has to be
             // emitted explicitly — the constraint loop below cannot carry it. Without this the
-            // writer silently drops a pin the parser accepted, and any round-trip through
-            // ScenarioTrimmer would lose it.
+            // writer silently drops a pin the parser accepted, and a parse -> write round-trip
+            // loses it (the since-deleted ScenarioTrimmer was the round-trip that first showed it).
             if (ev.getSeverity() != null)
             {
                 aOut.write(" severity=");

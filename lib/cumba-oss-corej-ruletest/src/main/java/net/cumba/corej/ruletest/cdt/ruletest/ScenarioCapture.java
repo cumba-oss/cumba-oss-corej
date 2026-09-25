@@ -51,10 +51,9 @@ import org.jspecify.annotations.Nullable;
  * {@code workingDirectory} it resolved beneath {@code target/test-cwd/}. Captured scenarios
  * therefore landed somewhere nothing reads, silently &mdash; the regenerate-with
  * {@code -Dgenerate.scenarios=true} procedure that ~23 suite javadocs describe was writing into the
- * void. The identical pair of bugs was fixed in the sibling {@code ScenarioTrimmer} by
- * {@code plans/done/PLAN-corej-restructure.md} §1, which left this one. (⚠ {@code @code}, not
- * {@code @link}: the split moved that class to the rules repository, so it is no longer on this
- * module's javadoc classpath and a link would fail the javadoc gate.)
+ * void. The identical pair of bugs was fixed in the sibling {@code ScenarioTrimmer} (since deleted;
+ * it exists in no repository of the stack any more) by {@code plans/done/PLAN-corej-restructure.md}
+ * §1, which left this one.
  * </p>
  *
  * <p>
@@ -698,10 +697,13 @@ public final class ScenarioCapture
         // ⚑ The corpus is keyed by rule FAMILY, not by standard. Map each suite package onto the
         // family directory that same suite replays from, so a captured scenario is picked up by
         // the factory that owns it:
-        // ...ruletestsuites.sdtm -> core/ (AbstractSdtmRuleTest.loadCdt reads core/,
-        // RuleTestSuitesCoreFactoryTest replays it)
         // ...ruletestsuites.adam -> cdisc/ (AbstractAdamRuleTest.loadCdt reads cdisc/,
         // RuleTestSuitesCdiscFactoryTest replays it)
+        // ...ruletestsuites.sdtm -> core/ — ⚠ STALE TARGET: the core/ root was deleted with the
+        // CORE family in 2026-09 (its RuleTestSuitesCoreFactoryTest with it), and
+        // AbstractSdtmRuleTest.loadCdt now takes a family-qualified path per caller. A capture
+        // from an SDTM suite therefore lands where nothing replays it — a capture-mode
+        // (-Dgenerate.scenarios=true) defect, surfaced here and not fixed by the comment.
         // Returning "sdtm"/"adam" as this used to do names directories that do not exist.
         if ("sdtm".equals(leaf))
         {

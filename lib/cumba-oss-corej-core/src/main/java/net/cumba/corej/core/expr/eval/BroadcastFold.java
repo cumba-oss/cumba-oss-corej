@@ -362,10 +362,10 @@ public final class BroadcastFold
         {
         // The VALUE side may additionally be a bare reference resolved from the dataset-level
         // context variables (e.g. the Fix #10 DOMAIN injection — CDISC-CG0413's
-        // `dataset_name prefix_not_equal_to 2 value "DOMAIN"`): the legacy fold resolves textual
-        // values via metadata.containsKey BEFORE the literal fallback, and the compiled native
-        // operand plans resolve variables before columns — both engines read the VARIABLE, so the
-        // leaf is dataset-constant when the resolved value is a scalar. The NAME side stays
+        // `dataset_name prefix_not_equal_to 2 value "DOMAIN"`): the compiled native operand plans
+        // resolve variables before columns (as the retired legacy fold did, via
+        // metadata.containsKey before its literal fallback), so the leaf reads the VARIABLE and is
+        // dataset-constant when the resolved value is a scalar. The NAME side stays
         // strict: the legacy classifier folds only DATASET-classified names.
         case Expr.Binary b ->
         {
@@ -420,8 +420,8 @@ public final class BroadcastFold
 
     /**
      * A bare COLUMN-kind reference whose name resolves to a SCALAR dataset-level context variable
-     * at runtime. Lists and per-row/per-variable results decline (stay UNKNOWN — the literal /
-     * column fallbacks of the two engines are not provably aligned for those).
+     * at runtime. Lists and per-row/per-variable results decline (stay UNKNOWN — neither is a
+     * dataset-level scalar, so the leaf cannot be proved constant for those).
      */
     private static boolean isScalarContextVarRef(Expr e, EvaluationContext ctx)
     {
@@ -471,8 +471,8 @@ public final class BroadcastFold
 
     /**
      * Operators whose verdict is one <b>whole-column</b> fact broadcast to every row, even though
-     * their operands are spelled as ordinary column references. Both engines evaluate them over the
-     * source column's <em>distinct values</em> and broadcast a single boolean.
+     * their operands are spelled as ordinary column references. They are evaluated over the source
+     * column's <em>distinct values</em> and broadcast a single boolean.
      *
      * <p>
      * Both polarities are listed because the corpus historically spelled both: the retired
@@ -1011,8 +1011,8 @@ public final class BroadcastFold
         ROW,
         /**
          * The name resolves to a scalar CONTEXT VARIABLE (the Fix #10 {@code DOMAIN} injection):
-         * both engines resolve variables before columns, so the read is a dataset-level fact — the
-         * name-based sibling of {@code isScalarContextVarRef}.
+         * variables resolve before columns, so the read is a dataset-level fact — the name-based
+         * sibling of {@code isScalarContextVarRef}.
          */
         DATASET_CONTEXT_SCALAR,
         /**
