@@ -775,8 +775,17 @@ class RequirementsLoadGateTest
         {
             assertNull(vars("\"All_Or_None\":[[\"trt*p\",\"ADSL.TRT*P\"]]"),
                     "a glob compiles CASE_INSENSITIVE, so the two spellings are one shape");
-            assertNull(vars("\"All_Or_None\":[[\"/^trt0[12]p$/\",\"ADSL./^TRT0[12]P$/\"]]"),
-                    "a regex compiles CASE_INSENSITIVE too");
+            String regexCase = vars("\"All_Or_None\":[[\"/^trt0[12]p$/\",\"ADSL./^TRT0[12]P$/\"]]");
+            assertNotNull(regexCase,
+                    "a regex is keyed EXACTLY (review round 3, R3-2): case-blind"
+                            + " matching does not neutralise its escapes or inline flags, so two"
+                            + " spellings are two shapes even when they differ only in case");
+            assertTrue(regexCase.contains("different shape"), regexCase);
+            String regexEscapes = vars(
+                    "\"All_Or_None\":[[\"/^TRT\\\\d\\\\dP$/\"," + "\"ADSL./^TRT\\\\D\\\\DP$/\"]]");
+            assertNotNull(regexEscapes, "\\d and \\D fold to the same text and match opposite"
+                    + " classes — the fold must not equate them");
+            assertTrue(regexEscapes.contains("different shape"), regexEscapes);
             String misCased = vars("\"All_Or_None\":[[\"TRTxxP\",\"ADSL.TRTXXP\"]]");
             assertNotNull(misCased, "TRTXXP is a literal: the markers are lowercase by definition");
             assertTrue(misCased.contains("differs from it only in case"), misCased);
@@ -784,6 +793,12 @@ class RequirementsLoadGateTest
             assertTrue(misCased.contains("spell the markers"), misCased);
             assertNull(vars("\"All_Or_None\":[[\"TRTxxP\",\"ADSL.TRTxxP\"]]"),
                     "the same template, exactly, is one shape");
+            // R3-1: the literal is paired with the pattern entry whose fold it matches — not
+            // with whichever pattern entry came first.
+            String named = vars("\"All_Or_None\":[[\"TRTxxPN\",\"TRTxxP\",\"ADSL.TRTXXP\"]]");
+            assertNotNull(named);
+            assertTrue(named.contains("pairs the pattern entry 'TRTxxP' with the literal 'TRTXXP'"),
+                    "the matching pattern is named, not the first one (TRTxxPN): " + named);
         }
 
 

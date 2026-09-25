@@ -3278,7 +3278,8 @@ public class RulePackageLoader
      * <li>An entry shared with {@code None} is guaranteed absent, so its group can only ever be
      * all-absent ({@code None} with extra ceremony): an error.</li>
      * <li>Pattern entries in one group must have the <b>same shape</b> — the same variable half
-     * after the qualifier is removed, case-folded. The matcher compares pattern entries by the
+     * after the qualifier is removed (globs case-folded, since they compile case-insensitively;
+     * marker templates and {@code /regex/} exact). The matcher compares pattern entries by the
      * concrete names they resolve to, and {@code [["TRTxxP", "TRTxxPN"]]} can never resolve to
      * equal sets, so it would skip on every conformant ADSL with nothing saying why (review round
      * 1, M3). Fail loud instead; whether such a pair should compare the <em>bound</em> values
@@ -3320,13 +3321,16 @@ public class RulePackageLoader
      * The same-shape arm of {@link #checkAllOrNoneFacetShape}, for one group.
      *
      * <p>
-     * ⚠ Two kinds of pattern, two identities (review round 2, E-L1): a glob or {@code /regex/}
-     * compiles {@code CASE_INSENSITIVE}, so two spellings differing only in case are one shape and
-     * are folded; a marker template ({@code TRTxxP}) is matched case-<b>sensitively</b> — the
-     * lowercase markers are the whole point — so templates are keyed exactly. And a literal whose
-     * fold equals a pattern entry's fold ({@code [["TRTxxP", "ADSL.TRTXXP"]]}) is reported too: a
-     * mis-cased template is a literal name no dataset carries, so the group could never be
-     * all-present and the rule would skip on every conformant ADSL.
+     * ⚠ Three kinds of pattern, two identities (review rounds 2 E-L1 and 3 R3-2): a <b>glob</b>
+     * compiles {@code CASE_INSENSITIVE} and its literal runs are quoted, so two spellings differing
+     * only in case are one shape and are folded; a <b>marker template</b> ({@code TRTxxP}) is
+     * matched case-<b>sensitively</b> — the lowercase markers are the whole point — and a
+     * <b>{@code /regex/}</b> carries escapes ({@code \d} vs {@code \D}) and inline flags
+     * ({@code (?-i)}) that case-insensitive matching does not neutralise, so both are keyed
+     * exactly. And a literal whose fold equals a pattern entry's fold
+     * ({@code [["TRTxxP", "ADSL.TRTXXP"]]}) is reported too, naming <em>that</em> pattern entry
+     * (R3-1): a mis-cased template is a literal name no dataset carries, so the group could never
+     * be all-present and the rule would skip on every conformant ADSL.
      * </p>
      *
      * <p>
@@ -3339,7 +3343,7 @@ public class RulePackageLoader
             int groupCount, List<String> errors)
     {
         Map<String, String> shapes = new LinkedHashMap<>(); // identity -> first spelling
-        java.util.Set<String> patternFolds = new java.util.LinkedHashSet<>();
+        Map<String, String> patternFolds = new LinkedHashMap<>(); // fold -> first pattern spelling
         Map<String, String> literalFolds = new LinkedHashMap<>(); // fold -> first spelling
         for (String entry : group)
         {
@@ -3353,10 +3357,13 @@ public class RulePackageLoader
             {
                 if (ScopeMatcher.isPatternEntry(variable))
                 {
-                    // glob / regex: case-blind, fold; marker template: case-sensitive, exact
-                    String identity = ScopeMatcher.scopePattern(variable) != null ? fold : variable;
-                    shapes.putIfAbsent(identity, variable);
-                    patternFolds.add(fold);
+                    // glob: case-blind, fold; /regex/ and marker template: exact. The regex test
+                    // is scopePattern's own, so the two cannot disagree about what a regex is.
+                    boolean regex = variable.length() > 2 && variable.startsWith("/")
+                            && variable.endsWith("/");
+                    boolean glob = !regex && ScopeMatcher.scopePattern(variable) != null;
+                    shapes.putIfAbsent(glob ? fold : variable, variable);
+                    patternFolds.putIfAbsent(fold, variable);
                 }
                 else
                 {
@@ -3382,10 +3389,11 @@ public class RulePackageLoader
         }
         for (Map.Entry<String, String> literal : literalFolds.entrySet())
         {
-            if (patternFolds.contains(literal.getKey()))
+            String pattern = patternFolds.get(literal.getKey());
+            if (pattern != null)
             {
-                errors.add(where + " pairs the pattern entry '" + shapes.values().iterator().next()
-                        + "' with the literal '" + literal.getValue() + "', which differs from it"
+                errors.add(where + " pairs the pattern entry '" + pattern + "' with the literal '"
+                        + literal.getValue() + "', which differs from it"
                         + " only in case — a marker template with its markers upper-cased is a"
                         + " literal name no dataset carries, so the group could never be"
                         + " all-present; spell the markers (xx, zz, y, w) in lowercase on both"
