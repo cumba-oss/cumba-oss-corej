@@ -398,8 +398,8 @@ class KeyMatchRowExpanderTest
                 .str("LBSTRESN", "x").str("LBSEQ", "9").build();
         List<MatchDataset> mds = List.of(md("LB", "left", "USUBJID", "LBSEQ"));
         DatasetResolver inv = RealTables.inventoryOf(lbch, lbhe);
-        InvalidJoinedDomainException ex = org.junit.jupiter.api.Assertions.assertThrows(
-                InvalidJoinedDomainException.class, () -> ExecCalls.expand(primary, mds, inv, "R"));
+        InvalidJoinedDomainException ex = assertThrows(InvalidJoinedDomainException.class,
+                () -> ExecCalls.expand(primary, mds, inv, "R"));
         assertTrue(ex.getMessage().contains("LBSTRESN"), ex.getMessage());
     }
 

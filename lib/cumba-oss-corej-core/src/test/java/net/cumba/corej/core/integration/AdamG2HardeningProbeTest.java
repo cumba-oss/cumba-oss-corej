@@ -56,6 +56,11 @@ class AdamG2HardeningProbeTest
         // Form-B operations (PLAN-retire-corpus-transforms phase 8) carry no operator
         // until normalized — the same pass the loader and RuleScaffold run.
         RulePackageLoader.normalizeOperations(rule);
+        // The loader's per-rule join-type pass: it stamps `inner` on an absent Join_Type, and
+        // since U15 of PLAN-retire-dead-multi-match-lookup the expander refuses an absent value
+        // (it used to fall through to `left`, so these probes silently ran a join the loader
+        // never produces).
+        RulePackageLoader.normalizeJoinTypes(rule);
         rule.setCheckExpr(CheckToExpr.toExpr(rule.getCheck()));
         return rule;
     }
