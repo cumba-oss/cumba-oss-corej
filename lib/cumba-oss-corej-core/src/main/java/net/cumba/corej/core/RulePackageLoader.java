@@ -3129,14 +3129,15 @@ public class RulePackageLoader
                 errors);
         // ⭐ PLAN-join-key-pairing: All_Or_None decides PRESENCE — all present or none — and a
         // column present with the wrong type is neither, so a suffix here has no honest reading.
-        // Rejected on D1's precedent rather than given a third meaning. The remedy names the
-        // facet's own home for a type demand: the same column in All (a group's first key may
-        // sit there too, ruling Q9 of the authoring gate) or in Any (review L1).
+        // Rejected on D1's precedent rather than given a third meaning. The remedy says plainly
+        // that there is no conditional type demand: All is right only for the group's first key,
+        // which ruling Q9 of the authoring gate already puts there (review rounds 1 L1, 2 E-L3).
         reportTypeSuffixErrors(rule, vars.allOrNoneUnion(), "Requirements.Variables.All_Or_None",
                 "which All_Or_None does not accept: the facet decides presence — every entry"
                         + " present or none — and a column present with the wrong type is neither."
-                        + " Drop the suffix; a type demand on the column belongs to the same entry"
-                        + " in All (where a group's first key may also sit) or in Any",
+                        + " There is no conditional type demand: drop the suffix, and if the"
+                        + " entry is the group's first key (which sits in All as well) put the"
+                        + " suffix on its All entry",
                 errors);
     }
 
@@ -3315,23 +3316,51 @@ public class RulePackageLoader
     }
 
 
-    /** The same-shape arm of {@link #checkAllOrNoneFacetShape}, for one group. */
+    /**
+     * The same-shape arm of {@link #checkAllOrNoneFacetShape}, for one group.
+     *
+     * <p>
+     * ⚠ Two kinds of pattern, two identities (review round 2, E-L1): a glob or {@code /regex/}
+     * compiles {@code CASE_INSENSITIVE}, so two spellings differing only in case are one shape and
+     * are folded; a marker template ({@code TRTxxP}) is matched case-<b>sensitively</b> — the
+     * lowercase markers are the whole point — so templates are keyed exactly. And a literal whose
+     * fold equals a pattern entry's fold ({@code [["TRTxxP", "ADSL.TRTXXP"]]}) is reported too: a
+     * mis-cased template is a literal name no dataset carries, so the group could never be
+     * all-present and the rule would skip on every conformant ADSL.
+     * </p>
+     *
+     * <p>
+     * ⚠ The entry is parsed exactly as {@code ScopeMatcher.resolveEntryNames} parses it — raw, no
+     * trim (review round 2, E-L2) — so the gate and the matcher see the same variable half; a
+     * leading blank is part of the shape there and is part of the shape here.
+     * </p>
+     */
     private static void reportMixedPatternShapes(Rule rule, List<String> group, int index,
             int groupCount, List<String> errors)
     {
-        Map<String, String> shapes = new LinkedHashMap<>(); // folded shape -> first spelling
+        Map<String, String> shapes = new LinkedHashMap<>(); // identity -> first spelling
+        java.util.Set<String> patternFolds = new java.util.LinkedHashSet<>();
+        Map<String, String> literalFolds = new LinkedHashMap<>(); // fold -> first spelling
         for (String entry : group)
         {
             if (entry == null || entry.isBlank())
             {
                 continue; // R3's error
             }
-            String variable = ScopeVariableEntry.parse(entry.trim()).variable();
+            String variable = ScopeVariableEntry.parse(entry).variable();
+            String fold = variable.toUpperCase(java.util.Locale.ROOT);
             try
             {
                 if (ScopeMatcher.isPatternEntry(variable))
                 {
-                    shapes.putIfAbsent(variable.toUpperCase(java.util.Locale.ROOT), variable);
+                    // glob / regex: case-blind, fold; marker template: case-sensitive, exact
+                    String identity = ScopeMatcher.scopePattern(variable) != null ? fold : variable;
+                    shapes.putIfAbsent(identity, variable);
+                    patternFolds.add(fold);
+                }
+                else
+                {
+                    literalFolds.putIfAbsent(fold, variable);
                 }
             }
             catch (PatternSyntaxException e)
@@ -3341,14 +3370,27 @@ public class RulePackageLoader
                         entry);
             }
         }
+        String where = "[" + ruleId(rule) + "] Requirements.Variables.All_Or_None group " + index
+                + " (of " + groupCount + ")";
         if (shapes.size() > 1)
         {
-            errors.add("[" + ruleId(rule) + "] Requirements.Variables.All_Or_None group " + index
-                    + " (of " + groupCount + ") pairs pattern entries of different shape "
-                    + shapes.values() + " — the group is compared by the concrete names each"
-                    + " pattern resolves to, and differently shaped patterns can never resolve to"
-                    + " the same names, so the rule would skip on every dataset; pair the same"
-                    + " pattern on each side (qualified as needed), or pair literal names");
+            errors.add(where + " pairs pattern entries of different shape " + shapes.values()
+                    + " — the group is compared by the concrete names each pattern resolves to,"
+                    + " and differently shaped patterns are not guaranteed to resolve to the same"
+                    + " names, so the rule could skip on every dataset; pair the same pattern on"
+                    + " each side (qualified as needed), or pair literal names");
+        }
+        for (Map.Entry<String, String> literal : literalFolds.entrySet())
+        {
+            if (patternFolds.contains(literal.getKey()))
+            {
+                errors.add(where + " pairs the pattern entry '" + shapes.values().iterator().next()
+                        + "' with the literal '" + literal.getValue() + "', which differs from it"
+                        + " only in case — a marker template with its markers upper-cased is a"
+                        + " literal name no dataset carries, so the group could never be"
+                        + " all-present; spell the markers (xx, zz, y, w) in lowercase on both"
+                        + " sides");
+            }
         }
     }
 

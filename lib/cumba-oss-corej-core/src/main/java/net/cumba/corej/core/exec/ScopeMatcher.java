@@ -682,8 +682,8 @@ public final class ScopeMatcher
      *            whether the entry is a glob / regex / marker template (compared as a set) rather
      *            than a literal (compared by presence only)
      * @param undecidable
-     *            the undecidable reason for a qualified entry with no foreign source, else
-     *            {@code null}
+     *            the undecidable reason — a qualified entry with no foreign source, or a {@code --}
+     *            entry with no domain prefix to resolve it against — else {@code null}
      */
     private record EntryNames(String label, SortedSet<String> names, boolean pattern,
             @Nullable String undecidable)

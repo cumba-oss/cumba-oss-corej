@@ -584,6 +584,37 @@ class StageBCheckerTest
     }
 
 
+    /**
+     * The {@code declaresDataset} half of M2 (review round 2, T-L1): a {@code TV.} entry that lives
+     * only in an {@code All_Or_None} group does not declare TV for a {@code _matched_} flag — the
+     * group is satisfied when both sides are absent, so the rule runs and the flag over the missing
+     * dataset is the armed error, not a skip.
+     */
+    @Test
+    void aFlagDatasetNamedOnlyInAllOrNoneStaysAnArmedBindError()
+    {
+        Rule rule = rule("not TV._matched_");
+        MatchDataset match = new MatchDataset();
+        match.setName("TV");
+        match.setKeys(List.of("VISITNUM"));
+        match.setJoinType("left");
+        rule.setMatchDatasets(List.of(match));
+        net.cumba.corej.core.model.Requirements requirements = new net.cumba.corej.core.model.Requirements();
+        VariableRequirement variables = new VariableRequirement();
+        variables.setAllOrNoneGroups(List.of(List.of("VISITDY", "TV.VISITDY")));
+        requirements.setVariables(variables);
+        rule.setRequirements(requirements);
+        IDataTable primary = MockTable.of().col("USUBJID", "P1").col("VISITNUM", "1").build();
+        StageBReport report = StageBChecker.check(rule, primary, true, ds -> null, Set.of());
+        assertEquals(List.of(), report.skips(),
+                "an All_Or_None entry must not declare the dataset — the group runs when both"
+                        + " sides are absent, so there is no skip for it to stand in for");
+        List<StageBFinding> armed = of(report, StageBErrorKind.MATCHED_FLAG_UNRESOLVABLE);
+        assertEquals(1, armed.size(), report.findings().toString());
+        assertEquals("TV._matched_", armed.get(0).binding());
+    }
+
+
     @Test
     void aDeclaredFlagDatasetSkipsInsteadOfErroring()
     {

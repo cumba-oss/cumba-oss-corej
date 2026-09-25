@@ -763,6 +763,47 @@ class RequirementsLoadGateTest
         }
 
 
+        /**
+         * Review round 2, E-L1: a glob / regex is case-blind, so its spellings fold to one shape; a
+         * marker template is case-sensitive, so it is keyed exactly — and a mis-cased template is a
+         * LITERAL that no dataset carries, which the gate names.
+         */
+        @Test
+        @DisplayName("R4 — shapes are keyed by kind: globs fold, templates are exact, a mis-cased"
+                + " template is a literal")
+        void shapeIdentityFollowsTheKind() throws IOException
+        {
+            assertNull(vars("\"All_Or_None\":[[\"trt*p\",\"ADSL.TRT*P\"]]"),
+                    "a glob compiles CASE_INSENSITIVE, so the two spellings are one shape");
+            assertNull(vars("\"All_Or_None\":[[\"/^trt0[12]p$/\",\"ADSL./^TRT0[12]P$/\"]]"),
+                    "a regex compiles CASE_INSENSITIVE too");
+            String misCased = vars("\"All_Or_None\":[[\"TRTxxP\",\"ADSL.TRTXXP\"]]");
+            assertNotNull(misCased, "TRTXXP is a literal: the markers are lowercase by definition");
+            assertTrue(misCased.contains("differs from it only in case"), misCased);
+            assertTrue(misCased.contains("'TRTxxP'") && misCased.contains("'TRTXXP'"), misCased);
+            assertTrue(misCased.contains("spell the markers"), misCased);
+            assertNull(vars("\"All_Or_None\":[[\"TRTxxP\",\"ADSL.TRTxxP\"]]"),
+                    "the same template, exactly, is one shape");
+        }
+
+
+        /**
+         * Review round 2, E-L2: the matcher parses the entry raw, so a leading blank is part of the
+         * variable half there — and the gate must see the same thing, or it greens a group whose
+         * primary side matches nothing.
+         */
+        @Test
+        @DisplayName("R4 — the gate parses exactly what the matcher parses: no trim")
+        void leadingBlankIsPartOfTheShape() throws IOException
+        {
+            String error = vars("\"All_Or_None\":[[\" TRTxxP\",\"ADSL.TRTxxP\"]]");
+            assertNotNull(error, "' TRTxxP' compiles to a template that matches no column, so"
+                    + " the two sides are different shapes to the matcher");
+            assertTrue(error.contains("different shape"), error);
+            assertTrue(error.contains("not guaranteed to resolve"), error);
+        }
+
+
         @Test
         @DisplayName("R4 — an entry shared with None makes the group degenerate: error")
         void intersectsNone() throws IOException
@@ -784,8 +825,8 @@ class RequirementsLoadGateTest
             assertTrue(error.contains("Requirements.Variables.All_Or_None entry 'VISITDY:N'"),
                     error);
             assertTrue(error.contains("which All_Or_None does not accept"), error);
-            assertTrue(error.contains("belongs to the same entry in All"),
-                    "the remedy is the facet's own, not None's (review L1): " + error);
+            assertTrue(error.contains("There is no conditional type demand"),
+                    "the remedy is the facet's own, not None's (review L1 / E-L3): " + error);
             assertFalse(error.contains("or express the type demand in All or Any"), error);
             String malformed = vars("\"All_Or_None\":[[\"VISITDY:Z\",\"TV.VISITDY\"]]");
             assertNotNull(malformed);
