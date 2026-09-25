@@ -196,7 +196,8 @@ class ScopeMatcherAllOrNoneTest
                             + " Requirements.Datasets' question, not this facet's");
             String reason = check(ruleWithGroups(VISITDY_PAIR), sv("VISITNUM", "VISIT", "VISITDY"));
             assertNotNull(reason);
-            assertTrue(reason.contains("absent: [TV.VISITDY]"), reason);
+            assertTrue(reason.contains("absent: [TV.VISITDY (dataset TV not available)]"),
+                    "a missing dataset reads apart from a missing column (review L2): " + reason);
         }
     }
 
@@ -304,6 +305,29 @@ class ScopeMatcherAllOrNoneTest
         }
 
 
+        /**
+         * Ruling Q9 of {@code PLAN-join-key-authoring-gate}: a join's first key is authored bare in
+         * {@code All} and in its group, so the bare side is guaranteed and the facet decides the
+         * qualified side. The loader accepts the overlap (review H1); this is what it means.
+         */
+        @Test
+        @DisplayName("Q9 — the first key in All AND in its group: All guarantees the bare side")
+        void firstKeyInAllAndInItsGroup()
+        {
+            Rule rule = ruleWithGroups(VISITDY_PAIR);
+            rule.getRequirements().getVariables().setAll(List.of("VISITNUM", "VISITDY"));
+            assertNull(check(rule, sv("VISITNUM", "VISITDY"), tv("VISITNUM", "VISITDY")));
+            String reason = check(rule, sv("VISITNUM", "VISITDY"), tv("VISITNUM"));
+            assertNotNull(reason);
+            assertTrue(reason.contains("absent: [TV.VISITDY]"), reason);
+            String allReason = check(rule, sv("VISITNUM"), tv("VISITNUM"));
+            assertNotNull(allReason);
+            assertTrue(allReason.startsWith("Requirements.Variables.All variable VISITDY"),
+                    "the bare side absent is All's skip, before the group is looked at: "
+                            + allReason);
+        }
+
+
         @Test
         @DisplayName("a satisfied Any leg and a satisfied group run together")
         void anyAndGroupBothSatisfied()
@@ -358,6 +382,61 @@ class ScopeMatcherAllOrNoneTest
             String oneSide = check(rule, adaeNone, table("ADSL", "USUBJID", "TRT01P"));
             assertNotNull(oneSide);
             assertTrue(oneSide.contains("present: [ADSL.TRTxxP], absent: [TRTxxP]"), oneSide);
+        }
+
+
+        @Test
+        @DisplayName("a /regex/ takes the same set path")
+        void regexCompareResolved()
+        {
+            Rule rule = ruleWithGroups(List.of(List.of("/^TRT0[12]P$/", "ADSL./^TRT0[12]P$/")));
+            assertNull(
+                    check(rule, table("ADAE", "TRT01P", "TRT02P", "TRT03P"),
+                            table("ADSL", "TRT01P", "TRT02P")),
+                    "TRT03P is outside the regex on both sides and does not count");
+            assertNull(check(rule, table("ADAE", "USUBJID"), table("ADSL", "USUBJID")));
+            String reason = check(rule, table("ADAE", "TRT01P", "TRT02P"), table("ADSL", "TRT02P"));
+            assertNotNull(reason);
+            assertTrue(reason.contains("/^TRT0[12]P$/ matches [TRT01P, TRT02P] but"
+                    + " ADSL./^TRT0[12]P$/ matches [TRT02P]"), reason);
+        }
+
+
+        /**
+         * A split-domain qualifier resolves to every member table; the names are unioned across
+         * them, as {@code describeIncludeEntry}'s {@code anyHasColumn} unions presence.
+         */
+        @Test
+        @DisplayName("a split-domain qualifier unions the names of its members")
+        void splitDomainUnionsMembers()
+        {
+            Rule rule = ruleWithGroups(List.of(List.of("/^TRT0[12]P$/", "LB./^TRT0[12]P$/")));
+            IDataTable lbch = MockTable.of().name("lbch").col("DOMAIN", "LB").col("TRT01P", "a")
+                    .build();
+            IDataTable lbhe = MockTable.of().name("lbhe").col("DOMAIN", "LB").col("TRT02P", "b")
+                    .build();
+            IDataTable ae = table("AE", "TRT01P", "TRT02P");
+            assertNull(check(rule, ae, lbch, lbhe),
+                    "TRT01P from lbch and TRT02P from lbhe together equal the primary's set");
+            String reason = check(rule, ae, lbch);
+            assertNotNull(reason, "with one member gone the unioned set is smaller");
+            assertTrue(reason.contains("LB./^TRT0[12]P$/ matches [TRT01P]"), reason);
+        }
+
+
+        @Test
+        @DisplayName("a three-pattern group where only the LAST entry disagrees is named")
+        void lastOfThreePatternsDisagrees()
+        {
+            Rule rule = ruleWithGroups(List.of(List.of("TRTxxP", "ADSL.TRTxxP", "ADTTE.TRTxxP")));
+            IDataTable adae = table("ADAE", "TRT01P", "TRT02P");
+            IDataTable adsl = table("ADSL", "TRT01P", "TRT02P");
+            assertNull(check(rule, adae, adsl, table("ADTTE", "TRT01P", "TRT02P")));
+            String reason = check(rule, adae, adsl, table("ADTTE", "TRT01P"));
+            assertNotNull(reason, "a comparison that stops after the second entry answers null");
+            assertTrue(reason.contains(
+                    "TRTxxP matches [TRT01P, TRT02P] but ADTTE.TRTxxP matches" + " [TRT01P]"),
+                    reason);
         }
 
 
@@ -434,6 +513,28 @@ class ScopeMatcherAllOrNoneTest
             assertTrue(reason.contains("Requirements.Variables.All_Or_None entry TV.VISITDY"),
                     reason);
             assertFalse(reason.contains("absent:"), reason);
+        }
+
+
+        /**
+         * A {@code --} entry with no domain prefix would be tested as the literal {@code --STDTC},
+         * which no dataset carries, and read as ABSENT — so an all-{@code --} group would pass as
+         * all-absent (review L3). Undecidable instead, like the qualified case.
+         */
+        @Test
+        @DisplayName("a `--` entry with no domain prefix is undecidable, not absent")
+        void unresolvedDomainPrefixIsUndecidable()
+        {
+            Rule rule = ruleWithGroups(List.of(List.of("--STDTC", "--ENDTC")));
+            String reason = ScopeMatcherCalls.describeVariablesMismatch(rule,
+                    sv("VISITNUM").getMetaData(), null, null);
+            assertNotNull(reason, "with no prefix the group could read as all-absent and run");
+            assertTrue(reason.contains("entry --STDTC could not be decided"), reason);
+            assertTrue(reason.contains("no domain prefix"), reason);
+            assertNull(
+                    ScopeMatcherCalls.describeVariablesMismatch(rule, sv("VISITNUM").getMetaData(),
+                            "SV", null),
+                    "with a prefix both resolve to absent SV columns — all-absent, the rule runs");
         }
 
 

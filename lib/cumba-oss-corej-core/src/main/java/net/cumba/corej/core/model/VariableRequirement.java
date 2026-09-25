@@ -39,9 +39,12 @@ import org.jspecify.annotations.Nullable;
  * report every row. Wildcard entries (glob, {@code /regex/}, marker template) are compared
  * <b>resolved</b>: each resolves to the set of concrete column names it matches, and an all-present
  * group additionally requires those sets to be equal ({@code [["TRTxxP", "ADSL.TRTxxP"]]} runs when
- * no {@code TRTxxP} exists anywhere or when the same ones exist on both sides). ⛔ A type suffix is
- * a load error here, as in {@code None}: the facet decides <em>presence</em>, and a column that is
- * present with the wrong type is neither "present" nor "absent" in that sense.</li>
+ * no {@code TRTxxP} exists anywhere or when the same ones exist on both sides; pattern entries in
+ * one group must therefore have the same shape — loader gate R4). ⛔ A type suffix is a load error
+ * here, as in {@code None}: the facet decides <em>presence</em>, and a column that is present with
+ * the wrong type is neither "present" nor "absent" in that sense. ⭐ An entry may sit in {@code All}
+ * <em>and</em> in a group — the authoring gate's ruling Q9 puts a join's first key in both, so the
+ * bare side is guaranteed and the facet decides the qualified side.</li>
  * </ul>
  *
  * <p>

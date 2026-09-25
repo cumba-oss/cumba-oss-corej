@@ -608,9 +608,20 @@ public final class ScopeMatcher
      * </p>
      *
      * <p>
-     * ⚠ An undecidable qualified entry (no foreign source) is reported as undecidable, never folded
-     * into "absent": with a {@code null} source the group could otherwise read as "all absent" and
-     * let the rule run on exactly the unresolved join the facet exists to stop.
+     * ⚠ An undecidable entry — a qualified one with no foreign source, or a {@code --} entry with
+     * no domain prefix to resolve it against — is reported as undecidable, never folded into
+     * "absent": with a {@code null} source the group could otherwise read as "all absent" and let
+     * the rule run on exactly the unresolved join the facet exists to stop. And an absent qualified
+     * entry whose whole dataset is missing says so in its label ("dataset TV not available"), as
+     * {@link #describeIncludeEntry} does, so the reader can tell a missing column from a missing
+     * dataset.
+     * </p>
+     *
+     * <p>
+     * ⚑ Pattern entries in one group are held to the <b>same shape</b> by loader gate R4 (review
+     * round 1, M3): {@code [["TRTxxP", "TRTxxPN"]]} can never resolve to equal name sets and would
+     * skip on every conformant ADSL, so it is a load error; whether such a pair should compare
+     * <em>bound values</em> ({@code xx}) instead is an open question the plan files.
      * </p>
      */
     private static @Nullable String describeAllOrNoneGroup(List<String> group, int groupIndex,
@@ -694,22 +705,34 @@ public final class ScopeMatcher
             }
             List<DataTableMeta> metas = foreign.metasOf(qualifier);
             Pattern pattern = scopeEntryPattern(entry.variable());
+            boolean isPattern = pattern != null;
             if (pattern != null)
             {
                 for (DataTableMeta member : metas)
                 {
                     addColumnsMatching(member, pattern, names);
                 }
-                return new EntryNames(varName, names, true, null);
             }
             // Literal: the member tables first, then the SUPP-QNAM pivot — the order
             // describeIncludeEntry uses, so the two facets agree about what "present" means.
-            if (anyHasColumn(metas, entry.variable())
+            else if (anyHasColumn(metas, entry.variable())
                     || foreign.existsViaSuppQnam(qualifier, entry.variable()))
             {
                 names.add(entry.variable().toUpperCase(Locale.ROOT));
             }
-            return new EntryNames(varName, names, false, null);
+            // Name the RESOLVED dataset when the whole dataset is what is missing, so "the
+            // column is not there" and "the dataset is not there" read apart (review L2).
+            String label = names.isEmpty() && metas.isEmpty() ? varName + " (dataset "
+                    + foreign.resolvedQualifier(qualifier) + " not available)" : varName;
+            return new EntryNames(label, names, isPattern, null);
+        }
+        if (domainPrefix == null && entry.variable().startsWith(WILDCARD))
+        {
+            // A `--` entry with nothing to resolve it against would be tested as the literal
+            // "--STDTC", which no dataset carries, and read as ABSENT — letting an all-`--`
+            // group pass as all-absent. Undecidable instead (review L3).
+            return new EntryNames(varName, names, false, "Requirements.Variables.All_Or_None entry "
+                    + varName + " could not be decided — no domain prefix to resolve `--` against");
         }
         String resolved = resolveScopeVariable(entry.variable(), domainPrefix);
         String label = entryLabel(varName, entry.variable(), resolved);
@@ -1524,6 +1547,24 @@ public final class ScopeMatcher
             }
         }
         return null;
+    }
+
+
+    /**
+     * Whether a requirement entry's <em>variable half</em> is a pattern — glob, {@code /regex/} or
+     * a wildcard-marker template — rather than a literal name. The loader's {@code All_Or_None}
+     * same-shape gate reads it; the answer is exactly {@link #scopeEntryPattern}'s, so the gate and
+     * the matcher cannot disagree about which entries are compared as sets.
+     *
+     * @param variable
+     *            the entry's variable half (qualifier and type suffix already removed)
+     * @return whether it compiles to a pattern
+     * @throws java.util.regex.PatternSyntaxException
+     *             for an invalid {@code /…/} entry — the pattern gate reports that one
+     */
+    public static boolean isPatternEntry(String variable)
+    {
+        return scopeEntryPattern(variable) != null;
     }
 
 

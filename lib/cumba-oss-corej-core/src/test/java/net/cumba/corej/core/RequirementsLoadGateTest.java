@@ -721,14 +721,45 @@ class RequirementsLoadGateTest
         }
 
 
+        /**
+         * ⛔ The first version of the gate rejected this, and that contradicted ruling Q9 of
+         * {@code PLAN-join-key-authoring-gate}: a join's first key is authored bare in {@code All}
+         * <em>and</em> in its group, so the bare side is guaranteed and the facet decides the
+         * qualified side (review round 1, H1).
+         */
         @Test
-        @DisplayName("R4 — an entry shared with All makes the group degenerate: error")
-        void intersectsAll() throws IOException
+        @DisplayName("Q9 — an entry shared with All LOADS: the first key sits in both")
+        void intersectsAllIsLegal() throws IOException
         {
-            String error = vars("\"All\":[\"VISITDY\"],\"All_Or_None\":" + PAIR);
-            assertNotNull(error, "All guarantees the entry present, so the group can only ever be"
-                    + " all-present — that is All with extra ceremony");
-            assertTrue(error.contains("appears in both All_Or_None and All"), error);
+            assertNull(vars("\"All\":[\"VISITNUM\",\"VISITDY\"],\"All_Or_None\":" + PAIR),
+                    "the group is all-present by construction on its bare side, which is what Q9"
+                            + " wants — the qualified side is still the facet's to decide");
+        }
+
+
+        /**
+         * Review round 1, M3: the matcher compares pattern entries by the concrete names they
+         * resolve to, so {@code [["TRTxxP", "TRTxxPN"]]} could never be satisfied when present and
+         * would skip on every conformant ADSL. Loud at load, since no rule carries the facet yet.
+         */
+        @Test
+        @DisplayName("R4 — pattern entries of different shape in one group are rejected")
+        void mixedPatternShapesAreRejected() throws IOException
+        {
+            String error = vars("\"All_Or_None\":[[\"TRTxxP\",\"ADSL.TRTxxPN\"]]");
+            assertNotNull(error);
+            assertTrue(error.contains("group 1 (of 1) pairs pattern entries of different shape"),
+                    error);
+            assertTrue(error.contains("[TRTxxP, TRTxxPN]"), error);
+            String mixedKinds = vars("\"All_Or_None\":[[\"TRTxxP\",\"ADSL.TRT*P\"]]");
+            assertNotNull(mixedKinds, "a marker template and a glob are different shapes even"
+                    + " when they happen to match the same names");
+            assertNull(vars("\"All_Or_None\":[[\"TRTxxP\",\"ADSL.TRTxxP\"]]"),
+                    "the same template on both sides is the intended shape");
+            assertNull(vars("\"All_Or_None\":[[\"TRT*P\",\"ADSL.TRT*P\",\"ADAE.trt*p\"]]"),
+                    "the fold is case-blind, like every other R4 arm");
+            assertNull(vars("\"All_Or_None\":[[\"TRTxxP\",\"ADSL.ARM\"]]"),
+                    "a literal beside a pattern is legal — it takes part by presence only");
         }
 
 
@@ -753,6 +784,9 @@ class RequirementsLoadGateTest
             assertTrue(error.contains("Requirements.Variables.All_Or_None entry 'VISITDY:N'"),
                     error);
             assertTrue(error.contains("which All_Or_None does not accept"), error);
+            assertTrue(error.contains("belongs to the same entry in All"),
+                    "the remedy is the facet's own, not None's (review L1): " + error);
+            assertFalse(error.contains("or express the type demand in All or Any"), error);
             String malformed = vars("\"All_Or_None\":[[\"VISITDY:Z\",\"TV.VISITDY\"]]");
             assertNotNull(malformed);
             assertTrue(malformed.contains("Requirements.Variables.All_Or_None"), malformed);

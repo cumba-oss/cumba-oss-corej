@@ -397,12 +397,15 @@ class StageBCheckerTest
 
 
     /**
-     * {@code All_Or_None} is a declaration in D89a's sense too ({@code PLAN-join-key-pairing}): an
-     * entry there is the author owning up to the column possibly being absent, so a filter column
-     * it names skips with a reason rather than erroring as undeclared.
+     * ⛔ {@code All_Or_None} is <b>not</b> a declaration in D89a's sense (review round 1, M2 of
+     * {@code PLAN-join-key-pairing}): D89a's premise is that the declaring facet skips the rule
+     * before the bind is reached, and an {@code All_Or_None} group is satisfied — the rule runs —
+     * when both sides are absent. So a filter column declared only there keeps the armed
+     * {@code FILTER_UNRESOLVABLE} finding; reading the facet as a declaration would turn that
+     * study's error into a silent skip.
      */
     @Test
-    void aFilterColumnDeclaredInAllOrNoneSkipsWithAReason()
+    void aFilterColumnDeclaredOnlyInAllOrNoneStaysAnArmedError()
     {
         VariableRequirement declared = new VariableRequirement();
         declared.setAllOrNoneGroups(
@@ -411,10 +414,12 @@ class StageBCheckerTest
         List<String> skips = new ArrayList<>();
         StageBChecker.checkFilterBinding("AE", List.of("AEOUT"), Set.of("USUBJID"), declared,
                 findings, skips);
-        assertEquals(List.of(), findings,
-                "a qualified entry in an All_Or_None group must reach declaresVariable");
-        assertEquals(1, skips.size());
-        assertTrue(skips.get(0).contains("AE.AEOUT"));
+        assertEquals(List.of(), skips,
+                "an All_Or_None entry must not read as a D89a declaration — the group runs when"
+                        + " both sides are absent, so there is no skip for it to stand in for");
+        assertEquals(1, findings.size(), findings.toString());
+        assertEquals(StageBErrorKind.FILTER_UNRESOLVABLE, findings.get(0).kind());
+        assertTrue(findings.get(0).message().contains("AE.AEOUT"), findings.get(0).message());
     }
 
 

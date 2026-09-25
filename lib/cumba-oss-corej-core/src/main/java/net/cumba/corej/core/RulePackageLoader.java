@@ -3124,14 +3124,19 @@ public class RulePackageLoader
         reportTypeSuffixErrors(rule, vars.getNone(), "Requirements.Variables.None",
                 "which None does not accept (ruling D1): it would mean \"no variable of that type"
                         + " may be present\", which is also satisfied by a variable of the OTHER"
-                        + " type — the opposite of how it reads",
+                        + " type — the opposite of how it reads. Drop the suffix, or express the"
+                        + " type demand in All or Any",
                 errors);
         // ⭐ PLAN-join-key-pairing: All_Or_None decides PRESENCE — all present or none — and a
         // column present with the wrong type is neither, so a suffix here has no honest reading.
-        // Rejected on D1's precedent rather than given a third meaning.
+        // Rejected on D1's precedent rather than given a third meaning. The remedy names the
+        // facet's own home for a type demand: the same column in All (a group's first key may
+        // sit there too, ruling Q9 of the authoring gate) or in Any (review L1).
         reportTypeSuffixErrors(rule, vars.allOrNoneUnion(), "Requirements.Variables.All_Or_None",
                 "which All_Or_None does not accept: the facet decides presence — every entry"
-                        + " present or none — and a column present with the wrong type is neither",
+                        + " present or none — and a column present with the wrong type is neither."
+                        + " Drop the suffix; a type demand on the column belongs to the same entry"
+                        + " in All (where a group's first key may also sit) or in Any",
                 errors);
     }
 
@@ -3143,7 +3148,8 @@ public class RulePackageLoader
      *            the facet's full name, for the message
      * @param suffixRejection
      *            why a well-formed suffix is itself an error in this facet ({@code None}, ruling
-     *            D1; {@code All_Or_None}), or {@code null} where a suffix is legal
+     *            D1; {@code All_Or_None}) and the facet's own remedy, or {@code null} where a
+     *            suffix is legal
      */
     private static void reportTypeSuffixErrors(Rule rule, @Nullable List<String> entries,
             String facet, @Nullable String suffixRejection, List<String> errors)
@@ -3166,8 +3172,7 @@ public class RulePackageLoader
             else if (suffixRejection != null && ScopeVariableEntry.hasTypeSuffix(entry))
             {
                 errors.add("[" + ruleId(rule) + "] " + facet + " entry '" + entry.trim()
-                        + "' carries a type suffix, " + suffixRejection
-                        + ". Drop the suffix, or express the type demand in All or Any");
+                        + "' carries a type suffix, " + suffixRejection);
             }
         }
     }
@@ -3266,30 +3271,85 @@ public class RulePackageLoader
 
     /**
      * R4's {@code All_Or_None} arms ({@code PLAN-join-key-pairing}): the group arms exactly as
-     * {@code Any}'s, plus the two intersections that make a group degenerate — an entry shared with
-     * {@code All} is guaranteed present, so its group can only ever be all-present (that is
-     * {@code All} with extra ceremony); an entry shared with {@code None} is guaranteed absent, so
-     * its group can only ever be all-absent ({@code None} with extra ceremony). An entry shared
-     * with {@code Any} is legal: "present or absent together" and "one of these present" are
-     * independent claims.
+     * {@code Any}'s, plus two of its own.
+     *
+     * <ul>
+     * <li>An entry shared with {@code None} is guaranteed absent, so its group can only ever be
+     * all-absent ({@code None} with extra ceremony): an error.</li>
+     * <li>Pattern entries in one group must have the <b>same shape</b> — the same variable half
+     * after the qualifier is removed, case-folded. The matcher compares pattern entries by the
+     * concrete names they resolve to, and {@code [["TRTxxP", "TRTxxPN"]]} can never resolve to
+     * equal sets, so it would skip on every conformant ADSL with nothing saying why (review round
+     * 1, M3). Fail loud instead; whether such a pair should compare the <em>bound</em> values
+     * ({@code xx}) is an open question the plan files.</li>
+     * </ul>
+     *
+     * <p>
+     * ⛔ An entry shared with {@code All} is <b>legal</b> — the first version of this gate rejected
+     * it, and that contradicted ruling Q9 of {@code PLAN-join-key-authoring-gate}: a join's first
+     * key is authored bare in {@code All} <em>and</em> in its group (review round 1, H1). The group
+     * is then all-present by construction on its bare side, which is exactly what Q9 wants — the
+     * facet still decides the qualified side. An entry shared with {@code Any} is legal too:
+     * "present or absent together" and "one of these present" are independent claims.
+     * </p>
      */
     private static void checkAllOrNoneFacetShape(Rule rule, VariableRequirement vars,
             List<String> errors)
     {
-        checkGroupFacetShape(rule, "All_Or_None", vars.getAllOrNoneGroups(),
-                vars.isAllOrNoneMixedShape(),
+        List<List<String>> groups = vars.getAllOrNoneGroups();
+        checkGroupFacetShape(rule, "All_Or_None", groups, vars.isAllOrNoneMixedShape(),
                 "a group of one is always all-present-or-all-absent, so it pairs nothing, and an"
                         + " empty one pairs nothing either",
                 errors);
-        List<String> union = vars.allOrNoneUnion();
-        reportFacetOverlap(rule, "All_Or_None", union, "All", vars.getAll(),
-                "All already requires the entry present, so the group can only ever be"
-                        + " all-present — move its other entries to All or drop this one from All",
-                true, errors);
-        reportFacetOverlap(rule, "All_Or_None", union, "None", vars.getNone(),
+        if (groups != null && !vars.isAllOrNoneMixedShape())
+        {
+            for (int g = 0; g < groups.size(); g++)
+            {
+                reportMixedPatternShapes(rule, groups.get(g), g + 1, groups.size(), errors);
+            }
+        }
+        reportFacetOverlap(rule, "All_Or_None", vars.allOrNoneUnion(), "None", vars.getNone(),
                 "None already forbids the entry, so the group can only ever be all-absent — move"
                         + " its other entries to None or drop this one from None",
                 true, errors);
+    }
+
+
+    /** The same-shape arm of {@link #checkAllOrNoneFacetShape}, for one group. */
+    private static void reportMixedPatternShapes(Rule rule, List<String> group, int index,
+            int groupCount, List<String> errors)
+    {
+        Map<String, String> shapes = new LinkedHashMap<>(); // folded shape -> first spelling
+        for (String entry : group)
+        {
+            if (entry == null || entry.isBlank())
+            {
+                continue; // R3's error
+            }
+            String variable = ScopeVariableEntry.parse(entry.trim()).variable();
+            try
+            {
+                if (ScopeMatcher.isPatternEntry(variable))
+                {
+                    shapes.putIfAbsent(variable.toUpperCase(java.util.Locale.ROOT), variable);
+                }
+            }
+            catch (PatternSyntaxException e)
+            {
+                // The pattern gate (validateScopePatternEntries) reports the invalid regex.
+                LOGGER.log(System.Logger.Level.DEBUG, "invalid regex left to the pattern gate: {0}",
+                        entry);
+            }
+        }
+        if (shapes.size() > 1)
+        {
+            errors.add("[" + ruleId(rule) + "] Requirements.Variables.All_Or_None group " + index
+                    + " (of " + groupCount + ") pairs pattern entries of different shape "
+                    + shapes.values() + " — the group is compared by the concrete names each"
+                    + " pattern resolves to, and differently shaped patterns can never resolve to"
+                    + " the same names, so the rule would skip on every dataset; pair the same"
+                    + " pattern on each side (qualified as needed), or pair literal names");
+        }
     }
 
 
