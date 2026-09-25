@@ -1,7 +1,11 @@
 package net.cumba.corej.core.exec;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 
 import net.cumba.corej.core.expr.eval.ColumnTypeGate;
@@ -565,7 +569,176 @@ public final class ScopeMatcher
                 }
             }
         }
+        List<List<String>> allOrNoneGroups = required.getAllOrNoneGroups();
+        if (allOrNoneGroups != null && !allOrNoneGroups.isEmpty())
+        {
+            // ANDed like the Any groups, first unmet group wins; evaluated LAST so that a rule
+            // whose All/Any/None is unmet keeps reporting exactly the reason it reported before
+            // the facet existed.
+            for (int g = 0; g < allOrNoneGroups.size(); g++)
+            {
+                String reason = describeAllOrNoneGroup(allOrNoneGroups.get(g), g + 1, meta,
+                        domainPrefix, foreign);
+                if (reason != null)
+                {
+                    return reason;
+                }
+            }
+        }
         return null;
+    }
+
+
+    /**
+     * ONE {@code All_Or_None} group ({@code PLAN-join-key-pairing}, ruling D1 (A)): satisfied when
+     * <b>every</b> entry is present or <b>none</b> is; a mixed group is the mismatch, and its
+     * reason names both halves so the reader sees which side of a join lacks the column.
+     *
+     * <p>
+     * Presence is decided per entry by {@link #resolveEntryNames} — the same vocabulary and the
+     * same resolution order as {@link #describeIncludeEntry} (qualifier → split-domain members →
+     * SUPP-QNAM pivot; {@code --} resolved against the primary; glob / regex / marker template
+     * matched against the column inventory), minus the type arm, which loader gate R9 keeps out of
+     * this facet. ⭐ <b>Wildcard entries are compared RESOLVED</b> (owner, 2026-09-25): an
+     * all-present group whose pattern entries match <em>different</em> concrete column sets — the
+     * primary carries {@code TRT01P} and {@code TRT02P}, ADSL only {@code TRT01P} — is a mismatch
+     * too, because "all exist in both" is the claim the facet makes. Literal entries take part by
+     * presence only, so {@code [["VISITDY", "TV.VISITDY"]]} needs no set comparison and a group
+     * pairing two differently named literals is legal.
+     * </p>
+     *
+     * <p>
+     * ⚠ An undecidable qualified entry (no foreign source) is reported as undecidable, never folded
+     * into "absent": with a {@code null} source the group could otherwise read as "all absent" and
+     * let the rule run on exactly the unresolved join the facet exists to stop.
+     * </p>
+     */
+    private static @Nullable String describeAllOrNoneGroup(List<String> group, int groupIndex,
+            DataTableMeta meta, @Nullable String domainPrefix,
+            @Nullable ScopeVariableSource foreign)
+    {
+        List<String> present = new ArrayList<>();
+        List<String> absent = new ArrayList<>();
+        // the first pattern entry's resolved names, and the first pattern entry disagreeing
+        String referenceEntry = null;
+        SortedSet<String> referenceNames = null;
+        String unequalEntry = null;
+        SortedSet<String> unequalNames = null;
+        for (String varName : group)
+        {
+            EntryNames resolved = resolveEntryNames(varName, meta, domainPrefix, foreign);
+            if (resolved.undecidable() != null)
+            {
+                return resolved.undecidable();
+            }
+            (resolved.names().isEmpty() ? absent : present).add(resolved.label());
+            if (resolved.pattern() && !resolved.names().isEmpty())
+            {
+                if (referenceNames == null)
+                {
+                    referenceEntry = resolved.label();
+                    referenceNames = resolved.names();
+                }
+                else if (unequalEntry == null && !referenceNames.equals(resolved.names()))
+                {
+                    unequalEntry = resolved.label();
+                    unequalNames = resolved.names();
+                }
+            }
+        }
+        String prefix = "Requirements.Variables.All_Or_None group " + groupIndex + " " + group;
+        if (!present.isEmpty() && !absent.isEmpty())
+        {
+            return prefix + " is only partly present — present: " + present + ", absent: " + absent;
+        }
+        if (unequalEntry != null)
+        {
+            return prefix + " resolves unequally — " + referenceEntry + " matches " + referenceNames
+                    + " but " + unequalEntry + " matches " + unequalNames;
+        }
+        return null;
+    }
+
+    /**
+     * One {@code All_Or_None} entry, resolved to the concrete column names it matches.
+     *
+     * @param label
+     *            the entry for messages — raw, plus the {@code --}-resolved form when that differs
+     *            ({@link #entryLabel})
+     * @param names
+     *            the matched column names, upper-cased and sorted; empty when the entry is absent
+     * @param pattern
+     *            whether the entry is a glob / regex / marker template (compared as a set) rather
+     *            than a literal (compared by presence only)
+     * @param undecidable
+     *            the undecidable reason for a qualified entry with no foreign source, else
+     *            {@code null}
+     */
+    private record EntryNames(String label, SortedSet<String> names, boolean pattern,
+            @Nullable String undecidable)
+    {
+    }
+
+    private static EntryNames resolveEntryNames(String varName, DataTableMeta meta,
+            @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign)
+    {
+        ScopeVariableEntry entry = ScopeVariableEntry.parse(varName);
+        String qualifier = entry.qualifier();
+        SortedSet<String> names = new TreeSet<>();
+        if (qualifier != null)
+        {
+            if (foreign == null)
+            {
+                return new EntryNames(varName, names, false,
+                        undecidableQualifiedReason("All_Or_None", varName));
+            }
+            List<DataTableMeta> metas = foreign.metasOf(qualifier);
+            Pattern pattern = scopeEntryPattern(entry.variable());
+            if (pattern != null)
+            {
+                for (DataTableMeta member : metas)
+                {
+                    addColumnsMatching(member, pattern, names);
+                }
+                return new EntryNames(varName, names, true, null);
+            }
+            // Literal: the member tables first, then the SUPP-QNAM pivot — the order
+            // describeIncludeEntry uses, so the two facets agree about what "present" means.
+            if (anyHasColumn(metas, entry.variable())
+                    || foreign.existsViaSuppQnam(qualifier, entry.variable()))
+            {
+                names.add(entry.variable().toUpperCase(Locale.ROOT));
+            }
+            return new EntryNames(varName, names, false, null);
+        }
+        String resolved = resolveScopeVariable(entry.variable(), domainPrefix);
+        String label = entryLabel(varName, entry.variable(), resolved);
+        Pattern pattern = scopeEntryPattern(resolved);
+        if (pattern != null)
+        {
+            addColumnsMatching(meta, pattern, names);
+            return new EntryNames(label, names, true, null);
+        }
+        if (meta.getColumnIndex(resolved) >= 0)
+        {
+            names.add(resolved.toUpperCase(Locale.ROOT));
+        }
+        return new EntryNames(label, names, false, null);
+    }
+
+
+    /** Every column name in {@code meta} fully matching the pattern, upper-cased, into the set. */
+    private static void addColumnsMatching(DataTableMeta meta, Pattern pattern,
+            SortedSet<String> into)
+    {
+        for (int i = 0; i < meta.getColumnCount(); i++)
+        {
+            String column = meta.getColumn(i).getName();
+            if (pattern.matcher(column).matches())
+            {
+                into.add(column.toUpperCase(Locale.ROOT));
+            }
+        }
     }
 
 
@@ -718,10 +891,11 @@ public final class ScopeMatcher
         {
             return false;
         }
-        // All THREE facets, or the lazy ScopeVariableSource is not built for a rule that needs it
-        // and every qualified entry in the unscanned facet silently answers "satisfied".
+        // All FOUR facets, or the lazy ScopeVariableSource is not built for a rule that needs it
+        // and every qualified entry in the unscanned facet is undecidable — for All_Or_None that
+        // would be a permanent SKIP of a rule whose foreign side could have been read.
         return anyQualified(required.getAll()) || anyQualified(required.anyUnion())
-                || anyQualified(required.getNone());
+                || anyQualified(required.getNone()) || anyQualified(required.allOrNoneUnion());
     }
 
 

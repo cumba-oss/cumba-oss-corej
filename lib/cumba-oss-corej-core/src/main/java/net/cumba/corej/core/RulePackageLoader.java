@@ -3049,8 +3049,11 @@ public class RulePackageLoader
             // what lets this R3 arm keep finding them across ALL groups (§D7).
             checkRequirementEntries(rule, vars.anyUnion(), "Requirements.Variables.Any", errors);
             checkRequirementEntries(rule, vars.getNone(), "Requirements.Variables.None", errors);
+            checkRequirementEntries(rule, vars.allOrNoneUnion(),
+                    "Requirements.Variables.All_Or_None", errors);
             checkTypeSuffixes(rule, vars, errors);
             checkAnyFacetShape(rule, vars, errors);
+            checkAllOrNoneFacetShape(rule, vars, errors);
         }
         checkRequirementEntries(rule, req.getDatasets(), "Requirements.Datasets", errors);
     }
@@ -3116,9 +3119,20 @@ public class RulePackageLoader
      */
     private static void checkTypeSuffixes(Rule rule, VariableRequirement vars, List<String> errors)
     {
-        reportTypeSuffixErrors(rule, vars.getAll(), "Requirements.Variables.All", false, errors);
-        reportTypeSuffixErrors(rule, vars.anyUnion(), "Requirements.Variables.Any", false, errors);
-        reportTypeSuffixErrors(rule, vars.getNone(), "Requirements.Variables.None", true, errors);
+        reportTypeSuffixErrors(rule, vars.getAll(), "Requirements.Variables.All", null, errors);
+        reportTypeSuffixErrors(rule, vars.anyUnion(), "Requirements.Variables.Any", null, errors);
+        reportTypeSuffixErrors(rule, vars.getNone(), "Requirements.Variables.None",
+                "which None does not accept (ruling D1): it would mean \"no variable of that type"
+                        + " may be present\", which is also satisfied by a variable of the OTHER"
+                        + " type — the opposite of how it reads",
+                errors);
+        // ⭐ PLAN-join-key-pairing: All_Or_None decides PRESENCE — all present or none — and a
+        // column present with the wrong type is neither, so a suffix here has no honest reading.
+        // Rejected on D1's precedent rather than given a third meaning.
+        reportTypeSuffixErrors(rule, vars.allOrNoneUnion(), "Requirements.Variables.All_Or_None",
+                "which All_Or_None does not accept: the facet decides presence — every entry"
+                        + " present or none — and a column present with the wrong type is neither",
+                errors);
     }
 
 
@@ -3127,12 +3141,12 @@ public class RulePackageLoader
      *
      * @param facet
      *            the facet's full name, for the message
-     * @param rejectAnySuffix
-     *            whether a well-formed suffix is itself an error here — {@code true} for
-     *            {@code None} (D1)
+     * @param suffixRejection
+     *            why a well-formed suffix is itself an error in this facet ({@code None}, ruling
+     *            D1; {@code All_Or_None}), or {@code null} where a suffix is legal
      */
     private static void reportTypeSuffixErrors(Rule rule, @Nullable List<String> entries,
-            String facet, boolean rejectAnySuffix, List<String> errors)
+            String facet, @Nullable String suffixRejection, List<String> errors)
     {
         if (entries == null)
         {
@@ -3149,13 +3163,11 @@ public class RulePackageLoader
             {
                 errors.add("[" + ruleId(rule) + "] " + facet + " " + malformed);
             }
-            else if (rejectAnySuffix && ScopeVariableEntry.hasTypeSuffix(entry))
+            else if (suffixRejection != null && ScopeVariableEntry.hasTypeSuffix(entry))
             {
                 errors.add("[" + ruleId(rule) + "] " + facet + " entry '" + entry.trim()
-                        + "' carries a type suffix, which None does not accept (ruling D1): it"
-                        + " would mean \"no variable of that type may be present\", which is also"
-                        + " satisfied by a variable of the OTHER type — the opposite of how it"
-                        + " reads. Drop the suffix, or express the type demand in All or Any");
+                        + "' carries a type suffix, " + suffixRejection
+                        + ". Drop the suffix, or express the type demand in All or Any");
             }
         }
     }
@@ -3171,45 +3183,10 @@ public class RulePackageLoader
      */
     private static void checkAnyFacetShape(Rule rule, VariableRequirement vars, List<String> errors)
     {
-        List<List<String>> anyGroups = vars.getAnyGroups();
-        if (vars.isAnyMixedShape())
-        {
-            // D2 is a SHAPE ruling, so the message must say "mixed shape": the parse wraps stray
-            // flat entries as singleton groups to survive at all, and without this arm the D3 arm
-            // below would report "group N needs at least 2 distinct entries" about a group the
-            // author never typed.
-            errors.add("[" + ruleId(rule) + "] Requirements.Variables.Any has a mixed shape —"
-                    + " flat entries and groups in one array: author it either flat (one group)"
-                    + " or as nested groups of entries, not both");
-        }
-        else if (anyGroups != null)
-        {
-            if (anyGroups.isEmpty())
-            {
-                errors.add("[" + ruleId(rule) + "] Requirements.Variables.Any needs at least "
-                        + MIN_ANY_ENTRIES + " distinct entries, got 0 (from 0): a one-entry Any"
-                        + " is All with extra ceremony and hides a truncated list, and an empty"
-                        + " one is unsatisfiable");
-            }
-            for (int g = 0; g < anyGroups.size(); g++)
-            {
-                // ⚠ DISTINCT entries per group, not entries: `["AESEV","AESEV"]` is exactly the
-                // degenerate one-column group this arm's own message describes, and counting the
-                // raw list let it through. Folded the same way the overlap arms fold, so
-                // `["AESEV","aesev"]` — which no consumer can tell apart — is caught too.
-                List<String> group = anyGroups.get(g);
-                int distinct = normalizedFacet(group).size();
-                if (distinct < MIN_ANY_ENTRIES)
-                {
-                    errors.add("[" + ruleId(rule) + "] Requirements.Variables.Any group " + (g + 1)
-                            + " (of " + anyGroups.size() + ") needs at least " + MIN_ANY_ENTRIES
-                            + " distinct entries, got " + distinct + " (from " + group.size()
-                            + "): a one-entry group is All with extra ceremony"
-                            + " and hides a truncated list, and an empty one is unsatisfiable");
-                }
-            }
-            warnOnCrossGroupDuplicates(rule, anyGroups);
-        }
+        checkGroupFacetShape(rule, "Any", vars.getAnyGroups(), vars.isAnyMixedShape(),
+                "a one-entry group is All with extra ceremony and hides a truncated list, and an"
+                        + " empty one is unsatisfiable",
+                errors);
         List<String> anyUnion = vars.anyUnion();
         // ⚠⚠ The type suffix is folded in the two None arms. "Present and absent" is a
         // contradiction whatever type is demanded, so `All: ["X:N"]` + `None: ["X"]` must be
@@ -3234,9 +3211,93 @@ public class RulePackageLoader
 
 
     /**
+     * The group arms of R4, shared by the two grouped facets ({@code Any}, and {@code All_Or_None}
+     * since {@code PLAN-join-key-pairing}, whose ruling D1 says <i>"loader checks exactly as Any
+     * has them"</i>): the mixed shape (D2), zero groups, fewer than {@link #MIN_ANY_ENTRIES}
+     * distinct entries in a group (D3), and the cross-group duplicate warning (D4).
+     *
+     * @param facet
+     *            the facet's key, for the messages
+     * @param degenerateWhy
+     *            the facet's own reading of a one-entry / empty group, appended to the D3 message
+     */
+    private static void checkGroupFacetShape(Rule rule, String facet,
+            @Nullable List<List<String>> groups, boolean mixedShape, String degenerateWhy,
+            List<String> errors)
+    {
+        String where = "Requirements.Variables." + facet;
+        if (mixedShape)
+        {
+            // D2 is a SHAPE ruling, so the message must say "mixed shape": the parse wraps stray
+            // flat entries as singleton groups to survive at all, and without this arm the D3 arm
+            // below would report "group N needs at least 2 distinct entries" about a group the
+            // author never typed.
+            errors.add("[" + ruleId(rule) + "] " + where + " has a mixed shape —"
+                    + " flat entries and groups in one array: author it either flat (one group)"
+                    + " or as nested groups of entries, not both");
+        }
+        else if (groups != null)
+        {
+            if (groups.isEmpty())
+            {
+                errors.add("[" + ruleId(rule) + "] " + where + " needs at least " + MIN_ANY_ENTRIES
+                        + " distinct entries, got 0 (from 0): " + degenerateWhy);
+            }
+            for (int g = 0; g < groups.size(); g++)
+            {
+                // ⚠ DISTINCT entries per group, not entries: `["AESEV","AESEV"]` is exactly the
+                // degenerate one-column group this arm's own message describes, and counting the
+                // raw list let it through. Folded the same way the overlap arms fold, so
+                // `["AESEV","aesev"]` — which no consumer can tell apart — is caught too.
+                List<String> group = groups.get(g);
+                int distinct = normalizedFacet(group).size();
+                if (distinct < MIN_ANY_ENTRIES)
+                {
+                    errors.add("[" + ruleId(rule) + "] " + where + " group " + (g + 1) + " (of "
+                            + groups.size() + ") needs at least " + MIN_ANY_ENTRIES
+                            + " distinct entries, got " + distinct + " (from " + group.size()
+                            + "): " + degenerateWhy);
+                }
+            }
+            warnOnCrossGroupDuplicates(rule, facet, groups);
+        }
+    }
+
+
+    /**
+     * R4's {@code All_Or_None} arms ({@code PLAN-join-key-pairing}): the group arms exactly as
+     * {@code Any}'s, plus the two intersections that make a group degenerate — an entry shared with
+     * {@code All} is guaranteed present, so its group can only ever be all-present (that is
+     * {@code All} with extra ceremony); an entry shared with {@code None} is guaranteed absent, so
+     * its group can only ever be all-absent ({@code None} with extra ceremony). An entry shared
+     * with {@code Any} is legal: "present or absent together" and "one of these present" are
+     * independent claims.
+     */
+    private static void checkAllOrNoneFacetShape(Rule rule, VariableRequirement vars,
+            List<String> errors)
+    {
+        checkGroupFacetShape(rule, "All_Or_None", vars.getAllOrNoneGroups(),
+                vars.isAllOrNoneMixedShape(),
+                "a group of one is always all-present-or-all-absent, so it pairs nothing, and an"
+                        + " empty one pairs nothing either",
+                errors);
+        List<String> union = vars.allOrNoneUnion();
+        reportFacetOverlap(rule, "All_Or_None", union, "All", vars.getAll(),
+                "All already requires the entry present, so the group can only ever be"
+                        + " all-present — move its other entries to All or drop this one from All",
+                true, errors);
+        reportFacetOverlap(rule, "All_Or_None", union, "None", vars.getNone(),
+                "None already forbids the entry, so the group can only ever be all-absent — move"
+                        + " its other entries to None or drop this one from None",
+                true, errors);
+    }
+
+
+    /**
      * D4 — the same entry in two different {@code Any} groups is legal (each group stays
      * independently satisfiable) but suspicious enough to say out loud: a {@code WARNING} through
-     * {@link #LOGGER}, never an error.
+     * {@link #LOGGER}, never an error. Shared with {@code All_Or_None}, where a repeated entry is
+     * legal for the same reason ({@code [[A, Y.A], [A, Z.A]]} says A travels with both).
      *
      * <p>
      * ⚠ Not to be confused with the {@code Any}×{@code All} overlap ERROR next door: <b>within</b>
@@ -3245,7 +3306,8 @@ public class RulePackageLoader
      * this method's business either: the D3 arm's distinct fold already collapses them.
      * </p>
      */
-    private static void warnOnCrossGroupDuplicates(Rule rule, List<List<String>> anyGroups)
+    private static void warnOnCrossGroupDuplicates(Rule rule, String facet,
+            List<List<String>> anyGroups)
     {
         if (anyGroups.size() < 2)
         {
@@ -3285,9 +3347,10 @@ public class RulePackageLoader
                     String firstSpelling = firstEntryOf.get(normalized);
                     String sameSpelling = entry.trim().equals(firstSpelling) ? ""
                             : " (as '" + firstSpelling + "' and '" + entry.trim() + "')";
-                    String warning = "[" + ruleId(rule) + "] Requirements.Variables.Any variable '"
-                            + normalized + "'" + sameSpelling + " appears in group " + first
-                            + " and again in group " + (g + 1) + " — allowed (ruling D4), each"
+                    String warning = "[" + ruleId(rule) + "] Requirements.Variables." + facet
+                            + " variable '" + normalized + "'" + sameSpelling + " appears in group "
+                            + first + " and again in group " + (g + 1)
+                            + " — allowed (ruling D4), each"
                             + " group stays independently satisfiable, but check the duplication"
                             + " is intended";
                     rule.setLoadWarning(rule.getLoadWarning() == null ? warning
@@ -5467,6 +5530,8 @@ public class RulePackageLoader
                     errors);
             checkNoExpansionToken(rule, vars.getNone(), "Requirements.Variables.None", tokens,
                     errors);
+            checkNoExpansionToken(rule, vars.allOrNoneUnion(), "Requirements.Variables.All_Or_None",
+                    tokens, errors);
         }
     }
 
@@ -5682,6 +5747,8 @@ public class RulePackageLoader
                     errors);
             checkVariableScopeList(requiredVars.getNone(), "Requirements.Variables", "None", rule,
                     errors);
+            checkVariableScopeList(requiredVars.allOrNoneUnion(), "Requirements.Variables",
+                    "All_Or_None", rule, errors);
         }
         Scope scope = rule.getScope();
         if (scope == null)

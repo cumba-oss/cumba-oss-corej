@@ -110,7 +110,7 @@ class WildcardExpanderScopeCompletenessTest
      * </p>
      */
     private static final Set<String> VARIABLE_REQUIREMENT_FIELDS_NOT_CARRIED = Set.of("unknownKeys",
-            "anyMixedShape");
+            "anyMixedShape", "allOrNoneMixedShape");
 
     private static DataTableMeta adaeMeta()
     {
@@ -159,6 +159,7 @@ class WildcardExpanderScopeCompletenessTest
             variables.setAll(List.of("TRTxxP"));
             variables.setAnyGroups(List.of(List.of("ADSL.TRTxxPN", "AESEV")));
             variables.setNone(List.of("POOLID"));
+            variables.setAllOrNoneGroups(List.of(List.of("TRTxxP", "ADSL.TRTxxP")));
             req.setVariables(variables);
         }
         return req;
@@ -374,6 +375,50 @@ class WildcardExpanderScopeCompletenessTest
                 assertNotNull(valueOf(out, field), field.getName() + " was dropped");
             }
         }
+    }
+
+
+    /**
+     * The same claim for {@code All_Or_None} ({@code PLAN-join-key-pairing}): the facet shares
+     * {@code Any}'s shape and {@code substituteNameGroups}, so a flattening — or a copy line that
+     * carries the groups as one union — would turn "each pair travels together" into "all of these
+     * travel together" on every wildcard-expanded carrier. The field sweep above proves only that
+     * the facet is non-null after expansion; this proves the grouping.
+     */
+    @Test
+    @DisplayName("⭐ All_Or_None GROUPING survives expansion — substituted per group")
+    void allOrNoneGroupingSurvivesExpansion() throws Exception
+    {
+        Rule template = template(true);
+        Requirements req = template.getRequirements();
+        assertNotNull(req);
+        VariableRequirement vars = req.getVariables();
+        assertNotNull(vars);
+        vars.setAllOrNoneGroups(
+                List.of(List.of("ADSL.TRTxxPN", "AESEV"), List.of("VISITDY", "TV.VISITDY")));
+
+        List<Rule> expanded = WildcardExpander.expand(template, adaeMeta());
+        assertEquals(2, expanded.size(), "one rule per treatment period");
+        List<String> qualifiedFirstEntries = new ArrayList<>();
+        for (Rule rule : expanded)
+        {
+            Requirements outReq = rule.getRequirements();
+            assertNotNull(outReq);
+            VariableRequirement out = outReq.getVariables();
+            assertNotNull(out);
+            List<List<String>> groups = out.getAllOrNoneGroups();
+            assertNotNull(groups, "the facet must survive the copying branch at all");
+            assertEquals(2, groups.size(), "flattened into one union: " + groups);
+            assertEquals("AESEV", groups.get(0).get(1),
+                    "the literal stays in ITS group: " + groups);
+            assertEquals(List.of("VISITDY", "TV.VISITDY"), groups.get(1),
+                    "an all-literal group is carried verbatim as its own group: " + groups);
+            qualifiedFirstEntries.add(groups.get(0).get(0));
+        }
+        assertTrue(
+                qualifiedFirstEntries.contains("ADSL.TRT01PN")
+                        && qualifiedFirstEntries.contains("ADSL.TRT02PN"),
+                "the qualified marker entry is substituted per tuple: " + qualifiedFirstEntries);
     }
 
 

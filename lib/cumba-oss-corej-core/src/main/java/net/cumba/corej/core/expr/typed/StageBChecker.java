@@ -624,9 +624,10 @@ public final class StageBChecker
 
     /**
      * Whether the rule declares a dependency on {@code dataset}: {@code Requirements.Datasets}
-     * names it, or {@code Requirements.Variables} (All &#8746; Any) carries any qualified
-     * {@code dataset.<VAR>} entry — D89a's "one declaration covers both absences", read at dataset
-     * granularity.
+     * names it, or {@code Requirements.Variables} (All &#8746; Any &#8746; All_Or_None) carries any
+     * qualified {@code dataset.<VAR>} entry — D89a's "one declaration covers both absences", read
+     * at dataset granularity. An {@code All_Or_None} entry is a declaration in exactly D89a's
+     * sense: the author has owned up to the column possibly being absent.
      */
     private static boolean declaresDataset(Rule rule, String dataset)
     {
@@ -643,7 +644,8 @@ public final class StageBChecker
         }
         String prefix = dataset + ".";
         return startsWithAny(variables.getAll(), prefix)
-                || startsWithAny(variables.anyUnion(), prefix);
+                || startsWithAny(variables.anyUnion(), prefix)
+                || startsWithAny(variables.allOrNoneUnion(), prefix);
     }
 
 
@@ -707,7 +709,8 @@ public final class StageBChecker
         {
             return false;
         }
-        return contains(declared.getAll(), qualified) || contains(declared.anyUnion(), qualified);
+        return contains(declared.getAll(), qualified) || contains(declared.anyUnion(), qualified)
+                || contains(declared.allOrNoneUnion(), qualified);
     }
 
 

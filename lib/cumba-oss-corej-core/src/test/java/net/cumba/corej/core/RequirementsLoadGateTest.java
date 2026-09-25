@@ -598,6 +598,192 @@ class RequirementsLoadGateTest
         }
     }
 
+    // ---- R2/R3/R4/R6/R9 over All_Or_None (PLAN-join-key-pairing, ruling D1 (A)) -----
+
+
+    /**
+     * The {@code All_Or_None} facet's load gates — ruling D1: <i>"loader checks exactly as Any has
+     * them"</i> — driven through the production loader like every other case here. Plus the two
+     * facet-specific arms: a type suffix is rejected (as in {@code None}, and for a cousin of D1's
+     * reason: the facet decides presence, and a wrongly typed column is neither present nor
+     * absent), and an entry shared with {@code All} or {@code None} makes the group degenerate.
+     */
+    @Nested
+    @DisplayName("All_Or_None — the Any gates, the suffix rejection, the All/None intersections")
+    class AllOrNone
+    {
+
+        private static final String PAIR = "[[\"VISITDY\",\"TV.VISITDY\"]]";
+
+        private String vars(String facets) throws IOException
+        {
+            return errorOf("\"Requirements\":{\"Variables\":{" + facets + "}}," + CHECK);
+        }
+
+
+        @Test
+        @DisplayName("the conforming shapes — nested pairs, a flat pair, and beside All/Any/None")
+        void conforming() throws IOException
+        {
+            assertNull(vars("\"All_Or_None\":" + PAIR));
+            assertNull(vars("\"All_Or_None\":[\"VISITDY\",\"TV.VISITDY\"]"));
+            assertNull(vars(
+                    "\"All_Or_None\":[[\"VISITDY\",\"TV.VISITDY\"],[\"VISIT\",\"TV.VISIT\"]]"));
+            assertNull(
+                    vars("\"All\":[\"VISITNUM\",\"TV.VISITNUM\"],\"Any\":[\"VISIT\",\"VISITDY\"],"
+                            + "\"None\":[\"POOLID\"],\"All_Or_None\":" + PAIR),
+                    "an entry shared with Any is legal: the two facets make independent claims");
+            Rule rule = load(
+                    "\"Requirements\":{\"Variables\":{\"All_Or_None\":" + PAIR + "}}," + CHECK);
+            assertEquals(List.of(List.of("VISITDY", "TV.VISITDY")),
+                    rule.effectiveVariableRequirement().getAllOrNoneGroups(),
+                    "the facet must reach the single documented reader");
+        }
+
+
+        @Test
+        @DisplayName("R2 — the near-miss spelling All_or_None binds to nothing and is rejected")
+        void nearMissSpellingIsRejected() throws IOException
+        {
+            String error = vars("\"All_or_None\":" + PAIR);
+            assertNotNull(error, "a pairing that silently does not exist is the flood this facet"
+                    + " was built to stop");
+            assertTrue(error.contains("'All_or_None'"), error);
+            assertTrue(error.contains("under 'Requirements.Variables'"), error);
+        }
+
+
+        @Test
+        @DisplayName("R3 — an empty and a null entry inside a group are rejected")
+        void emptyAndNullEntries() throws IOException
+        {
+            String empty = vars("\"All_Or_None\":[[\"VISITDY\",\"\"]]");
+            assertNotNull(empty);
+            assertTrue(empty.contains("Requirements.Variables.All_Or_None"), empty);
+            assertTrue(empty.contains("empty/null entry"), empty);
+            String nul = vars("\"All_Or_None\":[[\"VISITDY\",null]]");
+            assertNotNull(nul);
+            assertTrue(nul.contains("empty/null entry"), nul);
+        }
+
+
+        @Test
+        @DisplayName("R4 D3 — a one-entry group, a one-column group in two cases, an empty group")
+        void degenerateGroups() throws IOException
+        {
+            String one = vars("\"All_Or_None\":[[\"VISITDY\",\"TV.VISITDY\"],[\"VISIT\"]]");
+            assertNotNull(one);
+            assertTrue(one.contains("Requirements.Variables.All_Or_None group 2"), one);
+            assertTrue(one.contains("at least 2 distinct entries"), one);
+            assertTrue(one.contains("pairs nothing"), one);
+
+            String folded = vars("\"All_Or_None\":[[\"VISITDY\",\"visitdy\"]]");
+            assertNotNull(folded, "two spellings of one column are one column");
+            assertTrue(folded.contains("at least 2 distinct entries"), folded);
+
+            String empty = vars("\"All_Or_None\":[[],[\"VISITDY\",\"TV.VISITDY\"]]");
+            assertNotNull(empty);
+            assertTrue(empty.contains("group 1"), empty);
+            assertTrue(empty.contains("got 0 (from 0)"), empty);
+
+            String zero = vars("\"All_Or_None\":[]");
+            assertNotNull(zero);
+            assertTrue(zero.contains("Requirements.Variables.All_Or_None needs at least"), zero);
+        }
+
+
+        @Test
+        @DisplayName("R4 D2 — a mixed shape is rejected as mixed, and the D3 arm stands down")
+        void mixedShape() throws IOException
+        {
+            String error = vars("\"All_Or_None\":[\"VISITDY\",[\"VISIT\",\"TV.VISIT\"]]");
+            assertNotNull(error);
+            assertTrue(error.contains("Requirements.Variables.All_Or_None has a mixed shape"),
+                    error);
+            assertFalse(error.contains("at least 2 distinct entries"),
+                    "the D3 arm must not blame a group the author never typed: " + error);
+        }
+
+
+        @Test
+        @DisplayName("R4 D4 — an entry repeated across groups loads, with a warning naming the"
+                + " facet")
+        void crossGroupDuplicateWarns() throws IOException
+        {
+            Rule rule = load("\"Requirements\":{\"Variables\":{\"All_Or_None\":"
+                    + "[[\"VISITDY\",\"TV.VISITDY\"],[\"VISITDY\",\"SUPPSV.VISITDY\"]]}}," + CHECK);
+            assertNull(rule.getLoadError());
+            String warning = rule.getLoadWarning();
+            assertNotNull(warning, "D4: a WARNING, reachable through the rule, never an error");
+            assertTrue(warning.contains("Requirements.Variables.All_Or_None variable 'VISITDY'"),
+                    warning);
+            assertTrue(warning.contains("appears in group 1 and again in group 2"), warning);
+        }
+
+
+        @Test
+        @DisplayName("R4 — an entry shared with All makes the group degenerate: error")
+        void intersectsAll() throws IOException
+        {
+            String error = vars("\"All\":[\"VISITDY\"],\"All_Or_None\":" + PAIR);
+            assertNotNull(error, "All guarantees the entry present, so the group can only ever be"
+                    + " all-present — that is All with extra ceremony");
+            assertTrue(error.contains("appears in both All_Or_None and All"), error);
+        }
+
+
+        @Test
+        @DisplayName("R4 — an entry shared with None makes the group degenerate: error")
+        void intersectsNone() throws IOException
+        {
+            String error = vars("\"None\":[\"tv.visitdy\"],\"All_Or_None\":" + PAIR);
+            assertNotNull(error, "None forbids the entry, so the group can only ever be"
+                    + " all-absent — and the fold is case-blind like the other arms");
+            assertTrue(error.contains("appears in both All_Or_None and None"), error);
+        }
+
+
+        @Test
+        @DisplayName("R9 — a type suffix is rejected, and the message says why")
+        void typeSuffixIsRejected() throws IOException
+        {
+            String error = vars("\"All_Or_None\":[[\"VISITDY:N\",\"TV.VISITDY\"]]");
+            assertNotNull(error, "a wrongly typed column is neither present nor absent to a facet"
+                    + " that decides presence");
+            assertTrue(error.contains("Requirements.Variables.All_Or_None entry 'VISITDY:N'"),
+                    error);
+            assertTrue(error.contains("which All_Or_None does not accept"), error);
+            String malformed = vars("\"All_Or_None\":[[\"VISITDY:Z\",\"TV.VISITDY\"]]");
+            assertNotNull(malformed);
+            assertTrue(malformed.contains("Requirements.Variables.All_Or_None"), malformed);
+        }
+
+
+        @Test
+        @DisplayName("an invalid /regex/ inside a group fails at load")
+        void invalidRegex() throws IOException
+        {
+            String error = vars("\"All_Or_None\":[[\"/[/\",\"TV.VISITDY\"]]");
+            assertNotNull(error);
+            assertTrue(error.contains("Requirements.Variables.All_Or_None"), error);
+            assertTrue(error.contains("not a valid pattern"), error);
+        }
+
+
+        @Test
+        @DisplayName("R6 — an Expansion token inside a group is rejected")
+        void expansionToken() throws IOException
+        {
+            String error = errorOf(
+                    "\"Expansion\":[{\"token\":\"&VAR\",\"over\":\"shared_variables\","
+                            + "\"with\":\"ADSL\"}],\"Requirements\":{\"Variables\":{\"All_Or_None\":"
+                            + "[[\"&VAR\",\"ADSL.&VAR\"]]}},"
+                            + "\"Check\":{\"all\":[{\"expression\": \"var_exists(`&VAR`)\"}]}");
+            assertNotNull(error, "the requirement gate runs BEFORE expansion");
+            assertTrue(error.contains("Requirements.Variables.All_Or_None"), error);
+        }
+    }
+
     // ---- R3/R4 over GROUPS — Any as an AND of ORs (PLAN-any-variable-sets) -----
 
 

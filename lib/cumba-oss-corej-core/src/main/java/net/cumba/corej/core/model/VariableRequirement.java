@@ -29,10 +29,23 @@ import org.jspecify.annotations.Nullable;
  * mismatch reason names the group — no single entry is at fault.</li>
  * <li>{@code None} — no entry may be present. Byte-for-byte the former
  * {@code Scope.Variables.Exclude}.</li>
+ * <li>⭐ {@code All_Or_None} ({@code PLAN-join-key-pairing}, owner ruling D1 of 2026-09-25) — one or
+ * more <b>groups</b>, spelled exactly like {@code Any} (flat = one group, nested = several); a
+ * group is satisfied when <b>all</b> of its entries are present <b>or none</b> is. A group that is
+ * only partly present is a {@code SKIPPED} whose reason names the present and the absent halves.
+ * Built for a join key that is optional on <em>both</em> sides ({@code [["VISITDY",
+ * "TV.VISITDY"]]}): the rule runs when the study has the column on both sides or on neither, and
+ * stands down when one side alone carries it — the shape on which a join would match nothing and
+ * report every row. Wildcard entries (glob, {@code /regex/}, marker template) are compared
+ * <b>resolved</b>: each resolves to the set of concrete column names it matches, and an all-present
+ * group additionally requires those sets to be equal ({@code [["TRTxxP", "ADSL.TRTxxP"]]} runs when
+ * no {@code TRTxxP} exists anywhere or when the same ones exist on both sides). ⛔ A type suffix is
+ * a load error here, as in {@code None}: the facet decides <em>presence</em>, and a column that is
+ * present with the wrong type is neither "present" nor "absent" in that sense.</li>
  * </ul>
  *
  * <p>
- * The three facets are ANDed with each other and with {@link Scope}. Entry vocabulary is unchanged
+ * The four facets are ANDed with each other and with {@link Scope}. Entry vocabulary is unchanged
  * from {@code Scope.Variables}: literal, {@code --} domain-prefix placeholder, qualified
  * {@code DATASET.VARIABLE}, glob and {@code /regex/}.
  * </p>
@@ -126,6 +139,30 @@ public class VariableRequirement
     private @Nullable List<String> none;
 
     /**
+     * The canonical {@code All_Or_None} groups — each all-present or all-absent. Same shape,
+     * binding and gate rules as {@link #anyGroups} (loader gate R4 runs its group arms over both);
+     * {@code null} when the facet is absent, an empty list for an authored {@code []}.
+     *
+     * <p>
+     * ⚠ Bound through {@link #readAllOrNone}/{@link #writeAllOrNone}, for the reason
+     * {@link #anyGroups} is: the parse also sets {@link #allOrNoneMixedShape}.
+     * </p>
+     */
+    @JsonIgnore
+    private @Nullable List<List<String>> allOrNoneGroups;
+
+    /**
+     * Whether the authored {@code All_Or_None} mixed flat entries with groups — the same parse-time
+     * diagnostic as {@link #anyMixedShape}, read by loader gate R4's {@code All_Or_None} arm and
+     * carried by nothing else.
+     */
+    @JsonIgnore
+    @lombok.Setter(lombok.AccessLevel.NONE)
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
+    private boolean allOrNoneMixedShape;
+
+    /**
      * JSON keys under {@code Requirements.Variables} that bound to no modelled property. The mapper
      * runs with {@code FAIL_ON_UNKNOWN_PROPERTIES} disabled, so without this collector a misspelled
      * facet ({@code Al:}, {@code AnyOf:}) would bind to nothing and the requirement would silently
@@ -174,6 +211,39 @@ public class VariableRequirement
 
 
     /**
+     * The JSON read half of the {@code All_Or_None} facet — the same per-element parse table as
+     * {@link #readAny}, through {@link AnyGroupsJson}; explicitly annotated so the key stays
+     * <em>known</em> and never reaches {@link #recordUnknownKey}. ⚠ The key is case-sensitive, so
+     * {@code All_or_None} <b>does</b> reach the collector and is rejected by gate R2 — a near-miss
+     * that bound to nothing would make the pairing silently not exist.
+     *
+     * @param node
+     *            the authored {@code All_Or_None} value, or {@code null} / a JSON null
+     */
+    @JsonProperty("All_Or_None")
+    void readAllOrNone(@Nullable JsonNode node)
+    {
+        AnyGroupsJson.Parsed parsed = AnyGroupsJson.parse(node, "All_Or_None");
+        this.allOrNoneGroups = parsed.groups();
+        this.allOrNoneMixedShape = parsed.mixedShape();
+    }
+
+
+    /**
+     * The JSON write half of the {@code All_Or_None} facet — one group flat, several nested, as
+     * {@link #writeAny}.
+     *
+     * @return the JSON value for {@code "All_Or_None"}, or {@code null} when there are no groups
+     */
+    @JsonProperty("All_Or_None")
+    @Nullable
+    Object writeAllOrNone()
+    {
+        return AnyGroupsJson.write(allOrNoneGroups);
+    }
+
+
+    /**
      * Every entry of every group, flattened, in group order then entry order. For lint, census and
      * presence checks ONLY — anything that reasons about the <em>disjunction</em> must iterate
      * {@code getAnyGroups()} instead ({@code ScopeMatcher.describeAnyLeg},
@@ -190,7 +260,28 @@ public class VariableRequirement
      */
     public List<String> anyUnion()
     {
-        List<List<String>> groups = anyGroups;
+        return flatten(anyGroups);
+    }
+
+
+    /**
+     * {@link #anyUnion()}'s twin for {@code All_Or_None}: every entry of every group, verbatim, for
+     * the per-entry loader gates (R3, R6, R9, the pattern check), the qualified-entry scan and the
+     * "declares this variable" readers. Anything that reasons about the <em>pairing</em> iterates
+     * {@code getAllOrNoneGroups()} — {@code ScopeMatcher.describeAllOrNoneGroup}, the expander's
+     * substitution, gate R4's group arms.
+     *
+     * @return an unmodifiable flat view of the groups; never {@code null}, empty when there are no
+     *         groups
+     */
+    public List<String> allOrNoneUnion()
+    {
+        return flatten(allOrNoneGroups);
+    }
+
+
+    private static List<String> flatten(@Nullable List<List<String>> groups)
+    {
         if (groups == null || groups.isEmpty())
         {
             return List.of();

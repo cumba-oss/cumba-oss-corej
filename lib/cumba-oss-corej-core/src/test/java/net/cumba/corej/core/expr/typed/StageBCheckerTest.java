@@ -397,6 +397,28 @@ class StageBCheckerTest
 
 
     /**
+     * {@code All_Or_None} is a declaration in D89a's sense too ({@code PLAN-join-key-pairing}): an
+     * entry there is the author owning up to the column possibly being absent, so a filter column
+     * it names skips with a reason rather than erroring as undeclared.
+     */
+    @Test
+    void aFilterColumnDeclaredInAllOrNoneSkipsWithAReason()
+    {
+        VariableRequirement declared = new VariableRequirement();
+        declared.setAllOrNoneGroups(
+                List.of(List.of("DM.ARM", "DM.ARMCD"), List.of("AEOUT", "AE.AEOUT")));
+        List<StageBFinding> findings = new ArrayList<>();
+        List<String> skips = new ArrayList<>();
+        StageBChecker.checkFilterBinding("AE", List.of("AEOUT"), Set.of("USUBJID"), declared,
+                findings, skips);
+        assertEquals(List.of(), findings,
+                "a qualified entry in an All_Or_None group must reach declaresVariable");
+        assertEquals(1, skips.size());
+        assertTrue(skips.get(0).contains("AE.AEOUT"));
+    }
+
+
+    /**
      * D89a reads the {@code Any} facet through {@code anyUnion()} since {@code Any} became groups
      * ({@code plans/done/PLAN-any-variable-sets.md} phase 4): the declaration is about which
      * qualified names the rule owns up to, not about the disjunction, so an entry in group TWO must

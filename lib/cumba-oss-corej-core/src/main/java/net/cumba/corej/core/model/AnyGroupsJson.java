@@ -9,7 +9,11 @@ import org.jspecify.annotations.Nullable;
 /**
  * The JSON shape of {@code Requirements.Variables.Any} — flat ({@code ["A","B"]}, ONE group) or
  * nested ({@code [["A","B"],["C","D"]]}, one group per inner array) — mapped to and from the
- * canonical {@code List<List<String>>} of {@link VariableRequirement}'s {@code getAnyGroups()}.
+ * canonical {@code List<List<String>>} of {@link VariableRequirement}'s {@code getAnyGroups()}. ⭐
+ * Since {@code PLAN-join-key-pairing} the same shape, parse table and write rule serve
+ * {@code Requirements.Variables.All_Or_None} ({@code getAllOrNoneGroups()}) — the two facets are
+ * spelled alike by ruling D1b, so one parser keeps them from drifting apart; only the facet name in
+ * the two exception messages differs.
  *
  * <p>
  * ⚠ This is deliberately <b>not</b> a Jackson {@code JsonDeserializer}: the parse must also decide
@@ -58,8 +62,22 @@ final class AnyGroupsJson
     {
     }
 
-    /** The parse half — see the class javadoc's table. */
+    /** The parse half for {@code Any} — see the class javadoc's table. */
     static Parsed parse(@Nullable JsonNode node)
+    {
+        return parse(node, "Any");
+    }
+
+
+    /**
+     * The parse half for either grouped facet.
+     *
+     * @param node
+     *            the authored value
+     * @param facet
+     *            the facet's key ({@code Any} / {@code All_Or_None}), for the two messages only
+     */
+    static Parsed parse(@Nullable JsonNode node, String facet)
     {
         if (node == null || node.isNull())
         {
@@ -68,8 +86,9 @@ final class AnyGroupsJson
         if (!node.isArray())
         {
             // The pre-groups List<String> binding threw on a bare scalar too; keep throwing.
-            throw new IllegalArgumentException("Requirements.Variables.Any must be an array — flat"
-                    + " entries or nested groups of entries — but got a " + node.getNodeType());
+            throw new IllegalArgumentException("Requirements.Variables." + facet
+                    + " must be an array — flat entries or nested groups of entries — but got a "
+                    + node.getNodeType());
         }
         if (node.isEmpty())
         {
@@ -90,25 +109,26 @@ final class AnyGroupsJson
         }
         if (!hasArray)
         {
-            return new Parsed(List.of(entriesOf(node)), false); // flat: ONE group
+            return new Parsed(List.of(entriesOf(node, facet)), false); // flat: ONE group
         }
         List<List<String>> groups = new ArrayList<>();
         for (JsonNode element : node)
         {
-            groups.add(element.isArray() ? entriesOf(element)
-                    : Collections.unmodifiableList(Collections.singletonList(entryOf(element))));
+            groups.add(element.isArray() ? entriesOf(element, facet)
+                    : Collections
+                            .unmodifiableList(Collections.singletonList(entryOf(element, facet))));
         }
         return new Parsed(Collections.unmodifiableList(groups), hasScalar);
     }
 
 
     /** One group's entries, verbatim — nulls and blanks included (gate R3 reads them). */
-    private static List<String> entriesOf(JsonNode array)
+    private static List<String> entriesOf(JsonNode array, String facet)
     {
         List<String> entries = new ArrayList<>();
         for (JsonNode element : array)
         {
-            entries.add(entryOf(element));
+            entries.add(entryOf(element, facet));
         }
         return Collections.unmodifiableList(entries);
     }
@@ -118,7 +138,7 @@ final class AnyGroupsJson
      * One entry. Scalars coerce through {@code asText()} exactly as the former {@code List<String>}
      * binding coerced them; a nested array or object inside a group throws, as it always did.
      */
-    private static @Nullable String entryOf(JsonNode element)
+    private static @Nullable String entryOf(JsonNode element, String facet)
     {
         if (element.isNull())
         {
@@ -128,16 +148,16 @@ final class AnyGroupsJson
         {
             return element.asText();
         }
-        throw new IllegalArgumentException("Requirements.Variables.Any group entries must be"
-                + " strings, but got a " + element.getNodeType());
+        throw new IllegalArgumentException("Requirements.Variables." + facet
+                + " group entries must be strings, but got a " + element.getNodeType());
     }
 
 
     /**
-     * The write half: {@code null} ⇒ {@code null}; one group ⇒ the <b>flat</b> spelling (so a
-     * display/debug serialisation — {@code RulePackageLoader.toJson} — never shows a spuriously
-     * nested {@code Any} for the overwhelmingly common one-group case); anything else — zero groups
-     * included — round-trips structurally.
+     * The write half, shared by both grouped facets: {@code null} ⇒ {@code null}; one group ⇒ the
+     * <b>flat</b> spelling (so a display/debug serialisation — {@code RulePackageLoader.toJson} —
+     * never shows a spuriously nested {@code Any} for the overwhelmingly common one-group case);
+     * anything else — zero groups included — round-trips structurally.
      */
     static @Nullable Object write(@Nullable List<List<String>> groups)
     {

@@ -1399,7 +1399,7 @@ public final class WildcardExpander
         }
         net.cumba.corej.core.model.VariableRequirement variables = template.getVariables();
         if (variables == null || (variables.getAll() == null && variables.getAnyGroups() == null
-                && variables.getNone() == null))
+                && variables.getNone() == null && variables.getAllOrNoneGroups() == null))
         {
             return template;
         }
@@ -1413,13 +1413,16 @@ public final class WildcardExpander
         expanded.setAnyGroups(
                 substituteNameGroups(variables.getAnyGroups(), wildcardToColumn, tuple));
         expanded.setNone(substituteNameList(variables.getNone(), wildcardToColumn, tuple));
+        expanded.setAllOrNoneGroups(
+                substituteNameGroups(variables.getAllOrNoneGroups(), wildcardToColumn, tuple));
         copy.setVariables(expanded);
         return copy;
     }
 
 
     /**
-     * {@link #substituteNameList} mapped over {@code Any}'s groups, <b>preserving the grouping</b>.
+     * {@link #substituteNameList} mapped over {@code Any}'s groups — and {@code All_Or_None}'s,
+     * which share the shape — <b>preserving the grouping</b>.
      *
      * <p>
      * ⚠⚠ Never flatten here: this method both reads and writes the facet back, so substituting over

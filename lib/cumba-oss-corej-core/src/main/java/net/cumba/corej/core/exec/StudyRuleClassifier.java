@@ -464,13 +464,14 @@ public final class StudyRuleClassifier
 
 
     /**
-     * All three {@code Requirements.Variables} facets — {@code All}, {@code Any} <b>and</b>
-     * {@code None} — are dataset restrictions: each can keep the rule off a dataset.
+     * All four {@code Requirements.Variables} facets — {@code All}, {@code Any}, {@code None}
+     * <b>and</b> {@code All_Or_None} — are dataset restrictions: each can keep the rule off a
+     * dataset.
      */
     private static boolean hasEntries(@Nullable VariableRequirement req)
     {
-        return req != null
-                && (notEmpty(req.getAll()) || notEmpty(req.anyUnion()) || notEmpty(req.getNone()));
+        return req != null && (notEmpty(req.getAll()) || notEmpty(req.anyUnion())
+                || notEmpty(req.getNone()) || notEmpty(req.allOrNoneUnion()));
     }
 
 
