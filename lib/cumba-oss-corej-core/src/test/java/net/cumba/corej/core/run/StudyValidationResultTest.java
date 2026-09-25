@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.report.ReportAssembler;
 import net.cumba.corej.core.report.ReportSections;
@@ -24,7 +25,7 @@ class StudyValidationResultTest
                 .standard("custom").version("1-0").totalRuntimeSeconds(1.5)
                 .coreEngineVersion("0.0.0-test").build();
         return new StudyValidationResult(report, conformance, List.of(), List.of(), 0, 1.5,
-                List.of());
+                List.of(), Map.of(), Set.of());
     }
 
 
@@ -33,10 +34,10 @@ class StudyValidationResultTest
     {
         ReportAssembler.Conformance c = ReportAssembler.Conformance.builder().build();
         ValidationReport r = new net.cumba.corej.core.report.ValidationReportBuilder().build();
-        assertThrows(NullPointerException.class,
-                () -> new StudyValidationResult(null, c, List.of(), List.of(), 0, 0.0, List.of()));
-        assertThrows(NullPointerException.class,
-                () -> new StudyValidationResult(r, null, List.of(), List.of(), 0, 0.0, List.of()));
+        assertThrows(NullPointerException.class, () -> new StudyValidationResult(null, c, List.of(),
+                List.of(), 0, 0.0, List.of(), Map.of(), Set.of()));
+        assertThrows(NullPointerException.class, () -> new StudyValidationResult(r, null, List.of(),
+                List.of(), 0, 0.0, List.of(), Map.of(), Set.of()));
     }
 
 
@@ -75,7 +76,7 @@ class StudyValidationResultTest
                 new ReportAssembler.DatasetInfo("ae.xpt", "Adverse Events", "/p", "2026-01-01", 1.0,
                         10L, "AE", 5));
         StudyValidationResult r = new StudyValidationResult(report, conformance, datasets,
-                List.of(rule), 0, 1.5, List.of(dm, ae));
+                List.of(rule), 0, 1.5, List.of(dm, ae), Map.of(), Set.of());
 
         Map<String, Object> export = r.sections().toExportDocument();
 
@@ -147,7 +148,7 @@ class StudyValidationResultTest
         Rule gen = new Rule();
         gen.setId("CG0001-AGE");
         StudyValidationResult r = new StudyValidationResult(report, conformance, List.of(),
-                List.of(), 0, 1.5, List.of(), Map.of("CG0001-AGE", gen));
+                List.of(), 0, 1.5, List.of(), Map.of("CG0001-AGE", gen), Set.of());
         assertEquals(1, r.generatedRules().size());
         assertEquals("CG0001-AGE", r.generatedRules().get("CG0001-AGE").getId());
     }
@@ -162,7 +163,7 @@ class StudyValidationResultTest
                 .standard("custom").version("1-0").totalRuntimeSeconds(1.5)
                 .coreEngineVersion("0.0.0-test").build();
         StudyValidationResult r = new StudyValidationResult(report, conformance, List.of(),
-                List.of(), 0, 1.5, List.of(), null);
+                List.of(), 0, 1.5, List.of(), null, Set.of());
         assertTrue(r.generatedRules().isEmpty());
     }
 }

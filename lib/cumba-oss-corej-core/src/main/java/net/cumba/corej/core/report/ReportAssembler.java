@@ -214,8 +214,8 @@ public final class ReportAssembler
      * ⚠ Two of those pieces were <b>missing</b> from the sections before the writers were split
      * out, and building the JSON document from sections without them would have silently dropped
      * data: the trailing {@code domain} field of each {@code Issue_Details} row (an additive Java
-     * extension, present on the record but not on the projected map), and the v2
-     * {@link #combinedFindings() Findings} array, which had no representation here at all.
+     * extension, present on the record but not on the projected map), and the v2 {@code Findings}
+     * array, which had no representation here at all.
      * </p>
      *
      * @return every section of the report, never {@code null}
@@ -225,19 +225,6 @@ public final class ReportAssembler
         return new ReportSections(buildConformanceDetails(), buildDatasetDetails(),
                 buildIssueSummary(), issueDetailRows(buildIssueDetails()), buildRulesReport(),
                 buildSkippedRules(), buildCombinedFindings());
-    }
-
-
-    /**
-     * The v2 combined-finding rows — one object per {@link ValidationFinding}, carrying its
-     * location plus its multiple rows. Exposed separately as well as through {@link #sections()}
-     * because it is the one section with no v1 counterpart.
-     *
-     * @return the {@code Findings} rows, never {@code null}
-     */
-    public List<Map<String, Object>> combinedFindings()
-    {
-        return buildCombinedFindings();
     }
 
 

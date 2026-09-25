@@ -2,7 +2,6 @@ package net.cumba.corej.core;
 
 import java.nio.file.Path;
 import java.util.Optional;
-import lombok.CustomLog;
 import net.cumba.cdisc.library.api.client.CdiscLibraryClient;
 import net.cumba.web.api.cache.ApiCache;
 import net.cumba.web.api.cache.GzipFileApiCache;
@@ -23,7 +22,6 @@ import org.jspecify.annotations.Nullable;
  * — self-defeating.
  * </p>
  */
-@CustomLog
 public final class CoreLibraryAccessImpl implements CoreLibraryAccess
 {
 
@@ -87,10 +85,11 @@ public final class CoreLibraryAccessImpl implements CoreLibraryAccess
 
 
     /**
-     * Open access with full configuration. Null/blank {@code aApiKey} substitutes {@code "dummy"}
-     * (CLI compatibility — Library rule endpoints are reachable anonymously). Null {@code aBaseUrl}
-     * falls back to {@link CdiscLibraryClient#DEFAULT_BASE_URL}. Null {@code aCacheDir} falls back
-     * to {@link CdiscLibraryClient#getCache()}.
+     * Open access with full configuration (the seeder fixtures' seam; no production caller).
+     * Null/blank {@code aApiKey} substitutes {@code "dummy"} (Library rule endpoints are reachable
+     * anonymously). Null {@code aBaseUrl} falls back to
+     * {@link CdiscLibraryClient#DEFAULT_BASE_URL}. Null {@code aCacheDir} falls back to
+     * {@link CdiscLibraryClient#getCache()}.
      */
     static CoreLibraryAccess open(String aApiKey, @Nullable String aBaseUrl,
             @Nullable Path aCacheDir)

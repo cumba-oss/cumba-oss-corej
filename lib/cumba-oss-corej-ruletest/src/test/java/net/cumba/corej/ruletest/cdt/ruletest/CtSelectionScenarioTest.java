@@ -257,7 +257,7 @@ class CtSelectionScenarioTest
                 """.formatted(RULE_ID));
         new RulePackageManifest("test",
                 List.of(new RulePackageManifest.Entry("rules-sdtmig-3-4.json", "CDISC", "sdtmig",
-                        "3-4", 1))).writeTo(dir);
+                        "3-4", 1, List.of()))).writeTo(dir);
         return dir;
     }
 

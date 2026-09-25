@@ -289,7 +289,7 @@ class XlsxReportWriterHardeningTest
 
             new XlsxReportWriter(null).fillConformance(sheet,
                     new ReportSections(Map.of("Standard", "SDTMIG"), List.of(), List.of(),
-                            List.of(), List.of(), List.of()));
+                            List.of(), List.of(), List.of(), List.of()));
 
             // "Standard" is row 9 in the 1-based template map, hence index 8 here.
             assertNotNull(sheet.getRow(8), "the missing row was created");
@@ -344,7 +344,7 @@ class XlsxReportWriterHardeningTest
             details.add(row);
         }
         return new ReportSections(Map.of("Standard", "SDTMIG"), List.of(), List.of(), details,
-                List.of(), List.of());
+                List.of(), List.of(), List.of());
     }
 
 

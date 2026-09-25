@@ -46,21 +46,6 @@ class RequestedDictionaryVersionsTest
 
 
             @Override
-            public List<Map<String, String>> getValueLevelMetadata(String datasetName,
-                    String variableName)
-            {
-                return List.of();
-            }
-
-
-            @Override
-            public List<Map<String, String>> getWhereClauseConditions(String whereClauseOID)
-            {
-                return List.of();
-            }
-
-
-            @Override
             public List<Map<String, String>> getCodelistTerms(String codelistOID)
             {
                 return List.of();

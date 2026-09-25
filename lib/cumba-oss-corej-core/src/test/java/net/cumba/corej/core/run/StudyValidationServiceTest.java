@@ -145,7 +145,7 @@ class StudyValidationServiceTest
         String version = base.substring(dash + 1);
         new net.cumba.corej.core.RulePackageManifest("test",
                 List.of(new net.cumba.corej.core.RulePackageManifest.Entry(fileName, "CDISC",
-                        standard, version, 1))).writeTo(dir);
+                        standard, version, 1, List.of()))).writeTo(dir);
         return dir;
     }
 
@@ -174,7 +174,7 @@ class StudyValidationServiceTest
                     }
                     """.formatted(fam));
             entries.add(new net.cumba.corej.core.RulePackageManifest.Entry(file, fam, "custom",
-                    "1-0", 1));
+                    "1-0", 1, List.of()));
         }
         new net.cumba.corej.core.RulePackageManifest("test", entries).writeTo(dir);
         return dir;
@@ -878,7 +878,7 @@ class StudyValidationServiceTest
     @Test
     void cancelledExceptionMessages()
     {
-        assertFalse(new CancelledException().getMessage().isEmpty());
+        assertFalse(new CancelledException("study validation cancelled").getMessage().isEmpty());
         assertEquals("phase x", new CancelledException("phase x").getMessage());
     }
 
@@ -1008,17 +1008,6 @@ class StudyValidationServiceTest
     // Pickle-cache id helpers (pure logic; the pickle-cache-gated provider tests live in
     // corej-rules/StudyValidationServicePickleTest — PLAN-engine-rules-decoupling Q4)
     // ------------------------------------------------------------------
-
-
-    @Test
-    void ctIdWithPrefix_picksMatchingId()
-    {
-        assertEquals("sdtmct-2024-09-27", StudyValidationService
-                .ctIdWithPrefix(List.of("adamct-2024-03-29", "sdtmct-2024-09-27"), "sdtmct"));
-        assertEquals(null,
-                StudyValidationService.ctIdWithPrefix(List.of("adamct-2024-03-29"), "sdtmct"));
-        assertEquals(null, StudyValidationService.ctIdWithPrefix(List.of(), "sdtmct"));
-    }
 
     /**
      * Collects the {@link LogRecord}s emitted by the service's class logger. {@link System.Logger}
@@ -1383,7 +1372,7 @@ class StudyValidationServiceTest
         Path dir = Files.createDirectory(tempDir.resolve("orphan-" + System.nanoTime()));
         new net.cumba.corej.core.RulePackageManifest(
                 List.of(new net.cumba.corej.core.RulePackageManifest.Entry("rules-ghost-1-0.json",
-                        "CDISC", "custom", "1-0", 1))).writeTo(dir);
+                        "CDISC", "custom", "1-0", 1, List.of()))).writeTo(dir);
 
         StudyValidationException ex = assertThrows(StudyValidationException.class,
                 () -> StudyValidationService.validateManifestAgainstDisk(dir,
@@ -1402,7 +1391,7 @@ class StudyValidationServiceTest
         Path dir = writeUnmanifestedPackages("listed-1-0", "extra-2-0");
         new net.cumba.corej.core.RulePackageManifest(
                 List.of(new net.cumba.corej.core.RulePackageManifest.Entry("rules-listed-1-0.json",
-                        "CDISC", "custom", "1-0", 1))).writeTo(dir);
+                        "CDISC", "custom", "1-0", 1, List.of()))).writeTo(dir);
 
         // Must NOT throw — the manifest has no veto — and the omission IS logged.
         var manifest = net.cumba.corej.core.RulePackageManifest.load(dir);
@@ -1709,7 +1698,7 @@ class StudyValidationServiceTest
                 """);
         new net.cumba.corej.core.RulePackageManifest("test",
                 List.of(new net.cumba.corej.core.RulePackageManifest.Entry("rules-decl-1-0.json",
-                        "DECL", "adamig", "1-3", 0))).writeTo(dir);
+                        "DECL", "adamig", "1-3", 0, List.of()))).writeTo(dir);
 
         StudyValidationParams params = StudyValidationParams.builder()
                 .manager(managerWith(dmTable())).dataLibrary(tempDir.toString())

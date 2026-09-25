@@ -2012,9 +2012,12 @@ public class RulePackageLoader
      * </p>
      *
      * <p>
-     * ⚠ It deliberately does <b>not</b> re-run the load gates. The caller is the engine (or a test
-     * standing in for it), and the value it installs is by definition not authored — running R8
-     * over it would reject the one channel the ruling kept open.
+     * ⚠ It deliberately does <b>not</b> re-run the load gates. The value it installs is by
+     * definition not authored — running R8 over it would reject the one channel the ruling kept
+     * open. ⚑ No engine code calls it today (the engine's own writers of the tier are
+     * {@code injectInlineOperationGates} and the two inliners); it is the constructor the engine's
+     * tests use to put a term on the tier, and is kept as that seam
+     * ({@code PLAN-retire-dead-multi-match-lookup} U4 / C6).
      * </p>
      *
      * @param rule
@@ -2690,7 +2693,10 @@ public class RulePackageLoader
 
     /**
      * Serializes a single {@link Rule} back to its JSON object form using the same mapper that
-     * loads rule packs, so the title-case {@code @JsonProperty} keys round-trip faithfully.
+     * loads rule packs, so the title-case {@code @JsonProperty} keys round-trip faithfully. ⚑ No
+     * production caller (the engine serialises rules through {@code TokenExpander}'s own mapper);
+     * kept as the round-trip seam of the loader's mapper configuration, which the enum round-trip
+     * tests pin ({@code PLAN-retire-dead-multi-match-lookup} U4 / C7).
      *
      * @param rule
      *            the rule to serialize ({@code null} yields {@code "null"})

@@ -1,7 +1,6 @@
 package net.cumba.corej.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -59,7 +58,7 @@ class CoreLibraryAccessTest
     }
 
     // --------------------------------------------------------------------
-    // openIfConfigured / open / openWithApiKey
+    // openIfConfigured / open
     // --------------------------------------------------------------------
 
 
@@ -81,52 +80,6 @@ class CoreLibraryAccessTest
         System.setProperty(SP_KEY, "test-key-abc");
         Optional<CoreLibraryAccess> access = CoreLibraryAccess.openIfConfigured();
         assertTrue(access.isPresent());
-    }
-
-
-    @Test
-    void openIfConfigured_withCacheDir_acceptsOverride(@TempDir Path cacheDir)
-    {
-        System.setProperty(SP_KEY, "test-key-cache");
-        Optional<CoreLibraryAccess> access = CoreLibraryAccess.openIfConfigured(cacheDir);
-        assertTrue(access.isPresent());
-    }
-
-
-    @Test
-    void openIfConfigured_withCacheDir_returnsEmptyWhenNoKey(@TempDir Path cacheDir)
-    {
-        Assumptions.assumeTrue(
-                System.getenv(CdiscLibraryClient.ENV_CDISC_API_KEY) == null
-                        || System.getenv(CdiscLibraryClient.ENV_CDISC_API_KEY).isBlank(),
-                "Test requires CDISC_API_KEY env var to be unset");
-        assertFalse(CoreLibraryAccess.openIfConfigured(cacheDir).isPresent());
-    }
-
-
-    @Test
-    void openWithApiKey_nullStillReturnsAnAccess()
-    {
-        // The "dummy" substitution lets the CLI construct an access even when no key is set.
-        // We can't inspect the resulting CdiscLibraryClient's apiKey (no accessor on the
-        // instance — apiKey is consumed by the HTTP header layer and not exposed), so the
-        // observable contract here is just "non-null access returned, no NPE."
-        CoreLibraryAccess access = CoreLibraryAccess.openWithApiKey(null);
-        assertNotNull(access);
-    }
-
-
-    @Test
-    void openWithApiKey_blankStillReturnsAnAccess()
-    {
-        assertNotNull(CoreLibraryAccess.openWithApiKey("   "));
-    }
-
-
-    @Test
-    void openWithApiKey_realKeyReturnsAnAccess()
-    {
-        assertNotNull(CoreLibraryAccess.openWithApiKey("real-key-xyz"));
     }
 
 

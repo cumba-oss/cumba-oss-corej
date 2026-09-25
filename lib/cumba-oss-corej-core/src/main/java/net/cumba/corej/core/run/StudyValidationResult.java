@@ -84,33 +84,6 @@ public record StudyValidationResult(ValidationReport report,
 
 
     /**
-     * Convenience constructor without the additive {@code generatedRules} map and
-     * {@code bundledCoreIds} set (both default to empty). Keeps callers that predate the run-scoped
-     * rule-definition view compiling unchanged.
-     */
-    public StudyValidationResult(ValidationReport report, ReportAssembler.Conformance conformance,
-            List<ReportAssembler.DatasetInfo> datasets, List<Rule> rules, int findingCount,
-            double totalRuntimeSeconds, List<DatasetExecutionSummary> executionSummaries)
-    {
-        this(report, conformance, datasets, rules, findingCount, totalRuntimeSeconds,
-                executionSummaries, Map.of(), Set.of());
-    }
-
-
-    /**
-     * Convenience constructor without the additive {@code bundledCoreIds} set (defaults to empty).
-     */
-    public StudyValidationResult(ValidationReport report, ReportAssembler.Conformance conformance,
-            List<ReportAssembler.DatasetInfo> datasets, List<Rule> rules, int findingCount,
-            double totalRuntimeSeconds, List<DatasetExecutionSummary> executionSummaries,
-            Map<String, Rule> generatedRules)
-    {
-        this(report, conformance, datasets, rules, findingCount, totalRuntimeSeconds,
-                executionSummaries, generatedRules, Set.of());
-    }
-
-
-    /**
      * Assembles this result into the neutral {@link ReportSections} every report writer consumes —
      * the one and only rendering entry point on this record.
      *

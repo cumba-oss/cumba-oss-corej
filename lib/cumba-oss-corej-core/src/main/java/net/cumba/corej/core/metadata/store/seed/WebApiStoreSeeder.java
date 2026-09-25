@@ -82,8 +82,8 @@ public final class WebApiStoreSeeder
      *
      * @param aAccess
      *            the access to seed through — from {@link CoreLibraryAccess#openIfConfigured()} for
-     *            a live seed, or {@code CoreLibraryAccess.open(…)} pointed at a recorded cache for
-     *            an offline one
+     *            a live seed, or {@code CoreLibraryAccess.open(…)} (the fixtures' seam) pointed at
+     *            a recorded cache for an offline one
      * @throws IllegalArgumentException
      *             when the access is not the default implementation (a mock of the interface cannot
      *             serve raw JSON)

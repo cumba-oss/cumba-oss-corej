@@ -1768,20 +1768,6 @@ public final class StudyValidationService
     }
 
 
-    /** First id in {@code aIds} starting with {@code aPrefix} (e.g. {@code sdtmct}), or null. */
-    static @Nullable String ctIdWithPrefix(List<String> aIds, String aPrefix)
-    {
-        for (String id : aIds)
-        {
-            if (id != null && id.startsWith(aPrefix))
-            {
-                return id;
-            }
-        }
-        return null;
-    }
-
-
     /**
      * Every id in {@code aIds} starting with {@code aPrefix}, newest first (define-ct plan §4.3: a
      * multi-package selection is merged with newest-first precedence within a root; the

@@ -1,7 +1,6 @@
 package net.cumba.corej.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -16,12 +15,12 @@ class RulePackageManifestTest
 
     private static RulePackageManifest sample()
     {
-        return new RulePackageManifest(
-                List.of(new Entry("rules-cdisc-sdtmig-3-4.json", "CDISC", "SDTMIG", "3.4", 368),
-                        new Entry("rules-fda-sdtmig-3-4.json", "FDA", "SDTMIG", "3.4", 454),
-                        new Entry("rules-pmda-sdtmig-3-4.json", "PMDA", "SDTMIG", "3.4", 440),
-                        new Entry("rules-cdisc-adamig-1-3.json", "CDISC", "ADaMIG", "1.3", 698),
-                        new Entry("rules-pmda-adamig-1-3.json", "PMDA", "ADaMIG", "1.3", 291)));
+        return new RulePackageManifest(List.of(
+                new Entry("rules-cdisc-sdtmig-3-4.json", "CDISC", "SDTMIG", "3.4", 368, List.of()),
+                new Entry("rules-fda-sdtmig-3-4.json", "FDA", "SDTMIG", "3.4", 454, List.of()),
+                new Entry("rules-pmda-sdtmig-3-4.json", "PMDA", "SDTMIG", "3.4", 440, List.of()),
+                new Entry("rules-cdisc-adamig-1-3.json", "CDISC", "ADaMIG", "1.3", 698, List.of()),
+                new Entry("rules-pmda-adamig-1-3.json", "PMDA", "ADaMIG", "1.3", 291, List.of())));
     }
 
 
@@ -39,51 +38,9 @@ class RulePackageManifestTest
         sample().writeTo(dir);
         RulePackageManifest loaded = RulePackageManifest.load(dir);
         assertEquals(5, loaded.packages().size());
-        assertEquals("rules-cdisc-sdtmig-3-4.json",
-                loaded.find("CDISC", "SDTMIG", "3.4").orElseThrow().file());
-    }
-
-
-    @Test
-    void find_isCaseInsensitiveOnFamilyAndStandard()
-    {
-        RulePackageManifest m = sample();
-        assertEquals("rules-fda-sdtmig-3-4.json",
-                m.find("fda", "sdtmig", "3.4").orElseThrow().file());
-        assertEquals("rules-fda-sdtmig-3-4.json",
-                m.find("FDA", "SDTMIG", "3.4").orElseThrow().file());
-    }
-
-
-    @Test
-    void find_toleratesDisplayOrEncodedVersion()
-    {
-        RulePackageManifest m = sample();
-        // manifest stores "3.4"; a caller may pass the file-encoded "3-4".
-        assertEquals("rules-pmda-sdtmig-3-4.json",
-                m.find("PMDA", "SDTMIG", "3-4").orElseThrow().file());
-        assertEquals("rules-pmda-sdtmig-3-4.json",
-                m.find("PMDA", "SDTMIG", "3.4").orElseThrow().file());
-    }
-
-
-    @Test
-    void find_absentTupleIsEmpty()
-    {
-        // ⚠ The negative arm must name a family the manifest DOES carry, just not for this
-        // standard/version — otherwise it degenerates into "an unknown family is empty" and stops
-        // discriminating. FDA is present for SDTMIG 3.4 only; the family this arm used to name was
-        // retired 2026-09-19 and would now be unknown rather than merely absent here.
-        assertTrue(sample().find("FDA", "ADaMIG", "1.3").isEmpty());
-        assertFalse(sample().find("CDISC", "ADaMIG", "1.3").isEmpty());
-    }
-
-
-    @Test
-    void forFamily_returnsAllOfAFamily()
-    {
-        List<Entry> cdisc = sample().forFamily("CDISC");
-        assertEquals(2, cdisc.size());
+        assertEquals(List.of("rules-cdisc-sdtmig-3-4.json"),
+                loaded.forStandardVersion("SDTMIG", "3.4").stream().map(Entry::file)
+                        .filter("rules-cdisc-sdtmig-3-4.json"::equals).toList());
     }
 
 
@@ -94,15 +51,6 @@ class RulePackageManifestTest
         assertEquals(3, sample().forStandardVersion("SDTMIG", "3.4").size());
         // ADaMIG 1.3 -> the two family files (cdisc, pmda) after the ADAMCR->CDISC merge.
         assertEquals(2, sample().forStandardVersion("ADaMIG", "1.3").size());
-    }
-
-
-    @Test
-    void toPaths_resolvesAgainstDir(@TempDir Path dir)
-    {
-        List<Path> paths = RulePackageManifest.toPaths(dir, sample().forFamily("PMDA"));
-        assertEquals(2, paths.size());
-        assertTrue(paths.stream().allMatch(p -> p.startsWith(dir)));
     }
 
 

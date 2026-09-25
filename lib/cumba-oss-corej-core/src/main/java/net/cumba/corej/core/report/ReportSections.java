@@ -58,33 +58,6 @@ public record ReportSections(Map<String, @Nullable Object> conformanceDetails,
         List<Map<String, Object>> skippedRules, List<Map<String, Object>> combinedFindings)
 {
 
-    /**
-     * Convenience constructor for a v1-only report: {@code combinedFindings} defaults to empty.
-     * Keeps callers that predate the v2 section — and every consumer that only ever renders the
-     * five Python sheets plus {@code Skipped_Rules} — compiling unchanged.
-     *
-     * @param conformanceDetails
-     *            the {@code Conformance_Details} key/value map
-     * @param datasetDetails
-     *            the {@code Dataset_Details} rows
-     * @param issueSummary
-     *            the {@code Issue_Summary} rows
-     * @param issueDetails
-     *            the {@code Issue_Details} rows
-     * @param rulesReport
-     *            the {@code Rules_Report} rows
-     * @param skippedRules
-     *            the {@code Skipped_Rules} rows
-     */
-    public ReportSections(Map<String, @Nullable Object> conformanceDetails,
-            List<Map<String, Object>> datasetDetails, List<Map<String, Object>> issueSummary,
-            List<Map<String, Object>> issueDetails, List<Map<String, Object>> rulesReport,
-            List<Map<String, Object>> skippedRules)
-    {
-        this(conformanceDetails, datasetDetails, issueSummary, issueDetails, rulesReport,
-                skippedRules, List.of());
-    }
-
     /** JSON section keys, in the Python sheet order. */
     static final String CONFORMANCE_DETAILS = "Conformance_Details";
 

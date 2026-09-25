@@ -40,20 +40,6 @@ class DefineXmlMetadataProviderTest
 
 
             @Override
-            public List<Map<String, String>> getValueLevelMetadata(String d, String v)
-            {
-                return List.of();
-            }
-
-
-            @Override
-            public List<Map<String, String>> getWhereClauseConditions(String whereClauseOID)
-            {
-                return List.of();
-            }
-
-
-            @Override
             public List<Map<String, String>> getCodelistTerms(String codelistOID)
             {
                 return List.of(Map.of("codedValue", "DM", "decode", "Demographics"),
@@ -121,20 +107,6 @@ class DefineXmlMetadataProviderTest
 
 
             @Override
-            public List<Map<String, String>> getValueLevelMetadata(String d, String v)
-            {
-                return List.of();
-            }
-
-
-            @Override
-            public List<Map<String, String>> getWhereClauseConditions(String whereClauseOID)
-            {
-                return List.of();
-            }
-
-
-            @Override
             public List<Map<String, String>> getCodelistTerms(String codelistOID)
             {
                 return List.of();
@@ -183,20 +155,6 @@ class DefineXmlMetadataProviderTest
             public List<Map<String, String>> getVariables(String datasetName)
             {
                 return List.of(var);
-            }
-
-
-            @Override
-            public List<Map<String, String>> getValueLevelMetadata(String d, String v)
-            {
-                return List.of();
-            }
-
-
-            @Override
-            public List<Map<String, String>> getWhereClauseConditions(String whereClauseOID)
-            {
-                return List.of();
             }
 
 

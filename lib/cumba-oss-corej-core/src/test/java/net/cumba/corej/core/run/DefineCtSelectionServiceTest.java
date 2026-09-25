@@ -168,7 +168,7 @@ class DefineCtSelectionServiceTest
                 """);
         new net.cumba.corej.core.RulePackageManifest("test",
                 List.of(new net.cumba.corej.core.RulePackageManifest.Entry("rules-custom-1-0.json",
-                        "CDISC", "custom", "1-0", 1))).writeTo(dir);
+                        "CDISC", "custom", "1-0", 1, List.of()))).writeTo(dir);
         return dir;
     }
 
@@ -285,7 +285,7 @@ class DefineCtSelectionServiceTest
                 """);
         new net.cumba.corej.core.RulePackageManifest("test",
                 List.of(new net.cumba.corej.core.RulePackageManifest.Entry("rules-sdtmig-3-4.json",
-                        "CDISC", "sdtmig", "3-4", 1))).writeTo(dir);
+                        "CDISC", "sdtmig", "3-4", 1, List.of()))).writeTo(dir);
         return dir;
     }
 

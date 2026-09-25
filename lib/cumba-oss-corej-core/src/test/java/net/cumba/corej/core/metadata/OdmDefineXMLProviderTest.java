@@ -169,8 +169,6 @@ class OdmDefineXMLProviderTest
     void emptyContracts()
     {
         assertTrue(provider.getVariables("NOPE").isEmpty(), "unknown domain -> no variables");
-        assertTrue(provider.getValueLevelMetadata("DM", "SEX").isEmpty());
-        assertTrue(provider.getWhereClauseConditions("WC.1").isEmpty());
         assertTrue(provider.getKeyVariables("DM").isEmpty());
         assertTrue(provider.getCodelistTerms("CL.UNKNOWN").isEmpty());
         assertTrue(provider.getDatasetMetadata("NOPE").isEmpty());

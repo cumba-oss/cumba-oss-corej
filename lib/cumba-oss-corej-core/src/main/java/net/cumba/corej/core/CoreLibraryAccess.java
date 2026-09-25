@@ -40,31 +40,12 @@ public interface CoreLibraryAccess
 
 
     /**
-     * As {@link #openIfConfigured()} but with an explicit cache directory. {@code null} falls back
-     * to {@link net.cumba.cdisc.library.api.client.CdiscLibraryClient#getCache()} (default
-     * {@code ~/.cdiscApiCache}). Useful when an embedding context (UI config, tests) wants a
-     * non-default cache location.
-     */
-    static Optional<CoreLibraryAccess> openIfConfigured(Path aCacheDir)
-    {
-        return CoreLibraryAccessImpl.openIfConfigured(aCacheDir);
-    }
-
-
-    /**
-     * Open access with an explicit API key, substituting {@code "dummy"} when {@code aApiKey} is
-     * null/blank. Used by the CLI, which assumes Library rules are reachable anonymously and so
-     * always wants a client even when no key is set.
-     */
-    static CoreLibraryAccess openWithApiKey(String aApiKey)
-    {
-        return CoreLibraryAccessImpl.open(aApiKey, null, null);
-    }
-
-
-    /**
-     * Open access with full configuration. Any {@code null} arg picks the same default as the
-     * underlying client: null/blank {@code aApiKey} → {@code "dummy"}, null {@code aBaseUrl} →
+     * Open access with full configuration. ⚑ No production caller (the CLI and REST seeders use
+     * {@link #openIfConfigured()}); it is the constructor the store-seeder fixtures use to point a
+     * client at a recorded cache, and is kept as that seam
+     * ({@code PLAN-retire-dead-multi-match-lookup} U4 / C2, kept while C1 and C3 were retired). Any
+     * {@code null} arg picks the same default as the underlying client: null/blank {@code aApiKey}
+     * → {@code "dummy"}, null {@code aBaseUrl} →
      * {@link net.cumba.cdisc.library.api.client.CdiscLibraryClient#DEFAULT_BASE_URL}, null
      * {@code aCacheDir} → {@link net.cumba.cdisc.library.api.client.CdiscLibraryClient#getCache()}.
      */

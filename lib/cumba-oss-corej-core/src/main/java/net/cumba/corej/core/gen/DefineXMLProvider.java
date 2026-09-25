@@ -86,43 +86,6 @@ public interface DefineXMLProvider
 
 
     /**
-     * Returns value-level metadata for a variable in a dataset.
-     * <p>
-     * Each entry describes metadata for a specific parameter/value subset. Keys:
-     * {@code whereClauseOID}, {@code variable}, {@code label}, {@code dataType}, {@code length},
-     * {@code codelist}, {@code origin}, {@code significantDigits}.
-     * </p>
-     * <p>
-     * The where-clause conditions are retrieved separately via
-     * {@link #getWhereClauseConditions(String)}.
-     * </p>
-     *
-     * @param datasetName
-     *            the dataset name
-     * @param variableName
-     *            the variable name (e.g., "AVAL", "AVALC")
-     * @return list of value-level metadata entries, or empty list
-     */
-    List<Map<String, String>> getValueLevelMetadata(String datasetName, String variableName);
-
-
-    /**
-     * Returns the conditions of a where-clause as a list of range checks. Multiple entries within
-     * the returned list are AND-ed.
-     * <p>
-     * Each entry contains keys: {@code variable} (the ItemOID resolved to a variable name),
-     * {@code comparator} (EQ, NE, IN, NOTIN, LT, LE, GT, GE), {@code values} (comma-separated check
-     * values).
-     * </p>
-     *
-     * @param whereClauseOID
-     *            the where-clause OID
-     * @return list of range check conditions, or empty list
-     */
-    List<Map<String, String>> getWhereClauseConditions(String whereClauseOID);
-
-
-    /**
      * Returns codelist terms defined in Define-XML.
      * <p>
      * Each entry contains keys: {@code codedValue}, {@code decode}, {@code extensible}

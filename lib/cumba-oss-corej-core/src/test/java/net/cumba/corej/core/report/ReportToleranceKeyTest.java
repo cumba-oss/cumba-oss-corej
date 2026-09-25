@@ -28,7 +28,7 @@ class ReportToleranceKeyTest
         cd.put("CORE_Engine_Version", "x");
         cd.put("Numeric_Tolerance_Digits", ScalarSemantics.toleranceDigits());
         return new ReportSections(new java.util.LinkedHashMap<>(cd), List.of(), List.of(),
-                List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of());
     }
 
 

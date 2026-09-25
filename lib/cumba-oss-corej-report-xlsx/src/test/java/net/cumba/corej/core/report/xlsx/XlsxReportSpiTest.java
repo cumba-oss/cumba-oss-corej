@@ -129,6 +129,7 @@ class XlsxReportSpiTest
     private static ReportSections sections()
     {
         return new ReportSections(Map.of("Standard", "SDTMIG"), List.of(), List.of(), List.of(),
-                List.of(Map.of("core_id", "CDISC-CG0176", "status", "SUCCESS")), List.of());
+                List.of(Map.of("core_id", "CDISC-CG0176", "status", "SUCCESS")), List.of(),
+                List.of());
     }
 }

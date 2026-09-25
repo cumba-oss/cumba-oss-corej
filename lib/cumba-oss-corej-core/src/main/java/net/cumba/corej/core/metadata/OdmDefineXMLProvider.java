@@ -510,20 +510,6 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
 
 
     @Override
-    public List<Map<String, String>> getValueLevelMetadata(String datasetName, String variableName)
-    {
-        return List.of();
-    }
-
-
-    @Override
-    public List<Map<String, String>> getWhereClauseConditions(String whereClauseOID)
-    {
-        return List.of();
-    }
-
-
-    @Override
     public @Nullable MetaDataVersion metaDataVersion()
     {
         return mdv();

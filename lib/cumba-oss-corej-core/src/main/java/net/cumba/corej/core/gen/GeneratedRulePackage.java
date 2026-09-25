@@ -18,12 +18,6 @@ public class GeneratedRulePackage
 
     private final RuleGenerationReport report;
 
-    public GeneratedRulePackage(List<Rule> rules, RuleGenerationReport report)
-    {
-        this(rules, List.of(), report);
-    }
-
-
     public GeneratedRulePackage(List<Rule> rules, List<SkippedSourceRule> skippedSourceRules,
             RuleGenerationReport report)
     {

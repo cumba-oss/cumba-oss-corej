@@ -17,13 +17,6 @@ public final class CancelledException extends RuntimeException
 
     private static final long serialVersionUID = 1L;
 
-    /** Creates a cancellation signal with a default message. */
-    public CancelledException()
-    {
-        super("study validation cancelled");
-    }
-
-
     /**
      * Creates a cancellation signal with an explicit message.
      *

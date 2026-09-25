@@ -435,7 +435,7 @@ class XlsxReportWriterTest
                 List.of(java.util.Map.of("core_id", "CORE-STUDY-REPORT", "message",
                         "study-level finding", "dataset", "STUDY", "domain", "STUDY")),
                 List.of(java.util.Map.of("core_id", "CORE-STUDY-REPORT", "status", "SUCCESS")),
-                List.of());
+                List.of(), List.of());
         try (XSSFWorkbook wb = render(sections, null))
         {
             assertEquals("STUDY",

@@ -11,7 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 
 /**
  * Typed view over a rules directory's {@code packages.json} — the authoritative index that maps
@@ -24,8 +23,8 @@ import java.util.Optional;
  * File names are not reversibly parseable — both standard names ({@code SENDIG-DART}) and versions
  * ({@code 3-1-1}) contain dashes — so lookup is always by manifest, never by splitting the name.
  * {@code family} / {@code standard} / {@code version} are stored in display form ({@code FDA},
- * {@code SDTMIG}, {@code 3.4}); {@link #find} and {@link #forStandardVersion} normalise both sides,
- * so a caller may pass either the display ({@code 3.4}) or the file-encoded ({@code 3-4}) version.
+ * {@code SDTMIG}, {@code 3.4}); {@link #forStandardVersion} normalises both sides, so a caller may
+ * pass either the display ({@code 3.4}) or the file-encoded ({@code 3-4}) version.
  * </p>
  */
 public record RulePackageManifest(@JsonProperty("generatedFrom") String generatedFrom,
@@ -71,26 +70,6 @@ public record RulePackageManifest(@JsonProperty("generatedFrom") String generate
             standards = standards == null ? List.of() : List.copyOf(standards);
         }
 
-
-        /**
-         * Convenience constructor for an entry that declares no library standards (the R6 array
-         * defaults to empty). Keeps existing positional callers working.
-         *
-         * @param file
-         *            the package file name
-         * @param family
-         *            the rule family, e.g. {@code CDISC}
-         * @param standard
-         *            the standard display name, e.g. {@code SDTMIG}
-         * @param version
-         *            the version display form, e.g. {@code 3.4}
-         * @param ruleCount
-         *            the package's rule count (informational)
-         */
-        public Entry(String file, String family, String standard, String version, int ruleCount)
-        {
-            this(file, family, standard, version, ruleCount, List.of());
-        }
     }
 
     /**
@@ -137,26 +116,6 @@ public record RulePackageManifest(@JsonProperty("generatedFrom") String generate
 
 
     /**
-     * Case-insensitive lookup of the single package for one {@code (family, standard, version)}.
-     * The version matches in either display ({@code 3.4}) or file-encoded ({@code 3-4}) form.
-     *
-     * @return the matching entry, or empty when no package covers the tuple
-     */
-    public Optional<Entry> find(String family, String standard, String version)
-    {
-        return packages.stream().filter(e -> eqTok(e.family(), family)
-                && eqTok(e.standard(), standard) && eqTok(e.version(), version)).findFirst();
-    }
-
-
-    /** Every package for a family, any standard/version (empty when the family is unknown). */
-    public List<Entry> forFamily(String family)
-    {
-        return packages.stream().filter(e -> eqTok(e.family(), family)).toList();
-    }
-
-
-    /**
      * Every family package for one {@code (standard, version)} — the UNION set. Used by whole-pack
      * consumers (the rule-test factories, the scenario trimmer, corpus-wide tests) that must see
      * all rules for a standard/version regardless of family. E.g. {@code (SDTMIG, 3.4)} → the four
@@ -167,13 +126,6 @@ public record RulePackageManifest(@JsonProperty("generatedFrom") String generate
     {
         return packages.stream()
                 .filter(e -> eqTok(e.standard(), standard) && eqTok(e.version(), version)).toList();
-    }
-
-
-    /** Resolves each entry's file name against {@code rulesDir}. */
-    public static List<Path> toPaths(Path rulesDir, List<Entry> entries)
-    {
-        return entries.stream().map(e -> rulesDir.resolve(e.file())).toList();
     }
 
     // ---- comparison helpers ---------------------------------------------

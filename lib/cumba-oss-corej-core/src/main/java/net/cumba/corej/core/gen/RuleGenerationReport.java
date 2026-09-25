@@ -38,10 +38,4 @@ public class RuleGenerationReport
         return generatedRules;
     }
 
-
-    public int getGeneratedCount()
-    {
-        return generatedRules.size();
-    }
-
 }

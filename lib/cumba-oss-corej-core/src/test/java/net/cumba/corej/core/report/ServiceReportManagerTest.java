@@ -102,7 +102,7 @@ class ServiceReportManagerTest
     {
         return new ReportSections(Map.of(), List.of(), List.of(),
                 List.of(Map.of("core_id", "CDISC-CG0176")), List.of(Map.of("core_id", "X")),
-                List.of());
+                List.of(), List.of());
     }
 
     // ------------------------------------------------------------------
