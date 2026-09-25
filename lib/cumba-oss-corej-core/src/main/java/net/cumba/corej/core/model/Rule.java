@@ -10,8 +10,10 @@ import java.util.Map;
 import java.util.SequencedMap;
 import java.util.SequencedSet;
 import java.util.Set;
+import lombok.AccessLevel;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import net.cumba.datatable.report.Severity;
 import org.jspecify.annotations.Nullable;
 
@@ -57,6 +59,7 @@ public class Rule
 
     /** Typed {@code Executability}; see {@link #sensitivity} for the raw/typed binding contract. */
     @com.fasterxml.jackson.annotation.JsonIgnore
+    @Setter(AccessLevel.NONE)
     private @Nullable Executability executability;
 
     /**
@@ -113,14 +116,6 @@ public class Rule
     {
         this.sensitivity = sensitivity;
         this.rawSensitivity = sensitivity != null ? sensitivity.getJsonValue() : null;
-    }
-
-
-    /** Typed programmatic setter; see {@link #setSensitivity} for the raw-sync contract (F5). */
-    public void setExecutability(@Nullable Executability executability)
-    {
-        this.executability = executability;
-        this.rawExecutability = executability != null ? executability.getJsonValue() : null;
     }
 
 

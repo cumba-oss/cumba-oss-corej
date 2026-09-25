@@ -49,7 +49,7 @@ class TokenExpanderTest
     {
         ExpansionDirective d = new ExpansionDirective();
         d.setToken(token);
-        d.setOver(ExpansionSource.SHARED_VARIABLES);
+        d.setOverJson(ExpansionSource.SHARED_VARIABLES.getJsonValue());
         d.setWith(with);
         return d;
     }
@@ -59,7 +59,7 @@ class TokenExpanderTest
     {
         ExpansionDirective d = new ExpansionDirective();
         d.setToken(token);
-        d.setOver(ExpansionSource.DOMAIN_FROM_VARIABLE);
+        d.setOverJson(ExpansionSource.DOMAIN_FROM_VARIABLE.getJsonValue());
         d.setPattern(pattern);
         d.setKnownDomainOnly(knownOnly);
         return d;

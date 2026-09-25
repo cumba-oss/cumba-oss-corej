@@ -1482,29 +1482,18 @@ public final class StudyValidationService
     /**
      * Builds a metadata provider from the unified metadata store when one is configured
      * ({@code CDISC_METADATA_STORE} / {@code cdisc.metadata.store}) and it carries the run's
-     * products. Returns {@code null} — the caller then degrades the run (cache P4 / ruling R2:
+     * products, with the run's resolved {@link CtSelection} (define-ct plan §4.2) supplying the CT
+     * package ids. Returns {@code null} — the caller then degrades the run (cache P4 / ruling R2:
      * library-dependent rules SKIP; there is no other metadata path any more) — when no store is
      * configured, the store cannot be opened, or it lacks a needed product. Package-private static
      * for unit testing.
      *
      * <p>
      * {@code PUBLISHED_CT_PACKAGES} on this path is the store's whole published enumeration on
-     * every family (plan §1.1-1).
+     * every family (plan §1.1-1). ⚑ The overload that defaulted the selection to the user's CT
+     * field alone had no production caller and was retired with PLAN-retire-dead-multi-match-lookup
+     * U13 (C38); tests supply the default themselves.
      * </p>
-     */
-    static @Nullable MetadataProvider tryStoreProvider(StudyValidationParams params,
-            StandardKind kind, List<String> effectiveProducts, RunStandard runStandard)
-    {
-        // The pre-P4 (define-ct) entry point: the CT selection is the user's field alone. Kept
-        // delegating — the rules repository's test tree (read-only to this lane) calls this shape.
-        return tryStoreProvider(params, kind, effectiveProducts, runStandard,
-                CtSelection.resolve(params.controlledTerminologyPackages(), List.of()));
-    }
-
-
-    /**
-     * As {@link #tryStoreProvider(StudyValidationParams, StandardKind, List, RunStandard)}, with
-     * the run's resolved {@link CtSelection} (define-ct plan §4.2) supplying the CT package ids.
      */
     static @Nullable MetadataProvider tryStoreProvider(StudyValidationParams params,
             StandardKind kind, List<String> effectiveProducts, RunStandard runStandard,

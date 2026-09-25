@@ -24,6 +24,7 @@ import net.cumba.corej.core.metadata.store.StoredVariable;
 import net.cumba.corej.core.metadata.store.StoredVariableSet;
 import net.cumba.corej.core.run.StudyValidationService.StandardKind;
 import net.cumba.datatable.manager.IDataTableManager;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -54,7 +55,7 @@ class StudyValidationServiceStoreProviderTest
     @Test
     void noConfiguredStoreAnswersNull()
     {
-        assertNull(StudyValidationService.tryStoreProvider(params(), StandardKind.SDTM, List.of(),
+        assertNull(tryStore(params(), StandardKind.SDTM, List.of(),
                 RunStandard.of("standards/sdtmig/3-4")));
     }
 
@@ -67,8 +68,8 @@ class StudyValidationServiceStoreProviderTest
                 .manager(mock(IDataTableManager.class)).dataLibrary("x")
                 .controlledTerminologyPackages(List.of("sdtmct-2024-09-27")).build();
 
-        MetadataProvider p = StudyValidationService.tryStoreProvider(params, StandardKind.SDTM,
-                List.of(), RunStandard.of("standards/sdtmig/3-4"));
+        MetadataProvider p = tryStore(params, StandardKind.SDTM, List.of(),
+                RunStandard.of("standards/sdtmig/3-4"));
 
         assertNotNull(p, "a configured store carrying the product must serve the run");
         assertEquals("sdtmig", p.getStandard());
@@ -86,8 +87,8 @@ class StudyValidationServiceStoreProviderTest
                 .manager(mock(IDataTableManager.class)).dataLibrary("x")
                 .metadataProducts(List.of("standards/adam/adamig-1-3")).build();
 
-        MetadataProvider p = StudyValidationService.tryStoreProvider(params, StandardKind.ADAM,
-                params.metadataProducts(), RunStandard.of("standards/adam/adamig-1-3"));
+        MetadataProvider p = tryStore(params, StandardKind.ADAM, params.metadataProducts(),
+                RunStandard.of("standards/adam/adamig-1-3"));
 
         assertNotNull(p);
         assertTrue(p.supportsStructureKeyedVariables());
@@ -100,7 +101,7 @@ class StudyValidationServiceStoreProviderTest
     void aStoreLackingTheProductAnswersNullSoTheRunDegrades() throws IOException
     {
         configureStore();
-        assertNull(StudyValidationService.tryStoreProvider(params(), StandardKind.SDTM, List.of(),
+        assertNull(tryStore(params(), StandardKind.SDTM, List.of(),
                 RunStandard.of("standards/sdtmig/9-9")));
     }
 
@@ -111,7 +112,7 @@ class StudyValidationServiceStoreProviderTest
         Path bogus = temp.resolve("bogus.zip");
         Files.writeString(bogus, "this is not a metadata store");
         System.setProperty(StoreMetadataProviderFactory.STORE_PROPERTY, bogus.toString());
-        assertNull(StudyValidationService.tryStoreProvider(params(), StandardKind.SDTM, List.of(),
+        assertNull(tryStore(params(), StandardKind.SDTM, List.of(),
                 RunStandard.of("standards/sdtmig/3-4")));
     }
 
@@ -150,8 +151,8 @@ class StudyValidationServiceStoreProviderTest
                 .manager(mock(IDataTableManager.class)).dataLibrary("x")
                 .metadataStore(named.toString()).build();
 
-        MetadataProvider p = StudyValidationService.tryStoreProvider(params, StandardKind.SDTM,
-                List.of(), RunStandard.of("standards/sdtmig/3-4"));
+        MetadataProvider p = tryStore(params, StandardKind.SDTM, List.of(),
+                RunStandard.of("standards/sdtmig/3-4"));
 
         assertNotNull(p, "the store named on the run's own parameters must serve the run — "
                 + "resolving the ambient store instead is the F2 precedence inversion");
@@ -195,4 +196,14 @@ class StudyValidationServiceStoreProviderTest
                 .productCatalogue(List.of("standards/sdtmig/3-4", "standards/adam/adamig-1-3"))
                 .write(file);
     }
+
+
+    /** The retired 4-argument form: the CT selection defaulted to the user's field alone (U13). */
+    private static @Nullable MetadataProvider tryStore(StudyValidationParams aParams,
+            StandardKind aKind, List<String> aProducts, RunStandard aRunStandard)
+    {
+        return StudyValidationService.tryStoreProvider(aParams, aKind, aProducts, aRunStandard,
+                CtSelection.resolve(aParams.controlledTerminologyPackages(), List.of()));
+    }
+
 }

@@ -74,7 +74,7 @@ class AllVariablesExpansionSourceTest
     {
         ExpansionDirective d = new ExpansionDirective();
         d.setToken("&VAR");
-        d.setOver(source);
+        d.setOverJson(source == null ? null : source.getJsonValue());
         return d;
     }
 
@@ -370,7 +370,7 @@ class AllVariablesExpansionSourceTest
         {
             ExpansionDirective d = new ExpansionDirective();
             d.setToken(token);
-            d.setOver(ExpansionSource.ALL_VARIABLES);
+            d.setOverJson(ExpansionSource.ALL_VARIABLES.getJsonValue());
             directives.add(d);
         }
 

@@ -4,8 +4,10 @@ import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSetter;
+import lombok.AccessLevel;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -58,6 +60,7 @@ public class ExpansionDirective
      * raw/typed binding contract of {@link Rule#getSensitivity()}.
      */
     @JsonIgnore
+    @Setter(AccessLevel.NONE)
     private @Nullable ExpansionSource over;
 
     /** Raw JSON {@code over} string, kept verbatim for load-time validation / round-trip. */
@@ -86,16 +89,6 @@ public class ExpansionDirective
      */
     @JsonProperty("known_domain_only")
     private @Nullable Boolean knownDomainOnly;
-
-    /**
-     * Typed programmatic setter; keeps {@link #rawOver} in sync (see {@link Rule#setSensitivity}).
-     */
-    public void setOver(@Nullable ExpansionSource aOver)
-    {
-        this.over = aOver;
-        this.rawOver = aOver != null ? aOver.getJsonValue() : null;
-    }
-
 
     /** Jackson binding for {@code over}: stores the raw string and the parsed enum. */
     @JsonSetter("over")

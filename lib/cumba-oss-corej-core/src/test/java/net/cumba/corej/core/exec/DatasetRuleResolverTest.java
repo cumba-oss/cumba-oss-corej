@@ -107,7 +107,8 @@ class DatasetRuleResolverTest
         r.setCore(core);
         r.setDescription("--DTC must not be empty");
         r.setSensitivity(Sensitivity.RECORD);
-        r.setExecutability(net.cumba.corej.core.model.Executability.FULLY_EXECUTABLE);
+        r.setExecutabilityJson(
+                net.cumba.corej.core.model.Executability.FULLY_EXECUTABLE.getJsonValue());
         r.setCheck(expr("empty(--DTC)"));
         Outcome outcome = new Outcome();
         outcome.setMessage("--DTC is empty");
@@ -158,7 +159,8 @@ class DatasetRuleResolverTest
         staticRule.setCore(core);
         staticRule.setDescription("--DTC must not be empty");
         staticRule.setSensitivity(Sensitivity.RECORD);
-        staticRule.setExecutability(net.cumba.corej.core.model.Executability.FULLY_EXECUTABLE);
+        staticRule.setExecutabilityJson(
+                net.cumba.corej.core.model.Executability.FULLY_EXECUTABLE.getJsonValue());
         staticRule.setCheck(expr("empty(--DTC)"));
         Outcome outcome = new Outcome();
         outcome.setMessage("--DTC is empty");

@@ -23,7 +23,7 @@ class RuleModelTest
         rule.setCore(core);
         rule.setDescription("Test rule");
         rule.setSensitivity(Sensitivity.RECORD);
-        rule.setExecutability(Executability.FULLY_EXECUTABLE);
+        rule.setExecutabilityJson(Executability.FULLY_EXECUTABLE.getJsonValue());
 
         assertEquals("uuid", rule.getId());
         assertEquals("CORE-001", rule.getCore().getId());

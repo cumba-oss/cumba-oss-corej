@@ -186,7 +186,7 @@ class CheckLevelCloneSiteTest
         tpl.setOutcome(o);
         ExpansionDirective d = new ExpansionDirective();
         d.setToken("&VAR");
-        d.setOver(ExpansionSource.SHARED_VARIABLES);
+        d.setOverJson(ExpansionSource.SHARED_VARIABLES.getJsonValue());
         d.setWith("ADSL");
         tpl.setExpansion(List.of(d));
 

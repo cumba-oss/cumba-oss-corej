@@ -299,7 +299,8 @@ class LibraryValidatorTest
     {
         Rule ok = simpleRule("OK-1");
         ok.setDescription("OK rule description");
-        ok.setExecutability(net.cumba.corej.core.model.Executability.FULLY_EXECUTABLE);
+        ok.setExecutabilityJson(
+                net.cumba.corej.core.model.Executability.FULLY_EXECUTABLE.getJsonValue());
         ok.setCheck(expr("var_exists(\"STUDYID\")"));
         // A rule carrying a load error is reported as a single ERROR result by the runner.
         Rule err = simpleRule("ERR-1");

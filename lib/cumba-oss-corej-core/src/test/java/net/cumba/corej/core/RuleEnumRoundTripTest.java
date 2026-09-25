@@ -152,7 +152,7 @@ class RuleEnumRoundTripTest
         assertEquals("Variable", loaded.getRawSensitivity());
 
         loaded.setSensitivity(null);
-        loaded.setExecutability(null);
+        loaded.setExecutabilityJson(null);
         assertNull(loaded.getRawSensitivity(), "typed null clears the raw");
         assertNull(loaded.getRawExecutability());
         assertNull(loaded.getSensitivityJson(), "no stale raw on the JSON getter");
@@ -185,7 +185,7 @@ class RuleEnumRoundTripTest
         // though no raw string was ever bound.
         Rule rule = new Rule();
         rule.setSensitivity(Sensitivity.DATASET);
-        rule.setExecutability(Executability.NOT_EXECUTABLE);
+        rule.setExecutabilityJson(Executability.NOT_EXECUTABLE.getJsonValue());
         String json = RulePackageLoader.toJson(rule);
         assertTrue(json.contains("\"Sensitivity\":\"Dataset\""), json);
         assertTrue(json.contains("\"Executability\":\"Not Executable\""), json);

@@ -72,7 +72,7 @@ class TokenExpansionRuleFieldsTest
     {
         ExpansionDirective d = new ExpansionDirective();
         d.setToken(token);
-        d.setOver(ExpansionSource.SHARED_VARIABLES);
+        d.setOverJson(ExpansionSource.SHARED_VARIABLES.getJsonValue());
         d.setWith(with);
         return d;
     }

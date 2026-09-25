@@ -582,7 +582,8 @@ class ValidationReportBuilderTest
     void executabilityIsRenderedAsPythonValueOnRuleViolation()
     {
         Rule r = rule("CDISC-CG0311");
-        r.setExecutability(Executability.PARTIALLY_EXECUTABLE_POSSIBLE_OVERREPORTING);
+        r.setExecutabilityJson(
+                Executability.PARTIALLY_EXECUTABLE_POSSIBLE_OVERREPORTING.getJsonValue());
         ValidationReport report = new ValidationReportBuilder()
                 .add("DM", "dm.xpt", r, withViolations("CDISC-CG0311", "fail", List.of(v(0))))
                 .build();
@@ -597,7 +598,7 @@ class ValidationReportBuilderTest
         // Python-parity: Issue_Details rows for engine errors carry the rule's declared
         // executability (e.g. "fully executable") just like rule-violation rows.
         Rule r = rule("CDISC-CG0311");
-        r.setExecutability(Executability.FULLY_EXECUTABLE);
+        r.setExecutabilityJson(Executability.FULLY_EXECUTABLE.getJsonValue());
         ValidationReport report = new ValidationReportBuilder()
                 .add("AE", "ae.xpt", r, errorResult("CDISC-CG0311", "boom")).build();
         ValidationFinding f = report.getMembers().get(0).getFindings().get(0);
