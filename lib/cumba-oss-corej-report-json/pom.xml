@@ -34,19 +34,12 @@
         <mockito.agent>-javaagent:${org.mockito:mockito-core:jar}</mockito.agent>
 
         <!--
-            === Quality floors, armed 2026-09-16 ===
+            === Quality floors ===
 
-            Measured cold IN THIS REPOSITORY (rm -rf ~/.pitest-history/cumba-oss-corej-report-json)
-            after the JsonReportWriterSupplierTest port: 6 mutants, 6 KILLED, 0 SURVIVED,
-            0 NO_COVERAGE, 0 TIMED_OUT, 0 RUN_ERROR -> mutation coverage 100 % (100 % counting only
-            KILLED), test strength 100 % (6 killed over 6 covered), pitest line coverage over
-            mutated classes 19/19 = 100 %, JaCoCo line coverage 19/19 = 100 %. No residuals to
-            classify.
-
-            ⚠ SIX mutants is a gate over almost nothing - the module is three small classes - so
-            treat a green here as weak evidence and read the tests, not the percentage. It is still
-            worth arming: before this, the inherited root defaults were 55 / 80 / 0 and 0.80, and a
-            test-strength floor of 0 cannot fail at any score.
+            ⚠ The module is a few small classes with only a handful of mutants, so treat a green
+            here as weak evidence and read the tests, not the percentage. It is still worth
+            arming: the inherited root defaults include a test-strength floor of 0, which cannot
+            fail at any score.
 
             The floors are NOT 100: a ratchet set at the measurement reds on the next mutant the
             tooling learns to generate, which is a gate that fails for being improved. Measured

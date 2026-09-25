@@ -35,51 +35,37 @@
             ⚠ COMMA-SEPARATED, and the first entry must not be lost: JoinCacheConcurrencyTest was
             already here. Adding a second is an append, never a replace.
 
-            StoreSeederRealDataConformanceTest added 2026-09-14 after a measured before/after
-            census of this module, cold both times, on an idle box:
-
-                            wall      mutants   killed
-              before      5047 s       15413    12947
-              with it     3636 s       15413    12941
-              excluded
-
-            23.5 minutes saved — 28% of the gate — for SIX mutants out of 15413 (0.04%). The test
-            costs that much because pitest re-runs it once per mutant it covers and it unpickles
-            ~420 MB twice; pitest's timeout is 4000 ms + 1.25x test time, so every mutant it
-            touches costs ~29 s.
+            StoreSeederRealDataConformanceTest is excluded after a cold before/after census of
+            this module: it cost a large share of the gate's wall time for a handful of kills.
+            It is that expensive because pitest re-runs it once per mutant it covers and it
+            unpickles a large store twice, and pitest's timeout is 4000 ms + 1.25x test time.
 
             ⭐⭐ EXCLUDING IT HERE DOES NOT WEAKEN VERIFICATION. The test still runs in every
             surefire pass, so the byte-identity property it exists to prove is checked on every
             build exactly as before. This only stops pitest using it as a mutant killer.
 
-            ⭐ The six it was killing were in Varint (5) and MetadataStoreWriter (4 candidates);
-            VarintTest was written in the same commit to kill its share directly. A 64-line binary
-            primitive had NO unit test and was being verified, incidentally, by the most expensive
-            test in the repository.
+            ⭐ The mutants it was killing were in Varint and MetadataStoreWriter; VarintTest was
+            written in the same commit to kill its share directly. A small binary primitive had
+            NO unit test and was being verified, incidentally, by the most expensive test in the
+            repository.
         -->
         <pitest.excludedTestClasses>net.cumba.corej.core.exec.JoinCacheConcurrencyTest,net.cumba.corej.core.metadata.store.seed.StoreSeederRealDataConformanceTest</pitest.excludedTestClasses>
         <!--
-            Mutation ratchet. The parent's defaults (55 / 80) left ~24 points of
-            slack over this module's actual score, so coverage added here could
-            erode again unnoticed.
+            Mutation ratchet. The targets sit a few points under this module's score from a
+            COLD full-module run (a warm/incremental run reuses prior verdicts and measures
+            slightly higher), so ordinary churn does not trip the gate but a real regression
+            does. A floor is never lowered - if a change drops below one, the change or its test
+            is wrong. Raise them again as coverage improves - in THIS file, never via a
+            command-line -D, which would clobber every module's override at once.
 
-            Measured 2026-08-30 on a COLD full-module run (pitest history removed,
-            machine otherwise idle): 12 018 / 14 378 mutants killed = 83.6%, line
-            coverage (mutated classes only) 21 348 / 23 413 = 91%. A cold run is
-            the honest baseline - a warm/incremental run reuses prior verdicts and
-            measures slightly higher. The targets below sit a few points under
-            each, so ordinary churn does not trip the gate but a real regression
-            does. Raise them again as coverage improves - in THIS file, never via
-            a command-line -D, which would clobber every module's override at once.
-
-            ⚠⚠ This baseline is only reachable with
+            ⚠⚠ These targets are only reachable with
             CompiledProgramCacheIsolationExtension active (see its javadoc in the
             test sources). Without it, NativeExprEvaluator's static program cache
             makes pitest attribute each ExprCompiler line to the FIRST test that
-            compiled that expression, and the identical measurement reads 82% -
-            223 phantom survivors on ExprCompiler alone. If this gate starts
-            failing after a test-infrastructure change, check that the extension
-            still loads before touching the numbers below.
+            compiled that expression, which produces phantom survivors on
+            ExprCompiler. If this gate starts failing after a test-infrastructure
+            change, check that the extension still loads before touching the
+            numbers below.
         -->
         <pitest.mutation.target>80</pitest.mutation.target>
         <pitest.coverage.target>87</pitest.coverage.target>

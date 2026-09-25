@@ -37,24 +37,22 @@
         <!--
             0.65, against a project default of 0.80.
 
-            ⚠⚠ THE HONEST NUMBERS, all from CLEAN runs (a non-clean run's jacoco.exec is
+            ⚠⚠ Read this module's coverage only from CLEAN runs: a non-clean run's jacoco.exec is
             appended to, not replaced, so it merges coverage from earlier runs whose tests no
             longer exist here — that is how an earlier reading of this value came out flattering
-            and wrong):
+            and wrong.
 
-              before the rules-module consolidation  : 0.946  (1678 covered / 1774 lines)
-              after                                  : 0.71
-
-            That is a 24-point drop, and it is not a measurement artefact. Two causes, both
+            The module's own suite reaches far less than it did before the rules-module
+            consolidation, and that drop is not a measurement artefact. Two causes, both
             structural:
 
             1. The rules-module consolidation moved this module's 22 corpus-driven test classes
                because they had to follow the corpus (leaving them needed a cross-module path
                escape; a dependency the other way is a reactor cycle). They carried most of the
                coverage of eval/, tree/, checks/, ct/ and library/ — the evaluation machinery.
-            2. Phase 6 added ~200 lines of new main code (the package format, its loader and
-               rule selection). DefineRulePackageTest and DefineConformanceSelectionTest cover
-               the behaviour that matters, but not every line.
+            2. Phase 6 added new main code (the package format, its loader and rule selection).
+               DefineRulePackageTest and DefineConformanceSelectionTest cover the behaviour that
+               matters, but not every line.
 
             ⭐ THE COVERAGE STILL EXISTS — it is measured somewhere else. Those 22 classes still
             exercise this module's code, from the rules module. JaCoCo's per-module check cannot
@@ -63,14 +61,13 @@
             to look at.
 
             ⚑ 0.65, not 0.70, by owner decision 2026-09-01. A one-point margin over the
-            measured 0.71 would have red the build on a single uncovered line and cost someone a
+            measured value would have red the build on a single uncovered line and cost someone a
             cycle for no safety gained — the per-module check is no longer the instrument that
             protects this code, so tightening it here buys nuisance rather than confidence.
 
-            ⛔ So do NOT read 0.65 as "this module is 65% tested". Read it as "0.71 is what this
-            module's OWN suite reaches, and the per-module check is no longer the right
-            instrument for it". If the aggregate ever stops covering it, this number becomes a
-            lie and the tests need to come back.
+            ⛔ So do NOT read 0.65 as "this module is 65% tested". Read it as "the per-module check
+            is no longer the right instrument for this module's OWN suite". If the aggregate ever
+            stops covering it, this number becomes a lie and the tests need to come back.
         -->
         <jacoco.line.coverage>0.93</jacoco.line.coverage>
 

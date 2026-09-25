@@ -38,14 +38,11 @@
             standalone than the work the code actually gets.
 
             Ratcheted 0.40 -> 0.75 on 2026-09-01 during the coreJ restructure.
-            The old 0.40 was set when ScenarioTrimmer's 1 539 never-executed lines sat in this
-            module's main tree; they moved to the rules module's TEST tree, taking 1 708 of
-            6 981 main lines (24%) with them. Measured immediately after the move: line coverage
-            0.8012 (1 334 / 1 665), and 0.8000 (1 332 / 1 665) after section 1 additionally
-            deleted RuleTestFactoryTest, which contributed 2 lines and 0 branches. The gate is
-            deliberately NOT set to the 0.80 parent default: the module clears it by
-            0.00 percentage points, which is one refactor away from a red build for no signal.
-            0.75 locks in the 35-point gain with real headroom.
+            The old 0.40 was set when ScenarioTrimmer's never-executed lines sat in this
+            module's main tree; they have since moved to the rules module's TEST tree. The gate
+            is deliberately NOT set to the 0.80 parent default: the module clears it only barely,
+            which is one refactor away from a red build for no signal. 0.75 locks in the gain
+            with real headroom.
         -->
         <jacoco.line.coverage>0.75</jacoco.line.coverage>
         <!--
@@ -53,7 +50,7 @@
             and mutation analysis is left to CI, so this session had no local number to raise
             them against, and raising a mutation gate on a guess reddens CI two steps
             downstream. The 40 / 35 pins below are therefore still the PRE-move figures, and are
-            understated by the same 24% of dead main lines the JaCoCo gate above was.
+            understated by the same dead main lines the JaCoCo gate above was.
             Owed: re-measure both in CI and ratchet them the same way.
         -->
         <pitest.coverage.target>40</pitest.coverage.target>
