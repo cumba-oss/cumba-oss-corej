@@ -11,7 +11,6 @@ import net.cumba.cdisc.define.Alias;
 import net.cumba.cdisc.define.CheckValue;
 import net.cumba.cdisc.define.CodeList;
 import net.cumba.cdisc.define.CodeListItem;
-import net.cumba.cdisc.define.Decode;
 import net.cumba.cdisc.define.EnumeratedItem;
 import net.cumba.cdisc.define.ItemDef;
 import net.cumba.cdisc.define.ItemGroupDef;
@@ -65,9 +64,8 @@ public final class VlmResolver
      * accessors.
      */
     public record VlmMatch(@Nullable String dataType, @Nullable Integer length,
-            @Nullable String mandatory, @Nullable String codeListOid, List<String> codedValues,
-            List<String> codedCodes, List<String> decodes, @Nullable String codelistCCode,
-            Map<String, String> codeDecodeMap)
+            @Nullable String mandatory, List<String> codedValues, List<String> codedCodes,
+            @Nullable String codelistCCode, Map<String, String> codeDecodeMap)
     {
 
         /** Defensively copies the collection components so the record is genuinely immutable. */
@@ -75,7 +73,6 @@ public final class VlmResolver
         {
             codedValues = List.copyOf(codedValues);
             codedCodes = List.copyOf(codedCodes);
-            decodes = List.copyOf(decodes);
             codeDecodeMap = Map.copyOf(codeDecodeMap);
         }
     }
@@ -236,24 +233,20 @@ public final class VlmResolver
         Integer length = vd == null ? null : vd.getLength();
         List<String> codedValues = List.of();
         List<String> codedCodes = List.of();
-        List<String> decodes = List.of();
         Map<String, String> codeDecodeMap = Map.of();
-        String codeListOid = null;
         String cCode = null;
         CodeList cl = vd != null && vd.getCodeListRef() != null
                 ? codeListsByOid.get(vd.getCodeListRef().getCodeListOID())
                 : null;
         if (cl != null)
         {
-            codeListOid = cl.getOid();
             codedValues = codedValues(cl);
             codedCodes = codedCodes(cl);
-            decodes = decodes(cl);
             codeDecodeMap = codeDecodeMap(cl);
             cCode = extCodeId(cl);
         }
-        return new VlmMatch(dataType, length, ref.getMandatory(), codeListOid, codedValues,
-                codedCodes, decodes, cCode, codeDecodeMap);
+        return new VlmMatch(dataType, length, ref.getMandatory(), codedValues, codedCodes, cCode,
+                codeDecodeMap);
     }
 
 
@@ -390,30 +383,6 @@ public final class VlmResolver
             }
         }
         return codes;
-    }
-
-
-    private static List<String> decodes(CodeList cl)
-    {
-        List<String> out = new ArrayList<>();
-        if (cl.getCodeListItems() != null)
-        {
-            for (CodeListItem it : cl.getCodeListItems())
-            {
-                String d = decode(it.getDecode());
-                if (d != null)
-                {
-                    out.add(d);
-                }
-            }
-        }
-        return out;
-    }
-
-
-    private static @Nullable String decode(@Nullable Decode decode)
-    {
-        return CodeListDecodes.decodeText(decode);
     }
 
 

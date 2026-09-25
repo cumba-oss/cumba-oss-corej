@@ -1,7 +1,6 @@
 package net.cumba.corej.core.metadata;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -50,8 +49,6 @@ class MetadataProductCatalogueTest
         MetadataProductCatalogue c = MetadataProductCatalogue.configured();
 
         assertEquals(Set.of("standards/sdtmig/3-4", "standards/adam/adamig-1-3"), c.keys());
-        assertEquals(1, c.sources().size());
-        assertTrue(c.sources().get(0).contains("metadata store"), () -> c.sources().toString());
     }
 
 
@@ -79,7 +76,6 @@ class MetadataProductCatalogueTest
         // STORE_PROPERTY cleared by the fixture; CDISC_METADATA_STORE is not set in test runs.
         MetadataProductCatalogue c = MetadataProductCatalogue.configured();
         assertEquals(Set.of(), c.keys());
-        assertEquals(List.of(), c.sources());
     }
 
 
@@ -93,32 +89,14 @@ class MetadataProductCatalogueTest
         MetadataProductCatalogue c = MetadataProductCatalogue.configured();
 
         assertEquals(Set.of(), c.keys(), "an unreadable store must degrade to an empty catalogue");
-        assertEquals(List.of(), c.sources());
     }
 
 
     @Test
-    void ofExposesKeysAndSources()
+    void ofExposesKeys()
     {
-        MetadataProductCatalogue c = MetadataProductCatalogue.of(Set.of("standards/sdtmig/3-4"),
-                List.of("metadata store /x"));
+        MetadataProductCatalogue c = MetadataProductCatalogue.of(Set.of("standards/sdtmig/3-4"));
         assertEquals(Set.of("standards/sdtmig/3-4"), c.keys());
-        assertEquals(List.of("metadata store /x"), c.sources());
     }
 
-
-    @Test
-    void theDeprecatedTwoArgOverloadIgnoresItsArguments(@TempDir Path aTemp) throws IOException
-    {
-        // The pre-P4 pickle/API overrides must not resurrect a second source: whatever a legacy
-        // caller passes, only the configured store answers.
-        Path store = writeStore(aTemp.resolve("store.zip"), List.of("standards/sendig/3-1-1"));
-        System.setProperty(StoreMetadataProviderFactory.STORE_PROPERTY, store.toString());
-
-        @SuppressWarnings("removal")
-        MetadataProductCatalogue c = MetadataProductCatalogue.configured("/some/pickle/dir",
-                "/some/api/cache");
-
-        assertEquals(Set.of("standards/sendig/3-1-1"), c.keys());
-    }
 }

@@ -86,12 +86,6 @@ final class SeedRun
     }
 
 
-    List<String> warnings()
-    {
-        return warnings;
-    }
-
-
     void warn(String aWarning)
     {
         warnings.add(aWarning);

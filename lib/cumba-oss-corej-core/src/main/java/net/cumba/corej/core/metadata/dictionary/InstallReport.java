@@ -53,13 +53,6 @@ public final class InstallReport
     }
 
 
-    /** Whether anything was written. */
-    public boolean isEmpty()
-    {
-        return installed.isEmpty();
-    }
-
-
     /** The single line a CLI prints on completion. */
     public String summary()
     {

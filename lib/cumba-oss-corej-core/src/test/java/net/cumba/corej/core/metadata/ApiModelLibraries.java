@@ -139,7 +139,7 @@ public final class ApiModelLibraries
             @Nullable String aStandardName, @Nullable String aStandardVersion)
     {
         return MetadataLibraryProvider.forStoredSdtm(aLibrary, projectSdtm(aProduct),
-                projectSdtm(aModelProduct), aStandardName, aStandardVersion);
+                projectSdtm(aModelProduct), aStandardName, aStandardVersion, null, null, null);
     }
 
 
@@ -159,14 +159,25 @@ public final class ApiModelLibraries
     }
 
 
-    /** The deleted {@code MetadataLibraryProvider(library, adamProduct, name, version)} ctor. */
+    /**
+     * The deleted {@code MetadataLibraryProvider(library, adamProduct, name, version)} ctor, and
+     * since U6 of {@code PLAN-retire-dead-multi-match-lookup} also the deleted single-product
+     * {@code forStoredAdam} factory: the product is declared under the {@code standards/...} key
+     * the standard pair implies (what an omitted {@code --metadata-products} defaults to), or a
+     * stable placeholder when the test supplied neither.
+     */
     public static MetadataLibraryProvider adamProvider(IMetadataLibrary aLibrary,
             @Nullable AdamProduct aProduct, @Nullable String aStandardName,
             @Nullable String aStandardVersion)
     {
-        return MetadataLibraryProvider.forStoredAdam(aLibrary,
-                aProduct == null ? null : ApiModelProjection.product(aProduct), aStandardName,
-                aStandardVersion);
+        String cacheKey = aStandardName == null || aStandardVersion == null
+                ? "<undeclared adam product>"
+                : MetadataProductKeys.standardsKey(aStandardName, aStandardVersion);
+        return new MetadataLibraryProvider(aLibrary,
+                aProduct == null ? List.<MetadataLibraryProvider.DeclaredAdamProduct> of()
+                        : List.of(new MetadataLibraryProvider.DeclaredAdamProduct(cacheKey,
+                                ApiModelProjection.product(aProduct))),
+                aStandardName, aStandardVersion);
     }
 
 

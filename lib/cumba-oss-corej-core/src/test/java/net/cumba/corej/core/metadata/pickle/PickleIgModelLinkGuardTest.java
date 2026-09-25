@@ -3,6 +3,8 @@ package net.cumba.corej.core.metadata.pickle;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -49,10 +51,16 @@ class PickleIgModelLinkGuardTest
     @Test
     void everySdtmFamilyIgResolvesItsModel()
     {
-        Optional<PickleCache> maybe = PickleCache.openIfConfigured();
-        assumeTrue(maybe.isPresent() && maybe.get().isAvailable(),
+        String configured = System.getProperty(PickleCache.CACHE_DIR_PROPERTY);
+        if (configured == null || configured.isBlank())
+        {
+            configured = System.getenv(PickleCache.CACHE_DIR_ENV);
+        }
+        assumeTrue(
+                configured != null && !configured.isBlank()
+                        && Files.isDirectory(Path.of(configured)),
                 "no pickle cache configured — this guard is opt-in, like FindingsSnapshotDriftTest");
-        PickleCache cache = maybe.get();
+        PickleCache cache = PickleCache.open(Path.of(configured));
 
         java.util.Set<String> modelKeys = cache.modelKeys();
         assumeTrue(!modelKeys.isEmpty(),

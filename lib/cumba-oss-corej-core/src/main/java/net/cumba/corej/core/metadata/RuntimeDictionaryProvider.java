@@ -358,13 +358,4 @@ public final class RuntimeDictionaryProvider
         return d != null && d.hasDecode(reg, code, caseSensitive);
     }
 
-
-    /** Per-term attribute lookup in {@code type}, or {@code null} when absent. */
-    public @Nullable String termAttribute(@Nullable String type, @Nullable String attr,
-            @Nullable String term)
-    {
-        ValueMapDictionary d = get(type);
-        return d != null ? d.termAttribute(attr, term) : null;
-    }
-
 }

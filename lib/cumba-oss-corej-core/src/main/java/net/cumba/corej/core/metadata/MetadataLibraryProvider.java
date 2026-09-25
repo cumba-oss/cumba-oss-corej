@@ -369,47 +369,24 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
 
     /**
-     * Constructs an SDTM-family provider over a stored IG product (cache plan §4.3.1, P3). Class
-     * hierarchy queries (model column order, standard model variables, dataset class) consult the
-     * product directly; per-table queries still flow through {@code aLibrary} so Define-XML
-     * enrichment is preserved.
+     * Constructs an SDTM-family provider over a stored IG product (cache plan §4.3.1, P3), the
+     * underlying SDTM Model product (Fix #61 — consulted only by the SUPP/SQ class-resolution
+     * branch, tier B of the A→B→C cascade; {@code null} when the Model fetch failed at runtime, so
+     * the resolver falls back to the canonical hard-coded SUPPQUAL list, tier C) and its configured
+     * {@link StoredCtPackage} (plus a loader for other packages) so the
+     * {@code get_codelist_attributes} operation can extract raw codelist/term attributes from the
+     * typed CT model. Class-hierarchy queries (standard model variables, dataset class) consult the
+     * products directly; per-table queries still flow through {@code aLibrary} so Define-XML
+     * enrichment is preserved. Used by {@code StoreMetadataProviderFactory.forSdtm}.
      *
      * <p>
-     * ⚠ A named factory, not a constructor: with both product families now typed
-     * {@link StoredProduct}, an overloaded constructor could silently wire an ADaM product into the
-     * SDTM slot. {@link #forStoredAdam} is the ADaM counterpart.
+     * ⚠ A named factory, not a constructor: with both product families typed {@link StoredProduct},
+     * an overloaded constructor could silently wire an ADaM product into the SDTM slot; the ADaM
+     * counterpart is the {@link DeclaredAdamProduct} list constructor. ⚑ The IG-only and
+     * IG-plus-Model overloads and the single-product {@code forStoredAdam} had no production caller
+     * and were retired (PLAN-retire-dead-multi-match-lookup U6, D-B5, 2026-09-25); tests that want
+     * them build the arguments themselves.
      * </p>
-     */
-    public static MetadataLibraryProvider forStoredSdtm(IMetadataLibrary aLibrary,
-            @Nullable StoredProduct aProduct, @Nullable String aStandardName,
-            @Nullable String aStandardVersion)
-    {
-        return new MetadataLibraryProvider(aLibrary, aProduct, null, List.of(), aStandardName,
-                aStandardVersion, false, null, null, null);
-    }
-
-
-    /**
-     * Fix #61: constructs a provider with both the SDTM-IG product and the underlying SDTM Model
-     * product. The Model is consulted only by the SUPP/SQ class-resolution branch (tier B in the
-     * A→B→C cascade); other queries continue to use the IG. {@code aModelProduct} may be
-     * {@code null} when the Model fetch failed at runtime — the resolver then uses the canonical
-     * hard-coded SUPPQUAL list (tier C) so SUPP/SQ rules still execute.
-     */
-    public static MetadataLibraryProvider forStoredSdtm(IMetadataLibrary aLibrary,
-            @Nullable StoredProduct aProduct, @Nullable StoredProduct aModelProduct,
-            @Nullable String aStandardName, @Nullable String aStandardVersion)
-    {
-        return new MetadataLibraryProvider(aLibrary, aProduct, aModelProduct, List.of(),
-                aStandardName, aStandardVersion, false, null, null, null);
-    }
-
-
-    /**
-     * Fix: constructs an SDTM provider that additionally carries its configured
-     * {@link StoredCtPackage} (and a loader for other packages) so the
-     * {@code get_codelist_attributes} operation can extract raw codelist/term attributes from the
-     * typed CT model. Used by {@code StoreMetadataProviderFactory.forSdtm}.
      *
      * @param aCtPackageId
      *            the configured CT package id (may be {@code null})
@@ -430,27 +407,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
 
     /**
-     * Constructs an ADaM-family provider over a single stored product, declared under the cache key
-     * implied by the standard pair — the {@link StoredProduct}-typed counterpart of the deleted
-     * api-model {@code AdamProduct} constructor (see {@link #forStoredSdtm} for why these are named
-     * factories rather than overloaded constructors).
-     */
-    public static MetadataLibraryProvider forStoredAdam(IMetadataLibrary aLibrary,
-            @Nullable StoredProduct aProduct, @Nullable String aStandardName,
-            @Nullable String aStandardVersion)
-    {
-        return new MetadataLibraryProvider(aLibrary, null, null,
-                aProduct == null ? List.<DeclaredAdamProduct> of()
-                        : List.of(new DeclaredAdamProduct(
-                                derivedCacheKey(aStandardName, aStandardVersion), aProduct)),
-                aStandardName, aStandardVersion, false, null, null, null);
-    }
-
-
-    /**
      * Constructs a provider over an <b>ordered list</b> of declared ADaM products (first-match-wins
-     * on the user's precedence order — ruling 1). The single-product constructor above is the
-     * {@code List.of(...)} special case.
+     * on the user's precedence order — ruling 1).
      *
      * @param aProducts
      *            the declared products with their cache keys, highest precedence first; may be
@@ -461,22 +419,6 @@ public final class MetadataLibraryProvider implements MetadataProvider
     {
         this(aLibrary, null, null, aProducts, aStandardName, aStandardVersion, false, null, null,
                 null);
-    }
-
-
-    /**
-     * The {@code standards/...} cache key implied by a single-product constructor's standard name
-     * and version (the same key an omitted {@code --metadata-products} defaults to), or a stable
-     * placeholder when the caller supplied neither.
-     */
-    private static String derivedCacheKey(@Nullable String aStandardName,
-            @Nullable String aStandardVersion)
-    {
-        if (aStandardName == null || aStandardVersion == null)
-        {
-            return "<undeclared adam product>";
-        }
-        return MetadataProductKeys.standardsKey(aStandardName, aStandardVersion);
     }
 
 

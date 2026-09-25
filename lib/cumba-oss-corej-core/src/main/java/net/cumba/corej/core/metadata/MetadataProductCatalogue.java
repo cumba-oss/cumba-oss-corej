@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Set;
 import lombok.CustomLog;
 import net.cumba.corej.core.metadata.store.MetadataStore;
@@ -39,41 +38,9 @@ public final class MetadataProductCatalogue
 
     private final Set<String> keys;
 
-    private final List<String> sources;
-
-    private MetadataProductCatalogue(Set<String> aKeys, List<String> aSources)
+    private MetadataProductCatalogue(Set<String> aKeys)
     {
         keys = Collections.unmodifiableSet(new LinkedHashSet<>(aKeys));
-        sources = List.copyOf(aSources);
-    }
-
-
-    /**
-     * The catalogue for the current configuration: the unified metadata store named by
-     * {@code CDISC_METADATA_STORE} / {@code cdisc.metadata.store}, or an empty catalogue when none
-     * is configured or the store cannot be read. Deliberately unmemoised — see the class javadoc.
-     *
-     * @param aIgnoredPickleDir
-     *            pre-P4 pickle-cache override; ignored since cache P4 cut the pickle source.
-     *            Retained so the P4b cross-repo lane can migrate callers deliberately rather than
-     *            under a compile error; passing a value has no effect.
-     * @param aIgnoredApiCacheDir
-     *            pre-P4 API-cache override; ignored likewise.
-     * @return the configured catalogue (possibly empty)
-     */
-    // [InlineMeSuggester] suppressed rather than obeyed (plan D9). @InlineMe would need
-    // com.google.errorprone:error_prone_annotations as a COMPILE dependency of a published
-    // artifact — Error Prone reaches this build only through the annotation-processor path — to
-    // buy an automated rewrite of two ignored arguments. It would also be the wrong instruction:
-    // the arguments are dropped, not forwarded, so inlining silently discards whatever expression
-    // a caller computed for them, and this overload exists precisely so the cross-repo callers can
-    // be migrated deliberately rather than under a compile error (see the @param text).
-    @SuppressWarnings("InlineMeSuggester")
-    @Deprecated(since = "cache P4", forRemoval = true)
-    public static MetadataProductCatalogue configured(@Nullable String aIgnoredPickleDir,
-            @Nullable String aIgnoredApiCacheDir)
-    {
-        return configured();
     }
 
 
@@ -105,12 +72,11 @@ public final class MetadataProductCatalogue
         Path store = StoreMetadataProviderFactory.resolveConfiguredFile(aExplicitStore);
         if (store == null)
         {
-            return new MetadataProductCatalogue(Set.of(), List.of());
+            return new MetadataProductCatalogue(Set.of());
         }
         try (MetadataStore opened = MetadataStore.open(store))
         {
-            return new MetadataProductCatalogue(new LinkedHashSet<>(opened.productCatalogue()),
-                    List.of("metadata store " + store));
+            return new MetadataProductCatalogue(new LinkedHashSet<>(opened.productCatalogue()));
         }
         catch (IOException | RuntimeException e)
         {
@@ -118,23 +84,24 @@ public final class MetadataProductCatalogue
                     "Metadata store {0} unavailable for --metadata-products resolution ({1}); "
                             + "only full-form keys will resolve.",
                     store, String.valueOf(e));
-            return new MetadataProductCatalogue(Set.of(), List.of());
+            return new MetadataProductCatalogue(Set.of());
         }
     }
 
 
     /**
-     * A catalogue over an explicit key set — the seam tests construct directly.
+     * A catalogue over an explicit key set — the seam tests construct directly. ⚑ It used to take a
+     * list of human-readable source names too; no message ever named them (the resolver's not-found
+     * text deliberately does not say which source was consulted), so the accessor and the plumbing
+     * went with PLAN-retire-dead-multi-match-lookup U6 (D-B2 / D-B4, 2026-09-25).
      *
      * @param aKeys
      *            {@code standards/...} keys
-     * @param aSources
-     *            human-readable source names, for messages
      * @return the catalogue
      */
-    public static MetadataProductCatalogue of(Set<String> aKeys, List<String> aSources)
+    public static MetadataProductCatalogue of(Set<String> aKeys)
     {
-        return new MetadataProductCatalogue(aKeys, aSources);
+        return new MetadataProductCatalogue(aKeys);
     }
 
 
@@ -144,10 +111,4 @@ public final class MetadataProductCatalogue
         return keys;
     }
 
-
-    /** Human-readable source names, for failure messages ("resolved against …"). */
-    public List<String> sources()
-    {
-        return sources;
-    }
 }

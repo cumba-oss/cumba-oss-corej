@@ -1,8 +1,6 @@
 package net.cumba.corej.core.metadata;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -89,10 +87,6 @@ class ValueMapDictionaryTest
         // NEOPLASM attribute alignment resolves through codeDecodePair over the attributes map.
         assertTrue(p.codeDecodePair("neoplasm", "neoplasm", "Adenoma", "BENIGN", true));
         assertFalse(p.codeDecodePair("neoplasm", "neoplasm", "Carcinoma", "BENIGN", true));
-        // termAttribute keeps its folded probe, so an upper-case term still resolves there.
-        assertEquals("BENIGN", p.termAttribute("neoplasm", "neoplasm", "ADENOMA"));
-        assertNull(p.termAttribute("neoplasm", "neoplasm", "NOSUCH"));
-        assertNull(p.termAttribute("nosuch", "neoplasm", "ADENOMA"));
     }
 
 
@@ -212,12 +206,6 @@ class ValueMapDictionaryTest
         assertFalse(h.onHierarchyPath("unknown", "parent", true), "term with no parents ⇒ false");
         assertFalse(h.onHierarchyPath("unknown", "parent", false),
                 "term with no parents ⇒ false (folded)");
-        // termAttribute null-argument and missing-map guards.
-        ValueMapDictionary a = ValueMapDictionary.parse(MAPPER
-                .readTree("{\"type\":\"x\",\"attributes\":{\"class\":{\"adenoma\":\"BENIGN\"}}}"));
-        assertNull(a.termAttribute(null, "adenoma"), "null attr ⇒ null");
-        assertNull(a.termAttribute("class", null), "null term ⇒ null");
-        assertNull(a.termAttribute("nosuch", "adenoma"), "absent attribute map ⇒ null");
     }
 
 

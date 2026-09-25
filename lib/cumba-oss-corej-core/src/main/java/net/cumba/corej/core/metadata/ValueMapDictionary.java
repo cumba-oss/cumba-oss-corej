@@ -529,20 +529,4 @@ public final class ValueMapDictionary
         return false;
     }
 
-
-    /**
-     * Per-term attribute lookup (e.g. NEOPLASM benign/malignant class), or {@code null}. The probe
-     * stays case-folded — no operation exposes this lookup today, and its established contract is
-     * the folded index.
-     */
-    public @Nullable String termAttribute(@Nullable String attr, @Nullable String term)
-    {
-        if (attr == null || term == null)
-        {
-            return null;
-        }
-        Map<String, String> m = attributesFolded.get(attr);
-        return m != null ? m.get(upper(term)) : null;
-    }
-
 }

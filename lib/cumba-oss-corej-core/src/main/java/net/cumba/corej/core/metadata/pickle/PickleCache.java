@@ -23,10 +23,10 @@ import org.jspecify.annotations.Nullable;
  * the Python oracle uses — with no API key and no network.
  *
  * <p>
- * The cache directory is <b>explicit</b> (decision: no default). {@link #openIfConfigured()} reads
- * the {@code cdisc.pickle.cache.dir} system property or {@code CDISC_PICKLE_CACHE_DIR} environment
- * variable and returns {@link Optional#empty()} when neither is set, so callers degrade gracefully
- * exactly as they do today when no Library access is configured.
+ * The cache directory is <b>explicit</b> (decision: no default): {@link #open(Path)} takes it.
+ * {@link #CACHE_DIR_PROPERTY} / {@link #CACHE_DIR_ENV} are the keys the test-side locators resolve
+ * it from; the engine itself no longer reads them (the {@code openIfConfigured()} convenience had
+ * no production caller and was retired with PLAN-retire-dead-multi-match-lookup U6, 2026-09-25).
  * </p>
  *
  * <p>
@@ -85,34 +85,6 @@ public final class PickleCache
 
 
     /**
-     * Opens a reader from the {@code cdisc.pickle.cache.dir} system property or
-     * {@code CDISC_PICKLE_CACHE_DIR} environment variable.
-     *
-     * @return the reader, or empty when neither is configured (no default — callers degrade).
-     */
-    public static Optional<PickleCache> openIfConfigured()
-    {
-        String configured = System.getProperty(CACHE_DIR_PROPERTY);
-        if (configured == null || configured.isBlank())
-        {
-            configured = System.getenv(CACHE_DIR_ENV);
-        }
-        if (configured == null || configured.isBlank())
-        {
-            return Optional.empty();
-        }
-        return Optional.of(open(Path.of(configured)));
-    }
-
-
-    /** The configured cache directory. */
-    public Path directory()
-    {
-        return dir;
-    }
-
-
-    /**
      * Enumerates the published controlled-terminology package names from the cache directory,
      * mirroring the Python engine's offline enumeration ({@code script_utils.py}): every cache file
      * whose name contains {@code "ct-"} (e.g. {@code sdtmct-2020-03-27.pkl}) contributes its stem
@@ -163,13 +135,6 @@ public final class PickleCache
     public Set<String> modelKeys()
     {
         return Collections.unmodifiableSet(new LinkedHashSet<>(load(MODELS_FILE).keySet()));
-    }
-
-
-    /** Whether the cache directory exists on disk (useful for test {@code assumeTrue} guards). */
-    public boolean isAvailable()
-    {
-        return Files.isDirectory(dir);
     }
 
 

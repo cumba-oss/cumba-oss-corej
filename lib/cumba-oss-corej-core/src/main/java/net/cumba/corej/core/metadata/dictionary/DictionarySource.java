@@ -30,13 +30,6 @@ public interface DictionarySource extends AutoCloseable
     String provenance();
 
 
-    /** The vendor's release identifier, when the source knows it before parsing. */
-    default String version()
-    {
-        return "";
-    }
-
-
     /**
      * The raw artefacts this source materialised, for the store's {@code SOURCES.md} provenance
      * record — populated by {@link #resolve()}, so empty before it has run, and empty for a local

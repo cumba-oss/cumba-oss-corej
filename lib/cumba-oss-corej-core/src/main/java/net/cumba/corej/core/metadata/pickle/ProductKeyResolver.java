@@ -130,24 +130,6 @@ public final class ProductKeyResolver
 
 
     /**
-     * Resolves every token in order, or throws with <b>all</b> failures listed at once — a user
-     * with three bad tokens sees three messages, not one per attempt.
-     *
-     * @param tokens
-     *            the user tokens, in precedence order
-     * @param standardKeys
-     *            the {@link PickleCache#standardKeys()} set; empty when no cache is configured
-     * @return the resolved cache keys, in the same order, duplicates removed (first wins)
-     * @throws IllegalArgumentException
-     *             when any token fails to resolve; the message lists every failure
-     */
-    public static List<String> resolveAll(List<String> tokens, Set<String> standardKeys)
-    {
-        return resolveAll(tokens, MetadataProductCatalogue.of(standardKeys, List.of()));
-    }
-
-
-    /**
      * Resolves every token in order against {@code catalogue}, or throws with <b>all</b> failures
      * listed at once. A not-found token's message explains why it did not resolve — no catalogue
      * available, a TIG token the store does not hold (TIG enters a store only via pickle seeding),

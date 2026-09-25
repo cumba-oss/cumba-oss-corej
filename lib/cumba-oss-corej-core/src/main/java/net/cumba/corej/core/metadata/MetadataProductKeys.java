@@ -27,11 +27,12 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * ⭐ <b>§7-0 (owner ruling 2026-08-28): the library layer follows the FIRST declared product of the
- * run's own family.</b> {@link #firstSdtmLoader(List)} and {@link #firstAdamFamilyKey(List)} are
- * that selection, shared by {@code StoreMetadataProviderFactory} and
- * {@code StudyValidationService.tryStoreProvider} (since cache 8g the store is the only source; the
- * corpus-test pickle factory that also shared it is deleted). {@code CompanionSdtmDefaults}
- * delegates its SDTM-family detection here for the same reason.
+ * run's own family.</b> {@link #firstSdtmLoader(List)} is that selection, shared by
+ * {@code StoreMetadataProviderFactory} and {@code StudyValidationService.tryStoreProvider} (since
+ * cache 8g the store is the only source; the corpus-test pickle factory that also shared it is
+ * deleted; the ADaM-side {@code firstAdamFamilyKey} had no caller and was retired with
+ * PLAN-retire-dead-multi-match-lookup U6 — the ADaM layer takes every declared product in order).
+ * {@code CompanionSdtmDefaults} delegates its SDTM-family detection here for the same reason.
  * </p>
  */
 public final class MetadataProductKeys
@@ -239,27 +240,6 @@ public final class MetadataProductKeys
             if (loader != null)
             {
                 return loader;
-            }
-        }
-        return null;
-    }
-
-
-    /**
-     * §7-0 — the <b>first</b> ADaM-family key in the user's precedence order, or {@code null} when
-     * none is declared.
-     *
-     * @param aKeys
-     *            resolved {@code standards/...} cache keys in the user's precedence order
-     * @return the first ADaM-family key (canonicalised), or {@code null}
-     */
-    public static @Nullable String firstAdamFamilyKey(List<String> aKeys)
-    {
-        for (String key : aKeys)
-        {
-            if (key != null && isAdamFamily(key))
-            {
-                return canonical(key);
             }
         }
         return null;

@@ -255,7 +255,7 @@ class HttpArchivePickleSourceTest
                 "resources/cache", null, work.resolve("out")))
         {
             s.resolve();
-            assertEquals("trunk", s.resolvedRef().orElse(null));
+            assertEquals(baseUri + "@trunk (" + HEAD_SHA + ")", s.provenance().orElseThrow());
         }
     }
 
@@ -271,8 +271,8 @@ class HttpArchivePickleSourceTest
                 "resources/cache", null, work.resolve("out")))
         {
             s.resolve();
-            assertEquals("HEAD", s.resolvedRef().orElse(null));
-            assertTrue(s.resolvedSha().isEmpty(), "no object id was advertised");
+            assertEquals(baseUri + "@HEAD", s.provenance().orElseThrow(),
+                    "the literal HEAD ref, and no object id was advertised");
         }
     }
 
@@ -302,7 +302,7 @@ class HttpArchivePickleSourceTest
             report = new PickleCacheSeeder().seed(SeedOptions
                     .builder(s, work.resolve("cache"), "https://api.library.cdisc.org/api/")
                     .build());
-            assertEquals(HEAD_SHA, s.resolvedSha().orElse(null));
+            assertEquals(baseUri + "@trunk (" + HEAD_SHA + ")", s.provenance().orElseThrow());
         }
 
         assertEquals(baseUri + "@trunk (" + HEAD_SHA + ")", report.sourceRef());
@@ -329,7 +329,7 @@ class HttpArchivePickleSourceTest
             report = new PickleCacheSeeder().seed(SeedOptions
                     .builder(s, work.resolve("cache"), "https://api.library.cdisc.org/api/")
                     .build());
-            assertTrue(s.resolvedSha().isEmpty());
+            assertEquals(baseUri + "@main", s.provenance().orElseThrow());
         }
 
         assertEquals(baseUri + "@main", report.sourceRef());

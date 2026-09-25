@@ -142,36 +142,6 @@ public final class HttpArchivePickleSource implements PickleSource
     }
 
 
-    /**
-     * The ref actually fetched — the supplied one, or the discovered default branch.
-     *
-     * @return the ref, or empty before {@link #resolve()} has run.
-     */
-    public Optional<String> resolvedRef()
-    {
-        return Optional.ofNullable(resolvedRef);
-    }
-
-
-    /**
-     * The commit id the fetched archive came from, when it could be established.
-     *
-     * <p>
-     * It comes from the ref advertisement, which is only requested when no explicit ref was given —
-     * so a caller that pins a ref gets an empty result here. That is the honest answer: the archive
-     * endpoint returns no commit id of its own, and inventing one from the ref name would record
-     * provenance that was never verified.
-     * </p>
-     *
-     * @return the 40-character commit id, or empty before {@link #resolve()} has run, when an
-     *         explicit ref was supplied, or when the server advertised no {@code HEAD} object id.
-     */
-    public Optional<String> resolvedSha()
-    {
-        return Optional.ofNullable(resolvedSha);
-    }
-
-
     @Override
     public Optional<String> provenance()
     {

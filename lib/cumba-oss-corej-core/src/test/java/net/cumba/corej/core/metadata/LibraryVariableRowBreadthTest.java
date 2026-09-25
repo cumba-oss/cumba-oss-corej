@@ -163,7 +163,7 @@ class LibraryVariableRowBreadthTest
         }
         IMetadataLibrary study = builder.build();
         return MetadataLibraryProvider.forStoredSdtm(study, igProduct(), modelProduct(), "sdtmig",
-                "3-4");
+                "3-4", null, null, null);
     }
 
 
@@ -280,7 +280,9 @@ class LibraryVariableRowBreadthTest
 
         // ADaM is the other route, and symmetrically carries no `role` at all.
         IMetadataLibrary study = lib("study").table(table("ADSL").build()).build();
-        MetadataLibraryProvider adam = MetadataLibraryProvider.forStoredAdam(study, adamProduct(),
+        MetadataLibraryProvider adam = new MetadataLibraryProvider(study,
+                List.of(new MetadataLibraryProvider.DeclaredAdamProduct(
+                        MetadataProductKeys.standardsKey("adamig", "1-3"), adamProduct())),
                 "adamig", "1-3");
         List<Map<String, String>> adamRows = adam.getStandardModelVariablesDetailed(mock("ADSL"),
                 null);

@@ -119,8 +119,9 @@ class ProductKeyResolverTest
     @Test
     void resolveAllPreservesOrderAndDeduplicates()
     {
-        List<String> out = ProductKeyResolver
-                .resolveAll(List.of("adam-occds-1-1", "adamig-1.3", "adam/adam-occds-1-1"), KEYS);
+        List<String> out = ProductKeyResolver.resolveAll(
+                List.of("adam-occds-1-1", "adamig-1.3", "adam/adam-occds-1-1"),
+                MetadataProductCatalogue.of(KEYS));
         assertEquals(List.of("standards/adam/adam-occds-1-1", "standards/adam/adamig-1-3"), out);
     }
 
@@ -131,7 +132,8 @@ class ProductKeyResolverTest
         Set<String> keys = new LinkedHashSet<>(
                 List.of("standards/adam/x-1-0", "standards/sendig/x-1-0"));
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> ProductKeyResolver.resolveAll(List.of("nope-1", "x-1-0", "nope-2"), keys));
+                () -> ProductKeyResolver.resolveAll(List.of("nope-1", "x-1-0", "nope-2"),
+                        MetadataProductCatalogue.of(keys)));
         // All three bad tokens are named in the single message.
         assertTrue(e.getMessage().contains("nope-1"), e.getMessage());
         assertTrue(e.getMessage().contains("x-1-0"), e.getMessage());
@@ -143,7 +145,8 @@ class ProductKeyResolverTest
     void resolveAllWithNoCacheNamesTheMissingStoreReason()
     {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> ProductKeyResolver.resolveAll(List.of("adamig-1-3"), Set.of()));
+                () -> ProductKeyResolver.resolveAll(List.of("adamig-1-3"),
+                        MetadataProductCatalogue.of(Set.of())));
         assertTrue(e.getMessage().contains("no unified metadata store"), e.getMessage());
     }
 
@@ -164,7 +167,7 @@ class ProductKeyResolverTest
     {
         // No source available at all: full-form tokens pass verbatim, bare suffixes error with
         // the no-catalogue reason.
-        MetadataProductCatalogue none = MetadataProductCatalogue.of(Set.of(), List.of());
+        MetadataProductCatalogue none = MetadataProductCatalogue.of(Set.of());
         assertEquals(List.of("standards/adam/adamig-1-3"),
                 ProductKeyResolver.resolveAll(List.of("adam/adamig-1-3"), none));
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
@@ -176,8 +179,7 @@ class ProductKeyResolverTest
     @Test
     void aStoreCatalogueResolvesABareToken()
     {
-        MetadataProductCatalogue store = MetadataProductCatalogue.of(KEYS,
-                List.of("metadata store"));
+        MetadataProductCatalogue store = MetadataProductCatalogue.of(KEYS);
         assertEquals(List.of("standards/adam/adamig-1-3"),
                 ProductKeyResolver.resolveAll(List.of("adamig-1-3"), store));
     }
@@ -189,7 +191,7 @@ class ProductKeyResolverTest
         // TIG enters the store only via pickle seeding; a store seeded from the API alone lacks
         // it. The failure must state that reason, not present a mysterious not-found.
         MetadataProductCatalogue apiSeeded = MetadataProductCatalogue
-                .of(Set.of("standards/sdtmig/3-4"), List.of("metadata store x"));
+                .of(Set.of("standards/sdtmig/3-4"));
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                 () -> ProductKeyResolver.resolveAll(List.of("tig/1-0/adam"), apiSeeded));
         assertTrue(e.getMessage().contains("TIG"), e.getMessage());

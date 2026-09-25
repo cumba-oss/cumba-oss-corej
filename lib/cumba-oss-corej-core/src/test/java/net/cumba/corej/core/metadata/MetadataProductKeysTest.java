@@ -82,9 +82,7 @@ class MetadataProductKeysTest
         List<String> keys = List.of("standards/adam/adam-occds-1-1", "standards/sendig/3-1-1",
                 "standards/sdtmig/3-4", "standards/tig/1-0/adam");
         assertEquals(new SdtmLoader("sendig", "3-1-1"), MetadataProductKeys.firstSdtmLoader(keys));
-        assertEquals("standards/adam/adam-occds-1-1", MetadataProductKeys.firstAdamFamilyKey(keys));
         assertNull(MetadataProductKeys.firstSdtmLoader(List.of("standards/adam/adamig-1-3")));
-        assertNull(MetadataProductKeys.firstAdamFamilyKey(List.of("standards/sdtmig/3-4")));
     }
 
 
@@ -93,8 +91,6 @@ class MetadataProductKeysTest
     {
         assertEquals("adamig-1-3",
                 MetadataProductKeys.adamProductIdOf(" Standards/Adam/ADAMIG-1-3 "));
-        assertEquals("standards/tig/1-0/adam",
-                MetadataProductKeys.firstAdamFamilyKey(List.of(" STANDARDS/TIG/1-0/ADAM ")));
     }
 
 
