@@ -19,7 +19,6 @@ import java.util.Optional;
 import java.util.SequencedSet;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 import lombok.CustomLog;
@@ -393,9 +392,8 @@ public final class StudyValidationService
 
         LibraryValidator.Builder vb = LibraryValidator.builder().provider(provider)
                 .defineProvider(defineProvider).vlmResolver(vlmResolver)
-                .dictionaryProvider(dictionaryProvider).rules(rules)
-                .libraryUri(dataLibrary.getUri()).sequential(true).ruleThreads(params.ruleThreads())
-                .maxErrorsPerRule(params.maxErrorsPerRule())
+                .dictionaryProvider(dictionaryProvider).rules(rules).sequential(true)
+                .ruleThreads(params.ruleThreads()).maxErrorsPerRule(params.maxErrorsPerRule())
                 .severityThreshold(params.severityThreshold()).runtimeListener(listener)
                 .crossStandardDatasets(crossStandard).taskDecorator(params.taskDecorator());
         if (progress != null)
@@ -1183,7 +1181,7 @@ public final class StudyValidationService
                 ctSelection);
         if (stored != null)
         {
-            return maybeWrapCompanion(stored, params, kind, effectiveProducts, null);
+            return maybeWrapCompanion(stored, params, kind, effectiveProducts);
         }
         // The offline pickle leg that used to sit here (tryPickleProvider) was deleted by cache
         // 8g, once the rules repository's harness moved onto the store: the unified metadata store
@@ -1198,7 +1196,7 @@ public final class StudyValidationService
                     runStandard.standard());
             return maybeWrapCompanion(
                     new MetadataLibraryProvider(requireMetadataLibrary(manager, library)), params,
-                    kind, effectiveProducts, null);
+                    kind, effectiveProducts);
         }
         // R2: no store configured, or the configured one cannot serve this run. Degrade loudly —
         // library-dependent rules SKIP with this cause — instead of falling back to the network
@@ -1212,7 +1210,7 @@ public final class StudyValidationService
                         + " / "
                         + net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory.STORE_PROPERTY
                         + " and seed it); library-dependent rules will SKIP"));
-        return maybeWrapCompanion(degraded, params, kind, effectiveProducts, null);
+        return maybeWrapCompanion(degraded, params, kind, effectiveProducts);
     }
 
 
@@ -1340,16 +1338,10 @@ public final class StudyValidationService
      *            the run parameters (standard / version / declared metadata products).
      * @param kind
      *            the resolved {@link StandardKind}.
-     * @param apiLoader
-     *            extra fallback companion loader consulted after the store leg; {@code null} in
-     *            production since cache P4 cut the CDISC Library API path (the parameter survives
-     *            as the injection seam existing tests — including the rules repository's companion
-     *            test — drive this method through).
      * @return {@code base}, or a {@link CompanionDomainsProvider} wrapping it.
      */
     static MetadataProvider maybeWrapCompanion(MetadataProvider base, StudyValidationParams params,
-            StandardKind kind, List<String> effectiveProducts,
-            @Nullable Function<CompanionSdtmDefaults.Companion, @Nullable MetadataProvider> apiLoader)
+            StandardKind kind, List<String> effectiveProducts)
     {
         boolean adamFamily = kind == StandardKind.ADAM || isTigAdamRun(effectiveProducts);
         if (!adamFamily)
@@ -1368,13 +1360,12 @@ public final class StudyValidationService
             return base;
         }
         // ⚑ The Q-12d "defaulted to the newest SDTMIG" warning lived here. R10 deleted the
-        // fallback itself, so nothing can set Companion.defaulted() any more and the branch went
-        // with it; a run with no declared companion is reported above, before this point.
+        // fallback itself, so a run with no declared companion is reported above, before this
+        // point. The store is the only companion source: the API fallback loader that followed it
+        // was a parameter every production caller passed as null, retired with
+        // PLAN-retire-dead-multi-match-lookup U11 (C40) together with the record's log-only
+        // defaulted / declared flags (C41 — every companion is a declared product since R10).
         MetadataProvider companion = companionFromStore(c, params.metadataStore());
-        if (companion == null && apiLoader != null)
-        {
-            companion = apiLoader.apply(c);
-        }
         if (companion == null)
         {
             LOGGER.log(System.Logger.Level.WARNING,
@@ -1382,23 +1373,13 @@ public final class StudyValidationService
                     c.display());
             return base;
         }
-        // Q-12g: surface the effective companion version and where it came from. ⚠ A user's own
-        // --metadata-products declaration must not be reported as a "house default mapping":
-        // ruling 6 makes the table a fallback, and the log has to say which branch answered.
-        LOGGER.log(System.Logger.Level.INFO, "Companion SDTM domains for standard_domains: {0}{1}.",
-                c.display(), companionOrigin(c));
+        // Q-12g: surface the effective companion version and where it came from. Since R10 there
+        // is one answer — a declared metadata product (typed by the user or contributed by the
+        // selected rules package) — so the log says so unconditionally.
+        LOGGER.log(System.Logger.Level.INFO,
+                "Companion SDTM domains for standard_domains: {0} (declared metadata product).",
+                c.display());
         return new CompanionDomainsProvider(base, companion);
-    }
-
-
-    /** How the companion in {@code aCompanion} was chosen, for the run log. */
-    private static String companionOrigin(CompanionSdtmDefaults.Companion aCompanion)
-    {
-        if (aCompanion.declared())
-        {
-            return " (declared metadata product)";
-        }
-        return aCompanion.defaulted() ? " (defaulted)" : " (house default mapping)";
     }
 
 
@@ -1614,10 +1595,10 @@ public final class StudyValidationService
     /**
      * Loads the companion SDTM product from the configured unified metadata store, else
      * {@code null} — since cache 8g the only offline companion source (the pickle leg that used to
-     * follow it is deleted), ahead of the {@code apiLoader} test seam. {@code aExplicitStore} is
-     * the run's own {@link StudyValidationParams#metadataStore()}, so the companion is read from
-     * the SAME store {@link #tryStoreProvider} served the run from — never from an ambient
-     * {@code CDISC_METADATA_STORE} outranking the store the caller named (F2).
+     * follow it is deleted, and so is the API fallback loader that used to come after it).
+     * {@code aExplicitStore} is the run's own {@link StudyValidationParams#metadataStore()}, so the
+     * companion is read from the SAME store {@link #tryStoreProvider} served the run from — never
+     * from an ambient {@code CDISC_METADATA_STORE} outranking the store the caller named (F2).
      */
     static @Nullable MetadataProvider companionFromStore(CompanionSdtmDefaults.Companion c,
             @Nullable String aExplicitStore)

@@ -106,9 +106,8 @@ class LibraryValidatorStudySensitivityTest
     void studyRuleFiringOnMultipleDatasetsCollapsesToOneStudyFinding()
     {
         ValidationReport report = LibraryValidator.builder().provider(providerWithDmAndAe())
-                .rules(List.of(studyRuleFiring())).libraryUri("file:///study/dm.xpt")
-                .targetDataset("DM", "dm.xpt", dmFiring()).targetDataset("AE", "ae.xpt", aeFiring())
-                .validate();
+                .rules(List.of(studyRuleFiring())).targetDataset("DM", "dm.xpt", dmFiring())
+                .targetDataset("AE", "ae.xpt", aeFiring()).validate();
 
         // Exactly one report member is labelled STUDY, and it carries the collapsed finding.
         List<ValidationReportMember> studyMembers = report.getMembers().stream()
@@ -134,9 +133,8 @@ class LibraryValidatorStudySensitivityTest
     void studyRuleAppearsExactlyOnceInExecutionSummariesUnderStudy()
     {
         LibraryValidator validator = LibraryValidator.builder().provider(providerWithDmAndAe())
-                .rules(List.of(studyRuleFiring())).libraryUri("file:///study/dm.xpt")
-                .targetDataset("DM", "dm.xpt", dmFiring()).targetDataset("AE", "ae.xpt", aeFiring())
-                .build();
+                .rules(List.of(studyRuleFiring())).targetDataset("DM", "dm.xpt", dmFiring())
+                .targetDataset("AE", "ae.xpt", aeFiring()).build();
         validator.validate();
 
         List<DatasetExecutionSummary> summaries = validator.getExecutionSummaries();
@@ -191,9 +189,8 @@ class LibraryValidatorStudySensitivityTest
 
         // No .defineProvider(...) → the define-dependent rule is SKIPPED on both datasets.
         ValidationReport report = LibraryValidator.builder().provider(providerWithDmAndAe())
-                .rules(List.of(r)).libraryUri("file:///study/dm.xpt")
-                .targetDataset("DM", "dm.xpt", dmFiring()).targetDataset("AE", "ae.xpt", aeFiring())
-                .validate();
+                .rules(List.of(r)).targetDataset("DM", "dm.xpt", dmFiring())
+                .targetDataset("AE", "ae.xpt", aeFiring()).validate();
 
         // Exactly one collapsed SKIPPED result, labelled STUDY — not one per dataset.
         List<SkippedRuleEntry> studySkips = report.getSkippedRules().stream()

@@ -32,10 +32,12 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * Rule violations become {@link ValidationFinding}s with {@link FindingKind#RULE_VIOLATION}; engine
- * errors become {@link FindingKind#ENGINE_ERROR}; library warnings become
- * {@link FindingKind#LIBRARY_WARNING}. All engine-generated findings use {@link #SOURCE}. Skipped
- * rule executions never become findings — they accumulate as {@link SkippedRuleEntry}s on the built
- * report (one entry per rule × dataset, in insertion order).
+ * errors become {@link FindingKind#ENGINE_ERROR}. (⚑ Library-level warnings, kind
+ * {@link FindingKind#LIBRARY_WARNING} on a synthetic empty-domain member, were a channel nothing in
+ * the product fed; it was retired with PLAN-retire-dead-multi-match-lookup U11, C23.) All
+ * engine-generated findings use {@link #SOURCE}. Skipped rule executions never become findings —
+ * they accumulate as {@link SkippedRuleEntry}s on the built report (one entry per rule × dataset,
+ * in insertion order).
  * </p>
  *
  * <p>
@@ -47,9 +49,6 @@ public final class ValidationReportBuilder
 
     /** Stable source id for all engine-generated findings. */
     public static final String SOURCE = "cumba.core";
-
-    /** Domain string used for library-level findings. */
-    public static final String LIBRARY_LEVEL_DOMAIN = "";
 
     /**
      * Synthetic rule id for the finding emitted when a requested dataset cannot be opened as a
@@ -100,15 +99,6 @@ public final class ValidationReportBuilder
      */
     private final List<String> executedCoreIds = new ArrayList<>();
 
-    private @Nullable String libraryUri;
-
-    public ValidationReportBuilder libraryUri(@Nullable String aLibraryUri)
-    {
-        libraryUri = aLibraryUri;
-        return this;
-    }
-
-
     public ValidationReportBuilder add(String aDomain, @Nullable String aFileName, Rule aRule,
             RuleExecutionResult aResult)
     {
@@ -146,18 +136,6 @@ public final class ValidationReportBuilder
         {
             acc.add(f);
         }
-        return this;
-    }
-
-
-    public ValidationReportBuilder libraryWarning(String aMessage)
-    {
-        Objects.requireNonNull(aMessage, "message");
-        MemberAccumulator acc = accumulatorFor(LIBRARY_LEVEL_DOMAIN, libraryUri);
-        acc.add(ValidationFinding.builder().source(SOURCE).kind(FindingKind.LIBRARY_WARNING)
-                .severity(Severity.WARNING).scope(FindingScope.DATASET).message(aMessage)
-                .variableNames(List.of()).location(ValidationFindingLocation.EMPTY)
-                .rows(RowFindingSlab.EMPTY).build());
         return this;
     }
 

@@ -83,7 +83,7 @@ class LibraryValidatorParallelismTest
     private static LibraryValidator.Builder buildValidator()
     {
         return LibraryValidator.builder().provider(providerWithDm()).rules(emptyRulePackage())
-                .libraryUri("file:///study/dm.xpt")
+
                 // Multiple rows so per-row evaluation happens; the rule package is empty but the
                 // DatasetRuleResolver produces several rules from provider metadata (label / type /
                 // required_variables / etc.) — enough to exercise the fan-out path.

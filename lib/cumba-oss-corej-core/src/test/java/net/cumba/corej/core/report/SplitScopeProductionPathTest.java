@@ -196,8 +196,7 @@ class SplitScopeProductionPathTest
     {
         String file = memberName.toLowerCase(Locale.ROOT) + ".xpt";
         LibraryValidator validator = LibraryValidator.builder().provider(provider())
-                .rules(allFourRules()).libraryUri("file:///study/" + file)
-                .targetDataset(memberName, file, table(memberName)).build();
+                .rules(allFourRules()).targetDataset(memberName, file, table(memberName)).build();
         validator.validate();
         List<DatasetExecutionSummary> summaries = validator.getExecutionSummaries();
         assertEquals(1, summaries.size(), "one target dataset was validated");

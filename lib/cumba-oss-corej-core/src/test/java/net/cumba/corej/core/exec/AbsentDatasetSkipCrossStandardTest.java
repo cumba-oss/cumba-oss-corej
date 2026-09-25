@@ -253,9 +253,9 @@ class AbsentDatasetSkipCrossStandardTest
         IDataTable dm = MockTable.of().name("DM").col("USUBJID", "S1", "S2").col("AGE", "99", "32")
                 .build();
         ValidationReport report = LibraryValidator.builder().provider(adamProvider())
-                .rules(List.of(rule)).libraryUri("file:///study")
-                .crossStandardDatasets(Set.of("DM")).targetDataset("ADSL", "adsl.json", adsl())
-                .referenceDataset("DM", () -> dm).build().validate();
+                .rules(List.of(rule)).crossStandardDatasets(Set.of("DM"))
+                .targetDataset("ADSL", "adsl.json", adsl()).referenceDataset("DM", () -> dm).build()
+                .validate();
 
         assertFalse(report.getMembers().stream().anyMatch(m -> "DM".equals(m.getDomain())),
                 "DM is a reference: it must never be iterated as a validation target");
@@ -273,9 +273,8 @@ class AbsentDatasetSkipCrossStandardTest
         // absence of `.referenceDataset("DM", ...)`.
         Rule rule = load(AD0204);
         ValidationReport report = LibraryValidator.builder().provider(adamProvider())
-                .rules(List.of(rule)).libraryUri("file:///study")
-                .crossStandardDatasets(Set.of("DM")).targetDataset("ADSL", "adsl.json", adsl())
-                .build().validate();
+                .rules(List.of(rule)).crossStandardDatasets(Set.of("DM"))
+                .targetDataset("ADSL", "adsl.json", adsl()).build().validate();
 
         assertEquals(List.of(), findingIds(report));
         List<Map<String, Object>> skipped = skippedRows(report, List.of(rule)).stream()
@@ -294,8 +293,7 @@ class AbsentDatasetSkipCrossStandardTest
         // reports a clean pass and nothing is skipped. This is what shipped before Fix #218.
         Rule rule = load(AD0204);
         ValidationReport report = LibraryValidator.builder().provider(adamProvider())
-                .rules(List.of(rule)).libraryUri("file:///study")
-                .targetDataset("ADSL", "adsl.json", adsl()).build().validate();
+                .rules(List.of(rule)).targetDataset("ADSL", "adsl.json", adsl()).build().validate();
 
         assertEquals(List.of(), findingIds(report));
         assertTrue(

@@ -373,51 +373,6 @@ class ValidationReportBuilderTest
     }
 
     // ------------------------------------------------------------------
-    // Library-level warnings
-    // ------------------------------------------------------------------
-
-
-    @Test
-    void libraryWarningGoesToSyntheticMember()
-    {
-        ValidationReport report = new ValidationReportBuilder()
-                .libraryUri("file:///study/define.xml")
-                .libraryWarning("Study standard does not match caller choice").build();
-
-        assertEquals(1, report.getMembers().size());
-        ValidationReportMember lib = report.getMembers().get(0);
-        assertEquals(ValidationReportBuilder.LIBRARY_LEVEL_DOMAIN, lib.getDomain());
-        assertEquals("file:///study/define.xml", lib.getFileName());
-
-        ValidationFinding f = lib.getFindings().get(0);
-        assertEquals(Severity.WARNING, f.getSeverity());
-        assertEquals(FindingKind.LIBRARY_WARNING, f.getKind());
-        assertEquals("Study standard does not match caller choice", f.getMessage());
-    }
-
-
-    @Test
-    void libraryWarningWithoutUriStillWorks()
-    {
-        ValidationReport report = new ValidationReportBuilder().libraryWarning("oops").build();
-        assertEquals(1, report.getMembers().size());
-        assertNull(report.getMembers().get(0).getFileName());
-    }
-
-
-    @Test
-    void libraryWarningsCanCoexistWithDatasetFindings()
-    {
-        ValidationReport report = new ValidationReportBuilder()
-                .libraryUri("file:///study/define.xml")
-                .add("DM", "dm.xpt", rule("CORE-001"),
-                        withViolations("CORE-001", "fail", List.of(v(0))))
-                .libraryWarning("standard mismatch").build();
-
-        assertEquals(2, report.getMembers().size());
-    }
-
-    // ------------------------------------------------------------------
     // Robustness
     // ------------------------------------------------------------------
 
@@ -431,7 +386,6 @@ class ValidationReportBuilderTest
         assertThrows(NullPointerException.class, () -> builder.add(null, "f", r, ok));
         assertThrows(NullPointerException.class, () -> builder.add("DM", "f", null, ok));
         assertThrows(NullPointerException.class, () -> builder.add("DM", "f", r, null));
-        assertThrows(NullPointerException.class, () -> builder.libraryWarning(null));
     }
 
 
@@ -508,16 +462,6 @@ class ValidationReportBuilderTest
     {
         ValidationReport report = new ValidationReportBuilder()
                 .add("AE", "ae.xpt", rule("CORE-042"), errorResult("CORE-042", "boom")).build();
-        ValidationFinding f = report.getMembers().get(0).getFindings().get(0);
-        assertEquals(FindingScope.DATASET, f.getScope());
-    }
-
-
-    @Test
-    void libraryWarningScopeIsDataset()
-    {
-        ValidationReport report = new ValidationReportBuilder().libraryUri("file:///lib")
-                .libraryWarning("boom").build();
         ValidationFinding f = report.getMembers().get(0).getFindings().get(0);
         assertEquals(FindingScope.DATASET, f.getScope());
     }

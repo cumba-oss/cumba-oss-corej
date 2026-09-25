@@ -99,8 +99,7 @@ class LibraryValidatorLoadedStudyRuleTest
         assertEquals(Sensitivity.STUDY, rule.getSensitivity(), "precondition: Sensitivity=Study");
 
         ValidationReport report = LibraryValidator.builder().provider(providerWithAeAndLb())
-                .rules(List.of(rule)).libraryUri("file:///study")
-                .targetDataset("AE", "ae.json", table("AE"))
+                .rules(List.of(rule)).targetDataset("AE", "ae.json", table("AE"))
                 .targetDataset("LB", "lb.json", table("LB")).validate();
 
         List<ValidationReportMember> studyMembers = report.getMembers().stream()
@@ -141,7 +140,7 @@ class LibraryValidatorLoadedStudyRuleTest
         RulePackage pkg = RulePackageLoader.loadFromString(json);
 
         ValidationReport report = LibraryValidator.builder().provider(providerWithAeAndLb())
-                .rules(List.copyOf(pkg.getRules().values())).libraryUri("file:///study")
+                .rules(List.copyOf(pkg.getRules().values()))
                 .targetDataset("AE", "ae.json", table("AE"))
                 .targetDataset("LB", "lb.json", table("LB")).validate();
 
@@ -179,7 +178,7 @@ class LibraryValidatorLoadedStudyRuleTest
         assertNotSame(fromPackageA, fromPackageB, "precondition: two distinct Rule objects");
 
         ValidationReport report = LibraryValidator.builder().provider(providerWithAeAndLb())
-                .rules(List.of(fromPackageA, fromPackageB)).libraryUri("file:///study")
+                .rules(List.of(fromPackageA, fromPackageB))
                 .targetDataset("AE", "ae.json", table("AE"))
                 .targetDataset("LB", "lb.json", table("LB")).validate();
 
@@ -210,7 +209,7 @@ class LibraryValidatorLoadedStudyRuleTest
         RulePackage pkg = RulePackageLoader.loadFromString(json);
 
         ValidationReport report = LibraryValidator.builder().provider(providerWithAeAndLb())
-                .rules(List.copyOf(pkg.getRules().values())).libraryUri("file:///study")
+                .rules(List.copyOf(pkg.getRules().values()))
                 .targetDataset("AE", "ae.json", table("AE"))
                 .targetDataset("LB", "lb.json", table("LB")).validate();
 

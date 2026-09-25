@@ -200,8 +200,7 @@ class LibraryValidatorTaskDecoratorTest
         // the proof never executes.
         return LibraryValidator.builder().provider(provider)
                 .rules(ruleSetOf("CORE-TD-1", "CORE-TD-2", "CORE-TD-3", "CORE-TD-4"))
-                .libraryUri("file:///study/").targetDataset("DM", "dm.xpt", dmTable())
-                .targetDataset("AE", "ae.xpt", aeTable());
+                .targetDataset("DM", "dm.xpt", dmTable()).targetDataset("AE", "ae.xpt", aeTable());
     }
 
 

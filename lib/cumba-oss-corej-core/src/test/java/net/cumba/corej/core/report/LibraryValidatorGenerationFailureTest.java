@@ -104,8 +104,7 @@ class LibraryValidatorGenerationFailureTest
     void generationFailure_isAPerDatasetError_notACleanRow() throws Exception
     {
         LibraryValidator validator = LibraryValidator.builder().provider(throwingProvider())
-                .rules(List.of(simpleRule())).libraryUri("file:///study")
-                .targetDataset("AE", "ae.json", ae()).build();
+                .rules(List.of(simpleRule())).targetDataset("AE", "ae.json", ae()).build();
         ValidationReport report = validator.validate();
 
         // 1 — the execution summary carries the failure as an ERROR entry, not a clean row.

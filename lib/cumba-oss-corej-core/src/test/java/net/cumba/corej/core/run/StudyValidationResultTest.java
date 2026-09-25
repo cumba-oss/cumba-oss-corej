@@ -19,8 +19,7 @@ class StudyValidationResultTest
 
     private static StudyValidationResult sample()
     {
-        ValidationReport report = new net.cumba.corej.core.report.ValidationReportBuilder()
-                .libraryUri("file:///study").build();
+        ValidationReport report = new net.cumba.corej.core.report.ValidationReportBuilder().build();
         ReportAssembler.Conformance conformance = ReportAssembler.Conformance.builder()
                 .standard("custom").version("1-0").totalRuntimeSeconds(1.5)
                 .coreEngineVersion("0.0.0-test").build();
@@ -54,8 +53,7 @@ class StudyValidationResultTest
     @SuppressWarnings("unchecked")
     void sections_threadRuntimeFromExecutionSummariesIntoTheDocument()
     {
-        ValidationReport report = new net.cumba.corej.core.report.ValidationReportBuilder()
-                .libraryUri("file:///study").build();
+        ValidationReport report = new net.cumba.corej.core.report.ValidationReportBuilder().build();
         ReportAssembler.Conformance conformance = ReportAssembler.Conformance.builder()
                 .standard("custom").version("1-0").coreEngineVersion("0.0.0-test").build();
         Rule rule = new Rule();
@@ -140,8 +138,7 @@ class StudyValidationResultTest
     @Test
     void generatedRulesCopiedAndExposed()
     {
-        ValidationReport report = new net.cumba.corej.core.report.ValidationReportBuilder()
-                .libraryUri("file:///study").build();
+        ValidationReport report = new net.cumba.corej.core.report.ValidationReportBuilder().build();
         ReportAssembler.Conformance conformance = ReportAssembler.Conformance.builder()
                 .standard("custom").version("1-0").totalRuntimeSeconds(1.5)
                 .coreEngineVersion("0.0.0-test").build();
@@ -157,8 +154,7 @@ class StudyValidationResultTest
     @Test
     void nullGeneratedRulesBecomesEmpty()
     {
-        ValidationReport report = new net.cumba.corej.core.report.ValidationReportBuilder()
-                .libraryUri("file:///study").build();
+        ValidationReport report = new net.cumba.corej.core.report.ValidationReportBuilder().build();
         ReportAssembler.Conformance conformance = ReportAssembler.Conformance.builder()
                 .standard("custom").version("1-0").totalRuntimeSeconds(1.5)
                 .coreEngineVersion("0.0.0-test").build();

@@ -103,8 +103,7 @@ class AbsentDatasetSkipReportTest
     private static ValidationReport validate(List<Rule> rules) throws Exception
     {
         return LibraryValidator.builder().provider(provider()).rules(rules)
-                .libraryUri("file:///study").targetDataset("AE", "ae.json", ae()).build()
-                .validate();
+                .targetDataset("AE", "ae.json", ae()).build().validate();
     }
 
 

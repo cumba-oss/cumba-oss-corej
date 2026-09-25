@@ -59,9 +59,10 @@ import org.jspecify.annotations.Nullable;
  * <pre>{@code
  *
  * ValidationReport report = LibraryValidator.builder().provider(sdtmProvider)
- *         .rules(sdtmRulePackage).libraryUri("file:///study/sdtm/define.xml")
- *         .targetDataset("DM", "dm.xpt", dmTable).targetDataset("AE", "ae.xpt", aeTable)
- *         .referenceDataset("DM", dmTable) // for ADaM cross-ref (not used here)
+ *         .rules(sdtmRulePackage).targetDataset("DM", "dm.xpt", dmTable)
+ *         .targetDataset("AE", "ae.xpt", aeTable).referenceDataset("DM", dmTable) // for ADaM
+ *                                                                                 // cross-ref (not
+ *                                                                                 // used here)
  *         .validate();
  * }</pre>
  *
@@ -222,13 +223,9 @@ public final class LibraryValidator
 
     private final List<Rule> rules;
 
-    private final @Nullable String libraryUri;
-
     private final Map<String, Dataset> targetDatasets;
 
     private final Map<String, Supplier<IDataTable>> referenceDatasets;
-
-    private final List<String> libraryWarnings;
 
     private final boolean sequential;
 
@@ -307,10 +304,8 @@ public final class LibraryValidator
         vlmResolver = aBuilder.vlmResolver;
         dictionaryProvider = aBuilder.dictionaryProvider;
         rules = List.copyOf(aBuilder.rules);
-        libraryUri = aBuilder.libraryUri;
         targetDatasets = Map.copyOf(aBuilder.targetDatasets);
         referenceDatasets = Map.copyOf(aBuilder.referenceDatasets);
-        libraryWarnings = List.copyOf(aBuilder.libraryWarnings);
         sequential = aBuilder.sequential;
         ruleThreads = aBuilder.ruleThreads;
         runtimeListener = aBuilder.runtimeListener;
@@ -356,14 +351,7 @@ public final class LibraryValidator
      */
     public ValidationReport validate()
     {
-        ValidationReportBuilder reportBuilder = new ValidationReportBuilder()
-                .libraryUri(libraryUri);
-
-        // Emit any library-level warnings first — they are independent of datasets.
-        for (String warning : libraryWarnings)
-        {
-            reportBuilder.libraryWarning(warning);
-        }
+        ValidationReportBuilder reportBuilder = new ValidationReportBuilder();
 
         // Build a DatasetResolver spanning target + reference datasets.
         // This is read-only and safe for concurrent access.
@@ -1464,13 +1452,9 @@ public final class LibraryValidator
 
         private final List<Rule> rules = new ArrayList<>();
 
-        private @Nullable String libraryUri;
-
         private final Map<String, Dataset> targetDatasets = new LinkedHashMap<>();
 
         private final Map<String, Supplier<IDataTable>> referenceDatasets = new LinkedHashMap<>();
-
-        private final List<String> libraryWarnings = new ArrayList<>();
 
         private Set<String> crossStandardDatasets = Set.of();
 
@@ -1598,17 +1582,6 @@ public final class LibraryValidator
 
 
         /**
-         * URI of the library under test. Used as the {@code fileName} for any synthetic
-         * library-level findings in the produced report.
-         */
-        public Builder libraryUri(@Nullable String aLibraryUri)
-        {
-            libraryUri = aLibraryUri;
-            return this;
-        }
-
-
-        /**
          * Registers a dataset to validate. Targets are both iterated for rule execution and exposed
          * to the {@link DatasetResolver}.
          *
@@ -1664,18 +1637,6 @@ public final class LibraryValidator
             Objects.requireNonNull(aDomain, PARAM_DOMAIN);
             Objects.requireNonNull(aTableSupplier, PARAM_TABLE_SUPPLIER);
             referenceDatasets.put(aDomain.toUpperCase(java.util.Locale.ROOT), aTableSupplier);
-            return this;
-        }
-
-
-        /**
-         * Adds a library-level warning to the resulting report. Use for conditions that don't map
-         * to any single dataset (e.g. study/caller standard mismatch).
-         */
-        public Builder libraryWarning(String aMessage)
-        {
-            Objects.requireNonNull(aMessage, "message");
-            libraryWarnings.add(aMessage);
             return this;
         }
 

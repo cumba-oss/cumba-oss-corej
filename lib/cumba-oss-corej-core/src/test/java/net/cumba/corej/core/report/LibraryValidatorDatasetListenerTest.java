@@ -77,9 +77,8 @@ class LibraryValidatorDatasetListenerTest
             LibraryValidator.DatasetListener listener)
     {
         return LibraryValidator.builder().provider(provider()).rules(emptyRulePackage())
-                .libraryUri("file:///study/define.xml").targetDataset("DM", "dm.xpt", dmTable())
-                .targetDataset("AE", "ae.xpt", aeTable()).sequential(sequential)
-                .datasetListener(listener);
+                .targetDataset("DM", "dm.xpt", dmTable()).targetDataset("AE", "ae.xpt", aeTable())
+                .sequential(sequential).datasetListener(listener);
     }
 
 

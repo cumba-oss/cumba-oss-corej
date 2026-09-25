@@ -84,7 +84,7 @@ class StudyPseudoDomainReportTest
     private static LibraryValidator validator() throws Exception
     {
         return LibraryValidator.builder().provider(provider()).rules(List.of(studyRule()))
-                .libraryUri("file:///study").targetDataset("AE", "ae.json", table("AE"))
+                .targetDataset("AE", "ae.json", table("AE"))
                 .targetDataset("LB", "lb.json", table("LB")).build();
     }
 

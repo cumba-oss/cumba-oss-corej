@@ -42,8 +42,6 @@ class CompanionSdtmDefaultsTest
         assertNotNull(c);
         assertEquals("sdtmig", c.loaderStandard());
         assertEquals("3-2", c.loaderVersion());
-        assertTrue(c.declared(), "a resolved companion always comes from a declaration now");
-        assertFalse(c.defaulted(), "R10: nothing can set the defaulted flag any more");
     }
 
 

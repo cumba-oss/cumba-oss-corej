@@ -110,7 +110,7 @@ class StudyAnchorPassTest
     private static ValidationReport validateFullStudy() throws Exception
     {
         return LibraryValidator.builder().provider(provider()).rules(studyRules())
-                .libraryUri("file:///study").targetDataset("AE", "ae.json", table("AE"))
+                .targetDataset("AE", "ae.json", table("AE"))
                 .targetDataset("LB", "lb.json", table("LB")).validate();
     }
 
@@ -166,8 +166,7 @@ class StudyAnchorPassTest
     void anchorPassAccountsForEachStudyRuleExactlyOnce() throws Exception
     {
         LibraryValidator validator = LibraryValidator.builder().provider(provider())
-                .rules(studyRules()).libraryUri("file:///study")
-                .targetDataset("AE", "ae.json", table("AE"))
+                .rules(studyRules()).targetDataset("AE", "ae.json", table("AE"))
                 .targetDataset("LB", "lb.json", table("LB")).build();
         validator.validate();
 
@@ -197,7 +196,7 @@ class StudyAnchorPassTest
     void studyRulesFireWhenNoDatasetIsValidated() throws Exception
     {
         ValidationReport report = LibraryValidator.builder().provider(provider())
-                .rules(studyRules()).libraryUri("file:///study").validate();
+                .rules(studyRules()).validate();
 
         assertEquals(List.of("AE missing", "DM missing", "TS missing"), studyFindings(report),
                 "with an empty study every absence assertion fires");
@@ -208,9 +207,8 @@ class StudyAnchorPassTest
     @Test
     void theCollapsePathReportsNothingOnAnEmptyStudy() throws Exception
     {
-        List<String> viaCollapse = withAnchorPassDisabled(
-                () -> studyFindings(LibraryValidator.builder().provider(provider())
-                        .rules(studyRules()).libraryUri("file:///study").validate()));
+        List<String> viaCollapse = withAnchorPassDisabled(() -> studyFindings(
+                LibraryValidator.builder().provider(provider()).rules(studyRules()).validate()));
 
         assertEquals(List.of(), viaCollapse,
                 "with no datasets the per-dataset path runs no rules at all");
@@ -222,8 +220,7 @@ class StudyAnchorPassTest
     void studyRulesFireWhenEveryDatasetFailsToLoad() throws Exception
     {
         ValidationReport report = LibraryValidator.builder().provider(provider())
-                .rules(studyRules()).libraryUri("file:///study")
-                .targetDataset("AE", "ae.json", () ->
+                .rules(studyRules()).targetDataset("AE", "ae.json", () ->
                 {
                     throw new IllegalStateException("ae.json is corrupt");
                 }).validate();
@@ -292,7 +289,7 @@ class StudyAnchorPassTest
         rules.add(RulePackageLoader.loadFromString(firing).getRules().get("STUDY-DUP"));
 
         ValidationReport report = LibraryValidator.builder().provider(provider()).rules(rules)
-                .libraryUri("file:///study").targetDataset("AE", "ae.json", table("AE"))
+                .targetDataset("AE", "ae.json", table("AE"))
                 .targetDataset("LB", "lb.json", table("LB")).validate();
 
         assertEquals(List.of("DM missing"), studyFindings(report),
@@ -326,7 +323,7 @@ class StudyAnchorPassTest
                 RulePackageLoader.loadFromString(json).getRules().values());
 
         ValidationReport report = LibraryValidator.builder().provider(provider()).rules(rules)
-                .libraryUri("file:///study").targetDataset("AE", "ae.json", table("AE"))
+                .targetDataset("AE", "ae.json", table("AE"))
                 .targetDataset("LB", "lb.json", table("LB")).validate();
 
         assertEquals(1, studyFindings(report).stream().filter("local study rule"::equals).count(),

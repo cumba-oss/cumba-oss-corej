@@ -194,8 +194,7 @@ class RulesReportSkippedStatusChannelsTest
         // whole Check collapses on the only dataset it reaches.
         List<Rule> rules = List.of(dmPresenceRule(), dmDependentRule());
         ValidationReport report = LibraryValidator.builder().provider(provider()).rules(rules)
-                .libraryUri("file:///study").targetDataset("AE", "ae.json", ae()).build()
-                .validate();
+                .targetDataset("AE", "ae.json", ae()).build().validate();
 
         assertTrue(report.getSkippedRules().stream().anyMatch(e -> "DEP-1".equals(e.getCoreId())),
                 "precondition: DEP-1 must actually be skipped");
@@ -213,8 +212,8 @@ class RulesReportSkippedStatusChannelsTest
         // Channel 2 in isolation: SCOPE-LB never reaches the runner on any dataset of this run.
         List<Rule> rules = List.of(lbOnlyRule());
         ValidationReport report = LibraryValidator.builder().provider(provider()).rules(rules)
-                .libraryUri("file:///study").targetDataset("AE", "ae.json", ae())
-                .targetDataset("VS", "vs.json", vs()).build().validate();
+                .targetDataset("AE", "ae.json", ae()).targetDataset("VS", "vs.json", vs()).build()
+                .validate();
 
         assertEquals(2, report.getSkippedRules().stream()
                 .filter(e -> "SCOPE-LB".equals(e.getCoreId())).count(),
@@ -229,8 +228,8 @@ class RulesReportSkippedStatusChannelsTest
         // SCOPE-AE runs cleanly on AE and is generation-time skipped on VS ⇒ it DID run.
         List<Rule> rules = List.of(aeOnlyRule());
         ValidationReport report = LibraryValidator.builder().provider(provider()).rules(rules)
-                .libraryUri("file:///study").targetDataset("AE", "ae.json", ae())
-                .targetDataset("VS", "vs.json", vs()).build().validate();
+                .targetDataset("AE", "ae.json", ae()).targetDataset("VS", "vs.json", vs()).build()
+                .validate();
 
         assertTrue(report.getExecutedCoreIds().contains("SCOPE-AE"),
                 "precondition: SCOPE-AE ran on AE");
@@ -249,8 +248,8 @@ class RulesReportSkippedStatusChannelsTest
     {
         List<Rule> rules = List.of(aeFiringRule());
         ValidationReport report = LibraryValidator.builder().provider(provider()).rules(rules)
-                .libraryUri("file:///study").targetDataset("AE", "ae.json", ae())
-                .targetDataset("VS", "vs.json", vs()).build().validate();
+                .targetDataset("AE", "ae.json", ae()).targetDataset("VS", "vs.json", vs()).build()
+                .validate();
 
         assertEquals("ISSUE_REPORTED", statusOf(report, rules, "FIRE-AE"));
     }

@@ -196,7 +196,7 @@ class LibraryValidatorTest
         // passes cleanly — so with nothing selected there is nothing to report and this test's own
         // name would have become false. The rule below fires on every row.
         ValidationReport report = LibraryValidator.builder().provider(providerWithDm())
-                .rules(ruleSetOf("CORE-LV-2")).libraryUri("file:///study/dm.xpt")
+                .rules(ruleSetOf("CORE-LV-2"))
                 .targetDataset("DM", "dm.xpt", dmTableWithAllColumns()).validate();
 
         assertEquals(1, report.getMembers().size(), "the member is the point of the name");
@@ -215,21 +215,6 @@ class LibraryValidatorTest
         assertEquals(List.of(), report.getMembers());
     }
 
-
-    @Test
-    void libraryWarningsAppearInReport()
-    {
-        ValidationReport report = LibraryValidator.builder().provider(providerWithDm())
-                .rules(emptyRulePackage()).libraryUri("file:///study/dm.xpt")
-                .libraryWarning("Study standard does not match caller choice")
-                .libraryWarning("CT version is older than standard version").validate();
-
-        assertEquals(1, report.getMembers().size());
-        ValidationReportMember lib = report.getMembers().get(0);
-        assertEquals("", lib.getDomain());
-        assertEquals(2, lib.getFindings().size());
-    }
-
     // ------------------------------------------------------------------
     // Missing-variable detection — DM without SEX should produce a finding
     // ------------------------------------------------------------------
@@ -246,8 +231,8 @@ class LibraryValidatorTest
         // report member at all. That is the change, not a defect: a rule that belongs to no
         // package must not run.
         ValidationReport report = LibraryValidator.builder().provider(providerWithDm())
-                .rules(ruleSetOf("CORE-LV-1")).libraryUri("file:///study/dm.xpt")
-                .targetDataset("DM", "dm.xpt", dmTableMissingSex()).validate();
+                .rules(ruleSetOf("CORE-LV-1")).targetDataset("DM", "dm.xpt", dmTableMissingSex())
+                .validate();
 
         assertEquals(1, report.getMembers().size());
         ValidationReportMember dm = report.getMembers().get(0);
@@ -331,7 +316,7 @@ class LibraryValidatorTest
         skip.setScope(scope);
 
         LibraryValidator validator = LibraryValidator.builder().provider(providerWithDm())
-                .rules(List.of(ok, err, skip)).libraryUri("file:///study/dm.xpt")
+                .rules(List.of(ok, err, skip))
                 .targetDataset("DM", "dm.xpt", dmTableWithAllColumns()).build();
         validator.validate();
 
@@ -399,8 +384,8 @@ class LibraryValidatorTest
                 .col("DOMAIN", "LB").col("LBTESTCD", "GLUC").build();
 
         LibraryValidator validator = LibraryValidator.builder().provider(providerWithDm())
-                .rules(List.of(classRule)).libraryUri("file:///study/aplb.xpt")
-                .targetDataset("APLB", "aplb.xpt", aplb).referenceDataset("LB", lb).build();
+                .rules(List.of(classRule)).targetDataset("APLB", "aplb.xpt", aplb)
+                .referenceDataset("LB", lb).build();
         validator.validate();
 
         List<DatasetExecutionSummary.RuleExecution> rx = validator.getExecutionSummaries().get(0)
@@ -570,8 +555,7 @@ class LibraryValidatorTest
         {
             LibraryValidator validator = LibraryValidator.builder()
                     .provider(providerThrowingPublishedCt()).rules(List.of(rule))
-                    .libraryUri("file:///study/dm.xpt").targetDataset("DM", "dm.xpt", table)
-                    .build();
+                    .targetDataset("DM", "dm.xpt", table).build();
             validator.validate();
 
             // (a) Existing behaviour preserved: the throwing rule still surfaces as a synthetic

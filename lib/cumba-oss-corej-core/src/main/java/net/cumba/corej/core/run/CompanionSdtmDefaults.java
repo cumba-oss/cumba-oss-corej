@@ -58,6 +58,13 @@ public final class CompanionSdtmDefaults
     /**
      * The resolved companion SDTM product for an ADaM-family run.
      *
+     * <p>
+     * ⚑ Two log-only flags, {@code defaulted} / {@code declared}, were retired with
+     * PLAN-retire-dead-multi-match-lookup U11 (C41): since R10 every companion is a declared
+     * product, so the one construction site passed the constants {@code (false, true)} and the only
+     * reader was a log suffix.
+     * </p>
+     *
      * @param loaderStandard
      *            the standard token to hand {@code StoreMetadataProviderFactory.forSdtm} — either
      *            {@code sdtmig} or {@code tig}.
@@ -67,27 +74,9 @@ public final class CompanionSdtmDefaults
      *            {@code standards/tig/<version>/sdtm}.
      * @param display
      *            a human-readable label for the run header / logs (e.g. {@code sdtmig 3-4}).
-     * @param defaulted
-     *            always {@code false} since R10 deleted the house fallback. Retained so the record
-     *            shape (and the run header that reads it) is unchanged; there is no longer any path
-     *            that guesses a companion, so nothing can set it.
-     * @param declared
-     *            {@code true} whenever a companion resolved at all — since R10 every companion
-     *            comes from a declared product, either typed by the user or contributed by the
-     *            selected rules package (R7). Log-only.
      */
-    public record Companion(String loaderStandard, String loaderVersion, String display,
-            boolean defaulted, boolean declared)
+    public record Companion(String loaderStandard, String loaderVersion, String display)
     {
-
-        public Companion
-        {
-            if (defaulted && declared)
-            {
-                throw new IllegalArgumentException(
-                        "a declared companion is never a defaulted one: " + display);
-            }
-        }
     }
 
     /**
@@ -152,7 +141,7 @@ public final class CompanionSdtmDefaults
             return null;
         }
         return new Companion(loader.standard(), loader.version(),
-                loader.standard() + " " + loader.version(), false, true);
+                loader.standard() + " " + loader.version());
     }
 
 
