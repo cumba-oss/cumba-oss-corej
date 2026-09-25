@@ -148,6 +148,34 @@ class CoalesceEmptySemanticsTest
 
 
     @Test
+    @DisplayName("an empty-string LITERAL is absent: coalesce(\"\", \"a\") returns \"a\"")
+    void emptyStringLiteralIsAbsent()
+    {
+        IDataTable t = MockTable.of().name("DM").col("X", "x", "y").build();
+        assertEquals(bits(0, 1), eval("coalesce(\"\", \"a\") == \"a\"", t),
+                "the literal \"\" is skipped and \"a\" is returned");
+        assertEquals(bits(), eval("coalesce(\"\", \"a\") == \"\"", t),
+                "the result is never the skipped \"\"");
+    }
+
+
+    @Test
+    @DisplayName("numeric 0 and 0.0 are real values - columns and literals; only missing is skipped")
+    void numericZeroAndZeroPointZeroAreKept()
+    {
+        // row 0 holds 0 / 0.0, row 1 a genuine missing.
+        IDataTable t = MockTable.of().name("VS").colLong("L", 0L, null).colDouble("D", 0.0, null)
+                .colLong("M", 7L, 7L).build();
+        assertEquals(bits(0), eval("coalesce(L, M) == 0", t), "long 0 kept on row 0");
+        assertEquals(bits(1), eval("coalesce(L, M) == 7", t), "missing long skipped on row 1");
+        assertEquals(bits(0), eval("coalesce(D, M) == 0", t), "double 0.0 kept on row 0");
+        assertEquals(bits(1), eval("coalesce(D, M) == 7", t), "missing double skipped on row 1");
+        assertEquals(bits(0, 1), eval("coalesce(0, 7) == 0", t), "literal 0 kept");
+        assertEquals(bits(0, 1), eval("coalesce(0.0, 7) == 0", t), "literal 0.0 kept");
+    }
+
+
+    @Test
     @DisplayName("every operand empty or missing -> the result is missing; arity 3 reaches c")
     void allEmptyIsMissingAndArity3ReachesC()
     {
