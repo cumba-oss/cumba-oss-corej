@@ -409,9 +409,11 @@ final class KeyMatchRowExpander
      * </p>
      *
      * <p>
-     * ⚠ Because the rendering cleans a double to <b>12 significant digits</b>, a flagged entry
-     * compares its numeric keys at that precision rather than exactly. That is a property the
-     * author opts into, and it is the behaviour every entry had before D4.
+     * ⚠ Because the rendering is the cleaned text ({@code DataValueSupport.toCleanText}: noise
+     * within {@code 1e-12} of the value's decade folds onto the 12-significant-digit value, every
+     * other value is rendered losslessly), a flagged entry compares its numeric keys with that
+     * noise folded rather than exactly. That is a property the author opts into, and it is the
+     * behaviour every entry had before D4.
      * </p>
      *
      * @param aPart

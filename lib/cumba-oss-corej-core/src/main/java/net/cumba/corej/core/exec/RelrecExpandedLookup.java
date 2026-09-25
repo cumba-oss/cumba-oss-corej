@@ -95,7 +95,7 @@ final class RelrecExpandedLookup implements JoinLookup
      * leaves the column un-gated by {@code ColumnTypeGate}, exactly as an absent column is. The
      * typed cells below are strictly better than the default either way: they keep the target
      * cell's own value and identity instead of round-tripping it through
-     * {@code getAsDoubleCleaned}'s 12 significant digits.
+     * {@code getAsDoubleCleaned}'s noise folding.
      * </p>
      */
     @Override

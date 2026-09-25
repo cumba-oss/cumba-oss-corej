@@ -67,8 +67,9 @@ public class MatchDataset
      * Setting this to {@code true} is the author's statement that the divergence is understood and
      * the keys should be matched by their rendered text anyway. It applies to <b>every</b> key of
      * the entry, not only a divergent component, so that an entry's behaviour cannot depend on the
-     * study. ⚠ Because the rendering is {@code KeyPart.reportingForm()}, a flagged entry compares
-     * its <b>numeric</b> keys at <b>12 significant digits</b> rather than exactly.
+     * study. ⚠ Because the rendering is {@code KeyPart.reportingForm()} — the cleaned cell text — a
+     * flagged entry compares its <b>numeric</b> keys with floating-point noise (within
+     * {@code 1e-12} of the value's decade) folded, rather than exactly.
      * </p>
      *
      * <p>

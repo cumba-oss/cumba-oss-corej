@@ -1761,10 +1761,12 @@ public final class Primitives
      * time. Once per row, per rule, across a corpus where 26 rules call {@code is_integer}.
      * </p>
      * <p>
-     * ⭐ It is also arriving at the right answer through a wrong intermediate: that round trip
-     * formats via {@code String.valueOf((long) cleaned)}, which <b>saturates</b>, so {@code 1e20}
-     * becomes {@code "9223372036854775807"}. The verdict survives only because every double ≥
-     * 2<sup>53</sup> is necessarily whole. Reading the double directly has no such hazard.
+     * ⭐ It also used to arrive at the right answer through a wrong intermediate: until
+     * {@code PLAN-numeric-cleaning-and-key-text} that round trip formatted via
+     * {@code String.valueOf((long) cleaned)}, which <b>saturated</b>, so {@code 1e20} became
+     * {@code "9223372036854775807"} and the verdict survived only because every double ≥
+     * 2<sup>53</sup> is necessarily whole. The text is plain and unsaturated now; reading the
+     * double directly never had the hazard.
      * </p>
      * <p>
      * Behaviour is unchanged for every cell shape. A character cell still takes the string path —

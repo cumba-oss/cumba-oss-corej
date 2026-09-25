@@ -161,8 +161,8 @@ class GroupKeyCompositeIdentityTest
     {
         GroupKeyPolicy p = GroupKeyPolicy.FOLD_BLANK_KEYS;
         // Two values equal to 12 significant digits but different beyond them: the cleaned TEXT
-        // folds them (both render "10000000000000" once getAsDoubleCleaned rounds to 12 digits),
-        // while the exact identity keeps them apart — D64h: "key identity always exact".
+        // used to fold them (both rendered "10000000000000"; since E7 only the non-integral one
+        // snaps), while the exact identity keeps them apart — D64h: "key identity always exact".
         KeyPart a = p.keyPart(new DataValueDouble(10000000000001.0));
         KeyPart b = p.keyPart(new DataValueDouble(10000000000001.4));
         assertEquals(new KeyPart.PresentNumber(10000000000001.0), a);
@@ -173,10 +173,10 @@ class GroupKeyCompositeIdentityTest
 
 
     @Test
-    void numericRenderingStaysTheLegacyCleanedText()
+    void numericRenderingIsTheCellText()
     {
-        // reportingForm is presentation and the rendered-key lockstep encoding — byte-identical
-        // to the pre-D84a Present(getValueAsString()) rendering.
+        // reportingForm is presentation and the rendered-key lockstep encoding — the cell's own
+        // text (DataValueDouble.getValueAsString: cleaned, plain notation), one rendering shared.
         assertEquals(new DataValueDouble(2.0).getValueAsString(),
                 new KeyPart.PresentNumber(2.0).reportingForm());
         assertEquals("2", new KeyPart.PresentNumber(2.0).reportingForm());
@@ -185,6 +185,15 @@ class GroupKeyCompositeIdentityTest
         assertEquals(new DataValueDouble(5e-14).getValueAsString(),
                 new KeyPart.PresentNumber(5e-14).reportingForm(),
                 "the sub-epsilon value still RENDERS as the flattened text");
+        assertEquals("0", new KeyPart.PresentNumber(5e-14).reportingForm());
+        // E2: lossless outside the ruled noise, and plain — the literal text, not a delegation
+        assertEquals("1234567890123", new KeyPart.PresentNumber(1234567890123.0).reportingForm());
+        assertEquals("1234567890124", new KeyPart.PresentNumber(1234567890124.0).reportingForm());
+        assertEquals("12345678.9", new KeyPart.PresentNumber(12345678.9).reportingForm());
+        assertEquals("100000000000000000000", new KeyPart.PresentNumber(1e20).reportingForm(),
+                "no long saturation: this rendered \"9223372036854775807\" before");
+        assertEquals("5", new KeyPart.PresentNumber(4.9999999999994).reportingForm(),
+                "E7: noise within 1e-12 of the decade folds");
     }
 
 

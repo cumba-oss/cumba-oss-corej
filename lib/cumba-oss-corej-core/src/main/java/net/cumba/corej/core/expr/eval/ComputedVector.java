@@ -33,7 +33,7 @@ public final class ComputedVector implements Vector
      * <p>
      * Step B of {@code PLAN-joined-column-typing}. A dotted joined reference used to publish
      * {@code STRING} and resolve through {@code JoinLookup.lookup}, whose text form routes a
-     * numeric value through {@code getAsDoubleCleaned}'s 12-significant-digit rounding.
+     * numeric value through {@code getAsDoubleCleaned}'s noise folding.
      * </p>
      */
     private final @Nullable IntFunction<IDataValue> typedProducer;

@@ -27,6 +27,7 @@ import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.metadata.ICodeList;
+import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
@@ -1676,7 +1677,13 @@ public final class OperationExecutor
                 }
                 continue;
             }
-            String filterValue = String.valueOf(rawValue);
+            // A numeric YAML literal renders in the cell's own notation (plain, no ".0", D2),
+            // because colValue is getValueAsString(): String.valueOf(12345678.9) would be
+            // "1.23456789E7" against a cell reading "12345678.9", and 12.0 would be "12.0"
+            // against "12".
+            String filterValue = rawValue instanceof Number n
+                    ? DataValueSupport.toPlainNumberText(n.doubleValue())
+                    : String.valueOf(rawValue);
             boolean matches;
             if (filterValue.endsWith("&") || filterValue.endsWith("%"))
             {

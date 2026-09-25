@@ -6264,22 +6264,21 @@ public final class ExprCompiler
     /**
      * Canonical {@code Number} → {@code String} rendering — the single source of truth used
      * wherever a numeric value is rendered where a {@code String} is expected (a numeric-literal
-     * operand in a string position, the {@code numberText} literal path, the D5 substring needle).
-     * An integral finite value drops its trailing {@code .0} ({@code 100.0 → "100"},
-     * {@code -2.0 → "-2"}); a fractional value renders via {@link Double#toString(double)}
-     * ({@code 3.5 → "3.5"}); infinities render as {@code "Infinity"}/{@code "-Infinity"}. This is
-     * intentionally NOT {@code DataValueDouble.getValueAsString()} — that cleans to 12 significant
-     * digits and would change the rendering of high-precision fractional values, whereas this
-     * preserves the exact legacy {@code numberText} output for every finite value.
+     * operand in a string position, the {@code numberText} literal path, the D5 substring needle,
+     * the reported result of a numeric operation). It is
+     * {@link DataValueSupport#toPlainNumberText(double)}: an integral finite value drops its
+     * trailing {@code .0} ({@code 100.0 → "100"}, {@code -2.0 → "-2"}); a fractional value renders
+     * its shortest round-trip digits in <b>plain</b> notation ({@code 3.5 → "3.5"},
+     * {@code 12345678.9 → "12345678.9"}, never {@code "1.23456789E7"}, owner ruling D2); a value
+     * beyond {@code 2^63} is not saturated ({@code 1e20 → "100000000000000000000"}); infinities
+     * render as {@code "Infinity"}/{@code "-Infinity"}. This is intentionally NOT
+     * {@code DataValueDouble.getValueAsString()} — that cleans noise first, and a literal is what
+     * the author wrote — but it shares that text's <em>notation</em>, so a cell and a literal of
+     * the same value render alike and a match between them is never lost to the spelling.
      */
     public static String canonicalNumberText(Number n)
     {
-        double d = n.doubleValue();
-        if (!Double.isInfinite(d) && Double.compare(d, Math.rint(d)) == 0)
-        {
-            return Long.toString((long) d);
-        }
-        return Double.toString(d);
+        return DataValueSupport.toPlainNumberText(n.doubleValue());
     }
 
 

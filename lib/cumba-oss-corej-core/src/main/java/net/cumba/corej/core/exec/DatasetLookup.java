@@ -297,9 +297,9 @@ public class DatasetLookup implements JoinLookup
      * Step B: the same match as {@link #lookup}, handed back as the parent cell's own
      * {@link IDataValue}. {@code lookup} renders that cell through
      * {@link ScalarSemantics#resolvedString}, which for a numeric column ends in
-     * {@code getValueAsString()} and therefore in {@code getAsDoubleCleaned}'s 12-significant-digit
-     * rounding — so the joined half of the precision defect and the engine-wide half (Step A) are
-     * the very same line.
+     * {@code getValueAsString()} and therefore in {@code getAsDoubleCleaned}'s noise folding (12
+     * significant digits within {@code 1e-12} of the decade) — so the joined half of the precision
+     * defect and the engine-wide half (Step A) are the very same line.
      * </p>
      */
     @Override

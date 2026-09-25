@@ -42,23 +42,34 @@ class DatasetLookupTypedValueTest
 
     private static final double BIG = 1.0E13 + 1;
 
+    /** The owner's noise example (E7): its text folds onto 5, its value does not. */
+    private static final double NOISY = 4.9999999999994;
+
     @Test
-    @DisplayName("typed lookup keeps the exact value where the text lookup rounds to 12 digits")
+    @DisplayName("typed lookup keeps the exact value where the text lookup folds the noise")
     void typedLookupIsExact()
     {
         IDataTable primary = t("AE", col("USUBJID", DataValueType.STRING, "U1"));
         IDataTable joined = t("DM", col("USUBJID", DataValueType.STRING, "U1"),
-                col("VAL", DataValueType.DOUBLE, BIG));
+                col("VAL", DataValueType.DOUBLE, NOISY), col("BIG", DataValueType.DOUBLE, BIG));
         DatasetLookup lk = DatasetLookup.build("DM", joined, List.of("USUBJID"));
         assertNotNull(lk);
 
-        // The text accessor still rounds -- unchanged on purpose, report text depends on it.
-        assertEquals("10000000000000", lk.lookup(primary, 0, "VAL"));
-        // The typed accessor does not.
+        // The text accessor cleans -- unchanged on purpose, report text depends on it. ⚠ Until
+        // PLAN-numeric-cleaning-and-key-text (E7) this row pinned the INTEGRAL 1e13 + 1 rendering
+        // as "10000000000000": the old cleaning rounded whole numbers too. It no longer does, so
+        // the contrast lives on a value the ruled noise threshold folds, and the integral one
+        // renders its digits.
+        assertEquals("5", lk.lookup(primary, 0, "VAL"));
+        assertEquals("10000000000001", lk.lookup(primary, 0, "BIG"));
+        // The typed accessor does not clean.
         IDataValue dv = lk.lookupValue(primary, 0, "VAL", false);
         assertNotNull(dv);
-        assertEquals(BIG, dv.getValueAsDouble());
+        assertEquals(NOISY, dv.getValueAsDouble());
         assertEquals(DataValueType.DOUBLE, lk.declaredTypeOf("VAL"));
+        IDataValue big = lk.lookupValue(primary, 0, "BIG", false);
+        assertNotNull(big);
+        assertEquals(BIG, big.getValueAsDouble());
     }
 
 

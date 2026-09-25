@@ -49,7 +49,7 @@ final class KeyMatchExpandedLookup implements JoinLookup
      * {@code STRING} — publishes a vector whose meta and cells disagree. That is the same
      * meta-vs-cell divergence J8 was built to avoid for the merged path, and it would have
      * reintroduced the precision defect on this one: the value would still round-trip through
-     * {@code getAsDoubleCleaned}'s 12 significant digits.
+     * {@code getAsDoubleCleaned}'s noise folding.
      * </p>
      */
     @Override

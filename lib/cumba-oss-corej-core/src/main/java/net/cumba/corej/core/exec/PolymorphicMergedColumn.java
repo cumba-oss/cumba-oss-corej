@@ -33,7 +33,8 @@ import org.jspecify.annotations.Nullable;
  * which is also the disagreement fallback. Otherwise it forwards the parent's own
  * {@link IDataValue} unchanged (J2 Option A): one allocation per access instead of three, and — the
  * point of the change — the value never passes through
- * {@code DataValueSupport.getAsDoubleCleaned}'s 12-significant-digit rounding.
+ * {@code DataValueSupport.getAsDoubleCleaned}'s noise folding (12 significant digits within
+ * {@code 1e-12} of the decade).
  * </p>
  * <p>
  * <b>Unsupplied values take the column's TYPE DEFAULT (D72/D72a-1/D75a):</b> a merged column
@@ -181,7 +182,7 @@ final class PolymorphicMergedColumn extends AbstractDataTableColumn
         // stringify-and-retype so that case is byte-identical to the pre-change engine. Otherwise
         // forward the parent's own IDataValue (J2 Option A): the cell keeps its real type, so
         // Primitives.equalsTypedAware takes its numeric branch on a real value instead of on
-        // text that getAsDoubleCleaned has already rounded to 12 significant digits.
+        // text from which getAsDoubleCleaned has already folded the noise.
         //
         // NB the E17 citation that used to justify the unconditional STRING coercion was a
         // misattribution: E17 is the numeric-IDVAR *join key* coercion (ChildMatchPreMerger

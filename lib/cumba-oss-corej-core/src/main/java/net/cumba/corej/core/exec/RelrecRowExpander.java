@@ -78,8 +78,8 @@ final class RelrecRowExpander
      * {@code (STUDYID, USUBJID, RELID)} group, classified by join mode.
      */
     private record LinkSpec(String rdomain, boolean recordLevel, @Nullable String study,
-            @Nullable String usubj, String srcIdvar, @Nullable String srcIdvarval, String tgtIdvar,
-            @Nullable String tgtIdvarval)
+            @Nullable String usubj, String usubjKey, String srcIdvar, @Nullable String srcIdvarval,
+            String tgtIdvar, @Nullable String tgtIdvarval)
     {
     }
 
@@ -249,8 +249,14 @@ final class RelrecRowExpander
         boolean recordLevel = isNonBlank(srcIdvarval) && isNonBlank(tgtIdvarval);
         // STUDYID/USUBJID come from the left (primary) RELREC row; left == right within a
         // (STUDYID, USUBJID, RELID) group. Blank for dataset-level relationships.
+        // USUBJID is carried twice, on purpose (E1): the RAW cell() value classifies the link (a
+        // blank RELREC USUBJID marks a dataset-level / cross-subject link), while the keyCell
+        // encoding is what every probe compares against the keyCell-built indexes. Probing with
+        // the raw text keyed a present numeric USUBJID one way on the probe side and another on
+        // the index side (Long.toString vs the rendering through the double), losing its pairs.
         LinkSpec spec = new LinkSpec(rdom, recordLevel, cell(relrec, cStudy, lrr),
-                cell(relrec, cUsubj, lrr), srcIdvar, srcIdvarval, tgtIdvar, tgtIdvarval);
+                cell(relrec, cUsubj, lrr), keyCell(relrec, cUsubj, lrr), srcIdvar, srcIdvarval,
+                tgtIdvar, tgtIdvarval);
         byDomain.computeIfAbsent(rdom, _ -> new ArrayList<>()).add(spec);
     }
 
@@ -322,9 +328,12 @@ final class RelrecRowExpander
         }
         // srcIdvarval/tgtIdvarval are non-blank (record-level) so normKey is non-null. Key purely
         // on (USUBJID, value) — USUBJID scopes the subject (and hence study), mirroring the legacy
-        // scan which joins on the dataset rows' keys and never on the RELREC row's STUDYID.
-        String pKey = subjectKey(usubj, Objects.requireNonNull(normKey(spec.srcIdvarval())));
-        String tKey = subjectKey(usubj, Objects.requireNonNull(normKey(spec.tgtIdvarval())));
+        // scan which joins on the dataset rows' keys and never on the RELREC row's STUDYID. The
+        // probe is key-encoded exactly like the bySubject index it looks up (JKM R5 / keyCell).
+        String pKey = subjectKey(spec.usubjKey(),
+                Objects.requireNonNull(normKey(spec.srcIdvarval())));
+        String tKey = subjectKey(spec.usubjKey(),
+                Objects.requireNonNull(normKey(spec.tgtIdvarval())));
         emitCross(primaryIndex.bySubject(spec.srcIdvar()).get(pKey),
                 targetIndex.bySubject(spec.tgtIdvar()).get(tKey), ordinal, out, seen);
     }
@@ -382,7 +391,10 @@ final class RelrecRowExpander
             IDataTable target, List<long[]> out, Set<String> seen)
     {
         boolean recordLevel = spec.recordLevel();
-        String usubjId = spec.usubj();
+        // Classified on the RAW value (a blank RELREC USUBJID means "not subject-scoped"), then
+        // filtered on the key encoding, which is how both scanned tables' USUBJID are keyed.
+        boolean subjectScoped = isNonBlank(spec.usubj());
+        String usubjKey = spec.usubjKey();
 
         DataTableMeta tm = target.getMetaData();
         int tStudyIdx = tm.getColumnIndex(STUDYID);
@@ -397,7 +409,7 @@ final class RelrecRowExpander
         for (long r = 0; r < tRows; r++)
         {
             String usubj = keyCell(target, tUsubjIdx, r);
-            if (isNonBlank(usubjId) && !usubj.equals(usubjId))
+            if (subjectScoped && !usubj.equals(usubjKey))
             {
                 continue;
             }
@@ -428,7 +440,7 @@ final class RelrecRowExpander
         for (long r = 0; r < pRows; r++)
         {
             String usubj = keyCell(primary, pUsubjIdx, r);
-            if (isNonBlank(usubjId) && !usubj.equals(usubjId))
+            if (subjectScoped && !usubj.equals(usubjKey))
             {
                 continue;
             }
@@ -544,12 +556,14 @@ final class RelrecRowExpander
     }
 
     /**
-     * ⚠ {@code study}/{@code usubj} arrive ALREADY key-encoded — from {@link #keyCell} when built
-     * from a table row, or as a present non-blank string from the {@code LinkSpec} probe, which are
-     * the same thing for a present value ({@code Present.reportingForm()} is the value itself). ⛔
-     * Do not re-introduce an {@code nz} collapse (since deleted) here: it is what made a MISSING
-     * key equal an empty one ({@code JKM R5}). The normalised value is kept verbatim to match the
-     * legacy scan.
+     * ⚠ {@code study}/{@code usubj} arrive ALREADY key-encoded by {@link #keyCell}, from a table
+     * row on the index side and from the RELREC row ({@code LinkSpec.usubjKey}) on the probe side.
+     * ⛔ The probe used to pass the raw {@code cell()} text instead, on the claim that the two are
+     * "the same thing for a present value" — false for a numeric {@code USUBJID}, whose key
+     * encoding renders through the double (E1): a LONG beyond {@code 2^53} keys as its double's
+     * text, and until E7 every 13-digit LONG did. ⛔ Do not re-introduce an {@code nz} collapse
+     * (since deleted) here: it is what made a MISSING key equal an empty one ({@code JKM R5}). The
+     * normalised value is kept verbatim to match the legacy scan.
      */
     private static String studySubjectKey(String study, String usubj, String valueNorm)
     {
@@ -563,10 +577,12 @@ final class RelrecRowExpander
         return usubj + '\0' + valueNorm;
     }
 
-    // ---- shared helpers (kept byte-identical to the manager twin) ----
+    // ---- key encoding (JKM R5) -- the manager twin (cumba-datatable-manager-local's
+    // RelrecRelationshipResolver) mirrors keyCell arm by arm but is NOT byte-identical to it ----
     // ⭐ `nz` is GONE (2026-09-21, JKM R5): it mapped a missing cell to "", which is exactly
-    // the conflation the ruling forbids. Every key site now goes through keyCell instead, and
-    // Error Prone's UnusedMethod is what proved no key site was left behind.
+    // the conflation the ruling forbids. Every key site now goes through keyCell instead. ⚠
+    // Error Prone's UnusedMethod proved only that nz() had no caller left; it could not see a
+    // probe that still compared RAW text against a keyCell index (E1) — that took a case table.
 
 
     /**
@@ -592,7 +608,7 @@ final class RelrecRowExpander
      * here.</b> {@link GroupKeyPolicy.KeyPart} is a sealed type that <b>cannot</b> collide;
      * {@code reportingForm()} is a <em>rendering</em>, and its own javadoc says it must never be
      * re-parsed to recover identity. This path is string-keyed by construction (the keys are
-     * {@code \0}-joined and the helpers below are kept byte-identical to a twin in
+     * {@code \0}-joined, and a behaviourally identical twin lives in
      * {@code cumba-datatable-manager-local}), so the strong form is not available without changing
      * both repos. {@code Missing.reportingForm()} prefixes {@code \u0001}, which no clinical text
      * cell carries — <i>unlikely</i> to collide rather than <i>unable</i> to. ⇒ if this path is

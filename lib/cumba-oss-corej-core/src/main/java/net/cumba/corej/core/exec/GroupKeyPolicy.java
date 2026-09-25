@@ -177,17 +177,20 @@ public record GroupKeyPolicy(boolean keepMissings, Blankness blankness)
          * <p>
          * ⭐ Until D84a a numeric cell keyed as {@code Present(dv.getValueAsString())}, and
          * {@code DataValueDouble.getValueAsString()} runs {@code getAsDoubleCleaned}
-         * unconditionally — rounding to 12 significant digits and flattening {@code abs(v) < 1e-13}
-         * to {@code 0} — so two values the data distinguishes could fold into one group with
-         * nothing red. The identity is now the value itself; two values equal to 12 significant
-         * digits but different beyond them are <b>different keys</b>.
+         * unconditionally — which, until {@code PLAN-numeric-cleaning-and-key-text} (E7,
+         * 2026-09-25), rounded to 12 significant digits with a threshold that scaled with the
+         * magnitude twice — so two values the data distinguishes could fold into one group with
+         * nothing red. The identity is now the value itself; two values that differ at all are
+         * <b>different keys</b>.
          * </p>
          *
          * <p>
-         * {@link #reportingForm()} still renders the legacy cleaned text on purpose: it is
-         * presentation (and the lockstep rendered-key encoding of {@code GroupedResult.buildKey} /
-         * {@code IndexHelper.buildGroupKey}), never re-parsed for identity, and keeping it
-         * byte-identical means reports and cross-table rendered-key lookups do not move.
+         * {@link #reportingForm()} renders {@code DataValueSupport.toCleanText}, the very text of
+         * {@code DataValueDouble.getValueAsString()}: presentation (and the lockstep rendered-key
+         * encoding of {@code GroupedResult.buildKey} / {@code IndexHelper.buildGroupKey}), never
+         * re-parsed for identity. Since E7 that text is lossless outside the ruled noise (integral
+         * values exact, noise within {@code 1e-12} of the value's decade folded, plain notation),
+         * so the text-keyed sites distinguish what this identity distinguishes, up to that noise.
          * </p>
          *
          * <p>
@@ -221,14 +224,9 @@ public record GroupKeyPolicy(boolean keepMissings, Blankness blankness)
             @Override
             public String reportingForm()
             {
-                // The legacy rendering, verbatim (DataValueDouble.getValueAsString): cleaned to
-                // 12 significant digits, integral values without the ".0".
-                double cleaned = DataValueSupport.getAsDoubleCleaned(value);
-                if (cleaned == Math.floor(cleaned) && !Double.isInfinite(cleaned))
-                {
-                    return String.valueOf((long) cleaned);
-                }
-                return String.valueOf(cleaned);
+                // The cell's own text (DataValueDouble.getValueAsString): cleaned of noise, plain
+                // notation, integral values without the ".0" — one rendering, shared.
+                return DataValueSupport.toCleanText(value);
             }
 
 
@@ -512,9 +510,9 @@ public record GroupKeyPolicy(boolean keepMissings, Blankness blankness)
         if (!isBlankKeyComponent(dv))
         {
             // D84a: a numeric cell keys by its EXACT value. getValueAsString() runs
-            // getAsDoubleCleaned unconditionally (12 significant digits, abs(v) < 1e-13 -> 0), so
-            // the text form silently folded near-equal keys — while D64h rules key identity always
-            // exact. Text cells keep keying by their text, which was never cleaned.
+            // getAsDoubleCleaned unconditionally (noise within 1e-12 of the decade folds, abs(v)
+            // < 1e-13 -> 0), so the text form folds near-equal keys — while D64h rules key
+            // identity always exact. Text cells keep keying by their text, which is never cleaned.
             if (dv.getValue() instanceof Number n)
             {
                 return new KeyPart.PresentNumber(n.doubleValue());

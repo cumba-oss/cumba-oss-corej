@@ -13,6 +13,7 @@ import java.util.stream.Stream;
 import lombok.CustomLog;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
@@ -592,8 +593,8 @@ public final class OperandSubstitutor
         String fmt = driver.formatSpec();
         if (fmt == null)
         {
-            // No format → use the value's raw string form. For numeric, strip a trailing ".0"
-            // produced by Double.toString on integral doubles.
+            // No format → use the value's raw string form: for numeric, the plain notation
+            // every number-to-text site shares (no ".0" on an integral value, never scientific).
             return rawString(dv);
         }
         DataValueType t = dv.getType();
@@ -644,12 +645,8 @@ public final class OperandSubstitutor
         DataValueType t = dv.getType();
         if (t == DataValueType.LONG || t == DataValueType.DOUBLE)
         {
-            double d = dv.getValueAsDouble();
-            if (d == Math.floor(d) && !Double.isInfinite(d))
-            {
-                return Long.toString((long) d);
-            }
-            return Double.toString(d);
+            // the raw value, not the cleaned cell text: a driver value is substituted as written
+            return DataValueSupport.toPlainNumberText(dv.getValueAsDouble());
         }
         return dv.getValueAsString();
     }
