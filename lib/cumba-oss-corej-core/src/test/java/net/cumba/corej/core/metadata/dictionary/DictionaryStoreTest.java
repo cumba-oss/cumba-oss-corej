@@ -383,7 +383,10 @@ class DictionaryStoreTest
     }
 
 
-    /** A type never installed at all records nothing — the reader defaults to NOT_INSTALLED. */
+    /**
+     * A type never installed at all records nothing — {@code unavailabilityDetail} falls back to
+     * {@code notInstalledDetail()}.
+     */
     @Test
     void aTypeWithNoInstallationRecordsNothingAndDefaultsToNotInstalled(@TempDir Path dir)
         throws IOException

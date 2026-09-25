@@ -28,12 +28,13 @@ import org.junit.jupiter.api.Test;
  *
  * <p>
  * ⚠⚠ The hazard this class also has to pin is the <em>opposite</em> one: validation must <b>not</b>
- * reject {@code null}. {@code DatasetRuleResolver} never calls {@code normalizeJoinTypes}, so its
- * generated rules keep a null {@code Join_Type}, and a validation that treated absence as a
- * violation would reject the whole {@code CDISC-AD0591-} family while looking correct. ⚑ That null
- * also used to be what kept {@code RuleCohortGrouper}'s equality-cohort path reachable
- * ({@code Fix #233} / EC-74); the cohort runner is retired ({@code PLAN-retire-cohort-runner.md})
- * and the absence now means only "not authored".
+ * reject {@code null}. In the load pipeline {@code validateEnumFields} runs <em>before</em>
+ * {@code normalizeJoinTypes} stamps the {@code inner} default, so every loaded rule that does not
+ * author {@code Join_Type} is judged while the field is still null — and a validation that treated
+ * absence as a violation would reject every such rule while looking correct. ⚑ A null
+ * {@code Join_Type} also used to be what kept {@code RuleCohortGrouper}'s equality-cohort path
+ * reachable ({@code Fix #233} / EC-74); the cohort runner is retired
+ * ({@code PLAN-retire-cohort-runner.md}) and the absence now means only "not authored".
  * </p>
  */
 class JoinTypeValidationTest
@@ -181,9 +182,12 @@ class JoinTypeValidationTest
 
     /**
      * ⚠⚠ The load-bearing half: the validator judges the <b>string when present</b> and never the
-     * absence. A hand-built rule with a null {@code Join_Type} — the shape every
-     * {@code DatasetRuleResolver} rule has, since it bypasses {@code normalizeJoinTypes} — must
-     * pass the gate untouched.
+     * absence. A rule with a null {@code Join_Type} — the shape every loaded rule that omits the
+     * field has when {@code validateEnumFields} judges it, because the loader runs that gate before
+     * {@code normalizeJoinTypes} — must pass the gate untouched. Driven directly on a hand-built
+     * rule so the null is certain;
+     * {@link #absentJoinType_isNotAViolation_andStillNormalisesToInner} covers the same absence
+     * through the loader.
      */
     @Test
     void aNullJoinTypeIsNeverRejected()
@@ -198,9 +202,9 @@ class JoinTypeValidationTest
         RulePackageLoader.validateEnumFields(rule);
 
         assertNull(rule.getLoadError(),
-                "a null Join_Type must never file a load error — DatasetRuleResolver never calls "
-                        + "normalizeJoinTypes, so rejecting the absence would reject the whole "
-                        + "CDISC-AD0591- family (Fix #233 / EC-74)");
+                "a null Join_Type must never file a load error — the loader validates before "
+                        + "normalizeJoinTypes stamps the default, so rejecting the absence would "
+                        + "reject every rule that does not author the field");
         assertNull(md.getJoinType(), "validation must not write to the field either");
     }
 

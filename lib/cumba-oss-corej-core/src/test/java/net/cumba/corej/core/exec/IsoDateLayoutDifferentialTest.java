@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
+import net.cumba.corej.core.expr.eval.CalendarDates;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -216,25 +217,37 @@ class IsoDateLayoutDifferentialTest
 
 
     @Nested
-    @DisplayName("the decoder and the gate cannot disagree")
+    @DisplayName("the calendar gate never accepts what the decoder rejects")
     class GateAndLayoutAgree
     {
 
+        /**
+         * The production gate, {@code CalendarDates.isValidDate}, reads its calendar components out
+         * of {@link ScalarSemantics#isoComponents} on the normalised core, so it may accept a
+         * non-interval value <b>only</b> if that core decodes. &#9873; One-way on purpose: the
+         * converse is false (the decoder does no calendar validation, so {@code 2026-02-30} decodes
+         * and is rejected). &#9888; This used to assert {@code StructuralPartialDate.accepts}
+         * &hArr; decodes, which is a tautology: on a non-interval value {@code accepts} <em>is</em>
+         * that decode.
+         */
         @Test
-        void layoutIsNonNullForExactlyTheNormalisedStringsTheGateAccepts()
+        void theCalendarGateAcceptsOnlyValuesWhoseCoreDecodes()
         {
+            int accepted = 0;
             for (String s : IsoDateCorpus.all())
             {
-                if (s.indexOf('/') >= 0)
+                if (s.indexOf('/') >= 0 || !CalendarDates.isValidDate(s))
                 {
-                    continue; // the gate's interval recursion has no single layout
+                    continue; // an interval has no single layout; a rejection implies nothing
                 }
+                accepted++;
                 String core = ScalarSemantics
                         .stripFractionalSeconds(ScalarSemantics.stripTimezone(s));
-                assertEquals(StructuralPartialDate.accepts(s),
-                        ScalarSemantics.isoComponents(core) != null,
-                        () -> "gate/layout disagree on \"" + s + "\" (core \"" + core + "\")");
+                assertNotNull(ScalarSemantics.isoComponents(core), () -> "isValidDate accepted \""
+                        + s + "\" but its core \"" + core + "\" does not decode");
             }
+            // Neuter-and-watch control: the implication is vacuous if the gate accepts nothing.
+            assertTrue(accepted > 0, "the calendar gate accepted no corpus value");
         }
 
 

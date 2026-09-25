@@ -47,8 +47,7 @@ class KeyMatchRowExpanderTest
     }
 
 
-    private static MatchDataset md(String name,
-            @SuppressWarnings("SameParameterValue") String joinType, String... keys)
+    private static MatchDataset md(String name, String joinType, String... keys)
     {
         MatchDataset m = new MatchDataset();
         m.setName(name);

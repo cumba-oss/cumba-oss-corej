@@ -302,10 +302,13 @@ class ScalarSemanticsComputedMissingTest
      * ({@code PLAN-retire-dead-multi-match-lookup} wave A). ⇒ The discovery can no longer prove
      * itself non-vacuous against a production member, and requiring one would fail forever. So
      * control 1 runs the SAME discovery ({@link #censusMultiValue}) over a test-local control class
-     * that declares one {@code List<IDataValue>} method and two that are not multi-value, and
-     * requires exactly the first: that proves the discovery reaches type arguments without needing
-     * a production population. ⛔ A new 0..N producer reds the exact count; read it against both
-     * halves of the contract before bumping {@link #EXPECTED_MULTI_VALUE_PRODUCERS}.
+     * that declares three {@code List<IDataValue>} methods — a clean one, one with a
+     * {@code @Nullable} LIST and one with a {@code @Nullable} ELEMENT — plus two that are not
+     * multi-value (a scalar {@code IDataValue}, a {@code List<String>}). It requires the discovery
+     * to find exactly the three, and each nullable detector to report exactly its own declaration:
+     * that proves the discovery reaches type arguments, and that both detectors can fire, without
+     * needing a production population. ⛔ A new 0..N producer reds the exact count; read it against
+     * both halves of the contract before bumping {@link #EXPECTED_MULTI_VALUE_PRODUCERS}.
      * </p>
      */
     @Test

@@ -15,11 +15,10 @@ import org.jspecify.annotations.Nullable;
  * {@code src/main}; the production gate is {@code CalendarDates.isValidDate}, which performs the
  * same normalisation itself — and it was removed by the fixpoint pass of
  * {@code PLAN-retire-dead-multi-match-lookup}. The tests that pinned the structural shape (Fix #209
- * / Fix #215: the masked widening, the decoder/gate agreement, the structural-vs-calendar split)
- * now pin it through this composition. ⚠ The {@code a/b} interval split is kept only so the corpus
- * figures those tests measured against the removed method stay comparable; no production code
- * performs <em>this</em> split (the calendar gate has its own, stricter one: exactly two
- * components, forward-running).
+ * / Fix #215: the masked widening, the structural-vs-calendar split) now pin it through this
+ * composition. ⚠ The {@code a/b} interval split is kept only so the corpus figures those tests
+ * measured against the removed method stay comparable; no production code performs <em>this</em>
+ * split (the calendar gate has its own, stricter one: exactly two components, forward-running).
  * </p>
  */
 public final class StructuralPartialDate

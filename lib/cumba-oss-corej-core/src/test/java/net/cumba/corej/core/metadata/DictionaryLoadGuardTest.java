@@ -171,7 +171,8 @@ class DictionaryLoadGuardTest
         assertTrue(u.detail().contains("reinstall"), u.detail());
         assertEquals(u.detail(), p.unavailabilityDetail("meddra"));
         assertNull(p.unavailabilityOf("unii"),
-                "a type that simply is not there records nothing — NOT_INSTALLED is the default");
+                "a type that simply is not there records nothing — the detail falls back to"
+                        + " notInstalledDetail()");
     }
 
     // ------------------------------------------------------------------
