@@ -15,7 +15,6 @@ import java.util.function.IntFunction;
 import net.cumba.corej.core.expr.eval.ComputedVector;
 import net.cumba.corej.core.expr.eval.TypedValue;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.IDataValue;
@@ -110,16 +109,10 @@ class ScalarSemanticsComputedMissingTest
                 violations.add("ExprCompiler." + name + " return");
             }
         }
-        Method lookupValue = JoinLookup.class.getMethod("lookupValue", IDataTable.class, long.class,
-                String.class);
-        if (isNullable(lookupValue.getAnnotatedReturnType()))
-        {
-            violations.add("JoinLookup.lookupValue return");
-        }
-        // ⭐ BOTH forms, not only the legacy three-argument one: §9c's expectation-aware overload is
-        // the one the evaluation path now calls and the one every production implementation
-        // overrides, so a ratchet that checked only the delegating form would guard the channel
-        // nobody uses.
+        // ⭐ §9c's expectation-aware overload is the one the evaluation path calls and the one every
+        // production implementation overrides. ⚑ Its three-argument sibling (delegating with
+        // numericExpected = false) was censused here too until 2026-09-25, when it was retired as
+        // having no production caller (PLAN-retire-dead-multi-match-lookup U14).
         Method lookupValueTyped = JoinLookup.class.getMethod("lookupValue", IDataTable.class,
                 long.class, String.class, boolean.class);
         if (isNullable(lookupValueTyped.getAnnotatedReturnType()))
@@ -182,7 +175,7 @@ class ScalarSemanticsComputedMissingTest
      *
      * <p>
      * ⚠⚠ <b>Why the hand-written half above is not enough.</b>
-     * {@link #theTypedCellChannelDeclaresNoNullableValue()} names seven signatures BY HAND. It reds
+     * {@link #theTypedCellChannelDeclaresNoNullableValue()} names its signatures BY HAND. It reds
      * on a rename and on a signature move — but it is blind in exactly one direction, which is the
      * direction defects arrive from: a TWELFTH producer landing with a {@code @Nullable IDataValue}
      * return is simply not named, NullAway is satisfied within the new method's own body, nothing
@@ -287,53 +280,111 @@ class ScalarSemanticsComputedMissingTest
 
     /**
      * ⭐⭐ The <b>0..N MULTI-VALUE channel</b> — the population the scalar ratchet above cannot see,
-     * and the one §2a says the COMPILER cannot see either. ⇒ Before this test it had neither
-     * instrument: {@code NullAway} does not check a lambda's or method reference's return against a
-     * generic type argument, and
+     * and the one §2a says the COMPILER cannot see either: {@code NullAway} does not check a
+     * lambda's or method reference's return against a generic type argument, and
      * {@link #everyIDataValueDeclarationInThisModuleIsDiscoveredCountedAndNonNullable()} filters on
-     * the return type BEING an {@code IDataValue}, so a {@code List<IDataValue>} never entered it.
+     * the return type BEING an {@code IDataValue}, so a {@code List<IDataValue>} never enters it.
      *
      * <p>
-     * ⭐⭐ <b>THE CONTRACT, MEASURED RATHER THAN ASSUMED — the LIST may be null, an ELEMENT may
-     * not.</b> The two halves have genuinely different verdicts and it would have been wrong to
-     * assert one rule for both:
+     * ⭐⭐ <b>THE CONTRACT — neither the LIST nor an ELEMENT may be null.</b> Every element of such a
+     * list is an expression input, so it owes a real value or a {@code MissingValue}. And since
+     * 2026-09-21 no multi-value declaration may hand back a nullable LIST either: the one three-way
+     * vote contract that did ({@code JoinedCandidatesVector.candidateCells} — {@code null} meant
+     * "no lookup is live, this row casts no vote") went with its class when the unqualified-join
+     * fallback was removed, and a NEW nullable list needs a three-way justification of its own.
      * </p>
-     * <ul>
-     * <li><b>⛔ OUTDATED, kept for the history: a {@code null} LIST WAS legitimate and
-     * load-bearing</b>, not a violation. {@code JoinedCandidatesVector.candidateCells} publishes a
-     * documented THREE-WAY vote contract, and {@code Primitives.scan} consumes exactly that:
-     * {@code null} means <i>no lookup is live, so this row casts NO VOTE</i> and the consumer
-     * {@code continue}s; an EMPTY list means <i>the live lookup matched elsewhere but not here</i>
-     * and the row votes once with a missing probe; a non-empty list is ANY-MATCH over its cells. By
-     * §1b's boundary test the {@code null} never flows into expression evaluation as a value at all
-     * — it decides <em>whether</em> a vote happens. That is engine plumbing, and collapsing it into
-     * an empty list would silently convert every no-lookup row into a missing-probe vote.</li>
-     * <li><b>A {@code null} ELEMENT would be a violation.</b> Every element is handed straight to
-     * {@code RowTest.test(value, row)}, i.e. it IS an expression input, so it owes a real value or
-     * a {@code MissingValue}. Measured at the producers (three until 2026-09-21, two since) and
-     * none can emit one today: {@code DatasetLookup.lookupAllValues} adds {@code getDataValue(row)}
-     * (non-null, and only when {@code !isMissingOrInvalid()}); {@code JoinLookup.lookupAllValues}
-     * wraps each non-null {@code String} of {@code lookupAll} through
-     * {@code DataValueSupport.getAsDataValue}; {@code candidateCells}'s transform arm wraps through
-     * {@code DataValues.of}, which answers a {@code MissingValue.MIS} carrier even for a
-     * {@code null} input.</li>
-     * </ul>
      *
      * <p>
-     * ⇒ So the assertions below are: an EXACT-EQUALITY population count of its own; the set of
-     * declarations whose LIST is {@code @Nullable} allow-listed WITH its reason; and no
-     * {@code @Nullable} element type argument anywhere. ⚠ Moot since 2026-09-21 -- the class is
-     * deleted. Do not "harden" {@code candidateCells}'s nullable return to get a uniform rule —
-     * that is the one of the two halves the code and the owner's boundary test both say is correct.
+     * ⭐ <b>The population is ZERO today, asserted exactly.</b> One-line history: three producers on
+     * 2026-09-18; 3 → 2 on 2026-09-21 with {@code JoinedCandidatesVector}; 2 → 0 on 2026-09-25 when
+     * the 0..N lookup channel itself ({@code JoinLookup} / {@code DatasetLookup} {@code lookupAll}
+     * + {@code lookupAllValues}) was retired as unreachable
+     * ({@code PLAN-retire-dead-multi-match-lookup} wave A). ⇒ The discovery can no longer prove
+     * itself non-vacuous against a production member, and requiring one would fail forever. So
+     * control 1 runs the SAME discovery ({@link #censusMultiValue}) over a test-local control class
+     * that declares one {@code List<IDataValue>} method and two that are not multi-value, and
+     * requires exactly the first: that proves the discovery reaches type arguments without needing
+     * a production population. ⛔ A new 0..N producer reds the exact count; read it against both
+     * halves of the contract before bumping {@link #EXPECTED_MULTI_VALUE_PRODUCERS}.
      * </p>
      */
     @Test
     void everyMultiValueDeclarationInThisModuleIsDiscoveredCountedAndHasNonNullElements()
     {
+        // --- non-vacuity control 1: the discovery must reach a type argument ------------------
+        // ⛔ Run over a KNOWN population, because the production one is empty: a discovery that
+        // returned nothing for every class would satisfy the exact-zero count below vacuously.
+        MultiValueCensus control = censusMultiValue(List.of(MultiValueDiscoveryControl.class));
+        assertEquals(List.of("MultiValueDiscoveryControl.multiValue"), control.found(),
+                "CONTROL FAILED: over a class declaring exactly one List<IDataValue> method (plus a"
+                        + " scalar IDataValue one and a List<String> one) the discovery must find"
+                        + " exactly that one — otherwise it is not reaching type arguments, and the"
+                        + " exact-zero production count below is satisfied by a blind scan: "
+                        + control.found());
+
+        // --- non-vacuity control 2: the ELEMENT detector must SEE a @Nullable type argument -----
+        // ⛔ This is the arm the whole test turns on. isNullable() reads annotations off ONE
+        // AnnotatedType; a mistake in valuePositionsWithin (returning the container instead of the
+        // argument, or an empty list) makes `nullableElement` empty no matter what the channel
+        // declares, and the assertion below then passes over a fully re-nulled element type.
+        List<AnnotatedType> controlElements = valuePositionsWithin(
+                declared(ScalarSemanticsComputedMissingTest.class, "controlWithANullableElement")
+                        .getAnnotatedReturnType());
+        assertEquals(1, controlElements.size(),
+                "CONTROL FAILED: the element extractor found " + controlElements.size()
+                        + " value positions in List<@Nullable IDataValue>, not 1 — it is not"
+                        + " reaching type arguments and every element check here is vacuous");
+        assertTrue(isNullable(controlElements.get(0)),
+                "CONTROL FAILED: the detector cannot see a @Nullable on an element TYPE ARGUMENT at"
+                        + " all, so nullableElement would stay empty over a re-nulled channel");
+
+        // --- the production population --------------------------------------------------------
+        MultiValueCensus census = censusMultiValue(
+                ProductionClasses.ofModule(ScalarSemantics.class));
+
+        assertEquals(EXPECTED_MULTI_VALUE_PRODUCERS, census.found().size(),
+                "⚑ a new 0..N IDataValue producer appeared in this module (the population has been"
+                        + " ZERO since the lookupAll channel was retired on 2026-09-25). Read it"
+                        + " against BOTH halves of the contract — the LIST may not be null and an"
+                        + " ELEMENT may not be null (every element is an expression input) — before"
+                        + " this constant is bumped. Discovered: " + census.found());
+
+        // ⭐⭐ EMPTY since 2026-09-21, and that is the contract: no multi-value declaration may hand
+        // back a nullable LIST. The one that did (JoinedCandidatesVector.candidateCells) existed
+        // only to let an UNQUALIFIED name vote per joined candidate, which the owner's uniformity
+        // ruling abolished. Do not re-add the old one to make this pass.
+        assertEquals(List.of(), census.nullableList(),
+                "the set of multi-value declarations whose LIST is @Nullable changed. NONE is allowed"
+                        + " since 2026-09-21; a NEW nullable LIST needs a three-way justification of"
+                        + " its own");
+
+        assertTrue(census.nullableElement().isEmpty(),
+                "⛔ these multi-value declarations allow a NULL ELEMENT, and an element of one of"
+                        + " these lists is an expression input. Every value a rule reads is a real"
+                        + " value or a MissingValue — produce ScalarSemantics.computedMissing() (or"
+                        + " DataValues.of, which already answers a MIS carrier for a null input)"
+                        + " instead of admitting a null: " + census.nullableElement());
+    }
+
+    /** What {@link #censusMultiValue} found: every id sorted, so failures read the same twice. */
+    private record MultiValueCensus(List<String> found, List<String> nullableList,
+            List<String> nullableElement)
+    {
+    }
+
+    /**
+     * The multi-value DISCOVERY, over any population of classes: every non-synthetic declared
+     * method whose return type carries an {@code IDataValue} in a type argument, array component or
+     * wildcard bound ({@link #valuePositionsWithin}), with the ids whose LIST and whose ELEMENT
+     * type are {@code @Nullable} reported alongside. ⚑ Extracted from the test body on 2026-09-25
+     * precisely so the same code runs over the control population and the production one.
+     */
+    private static MultiValueCensus censusMultiValue(List<Class<?>> classes)
+    {
         List<String> found = new ArrayList<>();
         List<String> nullableList = new ArrayList<>();
         List<String> nullableElement = new ArrayList<>();
-        for (Class<?> c : ProductionClasses.ofModule(ScalarSemantics.class))
+        for (Class<?> c : classes)
         {
             for (Method m : c.getDeclaredMethods())
             {
@@ -365,175 +416,47 @@ class ScalarSemanticsComputedMissingTest
         java.util.Collections.sort(found);
         java.util.Collections.sort(nullableList);
         java.util.Collections.sort(nullableElement);
-
-        // --- non-vacuity control 1: the discovery must contain the channel it is about ----------
-        // ⚠ JoinedCandidatesVector is GONE (2026-09-21, PLAN-unqualified-name-primary-only's
-        // closure
-        // sweep): its only producer resolved an unqualified name out of a join, so with that
-        // removed
-        // nothing could construct one and the class went with it. Dropped from the roster rather
-        // than
-        // the assertion weakened -- a control that requires a symbol nothing can reach fails
-        // forever,
-        // and a count that includes it censuses a producer that can never produce.
-        for (String required : List.of("DatasetLookup.lookupAllValues",
-                "JoinLookup.lookupAllValues"))
-        {
-            assertTrue(found.contains(required),
-                    "CONTROL FAILED: the discovery did not find " + required + ", so it is not"
-                            + " seeing the multi-value channel and the count below would be"
-                            + " satisfied by an unrelated population: " + found);
-        }
-
-        // --- non-vacuity control 2: the ELEMENT detector must SEE a @Nullable type argument -----
-        // ⛔ This is the arm the whole test turns on. isNullable() reads annotations off ONE
-        // AnnotatedType; a mistake in valuePositionsWithin (returning the container instead of the
-        // argument, or an empty list) makes `nullableElement` empty no matter what the channel
-        // declares, and the assertion below then passes over a fully re-nulled element type.
-        List<AnnotatedType> controlElements = valuePositionsWithin(
-                declared(ScalarSemanticsComputedMissingTest.class, "controlWithANullableElement")
-                        .getAnnotatedReturnType());
-        assertEquals(1, controlElements.size(),
-                "CONTROL FAILED: the element extractor found " + controlElements.size()
-                        + " value positions in List<@Nullable IDataValue>, not 1 — it is not"
-                        + " reaching type arguments and every element check here is vacuous");
-        assertTrue(isNullable(controlElements.get(0)),
-                "CONTROL FAILED: the detector cannot see a @Nullable on an element TYPE ARGUMENT at"
-                        + " all, so nullableElement would stay empty over a re-nulled channel");
-
-        assertEquals(EXPECTED_MULTI_VALUE_PRODUCERS, found.size(),
-                "⚑ the number of MULTI-VALUE (0..N) IDataValue declarations in this module MOVED."
-                        + " A new one must be READ against both halves of the contract — may its"
-                        + " LIST be null (a three-way vote contract) and can an ELEMENT ever be"
-                        + " null (it may not: every element is an expression input)? — before this"
-                        + " constant is bumped. Discovered: " + found);
-
-        // ⭐⭐ EMPTY since 2026-09-21, and the assertion's own warning is what this documents: "a
-        // REMOVED one means that vote contract has been collapsed, which changes verdicts". It HAS
-        // been collapsed -- deliberately. candidateCells' three-way vote (null = no vote, empty
-        // list
-        // = a MISSING-probe vote, otherwise ANY-MATCH) existed only to let an UNQUALIFIED name vote
-        // per joined candidate, which the owner's uniformity ruling abolished; the class had no
-        // producer left and went with it. ⇒ The allowlist is empty, and that is now the contract:
-        // no
-        // multi-value declaration may hand back a nullable LIST.
-        assertEquals(List.of(), nullableList,
-                "the set of multi-value declarations whose LIST is @Nullable changed. NONE is allowed"
-                        + " since 2026-09-21: the one that was -- JoinedCandidatesVector.candidateCells,"
-                        + " whose null meant \"no lookup is live\" and which Primitives.scan read as"
-                        + " \"this row casts no vote\" -- went with its class when the unqualified-join"
-                        + " fallback was removed. A NEW nullable LIST needs a three-way justification of"
-                        + " its own; do not re-add the old one to make this pass");
-
-        assertTrue(nullableElement.isEmpty(),
-                "⛔ these multi-value declarations allow a NULL ELEMENT, and an element of one of"
-                        + " these lists is an expression input: Primitives.scan hands each cell"
-                        + " straight to RowTest.test. Every value a rule reads is a real value or a"
-                        + " MissingValue — produce ScalarSemantics.computedMissing() (or"
-                        + " DataValues.of, which already answers a MIS carrier for a null input)"
-                        + " instead of admitting a null: " + nullableElement);
+        return new MultiValueCensus(found, nullableList, nullableElement);
     }
 
-
     /**
-     * ⭐⭐ The multi-value contract asserted as a BEHAVIOUR, not only as a declaration — because the
-     * declaration ratchet above only catches an author who ANNOTATES the null they admit. An
-     * {@code out.add(null)} with no annotation is invisible to it, to NullAway (§2a: a generic
-     * element type is exactly what it cannot check) and to every gate.
-     *
-     * <p>
-     * Both producers are probed over a fixture that exercises the interesting rows: a matched cell
-     * with a value, a matched cell that is MISSING, and an unmatched row. ⚠ Note what
-     * {@code DatasetLookup.lookupAllValues} does with the missing one — it <b>filters it out</b>
-     * rather than admitting it, which is the same filter {@code lookupAll} applies and is why a
-     * null element never had to be invented for it. That is pinned here, because "the list is
-     * shorter" and "the list carries a null" are the two ways this could have been written and only
-     * one of them keeps the channel null-free.
-     * </p>
-     *
-     * <p>
-     * ⚑ {@code JoinedCandidatesVector.candidateCells} is NOT probed here and is covered by the
-     * declaration half only: constructing one needs a whole {@code EvaluationContext}. ⭐ Its
-     * untransformed arm is nonetheless covered TRANSITIVELY — it returns
-     * {@code lookup.lookupAllValues(…)} verbatim, which is the very method probed below. The
-     * uncovered remainder is its transform arm, which wraps through {@code DataValues.of} — the one
-     * factory that answers a {@code MissingValue.MIS} carrier even for a {@code null} input.
-     * </p>
+     * ⛔ The permanent positive control for the multi-value DISCOVERY (control 1 above): exactly one
+     * method returning a 0..N container of {@code IDataValue}, beside one scalar producer and one
+     * list of a non-value type, neither of which may be found. Package-private and reached
+     * reflectively on purpose: nothing calls these, and that is the point.
      */
-    @Test
-    void neitherMultiValueProducerEverYieldsANullElement()
+    static final class MultiValueDiscoveryControl
     {
-        // ⛔ colSasMissing, NOT col(…, null), and that is F2: the installed testkit jar (18:24)
-        // predates the datatable repository's d1585c9 (19:20), so a col(null) fixture asserts one
-        // thing against a fresh testkit and the opposite against this sandbox's. colSasMissing
-        // mints the generic MIS on both sides, so this test measures the engine rather than the
-        // jar.
-        IDataTable child = MockTable.of().col("USUBJID", "S1", "S2").colSasMissing("ARM", "A", null)
-                .name("DM").build();
-        IDataTable primary = MockTable.of().col("USUBJID", "S1", "S2", "S3").name("AE").build();
-        DatasetLookup lk = java.util.Objects.requireNonNull(
-                DatasetLookup.build("DM", child, List.of("USUBJID")), "build answered null");
 
-        // row 0: a matched, present cell -> exactly one element, and it is a real value.
-        List<IDataValue> present = lk.lookupAllValues(primary, 0, "ARM");
-        assertEquals(1, present.size());
-        assertNotNull(present.get(0), "no element of the 0..N channel is ever null");
-        assertEquals("A", present.get(0).getValueAsString());
-
-        // row 1: a matched cell that is MISSING -> FILTERED OUT, never admitted as a null element.
-        assertEquals(List.of(), lk.lookupAllValues(primary, 1, "ARM"),
-                "a missing matched cell contributes NOTHING — the same filter lookupAll applies."
-                        + " ⛔ If this ever becomes a one-element list, read the element: adding the"
-                        + " cell is fine, adding a null is the violation");
-
-        // row 2: no partner at all, and an absent column: both empty, neither null.
-        assertNotNull(lk.lookupAllValues(primary, 2, "ARM"),
-                "the LIST of this producer is non-null");
-        assertEquals(List.of(), lk.lookupAllValues(primary, 2, "ARM"));
-        assertEquals(List.of(), lk.lookupAllValues(primary, 0, "ZZNOSUCHCOLUMN"));
-
-        // The interface DEFAULT, which is a separate declaration and a separate implementation: it
-        // wraps lookupAll's strings, and a null-free list in must stay a null-free list out.
-        JoinLookup textOnly = new JoinLookup()
+        static List<IDataValue> multiValue()
         {
-
-            @Override
-            public @Nullable String lookup(IDataTable t, long row, String columnName)
-            {
-                return "X";
-            }
+            return new ArrayList<>();
+        }
 
 
-            @Override
-            public List<String> lookupAll(IDataTable t, long row, String columnName)
-            {
-                return List.of("X", "");
-            }
-
-
-            @Override
-            public String getDatasetName()
-            {
-                return "PROBE";
-            }
-        };
-        List<IDataValue> wrapped = textOnly.lookupAllValues(primary, 0, "ARM");
-        assertEquals(2, wrapped.size());
-        for (IDataValue v : wrapped)
+        static IDataValue notMultiValue()
         {
-            assertNotNull(v, "the interface default must not wrap anything into a null element");
+            return ScalarSemantics.computedMissing();
+        }
+
+
+        static List<String> notAValueList()
+        {
+            return new ArrayList<>();
         }
     }
 
     /**
-     * The measured number of declarations in this module returning a 0..N container of
-     * {@code IDataValue}, 2026-09-18 — three, all of them {@code List<IDataValue>}. ⚑ <b>3 → 2 on
-     * 2026-09-21</b>: {@code JoinedCandidatesVector.candidateCells} went with its class, which had
-     * no producer left once the unqualified-join fallback was removed. ⛔ A ratchet, and
-     * deliberately SEPARATE from {@link #EXPECTED_VALUE_PRODUCERS}: folding the scalar and
-     * multi-value populations into one figure would hide which of two different contracts moved.
+     * The number of declarations in this module returning a 0..N container of {@code IDataValue}. ⭐
+     * <b>ZERO since 2026-09-25</b> ({@code PLAN-retire-dead-multi-match-lookup} wave A retired the
+     * last two, {@code DatasetLookup.lookupAllValues} and {@code JoinLookup.lookupAllValues}; 3 → 2
+     * had been {@code JoinedCandidatesVector.candidateCells} on 2026-09-21). ⛔ A ratchet with exact
+     * equality, and deliberately SEPARATE from {@link #EXPECTED_VALUE_PRODUCERS}: folding the
+     * scalar and multi-value populations into one figure would hide which of two different
+     * contracts moved. Bump it only after reading the new producer against both halves of the
+     * contract.
      */
-    private static final int EXPECTED_MULTI_VALUE_PRODUCERS = 2;
+    private static final int EXPECTED_MULTI_VALUE_PRODUCERS = 0;
 
     /**
      * ⛔ The permanent positive control for the element detector — a declaration carrying a
@@ -635,8 +558,17 @@ class ScalarSemanticsComputedMissingTest
      * because each still declares its own {@code lookupValue}. The producer moved; it did not
      * multiply.
      * </p>
+     *
+     * <p>
+     * ⚑ <b>18 → 17 on 2026-09-25, ACCOUNTED FOR:</b> {@code JoinLookup}'s three-argument
+     * {@code lookupValue} default — the form without the expectation flag, delegating with
+     * {@code false} — was retired by {@code PLAN-retire-dead-multi-match-lookup} (U14): no
+     * production code called it, and every production implementation overrides the four-argument
+     * form. The four-argument default and the three overrides stay, so the channel lost a
+     * delegating wrapper and no producer of its own.
+     * </p>
      */
-    private static final int EXPECTED_VALUE_PRODUCERS = 18;
+    private static final int EXPECTED_VALUE_PRODUCERS = 17;
 
     private static Method declared(Class<?> owner, String name)
     {

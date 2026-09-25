@@ -38,8 +38,8 @@ class ComputedVectorTypedTest
 
         // Read both views of row 0, twice each. Before F9 the typed producer was invoked from
         // value() through a text-converting wrapper AND again from dataValue, so a row whose text
-        // and typed forms were both read cost two lookupValue calls -- or two full lookupAllValues
-        // scans for a candidates vector.
+        // and typed forms were both read cost two lookupValue calls (and, while the 0..N
+        // candidates vector still existed, two full scans of its matches).
         v.value(0).cell();
         v.value(0).resolved();
         Primitives.targetAsDouble(v.value(0));

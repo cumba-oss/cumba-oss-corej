@@ -28,11 +28,22 @@ import org.junit.jupiter.api.Test;
  * ⚠⚠ <b>Three separate lanes verified that claim TRUE by reading the tree, and nothing made it
  * HOLD.</b> A fourth production implementation that overrides only {@link JoinLookup#lookup} (the
  * {@code String} channel) compiles green, passes every gate, and silently drops the DOTTED-PARITY
- * INVARIANT on its own path: the four-argument
- * {@link JoinLookup#lookupValue(IDataTable, long, String, boolean)} default cannot honour the
- * three-way non-value contract — it can only answer the computed {@code MIS}, losing a supplied
- * missing identity and reading an absent CHARACTER column as missing where the constant {@code ""}
- * is owed. A verified-by-reading claim is worth nothing next session; only a check is.
+ * INVARIANT on its own path: the {@link JoinLookup#lookupValue(IDataTable, long, String, boolean)}
+ * default cannot honour the three-way non-value contract — it can only answer the computed
+ * {@code MIS}, losing a supplied missing identity and reading an absent CHARACTER column as missing
+ * where the constant {@code ""} is owed. A verified-by-reading claim is worth nothing next session;
+ * only a check is.
+ * </p>
+ *
+ * <p>
+ * ⚑ <b>Re-derived 2026-09-25</b> ({@code PLAN-retire-dead-multi-match-lookup} U14):
+ * {@code JoinLookup} used to carry a three-argument {@code lookupValue} beside the
+ * expectation-aware one, and this guard's second control was an implementation overriding THAT
+ * arity — the wrong one, since the delegating default hands it {@code numericExpected = false}.
+ * That form is gone (no production caller), so the wrong-arity shape can no longer be written and
+ * its control went with it. What remains is the guard's substance: the two shapes that CAN still be
+ * written — overriding only the {@code String} channel, and pasting the default's body into a
+ * declared override — and the behavioural probe that catches both.
  * </p>
  *
  * <p>
@@ -191,11 +202,6 @@ class JoinLookupProductionOverrideGuardTest
                 "CONTROL FAILED: an implementation overriding only lookup() must be detected as"
                         + " relying on the interface default. The guard above cannot see the defect"
                         + " it exists for, and every check in this class passed vacuously.");
-        assertFalse(declaresExpectationAwareLookupValue(ThreeArgOnlyLookup.class),
-                "CONTROL FAILED: overriding the THREE-argument lookupValue is not the same as"
-                        + " overriding the expectation-aware form — the delegating default hands it"
-                        + " numericExpected=false, so the expectation is discarded. It must be"
-                        + " detected as non-compliant too.");
 
         // --- the BEHAVIOURAL detector ------------------------------------------------------
         for (Map.Entry<String, Probe> e : probes().entrySet())
@@ -209,9 +215,6 @@ class JoinLookupProductionOverrideGuardTest
         assertFalse(honoursTheRuleExpectation(new Probe(new StringChannelOnlyLookup(), primary, 0)),
                 "CONTROL FAILED: an implementation on the interface default cannot honour the"
                         + " expectation — it answers a computed MIS for BOTH flags");
-        assertFalse(honoursTheRuleExpectation(new Probe(new ThreeArgOnlyLookup(), primary, 0)),
-                "CONTROL FAILED: the three-argument override is reached with numericExpected"
-                        + " discarded, so it cannot honour the expectation either");
 
         // ⭐⭐ THE THIRD SHAPE, and the reason this test exists in this form: an implementation that
         // DECLARES the four-argument form and pastes the interface default's own body into it. It
@@ -278,32 +281,6 @@ class JoinLookupProductionOverrideGuardTest
         public @Nullable String lookup(IDataTable primaryTable, long row, String columnName)
         {
             return null;
-        }
-
-
-        @Override
-        public String getDatasetName()
-        {
-            return "CONTROL";
-        }
-    }
-
-
-    /** The subtler defect shape: the legacy three-argument typed form, which loses the flag. */
-    private static final class ThreeArgOnlyLookup implements JoinLookup
-    {
-
-        @Override
-        public @Nullable String lookup(IDataTable primaryTable, long row, String columnName)
-        {
-            return null;
-        }
-
-
-        @Override
-        public IDataValue lookupValue(IDataTable primaryTable, long row, String columnName)
-        {
-            return ScalarSemantics.computedMissing();
         }
 
 

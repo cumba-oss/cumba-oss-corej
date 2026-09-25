@@ -55,22 +55,22 @@ class KeyMatchExpandedLookupTest
     {
         KeyMatchExpandedLookup lk = fixture();
 
-        IDataValue present = lk.lookupValue(null, 0, "ARM");
+        IDataValue present = lk.lookupValue(null, 0, "ARM", false);
         assertFalse(present.isMissingOrInvalid());
         assertEquals("A", present.getValueAsString(), "the bound child cell, verbatim");
 
         // A SUPPLIED missing is a missing (D75a case 4) — distinct from an absent column's "".
-        assertTrue(lk.lookupValue(null, 1, "ARM").isMissingOrInvalid());
+        assertTrue(lk.lookupValue(null, 1, "ARM", false).isMissingOrInvalid());
 
         // An unmatched left-join row reads the column's own declared TYPE default (D72a-1) — for a
         // char column that is "", and it comes from the metadata, not from the rule.
-        IDataValue unmatched = lk.lookupValue(null, 2, "ARM");
+        IDataValue unmatched = lk.lookupValue(null, 2, "ARM", false);
         assertFalse(unmatched.isMissingOrInvalid(), "char type default is a present \"\"");
         assertEquals("", unmatched.getValueAsString());
 
         // A stored "" is a present value.
-        assertFalse(lk.lookupValue(null, 0, "SITE").isMissingOrInvalid());
-        assertEquals("", lk.lookupValue(null, 0, "SITE").getValueAsString());
+        assertFalse(lk.lookupValue(null, 0, "SITE", false).isMissingOrInvalid());
+        assertEquals("", lk.lookupValue(null, 0, "SITE", false).getValueAsString());
 
         // ⚠ The override must travel with declaredTypeOf: this class publishes a real type (it
         // holds exactly ONE child table), so leaving the values on JoinLookup's text default would
@@ -98,12 +98,10 @@ class KeyMatchExpandedLookupTest
                 "⛔ §9c: a numeric-expected absent joined column is MIS, never a present \"\"");
         assertEquals(MissingValue.MIS, numericAbsent.getValue());
 
-        // ARM 2 — CONTROL: no expectation, still the present "" (D34 #3, D96a stays closed). The
-        // three-argument form delegates with false, so every legacy caller is unmoved.
+        // ARM 2 — CONTROL: no expectation, still the present "" (D34 #3, D96a stays closed).
         IDataValue charAbsent = lk.lookupValue(null, 0, "NOSUCH", false);
         assertFalse(charAbsent.isMissingOrInvalid());
         assertEquals("", charAbsent.getValueAsString());
-        assertFalse(lk.lookupValue(null, 0, "NOSUCH").isMissingOrInvalid());
 
         // ARM 3 — CONTROL: a genuinely STORED "" stays a present value under either flag, because
         // the column EXISTS and the expectation never reaches a present cell.

@@ -55,7 +55,7 @@ class DatasetLookupTypedValueTest
         // The text accessor still rounds -- unchanged on purpose, report text depends on it.
         assertEquals("10000000000000", lk.lookup(primary, 0, "VAL"));
         // The typed accessor does not.
-        IDataValue dv = lk.lookupValue(primary, 0, "VAL");
+        IDataValue dv = lk.lookupValue(primary, 0, "VAL", false);
         assertNotNull(dv);
         assertEquals(BIG, dv.getValueAsDouble());
         assertEquals(DataValueType.DOUBLE, lk.declaredTypeOf("VAL"));
@@ -77,7 +77,7 @@ class DatasetLookupTypedValueTest
 
         // row 0 -- a present character value
         assertEquals("A", lk.lookup(primary, 0, "ARM"));
-        assertEquals("A", lk.lookupValue(primary, 0, "ARM").getValueAsString());
+        assertEquals("A", lk.lookupValue(primary, 0, "ARM", false).getValueAsString());
         // row 1 -- a MATCHED char cell stored as a raw null. ⭐ RE-BASED on the owner ruling of
         // 2026-09-18 ("a present column can be missing, and missing is not empty string"), which
         // The datatable repository's d4edd59 landed: a null in a STRING buffer is MissingValue.MIS.
@@ -89,7 +89,7 @@ class DatasetLookupTypedValueTest
         // proves the ruling reaches the join channel.
         assertNull(lk.lookup(primary, 1, "ARM"),
                 "a matched but MISSING char cell has no comparand: null, never \"\"");
-        IDataValue suppliedMissingChar = lk.lookupValue(primary, 1, "ARM");
+        IDataValue suppliedMissingChar = lk.lookupValue(primary, 1, "ARM", false);
         assertNotNull(suppliedMissingChar);
         assertTrue(suppliedMissingChar.isMissingOrInvalid(),
                 "a supplied char MissingValue passes through unchanged (D75a case 4)");
@@ -100,7 +100,7 @@ class DatasetLookupTypedValueTest
         assertEquals("S1", lk.lookup(primary, 0, "SITE"));
         assertEquals("", lk.lookup(primary, 1, "SITE"),
                 "a stored \"\" is a value — missing and empty string must stay distinguishable");
-        IDataValue storedEmpty = lk.lookupValue(primary, 1, "SITE");
+        IDataValue storedEmpty = lk.lookupValue(primary, 1, "SITE", false);
         assertNotNull(storedEmpty);
         assertFalse(storedEmpty.isMissingOrInvalid(), "a stored \"\" is NOT missing");
         assertEquals("", storedEmpty.getValueAsString());
@@ -108,24 +108,24 @@ class DatasetLookupTypedValueTest
         // accessor passes the parent's own cell through UNCHANGED, where it used to rewrite it
         // to null. The text accessor keeps legacy.
         assertNull(lk.lookup(primary, 1, "AGE"));
-        IDataValue suppliedMissingNum = lk.lookupValue(primary, 1, "AGE");
+        IDataValue suppliedMissingNum = lk.lookupValue(primary, 1, "AGE", false);
         assertNotNull(suppliedMissingNum);
         assertTrue(suppliedMissingNum.isMissingOrInvalid(),
                 "a supplied numeric MissingValue passes through, never null (D75a case 4)");
         // row 2 -- no matched joined row: D72/D72a-1, the TYPE default — a merged column behaves
         // like a primary column, so a char column reads "" and a numeric one MissingValue.MIS.
         assertNull(lk.lookup(primary, 2, "ARM"));
-        IDataValue unmatchedChar = lk.lookupValue(primary, 2, "ARM");
+        IDataValue unmatchedChar = lk.lookupValue(primary, 2, "ARM", false);
         assertNotNull(unmatchedChar);
         assertEquals("", unmatchedChar.getValueAsString(),
                 "an unmatched row reads the char default \"\" (D72a-1)");
-        IDataValue unmatchedNum = lk.lookupValue(primary, 2, "AGE");
+        IDataValue unmatchedNum = lk.lookupValue(primary, 2, "AGE", false);
         assertNotNull(unmatchedNum);
         assertTrue(unmatchedNum.isMissingOrInvalid(),
                 "an unmatched row reads the numeric default MIS (D72a-1)");
-        // an absent column: the D76 type default. ⚑ This three-argument form carries NO
-        // expectation and so delegates with numericExpected = false (§9c) — which is exactly why
-        // the char answer below is still "". ⭐ The numeric arm of the same site is pinned by
+        // an absent column: the D76 type default. ⚑ Read with NO numeric expectation
+        // (numericExpected = false, §9c) — which is exactly why the char answer below is still "".
+        // ⭐ The numeric arm of the same site is pinned by
         // absentJoinedColumnTakesTheRuleExpectedDefault; before §9c landed there was no way to ask
         // for it, and this line was the whole of the site's coverage.
         // So the typed accessor answers "" — a PRESENT empty string,
@@ -136,7 +136,7 @@ class DatasetLookupTypedValueTest
         // The TEXT accessor keeps legacy null — only the typed channel carries the default,
         // mirroring the unmatched-row split pinned above.
         assertNull(lk.lookup(primary, 0, "NOSUCH"));
-        IDataValue absentChar = lk.lookupValue(primary, 0, "NOSUCH");
+        IDataValue absentChar = lk.lookupValue(primary, 0, "NOSUCH", false);
         assertNotNull(absentChar, "an absent foreign column folds to its D76 default, not null");
         assertEquals("", absentChar.getValueAsString(),
                 "the absent-foreign-column default is the char default \"\" (D76 'otherwise char')");
@@ -191,9 +191,6 @@ class DatasetLookupTypedValueTest
         assertFalse(charAbsent.isMissingOrInvalid(),
                 "⛔ the char default stays a present \"\" — this is what keeps D96a closed");
         assertEquals("", charAbsent.getValueAsString());
-        // …and the three-argument form delegates with false, so every legacy caller is unmoved.
-        assertFalse(lk.lookupValue(primary, 0, "NOSUCH").isMissingOrInvalid());
-
         // ARM 3 — CONTROL, anti-corruption: a genuinely STORED "" is a value and stays one even
         // under a numeric expectation, because the column EXISTS and the flag never reaches a
         // present cell. Rewriting "" -> MIS at the call site would have broken exactly this.
@@ -205,29 +202,7 @@ class DatasetLookupTypedValueTest
 
 
     @Test
-    @DisplayName("lookupAllValues mirrors lookupAll's 0..N shape and missing-cell filter")
-    void lookupAllValuesMirrorsLookupAll()
-    {
-        IDataTable primary = t("DM", col("USUBJID", DataValueType.STRING, "U1"));
-        IDataTable joined = t("AE", col("USUBJID", DataValueType.STRING, "U1", "U1", "U1"),
-                col("SEQ", DataValueType.LONG, 1L, null, 3L));
-        DatasetLookup lk = DatasetLookup.build("AE", joined, List.of("USUBJID"));
-        assertNotNull(lk);
-
-        List<String> text = lk.lookupAll(primary, 0, "SEQ");
-        List<IDataValue> typed = lk.lookupAllValues(primary, 0, "SEQ");
-        assertEquals(text.size(), typed.size(), "the missing middle cell is filtered by both");
-        assertEquals(2, typed.size());
-        for (int i = 0; i < text.size(); i++)
-        {
-            assertEquals(text.get(i), typed.get(i).getValueAsString());
-        }
-        assertTrue(lk.lookupAllValues(primary, 0, "NOSUCH").isEmpty());
-    }
-
-
-    @Test
-    @DisplayName("the JoinLookup defaults keep an unmigrated implementation on today's behaviour")
+    @DisplayName("the JoinLookup defaults keep an unmigrated implementation on the text channel")
     void defaultsWrapTheTextAccessor()
     {
         JoinLookup unmigrated = new JoinLookup()
@@ -247,8 +222,9 @@ class DatasetLookupTypedValueTest
             }
         };
         IDataTable primary = t("AE", col("X", DataValueType.STRING, "a"));
-        assertEquals("7", unmigrated.lookupValue(primary, 0, "ANY").getValueAsString());
-        assertEquals(DataValueType.STRING, unmigrated.lookupValue(primary, 0, "ANY").getType());
+        assertEquals("7", unmigrated.lookupValue(primary, 0, "ANY", false).getValueAsString());
+        assertEquals(DataValueType.STRING,
+                unmigrated.lookupValue(primary, 0, "ANY", false).getType());
         // The interface default means "unknown", so an unmigrated implementation is NOT gated
         // rather than being gated as Char.
         assertEquals(DataValueType.MISSING, unmigrated.declaredTypeOf("ANY"));

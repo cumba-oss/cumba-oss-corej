@@ -1,10 +1,7 @@
 package net.cumba.corej.core.exec;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 import net.cumba.corej.core.exec.KeyHashing.KeyMatcher;
@@ -48,9 +45,9 @@ public class DatasetLookup implements JoinLookup
 
     /**
      * Primary/left-side join key column names, resolved against each primary table on demand (see
-     * {@link #ensureJoinMap} / {@link #lookupAll}). For a same-named join these equal the
-     * joined-side names backing {@link #joinedKeyColIds}; for a sided join (EC-18 / P5c) they are
-     * the left names while {@link #joinedKeyColIds} carries the paired right names.
+     * {@link #ensureJoinMap}). For a same-named join these equal the joined-side names backing
+     * {@link #joinedKeyColIds}; for a sided join (EC-18 / P5c) they are the left names while
+     * {@link #joinedKeyColIds} carries the paired right names.
      */
     private final List<String> keyColumns;
 
@@ -96,14 +93,6 @@ public class DatasetLookup implements JoinLookup
      * {@code null} in production.
      */
     private volatile @Nullable Runnable afterJoinMapEnsuredForTest;
-
-    /**
-     * All joined rows that share a hash bucket, built once per joined dataset and shared across all
-     * primary tables. Used by {@link #lookupAll(IDataTable, long, String)} (Fix #7) so that rules
-     * joining DM to a child domain (AE, CE, SUPPDM) see every matching child row, not just the
-     * first-wins pick stored in {@link #index}.
-     */
-    private volatile @Nullable Map<Integer, int[]> joinedRowsByHash;
 
     /** The joined table this lookup was built over — {@link JoinCache}'s D5 identity check. */
     IDataTable dataset()
@@ -302,54 +291,6 @@ public class DatasetLookup implements JoinLookup
 
 
     /**
-     * Returns every matched joined row's value for {@code columnName}. Fix #7 replaces the
-     * first-wins behaviour for callers that must scan all matches (e.g. DM joining AE by USUBJID,
-     * where a subject typically has many AE rows and the rule must fire if <em>any</em> AE row
-     * satisfies the Check).
-     * <p>
-     * Order of returned values is unspecified (hash-bucket order). An empty list is returned when
-     * no child row matches or the column is absent from the joined dataset.
-     * </p>
-     */
-    @Override
-    public List<String> lookupAll(IDataTable primaryTable, long row, String columnName)
-    {
-        int colIdx = datasetMeta.getColumnIndex(columnName);
-        if (colIdx < 0)
-        {
-            return List.of();
-        }
-        ensureMultiMap();
-        DataTableMeta primaryMeta = primaryTable.getMetaData();
-        int[] primaryKeyColIds = KeyHashing.resolveColIds(primaryMeta, keyColumns);
-        int h = KeyHashing.computeKeyHashSafe(primaryTable, row, primaryKeyColIds);
-        // ensureMultiMap publishes a non-null joinedRowsByHash before returning.
-        int[] candidates = Objects
-                .requireNonNull(joinedRowsByHash, "joinedRowsByHash set by ensureMultiMap").get(h);
-        if (candidates == null || candidates.length == 0)
-        {
-            return List.of();
-        }
-        KeyMatcher matcher = new KeyMatcher(dataset, joinedKeyColIds, primaryTable,
-                primaryKeyColIds);
-        List<String> out = new ArrayList<>();
-        for (int joinedRow : candidates)
-        {
-            if (!matcher.matches(joinedRow, (int) row))
-            {
-                continue;
-            }
-            IDataValue dv = dataset.getColumn(colIdx).getDataValue(joinedRow);
-            if (!dv.isMissingOrInvalid())
-            {
-                out.add(dv.getValueAsString());
-            }
-        }
-        return out;
-    }
-
-
-    /**
      * {@inheritDoc}
      *
      * <p>
@@ -400,45 +341,6 @@ public class DatasetLookup implements JoinLookup
         // SUPPLIED value, distinct from "" (D11/D12), and passes through unchanged. (Until D72 a
         // missing char cell here was rewritten to "" and a missing numeric one to null.)
         return dataset.getColumn(colIdx).getDataValue(joinedRow);
-    }
-
-
-    /** {@inheritDoc} Step B — the typed sibling of {@link #lookupAll}, same 0..N contract. */
-    @Override
-    public List<IDataValue> lookupAllValues(IDataTable primaryTable, long row, String columnName)
-    {
-        int colIdx = datasetMeta.getColumnIndex(columnName);
-        if (colIdx < 0)
-        {
-            return List.of();
-        }
-        ensureMultiMap();
-        DataTableMeta primaryMeta = primaryTable.getMetaData();
-        int[] primaryKeyColIds = KeyHashing.resolveColIds(primaryMeta, keyColumns);
-        int h = KeyHashing.computeKeyHashSafe(primaryTable, row, primaryKeyColIds);
-        int[] candidates = Objects
-                .requireNonNull(joinedRowsByHash, "joinedRowsByHash set by ensureMultiMap").get(h);
-        if (candidates == null)
-        {
-            return List.of();
-        }
-        KeyMatcher matcher = new KeyMatcher(dataset, joinedKeyColIds, primaryTable,
-                primaryKeyColIds);
-        List<IDataValue> out = new ArrayList<>();
-        for (int joinedRow : candidates)
-        {
-            if (!matcher.matches(joinedRow, (int) row))
-            {
-                continue;
-            }
-            IDataValue dv = dataset.getColumn(colIdx).getDataValue(joinedRow);
-            // Same filter as lookupAll: a missing matched cell contributes nothing.
-            if (!dv.isMissingOrInvalid())
-            {
-                out.add(dv);
-            }
-        }
-        return out;
     }
 
 
@@ -496,41 +398,6 @@ public class DatasetLookup implements JoinLookup
         int colIdx = datasetMeta.getColumnIndex(columnName);
         // An absent column is UNKNOWN, not Char -- see JoinLookup.declaredTypeOf.
         return colIdx < 0 ? DataValueType.MISSING : datasetMeta.getColumn(colIdx).getType();
-    }
-
-
-    /**
-     * Builds the hash-bucket → joined-row-array map once per lookup instance. Equal hashes may
-     * still have different composite keys, so callers must verify equality with a
-     * {@link KeyMatcher} before using a candidate row.
-     */
-    private synchronized void ensureMultiMap()
-    {
-        if (joinedRowsByHash != null)
-        {
-            return;
-        }
-        int rc = Math.toIntExact(dataset.getRowCount());
-        Map<Integer, List<Integer>> builder = new HashMap<>();
-        @Nullable
-        KeyCellReader[] readers = KeyCellReader.of(dataset, joinedKeyColIds);
-        for (int r = 0; r < rc; r++)
-        {
-            int h = KeyHashing.computeKeyHashSafe(readers, r);
-            builder.computeIfAbsent(h, _ -> new ArrayList<>()).add(r);
-        }
-        Map<Integer, int[]> compact = HashMap.newHashMap(builder.size());
-        for (Map.Entry<Integer, List<Integer>> e : builder.entrySet())
-        {
-            List<Integer> list = e.getValue();
-            int[] arr = new int[list.size()];
-            for (int i = 0; i < arr.length; i++)
-            {
-                arr[i] = list.get(i);
-            }
-            compact.put(e.getKey(), arr);
-        }
-        joinedRowsByHash = compact;
     }
 
 

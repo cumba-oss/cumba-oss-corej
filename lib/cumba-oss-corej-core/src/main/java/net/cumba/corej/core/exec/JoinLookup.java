@@ -1,9 +1,5 @@
 package net.cumba.corej.core.exec;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.DataValueType;
@@ -34,31 +30,6 @@ public interface JoinLookup
 
 
     /**
-     * Looks up every matched child row's value for the given column. Relationship-based lookups
-     * (e.g. {@link RelrecExpandedLookup}) return 0 or 1 element; key-based lookups
-     * ({@link DatasetLookup}) may return 0..N when the join key is not unique on the child side.
-     * <p>
-     * Default implementation delegates to {@link #lookup} and wraps the scalar result — non-null
-     * values become a singleton list, {@code null} becomes an empty list. Implementations that can
-     * return multiple matches per primary row should override.
-     * </p>
-     *
-     * @param primaryTable
-     *            the primary table being evaluated
-     * @param row
-     *            the row index in the primary table
-     * @param columnName
-     *            the column to look up
-     * @return 0..N values (never {@code null}; empty when there is no match)
-     */
-    default List<String> lookupAll(IDataTable primaryTable, long row, String columnName)
-    {
-        String v = lookup(primaryTable, row, columnName);
-        return v == null ? List.of() : Collections.singletonList(v);
-    }
-
-
-    /**
      * Returns whether the joined column physically exists for the given primary row. Used to
      * distinguish "the column is absent" (omit the output variable, matching Python's merged-frame
      * semantics) from "the column exists but the value is missing" (keep it as a null/empty value).
@@ -85,45 +56,19 @@ public interface JoinLookup
 
     /**
      * The <b>typed</b> sibling of {@link #lookup}: the matched joined cell as an
-     * {@link IDataValue}, keeping the joined column's own type instead of rendering it to text.
+     * {@link IDataValue}, keeping the joined column's own type instead of rendering it to text —
+     * plus the one fact the seam previously could not see, whether the RULE evaluating the operand
+     * expects a number.
      *
      * <p>
-     * Step B of {@code PLAN-joined-column-typing}. This is an <b>addition</b>, never a change to
-     * {@link #lookup}'s signature, and that is deliberate: a signature change would break all
-     * implementations and every call site at once, forcing the report-text, cohort-parity and
-     * wildcard-collection consumers to move in the same commit as the behaviour, along with the
-     * test files that pin them. Adding beside it lets each value reader migrate on its own, green
-     * at every step, and leaves the consumers that legitimately want text untouched.
+     * Step B of {@code PLAN-joined-column-typing} added the typed read <b>beside</b>
+     * {@link #lookup} rather than changing that signature, so the report-text and
+     * wildcard-collection consumers that legitimately want text stayed untouched while each value
+     * reader migrated on its own. ⚑ Until 2026-09-25 a three-argument form without the flag existed
+     * beside this one, delegating with {@code numericExpected = false}; no production code called
+     * it and it was retired ({@code PLAN-retire-dead-multi-match-lookup} U14). This is now the only
+     * typed read.
      * </p>
-     *
-     * <p>
-     * ⚑ <b>This form carries NO type expectation and therefore delegates with
-     * {@code numericExpected = false}</b> — i.e. it keeps exactly the behaviour every caller had
-     * before {@link #lookupValue(IDataTable, long, String, boolean)} existed. It is retained
-     * because the joined read is legitimate from places that hold no rule expectation at all
-     * (tests, tooling); ⛔ a production value read on the evaluation path must use the four-argument
-     * form, or the dotted-parity invariant documented there is silently not applied.
-     * </p>
-     *
-     * @param primaryTable
-     *            the primary table being evaluated
-     * @param row
-     *            the row index in the primary table
-     * @param columnName
-     *            the column to look up
-     * @return the typed value — a real value or a {@link net.cumba.datatable.values.MissingValue},
-     *         never {@code null}
-     */
-    default IDataValue lookupValue(IDataTable primaryTable, long row, String columnName)
-    {
-        return lookupValue(primaryTable, row, columnName, false);
-    }
-
-
-    /**
-     * The <b>expectation-aware</b> form of {@link #lookupValue(IDataTable, long, String)}: the same
-     * read plus the one fact this seam previously could not see — whether the RULE evaluating the
-     * operand expects a number.
      *
      * <p>
      * ⭐⭐ <b>THE DOTTED-PARITY INVARIANT (owner ruling, 2026-09-18,
@@ -162,8 +107,8 @@ public interface JoinLookup
      *
      * <p>
      * ⛔⛔ <b>The default below CANNOT honour the three-way non-value contract, and that is why every
-     * production implementation overrides THIS method rather than the three-argument one.</b> The
-     * rule ({@link ScalarSemantics#computedMissing()}) is that a value is a real value or a
+     * production implementation overrides it.</b> The rule
+     * ({@link ScalarSemantics#computedMissing()}) is that a value is a real value or a
      * {@code MissingValue} and never {@code null}, and that <em>which</em> non-value is owed
      * depends on the case: an absent column owes its rule-expected default (char {@code ""},
      * numeric {@code MissingValue.MIS}); a present-but-missing cell owes that cell's own missing
@@ -211,29 +156,6 @@ public interface JoinLookup
 
 
     /**
-     * The typed sibling of {@link #lookupAll}, with the same 0..N contract.
-     *
-     * @param primaryTable
-     *            the primary table being evaluated
-     * @param row
-     *            the row index in the primary table
-     * @param columnName
-     *            the column to look up
-     * @return 0..N typed values (never {@code null}; empty when there is no match)
-     */
-    default List<IDataValue> lookupAllValues(IDataTable primaryTable, long row, String columnName)
-    {
-        List<String> raw = lookupAll(primaryTable, row, columnName);
-        List<IDataValue> out = new ArrayList<>(raw.size());
-        for (String v : raw)
-        {
-            out.add(DataValueSupport.getAsDataValue(v, DataValueType.STRING));
-        }
-        return out;
-    }
-
-
-    /**
      * The joined column's <b>declared</b> type, or {@link DataValueType#MISSING} — meaning
      * <em>unknown</em> — when this lookup cannot say.
      *
@@ -272,15 +194,16 @@ public interface JoinLookup
      *
      * <p>
      * <b>The default THROWS — deliberately.</b> The flag is a <em>join</em> fact, not a column
-     * read, and there is no honest generic derivation from the value-lookup methods (an empty
-     * {@link #lookupAll} can mean "no partner" or "partner with a missing cell" — conflating those
-     * is exactly the {@code empty()} proxy this flag replaces). A silently-wrong default (always
-     * {@code true}, or derived from a cell read) would make {@code not D._matched_} quietly
-     * mis-fire, so an implementation that has not answered fails LOUD on the rule's ERROR channel
-     * instead. Every production implementation answers from the join structure it already holds —
-     * {@link DatasetLookup} from its per-primary-row join map, the row-expanded lookups from their
-     * bound-row arrays — so the verdict is a by-product of the map the runner already builds (D88
-     * §3.3), an O(1) array read per row, never a repeated per-row key lookup at evaluation time.
+     * read, and there is no honest generic derivation from the value-lookup methods (a {@code null}
+     * from {@link #lookup}, or a missing value from {@link #lookupValue}, can mean "no partner" or
+     * "partner with a missing cell" — conflating those is exactly the {@code empty()} proxy this
+     * flag replaces). A silently-wrong default (always {@code true}, or derived from a cell read)
+     * would make {@code not D._matched_} quietly mis-fire, so an implementation that has not
+     * answered fails LOUD on the rule's ERROR channel instead. Every production implementation
+     * answers from the join structure it already holds — {@link DatasetLookup} from its
+     * per-primary-row join map, the row-expanded lookups from their bound-row arrays — so the
+     * verdict is a by-product of the map the runner already builds (D88 §3.3), an O(1) array read
+     * per row, never a repeated per-row key lookup at evaluation time.
      * </p>
      *
      * @param primaryTable

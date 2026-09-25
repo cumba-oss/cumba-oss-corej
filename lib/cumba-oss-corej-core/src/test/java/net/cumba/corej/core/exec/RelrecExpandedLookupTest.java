@@ -117,16 +117,6 @@ class RelrecExpandedLookupTest
     }
 
 
-    @Test
-    void lookupAllReturnsSingletonOrEmpty()
-    {
-        RelrecExpandedLookup lk = fixture();
-        assertEquals(List.of("HEADACHE"), lk.lookupAll(null, 0, "AETERM"));
-        assertTrue(lk.lookupAll(null, 1, "AEDECOD").isEmpty());
-        assertTrue(lk.lookupAll(null, 0, "NOSUCH").isEmpty());
-    }
-
-
     /**
      * ⭐⭐ The TYPED channel, and the three not-supplied cases it must keep APART
      * (PLAN-null-free-value-channel §3b).
@@ -152,15 +142,15 @@ class RelrecExpandedLookupTest
         RelrecExpandedLookup lk = fixture();
 
         // 1. A PRESENT value arrives as the target's own cell, not as cleaned text.
-        IDataValue present = lk.lookupValue(null, 0, "AETERM");
+        IDataValue present = lk.lookupValue(null, 0, "AETERM", false);
         assertFalse(present.isMissingOrInvalid());
         assertEquals("HEADACHE", present.getValue(), "the target cell's own value, verbatim");
 
-        // 2. An ABSENT column is a CONSTANT-VALUE column, and with NO numeric expectation (this
-        // three-argument form delegates with false, §9c) its constant is "" — a PRESENT empty
-        // string, never a missing. Exactly as DatasetLookup rules it. ⭐ The numeric arm of the
-        // same site is pinned by absentColumnTakesTheRuleExpectedDefault below.
-        IDataValue absent = lk.lookupValue(null, 0, "NOSUCH");
+        // 2. An ABSENT column is a CONSTANT-VALUE column, and with NO numeric expectation
+        // (numericExpected = false, §9c) its constant is "" — a PRESENT empty string, never a
+        // missing. Exactly as DatasetLookup rules it. ⭐ The numeric arm of the same site is
+        // pinned by absentColumnTakesTheRuleExpectedDefault below.
+        IDataValue absent = lk.lookupValue(null, 0, "NOSUCH", false);
         assertFalse(absent.isMissingOrInvalid(),
                 "⛔ absent ≠ missing: the inherited default answered MIS here, which phase 6c's"
                         + " D34 #5 order arm sorts below every value while \"\" is ordered normally"
@@ -168,7 +158,7 @@ class RelrecExpandedLookupTest
         assertEquals("", absent.getValue(), "the char default is the empty string (D34 #3)");
 
         // 3. A PRESENT column whose cell is MISSING stays missing — distinct from case 2.
-        IDataValue blank = lk.lookupValue(null, 1, "AEDECOD");
+        IDataValue blank = lk.lookupValue(null, 1, "AEDECOD", false);
         assertTrue(blank.isMissingOrInvalid(), "a supplied missing is a missing, not \"\" (D75a)");
 
         // ⭐ And the pair that makes this test non-vacuous: cases 2 and 3 must DISAGREE. Under the
@@ -180,10 +170,13 @@ class RelrecExpandedLookupTest
 
         // Engine plumbing, outside the four value channels: no expanded row and no bound target,
         // so there is no column to take a type from — a genuinely computed MIS (D36 #8).
-        assertEquals(MissingValue.MIS, lk.lookupValue(null, 99, "AETERM").getValue());
-        assertEquals(MissingValue.MIS, lk.lookupValue(null, 3, "AETERM").getValue(), "ordinal -1");
-        assertEquals(MissingValue.MIS, lk.lookupValue(null, 4, "AETERM").getValue(), "ordinal 5");
-        assertEquals(MissingValue.MIS, lk.lookupValue(null, 0, null).getValue(), "null column");
+        assertEquals(MissingValue.MIS, lk.lookupValue(null, 99, "AETERM", false).getValue());
+        assertEquals(MissingValue.MIS, lk.lookupValue(null, 3, "AETERM", false).getValue(),
+                "ordinal -1");
+        assertEquals(MissingValue.MIS, lk.lookupValue(null, 4, "AETERM", false).getValue(),
+                "ordinal 5");
+        assertEquals(MissingValue.MIS, lk.lookupValue(null, 0, null, false).getValue(),
+                "null column");
     }
 
 
@@ -239,10 +232,13 @@ class RelrecExpandedLookupTest
     void lookupValueResolvesTheWildcardPrefixPerTargetDomain()
     {
         RelrecExpandedLookup lk = fixture();
-        assertEquals("HEADACHE", lk.lookupValue(null, 0, "**TERM").getValue(), "AE -> AETERM");
-        assertEquals("ASPIRIN", lk.lookupValue(null, 2, "**TERM").getValue(), "CM -> CMTERM");
+        assertEquals("HEADACHE", lk.lookupValue(null, 0, "**TERM", false).getValue(),
+                "AE -> AETERM");
+        assertEquals("ASPIRIN", lk.lookupValue(null, 2, "**TERM", false).getValue(),
+                "CM -> CMTERM");
         // AE has no AETRT, so this is case 2 above resolved through the wildcard.
-        assertEquals("", lk.lookupValue(null, 0, "**TRT").getValue(), "absent -> the char default");
+        assertEquals("", lk.lookupValue(null, 0, "**TRT", false).getValue(),
+                "absent -> the char default");
     }
 
 
