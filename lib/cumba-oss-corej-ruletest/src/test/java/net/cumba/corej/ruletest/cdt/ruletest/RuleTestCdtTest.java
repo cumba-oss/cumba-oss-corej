@@ -94,7 +94,7 @@ class RuleTestCdtTest
                 CDISC01 | 01-701-1015 | Y
                 ---
                 """;
-        RuleTestScenario s = RuleTestCdt.parse(content, "test.cdt");
+        RuleTestScenario s = RuleTestCdt.parse(content, "test.cdt", null);
 
         assertEquals("CDISC-CG0040", s.getCoreId());
         assertEquals(Verdict.VIOLATION, s.getExpect());
@@ -119,7 +119,7 @@ class RuleTestCdtTest
                 CDISC01
                 ---
                 """;
-        RuleTestScenario s = RuleTestCdt.parse(content, "t");
+        RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
         assertEquals(Verdict.NO_VIOLATION, s.getExpect());
     }
 
@@ -140,7 +140,7 @@ class RuleTestCdtTest
                 CDISC01
                 ---
                 """;
-        RuleTestScenario s = RuleTestCdt.parse(content, "t");
+        RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
         assertEquals(Verdict.SKIPPED, s.getExpect());
     }
 
@@ -157,7 +157,7 @@ class RuleTestCdtTest
                 CDISC01
                 ---
                 """;
-        assertEquals(Verdict.SKIPPED, RuleTestCdt.parse(content, "t").getExpect());
+        assertEquals(Verdict.SKIPPED, RuleTestCdt.parse(content, "t", null).getExpect());
     }
 
 
@@ -176,10 +176,10 @@ class RuleTestCdtTest
                 CDISC01
                 ---
                 """;
-        RuleTestScenario original = RuleTestCdt.parse(content, "t");
+        RuleTestScenario original = RuleTestCdt.parse(content, "t", null);
         String out = RuleTestCdt.toString(original);
         assertTrue(out.contains("expect=skipped"), "writer emits the skipped token: " + out);
-        assertEquals(Verdict.SKIPPED, RuleTestCdt.parse(out, "rt").getExpect());
+        assertEquals(Verdict.SKIPPED, RuleTestCdt.parse(out, "rt", null).getExpect());
     }
 
 
@@ -196,7 +196,7 @@ class RuleTestCdtTest
                 ---
                 """;
         RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                () -> RuleTestCdt.parse(content, "t"));
+                () -> RuleTestCdt.parse(content, "t", null));
         assertTrue(ex.getMessage().contains("skipped"),
                 "the error lists the accepted tokens: " + ex.getMessage());
     }
@@ -214,7 +214,7 @@ class RuleTestCdtTest
                 x
                 ---
                 """;
-        assertEquals(Verdict.VIOLATION, RuleTestCdt.parse(content, "t").getExpect());
+        assertEquals(Verdict.VIOLATION, RuleTestCdt.parse(content, "t", null).getExpect());
     }
 
 
@@ -230,7 +230,7 @@ class RuleTestCdtTest
                 x
                 ---
                 """;
-        assertNull(RuleTestCdt.parse(content, "t").getNote());
+        assertNull(RuleTestCdt.parse(content, "t", null).getNote());
     }
 
 
@@ -246,7 +246,7 @@ class RuleTestCdtTest
                 x
                 ---
                 """;
-        assertEquals("CORE-1", RuleTestCdt.parse(content, "t").getCoreId());
+        assertEquals("CORE-1", RuleTestCdt.parse(content, "t", null).getCoreId());
     }
 
 
@@ -264,7 +264,7 @@ class RuleTestCdtTest
                 x
                 ---
                 """;
-        assertEquals("CORE-1", RuleTestCdt.parse(content, "t").getCoreId());
+        assertEquals("CORE-1", RuleTestCdt.parse(content, "t", null).getCoreId());
     }
 
 
@@ -284,7 +284,7 @@ class RuleTestCdtTest
                 x
                 ---
                 """;
-        RuleTestScenario s = RuleTestCdt.parse(content, "t");
+        RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
         assertEquals("CORE-1", s.getCoreId());
         assertEquals("actual note", s.getNote());
     }
@@ -316,7 +316,7 @@ class RuleTestCdtTest
                 CDISC01 | 01-701-1015 | DEAD
                 ---
                 """;
-        RuleTestScenario s = RuleTestCdt.parse(content, "t");
+        RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
         assertEquals("DM", s.getDomain());
         assertEquals(2, s.getDatasets().size());
@@ -345,7 +345,7 @@ class RuleTestCdtTest
                 U1
                 ---
                 """;
-        RuleTestScenario s = RuleTestCdt.parse(content, "t");
+        RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
         OverlayDataTable primary = s.primaryTable();
         assertNotNull(primary);
         assertEquals("DM", primary.getMetaData().getName());
@@ -364,7 +364,7 @@ class RuleTestCdtTest
                 U1
                 ---
                 """;
-        RuleTestScenario s = RuleTestCdt.parse(content, "t");
+        RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
         assertNotNull(s.primaryTable());
         assertEquals("DM", s.primaryTable().getMetaData().getName());
     }
@@ -388,7 +388,7 @@ class RuleTestCdtTest
                 U1
                 ---
                 """;
-        RuleTestScenario s = RuleTestCdt.parse(content, "t");
+        RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
         DatasetResolver.WithInventory r = s.resolver();
         assertNotNull(r.resolve("DM"));
         assertNotNull(r.resolve("dm"));
@@ -409,7 +409,7 @@ class RuleTestCdtTest
                 U1
                 ---
                 """;
-        RuleTestScenario s = RuleTestCdt.parse(content, "t");
+        RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
         DatasetResolver.WithInventory r = s.resolver();
         assertNull(r.resolve("AE"));
         assertNull(r.resolve(null));
@@ -515,7 +515,7 @@ class RuleTestCdtTest
     void parse_rejected(String aScenario, String aContent, String aExpectedSubstring)
     {
         RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                () -> RuleTestCdt.parse(aContent, "t"));
+                () -> RuleTestCdt.parse(aContent, "t", null));
         if (aExpectedSubstring != null)
         {
             assertTrue(ex.getMessage().contains(aExpectedSubstring),
@@ -541,7 +541,7 @@ class RuleTestCdtTest
                 ---
                 """;
         RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                () -> RuleTestCdt.parse(content, "t"));
+                () -> RuleTestCdt.parse(content, "t", null));
         assertTrue(ex.getMessage().contains("does not match any dataset"), ex.getMessage());
     }
 
@@ -565,7 +565,7 @@ class RuleTestCdtTest
                 ---
                 """;
         RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                () -> RuleTestCdt.parse(content, "t"));
+                () -> RuleTestCdt.parse(content, "t", null));
         assertTrue(ex.getMessage().contains("duplicate dataset name"), ex.getMessage());
     }
 
@@ -593,7 +593,7 @@ class RuleTestCdtTest
                 ---
                 """;
         RuntimeException ex = assertThrows(RuntimeException.class,
-                () -> RuleTestCdt.parse(content, "scenario.cdt"));
+                () -> RuleTestCdt.parse(content, "scenario.cdt", null));
         // CdtLoader wraps CdtParseException in its own class, but the format is the same.
         assertTrue(ex.getMessage().contains("scenario.cdt:7:"),
                 "expected line 7 in error, got: " + ex.getMessage());
@@ -613,7 +613,7 @@ class RuleTestCdtTest
                 x
                 ---
                 """;
-        assertThrows(RuleTestCdtException.class, () -> RuleTestCdt.parse(content, "t"));
+        assertThrows(RuleTestCdtException.class, () -> RuleTestCdt.parse(content, "t", null));
     }
 
     // ---- Round-trip via toString / parse ------------------------------------------
@@ -633,7 +633,7 @@ class RuleTestCdtTest
                 ---
                 CDISC01 | 01-701-1015 | Y
                 ---
-                """, "orig");
+                """, "orig", null);
 
         String out = RuleTestCdt.toString(original);
         // Shebang + #test directive + #note directive are present in the output.
@@ -641,7 +641,7 @@ class RuleTestCdtTest
         assertTrue(out.contains("#test CDISC-CG0040 expect=violation domain=AE"), out);
         assertTrue(out.contains("#note \"AEOCCUR must not exist\""), out);
 
-        RuleTestScenario roundTripped = RuleTestCdt.parse(out, "rt");
+        RuleTestScenario roundTripped = RuleTestCdt.parse(out, "rt", null);
         assertEquals(original.getCoreId(), roundTripped.getCoreId());
         assertEquals(original.getExpect(), roundTripped.getExpect());
         assertEquals(original.getDomain(), roundTripped.getDomain());
@@ -682,8 +682,9 @@ class RuleTestCdtTest
                 U1 | DEAD
                 ---
                 """;
-        RuleTestScenario original = RuleTestCdt.parse(content, "orig");
-        RuleTestScenario roundTripped = RuleTestCdt.parse(RuleTestCdt.toString(original), "rt");
+        RuleTestScenario original = RuleTestCdt.parse(content, "orig", null);
+        RuleTestScenario roundTripped = RuleTestCdt.parse(RuleTestCdt.toString(original), "rt",
+                null);
 
         assertEquals(2, roundTripped.getDatasets().size());
         assertEquals("DM", roundTripped.getDatasets().get(0).getMetaData().getName());
@@ -704,7 +705,7 @@ class RuleTestCdtTest
                 ---
                 x
                 ---
-                """, "t");
+                """, "t", null);
         String out = RuleTestCdt.toString(s);
         assertFalse(out.contains("#note"), out);
     }
@@ -719,7 +720,7 @@ class RuleTestCdtTest
                 .dataset(makeSingletonTable("AE")).source("mem").build();
         String out = RuleTestCdt.toString(original);
         assertTrue(out.contains("#note \"hello  world\""), out);
-        RuleTestScenario rt = RuleTestCdt.parse(out, "rt");
+        RuleTestScenario rt = RuleTestCdt.parse(out, "rt", null);
         assertEquals("hello  world", rt.getNote());
     }
 
@@ -757,7 +758,7 @@ class RuleTestCdtTest
                 ---
                 U1
                 ---
-                """, "orig");
+                """, "orig", null);
         Path file = tmp.resolve("scenario.cdt");
         RuleTestCdt.write(original, file);
 
@@ -801,8 +802,8 @@ class RuleTestCdtTest
                 x
                 ---
                 """;
-        RuleTestScenario a = RuleTestCdt.parse(content, "t");
-        RuleTestScenario b = RuleTestCdt.parse(content, "t");
+        RuleTestScenario a = RuleTestCdt.parse(content, "t", null);
+        RuleTestScenario b = RuleTestCdt.parse(content, "t", null);
         assertNotNull(a.getDatasets().get(0));
         assertNotNull(b.getDatasets().get(0));
         // Different instances of OverlayDataTable
@@ -827,7 +828,7 @@ class RuleTestCdtTest
 
     private static RuleTestScenario parseLoc(String aDirectives)
     {
-        return RuleTestCdt.parse(LOC_PRELUDE + aDirectives + "\n" + LOC_DATASET, "loc");
+        return RuleTestCdt.parse(LOC_PRELUDE + aDirectives + "\n" + LOC_DATASET, "loc", null);
     }
 
 
@@ -908,7 +909,7 @@ class RuleTestCdtTest
                 #expectViolationCount 2
                 #expectViolationAt row=2 AESER=Maybe
                 #expectViolationAt USUBJID=003""");
-        RuleTestScenario rt = RuleTestCdt.parse(RuleTestCdt.toString(original), "rt");
+        RuleTestScenario rt = RuleTestCdt.parse(RuleTestCdt.toString(original), "rt", null);
         assertEquals(original.getExpectViolationCount(), rt.getExpectViolationCount());
         // The writer sorts expectations, so compare order-independently.
         assertEquals(Set.copyOf(original.getExpectedViolations()),

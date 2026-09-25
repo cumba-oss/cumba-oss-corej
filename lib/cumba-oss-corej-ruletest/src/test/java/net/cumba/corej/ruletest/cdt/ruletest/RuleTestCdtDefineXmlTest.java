@@ -37,7 +37,7 @@ class RuleTestCdtDefineXmlTest
     {
         RuleTestScenario s = RuleTestCdt.parse(scenario("""
                 #test FDA-X expect=violation domain=LB
-                #define-xml my-define.xml"""), "t");
+                #define-xml my-define.xml"""), "t", null);
 
         assertEquals("my-define.xml", s.getDefineXml());
         assertNull(s.getDefine());
@@ -48,7 +48,7 @@ class RuleTestCdtDefineXmlTest
     void defineXml_absent_isNull()
     {
         RuleTestScenario s = RuleTestCdt.parse(scenario("#test FDA-X expect=violation domain=LB"),
-                "t");
+                "t", null);
 
         assertNull(s.getDefineXml());
     }
@@ -59,12 +59,12 @@ class RuleTestCdtDefineXmlTest
     {
         RuleTestScenario s = RuleTestCdt.parse(scenario("""
                 #test FDA-X expect=violation domain=LB
-                #define-xml my-define.xml"""), "t");
+                #define-xml my-define.xml"""), "t", null);
 
         String written = RuleTestCdt.toString(s);
         assertTrue(written.contains("#define-xml my-define.xml"),
                 "writer must re-emit the directive, got:\n" + written);
-        assertEquals("my-define.xml", RuleTestCdt.parse(written, "roundtrip").getDefineXml());
+        assertEquals("my-define.xml", RuleTestCdt.parse(written, "roundtrip", null).getDefineXml());
     }
 
 
@@ -74,7 +74,7 @@ class RuleTestCdtDefineXmlTest
         RuleTestCdtException e = assertThrows(RuleTestCdtException.class,
                 () -> RuleTestCdt.parse(scenario("""
                         #test FDA-X expect=violation domain=LB
-                        #define-xml"""), "t"));
+                        #define-xml"""), "t", null));
 
         assertTrue(e.getMessage().contains("exactly one file name"), e.getMessage());
     }
@@ -87,7 +87,7 @@ class RuleTestCdtDefineXmlTest
                 () -> RuleTestCdt.parse(scenario("""
                         #test FDA-X expect=violation domain=LB
                         #define-xml a.xml
-                        #define-xml b.xml"""), "t"));
+                        #define-xml b.xml"""), "t", null));
 
         assertTrue(e.getMessage().contains("duplicate #define-xml"), e.getMessage());
     }
@@ -100,7 +100,7 @@ class RuleTestCdtDefineXmlTest
                 () -> RuleTestCdt.parse(scenario("""
                         #test FDA-X expect=violation domain=LB
                         #define-xml a.xml
-                        #define variable-metadata LB LBSTRESC label="X\""""), "t"));
+                        #define variable-metadata LB LBSTRESC label="X\""""), "t", null));
 
         assertTrue(e.getMessage().contains("#define-xml cannot be combined"), e.getMessage());
     }

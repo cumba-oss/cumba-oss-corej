@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Stream;
+import net.cumba.corej.ruletest.cdt.CdtTestResources;
 import net.cumba.corej.ruletest.cdt.ruletest.RuleTestScenario.Verdict;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -79,7 +80,7 @@ class RuleTestCdtEdgeCaseTest
         {
             String content = scenario(aDirectives);
             RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                    () -> RuleTestCdt.parse(content, "t"));
+                    () -> RuleTestCdt.parse(content, "t", null));
             assertTrue(ex.getMessage().contains(aExpectedSubstring), ex.getMessage());
         }
 
@@ -93,7 +94,7 @@ class RuleTestCdtEdgeCaseTest
         {
             String content = scenario("#test CORE-1 expect=" + aBadValue + " domain=AE");
             RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                    () -> RuleTestCdt.parse(content, "t"));
+                    () -> RuleTestCdt.parse(content, "t", null));
             assertTrue(ex.getMessage().contains("expect"), ex.getMessage());
         }
 
@@ -108,7 +109,7 @@ class RuleTestCdtEdgeCaseTest
                     #test CORE-1 expect=violation domain=AE
                     #
                     """ + MIN_DATASET;
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
             assertEquals("CORE-1", s.getCoreId());
         }
 
@@ -117,7 +118,7 @@ class RuleTestCdtEdgeCaseTest
         void emptyContent_isRejected()
         {
             RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                    () -> RuleTestCdt.parse(null, "t"));
+                    () -> RuleTestCdt.parse(null, "t", null));
             assertTrue(ex.getMessage().contains("empty"), ex.getMessage());
         }
 
@@ -133,7 +134,7 @@ class RuleTestCdtEdgeCaseTest
                     #test CORE-1 expect=violation domain=AE
                     #""" + aKeyword + " foo");
             RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                    () -> RuleTestCdt.parse(content, "t"));
+                    () -> RuleTestCdt.parse(content, "t", null));
             assertTrue(ex.getMessage().contains("reserved"), ex.getMessage());
         }
     }
@@ -200,7 +201,7 @@ class RuleTestCdtEdgeCaseTest
         {
             String content = scenario(aDirectives);
             RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                    () -> RuleTestCdt.parse(content, "t"));
+                    () -> RuleTestCdt.parse(content, "t", null));
             assertTrue(ex.getMessage().contains(aExpectedSubstring), ex.getMessage());
         }
     }
@@ -237,7 +238,7 @@ class RuleTestCdtEdgeCaseTest
                 String aExpectedNote)
         {
             String content = scenario(aDirectives);
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
             assertEquals(aExpectedNote, s.getNote());
         }
 
@@ -248,7 +249,7 @@ class RuleTestCdtEdgeCaseTest
             String content = scenario("""
                     #test CORE-1 expect=violation domain=AE
                     #note "broken""");
-            assertThrows(RuleTestCdtException.class, () -> RuleTestCdt.parse(content, "t"));
+            assertThrows(RuleTestCdtException.class, () -> RuleTestCdt.parse(content, "t", null));
         }
 
 
@@ -257,7 +258,7 @@ class RuleTestCdtEdgeCaseTest
         {
             String content = "\n\n   \n" + scenario("""
                     #test CORE-1 expect=violation domain=AE""");
-            assertEquals("CORE-1", RuleTestCdt.parse(content, "t").getCoreId());
+            assertEquals("CORE-1", RuleTestCdt.parse(content, "t", null).getCoreId());
         }
     }
 
@@ -280,7 +281,7 @@ class RuleTestCdtEdgeCaseTest
                     ---
                     """;
             RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                    () -> RuleTestCdt.parse(content, "scenario.cdt"));
+                    () -> RuleTestCdt.parse(content, "scenario.cdt", null));
             assertTrue(ex.getMessage().contains("scenario.cdt:2:"), ex.getMessage());
         }
 
@@ -300,7 +301,7 @@ class RuleTestCdtEdgeCaseTest
                     ---
                     """;
             RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                    () -> RuleTestCdt.parse(content, "f"));
+                    () -> RuleTestCdt.parse(content, "f", null));
             assertTrue(ex.getMessage().contains("f:4:"), ex.getMessage());
         }
     }
@@ -316,7 +317,7 @@ class RuleTestCdtEdgeCaseTest
             String content = scenario("""
                     #test CORE-1 expect=violation domain=AE
                     #library standard=sdtmig version=3-4""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             MapBackedLibraryMetadataProvider lib = s.getLibrary();
             assertNotNull(lib);
@@ -331,7 +332,7 @@ class RuleTestCdtEdgeCaseTest
             String content = scenario("""
                     #test CORE-1 expect=violation domain=AE
                     #library required-variables AE STUDYID USUBJID""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             assertEquals(List.of("STUDYID", "USUBJID"), s.getLibrary().getRequiredVariables("AE"));
         }
@@ -345,7 +346,7 @@ class RuleTestCdtEdgeCaseTest
                     #library expected-variables AE AESEV AESER
                     #library column-order AE STUDYID USUBJID
                     #library model-column-order AE STUDYID""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             assertEquals(List.of("AESEV", "AESER"), s.getLibrary().getExpectedVariables("AE"));
             assertEquals(List.of("STUDYID", "USUBJID"), s.getLibrary().getColumnOrder("AE"));
@@ -359,7 +360,7 @@ class RuleTestCdtEdgeCaseTest
             String content = scenario("""
                     #test CORE-1 expect=violation domain=AE
                     #library custom-domain XX YY""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             assertTrue(s.getLibrary().isDomainCustom("XX"));
             assertTrue(s.getLibrary().isDomainCustom("YY"));
@@ -372,7 +373,7 @@ class RuleTestCdtEdgeCaseTest
             String content = scenario("""
                     #test CORE-1 expect=violation domain=AE
                     #library codelist-terms NY Y N""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             assertEquals(List.of("Y", "N"), s.getLibrary().getCodelistTerms("NY"));
         }
@@ -384,7 +385,7 @@ class RuleTestCdtEdgeCaseTest
             String content = scenario("""
                     #test CORE-1 expect=violation domain=AE
                     #library published-ct-packages sdtmct-2023-10-26 sdtmct-2024-03-29""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             assertEquals(List.of("sdtmct-2023-10-26", "sdtmct-2024-03-29"),
                     s.getLibrary().getPublishedCtPackages());
@@ -397,7 +398,7 @@ class RuleTestCdtEdgeCaseTest
             String content = scenario("""
                     #test CORE-1 expect=violation domain=AE
                     #library dataset-class AE EVENTS""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             assertEquals("EVENTS", s.getLibrary().getDatasetMetadata("AE").get("className"));
         }
@@ -410,7 +411,7 @@ class RuleTestCdtEdgeCaseTest
                     #test CORE-1 expect=violation domain=AE
                     #library domain-variables AE STUDYID:Topic USUBJID:Topic
                     #library model-variables AE AETERM:Topic""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             List<java.util.Map<String, String>> dvars = s.getLibrary().getDomainVariables("AE");
             assertEquals(2, dvars.size());
@@ -436,7 +437,7 @@ class RuleTestCdtEdgeCaseTest
                     #library model-class-variables FINDINGS --TESTCD:Topic
                     #library model-class-variables FINDINGS --TESTCD:Topic --ORRES:Result
                     #library model-variables AE AETERM:Topic""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
             MapBackedLibraryMetadataProvider lib = s.getLibrary();
 
             List<java.util.Map<String, String>> events = lib.getModelVariablesForClass("EVENTS");
@@ -462,7 +463,7 @@ class RuleTestCdtEdgeCaseTest
             String content = scenario("""
                     #test CORE-1 expect=violation domain=AE
                     #library codelist-extensible C66742 false""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             assertEquals(java.util.Optional.of(Boolean.FALSE),
                     s.getLibrary().isCodelistExtensible("C66742"));
@@ -477,7 +478,7 @@ class RuleTestCdtEdgeCaseTest
             String content = scenario("""
                     #test CORE-1 expect=violation domain=AE
                     #library codelist-extensible C66742 TRUE""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             assertEquals(java.util.Optional.of(Boolean.TRUE),
                     s.getLibrary().isCodelistExtensible("C66742"));
@@ -490,7 +491,7 @@ class RuleTestCdtEdgeCaseTest
             String content = scenario("""
                     #test CORE-1 expect=violation domain=AE
                     #library codelist-term-mappings NY Y=Yes N=No""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             java.util.Map<String, String> m = s.getLibrary().getCodelistTermMappingsMap().get("NY");
             assertEquals("Yes", m.get("Y"));
@@ -507,7 +508,7 @@ class RuleTestCdtEdgeCaseTest
                     #test CORE-1 expect=violation domain=AE
                     #library codelist-terms NY Y N
                     #library codelist-term-ccodes NY Y=C49488 N=C49487""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             net.cumba.datatable.metadata.ICodeList cl = s.getLibrary().getCodelist("NY")
                     .orElseThrow();
@@ -524,7 +525,7 @@ class RuleTestCdtEdgeCaseTest
             String content = scenario("""
                     #test CORE-1 expect=violation domain=AE
                     #library codelist-meta NY ccode=C66742 pref="No Yes Response\"""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             net.cumba.datatable.metadata.ICodeList cl = s.getLibrary().getCodelist("NY")
                     .orElseThrow();
@@ -544,7 +545,7 @@ class RuleTestCdtEdgeCaseTest
             String content = scenario("#test CORE-1 expect=violation domain=AE\n"
                     + "#library variable-metadata AE AETERM label=\"My Label\""
                     + " simpleDatatype=Char core=Exp");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             java.util.Map<String, String> vm = s.getLibrary().getVariableMetadata("AE", "AETERM");
             assertEquals("My Label", vm.get("label"));
@@ -560,7 +561,7 @@ class RuleTestCdtEdgeCaseTest
                     #test CORE-1 expect=violation domain=AE
                     #library dataset-metadata AE structure="One record per event"
                     #library dataset-class DM EVENTS""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             assertEquals("One record per event",
                     s.getLibrary().getDatasetMetadata("AE").get("structure"));
@@ -577,7 +578,7 @@ class RuleTestCdtEdgeCaseTest
                     #test CORE-1 expect=violation domain=AE
                     #library codelist-codes LB LBTESTCD ALB=C64431 BILI=C64433
                     #library codelist-codes lb LBTEST Albumin=C64431 Bilirubin=C64433""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             java.util.Map<String, String> codes = s.getLibrary().getCodelistCodeMap("LB",
                     "LBTESTCD");
@@ -598,7 +599,7 @@ class RuleTestCdtEdgeCaseTest
                     #test CORE-1 expect=violation domain=AE
                     #library codelist-codes LB LBTESTCD ALB=C64431
                     #library codelist-codes LB LBTESTCD BILI=C64433""");
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
 
             assertEquals(java.util.Map.of("BILI", "C64433"),
                     s.getLibrary().getCodelistCodeMap("LB", "LBTESTCD"));
@@ -700,7 +701,7 @@ class RuleTestCdtEdgeCaseTest
         {
             String content = scenario(aDirectives);
             RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                    () -> RuleTestCdt.parse(content, "t"));
+                    () -> RuleTestCdt.parse(content, "t", null));
             assertTrue(ex.getMessage().contains(aExpectedSubstring), ex.getMessage());
         }
 
@@ -721,10 +722,10 @@ class RuleTestCdtEdgeCaseTest
                     #test CORE-1 expect=violation domain=AE
                     #library standard=adamig version=1-2
                     #library standard-domains""");
-            String out = RuleTestCdt.toString(RuleTestCdt.parse(content, "orig"));
+            String out = RuleTestCdt.toString(RuleTestCdt.parse(content, "orig", null));
             assertTrue(out.contains("#library standard-domains"), out);
 
-            MapBackedLibraryMetadataProvider lib = RuleTestCdt.parse(out, "rt").getLibrary();
+            MapBackedLibraryMetadataProvider lib = RuleTestCdt.parse(out, "rt", null).getLibrary();
             assertNotNull(lib);
             assertEquals(List.of(), lib.getStandardDatasetNames(),
                     "an empty declaration must survive as empty, never as null");
@@ -737,10 +738,10 @@ class RuleTestCdtEdgeCaseTest
             String content = scenario("""
                     #test CORE-1 expect=violation domain=AE
                     #library standard=adamig version=1-2""");
-            String out = RuleTestCdt.toString(RuleTestCdt.parse(content, "orig"));
+            String out = RuleTestCdt.toString(RuleTestCdt.parse(content, "orig", null));
             assertFalse(out.contains("standard-domains"), out);
 
-            MapBackedLibraryMetadataProvider lib = RuleTestCdt.parse(out, "rt").getLibrary();
+            MapBackedLibraryMetadataProvider lib = RuleTestCdt.parse(out, "rt", null).getLibrary();
             assertNotNull(lib);
             assertNull(lib.getStandardDatasetNames(),
                     "an undeclared list must stay null — that is what makes the filter undecidable");
@@ -772,7 +773,7 @@ class RuleTestCdtEdgeCaseTest
                     #library variable-metadata AE AETERM label="My Label" simpleDatatype=Char
                     #library codelist-codes LB LBTESTCD ALB=C64431
                     #library dataset-metadata DM structure="One per subject\"""");
-            RuleTestScenario original = RuleTestCdt.parse(content, "orig");
+            RuleTestScenario original = RuleTestCdt.parse(content, "orig", null);
             String out = RuleTestCdt.toString(original);
             assertTrue(out.contains("#library standard="), out);
             assertTrue(out.contains("#library required-variables AE"), out);
@@ -798,7 +799,7 @@ class RuleTestCdtEdgeCaseTest
                     "#library model-class-variables EVENTS --TERM:Topic \"--DECOD:Synonym Qualifier\""),
                     out);
 
-            RuleTestScenario rt = RuleTestCdt.parse(out, "rt");
+            RuleTestScenario rt = RuleTestCdt.parse(out, "rt", null);
             MapBackedLibraryMetadataProvider lib = rt.getLibrary();
             assertNotNull(lib);
             assertEquals("sdtmig", lib.getStandard());
@@ -839,7 +840,7 @@ class RuleTestCdtEdgeCaseTest
             String out = RuleTestCdt.toString(scenarioWithEmptyLib);
             assertTrue(out.contains("#library standard="), out);
 
-            RuleTestScenario rt = RuleTestCdt.parse(out, "rt");
+            RuleTestScenario rt = RuleTestCdt.parse(out, "rt", null);
             assertNotNull(rt.getLibrary());
         }
     }
@@ -960,8 +961,8 @@ class RuleTestCdtEdgeCaseTest
         @Test
         void include_fromClasspath_mergesSibling() throws IOException
         {
-            RuleTestScenario s = RuleTestCdt
-                    .loadResource("net/cumba/corej/ruletest/include_fixtures/include-sample.cdt");
+            RuleTestScenario s = CdtTestResources
+                    .loadScenario("net/cumba/corej/ruletest/include_fixtures/include-sample.cdt");
             MapBackedLibraryMetadataProvider lib = s.getLibrary();
             assertNotNull(lib);
             assertEquals("sdtmig", lib.getStandard());
@@ -1028,7 +1029,7 @@ class RuleTestCdtEdgeCaseTest
                     #test CORE-1 expect=violation domain=AE
                     #library-include lib.yaml""");
             RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                    () -> RuleTestCdt.parse(content, "t"));
+                    () -> RuleTestCdt.parse(content, "t", null));
             assertTrue(ex.getMessage().contains("requires loading from a file"), ex.getMessage());
         }
 
@@ -1173,7 +1174,7 @@ class RuleTestCdtEdgeCaseTest
             RuleTestScenario s = RuleTestCdt.load(cdt);
             assertEquals("value", s.getLibrary().getDatasetMetadata("AE").get("my key"));
             // Flattened to an inline #library directive on write, it must re-parse identically.
-            RuleTestScenario rt = RuleTestCdt.parse(RuleTestCdt.toString(s), "rt");
+            RuleTestScenario rt = RuleTestCdt.parse(RuleTestCdt.toString(s), "rt", null);
             assertEquals("value", rt.getLibrary().getDatasetMetadata("AE").get("my key"));
         }
 
@@ -1200,18 +1201,6 @@ class RuleTestCdtEdgeCaseTest
     @Nested
     class LoaderPaths
     {
-
-        @Test
-        void loadResource_reads_existingClasspathFile()
-        {
-            // loadResource takes a classpath path and we cannot inject a fresh
-            // classpath resource from a test, so this case only verifies the
-            // negative path where the resource is missing. The positive path is
-            // exercised by other tests that load via Path instead.
-            assertThrows(IOException.class, () -> RuleTestCdt
-                    .loadResource("net/cumba/corej/ruletest/cdt/ruletest/does-not-exist.cdt"));
-        }
-
 
         @Test
         void load_andWriteThenLoad_roundTripFromDisk(@TempDir Path tmp) throws IOException
@@ -1279,7 +1268,7 @@ class RuleTestCdtEdgeCaseTest
                     ---
                     """;
             RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                    () -> RuleTestCdt.parse(content, "t"));
+                    () -> RuleTestCdt.parse(content, "t", null));
             assertTrue(ex.getMessage().contains("duplicate dataset name"), ex.getMessage());
         }
 
@@ -1296,7 +1285,7 @@ class RuleTestCdtEdgeCaseTest
                     x
                     ---
                     """;
-            RuleTestScenario s = RuleTestCdt.parse(content, "t");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
             assertEquals("ae", s.getDomain());
             assertNotNull(s.primaryTable());
         }
@@ -1315,7 +1304,7 @@ class RuleTestCdtEdgeCaseTest
         void verdict_violation_parsedCaseInsensitively(String aToken)
         {
             String content = scenario("#test CORE-1 expect=" + aToken + " domain=AE");
-            assertEquals(Verdict.VIOLATION, RuleTestCdt.parse(content, "t").getExpect());
+            assertEquals(Verdict.VIOLATION, RuleTestCdt.parse(content, "t", null).getExpect());
         }
 
 
@@ -1327,7 +1316,7 @@ class RuleTestCdtEdgeCaseTest
         void verdict_noViolation_parsedCaseInsensitively(String aToken)
         {
             String content = scenario("#test CORE-1 expect=" + aToken + " domain=AE");
-            assertEquals(Verdict.NO_VIOLATION, RuleTestCdt.parse(content, "t").getExpect());
+            assertEquals(Verdict.NO_VIOLATION, RuleTestCdt.parse(content, "t", null).getExpect());
         }
 
 
@@ -1350,7 +1339,8 @@ class RuleTestCdtEdgeCaseTest
         void verdict_executionError_parsedCaseInsensitively(String aToken)
         {
             String content = scenario("#test CORE-1 expect=" + aToken + " domain=AE");
-            assertEquals(Verdict.EXECUTION_ERROR, RuleTestCdt.parse(content, "t").getExpect());
+            assertEquals(Verdict.EXECUTION_ERROR,
+                    RuleTestCdt.parse(content, "t", null).getExpect());
         }
 
 
@@ -1367,7 +1357,7 @@ class RuleTestCdtEdgeCaseTest
         {
             String content = scenario("#test CORE-1 expect=" + aToken + " domain=AE");
             RuleTestCdtException e = assertThrows(RuleTestCdtException.class,
-                    () -> RuleTestCdt.parse(content, "t"));
+                    () -> RuleTestCdt.parse(content, "t", null));
             assertTrue(e.getMessage().contains("executionError"), e.getMessage());
         }
 
@@ -1388,7 +1378,7 @@ class RuleTestCdtEdgeCaseTest
                         x
                         ---
                         """.formatted(v.token());
-                assertEquals(v, RuleTestCdt.parse(content, "t").getExpect(), v.token());
+                assertEquals(v, RuleTestCdt.parse(content, "t", null).getExpect(), v.token());
             }
         }
     }

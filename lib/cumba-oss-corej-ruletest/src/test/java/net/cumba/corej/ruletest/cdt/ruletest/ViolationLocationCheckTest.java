@@ -53,14 +53,14 @@ class ViolationLocationCheckTest
     private static RuleTestScenario scnWithDollarColumn(String aDirectives)
     {
         return RuleTestCdt.parse("#!RuleTest\n#test CORE-1 expect=violation domain=AE\n"
-                + aDirectives + "\n" + DOLLAR_COLUMN_DATASET, "t");
+                + aDirectives + "\n" + DOLLAR_COLUMN_DATASET, "t", null);
     }
 
 
     private static RuleTestScenario scn(String aDirectives)
     {
         return RuleTestCdt.parse("#!RuleTest\n#test CORE-1 expect=violation domain=AE\n"
-                + aDirectives + "\n" + DATASET, "t");
+                + aDirectives + "\n" + DATASET, "t", null);
     }
 
 

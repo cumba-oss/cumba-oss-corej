@@ -76,9 +76,9 @@ public final class RuleTestCdt
 
     /**
      * Resolves a {@code #library-include} sidecar path (relative to the scenario's location) to an
-     * input stream. Supplied by {@link #load(Path)} / {@link #loadResource(String)}. A {@code null}
-     * resolver (the plain {@link #parse(String, String)} entry point) makes
-     * {@code #library-include} a hard error, since there is no base location to resolve against.
+     * input stream. Supplied by {@link #load(Path)}. A {@code null} resolver passed to
+     * {@link #parse(String, String, IncludeResolver)} makes {@code #library-include} a hard error,
+     * since there is no base location to resolve against.
      */
     @FunctionalInterface
     public interface IncludeResolver
@@ -88,18 +88,6 @@ public final class RuleTestCdt
         @Nullable
         InputStream open(String aRelativePath) throws IOException;
     }
-
-    /**
-     * Parse a scenario from its full file content. Strict entry point — throws if the shebang is
-     * missing or any directive is invalid. {@code #library-include} directives are rejected (no
-     * base location); use {@link #parse(String, String, IncludeResolver)} or {@link #load(Path)} to
-     * support sidecars.
-     */
-    public static RuleTestScenario parse(String aContent, String aSource)
-    {
-        return parse(aContent, aSource, null);
-    }
-
 
     /**
      * Parse a scenario, resolving any {@code #library-include} sidecar through {@code aResolver}.
@@ -597,37 +585,6 @@ public final class RuleTestCdt
         IncludeResolver resolver = rel -> Files
                 .newInputStream(base == null ? Path.of(rel) : base.resolve(rel));
         return parse(content, aPath.toString(), resolver);
-    }
-
-
-    /**
-     * Load a scenario from a classpath resource. Strict entry point. {@code #library-include}
-     * sidecars are resolved as sibling resources of {@code aResourcePath}.
-     */
-    public static RuleTestScenario loadResource(String aResourcePath) throws IOException
-    {
-        ClassLoader ctx = Thread.currentThread().getContextClassLoader();
-        ClassLoader cl = ctx != null ? ctx : RuleTestCdt.class.getClassLoader();
-        try (InputStream in = cl.getResourceAsStream(aResourcePath))
-        {
-            if (in == null)
-            {
-                throw new IOException(
-                        "RuleTest scenario resource not found on classpath: " + aResourcePath);
-            }
-            String content = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            String parent = parentResourcePath(aResourcePath);
-            IncludeResolver resolver = rel -> cl
-                    .getResourceAsStream(parent.isEmpty() ? rel : parent + "/" + rel);
-            return parse(content, aResourcePath, resolver);
-        }
-    }
-
-
-    private static String parentResourcePath(String aResourcePath)
-    {
-        int slash = aResourcePath.lastIndexOf('/');
-        return slash < 0 ? "" : aResourcePath.substring(0, slash);
     }
 
 

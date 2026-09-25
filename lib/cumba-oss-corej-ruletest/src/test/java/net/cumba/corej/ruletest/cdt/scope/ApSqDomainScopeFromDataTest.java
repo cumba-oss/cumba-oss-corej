@@ -22,7 +22,7 @@ import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.model.Scope;
-import net.cumba.corej.ruletest.cdt.CdtLoader;
+import net.cumba.corej.ruletest.cdt.CdtTestResources;
 import net.cumba.corej.ruletest.cdt.ruletest.MapBackedLibraryMetadataProvider;
 import net.cumba.datatable.impl.support.OverlayDataTable;
 import org.junit.jupiter.api.BeforeAll;
@@ -80,7 +80,7 @@ class ApSqDomainScopeFromDataTest
         datasets = new LinkedHashMap<>();
         for (String file : List.of("supp-family.cdt", "sq-family.cdt", "ap-family.cdt"))
         {
-            for (OverlayDataTable table : CdtLoader.loadAllResource(FIXTURES + file))
+            for (OverlayDataTable table : CdtTestResources.parseAllResource(FIXTURES + file))
             {
                 String name = table.getMetaData().getName();
                 assertNotNull(name, "fixture " + file + " has an unnamed dataset");

@@ -5,8 +5,6 @@ import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -39,9 +37,10 @@ import net.cumba.datatable.values.MissingValue;
  *
  * <p>
  * A file may contain multiple dataset blocks separated by matching fence lines; use
- * {@link #loadAll(Path)} / {@link #parseAll(String, String)} to retrieve them all.
- * {@link #load(Path)} and {@link #parse(String, String)} keep the single-dataset behaviour and
- * return the first dataset in the file.
+ * {@link #parseAll(String, String)} to retrieve them all. {@link #loadResource(String)} and
+ * {@link #parse(String, String)} keep the single-dataset behaviour and return the first dataset in
+ * the file. (The filesystem-path forms had no caller outside this module's own tests and were
+ * retired with PLAN-retire-dead-multi-match-lookup U8, 2026-09-25.)
  * </p>
  *
  * <h2>Class shortcuts</h2>
@@ -142,13 +141,6 @@ public final class CdtLoader
     }
 
 
-    public static OverlayDataTable load(Path aPath) throws IOException
-    {
-        String content = Files.readString(aPath, StandardCharsets.UTF_8);
-        return parse(content, aPath.toString());
-    }
-
-
     public static OverlayDataTable loadResource(String aResourcePath) throws IOException
     {
         return parse(readResource(aResourcePath), aResourcePath);
@@ -159,26 +151,6 @@ public final class CdtLoader
     {
         List<CdtDataset> all = parseDatasets(aContent, aSourceName);
         return buildTable(all.get(0));
-    }
-
-
-    /**
-     * Load all datasets from the given file path. Files containing a single dataset yield a
-     * one-element list; files with multiple dataset blocks yield them in the order they appear.
-     */
-    public static List<OverlayDataTable> loadAll(Path aPath) throws IOException
-    {
-        String content = Files.readString(aPath, StandardCharsets.UTF_8);
-        return parseAll(content, aPath.toString());
-    }
-
-
-    /**
-     * Load all datasets from the given classpath resource.
-     */
-    public static List<OverlayDataTable> loadAllResource(String aResourcePath) throws IOException
-    {
-        return parseAll(readResource(aResourcePath), aResourcePath);
     }
 
 
@@ -407,12 +379,6 @@ public final class CdtLoader
     {
 
         private static final long serialVersionUID = 1L;
-
-        public CdtParseException(String aMessage)
-        {
-            super(aMessage);
-        }
-
 
         public CdtParseException(String aMessage, Throwable aCause)
         {

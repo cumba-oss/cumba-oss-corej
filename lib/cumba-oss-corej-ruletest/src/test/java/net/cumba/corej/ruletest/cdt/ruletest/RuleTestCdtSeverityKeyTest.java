@@ -44,7 +44,7 @@ class RuleTestCdtSeverityKeyTest
     {
         RuleTestScenario s = RuleTestCdt.parse(scenario("""
                 #test CORE-1 expect=violation domain=VS
-                #expectViolationAt row=3 severity=ERROR"""), "t");
+                #expectViolationAt row=3 severity=ERROR"""), "t", null);
 
         assertEquals(1, s.getExpectedViolations().size());
         ExpectedViolation at = s.getExpectedViolations().get(0);
@@ -64,7 +64,7 @@ class RuleTestCdtSeverityKeyTest
         // without relaxing that guard would turn this spelling into a parse error.
         RuleTestScenario s = RuleTestCdt.parse(scenario("""
                 #test CORE-1 expect=violation domain=VS
-                #expectViolationAt severity=WARNING"""), "t");
+                #expectViolationAt severity=WARNING"""), "t", null);
 
         ExpectedViolation at = s.getExpectedViolations().get(0);
         assertNull(at.getRow());
@@ -79,7 +79,7 @@ class RuleTestCdtSeverityKeyTest
     {
         RuleTestScenario s = RuleTestCdt.parse(scenario("""
                 #test CORE-1 expect=violation domain=VS
-                #expectViolationAt severity=INFO VSPOS=SUPINE"""), "t");
+                #expectViolationAt severity=INFO VSPOS=SUPINE"""), "t", null);
 
         ExpectedViolation at = s.getExpectedViolations().get(0);
         assertEquals(Severity.INFO, at.getSeverity());
@@ -94,12 +94,12 @@ class RuleTestCdtSeverityKeyTest
     {
         assertThrows(RuleTestCdtException.class, () -> RuleTestCdt.parse(scenario("""
                 #test CORE-1 expect=violation domain=VS
-                #expectViolationAt row=1 severity=SEVERE"""), "t"));
+                #expectViolationAt row=1 severity=SEVERE"""), "t", null));
         // NOTICE parses as a report enum constant but no rule may author it and no scenario may
         // pin it — the generic "does it parse" test would have let it through.
         assertThrows(RuleTestCdtException.class, () -> RuleTestCdt.parse(scenario("""
                 #test CORE-1 expect=violation domain=VS
-                #expectViolationAt row=1 severity=NOTICE"""), "t"));
+                #expectViolationAt row=1 severity=NOTICE"""), "t", null));
     }
 
 
@@ -109,7 +109,7 @@ class RuleTestCdtSeverityKeyTest
     {
         assertThrows(RuleTestCdtException.class, () -> RuleTestCdt.parse(scenario("""
                 #test CORE-1 expect=violation domain=VS
-                #expectViolationAt severity=ERROR severity=INFO"""), "t"));
+                #expectViolationAt severity=ERROR severity=INFO"""), "t", null));
     }
 
 }

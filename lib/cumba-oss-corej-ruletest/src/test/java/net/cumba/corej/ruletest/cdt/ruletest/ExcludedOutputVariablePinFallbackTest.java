@@ -14,6 +14,7 @@ import net.cumba.corej.core.exec.EngineLimits;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleRunner;
 import net.cumba.corej.core.model.Rule;
+import net.cumba.corej.ruletest.cdt.CdtTestResources;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.support.OverlayDataTable;
 import org.junit.jupiter.api.Test;
@@ -61,7 +62,7 @@ class ExcludedOutputVariablePinFallbackTest
     @Test
     void pinOnAnExcludedPrimaryColumnPassesThroughTheTableFallback() throws Exception
     {
-        RuleTestScenario scenario = RuleTestCdt.loadResource(SCENARIO);
+        RuleTestScenario scenario = CdtTestResources.loadScenario(SCENARIO);
         Rule rule = rule("\"!AEDECOD\"");
         assertEquals(List.of("AESEV", "AETERM"), rule.getEffectiveOutputVariables());
         OverlayDataTable ae = primary(scenario);
@@ -85,7 +86,7 @@ class ExcludedOutputVariablePinFallbackTest
     void theSamePinPassesThroughTheProjectionWhenNothingIsExcluded() throws Exception
     {
         // The control: without the exclusion the pin is served by the projection itself.
-        RuleTestScenario scenario = RuleTestCdt.loadResource(SCENARIO);
+        RuleTestScenario scenario = CdtTestResources.loadScenario(SCENARIO);
         Rule rule = rule("");
         assertEquals(List.of("AESEV", "AETERM", "AEDECOD"), rule.getEffectiveOutputVariables());
         OverlayDataTable ae = primary(scenario);
@@ -136,7 +137,7 @@ class ExcludedOutputVariablePinFallbackTest
                 001 | 1 | Headache | HEADACHE | MILD
                 001 | 2 | Cough    | COUGH    | MODERATE
                 002 | 1 | Rash     | RASH     | SEVERE
-                """, "inline");
+                """, "inline", null);
         Rule served = opRule("\"AESEV\"");
         Rule excluded = opRule("\"AESEV\", \"!$n\"");
         assertEquals(List.of("AESEV", "$n"), served.getEffectiveOutputVariables());
@@ -165,5 +166,4 @@ class ExcludedOutputVariablePinFallbackTest
         return RuleRunner.execute(rule, table, _ -> null, "AE", null, null, null, Integer.MAX_VALUE,
                 null, null, null, Set.of(), Set.of(), EngineLimits.DEFAULT_SEVERITY_THRESHOLD);
     }
-
 }

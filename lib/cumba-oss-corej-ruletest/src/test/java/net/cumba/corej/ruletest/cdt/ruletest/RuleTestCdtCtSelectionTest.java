@@ -39,13 +39,13 @@ class RuleTestCdtCtSelectionTest
         RuleTestScenario s = RuleTestCdt.parse(scenario("""
                 #test CT-X expect=violation domain=VS
                 #ct-packages sdtmct-2024-09-27 sdtmct-2025-03-28
-                #ct-available sdtmct-2024-09-27"""), "t");
+                #ct-available sdtmct-2024-09-27"""), "t", null);
         assertEquals(List.of("sdtmct-2024-09-27", "sdtmct-2025-03-28"), s.getCtPackages());
         assertEquals(List.of("sdtmct-2024-09-27"), s.getCtAvailable());
 
         RuleTestScenario none = RuleTestCdt.parse(scenario("""
                 #test CT-X expect=skipped domain=VS
-                #ct-available none"""), "t");
+                #ct-available none"""), "t", null);
         assertNull(none.getCtPackages(), "absent directive = blank field, not empty list");
         assertEquals(List.of(), none.getCtAvailable(), "'none' = a store holding no CT package");
     }
@@ -56,7 +56,7 @@ class RuleTestCdtCtSelectionTest
     void absentDirectivesAreNull()
     {
         RuleTestScenario s = RuleTestCdt.parse(scenario("#test CT-X expect=violation domain=VS"),
-                "t");
+                "t", null);
         assertNull(s.getCtPackages());
         assertNull(s.getCtAvailable());
         assertNull(s.getExpectAbort());
@@ -70,20 +70,20 @@ class RuleTestCdtCtSelectionTest
     {
         RuleTestScenario s = RuleTestCdt.parse(scenario("""
                 #test CT-X expect=skipped domain=VS
-                #expect-abort "sdtmct-2023-12-15\""""), "t");
+                #expect-abort "sdtmct-2023-12-15\""""), "t", null);
         assertEquals("sdtmct-2023-12-15", s.getExpectAbort());
 
         RuleTestCdtException wrongVerdict = assertThrows(RuleTestCdtException.class,
                 () -> RuleTestCdt.parse(scenario("""
                         #test CT-X expect=violation domain=VS
-                        #expect-abort "x\""""), "t"));
+                        #expect-abort "x\""""), "t", null));
         assertTrue(wrongVerdict.getMessage().contains("expect=skipped"), wrongVerdict.getMessage());
 
         RuleTestCdtException blend = assertThrows(RuleTestCdtException.class,
                 () -> RuleTestCdt.parse(scenario("""
                         #test CT-X expect=skipped domain=VS
                         #expect-abort "x"
-                        #expect-ct-mismatch "y\""""), "t"));
+                        #expect-ct-mismatch "y\""""), "t", null));
         assertTrue(blend.getMessage().contains("cannot be combined"), blend.getMessage());
     }
 
@@ -95,12 +95,12 @@ class RuleTestCdtCtSelectionTest
         RuleTestCdtException e = assertThrows(RuleTestCdtException.class,
                 () -> RuleTestCdt.parse(scenario("""
                         #test CT-X expect=violation domain=VS
-                        #ct-packages"""), "t"));
+                        #ct-packages"""), "t", null));
         assertTrue(e.getMessage().contains("omit the directive"), e.getMessage());
         // 'none' outside the single-token form is also an authoring error.
         assertThrows(RuleTestCdtException.class, () -> RuleTestCdt.parse(scenario("""
                 #test CT-X expect=violation domain=VS
-                #ct-available sdtmct-2024-09-27 none"""), "t"));
+                #ct-available sdtmct-2024-09-27 none"""), "t", null));
     }
 
 
@@ -112,18 +112,18 @@ class RuleTestCdtCtSelectionTest
                 #test CT-X expect=violation domain=VS
                 #ct-packages sdtmct-2024-09-27
                 #ct-available none
-                #expect-ct-mismatch "define declares sdtmct-2023-12-15\""""), "t");
+                #expect-ct-mismatch "define declares sdtmct-2023-12-15\""""), "t", null);
 
         String written = RuleTestCdt.toString(s);
-        RuleTestScenario back = RuleTestCdt.parse(written, "roundtrip");
+        RuleTestScenario back = RuleTestCdt.parse(written, "roundtrip", null);
         assertEquals(List.of("sdtmct-2024-09-27"), back.getCtPackages());
         assertEquals(List.of(), back.getCtAvailable());
         assertEquals("define declares sdtmct-2023-12-15", back.getExpectCtMismatch());
 
         RuleTestScenario abort = RuleTestCdt.parse(scenario("""
                 #test CT-X expect=skipped domain=VS
-                #expect-abort "sdtmct-2023-12-15\""""), "t");
+                #expect-abort "sdtmct-2023-12-15\""""), "t", null);
         assertEquals("sdtmct-2023-12-15",
-                RuleTestCdt.parse(RuleTestCdt.toString(abort), "roundtrip").getExpectAbort());
+                RuleTestCdt.parse(RuleTestCdt.toString(abort), "roundtrip", null).getExpectAbort());
     }
 }

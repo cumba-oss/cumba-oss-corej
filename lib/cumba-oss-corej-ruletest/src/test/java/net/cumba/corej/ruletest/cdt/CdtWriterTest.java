@@ -5,11 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import net.cumba.datatable.impl.support.OverlayDataTable;
+import net.cumba.datatable.provider.cdt.CdtWriter;
 import org.junit.jupiter.api.Test;
 
 /**
  * Round-trip test: load → write → load again should yield identical content (up to minor
- * formatting).
+ * formatting). The writer is the CDT provider's; this module's delegating adapter was retired
+ * (PLAN-retire-dead-multi-match-lookup U8).
  */
 class CdtWriterTest
 {

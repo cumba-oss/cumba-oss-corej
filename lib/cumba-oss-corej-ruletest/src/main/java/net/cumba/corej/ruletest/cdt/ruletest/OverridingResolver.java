@@ -99,25 +99,6 @@ public final class OverridingResolver implements DatasetResolver.WithInventory
     }
 
 
-    /**
-     * Returns a copy of this resolver with additional dropped names. Overrides are preserved.
-     * Enables chaining of {@code resolverWith(...).without(...)} in tests that need both an
-     * override and a dropped sibling.
-     */
-    public OverridingResolver without(String... aDroppedDomains)
-    {
-        Set<String> merged = new LinkedHashSet<>(this.dropped);
-        for (String d : aDroppedDomains)
-        {
-            if (d != null)
-            {
-                merged.add(d.toUpperCase(Locale.ROOT));
-            }
-        }
-        return new OverridingResolver(this.underlying, this.overrides, merged);
-    }
-
-
     public Map<String, IDataTable> getOverrides()
     {
         return overrides;
@@ -127,12 +108,6 @@ public final class OverridingResolver implements DatasetResolver.WithInventory
     public Set<String> getDropped()
     {
         return dropped;
-    }
-
-
-    public DatasetResolver getUnderlying()
-    {
-        return underlying;
     }
 
 

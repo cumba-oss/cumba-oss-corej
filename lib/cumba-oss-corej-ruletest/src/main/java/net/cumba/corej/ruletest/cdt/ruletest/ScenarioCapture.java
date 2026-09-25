@@ -94,8 +94,6 @@ public final class ScenarioCapture
 
     private static final Pattern VERDICT_SUFFIX = Pattern.compile("(valid|invalid)(\\d*)");
 
-    private static final List<String> REPORT = Collections.synchronizedList(new ArrayList<>());
-
     private ScenarioCapture()
     {
     }
@@ -105,25 +103,6 @@ public final class ScenarioCapture
     public static boolean isEnabled()
     {
         return Boolean.getBoolean(FLAG);
-    }
-
-
-    /**
-     * Capture a "Shape A" scenario: the test mutated a single primary table in memory and asserted
-     * a verdict on it. Writes the resulting {@link OverlayDataTable} as a self-contained
-     * extended-CDT scenario at the standard path for its coreId and verdict.
-     *
-     * <p>
-     * Kept as a thin wrapper around
-     * {@link #captureWithSiblings(String, Verdict, String, OverlayDataTable, Rule, DatasetResolver)}
-     * for backwards compatibility; callers with access to the rule and resolver should use the
-     * richer entry point so cross-dataset dependencies are captured too.
-     * </p>
-     */
-    public static void captureShapeA(String aCoreId, Verdict aVerdict, String aDomain,
-            OverlayDataTable aPrimary)
-    {
-        captureWithSiblings(aCoreId, aVerdict, aDomain, aPrimary, null, null);
     }
 
 
@@ -642,19 +621,6 @@ public final class ScenarioCapture
         return aValue;
     }
 
-
-    /**
-     * Snapshot of every capture written during this JVM run, in order. One entry per call. Safe to
-     * read from an {@code @AfterAll} callback.
-     */
-    public static List<String> report()
-    {
-        synchronized (REPORT)
-        {
-            return List.copyOf(REPORT);
-        }
-    }
-
     // ---- internals -----------------------------------------------------------------
 
 
@@ -805,7 +771,6 @@ public final class ScenarioCapture
             throw new RuntimeException("scenario capture failed: " + aOut, e);
         }
         String line = (aMethodName != null ? aMethodName : "<unknown>") + " -> " + aOut;
-        REPORT.add(line);
         System.out.println("ScenarioCapture: migrated " + line);
     }
 }

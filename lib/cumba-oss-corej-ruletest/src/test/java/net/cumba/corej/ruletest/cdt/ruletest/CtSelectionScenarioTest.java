@@ -35,6 +35,7 @@ import net.cumba.corej.core.run.StudyValidationException;
 import net.cumba.corej.core.run.StudyValidationParams;
 import net.cumba.corej.core.run.StudyValidationResult;
 import net.cumba.corej.core.run.StudyValidationService;
+import net.cumba.corej.ruletest.cdt.CdtTestResources;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.support.OverlayDataTable;
 import net.cumba.datatable.manager.IDataTableLibraryRef;
@@ -98,7 +99,7 @@ class CtSelectionScenarioTest
     })
     void scenario(String aFile) throws IOException
     {
-        RuleTestScenario scenario = RuleTestCdt.loadResource(FIXTURES + aFile);
+        RuleTestScenario scenario = CdtTestResources.loadScenario(FIXTURES + aFile);
 
         // 1. Materialise the define sidecar (when declared) and read its declared CT set.
         Path definePath = null;

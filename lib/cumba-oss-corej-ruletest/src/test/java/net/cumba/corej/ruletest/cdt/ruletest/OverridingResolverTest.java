@@ -186,23 +186,6 @@ class OverridingResolverTest
 
 
         @Test
-        void resolve_droppedTakesPrecedenceOverEverythingElse()
-        {
-            IDataTable dm = table("DM");
-            IDataTable override = table("DM-override");
-            DatasetResolver.WithInventory delegate = inventoryDelegate(dm, null, null);
-
-            // Build a resolver that has BOTH an override and a dropped entry for DM —
-            // dropped must win.
-            OverridingResolver r = OverridingResolver.overrides(delegate, Map.of("DM", override))
-                    .without("DM");
-
-            assertNull(r.resolve("DM"));
-            assertNull(r.resolve("dm"));
-        }
-
-
-        @Test
         void resolve_overrideBeatsDelegate()
         {
             IDataTable delegateDm = table("DM-delegate");
@@ -241,51 +224,6 @@ class OverridingResolverTest
             assertNull(r.resolve("UNKNOWN"));
         }
 
-
-        @Test
-        void resolve_chained_withoutThenWithout_addsDroppedNames()
-        {
-            IDataTable dm = table("DM");
-            IDataTable ae = table("AE");
-            IDataTable ss = table("SS");
-            DatasetResolver.WithInventory delegate = inventoryDelegate(dm, ae, ss);
-
-            OverridingResolver r = OverridingResolver.without(delegate, "ae").without("ss");
-
-            assertNull(r.resolve("AE"));
-            assertNull(r.resolve("SS"));
-            assertSame(dm, r.resolve("DM"));
-            assertEquals(Set.of("AE", "SS"), r.getDropped());
-        }
-
-
-        @Test
-        void resolve_chained_withoutPreservesOverrides()
-        {
-            IDataTable delegateDm = table("DM-delegate");
-            IDataTable overrideDm = table("DM-override");
-            IDataTable ae = table("AE");
-            DatasetResolver.WithInventory delegate = inventoryDelegate(delegateDm, ae, null);
-
-            OverridingResolver r = OverridingResolver.override(delegate, "DM", overrideDm)
-                    .without("AE");
-
-            assertSame(overrideDm, r.resolve("DM"));
-            assertNull(r.resolve("AE"));
-            assertEquals(Set.of("DM"), r.getOverrides().keySet());
-            assertEquals(Set.of("AE"), r.getDropped());
-        }
-
-
-        @Test
-        void resolve_chained_withoutNullEntryIsSkipped()
-        {
-            DatasetResolver.WithInventory delegate = inventoryDelegate(table("DM"), null, null);
-            OverridingResolver r = OverridingResolver.without(delegate, "AE")
-                    .without((String) null);
-
-            assertEquals(Set.of("AE"), r.getDropped());
-        }
     }
 
 
@@ -319,35 +257,6 @@ class OverridingResolverTest
 
 
         @Test
-        void availableDatasets_combinesOverrideAndDropped()
-        {
-            DatasetResolver.WithInventory delegate = inventoryDelegate(table("DM"), table("AE"),
-                    table("SS"));
-            OverridingResolver r = OverridingResolver.override(delegate, "NEW", table("NEW"))
-                    .without("AE");
-
-            Set<String> avail = r.availableDatasets();
-            assertEquals(Set.of("DM", "SS", "NEW"), avail);
-        }
-
-
-        @Test
-        void availableDatasets_bareDelegate_yieldsEmptyBaseInventory()
-        {
-            // A plain functional-interface DatasetResolver has no inventory; OverridingResolver
-            // must fall back to an empty base set.
-            DatasetResolver bare = bareDelegate(table("DM"));
-            OverridingResolver r = OverridingResolver.override(bare, "NEW", table("NEW"))
-                    .without("FOO");
-
-            // Only the override is visible, "FOO" was not in the empty base so dropping is a no-op
-            // for inventory purposes — but it still appears in the dropped set.
-            assertEquals(Set.of("NEW"), r.availableDatasets());
-            assertEquals(Set.of("FOO"), r.getDropped());
-        }
-
-
-        @Test
         void availableDatasets_isUnmodifiable()
         {
             DatasetResolver.WithInventory delegate = inventoryDelegate(table("DM"), null, null);
@@ -362,15 +271,6 @@ class OverridingResolverTest
     @Nested
     class IntrospectionTests
     {
-
-        @Test
-        void getUnderlying_returnsTheConstructorArgument()
-        {
-            DatasetResolver delegate = bareDelegate(table("DM"));
-            OverridingResolver r = OverridingResolver.overrides(delegate, Map.of());
-            assertSame(delegate, r.getUnderlying());
-        }
-
 
         @Test
         void getOverrides_isUnmodifiable()
@@ -388,19 +288,6 @@ class OverridingResolverTest
             OverridingResolver r = OverridingResolver.without(bareDelegate(null), "X");
             Set<String> dropped = r.getDropped();
             assertThrows(UnsupportedOperationException.class, () -> dropped.add("Y"));
-        }
-
-
-        @Test
-        void chained_preservesUnderlyingReference()
-        {
-            DatasetResolver delegate = bareDelegate(null);
-            OverridingResolver original = OverridingResolver.override(delegate, "DM", table("DM"));
-            OverridingResolver chained = original.without("AE");
-
-            assertSame(delegate, chained.getUnderlying());
-            // Overrides survive the without() copy.
-            assertEquals(original.getOverrides().keySet(), chained.getOverrides().keySet());
         }
 
 

@@ -49,7 +49,7 @@ class ScenarioLocationBackfillTest
         throws IOException
     {
         Path f = write(dir, VIOLATION);
-        RuleTestScenario s = RuleTestCdt.parse(VIOLATION, f.toString());
+        RuleTestScenario s = RuleTestCdt.parse(VIOLATION, f.toString(), null);
         Violation v = new Violation(0, Map.of(), "001", "1", Map.of(), null, null);
 
         ScenarioLocationBackfill.run(f, s, List.of(v), 1, false, true);
@@ -66,7 +66,7 @@ class ScenarioLocationBackfillTest
         assertTrue(out.indexOf("#expectViolationCount") < out.indexOf("dataset AE"), out);
         assertTrue(out.indexOf("#note") < out.indexOf("#expectViolationCount"), out);
         // The result re-parses cleanly and verifies against the same violation.
-        RuleTestScenario reparsed = RuleTestCdt.parse(out, f.toString());
+        RuleTestScenario reparsed = RuleTestCdt.parse(out, f.toString(), null);
         assertTrue(ViolationLocationCheck.verify(reparsed, List.of(v), 1, false, s.primaryTable())
                 .pass());
     }
@@ -103,7 +103,7 @@ class ScenarioLocationBackfillTest
                 ---
                 """;
         Path f = write(dir, pinned);
-        RuleTestScenario s = RuleTestCdt.parse(pinned, f.toString());
+        RuleTestScenario s = RuleTestCdt.parse(pinned, f.toString(), null);
         assertEquals(Severity.INFO, s.getRunLevel(), "fixture must carry the run level");
 
         List<Violation> observed = List.of(
@@ -121,7 +121,7 @@ class ScenarioLocationBackfillTest
         // ...and the rewritten fixture still verifies against the very violations it was written
         // from — a pin that no longer discriminates would pass this too, which is why the count of
         // `severity=` tokens above is asserted separately.
-        RuleTestScenario reparsed = RuleTestCdt.parse(out, f.toString());
+        RuleTestScenario reparsed = RuleTestCdt.parse(out, f.toString(), null);
         assertTrue(ViolationLocationCheck.verify(reparsed, observed, 2, false, s.primaryTable())
                 .pass(), out);
 
@@ -141,7 +141,7 @@ class ScenarioLocationBackfillTest
     void backfillInventsNoSeverityForAnUnstampedViolation(@TempDir Path dir) throws IOException
     {
         Path f = write(dir, VIOLATION);
-        RuleTestScenario s = RuleTestCdt.parse(VIOLATION, f.toString());
+        RuleTestScenario s = RuleTestCdt.parse(VIOLATION, f.toString(), null);
 
         ScenarioLocationBackfill.run(f, s,
                 List.of(new Violation(0, Map.of(), "001", "1", Map.of(), null, null)), 1, false,
@@ -157,13 +157,13 @@ class ScenarioLocationBackfillTest
     void rerun_isIdempotent(@TempDir Path dir) throws IOException
     {
         Path f = write(dir, VIOLATION);
-        RuleTestScenario s = RuleTestCdt.parse(VIOLATION, f.toString());
+        RuleTestScenario s = RuleTestCdt.parse(VIOLATION, f.toString(), null);
         Violation v = new Violation(0, Map.of(), "001", "1", Map.of(), null, null);
 
         ScenarioLocationBackfill.run(f, s, List.of(v), 1, false, true);
         String first = Files.readString(f);
         // Re-parse and re-run: a second pass must replace, not append.
-        RuleTestScenario s2 = RuleTestCdt.parse(first, f.toString());
+        RuleTestScenario s2 = RuleTestCdt.parse(first, f.toString(), null);
         ScenarioLocationBackfill.run(f, s2, List.of(v), 1, false, true);
         String second = Files.readString(f);
 
@@ -177,7 +177,7 @@ class ScenarioLocationBackfillTest
     {
         String content = VIOLATION.replace("expect=violation", "expect=noViolation");
         Path f = write(dir, content);
-        RuleTestScenario s = RuleTestCdt.parse(content, f.toString());
+        RuleTestScenario s = RuleTestCdt.parse(content, f.toString(), null);
 
         ScenarioLocationBackfill.run(f, s, List.of(), 0, false, true);
 
@@ -190,7 +190,7 @@ class ScenarioLocationBackfillTest
     {
         String crlf = VIOLATION.replace("\n", "\r\n");
         Path f = write(dir, crlf);
-        RuleTestScenario s = RuleTestCdt.parse(crlf, f.toString());
+        RuleTestScenario s = RuleTestCdt.parse(crlf, f.toString(), null);
         Violation v = new Violation(0, Map.of(), "001", "1", Map.of(), null, null);
 
         ScenarioLocationBackfill.run(f, s, List.of(v), 1, false, true);
@@ -206,7 +206,7 @@ class ScenarioLocationBackfillTest
     void zeroFire_isSkipped(@TempDir Path dir) throws IOException
     {
         Path f = write(dir, VIOLATION);
-        RuleTestScenario s = RuleTestCdt.parse(VIOLATION, f.toString());
+        RuleTestScenario s = RuleTestCdt.parse(VIOLATION, f.toString(), null);
 
         // expect=violation but the rule fired nothing — writing count 0 would be invalid, so skip.
         ScenarioLocationBackfill.run(f, s, List.of(), 0, false, true);
@@ -243,7 +243,7 @@ class ScenarioLocationBackfillTest
                 ---
                 """;
         Path f = write(dir, pinned);
-        RuleTestScenario s = RuleTestCdt.parse(pinned, f.toString());
+        RuleTestScenario s = RuleTestCdt.parse(pinned, f.toString(), null);
         assertEquals("6000000000",
                 s.getExpectedViolations().get(0).getConstraints().get("$dataset_size"),
                 "fixture must carry the $ pin before the run");
@@ -257,7 +257,7 @@ class ScenarioLocationBackfillTest
 
         // ...and it re-parses and is honoured by the checker — an emitted pin that cannot be read
         // back is worse than one that was dropped.
-        RuleTestScenario reparsed = RuleTestCdt.parse(out, f.toString());
+        RuleTestScenario reparsed = RuleTestCdt.parse(out, f.toString(), null);
         assertEquals("6000000000",
                 reparsed.getExpectedViolations().get(0).getConstraints().get("$dataset_size"), out);
         assertTrue(ViolationLocationCheck.verify(reparsed, List.of(v), 1, false, s.primaryTable())

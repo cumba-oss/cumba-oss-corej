@@ -37,7 +37,7 @@ class RuleTestCdtDictionariesTest
     {
         RuleTestScenario s = RuleTestCdt.parse(scenario("""
                 #test FDA-X expect=violation domain=AE
-                #dictionaries dummy"""), "t");
+                #dictionaries dummy"""), "t", null);
 
         assertEquals("dummy", s.getDictionaries());
     }
@@ -47,7 +47,7 @@ class RuleTestCdtDictionariesTest
     void dictionaries_absent_isNull()
     {
         RuleTestScenario s = RuleTestCdt.parse(scenario("#test FDA-X expect=violation domain=AE"),
-                "t");
+                "t", null);
 
         assertNull(s.getDictionaries());
     }
@@ -58,12 +58,12 @@ class RuleTestCdtDictionariesTest
     {
         RuleTestScenario s = RuleTestCdt.parse(scenario("""
                 #test FDA-X expect=violation domain=AE
-                #dictionaries dummy"""), "t");
+                #dictionaries dummy"""), "t", null);
 
         String written = RuleTestCdt.toString(s);
         assertTrue(written.contains("#dictionaries dummy"),
                 "writer must re-emit the directive, got:\n" + written);
-        assertEquals("dummy", RuleTestCdt.parse(written, "roundtrip").getDictionaries());
+        assertEquals("dummy", RuleTestCdt.parse(written, "roundtrip", null).getDictionaries());
     }
 
 
@@ -73,7 +73,7 @@ class RuleTestCdtDictionariesTest
         RuleTestCdtException e = assertThrows(RuleTestCdtException.class,
                 () -> RuleTestCdt.parse(scenario("""
                         #test FDA-X expect=violation domain=AE
-                        #dictionaries meddra-2024"""), "t"));
+                        #dictionaries meddra-2024"""), "t", null));
 
         assertTrue(e.getMessage().contains("unsupported #dictionaries value"), e.getMessage());
     }
@@ -85,7 +85,7 @@ class RuleTestCdtDictionariesTest
         RuleTestCdtException e = assertThrows(RuleTestCdtException.class,
                 () -> RuleTestCdt.parse(scenario("""
                         #test FDA-X expect=violation domain=AE
-                        #dictionaries"""), "t"));
+                        #dictionaries"""), "t", null));
 
         assertTrue(e.getMessage().contains("exactly one value"), e.getMessage());
     }
@@ -98,7 +98,7 @@ class RuleTestCdtDictionariesTest
                 () -> RuleTestCdt.parse(scenario("""
                         #test FDA-X expect=violation domain=AE
                         #dictionaries dummy
-                        #dictionaries dummy"""), "t"));
+                        #dictionaries dummy"""), "t", null));
 
         assertTrue(e.getMessage().contains("duplicate #dictionaries"), e.getMessage());
     }

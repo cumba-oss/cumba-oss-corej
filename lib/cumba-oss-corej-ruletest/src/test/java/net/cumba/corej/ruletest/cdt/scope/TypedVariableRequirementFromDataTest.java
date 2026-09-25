@@ -18,7 +18,7 @@ import net.cumba.corej.core.model.Requirements;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
 import net.cumba.corej.core.model.VariableRequirement;
-import net.cumba.corej.ruletest.cdt.CdtLoader;
+import net.cumba.corej.ruletest.cdt.CdtTestResources;
 import net.cumba.corej.ruletest.cdt.ruletest.MapBackedLibraryMetadataProvider;
 import net.cumba.datatable.impl.support.OverlayDataTable;
 import org.jspecify.annotations.Nullable;
@@ -77,7 +77,8 @@ class TypedVariableRequirementFromDataTest
     static void loadFixtures() throws IOException
     {
         datasets = new LinkedHashMap<>();
-        for (OverlayDataTable table : CdtLoader.loadAllResource(FIXTURES + "typed-columns.cdt"))
+        for (OverlayDataTable table : CdtTestResources
+                .parseAllResource(FIXTURES + "typed-columns.cdt"))
         {
             String name = table.getMetaData().getName();
             assertNotNull(name, "fixture dataset has no name");

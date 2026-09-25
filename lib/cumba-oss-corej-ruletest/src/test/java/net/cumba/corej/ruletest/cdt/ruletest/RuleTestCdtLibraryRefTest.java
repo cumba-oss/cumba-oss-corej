@@ -39,7 +39,7 @@ class RuleTestCdtLibraryRefTest
     void parse_minimal_setsStandardAndVersion()
     {
         RuleTestScenario s = RuleTestCdt
-                .parse(scenario("#library-ref standard=adamig version=1-3\n"), "t");
+                .parse(scenario("#library-ref standard=adamig version=1-3\n"), "t", null);
         LibraryRef ref = s.getLibraryRef();
         assertNotNull(ref);
         assertEquals("adamig", ref.getStandard());
@@ -56,7 +56,7 @@ class RuleTestCdtLibraryRefTest
     {
         RuleTestScenario s = RuleTestCdt.parse(scenario(
                 "#library-ref standard=sdtmig version=3-4 ct=sdtmct-2024-09-27 substandard=sdtm\n"),
-                "t");
+                "t", null);
         LibraryRef ref = s.getLibraryRef();
         assertNotNull(ref);
         assertEquals("sdtmig", ref.getStandard());
@@ -72,7 +72,7 @@ class RuleTestCdtLibraryRefTest
         RuleTestScenario s = RuleTestCdt.parse(scenario("""
                 #library-ref standard=adamig version=1-2 ct=adamct-2024-03-29
                 #library-ref version=1-3 ct=adamct-2024-09-27
-                """), "t");
+                """), "t", null);
         LibraryRef ref = s.getLibraryRef();
         assertNotNull(ref);
         assertEquals("adamig", ref.getStandard());
@@ -86,7 +86,7 @@ class RuleTestCdtLibraryRefTest
     @Test
     void parse_noRef_leavesLibraryRefNull()
     {
-        RuleTestScenario s = RuleTestCdt.parse(scenario(""), "t");
+        RuleTestScenario s = RuleTestCdt.parse(scenario(""), "t", null);
         assertNull(s.getLibraryRef());
     }
 
@@ -97,7 +97,7 @@ class RuleTestCdtLibraryRefTest
     void parse_missingStandard_rejected()
     {
         RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                () -> RuleTestCdt.parse(scenario("#library-ref version=1-3\n"), "t"));
+                () -> RuleTestCdt.parse(scenario("#library-ref version=1-3\n"), "t", null));
         assertTrue(ex.getMessage().contains("missing required standard"), ex.getMessage());
     }
 
@@ -106,7 +106,7 @@ class RuleTestCdtLibraryRefTest
     void parse_missingVersion_rejected()
     {
         RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                () -> RuleTestCdt.parse(scenario("#library-ref standard=adamig\n"), "t"));
+                () -> RuleTestCdt.parse(scenario("#library-ref standard=adamig\n"), "t", null));
         assertTrue(ex.getMessage().contains("missing required version"), ex.getMessage());
     }
 
@@ -114,8 +114,10 @@ class RuleTestCdtLibraryRefTest
     @Test
     void parse_unknownKey_rejected()
     {
-        RuleTestCdtException ex = assertThrows(RuleTestCdtException.class, () -> RuleTestCdt
-                .parse(scenario("#library-ref standard=adamig version=1-3 useCase=tig\n"), "t"));
+        RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
+                () -> RuleTestCdt.parse(
+                        scenario("#library-ref standard=adamig version=1-3 useCase=tig\n"), "t",
+                        null));
         assertTrue(ex.getMessage().contains("unknown key 'useCase'"), ex.getMessage());
     }
 
@@ -126,7 +128,7 @@ class RuleTestCdtLibraryRefTest
         RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
                 () -> RuleTestCdt.parse(
                         scenario("#library-ref standard=adamig version=1-3 defineVersion=2-1\n"),
-                        "t"));
+                        "t", null));
         assertTrue(ex.getMessage().contains("unknown key 'defineVersion'"), ex.getMessage());
     }
 
@@ -135,7 +137,7 @@ class RuleTestCdtLibraryRefTest
     void parse_tokenWithoutEquals_rejected()
     {
         RuleTestCdtException ex = assertThrows(RuleTestCdtException.class, () -> RuleTestCdt
-                .parse(scenario("#library-ref standard=adamig version=1-3 oops\n"), "t"));
+                .parse(scenario("#library-ref standard=adamig version=1-3 oops\n"), "t", null));
         assertTrue(ex.getMessage().contains("expected key=value"), ex.getMessage());
     }
 
@@ -147,7 +149,7 @@ class RuleTestCdtLibraryRefTest
                 () -> RuleTestCdt.parse(scenario("""
                         #library-ref standard=adamig version=1-3
                         #library standard=adamig version=1-3
-                        """), "t"));
+                        """), "t", null));
         assertTrue(ex.getMessage().contains("cannot be combined"), ex.getMessage());
     }
 
@@ -159,7 +161,7 @@ class RuleTestCdtLibraryRefTest
                 () -> RuleTestCdt.parse(scenario("""
                         #library-ref standard=adamig version=1-3
                         #library-include some.yaml
-                        """), "t"));
+                        """), "t", null));
         assertTrue(ex.getMessage().contains("cannot be combined"), ex.getMessage());
     }
 
@@ -171,12 +173,12 @@ class RuleTestCdtLibraryRefTest
     {
         RuleTestScenario original = RuleTestCdt.parse(scenario(
                 "#library-ref standard=sdtmig version=3-4 ct=sdtmct-2024-09-27 substandard=sdtm\n"),
-                "orig");
+                "orig", null);
 
         String out = RuleTestCdt.toString(original);
         assertTrue(out.contains("#library-ref standard=sdtmig version=3-4"), out);
 
-        LibraryRef rt = RuleTestCdt.parse(out, "rt").getLibraryRef();
+        LibraryRef rt = RuleTestCdt.parse(out, "rt", null).getLibraryRef();
         assertNotNull(rt);
         assertEquals("sdtmig", rt.getStandard());
         assertEquals("3-4", rt.getVersion());
@@ -190,9 +192,10 @@ class RuleTestCdtLibraryRefTest
     {
         RuleTestScenario original = RuleTestCdt.parse(scenario("""
                 #library-ref standard=adamig version=1-3 ct=adamct-2024-03-29 ct=adamct-2024-09-27
-                """), "orig");
+                """), "orig", null);
 
-        LibraryRef rt = RuleTestCdt.parse(RuleTestCdt.toString(original), "rt").getLibraryRef();
+        LibraryRef rt = RuleTestCdt.parse(RuleTestCdt.toString(original), "rt", null)
+                .getLibraryRef();
         assertNotNull(rt);
         assertEquals(List.of("adamct-2024-03-29", "adamct-2024-09-27"), rt.getCtPackages());
         assertNull(rt.getSubstandard());

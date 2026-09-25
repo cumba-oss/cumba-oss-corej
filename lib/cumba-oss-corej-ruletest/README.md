@@ -20,8 +20,8 @@ production by downstream services, and it shares no code with the rule corpus.
 
 ## Java packages
 
-- `net.cumba.corej.ruletest.cdt` — `.cdt` resource loading and writing
-  (`CdtLoader`, `CdtWriter`)
+- `net.cumba.corej.ruletest.cdt` — `.cdt` resource loading (`CdtLoader`; writing goes
+  through `net.cumba.datatable.provider.cdt.CdtWriter` directly)
 - `net.cumba.corej.ruletest.cdt.ruletest` — rule-test factory
   (`RuleTestCdt`), scenario record (`RuleTestScenario`), scenario capture
   and the library / scenario resolvers

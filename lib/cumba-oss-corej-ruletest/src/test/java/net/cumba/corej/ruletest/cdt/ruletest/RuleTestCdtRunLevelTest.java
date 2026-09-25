@@ -43,10 +43,10 @@ class RuleTestCdtRunLevelTest
     {
         assertEquals(Severity.INFO, RuleTestCdt.parse(scenario("""
                 #test FDA-X expect=violation domain=AE
-                #runLevel Info"""), "t").getRunLevel());
+                #runLevel Info"""), "t", null).getRunLevel());
         assertEquals(Severity.REJECT, RuleTestCdt.parse(scenario("""
                 #test FDA-X expect=violation domain=AE
-                #runLevel reject"""), "t").getRunLevel());
+                #runLevel reject"""), "t", null).getRunLevel());
     }
 
 
@@ -55,7 +55,7 @@ class RuleTestCdtRunLevelTest
     void absentRunLevelIsNull()
     {
         assertNull(
-                RuleTestCdt.parse(scenario("#test FDA-X expect=violation domain=AE"), "t")
+                RuleTestCdt.parse(scenario("#test FDA-X expect=violation domain=AE"), "t", null)
                         .getRunLevel(),
                 "null is 'the run decides'; resolving it to Warning is the engine's job, not the "
                         + "parser's");
@@ -68,12 +68,12 @@ class RuleTestCdtRunLevelTest
     {
         RuleTestScenario s = RuleTestCdt.parse(scenario("""
                 #test FDA-X expect=violation domain=AE
-                #runLevel Info"""), "t");
+                #runLevel Info"""), "t", null);
 
         String written = RuleTestCdt.toString(s);
         assertTrue(written.contains("#runLevel Info"),
                 "writer must re-emit the directive, got:\n" + written);
-        assertEquals(Severity.INFO, RuleTestCdt.parse(written, "roundtrip").getRunLevel());
+        assertEquals(Severity.INFO, RuleTestCdt.parse(written, "roundtrip", null).getRunLevel());
     }
 
 
@@ -83,21 +83,21 @@ class RuleTestCdtRunLevelTest
     {
         assertTrue(assertThrows(RuleTestCdtException.class, () -> RuleTestCdt.parse(scenario("""
                 #test FDA-X expect=violation domain=AE
-                #runLevel Severe"""), "t")).getMessage().contains("unknown level 'Severe'"));
+                #runLevel Severe"""), "t", null)).getMessage().contains("unknown level 'Severe'"));
 
         assertTrue(assertThrows(RuleTestCdtException.class, () -> RuleTestCdt.parse(scenario("""
                 #test FDA-X expect=violation domain=AE
-                #runLevel Notice"""), "t")).getMessage().contains("unknown level 'Notice'"),
+                #runLevel Notice"""), "t", null)).getMessage().contains("unknown level 'Notice'"),
                 "NOTICE is a report-only kind and is not a rung of the ladder");
 
         assertTrue(assertThrows(RuleTestCdtException.class, () -> RuleTestCdt.parse(scenario("""
                 #test FDA-X expect=violation domain=AE
-                #runLevel"""), "t")).getMessage().contains("expects exactly one value"));
+                #runLevel"""), "t", null)).getMessage().contains("expects exactly one value"));
 
         assertTrue(assertThrows(RuleTestCdtException.class, () -> RuleTestCdt.parse(scenario("""
                 #test FDA-X expect=violation domain=AE
                 #runLevel Info
-                #runLevel Error"""), "t")).getMessage().contains("duplicate #runLevel"));
+                #runLevel Error"""), "t", null)).getMessage().contains("duplicate #runLevel"));
     }
 
 
@@ -108,7 +108,7 @@ class RuleTestCdtRunLevelTest
         String message = assertThrows(RuleTestCdtException.class,
                 () -> RuleTestCdt.parse(scenario("""
                         #test FDA-X expect=violation domain=AE
-                        #runLevl Info"""), "t")).getMessage();
+                        #runLevl Info"""), "t", null)).getMessage();
 
         assertTrue(message.contains("unknown directive: #runLevl"), message);
         assertTrue(message.contains("#runLevel"),
@@ -122,7 +122,7 @@ class RuleTestCdtRunLevelTest
     {
         RuleTestScenario s = RuleTestCdt.parse(scenario("""
                 #test FDA-X expect=violation domain=AE
-                #expectViolationAt row=1 severity=Error"""), "t");
+                #expectViolationAt row=1 severity=Error"""), "t", null);
 
         assertEquals(Severity.ERROR, s.getExpectedViolations().getFirst().getSeverity());
         assertTrue(s.getExpectedViolations().getFirst().getConstraints().isEmpty(),
@@ -132,8 +132,8 @@ class RuleTestCdtRunLevelTest
         String written = RuleTestCdt.toString(s);
         assertTrue(written.contains("severity=Error"),
                 "the writer must re-emit the reserved pin, got:\n" + written);
-        assertEquals(Severity.ERROR, RuleTestCdt.parse(written, "roundtrip").getExpectedViolations()
-                .getFirst().getSeverity());
+        assertEquals(Severity.ERROR, RuleTestCdt.parse(written, "roundtrip", null)
+                .getExpectedViolations().getFirst().getSeverity());
     }
 
 }

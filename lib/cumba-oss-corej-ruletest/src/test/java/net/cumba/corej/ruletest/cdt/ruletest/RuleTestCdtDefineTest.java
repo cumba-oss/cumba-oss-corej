@@ -48,7 +48,7 @@ class RuleTestCdtDefineTest
         RuleTestScenario s = RuleTestCdt.parse(scenario("""
                 #test CORE-1 expect=violation domain=VS
                 #library variable-metadata VS VSPOS role="Result Qualifier"
-                #define variable-metadata VS VSPOS label="Position of Subject\""""), "t");
+                #define variable-metadata VS VSPOS label="Position of Subject\""""), "t", null);
 
         assertNotNull(s.getDefine());
         assertNotNull(s.getLibrary());
@@ -64,7 +64,7 @@ class RuleTestCdtDefineTest
     void define_withoutDirective_isNull()
     {
         RuleTestScenario s = RuleTestCdt.parse(scenario("""
-                #test CORE-1 expect=violation domain=VS"""), "t");
+                #test CORE-1 expect=violation domain=VS"""), "t", null);
         assertNull(s.getDefine());
     }
 
@@ -76,7 +76,7 @@ class RuleTestCdtDefineTest
         RuleTestScenario s = RuleTestCdt.parse(scenario("""
                 #test CORE-1 expect=violation domain=VS
                 #library-ref standard=sdtmig version=3-4
-                #define variable-metadata VS VSPOS label="Position\""""), "t");
+                #define variable-metadata VS VSPOS label="Position\""""), "t", null);
         assertNotNull(s.getLibraryRef());
         assertNotNull(s.getDefine());
     }
@@ -127,7 +127,7 @@ class RuleTestCdtDefineTest
                 #test CORE-1 expect=violation domain=VS
                 #define no-such-kind VS""");
         RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
-                () -> RuleTestCdt.parse(content, "t"));
+                () -> RuleTestCdt.parse(content, "t", null));
         assertTrue(ex.getMessage().contains("#define: unknown kind"), ex.getMessage());
     }
 
@@ -151,14 +151,14 @@ class RuleTestCdtDefineTest
         RuleTestScenario match = RuleTestCdt.parse(scenario("""
                 #test R1 expect=noViolation domain=VS
                 #define domain-variables VS VSPOS:Qualifier
-                #define variable-metadata VS VSPOS label="Position of Subject\""""), "t");
+                #define variable-metadata VS VSPOS label="Position of Subject\""""), "t", null);
         RuleExecutionResult ok = run(rule, match);
         assertFalse(ok.hasViolations(), "matching define label must not fire");
 
         RuleTestScenario mismatch = RuleTestCdt.parse(scenario("""
                 #test R1 expect=violation domain=VS
                 #define domain-variables VS VSPOS:Qualifier
-                #define variable-metadata VS VSPOS label="Wrong Label\""""), "t");
+                #define variable-metadata VS VSPOS label="Wrong Label\""""), "t", null);
         RuleExecutionResult bad = run(rule, mismatch);
         assertTrue(bad.hasViolations(), "mismatching define label must fire");
     }

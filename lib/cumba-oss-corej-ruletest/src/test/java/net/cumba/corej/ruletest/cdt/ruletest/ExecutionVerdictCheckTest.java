@@ -46,7 +46,7 @@ class ExecutionVerdictCheckTest
 
     private static RuleTestScenario scenario(String aVerdict, String aExtraDirective)
     {
-        return RuleTestCdt.parse(cdt(aVerdict, aExtraDirective), "test.cdt");
+        return RuleTestCdt.parse(cdt(aVerdict, aExtraDirective), "test.cdt", null);
     }
 
 
@@ -142,7 +142,7 @@ class ExecutionVerdictCheckTest
                 "#expect-execution-error \"" + MISMATCH + "\"");
         String written = RuleTestCdt.toString(s);
         assertTrue(written.contains("expect=executionError"), written);
-        RuleTestScenario again = RuleTestCdt.parse(written, "round-trip.cdt");
+        RuleTestScenario again = RuleTestCdt.parse(written, "round-trip.cdt", null);
         assertEquals(Verdict.EXECUTION_ERROR, again.getExpect());
         assertEquals(MISMATCH, again.getExpectErrorMessage());
     }
