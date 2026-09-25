@@ -349,7 +349,7 @@ class RuleTestCdtEdgeCaseTest
 
             assertEquals(List.of("AESEV", "AESER"), s.getLibrary().getExpectedVariables("AE"));
             assertEquals(List.of("STUDYID", "USUBJID"), s.getLibrary().getColumnOrder("AE"));
-            assertEquals(List.of("STUDYID"), s.getLibrary().getModelColumnOrder("AE"));
+            assertEquals(List.of("STUDYID"), s.getLibrary().getModelColumnOrderMap().get("AE"));
         }
 
 
@@ -492,7 +492,7 @@ class RuleTestCdtEdgeCaseTest
                     #library codelist-term-mappings NY Y=Yes N=No""");
             RuleTestScenario s = RuleTestCdt.parse(content, "t");
 
-            java.util.Map<String, String> m = s.getLibrary().getCodelistTermMappings("NY");
+            java.util.Map<String, String> m = s.getLibrary().getCodelistTermMappingsMap().get("NY");
             assertEquals("Yes", m.get("Y"));
             assertEquals("No", m.get("N"));
         }
@@ -806,7 +806,7 @@ class RuleTestCdtEdgeCaseTest
             assertEquals(List.of("STUDYID", "USUBJID"), lib.getRequiredVariables("AE"));
             assertEquals(List.of("AESEV"), lib.getExpectedVariables("AE"));
             assertEquals(List.of("STUDYID", "USUBJID"), lib.getColumnOrder("AE"));
-            assertEquals(List.of("STUDYID"), lib.getModelColumnOrder("AE"));
+            assertEquals(List.of("STUDYID"), lib.getModelColumnOrderMap().get("AE"));
             assertTrue(lib.isDomainCustom("XX"));
             assertEquals(List.of("Y", "N"), lib.getCodelistTerms("NY"));
             assertEquals(List.of("pkg1", "pkg2"), lib.getPublishedCtPackages());
@@ -818,8 +818,8 @@ class RuleTestCdtEdgeCaseTest
             assertEquals("Synonym Qualifier",
                     lib.getModelVariablesForClass("EVENTS").get(1).get("role"));
             assertEquals(java.util.Optional.of(Boolean.FALSE), lib.isCodelistExtensible("C66742"));
-            assertEquals("Yes", lib.getCodelistTermMappings("NY").get("Y"));
-            assertEquals("No", lib.getCodelistTermMappings("NY").get("N"));
+            assertEquals("Yes", lib.getCodelistTermMappingsMap().get("NY").get("Y"));
+            assertEquals("No", lib.getCodelistTermMappingsMap().get("NY").get("N"));
             assertEquals("My Label", lib.getVariableMetadata("AE", "AETERM").get("label"));
             assertEquals("Char", lib.getVariableMetadata("AE", "AETERM").get("simpleDatatype"));
             assertEquals("One per subject", lib.getDatasetMetadata("DM").get("structure"));
@@ -893,7 +893,7 @@ class RuleTestCdtEdgeCaseTest
             assertEquals("C123", lib.getCodelistCodeMap("AE", "AEDECOD").get("Headache"));
             assertEquals(List.of("Y", "N"), lib.getCodelistTerms("NY"));
             assertEquals(java.util.Optional.of(Boolean.FALSE), lib.isCodelistExtensible("NY"));
-            assertEquals("Yes", lib.getCodelistTermMappings("NY").get("Y"));
+            assertEquals("Yes", lib.getCodelistTermMappingsMap().get("NY").get("Y"));
         }
 
 

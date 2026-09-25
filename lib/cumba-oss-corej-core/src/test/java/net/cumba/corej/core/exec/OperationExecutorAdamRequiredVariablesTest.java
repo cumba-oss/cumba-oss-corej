@@ -61,13 +61,6 @@ class OperationExecutorAdamRequiredVariablesTest
 
 
         @Override
-        public List<String> getModelColumnOrder(String domain)
-        {
-            return List.of();
-        }
-
-
-        @Override
         public List<Map<String, String>> getDomainVariables(String domain)
         {
             return List.of();
@@ -110,24 +103,11 @@ class OperationExecutorAdamRequiredVariablesTest
 
 
         @Override
-        public Map<String, String> getCodelistTermMappings(String codelistName)
-        {
-            return Map.of();
-        }
-
-
-        @Override
         public String getStandard()
         {
             return "adamig";
         }
 
-
-        @Override
-        public String getVersion()
-        {
-            return "1-3";
-        }
     }
 
 

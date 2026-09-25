@@ -320,13 +320,6 @@ class OperationExecutorCodelistTermsShapesTest
 
 
         @Override
-        public List<String> getModelColumnOrder(String aDomain)
-        {
-            return List.of();
-        }
-
-
-        @Override
         public boolean isDomainCustom(String aDomain)
         {
             return false;
@@ -369,23 +362,10 @@ class OperationExecutorCodelistTermsShapesTest
 
 
         @Override
-        public Map<String, String> getCodelistTermMappings(String aCodelistName)
-        {
-            return Map.of();
-        }
-
-
-        @Override
         public String getStandard()
         {
             return "sdtmig";
         }
 
-
-        @Override
-        public String getVersion()
-        {
-            return "3.4";
-        }
     }
 }

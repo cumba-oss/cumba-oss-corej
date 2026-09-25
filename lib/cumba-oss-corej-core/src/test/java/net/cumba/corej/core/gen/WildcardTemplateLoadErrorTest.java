@@ -152,13 +152,6 @@ class WildcardTemplateLoadErrorTest
 
 
         @Override
-        public List<String> getModelColumnOrder(String domain)
-        {
-            return List.of();
-        }
-
-
-        @Override
         public boolean isDomainCustom(String domain)
         {
             return false;
@@ -201,23 +194,10 @@ class WildcardTemplateLoadErrorTest
 
 
         @Override
-        public Map<String, String> getCodelistTermMappings(String codelistName)
-        {
-            return Map.of();
-        }
-
-
-        @Override
         public String getStandard()
         {
             return "adamig";
         }
 
-
-        @Override
-        public String getVersion()
-        {
-            return "1-1";
-        }
     }
 }

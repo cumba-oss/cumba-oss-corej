@@ -99,13 +99,6 @@ class CompanionDomainsProviderTest
 
 
         @Override
-        public List<String> getModelColumnOrder(String domain)
-        {
-            return List.of(tag + "-MODEL");
-        }
-
-
-        @Override
         public boolean isDomainCustom(String domain)
         {
             return true;
@@ -148,23 +141,9 @@ class CompanionDomainsProviderTest
 
 
         @Override
-        public Map<String, String> getCodelistTermMappings(String codelistName)
-        {
-            return Map.of("who", tag);
-        }
-
-
-        @Override
         public String getStandard()
         {
             return tag + "-STD";
-        }
-
-
-        @Override
-        public String getVersion()
-        {
-            return tag + "-VER";
         }
 
 
@@ -196,16 +175,13 @@ class CompanionDomainsProviderTest
         assertEquals(List.of("BASE-REQ-AE"), p.getRequiredVariables("AE"));
         assertEquals(List.of("BASE-EXP"), p.getExpectedVariables("AE"));
         assertEquals(List.of("BASE-COL"), p.getColumnOrder("AE"));
-        assertEquals(List.of("BASE-MODEL"), p.getModelColumnOrder("AE"));
         assertTrue(p.isDomainCustom("AE"));
         assertEquals(List.of("BASE-TERM"), p.getCodelistTerms("C1"));
         assertEquals(Map.of("who", "BASE"), p.getVariableMetadata("AE", "AETERM"));
         assertEquals(List.of(Map.of("who", "BASE")), p.getDomainVariables("AE"));
         assertEquals(Map.of("who", "BASE"), p.getDatasetMetadata("AE"));
         assertEquals(java.util.Optional.of(Boolean.TRUE), p.isCodelistExtensible("C1"));
-        assertEquals(Map.of("who", "BASE"), p.getCodelistTermMappings("C1"));
         assertEquals("BASE-STD", p.getStandard());
-        assertEquals("BASE-VER", p.getVersion());
         assertEquals("BASE-CLASS", p.getDatasetClass("AE"));
         // The two/three-arg getDatasetClass overloads delegate to the single-arg default.
         assertEquals("BASE-CLASS", p.getDatasetClass("AE", "AE"));

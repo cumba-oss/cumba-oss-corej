@@ -469,13 +469,6 @@ class OperationExecutorSurvivorPinsTest
 
 
         @Override
-        public @Nullable String getVersion()
-        {
-            return null;
-        }
-
-
-        @Override
         public List<String> getRequiredVariables(String domain)
         {
             return List.of();
@@ -491,13 +484,6 @@ class OperationExecutorSurvivorPinsTest
 
         @Override
         public List<String> getColumnOrder(String domain)
-        {
-            return List.of();
-        }
-
-
-        @Override
-        public List<String> getModelColumnOrder(String domain)
         {
             return List.of();
         }
@@ -544,12 +530,6 @@ class OperationExecutorSurvivorPinsTest
             return java.util.Optional.of(true);
         }
 
-
-        @Override
-        public Map<String, String> getCodelistTermMappings(String codelistName)
-        {
-            return Map.of();
-        }
     }
 
 }

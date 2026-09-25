@@ -103,13 +103,6 @@ class VariableMetadataOperandListResolutionTest
 
 
             @Override
-            public String getVersion()
-            {
-                return "3-4";
-            }
-
-
-            @Override
             public List<String> getRequiredVariables(String d)
             {
                 return List.of();
@@ -125,13 +118,6 @@ class VariableMetadataOperandListResolutionTest
 
             @Override
             public List<String> getColumnOrder(String d)
-            {
-                return List.of();
-            }
-
-
-            @Override
-            public List<String> getModelColumnOrder(String d)
             {
                 return List.of();
             }
@@ -192,12 +178,6 @@ class VariableMetadataOperandListResolutionTest
                 return java.util.Optional.of(false);
             }
 
-
-            @Override
-            public Map<String, String> getCodelistTermMappings(String c)
-            {
-                return Map.of();
-            }
         };
     }
 

@@ -380,17 +380,6 @@ public interface MetadataProvider
 
 
     /**
-     * Returns the model-level column order (all allowed variables for the observation class of the
-     * given domain).
-     *
-     * @param domain
-     *            the domain name
-     * @return ordered list of variable names, or empty list if unknown
-     */
-    List<String> getModelColumnOrder(String domain);
-
-
-    /**
      * Returns whether a domain is custom (not defined in the standard).
      *
      * @param domain
@@ -563,17 +552,6 @@ public interface MetadataProvider
 
 
     /**
-     * Returns the codelist terms as submission-value to preferred-term mappings. Used for
-     * TESTCD/TEST consistency checks.
-     *
-     * @param codelistName
-     *            the codelist submission value
-     * @return map of submission value to preferred term, or empty map if unknown
-     */
-    Map<String, String> getCodelistTermMappings(String codelistName);
-
-
-    /**
      * E9 — the bound codelist's term submission value → term NCI concept-id (C-code) map for the
      * given variable in the given domain. Each entry maps a codelist term's {@code getCodeValue()}
      * (submission value, e.g. {@code "ALB"} / {@code "Albumin"}) to its {@code getConceptId()}
@@ -606,13 +584,6 @@ public interface MetadataProvider
      */
     @Nullable
     String getStandard();
-
-
-    /**
-     * Returns the standard version this provider is configured for.
-     */
-    @Nullable
-    String getVersion();
 
 
     /**

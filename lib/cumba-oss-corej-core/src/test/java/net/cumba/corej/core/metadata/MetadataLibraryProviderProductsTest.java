@@ -159,61 +159,6 @@ class MetadataLibraryProviderProductsTest
     }
 
     // ------------------------------------------------------------------
-    // getModelColumnOrder — product-first
-    // ------------------------------------------------------------------
-
-
-    @Test
-    void getModelColumnOrder_sdtm_walksClassVariables()
-    {
-        IMetadataLibrary study = studyWith("LB");
-        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(),
-                "sdtmig", "3-4");
-        // LB lives under the Findings class — its classVariables() returns 4 names by ordinal.
-        assertEquals(List.of("STUDYID", "USUBJID", "--SEQ", "--TESTCD"),
-                provider.getModelColumnOrder("LB"));
-    }
-
-
-    @Test
-    void getModelColumnOrder_adam_walksDataStructureVariables()
-    {
-        IMetadataLibrary study = studyWith("ADSL");
-        MetadataLibraryProvider provider = ApiModelLibraries.adamProvider(study, mkAdamProduct(),
-                "adamig", "1-3");
-        // Flattened across analysisVariableSets, ordered by ordinal: identifiers (1, 2) then ADT
-        // (10).
-        assertEquals(List.of("STUDYID", "USUBJID", "ADT"), provider.getModelColumnOrder("ADSL"));
-    }
-
-
-    @Test
-    void getModelColumnOrder_customDomain_returnsEmptyEvenWithProduct()
-    {
-        // Custom domain not in the SDTM product → product walk yields no class →
-        // empty list. The OperationExecutor SKIP shim then surfaces this as
-        // LIBRARY_NOT_AVAILABLE for the get_model_column_order operation.
-        IMetadataLibrary study = lib("study").table(table("MYAE").build()).build();
-        MetadataLibraryProvider provider = ApiModelLibraries.provider(study, mkSdtmProduct(),
-                "sdtmig", "3-4");
-        assertEquals(List.of(), provider.getModelColumnOrder("MYAE"));
-    }
-
-
-    @Test
-    void getModelColumnOrder_noProduct_fallsBackToLegacyMetaKey()
-    {
-        // The legacy fallback path: with no product, the provider reads
-        // MetadataKeys.MODEL_COLUMN_ORDER from the per-table meta. This is the path that the
-        // follow-up retirement will eventually remove, but it must work today.
-        IMetadataLibrary library = lib("study").table(table("AE")
-                .meta(MetadataKeys.MODEL_COLUMN_ORDER, List.of("STUDYID", "USUBJID", "AESEQ"))
-                .build()).build();
-        MetadataLibraryProvider provider = new MetadataLibraryProvider(library);
-        assertEquals(List.of("STUDYID", "USUBJID", "AESEQ"), provider.getModelColumnOrder("AE"));
-    }
-
-    // ------------------------------------------------------------------
     // getStandardModelVariables (Fix #42 Phase 2 hook)
     // ------------------------------------------------------------------
 
@@ -495,7 +440,6 @@ class MetadataLibraryProviderProductsTest
                 new IOException("HTTP 503"));
 
         // Class-hierarchy queries: signal "library not available".
-        assertEquals(List.of(), provider.getModelColumnOrder("LB"));
         assertNull(provider.getStandardModelVariables(mockTable("LB"), null));
 
         // Non-class-hierarchy queries continue to work via the underlying IMetadataLibrary.
@@ -534,7 +478,7 @@ class MetadataLibraryProviderProductsTest
     {
         IMetadataLibrary study = lib("study").build();
         MetadataLibraryProvider provider = MetadataLibraryProvider.degraded(study, null);
-        assertEquals(List.of(), provider.getModelColumnOrder("LB"));
+        assertNull(provider.getStandardModelVariables(mockTable("LB"), null));
     }
 
     // ------------------------------------------------------------------

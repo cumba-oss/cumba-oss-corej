@@ -268,13 +268,6 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
     }
 
 
-    @Override
-    public List<String> getModelColumnOrder(String aDomain)
-    {
-        return modelColumnOrder.getOrDefault(up(aDomain), List.of());
-    }
-
-
     /**
      * Serves the engine's class-aware {@code GET_MODEL_COLUMN_ORDER} resolution
      * ({@code getStandardModelVariables}) from the synthetic {@code #library model-column-order}
@@ -430,13 +423,6 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
     }
 
 
-    @Override
-    public Map<String, String> getCodelistTermMappings(String aCodelistName)
-    {
-        return codelistTermMappings.getOrDefault(up(aCodelistName), Map.of());
-    }
-
-
     /**
      * Builds the full {@link ICodeList} view from the four codelist channels
      * ({@code codelist-terms} / {@code codelist-term-mappings} / {@code codelist-term-ccodes} /
@@ -582,7 +568,13 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
     }
 
 
-    @Override
+    /**
+     * The scenario's declared standard version. Not an interface member since
+     * PLAN-retire-dead-multi-match-lookup U5 (D-A3, 2026-09-25): the engine never asks a provider
+     * for its version. {@code RuleTestCdt.writeLibrary} and the rules repo's suite factory read it
+     * on this class, for the {@code #library} round trip and the declared
+     * {@code <standard>-<version>}.
+     */
     public String getVersion()
     {
         return version;

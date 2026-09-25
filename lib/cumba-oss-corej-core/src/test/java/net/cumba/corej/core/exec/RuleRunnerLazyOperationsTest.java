@@ -292,13 +292,6 @@ class RuleRunnerLazyOperationsTest
 
 
         @Override
-        public List<String> getModelColumnOrder(String domain)
-        {
-            return List.of();
-        }
-
-
-        @Override
         public boolean isDomainCustom(String domain)
         {
             return false;
@@ -356,24 +349,11 @@ class RuleRunnerLazyOperationsTest
 
 
         @Override
-        public java.util.Map<String, String> getCodelistTermMappings(String codelistName)
-        {
-            return java.util.Map.of();
-        }
-
-
-        @Override
         public String getStandard()
         {
             return "sdtmig";
         }
 
-
-        @Override
-        public String getVersion()
-        {
-            return "3-4";
-        }
     }
 
 }

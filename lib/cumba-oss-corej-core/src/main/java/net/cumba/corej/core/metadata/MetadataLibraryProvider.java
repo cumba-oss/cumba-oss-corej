@@ -13,7 +13,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.CustomLog;
 import net.cumba.corej.core.exec.DatasetResolver;
@@ -51,8 +50,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * When constructed with a typed {@link StoredProduct}, methods that need to walk the model class
- * hierarchy ({@link #getModelColumnOrder(String)},
- * {@link #getStandardModelVariables(IDataTable, DatasetResolver)},
+ * hierarchy ({@link #getStandardModelVariables(IDataTable, DatasetResolver)},
  * {@link #getDatasetClass(String)}) consult the products directly rather than the flattened
  * per-table key contract; per-table study-side queries continue to flow through the underlying
  * {@link IMetadataLibrary} so Define-XML enrichment is preserved.
@@ -62,8 +60,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * {@link #degraded(IMetadataLibrary, Throwable)} produces an instance whose class-hierarchy
- * accessors return the "library not available" signal (empty list for
- * {@link #getModelColumnOrder(String)}, {@code null} for
+ * accessors return the "library not available" signal ({@code null} for
  * {@link #getStandardModelVariables(IDataTable, DatasetResolver)}, {@code null} for
  * {@link #getDatasetClass(String)}). All non-class-hierarchy queries continue to work via the
  * underlying {@link IMetadataLibrary}. The runtime entry points use this factory when the CDISC
@@ -534,7 +531,19 @@ public final class MetadataLibraryProvider implements MetadataProvider
     }
 
 
-    @Override
+    /**
+     * The standard version this provider was configured with (the product-aware factories'
+     * {@code aStandardVersion}), else the library's {@link MetadataKeys#STANDARD_VERSION} meta key,
+     * else {@code null}.
+     *
+     * <p>
+     * ⚠ Not an interface member any more: {@code MetadataProvider.getVersion()} was retired with
+     * PLAN-retire-dead-multi-match-lookup U5 (D-A3, 2026-09-25) because no production path asks a
+     * provider for its version. The accessor stays on this class because the value is a configured
+     * input the public factories still accept and the tests pin that it is honoured; dropping the
+     * parameter through those factories is a follow-on, not part of the retirement.
+     * </p>
+     */
     public @Nullable String getVersion()
     {
         if (standardVersion != null)
@@ -1148,62 +1157,6 @@ public final class MetadataLibraryProvider implements MetadataProvider
             }
         }
         return Collections.unmodifiableList(out);
-    }
-
-
-    /**
-     * Returns the model-level column order for the given domain.
-     *
-     * <p>
-     * Resolution order (Fix #55):
-     * </p>
-     * <ol>
-     * <li><b>Product-first:</b> when a {@link StoredProduct} is configured (and
-     * {@link #libraryFailed} is false), walk the product hierarchy to find the class owning the
-     * dataset and return {@code StoredClass.classVariables()} / the ADaM data-structure variable
-     * set names ordered by ordinal. Domains not in the loaded product return an empty list.</li>
-     * <li><b>Legacy fallback:</b> when no product is configured (no CDISC Library / no CT package
-     * path, or pre-Fix-#55 callers), read {@link MetadataKeys#MODEL_COLUMN_ORDER} from the
-     * per-table meta. This is documented as legacy and pays the price of being a flattened
-     * representation; retiring the writer side is the deferred Fix #55 follow-up.</li>
-     * </ol>
-     */
-    @Override
-    public List<String> getModelColumnOrder(String aDomain)
-    {
-        if (libraryFailed)
-        {
-            return List.of();
-        }
-        if (sdtmProduct != null)
-        {
-            // Empty list either means "domain not in product" (custom) or "class has no
-            // class-vars".
-            // The Phase 1 SKIP shim in OperationExecutor maps empty → LIBRARY_NOT_AVAILABLE for
-            // model column order operations, which is the correct behaviour for both cases.
-            return sdtmModelColumnOrder(aDomain);
-        }
-        if (!adamProducts.isEmpty())
-        {
-            return adamModelColumnOrder(aDomain);
-        }
-        // Legacy path — pre-Fix-#55 callers and the no-product fallback.
-        Optional<IDataTableMetadata> table = library.getDataTable(aDomain);
-        if (table.isEmpty())
-        {
-            return List.of();
-        }
-        Optional<Object> raw = table.get().getMetaValue(MetadataKeys.MODEL_COLUMN_ORDER);
-        if (raw.isEmpty())
-        {
-            return List.of();
-        }
-        Object value = raw.get();
-        if (value instanceof List<?> list)
-        {
-            return list.stream().filter(Objects::nonNull).map(Object::toString).toList();
-        }
-        return List.of();
     }
 
 
@@ -3238,23 +3191,6 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
 
     @Override
-    public Map<String, String> getCodelistTermMappings(String aCodelistName)
-    {
-        Optional<ICodeList> cl = findCodelist(aCodelistName);
-        if (cl.isEmpty())
-        {
-            return Map.of();
-        }
-        Map<String, String> mappings = cl.get().getEntries().stream()
-                .filter(e -> e.getCodeValue() != null)
-                .collect(Collectors.toMap(ICodelistEntry::getCodeValue,
-                        e -> e.getDecodeValue() == null ? "" : e.getDecodeValue(), (a, _) -> a,
-                        LinkedHashMap::new));
-        return Collections.unmodifiableMap(mappings);
-    }
-
-
-    @Override
     public Optional<Boolean> isCodelistExtensible(String aCodelistName)
     {
         // F-corej-ct-02: an unresolvable codelist answers empty — a defaulted `true` here fails
@@ -3273,34 +3209,6 @@ public final class MetadataLibraryProvider implements MetadataProvider
     // ------------------------------------------------------------------
     // Product walks (Fix #55)
     // ------------------------------------------------------------------
-
-
-    /**
-     * Walks {@link #sdtmProduct} for the class owning {@code aDomain} and returns the ordered names
-     * of {@code klass.classVariables()}. Empty list if the domain is not in the product.
-     */
-    private List<String> sdtmModelColumnOrder(String aDomain)
-    {
-        if (sdtmProduct == null || aDomain == null)
-        {
-            return List.of();
-        }
-        StoredClass klass = sdtmClassFor(aDomain);
-        if (klass == null)
-        {
-            return List.of();
-        }
-        List<StoredVariable> vars = sortSdtmByOrdinal(klass.classVariables());
-        List<String> out = new ArrayList<>(vars.size());
-        for (StoredVariable v : vars)
-        {
-            if (v.name() != null)
-            {
-                out.add(v.name());
-            }
-        }
-        return Collections.unmodifiableList(out);
-    }
 
 
     private @Nullable String sdtmClassForDomain(String aDomain)
@@ -3327,40 +3235,6 @@ public final class MetadataLibraryProvider implements MetadataProvider
             }
         }
         return null;
-    }
-
-
-    /**
-     * Walks {@link #adamProducts} (in precedence order) for the data structure owning
-     * {@code aDomain} and returns the ordered names of its analysis variables (flattened across
-     * variable sets). Empty list if the domain is in no declared product.
-     */
-    private List<String> adamModelColumnOrder(String aDomain)
-    {
-        if (aDomain == null)
-        {
-            return List.of();
-        }
-        SourcedStructure sourced = adamDataStructureFor(aDomain);
-        if (sourced == null)
-        {
-            return List.of();
-        }
-        List<StoredVariable> all = new ArrayList<>();
-        for (StoredVariableSet set : sourced.structure().variableSets())
-        {
-            all.addAll(set.variables());
-        }
-        List<StoredVariable> ordered = sortAdamByOrdinal(all);
-        List<String> out = new ArrayList<>(ordered.size());
-        for (StoredVariable v : ordered)
-        {
-            if (v.name() != null)
-            {
-                out.add(v.name());
-            }
-        }
-        return Collections.unmodifiableList(out);
     }
 
 

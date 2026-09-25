@@ -416,9 +416,6 @@ class CdiscLibraryMetadataLibrarySdtmTest
         assertTrue(required.contains("AETERM"));
         assertFalse(required.contains("AESEV"));
 
-        // Model column order from class variables
-        assertEquals(List.of("STUDYID", "DOMAIN", "USUBJID"), provider.getModelColumnOrder("AE"));
-
         // Codelist lookup by name
         assertEquals(List.of("MILD", "MODERATE", "SEVERE"), provider.getCodelistTerms("AESEV"));
         // Codelist lookup by concept id

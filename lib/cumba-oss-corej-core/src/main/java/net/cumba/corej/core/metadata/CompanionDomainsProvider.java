@@ -206,13 +206,6 @@ public final class CompanionDomainsProvider implements MetadataProvider
 
 
     @Override
-    public List<String> getModelColumnOrder(String domain)
-    {
-        return base.getModelColumnOrder(domain);
-    }
-
-
-    @Override
     public boolean isDomainCustom(String domain)
     {
         return base.isDomainCustom(domain);
@@ -291,13 +284,6 @@ public final class CompanionDomainsProvider implements MetadataProvider
 
 
     @Override
-    public Map<String, String> getCodelistTermMappings(String codelistName)
-    {
-        return base.getCodelistTermMappings(codelistName);
-    }
-
-
-    @Override
     public Map<String, String> getCodelistCodeMap(String domain, String variable)
     {
         return base.getCodelistCodeMap(domain, variable);
@@ -308,13 +294,6 @@ public final class CompanionDomainsProvider implements MetadataProvider
     public @Nullable String getStandard()
     {
         return base.getStandard();
-    }
-
-
-    @Override
-    public @Nullable String getVersion()
-    {
-        return base.getVersion();
     }
 
 

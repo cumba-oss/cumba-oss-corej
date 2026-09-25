@@ -355,13 +355,6 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
 
 
     @Override
-    public List<String> getModelColumnOrder(String domain)
-    {
-        return fallback != null ? fallback.getModelColumnOrder(domain) : List.of();
-    }
-
-
-    @Override
     public boolean isDomainCustom(String domain)
     {
         // The define level alone cannot decide custom-vs-standard; CDISC-CG0001's
@@ -382,23 +375,9 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
 
 
     @Override
-    public Map<String, String> getCodelistTermMappings(String codelistName)
-    {
-        return fallback != null ? fallback.getCodelistTermMappings(codelistName) : Map.of();
-    }
-
-
-    @Override
     public @Nullable String getStandard()
     {
         return fallback != null ? fallback.getStandard() : null;
-    }
-
-
-    @Override
-    public @Nullable String getVersion()
-    {
-        return fallback != null ? fallback.getVersion() : null;
     }
 
 }

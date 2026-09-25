@@ -80,8 +80,6 @@ class StoreMetadataProviderFactoryTest
                 .forSdtm("sdtmig", "3-4", List.of(MetadataStoreFixtures.PKG_SDTM_1)).orElseThrow();
         assertEquals(Set.of("N", "U"), Set.copyOf(provider.getCodelistTerms("NY")));
         assertEquals(Optional.of(Boolean.FALSE), provider.isCodelistExtensible("NY"));
-        assertEquals(java.util.Map.of("N", "No", "U", "Unknown"),
-                provider.getCodelistTermMappings("NY"));
         // The library tables come from the stored IG product.
         assertEquals(List.of("STUDYID", "SEX"),
                 provider.getDomainVariables("DM").stream().map(m -> m.get("name")).toList());

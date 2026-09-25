@@ -195,13 +195,6 @@ class UnservedKeyNameDiagnosticTest
 
 
         @Override
-        public @Nullable String getVersion()
-        {
-            return "3-4";
-        }
-
-
-        @Override
         public List<String> getRequiredVariables(String aDomain)
         {
             return List.of();
@@ -217,13 +210,6 @@ class UnservedKeyNameDiagnosticTest
 
         @Override
         public List<String> getColumnOrder(String aDomain)
-        {
-            return List.of();
-        }
-
-
-        @Override
-        public List<String> getModelColumnOrder(String aDomain)
         {
             return List.of();
         }
@@ -270,12 +256,6 @@ class UnservedKeyNameDiagnosticTest
             return Optional.empty();
         }
 
-
-        @Override
-        public Map<String, String> getCodelistTermMappings(String aCodelistName)
-        {
-            return Map.of();
-        }
     }
 
 

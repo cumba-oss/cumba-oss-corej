@@ -49,7 +49,6 @@ class MapBackedLibraryMetadataProviderTest
             assertEquals(List.of(), p.getRequiredVariables("AE"));
             assertEquals(List.of(), p.getExpectedVariables("AE"));
             assertEquals(List.of(), p.getColumnOrder("AE"));
-            assertEquals(List.of(), p.getModelColumnOrder("AE"));
             assertEquals(List.of(), p.getCodelistTerms("C66731"));
             assertEquals(List.of(), p.getDomainVariables("AE"));
             assertEquals(List.of(), p.getModelVariables("AE"));
@@ -64,7 +63,6 @@ class MapBackedLibraryMetadataProviderTest
 
             assertEquals(Map.of(), p.getVariableMetadata("AE", "AEOCCUR"));
             assertEquals(Map.of(), p.getDatasetMetadata("AE"));
-            assertEquals(Map.of(), p.getCodelistTermMappings("NY"));
         }
 
 
@@ -160,7 +158,6 @@ class MapBackedLibraryMetadataProviderTest
             MapBackedLibraryMetadataProvider p = MapBackedLibraryMetadataProvider.builder()
                     .modelColumnOrder("AE", "STUDYID", "USUBJID").build();
 
-            assertEquals(List.of("STUDYID", "USUBJID"), p.getModelColumnOrder("AE"));
             assertEquals(Map.of("AE", List.of("STUDYID", "USUBJID")), p.getModelColumnOrderMap());
         }
 
@@ -267,9 +264,7 @@ class MapBackedLibraryMetadataProviderTest
             MapBackedLibraryMetadataProvider p = MapBackedLibraryMetadataProvider.builder()
                     .codelistTermMappings("ny", mappings).build();
 
-            assertEquals(mappings, p.getCodelistTermMappings("NY"));
-            // unknown codelist returns empty
-            assertEquals(Map.of(), p.getCodelistTermMappings("OTHER"));
+            assertEquals(Map.of("NY", mappings), p.getCodelistTermMappingsMap());
         }
 
 

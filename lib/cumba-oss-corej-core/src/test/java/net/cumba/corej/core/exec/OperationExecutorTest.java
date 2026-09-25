@@ -1238,13 +1238,6 @@ class OperationExecutorTest
 
 
             @Override
-            public List<String> getModelColumnOrder(String d)
-            {
-                return List.of();
-            }
-
-
-            @Override
             public boolean isDomainCustom(String d)
             {
                 return false;
@@ -1287,24 +1280,11 @@ class OperationExecutorTest
 
 
             @Override
-            public Map<String, String> getCodelistTermMappings(String cl)
-            {
-                return Map.of();
-            }
-
-
-            @Override
             public String getStandard()
             {
                 return "SDTMIG";
             }
 
-
-            @Override
-            public String getVersion()
-            {
-                return "3.4";
-            }
         };
 
         Operation op = makeOp("$req", "required_variables");

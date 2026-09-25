@@ -52,13 +52,6 @@ class TierBDefineAccessorParityTest
 
 
         @Override
-        public List<String> getModelColumnOrder(String d)
-        {
-            return List.of();
-        }
-
-
-        @Override
         public boolean isDomainCustom(String d)
         {
             return false;
@@ -69,13 +62,6 @@ class TierBDefineAccessorParityTest
         public Map<String, String> getDatasetMetadata(String d)
         {
             return Map.of();
-        }
-
-
-        @Override
-        public String getVersion()
-        {
-            return "test";
         }
 
 
@@ -97,13 +83,6 @@ class TierBDefineAccessorParityTest
         public java.util.Optional<Boolean> isCodelistExtensible(String codelistName)
         {
             return java.util.Optional.of(false);
-        }
-
-
-        @Override
-        public Map<String, String> getCodelistTermMappings(String codelistName)
-        {
-            return Map.of();
         }
 
 

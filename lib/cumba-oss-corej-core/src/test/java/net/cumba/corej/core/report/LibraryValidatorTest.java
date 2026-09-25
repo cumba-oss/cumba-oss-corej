@@ -667,13 +667,6 @@ class LibraryValidatorTest
 
 
         @Override
-        public List<String> getModelColumnOrder(String domain)
-        {
-            return delegate.getModelColumnOrder(domain);
-        }
-
-
-        @Override
         public boolean isDomainCustom(String domain)
         {
             return delegate.isDomainCustom(domain);
@@ -716,23 +709,9 @@ class LibraryValidatorTest
 
 
         @Override
-        public java.util.Map<String, String> getCodelistTermMappings(String codelistName)
-        {
-            return delegate.getCodelistTermMappings(codelistName);
-        }
-
-
-        @Override
         public String getStandard()
         {
             return delegate.getStandard();
-        }
-
-
-        @Override
-        public String getVersion()
-        {
-            return delegate.getVersion();
         }
 
 

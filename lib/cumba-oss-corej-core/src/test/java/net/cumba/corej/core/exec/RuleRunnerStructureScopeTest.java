@@ -171,13 +171,6 @@ class RuleRunnerStructureScopeTest
 
 
             @Override
-            public List<String> getModelColumnOrder(String domain)
-            {
-                return List.of();
-            }
-
-
-            @Override
             public boolean isDomainCustom(String domain)
             {
                 return false;
@@ -220,24 +213,11 @@ class RuleRunnerStructureScopeTest
 
 
             @Override
-            public java.util.Map<String, String> getCodelistTermMappings(String codelistName)
-            {
-                return java.util.Map.of();
-            }
-
-
-            @Override
             public String getStandard()
             {
                 return "ADaMIG";
             }
 
-
-            @Override
-            public String getVersion()
-            {
-                return "1.3";
-            }
         };
     }
 

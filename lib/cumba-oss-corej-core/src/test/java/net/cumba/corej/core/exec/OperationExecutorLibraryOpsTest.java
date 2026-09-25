@@ -732,8 +732,6 @@ class OperationExecutorLibraryOpsTest
 
         List<String> columnOrder = List.of();
 
-        final List<String> modelColumnOrder = List.of();
-
         boolean domainCustom = false;
 
         List<String> codelistTerms = List.of();
@@ -752,11 +750,7 @@ class OperationExecutorLibraryOpsTest
 
         final boolean codelistExtensible = false;
 
-        final Map<String, String> codelistTermMappings = Map.of();
-
         String standard;
-
-        String version;
 
         List<String> standardModelVariables = null;
 
@@ -784,13 +778,6 @@ class OperationExecutorLibraryOpsTest
         public List<String> getColumnOrder(String d)
         {
             return columnOrder;
-        }
-
-
-        @Override
-        public List<String> getModelColumnOrder(String d)
-        {
-            return modelColumnOrder;
         }
 
 
@@ -882,23 +869,9 @@ class OperationExecutorLibraryOpsTest
 
 
         @Override
-        public Map<String, String> getCodelistTermMappings(String cl)
-        {
-            return codelistTermMappings;
-        }
-
-
-        @Override
         public String getStandard()
         {
             return standard;
-        }
-
-
-        @Override
-        public String getVersion()
-        {
-            return version;
         }
 
 

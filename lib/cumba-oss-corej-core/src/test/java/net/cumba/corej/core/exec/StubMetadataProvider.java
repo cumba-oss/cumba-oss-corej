@@ -379,13 +379,6 @@ public final class StubMetadataProvider implements MetadataProvider
 
 
     @Override
-    public List<String> getModelColumnOrder(String domain)
-    {
-        return List.of();
-    }
-
-
-    @Override
     public List<String> getDatasetNames()
     {
         // ONLY defineDatasets — see the class javadoc. Do not "simplify" this to
@@ -412,13 +405,6 @@ public final class StubMetadataProvider implements MetadataProvider
     public java.util.Optional<Boolean> isCodelistExtensible(String codelistName)
     {
         return java.util.Optional.of(codelistExtensible.getOrDefault(codelistName, Boolean.FALSE));
-    }
-
-
-    @Override
-    public Map<String, String> getCodelistTermMappings(String codelistName)
-    {
-        return Map.of();
     }
 
 
@@ -455,13 +441,6 @@ public final class StubMetadataProvider implements MetadataProvider
     {
         standard = value;
         return this;
-    }
-
-
-    @Override
-    public String getVersion()
-    {
-        return "3.4";
     }
 
 }

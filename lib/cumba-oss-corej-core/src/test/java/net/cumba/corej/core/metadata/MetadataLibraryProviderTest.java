@@ -30,7 +30,7 @@ class MetadataLibraryProviderTest
     {
         IMetadataLibrary library = lib("study").meta(MetadataKeys.STANDARD_NAME, "sdtmig")
                 .meta(MetadataKeys.STANDARD_VERSION, "3-4").build();
-        MetadataProvider provider = new MetadataLibraryProvider(library);
+        MetadataLibraryProvider provider = new MetadataLibraryProvider(library);
 
         assertEquals("sdtmig", provider.getStandard());
         assertEquals("3-4", provider.getVersion());
@@ -40,7 +40,7 @@ class MetadataLibraryProviderTest
     @Test
     void standardAndVersionReturnNullWhenAbsent()
     {
-        MetadataProvider provider = new MetadataLibraryProvider(lib("study").build());
+        MetadataLibraryProvider provider = new MetadataLibraryProvider(lib("study").build());
         assertNull(provider.getStandard());
         assertNull(provider.getVersion());
     }
@@ -94,45 +94,6 @@ class MetadataLibraryProviderTest
         assertEquals(List.of(), provider.getExpectedVariables("XX"));
         assertEquals(List.of(), provider.getColumnOrder("XX"));
         assertEquals(List.of(), provider.getDomainVariables("XX"));
-    }
-
-    // ------------------------------------------------------------------
-    // Model column order — no silent fallback to column order
-    // ------------------------------------------------------------------
-
-
-    @Test
-    void modelColumnOrderFromMetaKey()
-    {
-        IMetadataLibrary library = lib("study").table(table("AE")
-                .meta(MetadataKeys.MODEL_COLUMN_ORDER,
-                        List.of("STUDYID", "USUBJID", "AESEQ", "AETERM"))
-                .column(column("STUDYID", 0, DataValueType.STRING).build())
-                .column(column("AETERM", 1, DataValueType.STRING).build()).build()).build();
-        MetadataProvider provider = new MetadataLibraryProvider(library);
-        assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM"),
-                provider.getModelColumnOrder("AE"));
-    }
-
-
-    @Test
-    void modelColumnOrderIsEmptyWhenKeyMissing()
-    {
-        IMetadataLibrary library = lib("study")
-                .table(table("AE").column(column("STUDYID", 0, DataValueType.STRING).build())
-                        .column(column("AETERM", 1, DataValueType.STRING).build()).build())
-                .build();
-        MetadataProvider provider = new MetadataLibraryProvider(library);
-        // Honest empty — no silent fallback to getColumnOrder.
-        assertEquals(List.of(), provider.getModelColumnOrder("AE"));
-    }
-
-
-    @Test
-    void modelColumnOrderEmptyForUnknownDomain()
-    {
-        MetadataProvider provider = new MetadataLibraryProvider(lib("study").build());
-        assertEquals(List.of(), provider.getModelColumnOrder("XX"));
     }
 
     // ------------------------------------------------------------------
@@ -291,24 +252,6 @@ class MetadataLibraryProviderTest
 
 
     @Test
-    void codelistTermMappingsPreserveOrder()
-    {
-        IMetadataLibrary library = lib("study").codelist(
-                codelist("NY").entry("N", "No").entry("Y", "Yes").entry("U", "Unknown").build())
-                .build();
-        MetadataProvider provider = new MetadataLibraryProvider(library);
-
-        Map<String, String> mappings = provider.getCodelistTermMappings("NY");
-        assertEquals(3, mappings.size());
-        assertEquals("No", mappings.get("N"));
-        assertEquals("Yes", mappings.get("Y"));
-        assertEquals("Unknown", mappings.get("U"));
-        // LinkedHashMap preserves insertion order
-        assertEquals(List.of("N", "Y", "U"), List.copyOf(mappings.keySet()));
-    }
-
-
-    @Test
     void variableMetadataCarriesCodelistCcodeAtLibraryLevel()
     {
         // A column bound to a codelist whose CODELIST_CONCEPT_ID is C66742 (the NY codelist C-code)
@@ -356,11 +299,10 @@ class MetadataLibraryProviderTest
 
 
     @Test
-    void unknownCodelistReturnsEmptyListAndMap()
+    void unknownCodelistReturnsEmptyList()
     {
         MetadataProvider provider = new MetadataLibraryProvider(lib("study").build());
         assertEquals(List.of(), provider.getCodelistTerms("SEX"));
-        assertEquals(Map.of(), provider.getCodelistTermMappings("SEX"));
     }
 
 

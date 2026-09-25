@@ -93,13 +93,6 @@ class CdiscAd0078And0079IntegrationTest
 
 
             @Override
-            public java.util.List<String> getModelColumnOrder(String d)
-            {
-                return java.util.List.of();
-            }
-
-
-            @Override
             public boolean isDomainCustom(String d)
             {
                 return false;
@@ -142,24 +135,11 @@ class CdiscAd0078And0079IntegrationTest
 
 
             @Override
-            public java.util.Map<String, String> getCodelistTermMappings(String c)
-            {
-                return java.util.Map.of();
-            }
-
-
-            @Override
             public String getStandard()
             {
                 return "ADaMIG";
             }
 
-
-            @Override
-            public String getVersion()
-            {
-                return "1.3";
-            }
         };
         DatasetRuleResolver gen = new DatasetRuleResolver(noOp);
         gen.setStaticRules(java.util.List.of(template));
