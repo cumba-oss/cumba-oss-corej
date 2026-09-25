@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.cumba.corej.core.RulePackageLoader;
+import net.cumba.corej.core.model.JoinType;
+import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.Sensitivity;
@@ -54,6 +56,19 @@ class RuleCheckLevelsExecutionTest
                 Description: "Raise an error when something is wrong."
                 """ + aBody, Rule.class);
         rule.setSensitivity(Sensitivity.RECORD);
+        // KeyMatchRowExpander refuses an absent Join_Type since U15 of
+        // PLAN-retire-dead-multi-match-lookup (the loader stamps `inner`; these hand-built
+        // fixtures used to fall through to `left`). `left` keeps every assertion as it was.
+        if (rule.getMatchDatasets() != null)
+        {
+            for (MatchDataset md : rule.getMatchDatasets())
+            {
+                if (JoinType.isAbsent(md.getJoinType()))
+                {
+                    md.setJoinType(JoinType.LEFT.getJsonValue());
+                }
+            }
+        }
         Outcome outcome = rule.getOutcome();
         if (outcome == null)
         {

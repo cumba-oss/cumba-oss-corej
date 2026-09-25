@@ -434,20 +434,21 @@ public class RulePackageLoader
      * {@code plans/PLAN-remove-rule-generator.md}). ⚑ That grouper is retired
      * ({@code PLAN-retire-cohort-runner.md}); the example stands as the clearest illustration of
      * this pass's reach, and the reach itself is unchanged. The engine's
-     * {@code KeyMatchRowExpander} keeps {@code left} as a defensive fallback for exactly those
-     * loader-bypassing rules.
+     * {@code KeyMatchRowExpander} refuses an entry that reaches it without a {@code Join_Type} (U15
+     * of {@code PLAN-retire-dead-multi-match-lookup}), so a loader-bypassing rule cannot run.
      * </p>
      *
      * <p>
      * ⚑ <b>That family no longer exists.</b> Fix #366 stopped {@code CROSS_DATASET_METADATA} — the
      * sole minter of those rules — from firing, and {@code plans/PLAN-remove-rule-generator.md}
-     * deleted the generator itself. No production or test path now mints a rule that bypasses this
-     * loader, so the {@code left} fallback in {@code KeyMatchRowExpander} is unreachable. ⚠ It is
-     * <b>deliberately left in place</b>: it is a defensive default on the execution path, and
-     * removing it is a behaviour change rather than a deletion of dead generator code. Surfaced as
-     * a follow-up, not taken here. ⚑ Its former companion, the {@code getJoinType() != null}
-     * rejection, is already <b>deleted</b> rather than merely unreachable — it lived in the retired
-     * {@code RuleCohortGrouper} ({@code PLAN-retire-cohort-runner.md}).
+     * deleted the generator itself. No production path mints a rule that bypasses this loader; test
+     * fixtures that build a {@code Rule} by hand do, and since U15 of
+     * {@code PLAN-retire-dead-multi-match-lookup} they must stamp {@code Join_Type} themselves —
+     * {@code KeyMatchRowExpander}'s former {@code left} fallback for an absent value is gone, and
+     * an entry without one is refused at execution. ⚑ Its former companion, the
+     * {@code getJoinType() != null} rejection, is already <b>deleted</b> rather than merely
+     * unreachable — it lived in the retired {@code RuleCohortGrouper}
+     * ({@code PLAN-retire-cohort-runner.md}).
      * </p>
      */
     private static void normalizeJoinTypes(RulePackage pkg)

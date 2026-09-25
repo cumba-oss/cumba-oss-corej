@@ -52,57 +52,33 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * ⚠ <b>The {@code left} fallback is defensive, not the corpus path.</b> It applies only when
- * {@code Join_Type} is absent, and {@code RulePackageLoader.normalizeJoinTypes} stamps
- * {@code inner} onto every entry that omits it — so a rule that came through the loader always
- * arrives with a value, and only a loader-bypassing rule reached the fallback — in practice the
- * per-dataset {@code CDISC-AD0591-}/{@code GEN-XDVAL-} family minted by the retired
- * {@code CROSS_DATASET_METADATA} generator. Saying this class "defaults to {@code left}" without
- * that qualification is misleading: for the shipped corpus the effective default is {@code inner}.
- * ⚑ <b>That generator is now deleted</b> ({@code plans/done/PLAN-remove-rule-generator.md}), so no
- * <b>production</b> path reaches the fallback any more.
+ * ⛔ <b>There is no join-type default here.</b> {@code RulePackageLoader.normalizeJoinTypes} stamps
+ * {@code inner} onto every entry that omits {@code Join_Type} and the load gate ({@code Fix #236}:
+ * {@link net.cumba.corej.core.model.JoinType} is the closed vocabulary,
+ * {@code RulePackageLoader.validateEnumFields} files a {@code loadError} for anything else) admits
+ * only {@code inner} and {@code left}, so a rule that came through the loader always arrives with
+ * one of the two. An entry that reaches {@link #expand} <em>without</em> a value is a rule that
+ * bypassed the loader, and it is refused with an {@link IllegalStateException} — never run.
  * </p>
  *
  * <p>
- * ⛔⛔ <b>Removing it was TRIED on 2026-09-15 (owner request) and REVERTED — measured, not
- * assumed.</b> Replacing the implicit default with {@code Objects.requireNonNull(md.getJoinType())}
- * reds <b>28 cases across 9 test classes</b> ({@code KeyMatchRowExpanderTest},
- * {@code JoinCacheConcurrencyTest}, {@code OutputVariableExclusionProjectionTest},
- * {@code RuleCheckLevelsExecutionTest}, the two {@code OperandTemplate*IntegrationTest}s and three
- * probe tests). They build {@link MatchDataset} by hand and never set {@code Join_Type}, so the
- * fallback is unreachable only from <em>production</em> — it is load-bearing for the fixtures.
+ * ⚑ <b>History.</b> Until U15 of {@code PLAN-retire-dead-multi-match-lookup} (2026-09-25) an absent
+ * value fell through to {@code left} here: a second default on the execution path that disagreed
+ * with the loader's {@code inner}, unreachable from production (the last minter of loader-bypassing
+ * rules, the {@code CROSS_DATASET_METADATA} generator, is deleted) and load-bearing only for
+ * hand-built test fixtures — which were therefore asserting a semantics the loader would never have
+ * produced for them. A 2026-09-15 attempt to delete it was reverted for exactly that reason; those
+ * fixtures now set {@code Join_Type} explicitly. Whether the <em>loader's</em> {@code inner}
+ * default should itself be {@code left} (triage finding {@code S2},
+ * {@code plans/done/PLAN-expired-justifications-triage.md}) is a separate question about the load
+ * side and stays open; this class no longer holds a default of its own.
  * </p>
  *
  * <p>
- * ⚠⚠ <b>And the two defaults disagree, which is why this is not a mechanical fix.</b>
- * {@code RulePackageLoader.normalizeJoinTypes} stamps {@code inner}; this site defaults to
- * {@code left}. A hand-built fixture that omits {@code Join_Type} is therefore asserting a
- * semantics the loader would never have produced for it. Making those fixtures explicit means
- * choosing {@code left} (preserving every current assertion, but pinning a default production
- * cannot reach) or {@code inner} (loader-faithful, but changing what several of them assert —
- * unmatched primary rows would be dropped rather than kept). That is a behavioural decision for the
- * owner, not a cleanup, and it is the same open question as triage finding {@code S2}
- * ({@code plans/done/PLAN-expired-justifications-triage.md}). <b>Settle S2 first; do not retry the
- * deletion on its own.</b>
- * </p>
- *
- * <p>
- * ⚠⚠ <b>The test is a NEGATION</b> — {@code !JoinType.INNER.getJsonValue().equalsIgnoreCase(…)} —
- * i.e. <b>anything that is not {@code inner} is executed as {@code left}</b>, including a value
- * this engine does not understand. Until {@code Fix #236} an authored {@code Join_Type: outer} (or
- * the typo {@code iner}) was therefore run silently as a left join, producing plausible-but-wrong
- * rows and reporting nothing.
- * </p>
- *
- * <p>
- * ✅ {@code Fix #236} closes that at <b>load</b>, not here:
- * {@link net.cumba.corej.core.model.JoinType} is the closed vocabulary and
- * {@code RulePackageLoader.validateEnumFields} files a {@code loadError} for any
- * present-but-unrecognised value, so such a rule reports ERROR and never reaches this expander. The
- * negation below is left exactly as it was — this site's semantics for the two <em>legal</em>
- * values are unchanged, and changing them would move findings on the 38 shipped rules that author
- * {@code left}. ⚠ Adding a third join type still means auditing every {@code inner} comparison
- * site, not adding a branch here.
+ * ⚠ The test below is still a NEGATION — {@code !JoinType.INNER.getJsonValue().equalsIgnoreCase(…)}
+ * — because the gate leaves exactly two legal values, and changing the semantics of either would
+ * move findings on the 38 shipped rules that author {@code left}. Adding a third join type means
+ * auditing every {@code inner} comparison site, not adding a branch here.
  * </p>
  *
  * <p>
@@ -200,20 +176,27 @@ final class KeyMatchRowExpander
             BitSet keep = MatchFilter.mask(md, child, ruleId);
             resolvedChildren[ei] = child;
             List<String> keys = Objects.requireNonNull(md.getKeys());
-            // Default LEFT, honoring an explicit join_type=inner. Left preserves the engine's
-            // historical scalar-lookup behaviour (an unmatched primary row keeps a null-valued
-            // joined column) and is what absence/empty checks rely on (e.g. CDISC-AD0053 fires on
-            // DM.USUBJID empty for a subject not in DM). ⚠ The default is DEFENSIVE, not the
-            // corpus path: RulePackageLoader defaults an absent Join_Type to `inner` (mirroring
-            // the Python engine's merge_sdtm_datasets), so a rule loaded through it always arrives
-            // with a join type set and only a rule that bypasses the loader reaches this fallback.
-            // The corpus does author Join_Type, and every authored value is `left` — never
-            // `inner` — which is why left is the safer fallback here. Whether the loader's `inner`
-            // default should itself be `left` is an open behavioural question (triage finding S2,
-            // plans/done/PLAN-expired-justifications-triage.md), deliberately not settled here.
-            // Fix #236: same comparison, now sourced from the JoinType vocabulary so the constant
-            // and the load-time gate cannot drift apart. Semantics for `inner` / `left` unchanged.
-            boolean left = !JoinType.INNER.getJsonValue().equalsIgnoreCase(md.getJoinType());
+            // The join type is the loader's: RulePackageLoader.normalizeJoinTypes stamps `inner`
+            // on every entry that omits it and the load gate rejects anything outside the
+            // vocabulary, so an absent value here means a rule that never came through the
+            // loader. Until U15 of PLAN-retire-dead-multi-match-lookup that case fell through to
+            // `left` silently; it is refused now — a second default on the execution path is
+            // what let hand-built fixtures assert a semantics the loader never produced.
+            String joinType = md.getJoinType();
+            if (JoinType.isAbsent(joinType))
+            {
+                throw new IllegalStateException("[" + ruleId + "] Match_Datasets entry "
+                        + md.getName() + " reached execution without a Join_Type — every rule"
+                        + " comes through RulePackageLoader.normalizeJoinTypes, which stamps"
+                        + " `inner`; a hand-built rule sets it explicitly"
+                        + " (PLAN-retire-dead-multi-match-lookup U15)");
+            }
+            // Fix #236: the comparison is sourced from the JoinType vocabulary so the constant and
+            // the load-time gate cannot drift apart. Anything that is not `inner` is `left` —
+            // the gate admits nothing else. Left keeps an unmatched primary row with a null-valued
+            // joined column, which is what absence/empty checks rely on (e.g. CDISC-AD0053 fires
+            // on DM.USUBJID empty for a subject not in DM).
+            boolean left = !JoinType.INNER.getJsonValue().equalsIgnoreCase(joinType);
             // JKM R4/R5/R7 (PLAN-join-key-missing-semantics): the key's shape is decided ONCE per
             // entry — which components survive (R7's both-sides-absent drop), what an absent side
             // contributes, and whether blanks participate (R4's KEEP default). A per-row test could

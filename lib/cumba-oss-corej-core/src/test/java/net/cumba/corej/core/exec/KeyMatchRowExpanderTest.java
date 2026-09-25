@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -50,10 +51,10 @@ class KeyMatchRowExpanderTest
         MatchDataset m = new MatchDataset();
         m.setName(name);
         m.setKeys(List.of(keys));
-        if (joinType != null)
-        {
-            m.setJoinType(joinType);
-        }
+        // A null argument means "what the expander used to default to": `left`. Since U15 of
+        // PLAN-retire-dead-multi-match-lookup the expander refuses an absent value, so the
+        // fixture states the join type it always ran as.
+        m.setJoinType(joinType != null ? joinType : "left");
         return m;
     }
 
@@ -401,4 +402,43 @@ class KeyMatchRowExpanderTest
                 InvalidJoinedDomainException.class, () -> ExecCalls.expand(primary, mds, inv, "R"));
         assertTrue(ex.getMessage().contains("LBSTRESN"), ex.getMessage());
     }
+
+
+    /**
+     * U15 of {@code PLAN-retire-dead-multi-match-lookup}: an entry that reaches the expander
+     * without a {@code Join_Type} is refused, not run as a left join — the loader stamps
+     * {@code inner} on every loaded rule, so an absent value here means a rule that bypassed it.
+     */
+    @Test
+    void absentJoinTypeIsRefusedLoudly()
+    {
+        IDataTable dm = tbl("DM", new String[]
+        {
+                "USUBJID"
+        }, new String[][]
+        {
+                {
+                        "P1"
+                }
+        });
+        IDataTable ae = tbl("AE", new String[]
+        {
+                "USUBJID"
+        }, new String[][]
+        {
+                {
+                        "P1"
+                }
+        });
+        MatchDataset bare = new MatchDataset();
+        bare.setName("AE");
+        bare.setKeys(List.of("USUBJID"));
+        DatasetResolver resolver = resolver(Map.of("AE", ae));
+
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> ExecCalls.expand(dm, List.of(bare), resolver, "R"));
+
+        assertTrue(e.getMessage().contains("Join_Type"), e.getMessage());
+    }
+
 }

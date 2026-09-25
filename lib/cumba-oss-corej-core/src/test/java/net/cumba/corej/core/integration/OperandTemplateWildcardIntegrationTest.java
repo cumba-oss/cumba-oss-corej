@@ -62,6 +62,10 @@ class OperandTemplateWildcardIntegrationTest
         MatchDataset md = new MatchDataset();
         md.setName("ADSL");
         md.setKeys(List.of("USUBJID"));
+        // Explicit since U15 of PLAN-retire-dead-multi-match-lookup: the expander no longer
+        // defaults
+        // an absent Join_Type to `left`; `left` is what this fixture always ran as.
+        md.setJoinType("left");
         rule.setMatchDatasets(List.of(md));
         CheckConditionAll all = new CheckConditionAll(
                 List.of(expr("not empty(PHSDT)"), expr("PHSDT not in ADSL.PH${*}SDT")));
