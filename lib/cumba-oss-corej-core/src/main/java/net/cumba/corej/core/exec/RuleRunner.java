@@ -59,187 +59,6 @@ public final class RuleRunner
 
 
     /**
-     * Executes a rule with a {@link JoinCache} for reusing cross-dataset join structures across
-     * multiple rule executions against the same primary table. When many rules join the same
-     * reference dataset (e.g., DM by USUBJID), the join index and row map are built once and reused
-     * for all subsequent rules.
-     * <p>
-     * <strong>Thread-safety contract:</strong> {@code rule}, {@code table}, {@code resolver},
-     * {@code libraryProvider} and {@code joinCache} are all read-only during execution and may be
-     * shared across concurrent invocations on different threads. The {@link Rule} model objects
-     * (and nested {@link net.cumba.corej.core.model.Operation},
-     * {@link net.cumba.corej.core.model.CheckCondition}, …) are Lombok {@code @Data} beans with
-     * setters for deserialisation; do <em>not</em> mutate any field on a {@code Rule} after it has
-     * been handed to {@code execute}, or thread safety is lost.
-     *
-     * @param rule
-     *            the rule to execute
-     * @param table
-     *            the data table to check
-     * @param resolver
-     *            resolves cross-dataset references
-     * @param domainPrefix
-     *            the 2-character domain prefix for {@code --} substitution (e.g., "AE"). May be
-     *            {@code null}.
-     * @param libraryProvider
-     *            provides CDISC Library metadata for Library-dependent operations. When
-     *            {@code null}, rules that use such operations are skipped with a warning.
-     * @param joinCache
-     *            optional cache for reusing join structures across rule executions. When
-     *            {@code null}, join structures are built fresh for each rule.
-     * @return the execution result
-     */
-    public static RuleExecutionResult execute(Rule rule, IDataTable table, DatasetResolver resolver,
-            @Nullable String domainPrefix, @Nullable MetadataProvider libraryProvider,
-            @Nullable JoinCache joinCache)
-    {
-        return execute(rule, table, resolver, domainPrefix, libraryProvider, joinCache, null);
-    }
-
-
-    /**
-     * As {@link #execute(Rule, IDataTable, DatasetResolver, String, MetadataProvider, JoinCache)}
-     * with an additional sponsor Define-XML metadata provider — the "define" level of the
-     * three-level metadata model. {@code defineProvider} is {@code null} when no Define-XML is
-     * available; it is carried read-only on the {@link EvaluationContext} for the {@code define_*}
-     * operand family.
-     *
-     * @param defineProvider
-     *            sponsor Define-XML metadata, or {@code null} when no define is present
-     * @return the execution result
-     */
-    public static RuleExecutionResult execute(Rule rule, IDataTable table, DatasetResolver resolver,
-            @Nullable String domainPrefix, @Nullable MetadataProvider libraryProvider,
-            @Nullable JoinCache joinCache, @Nullable MetadataProvider defineProvider)
-    {
-        return execute(rule, table, resolver, domainPrefix, libraryProvider, joinCache,
-                defineProvider, Integer.MAX_VALUE);
-    }
-
-
-    /**
-     * As
-     * {@link #execute(Rule, IDataTable, DatasetResolver, String, MetadataProvider, JoinCache, MetadataProvider)}
-     * with an explicit per-rule findings cap. At most {@code maxErrorsPerRule} violations are
-     * materialised into the result; the true total is still reported via
-     * {@link RuleExecutionResult#getViolationCount()} and surfaced as truncated when it exceeds the
-     * cap. {@link Integer#MAX_VALUE} means unlimited. See {@link EngineLimits} /
-     * {@link ViolationSink}.
-     *
-     * @param maxErrorsPerRule
-     *            maximum findings to materialise for this rule on this dataset
-     * @return the execution result
-     */
-    public static RuleExecutionResult execute(Rule rule, IDataTable table, DatasetResolver resolver,
-            @Nullable String domainPrefix, @Nullable MetadataProvider libraryProvider,
-            @Nullable JoinCache joinCache, @Nullable MetadataProvider defineProvider,
-            int maxErrorsPerRule)
-    {
-        return execute(rule, table, resolver, domainPrefix, libraryProvider, joinCache,
-                defineProvider, maxErrorsPerRule, null);
-    }
-
-
-    /**
-     * As
-     * {@link #execute(Rule, IDataTable, DatasetResolver, String, MetadataProvider, JoinCache, MetadataProvider, int)}
-     * with the per-dataset {@link ExpressionResultCache}
-     * ({@code plans/done/PLAN-dataset-expression-cache.md}), threaded onto the
-     * {@link EvaluationContext} so pure expression leaves can be reused across the dataset's rules.
-     * {@code null} disables caching (every lookup falls through to compute) and is
-     * behaviour-identical to the prior path.
-     *
-     * @param exprCache
-     *            the per-dataset expression-result cache, or {@code null} to disable caching
-     * @return the execution result
-     */
-    public static RuleExecutionResult execute(Rule rule, IDataTable table, DatasetResolver resolver,
-            @Nullable String domainPrefix, @Nullable MetadataProvider libraryProvider,
-            @Nullable JoinCache joinCache, @Nullable MetadataProvider defineProvider,
-            int maxErrorsPerRule, @Nullable ExpressionResultCache exprCache)
-    {
-        return execute(rule, table, resolver, domainPrefix, libraryProvider, joinCache,
-                defineProvider, maxErrorsPerRule, exprCache, null);
-    }
-
-
-    /**
-     * T1 overload carrying the runtime
-     * {@link net.cumba.corej.core.metadata.RuntimeDictionaryProvider} consulted by the
-     * {@code valid_external_dictionary_*} operations and the {@code dictionary_available}
-     * skip-gate. {@code null} on every non-dictionary path.
-     *
-     * @param dictionaryProvider
-     *            the external-dictionary provider, or {@code null} when no dictionaries are
-     *            supplied
-     * @return the execution result
-     */
-    public static RuleExecutionResult execute(Rule rule, IDataTable table, DatasetResolver resolver,
-            @Nullable String domainPrefix, @Nullable MetadataProvider libraryProvider,
-            @Nullable JoinCache joinCache, @Nullable MetadataProvider defineProvider,
-            int maxErrorsPerRule, @Nullable ExpressionResultCache exprCache,
-            @Nullable RuntimeDictionaryProvider dictionaryProvider)
-    {
-        return execute(rule, table, resolver, domainPrefix, libraryProvider, joinCache,
-                defineProvider, maxErrorsPerRule, exprCache, dictionaryProvider, null);
-    }
-
-
-    /**
-     * Terminal {@code execute} overload additionally carrying the per-record Define-XML value-level
-     * metadata resolver ({@code vlmResolver}) — the "VLM" surface for the {@code vlm_*} accessors
-     * ({@code Value Check against Define XML VLM} rule type). {@code null} on every non-VLM path.
-     *
-     * @param vlmResolver
-     *            the per-record value-level metadata resolver, or {@code null}
-     * @return the execution result
-     */
-    public static RuleExecutionResult execute(Rule rule, IDataTable table, DatasetResolver resolver,
-            @Nullable String domainPrefix, @Nullable MetadataProvider libraryProvider,
-            @Nullable JoinCache joinCache, @Nullable MetadataProvider defineProvider,
-            int maxErrorsPerRule, @Nullable ExpressionResultCache exprCache,
-            @Nullable RuntimeDictionaryProvider dictionaryProvider,
-            @Nullable VlmResolver vlmResolver)
-    {
-        return execute(rule, table, resolver, domainPrefix, libraryProvider, joinCache,
-                defineProvider, maxErrorsPerRule, exprCache, dictionaryProvider, vlmResolver,
-                Set.of());
-    }
-
-
-    /**
-     * Terminal {@code execute} overload additionally carrying the run's <b>dataset-presence
-     * coverage</b> — {@code Fix #222}, step 3 of
-     * {@code plans/done/PLAN-absent-required-dataset-skip.md}.
-     *
-     * <p>
-     * {@code reportedDatasets} names the datasets whose absence <em>this run already reports</em>,
-     * derived mechanically by {@link AbsentDatasetSkip#reportedDatasets(java.util.Collection)} from
-     * the run's own rule list (never a hard-coded table — {@code K5}). For a rule that reads such a
-     * dataset while it is absent, the readings are suppressed rather than allowed to flood; when
-     * that leaves the rule with nothing evaluable it reports {@link RuleExecutionStatus#SKIPPED}
-     * instead of a silent pass. An empty set is behaviour-identical to the pre-{@code Fix #222}
-     * engine.
-     * </p>
-     *
-     * @param reportedDatasets
-     *            upper-cased dataset names covered by a bare presence rule in this run
-     * @return the execution result
-     */
-    public static RuleExecutionResult execute(Rule rule, IDataTable table, DatasetResolver resolver,
-            @Nullable String domainPrefix, @Nullable MetadataProvider libraryProvider,
-            @Nullable JoinCache joinCache, @Nullable MetadataProvider defineProvider,
-            int maxErrorsPerRule, @Nullable ExpressionResultCache exprCache,
-            @Nullable RuntimeDictionaryProvider dictionaryProvider,
-            @Nullable VlmResolver vlmResolver, Set<String> reportedDatasets)
-    {
-        return execute(rule, table, resolver, domainPrefix, libraryProvider, joinCache,
-                defineProvider, maxErrorsPerRule, exprCache, dictionaryProvider, vlmResolver,
-                reportedDatasets, Set.of());
-    }
-
-
-    /**
      * Stamps the rule's effective severity onto a finished result, unless the execution already
      * resolved one.
      *
@@ -259,47 +78,69 @@ public final class RuleRunner
 
 
     /**
-     * Terminal {@code execute} overload additionally carrying the run's <b>cross-standard
-     * coverage</b> — {@code Fix #218}, {@code plans/done/PLAN-cross-standard-absence-skip.md}.
+     * Executes a rule against a data table — the engine's one entry point for rule execution
+     * ({@code LibraryValidator.executeRule} in production, the {@code .cdt} harness's
+     * {@code ScenarioCapture}, and the tests through their {@code RuleRunnerCalls} shorthand). ⚑
+     * Until 2026-09-25 a chain of twelve defaulting overloads led here; none had a production
+     * caller and they were retired ({@code PLAN-retire-dead-multi-match-lookup} U1 / K5), so every
+     * default is now spelled at the call site.
      *
      * <p>
-     * {@code crossStandardDatasets} names the datasets belonging to a CDISC standard this run does
-     * <b>not</b> validate — on an ADaM-family run, the companion SDTM domain catalogue. A rule
-     * whose whole Check depends on such a dataset while it was <em>not supplied to the run at
-     * all</em> reports {@link RuleExecutionStatus#SKIPPED} rather than the vacuous PASS it produced
-     * before. ⚠ The absence test is {@code resolver.resolve(D) == null} and never a target-ness
-     * test: a co-located SDTM dataset supplied as a <em>reference</em> resolves, and must keep the
-     * rule running. An empty set is behaviour-identical to the pre-{@code Fix #218} engine.
+     * <strong>Thread-safety contract:</strong> {@code rule}, {@code table}, {@code resolver},
+     * {@code libraryProvider}, {@code joinCache} and the other carriers are all read-only during
+     * execution and may be shared across concurrent invocations on different threads. The
+     * {@link Rule} model objects (and nested {@link net.cumba.corej.core.model.Operation},
+     * {@link net.cumba.corej.core.model.CheckCondition}, …) are Lombok {@code @Data} beans with
+     * setters for deserialisation; do <em>not</em> mutate any field on a {@code Rule} after it has
+     * been handed to {@code execute}, or thread safety is lost.
      * </p>
      *
-     * @param crossStandardDatasets
-     *            upper-cased dataset names belonging to a standard this run does not validate
-     * @return the execution result
-     */
-    public static RuleExecutionResult execute(Rule rule, IDataTable table, DatasetResolver resolver,
-            @Nullable String domainPrefix, @Nullable MetadataProvider libraryProvider,
-            @Nullable JoinCache joinCache, @Nullable MetadataProvider defineProvider,
-            int maxErrorsPerRule, @Nullable ExpressionResultCache exprCache,
-            @Nullable RuntimeDictionaryProvider dictionaryProvider,
-            @Nullable VlmResolver vlmResolver, Set<String> reportedDatasets,
-            Set<String> crossStandardDatasets)
-    {
-        return execute(rule, table, resolver, domainPrefix, libraryProvider, joinCache,
-                defineProvider, maxErrorsPerRule, exprCache, dictionaryProvider, vlmResolver,
-                reportedDatasets, crossStandardDatasets, EngineLimits.DEFAULT_SEVERITY_THRESHOLD);
-    }
-
-
-    /**
-     * The terminal {@code execute} overload, additionally carrying the run's <b>severity
-     * threshold</b> — Plan C &#167;3.4, ruling 4.
+     * <p>
+     * {@code joinCache} reuses cross-dataset join structures across the rule executions against the
+     * same primary table: when many rules join the same reference dataset (e.g., DM by USUBJID),
+     * the join index and row map are built once and reused. {@code defineProvider} is the sponsor
+     * Define-XML metadata provider — the "define" level of the three-level metadata model — carried
+     * read-only on the {@link EvaluationContext} for the {@code define_*} operand family.
+     * {@code maxErrorsPerRule} is the per-rule findings cap: at most that many violations are
+     * materialised into the result, the true total is still reported via
+     * {@link RuleExecutionResult#getViolationCount()} and surfaced as truncated when it exceeds the
+     * cap ({@link Integer#MAX_VALUE} = unlimited; see {@link EngineLimits} /
+     * {@link ViolationSink}). {@code exprCache} is the per-dataset {@link ExpressionResultCache}
+     * ({@code plans/done/PLAN-dataset-expression-cache.md}), threaded onto the
+     * {@link EvaluationContext} so pure expression leaves can be reused across the dataset's rules
+     * ({@code null} disables caching, behaviour-identical to computing every lookup).
+     * {@code dictionaryProvider} (T1) is the runtime
+     * {@link net.cumba.corej.core.metadata.RuntimeDictionaryProvider} consulted by the
+     * {@code valid_external_dictionary_*} operations and the {@code dictionary_available}
+     * skip-gate. {@code vlmResolver} is the per-record Define-XML value-level metadata resolver for
+     * the {@code vlm_*} accessors ({@code Value Check against Define XML VLM} rule type).
+     * </p>
      *
      * <p>
-     * The threshold is the weakest rung this run evaluates. A rule's declared check levels below it
-     * are not evaluated at all; a rule whose <em>every</em> declared level is below it reports
-     * {@link RuleExecutionStatus#SKIPPED} with that reason, never {@code EXECUTED} with zero
-     * violations — the difference between "this rule had nothing to say" and "this rule was not
-     * asked".
+     * {@code reportedDatasets} names the datasets whose absence <em>this run already reports</em>
+     * ({@code Fix #222}, step 3 of {@code plans/done/PLAN-absent-required-dataset-skip.md}),
+     * derived mechanically by {@link AbsentDatasetSkip#reportedDatasets(java.util.Collection)} from
+     * the run's own rule list (never a hard-coded table — {@code K5}). For a rule that reads such a
+     * dataset while it is absent, the readings are suppressed rather than allowed to flood; when
+     * that leaves the rule with nothing evaluable it reports {@link RuleExecutionStatus#SKIPPED}
+     * instead of a silent pass. An empty set is behaviour-identical to the pre-{@code Fix #222}
+     * engine. {@code crossStandardDatasets} names the datasets belonging to a CDISC standard this
+     * run does <b>not</b> validate ({@code Fix
+     * #218}, {@code plans/done/PLAN-cross-standard-absence-skip.md}) — on an ADaM-family run, the
+     * companion SDTM domain catalogue. A rule whose whole Check depends on such a dataset while it
+     * was <em>not supplied to the run at all</em> reports {@link RuleExecutionStatus#SKIPPED}
+     * rather than the vacuous PASS it produced before. ⚠ The absence test is
+     * {@code resolver.resolve(D) == null} and never a target-ness test: a co-located SDTM dataset
+     * supplied as a <em>reference</em> resolves, and must keep the rule running. An empty set is
+     * behaviour-identical to the pre-{@code Fix #218} engine.
+     * </p>
+     *
+     * <p>
+     * {@code severityThreshold} — Plan C &#167;3.4, ruling 4 — is the weakest rung this run
+     * evaluates. A rule's declared check levels below it are not evaluated at all; a rule whose
+     * <em>every</em> declared level is below it reports {@link RuleExecutionStatus#SKIPPED} with
+     * that reason, never {@code EXECUTED} with zero violations — the difference between "this rule
+     * had nothing to say" and "this rule was not asked".
      * </p>
      *
      * <p>
@@ -325,6 +166,36 @@ public final class RuleRunner
      * banner.
      * </p>
      *
+     * @param rule
+     *            the rule to execute
+     * @param table
+     *            the data table to check
+     * @param resolver
+     *            resolves cross-dataset references
+     * @param domainPrefix
+     *            the 2-character domain prefix for {@code --} substitution (e.g., "AE"). May be
+     *            {@code null} if the rule does not use prefix wildcards.
+     * @param libraryProvider
+     *            provides CDISC Library metadata for Library-dependent operations. When
+     *            {@code null}, rules that use such operations are skipped with a warning.
+     * @param joinCache
+     *            optional cache for reusing join structures across rule executions. When
+     *            {@code null}, join structures are built fresh for each rule.
+     * @param defineProvider
+     *            sponsor Define-XML metadata, or {@code null} when no define is present
+     * @param maxErrorsPerRule
+     *            maximum findings to materialise for this rule on this dataset
+     * @param exprCache
+     *            the per-dataset expression-result cache, or {@code null} to disable caching
+     * @param dictionaryProvider
+     *            the external-dictionary provider, or {@code null} when no dictionaries are
+     *            supplied
+     * @param vlmResolver
+     *            the per-record value-level metadata resolver, or {@code null}
+     * @param reportedDatasets
+     *            upper-cased dataset names covered by a bare presence rule in this run
+     * @param crossStandardDatasets
+     *            upper-cased dataset names belonging to a standard this run does not validate
      * @param severityThreshold
      *            the weakest rung to evaluate
      * @return the execution result

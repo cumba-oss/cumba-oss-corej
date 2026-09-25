@@ -16,6 +16,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.cumba.corej.core.exec.DatasetResolver;
+import net.cumba.corej.core.exec.EngineLimits;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleRunner;
@@ -269,8 +270,13 @@ public final class ScenarioCapture
             return null;
         }
         DatasetResolver.WithInventory resolver = ScenarioResolver.of(aDatasets);
+        // The engine's one entry point, with exactly the defaults the retired 6-argument
+        // convenience forwarded (no Define-XML provider, unlimited findings, no caches, no
+        // dictionary or VLM provider, empty coverage sets, the default severity threshold) —
+        // PLAN-retire-dead-multi-match-lookup K5.
         RuleExecutionResult res = RuleRunner.execute(aRule, aPrimary, resolver, aDomain, aLibrary,
-                null);
+                null, null, Integer.MAX_VALUE, null, null, null, Set.of(), Set.of(),
+                EngineLimits.DEFAULT_SEVERITY_THRESHOLD);
         // Row-bearing domain (the leaf-scope successor of RuleType.isValueBased()).
         boolean valueBased = aRule.getEvaluationDomain() == null
                 || aRule.getEvaluationDomain().rowCursor();
