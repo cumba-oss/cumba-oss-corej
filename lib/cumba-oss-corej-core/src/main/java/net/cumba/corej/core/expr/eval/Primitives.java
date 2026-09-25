@@ -261,7 +261,8 @@ public final class Primitives
 
     /**
      * The comparison target's literal fold (phase 3d): {@code ""} for a missing value, the cell's
-     * string form for a cell-backed value, {@code toString()} of a resolved payload.
+     * string form for a cell-backed value, a resolved payload's {@code canonicalNumberText} when it
+     * is a {@link Number} (plain, as a cell spells) and its {@code toString()} otherwise.
      */
     static String targetString(TypedValue target)
     {

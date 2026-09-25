@@ -1,5 +1,6 @@
 package net.cumba.corej.core.expr.eval;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
@@ -6271,7 +6272,9 @@ public final class ExprCompiler
      * its shortest round-trip digits in <b>plain</b> notation ({@code 3.5 → "3.5"},
      * {@code 12345678.9 → "12345678.9"}, never {@code "1.23456789E7"}, owner ruling D2); a value
      * beyond {@code 2^63} is not saturated ({@code 1e20 → "100000000000000000000"}); infinities
-     * render as {@code "Infinity"}/{@code "-Infinity"}. This is intentionally NOT
+     * render as {@code "Infinity"}/{@code "-Infinity"}; an integral {@code Number} type
+     * ({@code Long}, {@code Integer}, {@code Short}, {@code Byte}, {@code BigInteger}) renders its
+     * own digits, never through a {@code double}. This is intentionally NOT
      * {@code DataValueDouble.getValueAsString()} — that cleans noise first, and a literal is what
      * the author wrote — but it shares that text's <em>notation</em>, so a cell and a literal of
      * the same value render alike <b>outside the ruled noise</b>: a noisy cell
@@ -6281,6 +6284,16 @@ public final class ExprCompiler
      */
     public static String canonicalNumberText(Number n)
     {
+        // an integral type renders its own digits: through doubleValue() a Long beyond 2^53
+        // would lose them (9007199254740993 -> ...992, review L4)
+        if (n instanceof Long || n instanceof Integer || n instanceof Short || n instanceof Byte)
+        {
+            return Long.toString(n.longValue());
+        }
+        if (n instanceof BigInteger)
+        {
+            return n.toString();
+        }
         return DataValueSupport.toPlainNumberText(n.doubleValue());
     }
 

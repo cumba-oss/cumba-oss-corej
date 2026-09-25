@@ -157,10 +157,11 @@ class RelrecMissingSubjectKeyTest
             // E2: two integral values 13 digits long are two keys (both rendered
             // "1234567890120" under the old cleaning and merged)
             new KeyCase("LONG 13 digits vs +1", 1_234_567_890_123L, 1_234_567_890_124L, false),
-            // E2: two non-integral values beyond the threshold (tail 0.4 vs 0.3 against 1) stay
-            // apart; both rendered "1.23456789012E12" before
-            new KeyCase("DOUBLE beyond threshold", 1_234_567_890_123.4d, 1_234_567_890_123.3d,
-                    false),
+            // E2: two non-integral values beyond the threshold (e = 11: tails 0.4 and 0.3 against
+            // 0.1) stay apart; both rendered "123456789012" before. ⚠ Not the e = 12 decade: from
+            // 1e12 the units floor (D3) snaps every fraction to the integer, so 1234567890123.4 and
+            // ...123.3 are ONE text there by ruling.
+            new KeyCase("DOUBLE beyond threshold", 123_456_789_012.4d, 123_456_789_012.3d, false),
             // E7: noise within 1e-12 of the decade is one value (4.9999999999994 was NOT cleaned
             // under the old rule, so this row is red on it)
             new KeyCase("DOUBLE within noise", 4.9999999999994d, 5.0d, true));

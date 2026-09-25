@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
+import java.math.BigInteger;
 import net.cumba.datatable.values.DataValueDouble;
 import net.cumba.datatable.values.DataValueSupport;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,20 @@ class CanonicalNumberTextTest
 
 
     @Test
+    void integralNumberTypesRenderTheirOwnDigits()
+    {
+        // review L4: through doubleValue() a Long beyond 2^53 lost its digits (...993 -> ...992)
+        assertEquals("9007199254740993", ExprCompiler.canonicalNumberText(9007199254740993L));
+        assertEquals("-9007199254740993", ExprCompiler.canonicalNumberText(-9007199254740993L));
+        assertEquals("100000000000000000001",
+                ExprCompiler.canonicalNumberText(new BigInteger("100000000000000000001")));
+        assertEquals("7", ExprCompiler.canonicalNumberText((short) 7));
+        assertEquals("-3", ExprCompiler.canonicalNumberText((byte) -3));
+        assertEquals("2147483647", ExprCompiler.canonicalNumberText(Integer.MAX_VALUE));
+    }
+
+
+    @Test
     void fractionalValuesRenderPlainNeverScientific()
     {
         assertEquals("0.1", ExprCompiler.canonicalNumberText(0.1));
@@ -58,7 +73,7 @@ class CanonicalNumberTextTest
         // alike, or a match between them is lost to notation
         for (double v : new double[]
         {
-                12345678.9, 0.0001, 3.5, 100.0, 1e20, 1234567890123.4
+                12345678.9, 0.0001, 3.5, 100.0, 1e20, 123456789012.34
         })
         {
             assertEquals(new DataValueDouble(v).getValueAsString(),

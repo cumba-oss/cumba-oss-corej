@@ -13,6 +13,9 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.cumba.corej.core.expr.CheckExpressionParser;
+import net.cumba.corej.core.expr.ast.Expr;
+import net.cumba.corej.core.expr.convert.OperationExpressionParser;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.datatable.DataTableColumnMeta;
 import net.cumba.datatable.DataTableMeta;
@@ -81,12 +84,67 @@ class OperationExecutorTest
     }
 
 
+    /** A real DOUBLE column: a mocked cell renders {@code raw.toString()} and would hide this. */
+    private static IDataTable doubleColumn(String aName, double... aValues)
+    {
+        DataTableMeta meta = DataTableMeta.builder().name("T")
+                .setColumns(DataTableColumnMeta.builder().index(0).name(aName)
+                        .type(DataValueType.DOUBLE).build())
+                .rowCount(aValues.length).totalRowCount(aValues.length).build();
+        CachedDataTableColumn x = new CachedDataTableColumn(0, DataValueType.DOUBLE);
+        for (double v : aValues)
+        {
+            x.addElement(v);
+        }
+        x.complete();
+        return new ColumnCachedDataTable(meta, x);
+    }
+
+
+    /**
+     * Review M1 (PLAN-numeric-cleaning-and-key-text, round 2): the ONLY producer of
+     * {@code Operation.filter} in main code is {@code OperationExpressionParser.filterOf}, whose
+     * {@code litString} rendered a NUMBER literal with {@code Double.toString} — so
+     * {@code filter(X=12345678.5)} carried {@code "1.23456785E7"} and matched no cell, whatever the
+     * executor did with a hand-built {@code Map}. This row goes through the parser: rule text →
+     * {@code Operation} → evaluation against a real DOUBLE column.
+     */
+    @Test
+    void testRecordCount_filterLiteralsFromRuleTextSpellLikeTheCell()
+    {
+        IDataTable table = doubleColumn("X", 12345678.5, 0.0005, 12.0, 7.25, 1e20);
+        Operation scalar = OperationExpressionParser.fromCall((Expr.Call) CheckExpressionParser
+                .parse("record_count(filter=filter(X=12345678.5))"), "$BIG");
+        Operation list = OperationExpressionParser
+                .fromCall(
+                        (Expr.Call) CheckExpressionParser
+                                .parse("record_count(filter=filter(X=[12345678.5, 0.0005]))"),
+                        "$LIST");
+        Operation integral = OperationExpressionParser.fromCall(
+                (Expr.Call) CheckExpressionParser.parse("record_count(filter=filter(X=[12.0]))"),
+                "$INT");
+        Operation huge = OperationExpressionParser
+                .fromCall(
+                        (Expr.Call) CheckExpressionParser
+                                .parse("record_count(filter=filter(X=100000000000000000000))"),
+                        "$HUGE");
+        Map<String, Object> vars = OperationExecutorCalls
+                .execute(List.of(scalar, list, integral, huge), table, NO_RESOLVER);
+
+        assertEquals(1L, vars.get("$BIG"), "filter(X=12345678.5) must match the cell");
+        assertEquals(2L, vars.get("$LIST"), "filter(X=[12345678.5, 0.0005]) must match both");
+        assertEquals(1L, vars.get("$INT"), "filter(X=[12.0]) must match the cell text \"12\"");
+        assertEquals(1L, vars.get("$HUGE"), "filter(X=1e20) must match \"100000000000000000000\"");
+    }
+
+
     /**
      * B-MED-2 (PLAN-numeric-cleaning-and-key-text review): a numeric filter literal — scalar or a
      * LIST member — spells the way the cell does (plain, no {@code .0}), or a genuinely equal value
      * never matches: {@code String.valueOf(12345678.5)} is {@code "1.23456785E7"} against a cell
      * reading {@code "12345678.5"}. A REAL DOUBLE column, because a mocked cell renders
-     * {@code raw.toString()} and would hide exactly this.
+     * {@code raw.toString()} and would hide exactly this. ⚠ This row hand-builds the filter
+     * {@code Map}, so it covers the EXECUTOR's rendering only; the rule-text path is the row above.
      */
     @Test
     void testRecordCount_numericFilterLiteralsSpellLikeTheCell()

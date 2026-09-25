@@ -8,6 +8,7 @@ import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.corej.core.expr.ast.Expr;
+import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.metadata.LibraryVariableAttributes;
 import net.cumba.corej.core.metadata.SdtmObservationClasses;
@@ -786,11 +787,12 @@ public final class OperationExpressionParser
         case STRING, REGEX -> (String) lit.value();
         case NUMBER ->
         {
-            // Render an integral value without the ".0" tail, fractional verbatim. String-based
-            // (no floating-point equality test) — operations never carry numeric arguments anyway,
-            // so this is purely a defensive round-trip.
-            String s = Double.toString((Double) lit.value());
-            yield s.endsWith(".0") ? s.substring(0, s.length() - 2) : s;
+            // The one number-to-text rendering (PLAN-numeric-cleaning-and-key-text, D2): plain
+            // notation, no ".0" on an integral value, never scientific. Filters DO carry numeric
+            // literals -- filter(X=12345678.5) reaches rowMatchesFilter as this text and is
+            // compared against the cell's getValueAsString(), so Double.toString's
+            // "1.23456785E7" matched nothing (review M1).
+            yield ExprCompiler.canonicalNumberText((Double) lit.value());
         }
         case BOOL -> lit.value().toString();
         case LIST -> throw new RuleDefinitionException(

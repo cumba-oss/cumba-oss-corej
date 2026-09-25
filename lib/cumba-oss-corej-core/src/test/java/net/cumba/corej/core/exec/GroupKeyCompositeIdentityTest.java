@@ -161,8 +161,9 @@ class GroupKeyCompositeIdentityTest
     {
         GroupKeyPolicy p = GroupKeyPolicy.FOLD_BLANK_KEYS;
         // Two values equal to 12 significant digits but different beyond them: the cleaned TEXT
-        // used to fold them (both rendered "10000000000000"; since E7 only the non-integral one
-        // snaps), while the exact identity keeps them apart — D64h: "key identity always exact".
+        // folds them (both rendered "10000000000000" under the old rule; under D3's units floor
+        // the non-integral one snaps to "10000000000001", the same text as its neighbour), while
+        // the exact identity keeps them apart — D64h: "key identity always exact".
         KeyPart a = p.keyPart(new DataValueDouble(10000000000001.0));
         KeyPart b = p.keyPart(new DataValueDouble(10000000000001.4));
         assertEquals(new KeyPart.PresentNumber(10000000000001.0), a);
