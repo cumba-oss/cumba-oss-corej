@@ -1486,24 +1486,6 @@ public class RulePackageLoader
         for (CheckCondition condition : rule.checkConditions())
         {
             net.cumba.corej.core.expr.ast.Expr check = tryRaiseToExpr(condition);
-            if (check == null)
-            {
-                // F-corej-L2-05: an unraisable level must neither abandon the terms already
-                // collected from the other declared levels (a `return` here dropped the
-                // strictest level's gate because a weaker level could not be raised) nor stay
-                // silent -- like the unraisable-Precondition twin below, it says what it could
-                // not do. Terms the unraisable level itself would need stay unknowable, which
-                // is exactly what the warning records.
-                String warning = "[" + ruleId(rule) + "] a declared Check level cannot be raised"
-                        + " to an expression, so availability-dependent operation calls inlined"
-                        + " in it (if any) cannot be gated -- such a rule silently PASSes instead"
-                        + " of SKIPPING when the provider is absent; gates from the other"
-                        + " declared levels are still injected";
-                rule.setLoadWarning(rule.getLoadWarning() == null ? warning
-                        : rule.getLoadWarning() + "; " + warning);
-                LOGGER.log(System.Logger.Level.WARNING, "{0}", warning);
-                continue;
-            }
             collectGateTerms(check, check, needed);
         }
         if (needed.isEmpty())
@@ -1514,17 +1496,6 @@ public class RulePackageLoader
         if (rule.getPrecondition() != null)
         {
             existing = tryRaiseToExpr(rule.getPrecondition());
-            if (existing == null)
-            {
-                String warning = "[" + ruleId(rule) + "] Check inlines availability-dependent"
-                        + " operation calls but the existing Precondition cannot be raised to an"
-                        + " expression — the availability gate was NOT injected; without it the"
-                        + " rule silently PASSes instead of SKIPPING when the provider is absent";
-                rule.setLoadWarning(rule.getLoadWarning() == null ? warning
-                        : rule.getLoadWarning() + "; " + warning);
-                LOGGER.log(System.Logger.Level.WARNING, "{0}", warning);
-                return;
-            }
             for (net.cumba.corej.core.expr.ast.Expr term : flattenAnd(existing))
             {
                 needed.remove(net.cumba.corej.core.expr.ExpressionPrinter.print(term));
@@ -1771,22 +1742,6 @@ public class RulePackageLoader
         {
             net.cumba.corej.core.expr.ast.Expr raised = tryRaiseToExpr(
                     level.getValue().condition());
-            if (raised == null)
-            {
-                // No expression surface at some level ⇒ the rule has no native form at all. All or
-                // nothing: installing the levels that DID raise would silently drop a level's
-                // verdict, and a rule that reports fewer levels than it declares is worse than one
-                // that reports the "no native expression form" ERROR.
-                // ⚑ The call below is DEFENSIVE ONLY: measured 2026-09-21 (review round 2), this
-                // arm is UNREACHABLE — CheckToExpr switches exhaustively over the sealed
-                // CheckCondition and no arm throws, and CheckConditionExpression already carries
-                // its parsed Expr, so tryRaiseToExpr never returns null for a loaded rule. The
-                // live path is installCompiledLevels' isSupported return. Kept because the null
-                // contract is tryRaiseToExpr's rather than this caller's — but do not go looking
-                // for a test fixture that reaches it; none can be constructed.
-                rejectUndecidableAllExpansion(rule);
-                return;
-            }
             levels.put(level.getKey(), raised);
         }
         // Element B: lower a `variable_exists` operation consumed as `$X == true/false` into the
@@ -1980,7 +1935,7 @@ public class RulePackageLoader
         net.cumba.corej.core.expr.ast.Expr pre = tryRaiseToExpr(rule.getPrecondition());
         try
         {
-            if (pre != null && net.cumba.corej.core.expr.eval.NativeExprEvaluator.isSupported(pre)
+            if (net.cumba.corej.core.expr.eval.NativeExprEvaluator.isSupported(pre)
                     && isBroadcastVerdictExpr(pre))
             {
                 rule.setPreconditionExpr(pre);
@@ -2070,10 +2025,6 @@ public class RulePackageLoader
         if (rule.getPrecondition() != null)
         {
             pre = tryRaiseToExpr(rule.getPrecondition());
-            if (pre == null)
-            {
-                return;
-            }
         }
         // Plan C §3.3: eligibility spans EVERY declared level, not just the strictest. An
         // operation referenced from a weaker level is still referenced; dropping it because the
@@ -2179,10 +2130,6 @@ public class RulePackageLoader
         if (rule.getPrecondition() != null)
         {
             pre = tryRaiseToExpr(rule.getPrecondition());
-            if (pre == null)
-            {
-                return;
-            }
         }
         // Plan C §3.3: the reference scope is every declared level — see inlineVariableExistsOps.
         List<net.cumba.corej.core.expr.ast.Expr> scope = new ArrayList<>(levels.values());
@@ -2255,12 +2202,13 @@ public class RulePackageLoader
      *
      * <p>
      * ⚠ Found by review round 1 of {@code plans/PLAN-expansion-over-all-variables.md}. The domain
-     * test lives at the end of {@link #installCompiledLevels}, and two earlier returns skip it — a
-     * level whose {@code tryRaiseToExpr} yields {@code null}, and a level
-     * {@code NativeExprEvaluator} does not support. Without this, such a rule would carry no load
-     * error, expand to one rule per column, and each minted copy would then report the per-rule "no
-     * native expression form" ERROR: N duplicated error rows per dataset where one belongs, and the
-     * R6 violation never reported to the author at all.
+     * test lives at the end of {@link #installCompiledLevels}, and an earlier return skips it — a
+     * level {@code NativeExprEvaluator} does not support (⚑ a second early return, for a level
+     * {@code tryRaiseToExpr} could not raise, went with K7 of
+     * {@code PLAN-retire-dead-multi-match-lookup}: the raise cannot fail). Without this, such a
+     * rule would carry no load error, expand to one rule per column, and each minted copy would
+     * then report the per-rule "no native expression form" ERROR: N duplicated error rows per
+     * dataset where one belongs, and the R6 violation never reported to the author at all.
      * </p>
      *
      * <p>
@@ -2400,9 +2348,6 @@ public class RulePackageLoader
      *            the rule being loaded
      * @return {@code true} when a Precondition is present and carries a variable cursor
      */
-    // TryRaiseToExprGuardSurfaceTest reads this source and needs the `if (pre == null)` exit after
-    // the tryRaiseToExpr call; folded into the return it would read as an unguarded site.
-    @SuppressWarnings("PMD.SimplifyBooleanReturns")
     private static boolean preconditionReadsCursor(Rule rule)
     {
         if (rule.getPrecondition() == null)
@@ -2412,14 +2357,6 @@ public class RulePackageLoader
         try
         {
             net.cumba.corej.core.expr.ast.Expr pre = tryRaiseToExpr(rule.getPrecondition());
-            if (pre == null)
-            {
-                // No expression surface to infer over — the same disposition every other
-                // tryRaiseToExpr call site takes, and the shape TryRaiseToExprGuardSurfaceTest
-                // recognises as a guard (a return-expression `pre != null && …` reads as NONE
-                // there, which is the ratchet working, not a false positive).
-                return false;
-            }
             return net.cumba.corej.core.expr.eval.DomainScan
                     .infer(pre, net.cumba.corej.core.expr.eval.OperationKinds.forRule(rule))
                     .varCursor();
@@ -2644,51 +2581,28 @@ public class RulePackageLoader
 
 
     /**
-     * Raises a Check tree to the {@link net.cumba.corej.core.expr.ast.Expr} IR, returning
-     * {@code null} for a mixed / old-style Check that has no faithful expression surface (so the
-     * rule keeps {@code checkExpr == null} and reports the "no native expression form" ERROR at
-     * runtime).
+     * Raises a Check tree to the {@link net.cumba.corej.core.expr.ast.Expr} IR.
+     * {@link net.cumba.corej.core.expr.CheckToExpr#toExpr} is an exhaustive switch over the sealed
+     * {@code CheckCondition} whose arms build {@code And} / {@code Or} / {@code Not} nodes or hand
+     * back the expression a {@code CheckConditionExpression} already carries, so every loaded rule
+     * raises; a tree that is not structurally sound is rejected at deserialisation
+     * ({@code CheckConditionDeserializer}) and never reaches this method.
      *
      * <p>
-     * ⛔ The catch is {@link net.cumba.corej.core.expr.ExpressionException} ONLY, deliberately (H3,
-     * 2026-09-17): widening it to {@code RuntimeException} would turn a malformed tree into a
-     * silent legacy-path fallback — the exact D121 failure direction. The one known NPE source —
-     * {@code CheckConditionNot(null)} from a {@code not: null} Check — is rejected at
-     * deserialisation now ({@code CheckConditionDeserializer}), so a tree reaching this method is
-     * structurally sound and anything else that throws here SHOULD kill the load loudly.
-     * </p>
-     *
-     * <p>
-     * ⚠⚠ <b>The {@code == null} guards on this method's callers are UNREACHABLE and kept anyway</b>
-     * (L4, D121 / D132a). They stay because deleting them also means deleting the narrow catch
-     * above, which is a fail-loud behaviour change owed its own decision — <b>not</b> because they
-     * are the unique home of the hazard note. That second justification, as recorded in commit
-     * {@code 40947e5}, is <b>false</b> and is corrected here (R2-7 review round 2): the "silently
-     * PASSes instead of SKIPPING when the provider is absent" hazard is also stated by
-     * {@link #injectInlineOperationGates(Rule)}'s javadoc, by the {@code INFO} line that method
-     * actually emits on <em>every</em> injection, and by {@code InjectInlineOperationGatesTest}.
-     * Dropping the guards would not drop the hazard note.
-     * </p>
-     *
-     * <p>
-     * ⛔ <b>Do not take the size of that guard surface from a comment.</b> The same commit recorded
-     * it as "exactly 5" and a later filing certified the number as re-measured; both were wrong —
-     * there are <b>seven</b> call sites carrying <b>six</b> {@code == null} guards plus one
-     * null-tolerant {@code != null} use. The surface is enumerated mechanically instead, by
-     * {@code TryRaiseToExprGuardSurfaceTest}, which parses this file: it fails when a call site is
-     * added, removed, or left without a guard, so no reader ever has to count them by hand again.
+     * ⚑ <b>History (K7 of {@code PLAN-retire-dead-multi-match-lookup}, 2026-09-25).</b> This method
+     * used to catch {@code ExpressionException} and answer {@code null} "for a mixed / old-style
+     * Check with no faithful expression surface", and its eight call sites carried {@code == null}
+     * guards for that answer. The bytecode closure of everything reachable from {@code CheckToExpr}
+     * constructs no {@code ExpressionException}, so the catch could not fire, the guards could not
+     * be entered, and the two load warnings behind them ("a declared Check level cannot be raised",
+     * "the existing Precondition cannot be raised") could not be emitted. The catch, the guards and
+     * the source-parsing ratchet that enumerated them were removed together; a throw from here now
+     * kills the load loudly, which is the direction D121 / H3 asked for.
      * </p>
      */
-    private static net.cumba.corej.core.expr.ast.@Nullable Expr tryRaiseToExpr(CheckCondition check)
+    private static net.cumba.corej.core.expr.ast.Expr tryRaiseToExpr(CheckCondition check)
     {
-        try
-        {
-            return net.cumba.corej.core.expr.CheckToExpr.toExpr(check);
-        }
-        catch (net.cumba.corej.core.expr.ExpressionException _)
-        {
-            return null;
-        }
+        return net.cumba.corej.core.expr.CheckToExpr.toExpr(check);
     }
 
 
@@ -3038,10 +2952,6 @@ public class RulePackageLoader
     private static boolean isAvailabilityGateOnly(CheckCondition precondition)
     {
         net.cumba.corej.core.expr.ast.Expr raised = tryRaiseToExpr(precondition);
-        if (raised == null)
-        {
-            return false;
-        }
         for (net.cumba.corej.core.expr.ast.Expr term : flattenAnd(raised))
         {
             if (!(term instanceof net.cumba.corej.core.expr.ast.Expr.Call call)

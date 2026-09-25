@@ -185,7 +185,8 @@ class AllVariablesExpansionSourceTest
      * {@code all_numeric_variables} disagreed about the same column.
      *
      * <p>
-     * So this asserts the delegation itself, the way {@code TryRaiseToExprGuardSurfaceTest} asserts
+     * So this asserts the delegation itself, the way the (since retired, K7 of
+     * {@code PLAN-retire-dead-multi-match-lookup}) {@code TryRaiseToExprGuardSurfaceTest} asserted
      * its call sites: {@code ExprCompiler}'s {@code VAR_TYPE} arm must route through
      * {@code MetadataNormalizer.charOrNum}, and {@code ExprCompiler} must declare no
      * {@code charOrNum} of its own.
