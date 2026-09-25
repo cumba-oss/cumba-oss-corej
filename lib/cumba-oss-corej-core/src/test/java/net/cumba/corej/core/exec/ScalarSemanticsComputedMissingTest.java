@@ -315,12 +315,28 @@ class ScalarSemanticsComputedMissingTest
         // ⛔ Run over a KNOWN population, because the production one is empty: a discovery that
         // returned nothing for every class would satisfy the exact-zero count below vacuously.
         MultiValueCensus control = censusMultiValue(List.of(MultiValueDiscoveryControl.class));
-        assertEquals(List.of("MultiValueDiscoveryControl.multiValue"), control.found(),
-                "CONTROL FAILED: over a class declaring exactly one List<IDataValue> method (plus a"
-                        + " scalar IDataValue one and a List<String> one) the discovery must find"
-                        + " exactly that one — otherwise it is not reaching type arguments, and the"
+        assertEquals(
+                List.of("MultiValueDiscoveryControl.multiValue",
+                        "MultiValueDiscoveryControl.nullableElementValue",
+                        "MultiValueDiscoveryControl.nullableListValue"),
+                control.found(),
+                "CONTROL FAILED: over a class declaring exactly three List<IDataValue> methods (plus"
+                        + " a scalar IDataValue one and a List<String> one) the discovery must find"
+                        + " exactly those — otherwise it is not reaching type arguments, and the"
                         + " exact-zero production count below is satisfied by a blind scan: "
                         + control.found());
+        // ⛔ The two nullable detectors run over the SAME control population, each of which must
+        // see exactly its own violation. Without this the census's nullableList / nullableElement
+        // arms below are asserted empty over an empty production population — a detector that
+        // never reported anything would pass them forever.
+        assertEquals(List.of("MultiValueDiscoveryControl.nullableListValue"),
+                control.nullableList(),
+                "CONTROL FAILED: the nullable-LIST detector must see exactly the @Nullable List"
+                        + " declaration: " + control.nullableList());
+        assertEquals(List.of("MultiValueDiscoveryControl.nullableElementValue"),
+                control.nullableElement(),
+                "CONTROL FAILED: the nullable-ELEMENT detector must see exactly the"
+                        + " List<@Nullable IDataValue> declaration: " + control.nullableElement());
 
         // --- non-vacuity control 2: the ELEMENT detector must SEE a @Nullable type argument -----
         // ⛔ This is the arm the whole test turns on. isNullable() reads annotations off ONE
@@ -420,15 +436,28 @@ class ScalarSemanticsComputedMissingTest
     }
 
     /**
-     * ⛔ The permanent positive control for the multi-value DISCOVERY (control 1 above): exactly one
-     * method returning a 0..N container of {@code IDataValue}, beside one scalar producer and one
-     * list of a non-value type, neither of which may be found. Package-private and reached
-     * reflectively on purpose: nothing calls these, and that is the point.
+     * ⛔ The permanent positive control for the multi-value DISCOVERY and its two nullable detectors
+     * (control 1 above): three methods returning a 0..N container of {@code IDataValue} — a clean
+     * one, one whose LIST is {@code @Nullable} and one whose ELEMENT is — beside one scalar
+     * producer and one list of a non-value type, neither of which may be found. Package-private and
+     * reached reflectively on purpose: nothing calls these, and that is the point.
      */
     static final class MultiValueDiscoveryControl
     {
 
         static List<IDataValue> multiValue()
+        {
+            return new ArrayList<>();
+        }
+
+
+        static @Nullable List<IDataValue> nullableListValue()
+        {
+            return new ArrayList<>(); // the DECLARATION is the control; the body never runs
+        }
+
+
+        static List<@Nullable IDataValue> nullableElementValue()
         {
             return new ArrayList<>();
         }

@@ -3,7 +3,6 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.Arrays;
-import java.util.List;
 import net.cumba.corej.core.model.ClassScope;
 import net.cumba.corej.core.model.DomainScope;
 import net.cumba.corej.core.model.Requirements;
@@ -16,8 +15,11 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Tests for the reason-bearing scope describers ({@code describeDomainMismatch},
- * {@code describeClassMismatch}, {@code describeVariablesMismatch}) and their parity with the
- * boolean API (which is implemented on top of them).
+ * {@code describeClassMismatch}, {@code describeVariablesMismatch}). ⚑ A parity test against the
+ * boolean {@code matches*} API used to live here; that API left {@code src/main} with U1 of
+ * {@code PLAN-retire-dead-multi-match-lookup}, its test forms in {@link ScopeMatcherCalls} are
+ * {@code describe*(…) == null} by construction, and the parity check compared that helper with
+ * itself — so it was deleted.
  */
 class ScopeMatcherDescribeTest
 {
@@ -278,70 +280,5 @@ class ScopeMatcherDescribeTest
         Rule rule = ruleWithVariableExclude("QVAL");
         assertEquals("Requirements.Variables.None variable QVAL present in dataset",
                 ScopeMatcherCalls.describeVariablesMismatch(rule, meta("USUBJID", "QVAL")));
-    }
-
-    // ------------------------------------------------------------------
-    // Parity: boolean API == (describer == null)
-    // ------------------------------------------------------------------
-
-
-    @Test
-    void booleanApiAgreesWithDescribers()
-    {
-        List<Rule> rules = List.of(new Rule(), ruleWithDomainInclude("AE", "CM"),
-                ruleWithDomainInclude("ALL"), ruleWithDomainInclude("SUPP--"),
-                ruleWithDomainExclude("SUPP--"), ruleWithDomainExclude("DM", "NONE"),
-                ruleWithDomainExclude("ALL"), ruleWithDomainInclude("LB"),
-                ruleWithDomainExclude("LB"));
-        List<String> domains = Arrays.asList("AE", "CM", "DM", "EX", "LB", "LB1", "SUPPAE",
-                "SUPPLBHM", "APFACM", "RELREC", null);
-        for (Rule rule : rules)
-        {
-            for (String domain : domains)
-            {
-                assertEquals(ScopeMatcherCalls.describeDomainMismatch(rule, domain) == null,
-                        ScopeMatcherCalls.matchesDomain(rule, domain),
-                        "domain parity for " + domain + " on " + describeScope(rule));
-            }
-        }
-
-        List<Rule> classRules = List.of(new Rule(), ruleWithClassInclude("EVENTS"),
-                ruleWithClassInclude("FINDINGS"), ruleWithClassExclude("FINDINGS"),
-                ruleWithClassExclude("EVENTS"), ruleWithClassInclude("ALL"));
-        List<String> classes = Arrays.asList("EVENTS", "FINDINGS", "FINDINGS ABOUT",
-                "SPECIAL PURPOSE", null);
-        for (Rule rule : classRules)
-        {
-            for (String cls : classes)
-            {
-                assertEquals(ScopeMatcher.describeClassMismatch(rule, cls) == null,
-                        ScopeMatcherCalls.matchesClass(rule, cls), "class parity for " + cls);
-            }
-        }
-
-        List<Rule> varRules = List.of(new Rule(), ruleWithVariableInclude("AESTDTC"),
-                ruleWithVariableInclude("AESTDTC", "AEENDTC"), ruleWithVariableExclude("QVAL"));
-        List<DataTableMeta> metas = Arrays.asList(meta("AESTDTC", "AEENDTC", "QVAL"),
-                meta("AESTDTC"), meta("USUBJID"), null);
-        for (Rule rule : varRules)
-        {
-            for (DataTableMeta m : metas)
-            {
-                assertEquals(ScopeMatcherCalls.describeVariablesMismatch(rule, m) == null,
-                        ScopeMatcherCalls.matchesVariables(rule, m), "variables parity");
-            }
-        }
-    }
-
-
-    private static String describeScope(Rule rule)
-    {
-        Scope scope = rule.getScope();
-        if (scope == null || scope.getDomains() == null)
-        {
-            return "(no scope)";
-        }
-        return "Include=" + scope.getDomains().getInclude() + " Exclude="
-                + scope.getDomains().getExclude();
     }
 }

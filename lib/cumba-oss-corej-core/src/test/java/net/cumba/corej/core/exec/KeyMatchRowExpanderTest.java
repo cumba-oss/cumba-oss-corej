@@ -17,8 +17,10 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Unit tests for {@link KeyMatchRowExpander} — key-based {@code Match_Datasets} row expansion,
- * mirroring the Python engine's {@code merge_sdtm_datasets} (one row per matched pair, join_type
- * default left, each expanded row bound to its matching child).
+ * mirroring the Python engine's {@code merge_sdtm_datasets} (one row per matched pair, each
+ * expanded row bound to its matching child). Every fixture states its {@code Join_Type}: the
+ * expander has no default (the loader stamps {@code inner} where none is authored, ruling S2), and
+ * an entry that reaches it without one is refused.
  */
 class KeyMatchRowExpanderTest
 {
@@ -51,10 +53,9 @@ class KeyMatchRowExpanderTest
         MatchDataset m = new MatchDataset();
         m.setName(name);
         m.setKeys(List.of(keys));
-        // A null argument means "what the expander used to default to": `left`. Since U15 of
-        // PLAN-retire-dead-multi-match-lookup the expander refuses an absent value, so the
-        // fixture states the join type it always ran as.
-        m.setJoinType(joinType != null ? joinType : "left");
+        // Always stated: since U15 of PLAN-retire-dead-multi-match-lookup the expander has no
+        // default and refuses an absent value (the loader stamps `inner` where none is authored).
+        m.setJoinType(joinType);
         return m;
     }
 
@@ -121,7 +122,7 @@ class KeyMatchRowExpanderTest
                 }
         });
         KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
-                List.of(md("AE", null, "USUBJID")), resolver(Map.of("AE", ae)), "R");
+                List.of(md("AE", "left", "USUBJID")), resolver(Map.of("AE", ae)), "R");
         assertNotNull(exp);
         // P1 -> 2 AE rows (N, Y); P2 -> 1 AE row (N). 3 expanded rows; each binds its own child.
         assertEquals(3, exp.table().getRowCount());
@@ -164,7 +165,7 @@ class KeyMatchRowExpanderTest
 
 
     @Test
-    void defaultLeftKeepsUnmatchedPrimaryWithNullChild()
+    void explicitLeftKeepsUnmatchedPrimaryWithNullChild()
     {
         IDataTable dm = tbl("DM", new String[]
         {
@@ -187,9 +188,9 @@ class KeyMatchRowExpanderTest
                         "P1", "Y"
                 }
         });
-        // null join_type defaults to left: P2 kept with a null-bound child.
+        // explicit left: P2 (no AE) is kept with a null-bound child.
         KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
-                List.of(md("AE", null, "USUBJID")), resolver(Map.of("AE", ae)), "R");
+                List.of(md("AE", "left", "USUBJID")), resolver(Map.of("AE", ae)), "R");
         assertEquals(2, exp.table().getRowCount());
         List<String> got = collect(exp, "AE", "AESDTH");
         assertTrue(got.contains("0:Y"), got.toString());
@@ -200,7 +201,7 @@ class KeyMatchRowExpanderTest
     @Test
     void childAndRelrecNotExpandable()
     {
-        MatchDataset child = md("AE", null, "USUBJID");
+        MatchDataset child = md("AE", "left", "USUBJID");
         child.setChild(true);
         MatchDataset relrec = new MatchDataset();
         relrec.setName("RELREC");
@@ -235,7 +236,7 @@ class KeyMatchRowExpanderTest
         });
         // AE not registered -> merge skipped, rows unchanged, no AE lookup.
         KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
-                List.of(md("AE", null, "USUBJID")), resolver(Map.of()), "R");
+                List.of(md("AE", "left", "USUBJID")), resolver(Map.of()), "R");
         assertNotNull(exp);
         assertEquals(2, exp.table().getRowCount());
         assertNull(exp.lookups().get("AE"));
@@ -276,7 +277,7 @@ class KeyMatchRowExpanderTest
                 }
         });
         KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
-                List.of(md("AE", null, "USUBJID"), md("CE", null, "USUBJID")),
+                List.of(md("AE", "left", "USUBJID"), md("CE", "left", "USUBJID")),
                 resolver(Map.of("AE", ae, "CE", ce)), "R");
         // P1 x 2 AE x 1 CE = 2 expanded rows; each binds one AE and the one CE.
         assertEquals(2, exp.table().getRowCount());
@@ -300,11 +301,11 @@ class KeyMatchRowExpanderTest
         });
         // SUPP-- / SQ-- qualifier datasets (Python pivots those) and -- wildcard names are not
         // key-merge-expandable; each, as the sole entry, yields no expansion.
-        assertNull(ExecCalls.expand(dm, List.of(md("SUPPAE", null, "USUBJID")), resolver(Map.of()),
-                "R"));
-        assertNull(ExecCalls.expand(dm, List.of(md("SQAPSC", null, "USUBJID")), resolver(Map.of()),
-                "R"));
-        assertNull(ExecCalls.expand(dm, List.of(md("AE--", null, "USUBJID")), resolver(Map.of()),
+        assertNull(ExecCalls.expand(dm, List.of(md("SUPPAE", "left", "USUBJID")),
+                resolver(Map.of()), "R"));
+        assertNull(ExecCalls.expand(dm, List.of(md("SQAPSC", "left", "USUBJID")),
+                resolver(Map.of()), "R"));
+        assertNull(ExecCalls.expand(dm, List.of(md("AE--", "left", "USUBJID")), resolver(Map.of()),
                 "R"));
     }
 
@@ -334,11 +335,11 @@ class KeyMatchRowExpanderTest
                 }
         });
         KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
-                List.of(md("AE", null, "USUBJID")), resolver(Map.of("AE", ae)), "R");
+                List.of(md("AE", "left", "USUBJID")), resolver(Map.of("AE", ae)), "R");
         assertNotNull(exp);
         JoinLookup lk = exp.lookups().get("AE");
         IDataTable t = exp.table();
-        // The default-left unmatched primary (P2) keeps the column present (hasColumn true) but
+        // The left-joined unmatched primary (P2) keeps the column present (hasColumn true) but
         // resolves it to null — the present-but-null contract absence/empty checks depend on.
         boolean checkedUnmatched = false;
         for (long i = 0; i < t.getRowCount(); i++)

@@ -264,23 +264,6 @@ class ScopeMatcherPatternTest
         assertNull(ScopeMatcherCalls.describeDomainMismatch(domainInclude("ADAE*"), "ADAEDV"));
     }
 
-
-    @Test
-    void domainBooleanApi_agreesWithDescriberOnPatterns()
-    {
-        List<Rule> rules = List.of(domainInclude("LB*"), domainInclude("/^LB(HE|CH)?$/"),
-                domainExclude("*"), domainExclude("/^LB$/"), domainInclude("*"));
-        List<String> names = Arrays.asList("LB", "LBHE", "LB1", "DM", "SUPPLB", null);
-        for (Rule rule : rules)
-        {
-            for (String name : names)
-            {
-                assertEquals(ScopeMatcherCalls.describeDomainMismatch(rule, name) == null,
-                        ScopeMatcherCalls.matchesDomain(rule, name), "parity for " + name);
-            }
-        }
-    }
-
     // ------------------------------------------------------------------
     // Variables — pattern entries
     // ------------------------------------------------------------------
@@ -571,22 +554,6 @@ class ScopeMatcherPatternTest
     }
 
     // ------------------------------------------------------------------
-    // Overload delegation and boolean parity
-    // ------------------------------------------------------------------
-
-
-    @Test
-    void twoArgOverloads_delegateWithNullPrefix()
-    {
-        Rule rule = variableInclude("--SEQ");
-        DataTableMeta m = meta("AESEQ");
-        assertEquals(ScopeMatcherCalls.describeVariablesMismatch(rule, m, null),
-                ScopeMatcherCalls.describeVariablesMismatch(rule, m));
-        assertEquals(ScopeMatcherCalls.matchesVariables(rule, m, null),
-                ScopeMatcherCalls.matchesVariables(rule, m));
-    }
-
-    // ------------------------------------------------------------------
     // Review F6 — pattern detection takes precedence over the `--` branch
     // ------------------------------------------------------------------
 
@@ -656,29 +623,5 @@ class ScopeMatcherPatternTest
         assertNotNull(ScopeMatcherCalls.describeDomainMismatch(rule, "SUPPLBHM"),
                 "name-only base SUPPLBH is 7 characters — strict SUPP-- misses it");
         assertNotNull(ScopeMatcherCalls.describeDomainMismatch(rule, "LB"));
-    }
-
-
-    @Test
-    void variablesBooleanApi_agreesWithDescriberOnPatterns()
-    {
-        List<Rule> rules = List.of(variableInclude("*DY"), variableInclude("--SEQ"),
-                variableInclude("--*DT"), variableExclude("*ORRES"), variableExclude("--SEQ"));
-        List<DataTableMeta> metas = Arrays.asList(meta("AESTDY", "AESEQ", "AESTDT", "QSORRES"),
-                meta("USUBJID"), null);
-        List<String> prefixes = Arrays.asList("AE", "VS", null, "ADAE");
-        for (Rule rule : rules)
-        {
-            for (DataTableMeta m : metas)
-            {
-                for (String prefix : prefixes)
-                {
-                    assertEquals(
-                            ScopeMatcherCalls.describeVariablesMismatch(rule, m, prefix) == null,
-                            ScopeMatcherCalls.matchesVariables(rule, m, prefix),
-                            "variables parity for prefix " + prefix);
-                }
-            }
-        }
     }
 }

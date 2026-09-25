@@ -257,6 +257,23 @@ class OverridingResolverTest
 
 
         @Test
+        void availableDatasets_bareDelegate_yieldsEmptyBaseInventory()
+        {
+            // A plain functional-interface DatasetResolver has no inventory, so OverridingResolver
+            // falls back to an EMPTY base set: only the overrides are visible — even though the
+            // bare delegate itself resolves DM. (Restored after U8 of
+            // PLAN-retire-dead-multi-match-lookup deleted the combined override+dropped form of
+            // this test with the instance without(); this branch never needed it.)
+            DatasetResolver bare = bareDelegate(table("DM"));
+            OverridingResolver r = OverridingResolver.override(bare, "NEW", table("NEW"));
+
+            assertNotNull(r.resolve("DM"), "precondition: the bare delegate does resolve DM");
+            assertEquals(Set.of("NEW"), r.availableDatasets(),
+                    "no inventory on the delegate ⇒ only the override is listed");
+        }
+
+
+        @Test
         void availableDatasets_isUnmodifiable()
         {
             DatasetResolver.WithInventory delegate = inventoryDelegate(table("DM"), null, null);

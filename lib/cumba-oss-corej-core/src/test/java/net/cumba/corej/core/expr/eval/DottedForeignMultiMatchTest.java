@@ -142,8 +142,10 @@ class DottedForeignMultiMatchTest
     {
         // Dotted reference in the VALUE position: AVAL == SUPP.QVAL. The native dottedVector uses
         // scalar first-match here too. Row 0's first match is missing -> AVAL "1" does not equal a
-        // missing; row 1's first (and only) match "2" == AVAL "2" -> fires.
-        EvaluationContext context = ctx(primary(), child(null, "7"));
+        // missing; row 1's first (and only) match "2" == AVAL "2" -> fires. ⚠ S1's LATER match is
+        // "1" — equal to row 0's AVAL — on purpose, as in the name-position arm: a lookup that
+        // answered the first NON-NULL match would fire on row 0 here and be caught.
+        EvaluationContext context = ctx(primary(), child(null, "1"));
         BitSet r = nativeBits(refLeaf("AVAL", "equal_to", FOREIGN_DS + '.' + TARGET), context);
 
         assertEquals(bits(1), r, "dotted value-position scalar first-match: only row 1 fires");

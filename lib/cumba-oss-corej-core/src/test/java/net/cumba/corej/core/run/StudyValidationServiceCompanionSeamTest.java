@@ -1,27 +1,45 @@
 package net.cumba.corej.core.run;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.metadata.CompanionDomainsProvider;
+import net.cumba.corej.core.metadata.store.MetadataStoreWriter;
+import net.cumba.corej.core.metadata.store.StoredClass;
+import net.cumba.corej.core.metadata.store.StoredDataset;
+import net.cumba.corej.core.metadata.store.StoredProduct;
+import net.cumba.corej.core.metadata.store.StoredVariable;
 import net.cumba.corej.core.run.StudyValidationService.StandardKind;
 import net.cumba.datatable.manager.IDataTableManager;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
- * EC-14 layer (ii) — branch coverage for {@link StudyValidationService#maybeWrapCompanion} without
- * a configured metadata store: {@code companionFromStore} resolves nothing (no
- * {@code CDISC_METADATA_STORE} / {@code cdisc.metadata.store} in a unit-test JVM), so the
- * {@code apiLoader} seam supplies (or withholds) the companion. (Until cache 8g the middle leg was
- * {@code companionFromPickle} over an empty {@code @TempDir} cache; that leg is deleted.) The
- * end-to-end store path lives in the rulespec module's {@code StudyValidationServiceCompanionTest},
- * next to the seeded store.
+ * EC-14 layer (ii) — {@link StudyValidationService#maybeWrapCompanion}: an ADaM-family run (an
+ * {@code ADAM} kind, or a run whose first declared TIG leg is {@code adam}) is wrapped in a
+ * {@link CompanionDomainsProvider} when a companion SDTM product is declared <b>and</b> the
+ * metadata store serves it; every other run is returned unwrapped.
+ *
+ * <p>
+ * Two kinds of test live here. The ones that configure no store can only ever observe the
+ * <b>unwrapped</b> answer — since U11 of {@code PLAN-retire-dead-multi-match-lookup} the store is
+ * the only companion source, so without one they cannot tell the family gate from the store lookup
+ * and pin the "degrade, never fail" direction alone. The family gate itself is pinned by the
+ * {@code gate*} tests, which hand the run a hermetic synthetic store
+ * ({@link StudyValidationParams#metadataStore()}) that DOES serve {@code sdtmig/3-4}: there the
+ * only thing standing between a run and the wrap is the gate, in both directions. The end-to-end
+ * store path over the seeded corpus store lives in the rule-corpus repository's
+ * {@code StudyValidationServiceCompanionTest}.
+ * </p>
  */
 class StudyValidationServiceCompanionSeamTest
 {
@@ -163,5 +181,93 @@ class StudyValidationServiceCompanionSeamTest
 
         assertSame(runProvider, StudyValidationService.maybeWrapCompanion(runProvider, params,
                 StandardKind.SDTM, params.metadataProducts()));
+    }
+
+    // ------------------------------------------------------------------
+    // The ADaM-family gate, observed through a store that DOES serve the companion
+    // ------------------------------------------------------------------
+
+
+    /** Positive control: with the store serving sdtmig/3-4, an ADaM run IS wrapped. */
+    @Test
+    void gateAdmitsAnAdamRun(@TempDir Path dir) throws IOException
+    {
+        StudyValidationParams params = withCompanionStore(dir);
+        List<String> effective = List.of("standards/adam/adamig-1-3", "standards/sdtmig/3-4");
+        MetadataProvider runProvider = mock(MetadataProvider.class);
+
+        MetadataProvider wrapped = StudyValidationService.maybeWrapCompanion(runProvider, params,
+                StandardKind.ADAM, effective);
+
+        CompanionDomainsProvider companion = assertInstanceOf(CompanionDomainsProvider.class,
+                wrapped, "the store serves the declared companion, so an ADaM run is wrapped");
+        assertEquals(List.of("DM"), companion.getStandardDatasetNames(),
+                "the companion's domains come from the store");
+    }
+
+
+    /**
+     * The gate's negative direction, made observable: an SDTM run declaring the same SDTM product,
+     * against the same store, is NOT wrapped — the store would serve it, so only the gate refuses.
+     */
+    @Test
+    void gateRefusesAnSdtmRunEvenWhenTheStoreServesTheCompanion(@TempDir Path dir)
+        throws IOException
+    {
+        StudyValidationParams params = withCompanionStore(dir);
+        List<String> effective = List.of("standards/sdtmig/3-4");
+        assertNotNull(CompanionSdtmDefaults.resolve(effective),
+                "precondition: the SDTM product resolves as a companion, so only the gate decides");
+        MetadataProvider runProvider = mock(MetadataProvider.class);
+
+        assertSame(runProvider, StudyValidationService.maybeWrapCompanion(runProvider, params,
+                StandardKind.SDTM, effective), "an SDTM run is never wrapped");
+    }
+
+
+    /**
+     * The gate's TIG arm: a run whose first declared TIG leg is {@code adam} is ADaM-family even
+     * though its kind is not {@code ADAM}, so with a declared SDTM product it IS wrapped.
+     */
+    @Test
+    void gateAdmitsATigAdamRun(@TempDir Path dir) throws IOException
+    {
+        StudyValidationParams params = withCompanionStore(dir);
+        List<String> effective = List.of("standards/tig/1-0/adam", "standards/sdtmig/3-4");
+        MetadataProvider runProvider = mock(MetadataProvider.class);
+
+        assertInstanceOf(
+                CompanionDomainsProvider.class, StudyValidationService
+                        .maybeWrapCompanion(runProvider, params, StandardKind.UNKNOWN, effective),
+                "a TIG adam-leg run is ADaM-family, so it is wrapped");
+    }
+
+
+    /** The same UNKNOWN-kind run with no TIG adam leg is not ADaM-family, and is not wrapped. */
+    @Test
+    void gateRefusesAnUnknownRunWithoutATigAdamLeg(@TempDir Path dir) throws IOException
+    {
+        StudyValidationParams params = withCompanionStore(dir);
+        List<String> effective = List.of("standards/sdtmig/3-4");
+        MetadataProvider runProvider = mock(MetadataProvider.class);
+
+        assertSame(runProvider, StudyValidationService.maybeWrapCompanion(runProvider, params,
+                StandardKind.UNKNOWN, effective));
+    }
+
+
+    /** Run parameters naming a hermetic store that carries exactly {@code sdtmig/3-4} (DM). */
+    private StudyValidationParams withCompanionStore(Path dir) throws IOException
+    {
+        Path file = dir.resolve("store.zip");
+        StoredVariable studyid = StoredVariable.builder().name("STUDYID").ordinal("1").core("Req")
+                .simpleDatatype("Char").build();
+        StoredProduct ig = StoredProduct.builder().key("standards/sdtmig/3-4").version("3-4")
+                .classes(List.of(new StoredClass("SpecialPurpose", null, "1", List.of(), List
+                        .of(new StoredDataset("DM", "Demographics", "1", null, List.of(studyid))))))
+                .build();
+        new MetadataStoreWriter().addProduct(ig).publishedCtPackages(List.of())
+                .productCatalogue(List.of("standards/sdtmig/3-4")).write(file);
+        return base().metadataStore(file.toString()).build();
     }
 }
