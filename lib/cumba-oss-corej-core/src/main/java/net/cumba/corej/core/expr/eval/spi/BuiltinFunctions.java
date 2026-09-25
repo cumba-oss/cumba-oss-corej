@@ -292,7 +292,11 @@ public final class BuiltinFunctions implements FunctionProvider
         });
         // concat(a, b[, c]): string concatenation; a missing operand contributes the empty string,
         // so the result is never missing (empty when all are). coalesce(a, b[, c]): the first
-        // non-missing operand's resolved value, else missing. ⭐ Phase 6b (D19a/D59): the former
+        // operand that is neither missing nor "" — resolved — else missing. ⚠ Vector.isMissing is
+        // empty()'s scalar predicate (DataValueSupport.isEmptyOrMissing), so an absent char
+        // column, which folds to "" (D34 #3), is skipped and the next operand is consulted; a
+        // numeric 0 is a real value and is kept (PLAN-coalesce-empty-semantics, design A, owner
+        // 2026-09-25; pinned by CoalesceEmptySemanticsTest). ⭐ Phase 6b (D19a/D59): the former
         // arity-2/arity-3 overloads are ONE descriptor with an optional third parameter — an
         // absent `c` is byte-identical to the retired arity-2 registration.
         fns.add(new FunctionDescriptor("concat", List.of(p("a"), p("b"), opt("c", Unknown.UNKNOWN)),
