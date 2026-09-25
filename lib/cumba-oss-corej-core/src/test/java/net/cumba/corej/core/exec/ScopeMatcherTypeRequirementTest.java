@@ -361,7 +361,7 @@ class ScopeMatcherTypeRequirementTest
             ScopeVariableSource src = ScopeVariableSource.of(inventory(byName), primary);
             assertNotNull(src);
             return ScopeMatcherCalls.describeVariablesMismatch(rule, primary.getMetaData(), null,
-                    src, ScopeMatcher.QualifiedEntryPolicy.SKIP);
+                    src);
         }
 
 

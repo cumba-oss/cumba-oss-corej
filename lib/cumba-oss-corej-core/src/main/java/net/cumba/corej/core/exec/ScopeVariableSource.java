@@ -44,9 +44,9 @@ import org.jspecify.annotations.Nullable;
  * ⭐ <b>What a {@code null} source MEANS changed on 2026-09-10</b> (owner ruling, disposition (b) of
  * {@code <meta>/plans/PLAN-qualified-requirements-cross-standard.md} §8.4). It used to mean "ignore
  * qualified entries" plus a one-time WARN — which left a rule whose {@code Check}-side guard had
- * been hoisted into {@code Requirements} running with nothing in its place. Production callers now
- * pass {@link ScopeMatcher.QualifiedEntryPolicy#SKIP}: an undecidable entry skips the rule with a
- * reason naming the <em>resolver</em>, not the dataset. The WARN survives only for the {@code Any}
+ * been hoisted into {@code Requirements} running with nothing in its place. An undecidable entry
+ * now skips the rule with a reason naming the <em>resolver</em>, not the dataset — the only policy
+ * since K6 (2026-09-25) retired the "ignore" option. The WARN survives only for the {@code Any}
  * leg, where an unqualified sibling can still satisfy the leg on its own.
  * </p>
  *

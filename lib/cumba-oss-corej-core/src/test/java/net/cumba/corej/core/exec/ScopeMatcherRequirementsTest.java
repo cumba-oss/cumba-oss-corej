@@ -240,51 +240,57 @@ class ScopeMatcherRequirementsTest
 
 
         /**
-         * ⭐ <b>The one real residual of the {@code Any} design — and it is WIDER than the plan
-         * states.</b> Pinned here because it has zero carriers today and would otherwise be
-         * discovered later.
+         * ⭐ <b>A qualified entry with no foreign source is UNDECIDABLE — never vacuous.</b>
          *
          * <p>
-         * {@code foreign == null} is generation time: {@code DatasetRuleResolver.describeScopeSkip}
-         * passes null deliberately, so a resolver that cannot enumerate datasets does not skip
-         * every qualified rule. There {@code describeIncludeEntry} answers "satisfied" for
-         * <em>every</em> qualified entry.
+         * {@code foreign == null} means the resolver in effect cannot enumerate datasets
+         * ({@code ScopeVariableSource.of} answers {@code null} for a bare {@code DatasetResolver}).
+         * Under the one policy the engine has — owner ruling 2026-09-10,
+         * {@code plans/PLAN-qualified-requirements-cross-standard.md} §8.4 disposition (b) — an
+         * undecidable entry is a mismatch whose reason names the <em>resolver</em>, so the report
+         * cannot be read as "the column was absent".
          * </p>
          *
          * <p>
-         * ⚠⚠ {@code plans/done/PLAN-scope-requirements-split.md} &#167;4.3 records this as <em>"an
-         * {@code Any} list consisting <b>only</b> of qualified entries is vacuously
-         * satisfied"</em>. <b>Measured: the "only" is too narrow.</b> {@code Any} is a disjunction
-         * that short-circuits on the first satisfied entry, so <b>one</b> qualified entry anywhere
-         * in the list satisfies the whole leg at generation time — a mixed list is vacuous too.
-         * {@code All} does not widen the same way: it must satisfy every entry, so an unqualified
-         * sibling still decides it.
-         * </p>
-         *
-         * <p>
-         * This remains a <em>property</em>, not a bug: it is the same conservative direction
-         * {@code All} takes, it prevents generation-time skips, and none of the ten rules adopting
-         * {@code Any} carries a qualified entry — so the residual has zero carriers on day one.
+         * ⚑ History. Until 2026-09-25 this test pinned the opposite for the qualified-blind
+         * overloads ({@code QualifiedEntryPolicy.IGNORE}): "one qualified entry anywhere in an
+         * {@code Any} list makes the leg vacuous at generation time" — the residual
+         * {@code plans/done/PLAN-scope-requirements-split.md} §4.3 records, measured wider than the
+         * plan stated. Those overloads had no production caller (every production path already
+         * passed {@code SKIP}) and were retired with the enum
+         * ({@code PLAN-retire-dead-multi-match-lookup} U1 / K6), so the residual no longer exists
+         * anywhere: the same inputs now yield the undecidable reason, and this test pins that.
          * </p>
          */
         @Test
-        @DisplayName("⭐ ONE qualified entry makes an Any leg vacuous at generation time")
-        void anyWithAQualifiedEntryIsVacuousAtGenerationTime()
+        @DisplayName("⭐ a qualified entry in an Any leg is undecidable without a foreign source")
+        void anyWithAQualifiedEntryIsUndecidableWithoutAForeignSource()
         {
-            assertNull(describe(ruleWithRequirement(null, List.of("DM.ARM", "EX.EXDOSE"), null),
-                    meta("TE", "TESEQ")), "qualified-only: the shape §4.3 names");
-            assertNull(
-                    describe(ruleWithRequirement(null, List.of("DM.ARM", "TEDUR"), null),
-                            meta("TE", "TESEQ")),
-                    "MIXED is vacuous too — the disjunction short-circuits on the qualified entry,"
-                            + " so §4.3's 'consisting ONLY of qualified entries' is too narrow");
-            // The control that keeps the two statements apart: with NO qualified entry the leg is
-            // decidable at generation time and does report a mismatch.
-            assertNotNull(describe(ruleWithRequirement(null, List.of("TEENRL", "TEDUR"), null),
-                    meta("TE", "TESEQ")));
-            // …and the conjunction does NOT widen the same way.
-            assertNotNull(describe(ruleWithRequirement(List.of("DM.ARM", "TEDUR"), null, null),
-                    meta("TE", "TESEQ")));
+            String qualifiedOnly = describe(
+                    ruleWithRequirement(null, List.of("DM.ARM", "EX.EXDOSE"), null),
+                    meta("TE", "TESEQ"));
+            assertNotNull(qualifiedOnly, "qualified-only: undecidable, not vacuously satisfied");
+            assertTrue(qualifiedOnly.contains("could not be decided")
+                    && qualifiedOnly.contains("DM.ARM"), qualifiedOnly);
+            // MIXED: the unqualified sibling TEDUR is absent, so the leg is unmet — and the reason
+            // is the undecidable one, not absence (the disjunction no longer short-circuits on the
+            // qualified entry, which the IGNORE reading used to let it do).
+            String mixed = describe(ruleWithRequirement(null, List.of("DM.ARM", "TEDUR"), null),
+                    meta("TE", "TESEQ"));
+            assertNotNull(mixed, "mixed: unmet");
+            assertTrue(mixed.contains("could not be decided"), mixed);
+            // The control that keeps the statements apart: with NO qualified entry the leg is
+            // decidable and reports plain absence, never the undecidable wording.
+            String unqualified = describe(
+                    ruleWithRequirement(null, List.of("TEENRL", "TEDUR"), null),
+                    meta("TE", "TESEQ"));
+            assertNotNull(unqualified);
+            assertFalse(unqualified.contains("could not be decided"), unqualified);
+            // …and the conjunction is undecidable the same way.
+            String all = describe(ruleWithRequirement(List.of("DM.ARM", "TEDUR"), null, null),
+                    meta("TE", "TESEQ"));
+            assertNotNull(all);
+            assertTrue(all.contains("could not be decided"), all);
         }
     }
 

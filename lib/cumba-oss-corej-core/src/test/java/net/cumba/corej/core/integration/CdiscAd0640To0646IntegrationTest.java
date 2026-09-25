@@ -105,8 +105,8 @@ class CdiscAd0640To0646IntegrationTest
      * {@code Check} (2026-09-11 absent-column board), and {@code ScopeVariableSource.of} answers a
      * qualified entry only for a {@link DatasetResolver.WithInventory}: a plain lambda cannot
      * distinguish "AE is genuinely absent" from "this resolver cannot see other datasets", so the
-     * owner-ruled {@code QualifiedEntryPolicy.SKIP} would skip every rule here and the seven
-     * "fires" tests would assert 0 against a rule that never ran.
+     * owner-ruled undecidable-is-a-mismatch policy would skip every rule here and the seven "fires"
+     * tests would assert 0 against a rule that never ran.
      */
     private static DatasetResolver resolverOf(IDataTable ae, IDataTable suppae)
     {

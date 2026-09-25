@@ -445,34 +445,6 @@ public final class ScopeMatcher
                 .anyMatch(useCase::equalsIgnoreCase);
     }
 
-    /**
-     * What a <b>qualified</b> entry means when {@code foreign} is {@code null} — i.e. when the
-     * resolver in effect cannot enumerate datasets and the entry therefore cannot be
-     * <em>decided</em> at all.
-     *
-     * <p>
-     * ⚠⚠ The two answers are not stylistic variants. {@code IGNORE} treats the undecidable entry as
-     * <b>satisfied</b>, so a rule whose {@code Check}-side {@code var_exists(DM.ARM)} guard was
-     * hoisted into {@code Requirements} runs with <b>nothing</b> in the guard's place and floods.
-     * That is the silent half of {@code plans/PLAN-qualified-requirements-cross-standard.md} §8.4,
-     * and it is why the owner ruled for {@code SKIP} on the production paths (2026-09-10,
-     * disposition (b)).
-     * </p>
-     */
-    public enum QualifiedEntryPolicy
-    {
-        /**
-         * Undecidable ⇒ <b>satisfied</b>; the rule runs. The pre-2026-09-10 behaviour. No
-         * production caller passes it since the qualified-blind overloads were retired
-         * (2026-09-25).
-         */
-        IGNORE,
-        /**
-         * Undecidable ⇒ <b>mismatch</b>, with a reason naming the resolver rather than the dataset,
-         * so the report cannot read it as "the column was absent". Every production caller.
-         */
-        SKIP
-    }
 
     /**
      * The {@code Requirements.Variables} matcher: returns {@code null} when the rule's variable
@@ -508,20 +480,21 @@ public final class ScopeMatcher
      * by {@code Include: [DM.ARM]} is skipped (with a reason naming the dataset) when DM is absent,
      * instead of silently evaluating against an unresolved join. When {@code foreign} is
      * {@code null} the resolver in effect cannot enumerate datasets (see
-     * {@link ScopeVariableSource#of}), so a qualified entry cannot be <em>decided</em>;
-     * {@link QualifiedEntryPolicy} says what that means.</li>
+     * {@link ScopeVariableSource#of}), so a qualified entry cannot be <em>decided</em> and is a
+     * mismatch (the paragraph below).</li>
      * </ul>
      * {@code --} resolution happens before pattern detection, so {@code --*DT} (prefix + glob)
      * composes naturally.
      *
      * <p>
-     * ⚠⚠ <b>Production callers pass {@code SKIP}</b> ({@code RuleRunner},
-     * {@code DatasetRuleResolver}; owner ruling 2026-09-10,
-     * {@code plans/PLAN-qualified-requirements-cross-standard.md} §8.4 disposition (b)). Under
-     * {@code IGNORE} a rule whose {@code var_exists(DM.ARM)} guard was hoisted into
-     * {@code Requirements} runs with nothing in the guard's place, which is the flood the hoist was
-     * supposed to make auditable. ⚑ The qualified-blind conveniences that passed {@code IGNORE}
-     * were retired 2026-09-25 (U1 / A7); nothing in {@code src/main} passes it any more.
+     * ⚠⚠ An undecidable qualified entry is a <b>mismatch</b>, with a reason naming the resolver
+     * rather than the dataset, so the report cannot read it as "the column was absent" (owner
+     * ruling 2026-09-10, {@code plans/PLAN-qualified-requirements-cross-standard.md} §8.4
+     * disposition (b)). The alternative — treating it as satisfied — let a rule whose
+     * {@code var_exists(DM.ARM)} guard was hoisted into {@code Requirements} run with nothing in
+     * the guard's place, which is the flood the hoist was supposed to make auditable. ⚑ That
+     * alternative existed as a {@code QualifiedEntryPolicy.IGNORE} option for the qualified-blind
+     * conveniences until 2026-09-25; both were retired (U1 / A7, K6) and there is one policy now.
      * </p>
      *
      * @param rule
@@ -533,14 +506,11 @@ public final class ScopeMatcher
      *            entry, or {@code null}
      * @param foreign
      *            the foreign-metadata source, or {@code null} when qualified entries cannot be
-     *            evaluated
-     * @param policy
-     *            what an undecidable qualified entry means
+     *            evaluated (every qualified entry is then undecidable)
      * @return {@code null} when matching, otherwise the mismatch description
      */
     public static @Nullable String describeVariablesMismatch(Rule rule, DataTableMeta meta,
-            @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign,
-            QualifiedEntryPolicy policy)
+            @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign)
     {
         if (meta == null)
         {
@@ -560,7 +530,7 @@ public final class ScopeMatcher
             for (String varName : all)
             {
                 EntryMismatch mismatch = describeIncludeEntry(varName, meta, domainPrefix, foreign,
-                        policy, "All");
+                        "All");
                 if (mismatch != null)
                 {
                     return mismatch.reason();
@@ -575,8 +545,8 @@ public final class ScopeMatcher
             // first unmet All entry wins above.
             for (int g = 0; g < anyGroups.size(); g++)
             {
-                String reason = describeAnyLeg(anyGroups.get(g), g + 1, meta, domainPrefix, foreign,
-                        policy);
+                String reason = describeAnyLeg(anyGroups.get(g), g + 1, meta, domainPrefix,
+                        foreign);
                 if (reason != null)
                 {
                     return reason;
@@ -588,7 +558,7 @@ public final class ScopeMatcher
         {
             for (String varName : none)
             {
-                String reason = describeExcludeEntry(varName, meta, domainPrefix, foreign, policy);
+                String reason = describeExcludeEntry(varName, meta, domainPrefix, foreign);
                 if (reason != null)
                 {
                     return reason;
@@ -627,25 +597,20 @@ public final class ScopeMatcher
      * </p>
      *
      * <p>
-     * ⭐ <b>The one residual, stated because it has zero carriers today — and since 2026-09-10 it
-     * holds under {@link QualifiedEntryPolicy#IGNORE} ONLY.</b> Under {@code foreign == null} with
-     * {@code IGNORE}, {@link #describeIncludeEntry} answers "satisfied" for <em>every</em>
-     * qualified entry. Because a group is a disjunction that short-circuits, <b>one</b> qualified
-     * entry anywhere in a group makes <em>that group</em> vacuously satisfied there — since the
-     * groups split, this is a genuine <b>narrowing</b> of the pre-groups residual: it no longer
-     * spreads to the whole facet, and an all-unqualified sibling group still decides for itself.
-     * ({@code All} does not widen the same way: it must satisfy every entry, so an unqualified
-     * sibling still decides it.) That is the same conservative direction {@code All} takes and it
-     * is deliberate — it prevents generation-time skips — and none of the rules adopting
-     * {@code Any} carries a qualified entry, so it is written down rather than discovered.
+     * ⚑ History: until 2026-09-25 a {@code QualifiedEntryPolicy.IGNORE} option made
+     * {@link #describeIncludeEntry} answer "satisfied" for every qualified entry under
+     * {@code foreign == null}, so one qualified entry anywhere in a group satisfied <em>that
+     * group</em> vacuously. That option had no production caller after the qualified-blind
+     * overloads went (U1 / A7) and was retired with them (K6); an undecidable entry is now a
+     * mismatch in every leg, and the per-group memory below is what keeps its reason honest.
      * </p>
      */
     private static @Nullable String describeAnyLeg(List<String> group, int groupIndex,
             DataTableMeta meta, @Nullable String domainPrefix,
-            @Nullable ScopeVariableSource foreign, QualifiedEntryPolicy policy)
+            @Nullable ScopeVariableSource foreign)
     {
-        // ⚠ Under SKIP an undecidable qualified entry is a mismatch like any other, so it no longer
-        // satisfies the group vacuously (the residual the javadoc above records). The group must
+        // ⚠ An undecidable qualified entry is a mismatch like any other, so it does not satisfy
+        // the group vacuously (the retired IGNORE option the javadoc above records). The group must
         // then NOT report "no variable present" — that would say "absent" where the truth is
         // "could not be decided" — so the undecidable reason is remembered and reported instead.
         // ⚠⚠ The memory is PER GROUP by construction (one call per group, one local): an
@@ -656,12 +621,12 @@ public final class ScopeMatcher
         for (String varName : group)
         {
             EntryMismatch mismatch = describeIncludeEntry(varName, meta, domainPrefix, foreign,
-                    policy, "Any");
+                    "Any");
             if (mismatch == null)
             {
                 return null; // short-circuit: one present entry satisfies the whole group
             }
-            if (undecidable == null && isUndecidableQualifiedEntry(varName, foreign, policy))
+            if (undecidable == null && isUndecidableQualifiedEntry(varName, foreign))
             {
                 undecidable = mismatch.reason();
             }
@@ -698,21 +663,18 @@ public final class ScopeMatcher
     /**
      * Whether {@code varName} is a qualified entry that {@code policy} makes a mismatch purely
      * because it cannot be decided. Shared by the three legs so they cannot disagree about which
-     * entries the policy reaches.
+     * entries are undecidable.
      *
      * @param varName
      *            the entry as authored
      * @param foreign
      *            the foreign-metadata source, or {@code null} when none could be built
-     * @param policy
-     *            the policy in effect
-     * @return whether the entry is undecidable under this policy
+     * @return whether the entry is undecidable
      */
     private static boolean isUndecidableQualifiedEntry(String varName,
-            @Nullable ScopeVariableSource foreign, QualifiedEntryPolicy policy)
+            @Nullable ScopeVariableSource foreign)
     {
-        return foreign == null && policy == QualifiedEntryPolicy.SKIP
-                && ScopeVariableEntry.parse(varName).isQualified();
+        return foreign == null && ScopeVariableEntry.parse(varName).isQualified();
     }
 
 
@@ -826,8 +788,7 @@ public final class ScopeMatcher
 
 
     private static @Nullable EntryMismatch describeIncludeEntry(String varName, DataTableMeta meta,
-            @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign,
-            QualifiedEntryPolicy policy, String facet)
+            @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign, String facet)
     {
         ScopeVariableEntry entry = ScopeVariableEntry.parse(varName);
         // ⭐ PLAN-variable-type-requirements: the demanded type, or null for an untagged entry —
@@ -842,9 +803,7 @@ public final class ScopeMatcher
                 // share this matcher, and describeAnyLeg propagates the string it returns as the
                 // leg's own answer — so a hard-coded "All" made an `Any` rule report a facet it
                 // does not declare. Review finding 1, 2026-09-10.
-                return policy == QualifiedEntryPolicy.SKIP
-                        ? EntryMismatch.absent(undecidableQualifiedReason(facet, varName))
-                        : null;
+                return EntryMismatch.absent(undecidableQualifiedReason(facet, varName));
             }
             // Name the RESOLVED dataset in every message (SUPP-- -> SUPPAE), so the reader is
             // told which dataset was actually looked for.
@@ -1108,8 +1067,7 @@ public final class ScopeMatcher
      * dataset is unavailable excludes nothing.
      */
     private static @Nullable String describeExcludeEntry(String varName, DataTableMeta meta,
-            @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign,
-            QualifiedEntryPolicy policy)
+            @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign)
     {
         ScopeVariableEntry entry = ScopeVariableEntry.parse(varName);
         String qualifier = entry.qualifier();
@@ -1117,13 +1075,11 @@ public final class ScopeMatcher
         {
             if (foreign == null)
             {
-                // ⚠ SKIP applies to None as well, and for the same reason: "no entry may be
-                // present" is as undecidable as "every entry must be", so answering "excludes
+                // ⚠ Undecidable applies to None as well, and for the same reason: "no entry may
+                // be present" is as undecidable as "every entry must be", so answering "excludes
                 // nothing" is an answer the resolver has not earned. Zero corpus carriers today
                 // (VariableRequirement's javadoc records that), so this arm is gate-tested only.
-                return policy == QualifiedEntryPolicy.SKIP
-                        ? undecidableQualifiedReason("None", varName)
-                        : null;
+                return undecidableQualifiedReason("None", varName);
             }
             String dataset = foreign.resolvedQualifier(qualifier);
             List<DataTableMeta> metas = foreign.metasOf(qualifier);

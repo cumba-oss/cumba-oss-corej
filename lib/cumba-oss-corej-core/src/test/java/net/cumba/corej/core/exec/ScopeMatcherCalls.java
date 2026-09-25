@@ -13,10 +13,10 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * ⭐ {@code PLAN-retire-dead-multi-match-lookup} U1 (A5–A9) removed them from {@code src/main}:
  * production calls only the reason-bearing full forms ({@code describeDomainMismatch} with the
- * data-derived unsplit name, {@code describeClassMismatch}, the 5-argument
- * {@code describeVariablesMismatch} under {@code SKIP}, the set-valued
- * {@code describeDataStructureMismatch} / {@code describeSubclassMismatch}). The boolean API and
- * the table-less / single-token / qualified-blind conveniences had test callers only.
+ * data-derived unsplit name, {@code describeClassMismatch}, the 4-argument
+ * {@code describeVariablesMismatch}, the set-valued {@code describeDataStructureMismatch} /
+ * {@code describeSubclassMismatch}). The boolean API and the table-less / single-token /
+ * qualified-blind conveniences had test callers only.
  * </p>
  *
  * <p>
@@ -93,22 +93,15 @@ public final class ScopeMatcherCalls
 
 
     /**
-     * The qualified-blind reading the former 4-argument overload had: an undecidable qualified
-     * entry counts as satisfied ({@link ScopeMatcher.QualifiedEntryPolicy#IGNORE}).
+     * The production entry point, passed through. ⚠ With {@code foreign == null} every qualified
+     * entry is undecidable and therefore a mismatch (the former 4-argument overload's
+     * {@code IGNORE} reading — undecidable counts as satisfied — was retired with the
+     * {@code QualifiedEntryPolicy} enum, K6, 2026-09-25).
      */
     public static @Nullable String describeVariablesMismatch(Rule rule, DataTableMeta meta,
             @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign)
     {
-        return describeVariablesMismatch(rule, meta, domainPrefix, foreign,
-                ScopeMatcher.QualifiedEntryPolicy.IGNORE);
-    }
-
-
-    public static @Nullable String describeVariablesMismatch(Rule rule, DataTableMeta meta,
-            @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign,
-            ScopeMatcher.QualifiedEntryPolicy policy)
-    {
-        return ScopeMatcher.describeVariablesMismatch(rule, meta, domainPrefix, foreign, policy);
+        return ScopeMatcher.describeVariablesMismatch(rule, meta, domainPrefix, foreign);
     }
 
 

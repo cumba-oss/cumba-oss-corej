@@ -413,31 +413,20 @@ class ScopeMatcherQualifiedTest
     // ------------------------------------------------------------------
 
 
-    @Test
-    void bareResolverYieldsNoSourceAndIgnorePolicyLetsTheRuleRun()
-    {
-        assertNull(ScopeVariableSource.of(_ -> null, primary()),
-                "a bare DatasetResolver cannot enumerate datasets");
-        assertNull(
-                ScopeMatcherCalls.describeVariablesMismatch(include("DM.ARM"),
-                        primary().getMetaData(), "AE", null),
-                "under IGNORE (this overload's documented default) a qualified entry must not skip");
-        assertNull(ScopeMatcherCalls.describeVariablesMismatch(exclude("DM.ARM"),
-                primary().getMetaData(), "AE", null));
-    }
-
-
     /**
      * Owner ruling 2026-09-10, disposition (b) of
-     * {@code plans/PLAN-qualified-requirements-cross-standard.md} §8.4 — the production policy. The
-     * inverse of the test above, and the reason the two live side by side: the difference between
-     * them is the whole of the ruling.
+     * {@code plans/PLAN-qualified-requirements-cross-standard.md} §8.4 — the one policy. (Its
+     * inverse, {@code IGNORE} — an undecidable entry counts as satisfied — was pinned beside it
+     * until K6 retired the option on 2026-09-25; a bare resolver still yields no source, which the
+     * first assertion keeps.)
      */
     @Test
     void bareResolverUnderSkipPolicyReportsTheEntryAsUndecidable()
     {
+        assertNull(ScopeVariableSource.of(_ -> null, primary()),
+                "a bare DatasetResolver cannot enumerate datasets");
         String all = ScopeMatcherCalls.describeVariablesMismatch(include("DM.ARM"),
-                primary().getMetaData(), "AE", null, ScopeMatcher.QualifiedEntryPolicy.SKIP);
+                primary().getMetaData(), "AE", null);
         assertNotNull(all, "under SKIP an undecidable qualified entry must skip the rule");
         assertTrue(all.contains("could not be decided") && all.contains("resolver"),
                 "the reason must name the RESOLVER, so the report cannot be read as "
@@ -447,16 +436,16 @@ class ScopeMatcherQualifiedTest
         assertTrue(all.contains("DM.ARM"), "and it must name the entry: " + all);
 
         String none = ScopeMatcherCalls.describeVariablesMismatch(exclude("DM.ARM"),
-                primary().getMetaData(), "AE", null, ScopeMatcher.QualifiedEntryPolicy.SKIP);
+                primary().getMetaData(), "AE", null);
         assertNotNull(none, "None is as undecidable as All");
         assertTrue(none.contains("None"), "and says which facet it was: " + none);
     }
 
 
     /**
-     * The {@code Any} leg short-circuits on the first satisfied entry, so under {@code IGNORE} one
-     * qualified entry satisfies the whole leg vacuously. Under {@code SKIP} it must not — and the
-     * reason must be the undecidable one, never "no variable present", which would claim absence.
+     * The {@code Any} leg short-circuits on the first satisfied entry; an undecidable qualified
+     * entry must not count as satisfied — and the reason must be the undecidable one, never "no
+     * variable present", which would claim absence.
      */
     @Test
     void anyLegUnderSkipPolicyReportsUndecidableRatherThanAbsent()
@@ -468,12 +457,9 @@ class ScopeMatcherQualifiedTest
         req.setVariables(vars);
         rule.setRequirements(req);
 
-        assertNull(ScopeMatcherCalls.describeVariablesMismatch(rule, primary().getMetaData(), "AE",
-                null), "IGNORE: the qualified entry satisfies the leg vacuously");
-
         String reason = ScopeMatcherCalls.describeVariablesMismatch(rule, primary().getMetaData(),
-                "AE", null, ScopeMatcher.QualifiedEntryPolicy.SKIP);
-        assertNotNull(reason, "SKIP: neither entry is satisfied, so the leg is unmet");
+                "AE", null);
+        assertNotNull(reason, "neither entry is satisfied, so the leg is unmet");
         assertTrue(reason.contains("could not be decided"),
                 "and it reports the undecidable entry, not absence: " + reason);
         // ⚠ Added by review finding 1 (2026-09-10). `All` and `Any` share one entry matcher, which

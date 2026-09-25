@@ -755,8 +755,7 @@ public class DatasetRuleResolver
         // SAME predicate at two moments, so a split policy between them would be drift by
         // construction: a rule the generator let through would then be skipped at execution, and
         // the audit trail would name two different reasons for one fact.
-        return ScopeMatcher.describeVariablesMismatch(r, meta, domainPrefix, scopeForeign,
-                ScopeMatcher.QualifiedEntryPolicy.SKIP);
+        return ScopeMatcher.describeVariablesMismatch(r, meta, domainPrefix, scopeForeign);
     }
 
 }

@@ -207,36 +207,18 @@ class ScopeMatcherAnyGroupsTest
     {
 
         /**
-         * The {@code IGNORE} residual, narrowed: one qualified entry makes <em>that group</em>
-         * vacuously satisfied under {@code foreign == null}, no longer the whole facet — an
-         * all-unqualified sibling group still decides for itself.
-         */
-        @Test
-        @DisplayName("IGNORE: a qualified entry satisfies only ITS group — group 2 still decides")
-        void ignoreResidualIsPerGroup()
-        {
-            Rule rule = ruleWithAnyGroups(List.of(List.of("DM.ARM", "DSSTDTC"), END));
-            String reason = describe(rule, meta("DSSEQ"));
-            assertNotNull(reason,
-                    "pre-groups, ONE qualified entry vacuously satisfied the WHOLE facet; with"
-                            + " groups it must satisfy only group 1");
-            assertTrue(reason.contains("group 2 [DSENDTC, DSENRF]"), reason);
-        }
-
-
-        /**
          * ⚠⚠ The undecidable memory is <b>per group</b>: an undecidable qualified entry in a
          * <em>satisfied</em> group 1 must not decorate group 2's genuinely-absent answer — the
          * report would then say "could not be decided" about columns that were looked for and are
          * simply not there.
          */
         @Test
-        @DisplayName("SKIP: group 1's undecidable entry does not leak into group 2's absence")
+        @DisplayName("group 1's undecidable entry does not leak into group 2's absence")
         void undecidableMemoryIsPerGroup()
         {
             Rule rule = ruleWithAnyGroups(List.of(List.of("DM.ARM", "DSSTDTC"), END));
             String reason = ScopeMatcherCalls.describeVariablesMismatch(rule, meta("DSSTDTC"), null,
-                    null, ScopeMatcher.QualifiedEntryPolicy.SKIP);
+                    null);
             assertEquals(
                     "no variable of Requirements.Variables.Any group 2 [DSENDTC, DSENRF]"
                             + " present in dataset",
@@ -250,12 +232,12 @@ class ScopeMatcherAnyGroupsTest
          * different things (see {@code undecidableQualifiedReason}).
          */
         @Test
-        @DisplayName("SKIP: an undecidable group reports the undecidable reason, never 'absent'")
+        @DisplayName("an undecidable group reports the undecidable reason, never 'absent'")
         void anUndecidableGroupIsNotReportedAsAbsent()
         {
             Rule rule = ruleWithAnyGroups(List.of(START, List.of("DM.ARM", "DSENDTC")));
             String reason = ScopeMatcherCalls.describeVariablesMismatch(rule, meta("DSSTDTC"), null,
-                    null, ScopeMatcher.QualifiedEntryPolicy.SKIP);
+                    null);
             assertNotNull(reason);
             assertTrue(reason.contains("could not be decided"), reason);
             assertTrue(reason.contains("DM.ARM"), reason);

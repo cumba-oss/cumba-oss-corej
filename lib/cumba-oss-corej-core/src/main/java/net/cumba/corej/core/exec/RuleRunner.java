@@ -551,8 +551,7 @@ public final class RuleRunner
         // Requirements running with nothing in the guard's place. The reason string names the
         // resolver, never the dataset, so the report cannot be read as "the column was absent".
         String variableScopeMismatch = ScopeMatcher.describeVariablesMismatch(rule,
-                table.getMetaData(), varWildcardPrefix, scopeForeign,
-                ScopeMatcher.QualifiedEntryPolicy.SKIP);
+                table.getMetaData(), varWildcardPrefix, scopeForeign);
         if (variableScopeMismatch != null)
         {
             return RuleExecutionResult.builder().ruleId(ruleId).message(message)
