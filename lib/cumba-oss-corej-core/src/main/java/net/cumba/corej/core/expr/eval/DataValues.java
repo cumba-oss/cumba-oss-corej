@@ -13,8 +13,7 @@ import org.jspecify.annotations.Nullable;
  * The wrapping semantics are (which now delegates here): {@code null} → missing; a {@link Number}
  * reports {@link DataValueType#DOUBLE} and a numeric double; anything else reports
  * {@link DataValueType#STRING} with the value's {@code toString()}. Keeping this in one place means
- * the native evaluator and the legacy engine box non-column values the same way, so comparisons
- * against them behave identically.
+ * every non-column value is boxed the same way, so comparisons against them behave identically.
  * </p>
  */
 public final class DataValues

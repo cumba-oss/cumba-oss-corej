@@ -12,7 +12,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Three-valued (Kleene) native fold of a boolean {@link Expr} at dataset level — the native
- * equivalent of the legacy {@code CheckConditionOptimizer.partialEvaluateDataset} +
+ * successor of the retired {@code CheckConditionOptimizer.partialEvaluateDataset} +
  * {@code simplify} pass (see {@code plans/done/PLAN-native-runtime-guard-residual.md}).
  *
  * <p>

@@ -239,8 +239,7 @@ public final class AdamDataStructureDetector
      * </p>
      * <p>
      * Java-only: the parity fork's {@code get_data_structure} has no name gate. Java is therefore
-     * <em>narrower</em> here. Unobserved on the parity lane — no spec runs an ADaM rule against a
-     * non-ADaM-named primary dataset.
+     * <em>narrower</em> here.
      * </p>
      */
     private static final List<String> ADAM_NAME_PREFIXES = List.of("AD", "AX");
@@ -418,12 +417,11 @@ public final class AdamDataStructureDetector
      * <p>
      * The two-argument {@link #detect(String, Collection) detect} is the declared <b>mirror of
      * Python's {@code base_data_service.get_data_structure}</b>, which knows only the four root
-     * tokens, and the parity harness ({@code SpecRunner}) calls it as exactly that. It is also what
-     * {@link #hasNoStructureIndicators} is defined in terms of — the FU-4 {@code ADAM OTHER}
-     * <em>class</em> sentinel, a corpus-visible gate this phase must not move. Refining it in place
-     * would have changed both, so the device knowledge is layered on top instead: the mirror stays
-     * a mirror, and every production caller reaches the refinement through
-     * {@link #detect(String, Collection, String, boolean)} / {@link #detectAll}.
+     * tokens. It is also what {@link #hasNoStructureIndicators} is defined in terms of — the FU-4
+     * {@code ADAM OTHER} <em>class</em> sentinel, a corpus-visible gate this phase must not move.
+     * Refining it in place would have changed both, so the device knowledge is layered on top
+     * instead: the mirror stays a mirror, and every production caller reaches the refinement
+     * through {@link #detect(String, Collection, String, boolean)} / {@link #detectAll}.
      * </p>
      *
      * <h4>⚠⚠ Additivity — what a dataset may and may not lose</h4>

@@ -26,17 +26,16 @@ import net.cumba.datatable.view.IDataTableView;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Shared, parity-critical <i>group</i> semantics for the multi-row operators whose verdict depends
- * on cross-row state within a {@code within}-keyed partition (e.g.
- * {@code has_multiple_values_for}).
+ * Shared <i>group</i> semantics for the multi-row operators whose verdict depends on cross-row
+ * state within a {@code within}-keyed partition (e.g. {@code has_multiple_values_for}).
  *
  * <p>
  * Like {@link ScalarSemantics} / {@link ArithmeticSemantics} for the per-row operators, this class
- * is the single home for the partitioning and per-group algorithms that <b>both</b> the legacy
- * operator engine ({@link OperatorRegistry}) and the native expression evaluator (package
- * {@code net.cumba.corej.core.expr.eval}) compute over. Parity between the two backends is
- * therefore by construction — the native group-execution path is not a runtime dependency on the
- * legacy operator, it is the same shared code (Phase 4b / decision Q2).
+ * is the single home for the partitioning and per-group algorithms the native expression evaluator
+ * (package {@code net.cumba.corej.core.expr.eval}) computes over. ⚑ Corrected 2026-09-25: this
+ * paragraph used to say the retired legacy operator engine computed over the same code, so the two
+ * backends agreed by construction; that engine is gone (see {@link OperatorRegistry}, whose name is
+ * historical), so there is one engine and no two-backend parity.
  * </p>
  *
  * <p>
@@ -962,9 +961,8 @@ public final class GroupSemantics
      *
      * <p>
      * This deliberately uses its own value-keyed grouping (not {@link #partition}) because the
-     * legacy operator pools missing/empty within values into the {@code ""} bucket rather than
-     * dropping them. Both the legacy operator and the native evaluator call this one method, so
-     * they agree by construction.
+     * retired legacy operator pooled missing/empty within values into the {@code ""} bucket rather
+     * than dropping them, and the native evaluator keeps that contract.
      * </p>
      *
      * @param table

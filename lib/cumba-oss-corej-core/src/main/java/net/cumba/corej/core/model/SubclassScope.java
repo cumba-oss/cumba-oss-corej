@@ -25,8 +25,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * Unlike {@code Data_Structures} this field has no Python-engine runtime counterpart upstream (the
- * CORE rule schema defines it, nothing consumes it); the house parity fork carries a twin gate so
- * both lanes agree.
+ * CORE rule schema defines it, nothing consumes it).
  * </p>
  */
 @Data

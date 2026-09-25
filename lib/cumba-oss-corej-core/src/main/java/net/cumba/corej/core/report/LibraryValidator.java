@@ -1115,12 +1115,12 @@ public final class LibraryValidator
         }
 
         // Fix #59 completion: the execution-time `--` substitution prefix must be the CDISC domain
-        // code (RuleRunner.resolveOperationPrefix / CheckConditionTransformer.resolvePrefixes /
-        // EvaluationContext.domainPrefix), NOT the member name truncated to two characters. The old
-        // `prefixOf(domain)` returned "SU" for a SUPP dataset like "SUPPLB", so an operation with
-        // `domain: "SUPP--"` was rewritten to "SUPPSU" (resolveOperationPrefix's SUPP-aware branch
-        // only fires for a prefix starting with "SUPP"/"SQAP" of length > 4). resolve("SUPPSU")
-        // then missed and the operation result was absent.
+        // code (the dataset-name prefix OperationExecutor.resolvePrefixes and RuleSpecialiser
+        // apply, and EvaluationContext's domain prefix), NOT the member name truncated to two
+        // characters. The old `prefixOf(domain)` returned "SU" for a SUPP dataset like "SUPPLB", so
+        // an operation with `domain: "SUPP--"` was rewritten to "SUPPSU" (the SUPP-aware branch of
+        // OperationExecutor.resolvePrefixes only fires for a prefix starting with "SUPP"/"SQAP" of
+        // length > 4). resolve("SUPPSU") then missed and the operation result was absent.
         // cdiscDomain ("SUPPLB" here) feeds the SUPP-aware branch correctly, yielding "SUPPLB".
         String domainPrefix = cdiscDomain;
 

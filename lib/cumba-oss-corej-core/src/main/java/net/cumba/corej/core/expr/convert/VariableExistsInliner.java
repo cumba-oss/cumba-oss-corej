@@ -15,20 +15,14 @@ import org.jspecify.annotations.Nullable;
  * / {@code not var_exists(<col>)} check-position <em>function</em>, dropping the operation.
  *
  * <p>
- * The two engines implement variable-existence on opposite sides of the operation/operator line:
- * Python keeps a {@code variable_exists} operation (consumed as {@code $X == true}), while Java
- * retired that operation in favour of the {@code var_exists(X)} check function (see
- * {@code plans/done/PLAN-variable-exists-cross-dataset.md}). So the shipped {@code rules/} corpus
- * (production Java) and the parity Java lane's native fixture-compile path must rewrite the
- * operation form into the function form that Java already runs correctly. This class is that one
- * mapping, invoked from both:
+ * The {@code variable_exists} <em>operation</em> (consumed as {@code $X == true}) and the
+ * {@code var_exists(X)} check function express the same fact; the verdict surface is the function
+ * (see {@code plans/done/PLAN-variable-exists-cross-dataset.md}), and
+ * {@code OperationType.VARIABLE_EXISTS} survives only as the reporting carriage. This class is the
+ * one mapping from the operation form to the function form, invoked from
+ * {@code RulePackageLoader.inlineVariableExistsOps} at load. (The offline converter
+ * {@code OperationInliner}, deleted 2026-08-26, applied the same mapping to the corpus.)
  * </p>
- * <ul>
- * <li>the offline converter ({@code OperationInliner}) — fixes shipped {@code rules/}; and</li>
- * <li>Java's native fixture-compile path
- * ({@link net.cumba.corej.core.RulePackageLoader#installNativeExpr}) — so the parity Java lane
- * evaluates the fixture's {@code variable_exists} operation as {@code var_exists()}.</li>
- * </ul>
  *
  * <p>
  * The result is exactly the expression the retired {@code var_exists} check-leaf already lowered to

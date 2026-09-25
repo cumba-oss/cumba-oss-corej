@@ -259,7 +259,7 @@ public final class MetadataOperandMapping
     }
 
     /**
-     * Boolean-call names whose legacy operators the dataset fold supports
+     * Boolean-call names whose legacy operators the retired dataset fold supported
      * ({@code CheckConditionOptimizer.SUPPORTED_METADATA_OPERATORS}); their leading argument is a
      * fact-resolvable NAME position.
      */

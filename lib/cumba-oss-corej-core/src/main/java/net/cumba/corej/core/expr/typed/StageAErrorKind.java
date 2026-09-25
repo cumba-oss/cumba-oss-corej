@@ -79,13 +79,14 @@ public enum StageAErrorKind
      * ⚠ <b>Observe-only in 3b — DISARMED by its own measurement, loudly, not silently.</b> Measured
      * 2026-09-16: the full shipped tree (58 packages, 14 937 rule loads) has <b>zero</b> findings —
      * every corpus comparison pairs its temporal side with a column or {@code $}-reference, which
-     * stage A types as unknown — but the rulespec parity harness has exactly <b>one</b>:
-     * {@code EMPTYSTR-date-not-equal-empty} spells {@code date(AESTDTC) != ""} and expects
-     * {@code EXECUTED}, so arming parks it and reds the rules gate. Under the arming discipline
-     * above (zero newly parked over the shipped gates) the kind stays observe until phase 3c either
-     * respells that spec ({@code date("")}) or moves its expectation to the stage-A ERROR — a
-     * one-spec rules-repo edit, after which re-arming is measured-safe. The D71b one-sided
-     * spellings stay loadable either way, and the column side is stage B's business (D10).
+     * stage A types as unknown — but the {@code rulespec} drift-guard specs have exactly
+     * <b>one</b>: {@code EMPTYSTR-date-not-equal-empty} spells {@code date(AESTDTC) != ""} and
+     * expects {@code EXECUTED}, so arming parks it and reds the rules gate. Under the arming
+     * discipline above (zero newly parked over the shipped gates) the kind stays observe until
+     * phase 3c either respells that spec ({@code date("")}) or moves its expectation to the stage-A
+     * ERROR — a one-spec rules-repo edit, after which re-arming is measured-safe. The D71b
+     * one-sided spellings stay loadable either way, and the column side is stage B's business
+     * (D10).
      */
     MIXED_DATE_STRING_COMPARISON(false),
 

@@ -152,11 +152,15 @@ public final class DatasetExpressionCache
     /**
      * The eval-time decline gate (§3.6): whether a statically-pure candidate (see {@link #isPure})
      * may actually be cached against {@code ctx}. Purity is necessary but not sufficient — a
-     * {@code COLUMN} ref can resolve to a joined dataset or be shadowed by a context variable, both
-     * runtime properties the static classifier cannot see. Cache only when <b>all</b> hold:
+     * {@code COLUMN} ref can name a column the table does not carry or be shadowed by a context
+     * variable, both runtime properties the static classifier cannot see. Cache only when
+     * <b>all</b> hold:
      * <ol>
-     * <li><b>No joins</b> — {@code ctx.getJoinedDatasets().isEmpty()}; otherwise an absent-locally
-     * column ref resolves through the join fallback.</li>
+     * <li><b>No joins</b> — {@code ctx.getJoinedDatasets().isEmpty()}. ⚑ Kept as a conservative
+     * guard. Its original reason — an absent-locally column ref resolving through the join fallback
+     * — is gone (that fallback was removed 2026-09-21, {@code PLAN-unqualified-name-primary-only}),
+     * and rule 3 alone already keeps every joined read ({@code DOTTED_REF}, {@code MATCHED_FLAG})
+     * out of the cache. Relaxing it is a performance change, not made here.</li>
      * <li><b>The {@code {ROW}} evaluation domain</b> — not one with a VAR cursor, whose
      * per-variable loop binds the variable name into the context and re-evaluates per variable (so
      * a leaf's result need not even be constant within one rule), and not the broadcast {@code {}}

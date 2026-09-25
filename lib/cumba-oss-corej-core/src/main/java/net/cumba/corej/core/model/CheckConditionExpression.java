@@ -11,8 +11,8 @@ import net.cumba.corej.core.expr.ast.Expr;
  *
  * <p>
  * Produced by {@link CheckConditionDeserializer} when {@code ExprLowering} cannot lower an
- * expression-form Check; consumed by the native evaluation path. The legacy engine has no operator
- * surface for it, so it is evaluated through the native backend wherever it is reached.
+ * expression-form Check; consumed by the native evaluation path. It is evaluated through the native
+ * backend wherever it is reached.
  * </p>
  */
 public record CheckConditionExpression(Expr expr, String source) implements CheckCondition

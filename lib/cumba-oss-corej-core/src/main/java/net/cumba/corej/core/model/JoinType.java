@@ -23,11 +23,10 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <h2>⚠⚠ {@code null} is legal everywhere and must never be rejected</h2> {@code null} means
- * <i>"not authored"</i>, which is the normal state of a generated rule:
- * {@code RulePackageLoader.normalizeJoinTypes} stamps {@code inner} onto a null/blank value at
- * load, but {@code DatasetRuleResolver} <b>never calls it</b>, so the whole
- * {@code CDISC-AD0591-<domain>-<var>} family keeps a null {@code Join_Type}. Validation therefore
- * judges <b>the string when present</b>, never its absence.
+ * <i>"not authored"</i>: {@code RulePackageLoader.normalizeJoinTypes} stamps {@code inner} onto a
+ * null/blank value at load, and a hand-built {@code MatchDataset} (every test fixture that never
+ * sets it) keeps the null and runs through {@code KeyMatchRowExpander}'s {@code left} fallback.
+ * Validation therefore judges <b>the string when present</b>, never its absence.
  *
  * <p>
  * ⚑ That null used to carry a second consequence — it was what kept {@code RuleCohortGrouper}'s

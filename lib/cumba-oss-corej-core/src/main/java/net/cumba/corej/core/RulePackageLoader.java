@@ -470,20 +470,19 @@ public class RulePackageLoader
      *
      * <p>
      * Public so a harness that bypasses {@link #load} can apply the identical normalisation a
-     * production load performs rather than re-implementing it. The parity module's
-     * {@code RuleScaffold} is the only caller.
+     * production load performs rather than re-implementing it. Its only caller is
+     * {@code RuleScaffold}, the {@code rulespec} drift-guard harness in the rule-corpus
+     * repository's tests.
      * </p>
      *
      * <p>
-     * ⚠⚠ {@code DatasetRuleResolver} also bypasses {@link #load} — it calls
-     * {@link #installNativeExpr} and the Output_Variables derivation, but <b>not</b> this method.
-     * Its generated {@code Match_Datasets} (e.g. the {@code CDISC-AD0591-}/{@code GEN-XDVAL-}
-     * cross-dataset value family) therefore keep a null {@code Join_Type} and are executed as a
-     * <b>left</b> join via {@code KeyMatchRowExpander}'s fallback, whereas a corpus rule with the
-     * identical {@code Match_Datasets} is executed as an <b>inner</b> join. Whether that divergence
-     * is intended has not been established; it is recorded, not resolved, by {@code Fix #233}. ⚑
-     * <b>Moot for shipped runs since Fix #366</b>: that family is no longer generated in
-     * production, so the divergence survives only as a property of test-constructed generators.
+     * ⚑ <b>History.</b> {@code DatasetRuleResolver} bypasses {@link #load} and does not call this
+     * method. That mattered while it <em>generated</em> rules: the
+     * {@code CDISC-AD0591-}/{@code GEN-XDVAL-} family it minted kept a null {@code Join_Type} and
+     * ran as a <b>left</b> join via {@code KeyMatchRowExpander}'s fallback ({@code Fix #233}). Fix
+     * #366 stopped that family and {@code PLAN-remove-rule-generator} deleted the generator; the
+     * resolver now delivers only the rules its caller hands it — in production, rules from
+     * {@link #load}, which this pass has already normalised.
      * </p>
      */
     public static void normalizeJoinTypes(Rule rule)
@@ -531,9 +530,9 @@ public class RulePackageLoader
      * {@code Bindings:} entries ({@code name:} + {@code expression:}, phase 7b) into the field-form
      * {@link Operation} records the {@code OperationExecutor} consumes. Public for the same reason
      * as {@link #deriveOmittedFields(Rule)}: anything that binds a {@link Rule} outside this loader
-     * — the parity harness ({@code RuleScaffold}), a tool, an editor preview — must apply the same
-     * pass, or a shipped rule's declared bindings never reach {@code getOperations()} and silently
-     * resolve {@code null}. Idempotent; a malformed expression lands on the rule's
+     * — the {@code rulespec} harness ({@code RuleScaffold}), a tool, an editor preview — must apply
+     * the same pass, or a shipped rule's declared bindings never reach {@code getOperations()} and
+     * silently resolve {@code null}. Idempotent; a malformed expression lands on the rule's
      * {@code loadError} channel, preserving any earlier cause.
      *
      * @param rule
@@ -737,11 +736,11 @@ public class RulePackageLoader
      *
      * <p>
      * ⚠ <b>The inline surface is a genuinely separate load path.</b> An inline call never reaches
-     * the rule's {@code Operations} list, so nothing in {@code normalizeOperations} sees it; and
-     * the native compiler's own {@code fromCall} throw would only degrade the rule to LEGACY
-     * evaluation rather than erroring it, which is the silent outcome this field's design rules
-     * out. Validating here puts the inline surface on the same {@code loadError} channel as the
-     * other two.
+     * the rule's {@code Operations} list, so nothing in {@code normalizeOperations} sees it.
+     * Validating here gives the inline surface the same {@code loadError} channel, and the same
+     * message, as the other two paths. (Before the legacy evaluator was retired, the compiler's own
+     * {@code fromCall} rejection silently degraded the rule to legacy evaluation; that is why this
+     * gate exists.)
      * </p>
      */
     private static void validateInlineMissingValues(@Nullable CheckCondition condition)
@@ -1456,9 +1455,9 @@ public class RulePackageLoader
      * library/define/dictionary-dependent operation call without an availability gate broadcasts
      * {@code null} when the provider is absent — no row fires and the rule silently PASSes where
      * the declaration-keyed legacy path reports SKIPPED. This pass injects, per missing term, the
-     * exact gate shape {@code OperationInliner} bakes into the shipped corpus:
-     * {@code library_available()} plus {@code available(<op-call>)} for a library-dependent call,
-     * {@code dictionary_available("<type>")} per distinct dictionary type, and
+     * exact gate shape the retired offline converter {@code OperationInliner} once baked into the
+     * corpus: {@code library_available()} plus {@code available(<op-call>)} for a library-dependent
+     * call, {@code dictionary_available("<type>")} per distinct dictionary type, and
      * {@code available(<op-call>)} for a define-dependent call ({@code available} covers the
      * absent-provider case; there is no define-presence builtin). The inliner's emptiness exemption
      * is honoured: a call whose every use is a direct {@code empty()} / {@code is_missing()}
@@ -1662,7 +1661,7 @@ public class RulePackageLoader
      * Whether every occurrence of {@code opCall} in {@code check} is the direct operand of an
      * {@code empty()} / {@code is_missing()} call — the rule tests <em>only</em> the operation
      * result's emptiness, so an {@code available(<op>)} gate would make it unreachable. Ported from
-     * {@code OperationInliner} so loader-injected gates match the corpus-baked ones exactly.
+     * the retired {@code OperationInliner}, so loader-injected gates keep the exact shape it baked.
      */
     private static boolean testsOnlyEmptiness(net.cumba.corej.core.expr.ast.Expr check,
             net.cumba.corej.core.expr.ast.Expr opCall)
@@ -1789,16 +1788,16 @@ public class RulePackageLoader
             levels.put(level.getKey(), raised);
         }
         // Element B: lower a `variable_exists` operation consumed as `$X == true/false` into the
-        // Check as the var_exists(<col>) function — via the shared mapping the offline converter
-        // (OperationInliner) also drives — so the parity Java lane, which compiles the org-form
-        // fixture natively through this seam, evaluates `var_exists()` exactly as the shipped
-        // rules/ do. A no-op for production rules/ (already inlined ⇒ no variable_exists
-        // operation).
+        // Check as the var_exists(<col>) function, via VariableExistsInliner, so a rule that still
+        // declares the operation form evaluates `var_exists()` exactly as one authored with the
+        // function does. (The offline converter that once applied the same mapping to the corpus,
+        // OperationInliner, was deleted 2026-08-26.)
         inlineVariableExistsOps(rule, levels);
         // T9: lower a `split_by` operation into the per-row split_by(<col>, "<delim>") value
-        // function — via the shared SplitByInliner mapping the offline OperationInliner also drives
-        // — so the parity Java native fixture-compile path evaluates the split membership rule
-        // exactly as the shipped rules/ do. A no-op for production rules/ (already inlined).
+        // function, via SplitByInliner, so a rule that still declares the operation form evaluates
+        // the split per row exactly as one authored with the function does. (The offline converter
+        // that once applied the same mapping to the corpus, OperationInliner, was deleted
+        // 2026-08-26.)
         inlineSplitByOps(rule, levels);
         // ⚠ The two seams above stayed no-ops for production rules/ across
         // plans/done/PLAN-operations-no-inline.md (D31, 2026-08-08), which stopped OperationInliner
@@ -2033,16 +2032,15 @@ public class RulePackageLoader
      * {@code not var_exists(<col>)} check function, dropping the inlined operation from the rule —
      * <b>except</b> one whose {@code $}-id the rule declares in {@code Outcome.Output_Variables},
      * which is retained so its value can still be reported (see
-     * {@link net.cumba.corej.core.expr.convert.VariableExistsInliner#reported}). Returns
-     * {@code check} unchanged when the rule has no eligible {@code variable_exists} operation (the
-     * production case: the shipped {@code rules/} are already inlined by {@code OperationInliner},
-     * so this fires only for the org-form parity fixtures).
+     * {@link net.cumba.corej.core.expr.convert.VariableExistsInliner#reported}). Leaves the rule
+     * unchanged when it has no eligible {@code variable_exists} operation.
      *
      * <p>
-     * Shares {@link net.cumba.corej.core.expr.convert.VariableExistsInliner} with the offline
-     * converter so the native fixture-compile path and the shipped {@code rules/} cannot diverge.
-     * Eligibility is computed over {@code check} only; the {@code variable_exists} operations in
-     * the corpus are never referenced from a Precondition.
+     * The mapping itself is {@link net.cumba.corej.core.expr.convert.VariableExistsInliner}, the
+     * one place it is defined. Eligibility spans every declared Check level and the Precondition:
+     * an operation is inlined only when every reference to its {@code $}-id is a
+     * {@code $X == true/false} operand, and a Precondition that cannot be raised leaves the
+     * operations field-form.
      * </p>
      */
     private static void inlineVariableExistsOps(Rule rule,
@@ -2054,11 +2052,11 @@ public class RulePackageLoader
         {
             return;
         }
-        // Mirror OperationInliner: eligibility (and the rewrite) span the Check AND the
-        // Precondition — an operation may only be inlined when *every* reference to its $-id (in
-        // either tree) is a `$X == true/false` operand. If a Precondition is present but cannot be
-        // raised, bail conservatively (leave the operations field-form) rather than drop an op that
-        // an un-analysable Precondition might still reference.
+        // Eligibility (and the rewrite) span the Check AND the Precondition — an operation may only
+        // be inlined when *every* reference to its $-id (in either tree) is a `$X == true/false`
+        // operand. If a Precondition is present but cannot be raised, bail conservatively (leave
+        // the operations field-form) rather than drop an op that an un-analysable Precondition
+        // might still reference.
         net.cumba.corej.core.expr.ast.Expr pre = null;
         if (rule.getPrecondition() != null)
         {
@@ -2106,9 +2104,8 @@ public class RulePackageLoader
             rule.setOperations(kept.isEmpty() ? null : kept);
         }
         // A dropped operation no longer materialises a $-result, so its now-dangling
-        // Output_Variable reference goes with it — mirroring
-        // OperationInliner.removeInlinedOutputVariables so the parity Java lane emits the same
-        // output as the shipped rules/. A RETAINED operation keeps both.
+        // Output_Variable reference goes with it: the rule reports no Output_Variable for a
+        // $-result that no longer exists. A RETAINED operation keeps both.
         if (rule.getOutcome() != null && rule.getOutcome().getOutputVariables() != null)
         {
             List<String> keptVars = new ArrayList<>();
@@ -2150,16 +2147,14 @@ public class RulePackageLoader
 
     /**
      * T9: lowers a {@code split_by} operation into the per-row {@code split_by(<col>, "<delim>")}
-     * value function within {@code check}, dropping the inlined operation from the rule. Returns
-     * {@code check} unchanged when the rule has no referenced {@code split_by} operation (the
-     * production case: the shipped {@code rules/} are already inlined by {@code OperationInliner},
-     * so this fires only for the org-form parity fixtures).
+     * value function within {@code check}, dropping the inlined operation from the rule. Leaves the
+     * rule unchanged when it has no referenced {@code split_by} operation.
      *
      * <p>
-     * Shares {@link net.cumba.corej.core.expr.convert.SplitByInliner} with the offline converter so
-     * the native fixture-compile path and the shipped {@code rules/} cannot diverge. Eligibility
-     * spans the Check and the Precondition (an eligible {@code $}-id may appear in either); a
-     * present-but-unraisable Precondition bails conservatively (leaves the operations field-form).
+     * The mapping itself is {@link net.cumba.corej.core.expr.convert.SplitByInliner}, the one place
+     * it is defined. Eligibility spans the Check and the Precondition (an eligible {@code $}-id may
+     * appear in either); a present-but-unraisable Precondition bails conservatively (leaves the
+     * operations field-form).
      * </p>
      */
     private static void inlineSplitByOps(Rule rule,
@@ -2559,9 +2554,9 @@ public class RulePackageLoader
 
 
     /**
-     * Whether {@code expr} is a <b>fold-equivalent</b> dataset-broadcast verdict — one the legacy
-     * {@code CheckConditionOptimizer.partialEvaluateDataset} folds to a constant (one dataset-level
-     * violation at row 0), so it can be evaluated once via
+     * Whether {@code expr} is a <b>fold-equivalent</b> dataset-broadcast verdict — one the retired
+     * {@code CheckConditionOptimizer.partialEvaluateDataset} folded to a constant (one
+     * dataset-level violation at row 0), so it can be evaluated once via
      * {@code NativeExprEvaluator.evaluateBroadcast} with bit-for-bit parity. Accepted leaves:
      * <ul>
      * <li>{@code exists(NAME)} / {@code not_exists(NAME)} on a bare reference — rule-type-resolved
@@ -2619,8 +2614,8 @@ public class RulePackageLoader
 
 
     /**
-     * A broadcast-safe <b>dataset-fact</b> operand — everything the legacy
-     * {@code CheckConditionOptimizer.evaluateDatasetLeaf} folds at dataset level (R-P2,
+     * A broadcast-safe <b>dataset-fact</b> operand — everything the retired
+     * {@code CheckConditionOptimizer.evaluateDatasetLeaf} folded at dataset level (R-P2,
      * {@code plans/done/PLAN-native-engine-residuals.md}). Single source:
      * {@link net.cumba.corej.core.expr.eval.BroadcastFold#isDatasetFactOperand}, shared with the
      * runtime tri-state fold so the load-time flag and the fold can never drift.
@@ -2642,7 +2637,8 @@ public class RulePackageLoader
     /**
      * Raises a Check tree to the {@link net.cumba.corej.core.expr.ast.Expr} IR, returning
      * {@code null} for a mixed / old-style Check that has no faithful expression surface (so the
-     * rule keeps {@code checkExpr == null} and runs on the legacy path).
+     * rule keeps {@code checkExpr == null} and reports the "no native expression form" ERROR at
+     * runtime).
      *
      * <p>
      * ⛔ The catch is {@link net.cumba.corej.core.expr.ExpressionException} ONLY, deliberately (H3,
@@ -3006,18 +3002,19 @@ public class RulePackageLoader
     /**
      * Whether every AND-term of {@code precondition} is one of the machine-emitted availability
      * gates — the exact shape {@code injectInlineOperationGates}, {@code inlineVariableExistsOps},
-     * {@code inlineSplitByOps} and {@code OperationInliner.addLibraryPreconditionGate} write.
+     * {@code inlineSplitByOps} write, and the retired {@code OperationInliner}'s
+     * {@code addLibraryPreconditionGate} wrote.
      *
      * <p>
      * ⚠⚠ This is what keeps gate R8 an <b>authoring</b> gate rather than a corpus gate. The
      * assembled {@code rules/} packages load through the same {@code CORPUS} path as authored
-     * files, and {@code OperationInliner} bakes its gate into them <em>offline</em> — so by the
-     * time the loader sees such a package the gate is indistinguishable from an authored value by
-     * presence alone, and {@code injectedPreconditionGates} (set only by <em>this process's</em>
-     * injection) is null. Recognising the gate shape is the only test that separates the two. It is
-     * green in both directions today — both corpora carry zero {@code Precondition} keys — which is
-     * precisely why it must be written down rather than left to be discovered the first time the
-     * generator inlines an availability-dependent call.
+     * files, and the retired {@code OperationInliner} baked its gate into them <em>offline</em> —
+     * so by the time the loader sees such a package the gate is indistinguishable from an authored
+     * value by presence alone, and {@code injectedPreconditionGates} (set only by <em>this
+     * process's</em> injection) is null. Recognising the gate shape is the only test that separates
+     * the two. It is green in both directions today — both corpora carry zero {@code Precondition}
+     * keys — which is precisely why it must be written down rather than left to be discovered the
+     * first time the generator inlines an availability-dependent call.
      * </p>
      *
      * <p>
@@ -4936,8 +4933,7 @@ public class RulePackageLoader
      * <p>
      * ⚠⚠ <b>Absence is NOT a violation and must never become one.</b> {@code null} / blank means
      * "not authored": {@link #normalizeJoinTypes(Rule)} stamps {@code inner} onto it a few passes
-     * later, and {@code DatasetRuleResolver} — which never calls that method — relies on the null
-     * surviving. ⚑ Its original motive is gone: the null used to be what kept
+     * later. ⚑ Its original motive is gone: the null used to be what kept
      * {@code RuleCohortGrouper}'s equality-cohort path reachable for the generated
      * {@code CDISC-AD0591-<domain>-<var>} family ({@code Fix #233} / EC-74), and that grouper is
      * retired ({@code PLAN-retire-cohort-runner.md}). The rule stands on its own terms: absence

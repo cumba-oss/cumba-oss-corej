@@ -1424,9 +1424,10 @@ public final class ScopeMatcher
      * <b>Single-token convenience since Fix #179</b> — equivalent to
      * {@link #describeDataStructureMismatch(Rule, List)} with a one-element set, i.e. it does
      * <em>not</em> apply the structure hierarchy. Use it only where the caller genuinely holds one
-     * token and no is-a relation applies (the parity mirror, which runs the column heuristic alone
-     * and so can never produce a medical-device specialisation, and unit tests). Production callers
-     * pass the set from {@link net.cumba.corej.core.metadata.AdamDataStructureDetector#detectAll}.
+     * token and no is-a relation applies (a caller that holds exactly one token — the single-token
+     * wrapper {@link #matchesDataStructure(Rule, String)} above, and unit tests). Production
+     * callers pass the set from
+     * {@link net.cumba.corej.core.metadata.AdamDataStructureDetector#detectAll}.
      * </p>
      *
      * @param rule
@@ -1566,8 +1567,8 @@ public final class ScopeMatcher
      * <li>{@code Exclude} rejects only on a positive match — a null-detected dataset passes an
      * Exclude-only scope.</li>
      * </ul>
-     * No engine-side Python counterpart exists upstream (schema-only field); the house parity fork
-     * carries a twin gate with identical semantics. Tokens compare via {@link #normalize}.
+     * No engine-side Python counterpart exists upstream (schema-only field). Tokens compare via
+     * {@link #normalize}.
      *
      * @param rule
      *            the rule to check

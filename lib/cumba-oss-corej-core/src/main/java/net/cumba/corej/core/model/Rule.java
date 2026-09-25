@@ -394,8 +394,9 @@ public class Rule
      *
      * <p>
      * ⚠ Read this, not {@code getGroupingVariables()}. The Lombok getter returns only the flat
-     * field and is now a partial view of the rule; it is retained because the generators and the
-     * Python-facing legacy converter deliberately work in the flat shape.
+     * field and is a partial view of the rule; it exists because {@code Grouping_Variables} is
+     * still an authored, Jackson-bound key, and the loader, {@code RuleSpecialiser} and the two
+     * expanders read or copy that field as such.
      * </p>
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
@@ -908,9 +909,9 @@ public class Rule
      * library/define/dictionary-dependent operation call <em>without</em> the
      * {@code library_available() and available(<op>)} gate would silently PASS where the legacy
      * contract demands SKIPPED, because the ungated call broadcasts {@code null} and no row fires.
-     * The loader restores the contract by injecting the same gate shape {@code OperationInliner}
-     * bakes into the shipped corpus — which therefore never needs the injection (held to zero by a
-     * committed corpus test).
+     * The loader restores the contract by injecting the gate shape the retired offline converter
+     * {@code OperationInliner} once baked into the corpus. The shipped corpus never needs the
+     * injection (held to zero by a committed corpus test).
      *
      * <p>
      * Populated only at runtime by the loader; never serialised. Also logged at {@code INFO}.

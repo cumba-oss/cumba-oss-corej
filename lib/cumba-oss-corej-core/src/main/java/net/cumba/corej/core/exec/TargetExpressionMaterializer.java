@@ -76,7 +76,7 @@ public final class TargetExpressionMaterializer
         // cells so downstream readers see one immutable column.
         IDataValue[] cells = new IDataValue[rowCount];
         // ⚑ @Nullable elements, deliberately: null is this engine's encoding of a missing cell —
-        // it is what Vector.resolvedObject answers and what VectorColumn.getValue is declared to
+        // it is what TypedValue.resolved() answers and what VectorColumn.getValue is declared to
         // return — so the array type says so rather than letting the null travel undeclared.
         @Nullable
         Object[] resolved = new @Nullable Object[rowCount];

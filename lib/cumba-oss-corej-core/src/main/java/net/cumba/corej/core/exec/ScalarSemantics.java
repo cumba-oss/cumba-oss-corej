@@ -46,8 +46,8 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * <b>Timezone contract (intentional, parity-whitelisted divergence from the Python CORE engine,
- * like {@code expr.eval.CalendarDates}).</b> Where Python plainly strips a trailing offset before
+ * <b>Timezone contract (an intentional divergence from the Python CORE engine, like
+ * {@code expr.eval.CalendarDates}).</b> Where Python plainly strips a trailing offset before
  * comparing, {@link #normalizeToUtc(String)} applies the offset instant-preserving and renders the
  * value in UTC at the input's precision: {@code 2024-03-15T13:30+02:00} equals
  * {@code 2024-03-15T11:30Z} — and does <i>not</i> equal {@code 2024-03-15T13:30Z}. Values without
@@ -823,7 +823,7 @@ public final class ScalarSemantics
         {
             return n.doubleValue();
         }
-        // Step A: a typed numeric operand (Vector.comparisonOperand) carries its exact value. Read
+        // Step A: a typed numeric operand (an IDataValue cell) carries its exact value. Read
         // it directly -- going through getValueAsString() would apply getAsDoubleCleaned's
         // 12-significant-digit rounding and reintroduce the very defect this exists to remove.
         if (target instanceof IDataValue v)

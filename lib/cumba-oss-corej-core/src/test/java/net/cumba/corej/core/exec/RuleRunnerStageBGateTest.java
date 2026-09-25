@@ -111,9 +111,9 @@ class RuleRunnerStageBGateTest
     @Test
     void aDeclaredSkipMapsToSkippedWithTheReason()
     {
-        // The D89a skip channel is structurally unreachable through production today (no Filter
-        // field until 5b-J), so the mapping is exercised on a synthetic report — provably
-        // correct rather than dead.
+        // The D89a skip channel is live in production (StageBChecker's declared skips for an
+        // absent Filter column or an unavailable _matched_ dataset); here the mapping itself is
+        // exercised on a synthetic report.
         IDataTable table = MockTable.of().col("AEOCCUR", "N").build();
         net.cumba.corej.core.expr.typed.StageBReport report = new net.cumba.corej.core.expr.typed.StageBReport(
                 List.of(), List.of("Rule skipped — filter column AE.AEOUT is not present and is "

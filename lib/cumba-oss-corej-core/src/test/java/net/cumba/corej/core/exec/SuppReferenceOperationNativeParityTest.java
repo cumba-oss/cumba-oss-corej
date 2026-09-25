@@ -40,7 +40,7 @@ import org.junit.jupiter.api.Test;
  * operation. {@code CDISC-CG0370} is expression-identical on the <em>Check</em> but binds
  * {@code distinct(IDVAR, value_is_reference=true)} with <b>no</b> {@code domain} operand. Measured
  * 2026-09-19: after that retirement <b>no shipped rule authors {@code domain="SUPP--"} at all</b>,
- * so the engine branch under test here — {@code RuleRunner.resolveOperationPrefix}'s SUPP-aware
+ * so the engine branch under test here — {@code OperationExecutor.resolvePrefixes}'s SUPP-aware
  * rewrite of a {@code SUPP--} operation domain, and {@code resolveTargetTable}'s self-reference
  * fallback — has no corpus carrier left. {@link #suppRdomainRule()} therefore sets that operand
  * explicitly after normalisation. ⛔ Do not "simplify" the injection away. <b>Measured 2026-09-19 by
@@ -160,7 +160,7 @@ class SuppReferenceOperationNativeParityTest
         DatasetResolver resolver = inventory(supp, lb, /*registerSupp=*/true);
 
         // "SUPPLB" is the value LibraryValidator now derives (cdiscDomain):
-        // resolveOperationPrefix's
+        // OperationExecutor.resolvePrefixes's
         // SUPP-aware branch turns "SUPP--" into "SUPPLB", which resolves, so the per-RDOMAIN
         // column-name set is built and only BOGUS (not an LB column) is flagged.
         assertEquals(List.of("BOGUS"), flaggedIdvars(rule, supp, resolver, "SUPPLB"), "legacy");
@@ -197,11 +197,11 @@ class SuppReferenceOperationNativeParityTest
     @Test
     void truncatedSuppPrefixBreaksOperationResolution() throws Exception
     {
-        // LibraryValidator.prefixOf("SUPPLB") returns the first 2 chars "SU"; RuleRunner's
-        // resolveOperationPrefix then rewrites the operation domain "SUPP--" to "SUPPSU" (Fix #33
-        // only special-cases prefixes that start with "SUPP" and are >4 chars). resolve("SUPPSU")
-        // misses even though SUPPLB IS registered, so $rdomain_variables is null. This is the real
-        // production trigger.
+        // LibraryValidator.prefixOf("SUPPLB") returns the first 2 chars "SU";
+        // OperationExecutor.resolvePrefixes then rewrites the operation domain "SUPP--" to
+        // "SUPPSU" (Fix #33 only special-cases prefixes that start with "SUPP" and are >4 chars).
+        // resolve("SUPPSU") misses even though SUPPLB IS registered, so $rdomain_variables is
+        // null. This is the real production trigger.
         Rule rule = suppRdomainRule();
         IDataTable supp = suppLb();
         IDataTable lb = lb();

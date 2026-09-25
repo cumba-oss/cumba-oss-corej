@@ -65,7 +65,8 @@ import org.jspecify.annotations.Nullable;
  * {@link Pattern}s, bound {@link EvalFunction}s, folded literals, comparison families — is built
  * once here. Constructs the native backend does not implement (unqualified-cross-dataset names,
  * grouped-set membership, unknown functions, …) raise an {@link ExpressionException} at compile
- * time, so the caller can fall back to the lowered legacy path.
+ * time; the rule is then reported as having no native expression form
+ * ({@code RulePackageLoader.installCompiledLevels}). There is no other evaluator to fall back to.
  * </p>
  */
 public final class ExprCompiler
@@ -317,9 +318,8 @@ public final class ExprCompiler
      * non-cacheable context (joins present, a metadata rule type, a non-local / variable-shadowed
      * ref) or a {@code null} cache falls straight through to {@code inner}, so behaviour is
      * identical to the uncached path. The stored result is <b>cloned on read</b>: the engine
-     * mutates a child's {@link BitSet} in place ({@link #invert},
-     * {@code CheckEvaluator.evaluateNot}), so a shared cache entry must never be handed out
-     * directly.
+     * mutates a child's {@link BitSet} in place ({@link #invert}), so a shared cache entry must
+     * never be handed out directly.
      */
     private static ExprProgram.BoolPlan cachedBool(Expr e, ExprProgram.BoolPlan inner)
     {
@@ -822,10 +822,8 @@ public final class ExprCompiler
         // (is_not_contained_by_case_insensitive) case-insensitive membership surfaces nativize:
         // Primitives.membership(v, set, rowCount, negate, caseInsensitive=true) upper-cases the
         // probe and returns `negate != set.contains(probe)`, so the negated form evaluates
-        // correctly. The legacy `is_not_contained_by_case_insensitive` operator
-        // the case-insensitive membership operator is implemented to mirror this
-        // exactly — case-insensitive negative membership on both engines (was previously an
-        // unimplemented legacy no-op; PLAN-regex-rule-optimization Phase 1).
+        // correctly. (The retired legacy `is_not_contained_by_case_insensitive` operator was an
+        // unimplemented no-op until PLAN-regex-rule-optimization Phase 1 made it mirror this.)
         Expr nameExpr = caseInsensitive ? ((Expr.Call) b.left()).args().get(0) : b.left();
         // EC-43: fold the probe column. The list/accessor sources below keep their own guards.
         ValuePlan nameP = operandPlan(nameExpr, true);
@@ -880,9 +878,9 @@ public final class ExprCompiler
         // classification applies ONLY to a static list literal, never to a $-var list, a ${*}
         // wildcard, or a per-row GroupedResult (their contents are dynamic / not statically typed)
         // — those stay textual. The case-insensitive surface (upper(X) in [...]) is all-string and
-        // never numeric (numbers have no case). The legacy OperatorRegistry membership path runs
-        // the SAME classification on the JSON-array node types (isNumber() vs isTextual()), which
-        // agree element-for-element with these Expr.Lit kinds, so native == legacy by construction.
+        // never numeric (numbers have no case). (The retired legacy membership path ran the same
+        // classification on the JSON-array node types, isNumber() vs isTextual(), which agree
+        // element-for-element with these Expr.Lit kinds.)
         if (!caseInsensitive && !listLhs)
         {
             Set<Double> numericMembers = numericMemberSet(right);
@@ -1284,7 +1282,7 @@ public final class ExprCompiler
      * Returns the parsed {@link OperandSubstitutor.Wildcard} when {@code right} is a {@code ${*}}
      * wildcard operand-substitution reference, else {@code null} (a scalar {@code ${VAR}}, a plain
      * reference, a literal list, or an unparseable placeholder all return {@code null} so the
-     * constant-set membership path or the legacy fallback handles them).
+     * caller's other membership paths handle them).
      */
     private static OperandSubstitutor.@Nullable Wildcard wildcardOperand(Expr right)
     {
@@ -1989,8 +1987,7 @@ public final class ExprCompiler
      * Native plan for {@code does_not_equal_string_part(NAME, VALUE, regex="…")}: per row, extracts
      * capture group&nbsp;1 from the resolved {@code VALUE} via the {@code regex=} kwarg and fires
      * where {@code NAME} differs from it. Routes the verdict through
-     * {@link net.cumba.corej.core.exec.ScalarSemantics#differsFromStringPart}, the same helper the
-     * legacy operator now calls.
+     * {@link net.cumba.corej.core.exec.ScalarSemantics#differsFromStringPart}.
      */
     private static ExprProgram.BoolPlan compileStringPart(Expr.Call c)
     {
@@ -2143,8 +2140,8 @@ public final class ExprCompiler
      * == true}) and the Q1-spelled {@code not present_on_multiple_rows_within(…)}
      * ({@code flagMultiple == false}, the {@code not_present_on_multiple_rows_within} surface).
      * Partitions on the composite {@code (within, NAME)} key and flags rows by group size through
-     * the shared {@link GroupSemantics}. Single-column {@code within} only (the legacy contract);
-     * anything else is declined to the legacy no-op.
+     * the shared {@link GroupSemantics}. Single-column {@code within} only; anything else is
+     * rejected as unsupported.
      */
     private static ExprProgram.BoolPlan compileMultipleRowsWithin(Expr.Call c, boolean flagMultiple)
     {
@@ -3936,7 +3933,8 @@ public final class ExprCompiler
                 // wildcards — `*`/`**`/ADaM-capture column enumeration (arity-changing, expanded
                 // to N rules by WildcardExpander), `${...}` substitution, and dot-qualified
                 // RELREC.`**` per-row forms — need downstream machinery the native backend lacks;
-                // decline so the rule falls back to the lowered legacy path.
+                // they are rejected as unsupported, and the rule then reports the "no native
+                // expression form" ERROR — there is no other evaluator to fall back to.
                 if (isDomainPrefixWildcard(r.name()))
                 {
                     yield namePosition ? nameRefPlan(r.name()) : valueRefPlan(r.name());
@@ -3946,7 +3944,7 @@ public final class ExprCompiler
                 // compile time like `--SEQ`. It is, however, a single dynamic column read with no
                 // arity change — so we yield a per-row ComputedVector that mirrors
                 // substitution in value and name position. A `${*}`
-                // wildcard (list-valued) or a parse failure still declines to legacy.
+                // wildcard (list-valued) or a parse failure is still rejected as unsupported.
                 OperandSubstitutor.ParsedOperand parsed = parseScalarSubstitution(r.name());
                 if (parsed instanceof OperandSubstitutor.Scalar scalar && parsed.hasDrivers())
                 {
@@ -4057,7 +4055,7 @@ public final class ExprCompiler
      * Parses a {@code ${...}} operand at compile time, returning the {@link OperandSubstitutor}
      * parsed form, or {@code null} when the name carries no placeholder or fails to parse. A parse
      * failure (malformed placeholder, illegal format spec) returns {@code null} so the caller
-     * declines to the legacy path rather than nativising an invalid operand.
+     * rejects the operand as unsupported rather than compiling an invalid one.
      */
     private static OperandSubstitutor.@Nullable ParsedOperand parseScalarSubstitution(String name)
     {
@@ -4586,10 +4584,10 @@ public final class ExprCompiler
      * to the unfiltered/ungrouped executor path by {@code RecordCountSingleDescriptorTest} (both
      * read {@code table.getRowCount()}). The routing below therefore chooses a <em>plan</em>, never
      * a <em>meaning</em>: a call that binds any parameter compiles through the executor; the bare
-     * call takes the registry's constant plan. {@code CallableNamespaceTest} asserts the
-     * registry/operation name overlap stays exactly {@code record_count} +
-     * {@code dictionary_available} (the §9.C gate builtin, same fast-path relationship at its
-     * arity-1 form) so a third overlap cannot appear silently.
+     * call takes the registry's constant plan. The registry/operation name overlap is exactly
+     * {@code record_count} + {@code dictionary_available} (the §9.C gate builtin, same fast-path
+     * relationship at its arity-1 form). ⚠ No test pins this overlap any more; the test that did
+     * ({@code CallableNamespaceTest}) no longer exists.
      * </p>
      */
     // Public so BroadcastFold can recognise an inline-operation call as the dataset-fact operand
@@ -4639,8 +4637,10 @@ public final class ExprCompiler
      * inlinable (decision D3): they carry SKIP / per-variable semantics the expression operand path
      * cannot express, so they must stay authored as {@code Operations} entries. An inline use of
      * one is a {@link RuleDefinitionException} — a definitional rule error (loud {@code loadError}
-     * / ERROR) — rather than a decline, because an inline operation has no {@code $}-variable and
-     * so cannot fall back to the legacy engine the way an ordinary unsupported construct can.
+     * / ERROR) — rather than a decline, because it is a definitional fault of the rule: an
+     * {@link ExpressionException} would surface only as the generic "no native expression form"
+     * ERROR, while a {@link RuleDefinitionException} becomes a load error naming the fault
+     * ({@code RulePackageLoader}'s catch around {@code installCompiledLevels}).
      * </p>
      *
      * <p>
@@ -4695,9 +4695,9 @@ public final class ExprCompiler
     private static @Nullable Object inlineOperationResult(Operation op, EvaluationContext ctx)
     {
         // Resolve `--` domain wildcards in name/domain/group against the run's domain prefix before
-        // executing — the legacy path does this at rule-prep time
-        // (RuleRunner.resolveOperationPrefix)
-        // but the compiled program is domain-agnostic, so an inline operation must resolve here.
+        // executing. A declared Operation is resolved once per (rule × dataset) by
+        // RuleSpecialiser.specialise; an inline operation call lives inside the compiled program,
+        // which is domain-agnostic and shared across domains, so it must resolve here.
         // Without it a `--`-prefixed group/name column (e.g. record_count(group=[…, --TESTCD, …]))
         // names a non-existent column and the operation silently resolves to null.
         Operation resolved = OperationExecutor.resolvePrefixes(op, ctx.getDomainPrefix(),
@@ -4713,7 +4713,7 @@ public final class ExprCompiler
      * (§9.A), or {@code null} when {@code right} is not an inlinable operation call (a
      * {@code $}-ref, a list literal, a wildcard, or a library / cross-dataset operation that cannot
      * be inlined). A {@code null} return lets the caller fall through to the {@code $}-ref /
-     * literal {@link #buildSet} path (or its legacy decline).
+     * literal {@link #buildSet} path (or its unsupported rejection).
      */
     private static @Nullable Operation inlineSetOperation(Expr right)
     {
@@ -4836,9 +4836,7 @@ public final class ExprCompiler
         // run.rowCount(), never run.ctx()) and broadcast the single result as a ConstVector. The
         // value is row-independent, so this is identical to what the per-row path would yield on
         // every row, with the same missing/empty handling. Context-dependent calls (value/varname/
-        // record_count/colref/var_*/ds_*) are excluded by the allowlist. No JoinedCandidatesVector
-        // can occur here (all args are literals), so the candidate-propagation branch is
-        // orthogonal.
+        // record_count/colref/var_*/ds_*) are excluded by the allowlist.
         if (isPureFoldable(c.name()) && c.kwargs().isEmpty()
                 && bound.stream().allMatch(a -> a == null || a instanceof Expr.Lit))
         {
@@ -5300,9 +5298,8 @@ public final class ExprCompiler
         case VAR_NAME -> col.getName();
         case VAR_LABEL -> col.getLabel();
         // var_type is the column's post-load data type (the authoritative DataValueType) mapped to
-        // Char/Num. The Python parity harness mirrors this by giving each study variable the same
-        // loaded type (see engine_adapter), so both engines agree without consulting nativeType —
-        // a passive source-format record that must not drive rule logic.
+        // Char/Num. It never consults nativeType — a passive source-format record that must not
+        // drive rule logic.
         case VAR_TYPE -> MetadataNormalizer.charOrNum(col.getType());
         // A non-positive declared length is "unspecified" -> missing, matching the provider levels.
         case VAR_LENGTH -> col.getLength() > 0 ? Integer.toString(col.getLength()) : null;

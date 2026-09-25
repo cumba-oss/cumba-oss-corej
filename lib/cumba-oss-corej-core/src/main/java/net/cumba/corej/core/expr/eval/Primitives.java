@@ -13,9 +13,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Vectorized, per-row scalar predicates producing violation {@link BitSet}s over a row range
  * {@code [0, rowCount)}. Each method implements one operator family <i>exactly</i> by delegating
- * the scalar semantics to {@link ScalarSemantics} — the same code the legacy engine now runs.
- * Parity between the native evaluator and the legacy engine is therefore by construction for the
- * per-row scalar operators (the vector-layer suites are the proof).
+ * the scalar semantics to {@link ScalarSemantics}, the one home of those semantics.
  *
  * <p>
  * Both operands resolve through {@link Vector#value(int)} to one {@link TypedValue}. The scalar

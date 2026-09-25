@@ -309,9 +309,8 @@ public enum OperationType
      * {@code LIBRARY_NOT_AVAILABLE} sentinel (never an empty list — a {@code $}-ref membership
      * against an empty set would misfire). Consumed as a membership right-hand side
      * ({@code QNAM is_contained_by $variable_names}) and stays a {@code $}-ref Operation — never
-     * inlined into a function (not in {@code OperationInliner.isListReturningOperation}), matching
-     * {@link #GET_PARENT_MODEL_COLUMN_ORDER}. Backs SEND-0274-1 (a SUPP-- QNAM that collides with a
-     * variable defined in another domain or the SDTM).
+     * inlined into a function, matching {@link #GET_PARENT_MODEL_COLUMN_ORDER}. Backs SEND-0274-1
+     * (a SUPP-- QNAM that collides with a variable defined in another domain or the SDTM).
      */
     VARIABLE_NAMES("variable_names", EmptyResult.SET),
 

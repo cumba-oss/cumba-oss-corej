@@ -988,9 +988,9 @@ public final class RuleRunner
             // null $-ref broadcasts and no row fires — so the rule EXECUTES and reports a silent
             // false PASS. This arm restores the input-availability discipline of the Library and
             // Define arms above for the DECLARED ($-ref) form, which is the form the entire
-            // shipped corpus uses: RulePackageLoader.injectInlineOperationGates and
-            // OperationInliner only ever emit the `dictionary_available(<type>)` Precondition gate
-            // for INLINED operation calls, and no shipped rule inlines one.
+            // shipped corpus uses: RulePackageLoader.injectInlineOperationGates only ever emits the
+            // `dictionary_available(<type>)` Precondition gate for INLINED operation calls, and no
+            // shipped rule inlines one.
             //
             // Mirrors that injected gate exactly:
             // • one required type per dictionary operation, ANDed — a rule whose types are only
@@ -2042,9 +2042,13 @@ public final class RuleRunner
 
 
     /**
-     * The outcome mapping of {@link #stageBGate}, separated so the {@code SKIPPED} branch —
-     * production-unreachable until 5b-J lands the {@code Filter} field — stays provably correct
-     * rather than dead.
+     * The outcome mapping of {@code stageBGate}: a declared skip (D89a) becomes {@code SKIPPED}
+     * with the joined reasons, an armed finding a bind {@code ERROR}, otherwise {@code null}. The
+     * {@code SKIPPED} branch is live in production — {@code StageBChecker} declares a skip when a
+     * {@code _matched_} flag's joined dataset is unavailable, or a {@code Match_Datasets}
+     * {@code Filter} column is absent, and the rule declares it in {@code Requirements}. Separated
+     * from {@code stageBGate} so the mapping can be tested on a synthetic report
+     * ({@code RuleRunnerStageBGateTest}).
      */
     static @Nullable RuleExecutionResult mapStageBReport(
             net.cumba.corej.core.expr.typed.StageBReport stageB, IDataTable table,
@@ -2548,9 +2552,7 @@ public final class RuleRunner
     /**
      * The study variable's data type ({@code Char} / {@code Num}) from the column's post-load
      * {@link net.cumba.datatable.values.DataValueType} — the authoritative type, never inferred
-     * from {@code nativeType} (a passive source-format record). The Python parity harness mirrors
-     * this by giving each study variable the same loaded type, so {@code variable_data_type} agrees
-     * across engines.
+     * from {@code nativeType} (a passive source-format record).
      */
     private static @Nullable String declaredDataType(DataTableColumnMeta colMeta)
     {

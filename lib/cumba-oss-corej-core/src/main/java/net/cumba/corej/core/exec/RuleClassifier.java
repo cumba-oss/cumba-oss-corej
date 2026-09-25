@@ -323,7 +323,7 @@ public final class RuleClassifier
      * only {@code (operator, group, filter, domain, args)} carry classification signal, never the
      * authoring-artifact {@code $}-id. Usages are collected from <em>both</em> sources — a declared
      * {@code Operations} entry referenced by {@code $}-id, and a direct operation-operator call in
-     * the expression (the shape {@code OperationInliner} produces) — through the same
+     * the expression (the shape an inlined operation takes) — through the same
      * {@link OperationExpressionParser} coercion the engine's own inline-operation path uses, so a
      * declared and an inlined operation are indistinguishable here by construction.
      *

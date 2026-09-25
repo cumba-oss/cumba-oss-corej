@@ -6,9 +6,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Zero-copy {@link Vector} over a resolved {@link IDataTableColumn}. Reads go straight through
- * {@link IDataTableColumn#getDataValue(long)} — the same per-cell access the legacy engine uses, so
- * there is no extra boxing beyond what the datatable API already imposes (feasibility review Item
- * 4: the public datatable API exposes no primitive bulk accessor).
+ * {@link IDataTableColumn#getDataValue(long)} — the datatable's own per-cell access, so there is no
+ * extra boxing beyond what the datatable API already imposes (feasibility review Item 4: the public
+ * datatable API exposes no primitive bulk accessor).
  *
  * <p>
  * The carrier keeps the cell verbatim and decodes its missing identity ({@link TypedValue#column});

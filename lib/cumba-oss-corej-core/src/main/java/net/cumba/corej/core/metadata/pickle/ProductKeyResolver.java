@@ -148,10 +148,11 @@ public final class ProductKeyResolver
 
 
     /**
-     * As {@link #resolveAll(List, Set)}, resolving against a {@link MetadataProductCatalogue} so
-     * failure messages can say <i>which</i> source was consulted — in particular why a TIG token
-     * fails against a store that was seeded from the CDISC Library API alone (TIG enters a store
-     * only via pickle seeding).
+     * Resolves every token in order against {@code catalogue}, or throws with <b>all</b> failures
+     * listed at once. A not-found token's message explains why it did not resolve — no catalogue
+     * available, a TIG token against a store that holds no TIG products (TIG enters a store only
+     * via pickle seeding), or otherwise the nearest candidate keys; an ambiguous token's message
+     * names its matches. No message names the source that was consulted.
      *
      * @param tokens
      *            the user tokens, in precedence order

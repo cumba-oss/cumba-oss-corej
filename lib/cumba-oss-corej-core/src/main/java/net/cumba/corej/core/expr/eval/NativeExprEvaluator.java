@@ -8,11 +8,10 @@ import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.ast.Expr;
 
 /**
- * The native expression evaluation entry point — the sibling of {@code CheckEvaluator.evaluate}.
- * Compiles a boolean {@link Expr} to an {@link ExprProgram} once (cached per {@code Expr}) and runs
- * it over the supplied {@link EvaluationContext}'s full row range, returning the violation
- * {@link BitSet} using the same 0-based row indices as the legacy evaluator (so the downstream
- * finding construction is unchanged).
+ * The expression evaluation entry point. Compiles a boolean {@link Expr} to an {@link ExprProgram}
+ * once (cached per {@code Expr}) and runs it over the supplied {@link EvaluationContext}'s full row
+ * range, returning the violation {@link BitSet} using the 0-based row indices the finding
+ * construction expects.
  *
  * <p>
  * Stateless and thread-safe: the program cache is a {@link ConcurrentHashMap} and compiled programs

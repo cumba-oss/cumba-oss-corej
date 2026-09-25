@@ -590,9 +590,10 @@ public final class OperationExpressionParser
      * Public and idempotent so the other two authoring surfaces get identical treatment. A
      * <b>field-form</b> operation never reaches {@link #fromCall} and Jackson would bind an
      * unsupported combination without complaint; an <b>inline</b> operation authored inside a
-     * native Check expression never reaches the rule's {@code Operations} list at all, and the
-     * native compiler's own rejection would degrade the rule to LEGACY evaluation rather than
-     * erroring it. {@code RulePackageLoader} re-runs this method over both.
+     * native Check expression never reaches the rule's {@code Operations} list at all. (Before the
+     * legacy evaluator was retired, the native compiler's own rejection degraded such a rule to
+     * legacy evaluation rather than erroring it.) {@code RulePackageLoader} re-runs this method
+     * over both.
      * </p>
      *
      * @throws RuleDefinitionException

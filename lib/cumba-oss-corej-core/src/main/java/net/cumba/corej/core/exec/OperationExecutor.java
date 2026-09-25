@@ -347,8 +347,7 @@ public final class OperationExecutor
      * any supplier fires when {@code defineProvider == null} and any operation is define-dependent,
      * the same input-availability discipline as {@link #isLibraryDependent}. Kept distinct from
      * {@code isLibraryDependent} so these operations are neither spuriously skipped for a missing
-     * CDISC Library nor inlined to a native function (they stay {@code $}-ref Operations — see
-     * {@code OperationInliner.isEngineReady}).
+     * CDISC Library nor inlined to a native function (they stay {@code $}-ref Operations).
      */
     public static boolean isDefineDependent(@Nullable OperationType type)
     {
@@ -1270,11 +1269,8 @@ public final class OperationExecutor
             // reports the rule SKIPPED rather than fanning out per-column on an empty
             // is_not_contained_by check (the FDA-SD0058 fan-out trigger).
             //
-            // The Phase 1 empty-list defensive shim from Fix #55 stays as a backstop for
-            // legacy code paths that still call getModelColumnOrder directly (e.g.
-            // pre-Phase-2 IMetadataLibrary paths via MetadataKeys.MODEL_COLUMN_ORDER); when
-            // the new resolver returns nothing usable we likewise treat it as
-            // library-not-available.
+            // An empty answer is treated as library-not-available too (the Fix #55 empty-list
+            // rule), never as an empty allowed-variable set.
             final DatasetResolver finalResolver = resolver;
             @Nullable
             Object r = evalLibrary(libraryProvider, op, table,
@@ -2179,10 +2175,11 @@ public final class OperationExecutor
      * </p>
      *
      * <p>
-     * ⚠ {@code --} is normally already resolved ({@code RuleRunner.resolveOperationPrefix} runs
-     * {@link #resolvePrefixes} before execution), but only when the runner was given a domain
-     * prefix; {@link #resolveTemplate} / {@link #resolveWildcard} are applied here as the same
-     * second chance {@code evalVariableCount} takes.
+     * ⚠ {@code --} is normally already resolved ({@code RuleSpecialiser.specialise}, called from
+     * {@code RuleRunner}'s per-dataset execution before any execution machinery runs, applies
+     * {@link #resolvePrefixes(Operation, String, String)} to every Operation), but only when the
+     * runner was given a domain prefix; {@link #resolveTemplate} / {@link #resolveWildcard} are
+     * applied here as the same second chance {@code evalVariableCount} takes.
      * </p>
      */
     private static Boolean evalVariableExists(Operation op, IDataTable table,

@@ -18,9 +18,8 @@ import org.jspecify.annotations.Nullable;
  * instance identity, so a cache must never be shared across datasets (unlike {@code JoinCache}'s
  * cross-dataset {@code SharedIndexCache}, there is no such tier here). The stored value is a
  * {@code net.cumba.corej.core.expr.eval.Vector} or a {@link java.util.BitSet}; both are treated as
- * read-only — a {@code BitSet} consumer must clone before any in-place mutation (the {@code Not} /
- * {@code CheckEvaluator} flip paths). Wiring the cache into the compiler is a later phase; this
- * class is the storage + lifecycle.
+ * read-only — a {@code BitSet} consumer must clone before any in-place mutation (the {@code Not}
+ * flip path). It is wired into {@code ExprCompiler}; this class is the storage + lifecycle.
  * </p>
  */
 public final class ExpressionResultCache

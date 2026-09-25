@@ -53,9 +53,9 @@ public class Violation
      *
      * <p>
      * ⛔ <b>Never merged into {@link #values}</b>, for exactly the reason {@link #keys} is not: that
-     * map is the rulespec contract, read verbatim as {@code output_variables} by the parity suite's
-     * {@code ViolationNormaliser}. The level rides as a sibling field, like {@link #usubjid} and
-     * {@link #seq}.
+     * map is the rulespec contract, read verbatim as {@code output_variables} by the
+     * {@code rulespec} drift-guard suite's {@code ViolationNormaliser}. The level rides as a
+     * sibling field, like {@link #usubjid} and {@link #seq}.
      * </p>
      *
      * <p>
@@ -94,7 +94,8 @@ public class Violation
      * <p>
      * &#9888; Like {@link #keys} and {@link #level}, this rides as a sibling field and is <b>never
      * merged into {@link #values}</b> — that map is the rulespec contract, read verbatim as
-     * {@code output_variables} by the parity suite's {@code ViolationNormaliser}.
+     * {@code output_variables} by the {@code rulespec} drift-guard suite's
+     * {@code ViolationNormaliser}.
      * </p>
      */
     @Nullable

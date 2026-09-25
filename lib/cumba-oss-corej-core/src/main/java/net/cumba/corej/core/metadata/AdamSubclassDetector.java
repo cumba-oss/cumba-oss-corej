@@ -67,7 +67,7 @@ import org.jspecify.annotations.Nullable;
  * tests that {@code POPULATION PHARMACOKINETIC ANALYSIS} and {@code NON-COMPARTMENTAL ANALYSIS}
  * used to carry — see {@link #detect} for the rationale. <b>Fix #154 restored the name tests as a
  * separate, strictly lower tier</b> ({@link #detectByName}); {@link #detect} itself is still purely
- * column-driven, and the parity lane still calls only that.
+ * column-driven.
  * </p>
  * </li>
  * <li><b>Name</b> — {@link #detectByName}, Fix #154's last resort: {@code ADPPK*} / {@code ADPPT*}
@@ -449,9 +449,7 @@ public final class AdamSubclassDetector
      * </p>
      *
      * <p>
-     * Java-only: the parity fork's {@code get_subclass} has no name tier, and the parity lane calls
-     * the column-only {@link #detect(List, Collection)} rather than {@link #resolve}, so this tier
-     * is invisible there.
+     * Java-only: the retired parity fork's {@code get_subclass} had no name tier.
      * </p>
      *
      * @param datasetName

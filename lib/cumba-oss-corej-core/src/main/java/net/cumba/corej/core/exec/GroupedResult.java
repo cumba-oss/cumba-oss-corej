@@ -156,9 +156,8 @@ public record GroupedResult(List<String> groupColumns, Map<String, Object> resul
     /**
      * Like {@link #getForRow} but substitutes {@link #defaultForMissingKey()} for an absent key —
      * the per-row value a comparison operand reads, so a subject with zero {@code record_count}
-     * matches behaves as 0 rather than being silently skipped. Both the legacy {@code forEachValue}
-     * cascade and the native {@code ExprCompiler.variableVector} resolve through this single source
-     * so the two engines cannot drift.
+     * matches behaves as 0 rather than being silently skipped. {@code ExprCompiler.variableVector}
+     * resolves through this single source.
      */
     public @Nullable Object getForRowOrDefault(EvaluationContext ctx, long row)
     {

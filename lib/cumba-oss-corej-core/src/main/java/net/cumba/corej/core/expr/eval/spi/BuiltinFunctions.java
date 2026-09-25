@@ -240,17 +240,17 @@ public final class BuiltinFunctions implements FunctionProvider
             Object name = run.ctx().resolveVariable("variable_name");
             return ConstVector.of(name);
         }));
-        // record_count(): the primary table's row count — the dataset-level fact the legacy
-        // dataset fold reads (CheckConditionOptimizer.evaluateDatasetLeaf, name "record_count").
+        // record_count(): the primary table's row count — the dataset-level fact the retired legacy
+        // dataset fold read (CheckConditionOptimizer.evaluateDatasetLeaf, name "record_count").
         // Broadcast-constant and numeric; comparisons mirror the fold's compareNumeric, equality
         // the fold's string-equality (identical verdicts for the integral counts involved).
         fns.add(new FunctionDescriptor("record_count", List.of(), FunctionKind.VALUE,
                 (run, _) -> ConstVector.of(run.ctx().getTable().getRowCount())));
         // value(): the per-row VALUE of the "current variable" — the cells of the column named by
         // the cursor (variables["variable_name"]). Mirrors the legacy variable_value operand, which
-        // CheckConditionOptimizer.bindVariableValue rewrites to the current column. A missing
-        // cursor
-        // or an absent column ⇒ a broadcast null (no row fires), matching the legacy resolution.
+        // the retired CheckConditionOptimizer.bindVariableValue rewrote to the current column. A
+        // missing cursor or an absent column ⇒ a broadcast null (no row fires), matching the legacy
+        // resolution.
         fns.add(new FunctionDescriptor("value", List.of(), FunctionKind.VALUE, (run, _) ->
         {
             EvaluationContext ctx = run.ctx();

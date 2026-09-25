@@ -1357,9 +1357,9 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * <p>
      * The Java {@link StoredProduct} is the IG product; some IG responses embed only the
      * class-specific variables and rely on the model link for shared identifiers/timing. When the
-     * loaded product happens to embed identifiers/timing inside each class (current
-     * {@code CdiscLibraryMetadataLibrary.fromSdtm} consumers, test fixtures), the deduplicating
-     * pass keeps the result correct without double-counting.
+     * loaded product happens to embed identifiers/timing inside each class (test fixtures, and
+     * formerly the removed {@code CdiscLibraryMetadataLibrary.fromSdtm} overloads), the
+     * deduplicating pass keeps the result correct without double-counting.
      * </p>
      *
      * @return ordered, deduplicated allowed-variable names; empty list when the class is unknown;

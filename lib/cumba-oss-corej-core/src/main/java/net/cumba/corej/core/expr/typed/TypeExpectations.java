@@ -25,13 +25,12 @@ import net.cumba.corej.core.expr.eval.BroadcastFold;
  * </p>
  * <ul>
  * <li><b>NUMERIC</b> — an order-comparison operand ({@code ExprCompiler.compilePlain}), an
- * arithmetic operand and the fused arithmetic-comparison shapes
- * ({@code ExprCompiler.compileArithmeticComparison}), a numeric-literal membership probe
- * ({@code ExprCompiler}'s numeric member set), an equality side whose other side is statically
- * numeric (a numeric literal or a {@code num(...)} conversion — {@code ExprCompiler.staticKind}),
- * and the numeric arguments of {@code between} / {@code abs} / {@code round} / {@code floor} /
- * {@code ceil} and the affix length operand ({@code BuiltinFunctions} / {@code Primitives} hoisted
- * gates).</li>
+ * arithmetic operand, in any position including a comparison side
+ * ({@code ExprCompiler.arithmeticPlan}), a numeric-literal membership probe ({@code ExprCompiler}'s
+ * numeric member set), an equality side whose other side is statically numeric (a numeric literal
+ * or a {@code num(...)} conversion — {@code ExprCompiler.staticKind}), and the numeric arguments of
+ * {@code between} / {@code abs} / {@code round} / {@code floor} / {@code ceil} and the affix length
+ * operand ({@code BuiltinFunctions} / {@code Primitives} hoisted gates).</li>
  * <li><b>CHARACTER</b> — a regex-match subject ({@code ExprCompiler.compileRegex}), a
  * string-literal membership probe, and an equality side whose other side is a string literal.</li>
  * <li><b>ISO_TEXT</b> — the argument of a {@code date(...)} / {@code time(...)} conversion: an
@@ -274,7 +273,7 @@ public final class TypeExpectations
         {
         case ADD, SUB, MUL, DIV ->
         {
-            // Arithmetic is numeric per se (R3/R4; ExprCompiler.compileArithmeticComparison).
+            // Arithmetic is numeric per se (R3/R4; ExprCompiler.arithmeticPlan).
             expect(left, Expectation.NUMERIC);
             expect(right, Expectation.NUMERIC);
         }

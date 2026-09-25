@@ -409,7 +409,7 @@ public class Operation
     private @Nullable List<String> qualifyingAnyPopulated;
 
     /**
-     * Pre-resolution value of {@link #name}, stashed by {@code RuleRunner.resolveOperationPrefix}
+     * Pre-resolution value of {@link #name}, stashed by {@code OperationExecutor.resolvePrefixes}
      * when it rewrites {@code --} templates to a concrete domain prefix. Study-wide Operations
      * (e.g., {@code variable_count}) read this field to re-resolve the template per-dataset;
      * operations that keep single-domain semantics can ignore it. Not part of the JSON rule
