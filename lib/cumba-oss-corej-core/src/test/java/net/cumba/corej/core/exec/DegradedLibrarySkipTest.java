@@ -514,7 +514,7 @@ class DegradedLibrarySkipTest
         // have failed, so `false` is the correct answer and not merely the inherited default.
         net.cumba.corej.core.gen.DefineXMLProvider define = org.mockito.Mockito
                 .mock(net.cumba.corej.core.gen.DefineXMLProvider.class);
-        assertFalse(new net.cumba.corej.core.metadata.DefineXmlMetadataProvider(define)
+        assertFalse(new net.cumba.corej.core.metadata.DefineXmlMetadataProvider(define, null)
                 .isLibraryUnavailable(), "no fallback ⇒ no Library to have failed");
         assertTrue(
                 new net.cumba.corej.core.metadata.DefineXmlMetadataProvider(define,

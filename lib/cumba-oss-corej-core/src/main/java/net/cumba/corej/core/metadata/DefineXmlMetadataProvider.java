@@ -57,12 +57,6 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
 
     private final @Nullable MetadataProvider fallback;
 
-    public DefineXmlMetadataProvider(DefineXMLProvider aDefine)
-    {
-        this(aDefine, null);
-    }
-
-
     /**
      * @param aDefine
      *            the direct Define-XML provider (ODM-backed)

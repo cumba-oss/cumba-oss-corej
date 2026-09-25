@@ -46,7 +46,7 @@ class DefineXmlDirectAccessE2ETest
         {
             odm = new DefineXmlParser().parse(in);
         }
-        define = new DefineXmlMetadataProvider(new OdmDefineXMLProvider(odm));
+        define = new DefineXmlMetadataProvider(new OdmDefineXMLProvider(odm), null);
 
         RulePackage pkg = RulePackageLoader
                 .loadCombined(Path.of(System.getProperty("projectBasedir"),

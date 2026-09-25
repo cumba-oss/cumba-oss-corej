@@ -46,9 +46,9 @@ class DefineSetDiffAndKeyDuplicateTest
     static void load() throws IOException
     {
         dmDefine = new DefineXmlMetadataProvider(
-                new OdmDefineXMLProvider(parse("/define/define-itemmeta-e2e.xml")));
+                new OdmDefineXMLProvider(parse("/define/define-itemmeta-e2e.xml")), null);
         lbDefine = new DefineXmlMetadataProvider(
-                new OdmDefineXMLProvider(parse("/define/define-keys-e2e.xml")));
+                new OdmDefineXMLProvider(parse("/define/define-keys-e2e.xml")), null);
 
         RulePackage pkg = RulePackageLoader
                 .loadCombined(Path.of(System.getProperty("projectBasedir"),

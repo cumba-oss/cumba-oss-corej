@@ -50,7 +50,7 @@ class DefineDatasetNamesTest
     void returnsItemGroupDefNamesFromDefine() throws IOException
     {
         MetadataProvider define = new DefineXmlMetadataProvider(
-                new OdmDefineXMLProvider(parse("/define/define-itemmeta-e2e.xml")));
+                new OdmDefineXMLProvider(parse("/define/define-itemmeta-e2e.xml")), null);
         IDataTable table = MockTable.of().name("DM").col("AGE", "56").build();
 
         Object result = OperationExecutorCalls.executeOne(makeOp(), table, NO_RESOLVER, null,
@@ -64,7 +64,7 @@ class DefineDatasetNamesTest
     void returnsItemGroupDefNamesFromLbDefine() throws IOException
     {
         MetadataProvider define = new DefineXmlMetadataProvider(
-                new OdmDefineXMLProvider(parse("/define/define-keys-e2e.xml")));
+                new OdmDefineXMLProvider(parse("/define/define-keys-e2e.xml")), null);
         IDataTable table = MockTable.of().name("LB").col("LBORRES", "40").build();
 
         Object result = OperationExecutorCalls.executeOne(makeOp(), table, NO_RESOLVER, null,

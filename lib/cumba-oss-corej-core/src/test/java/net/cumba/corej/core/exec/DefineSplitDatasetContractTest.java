@@ -156,7 +156,7 @@ class DefineSplitDatasetContractTest
                 .forDefine(DefineMetadataLibrary.from(support));
         defineProvider = new DefineXmlMetadataProvider(new OdmDefineXMLProvider(odm),
                 datatableDefine);
-        odmOnlyProvider = new DefineXmlMetadataProvider(new OdmDefineXMLProvider(odm));
+        odmOnlyProvider = new DefineXmlMetadataProvider(new OdmDefineXMLProvider(odm), null);
     }
 
     // -----------------------------------------------------------------------

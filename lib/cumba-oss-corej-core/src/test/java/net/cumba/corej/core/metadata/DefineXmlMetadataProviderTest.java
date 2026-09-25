@@ -66,7 +66,7 @@ class DefineXmlMetadataProviderTest
     @Test
     void variableMetadata_mapsKeysToProviderChannel()
     {
-        DefineXmlMetadataProvider provider = new DefineXmlMetadataProvider(stub());
+        DefineXmlMetadataProvider provider = new DefineXmlMetadataProvider(stub(), null);
         Map<String, String> meta = provider.getVariableMetadata("DM", "DOMAIN");
 
         assertEquals("DOMAIN", meta.get("name"));
@@ -126,8 +126,8 @@ class DefineXmlMetadataProviderTest
                 return List.of();
             }
         };
-        Map<String, String> meta = new DefineXmlMetadataProvider(e2Stub).getVariableMetadata("DM",
-                "SEX");
+        Map<String, String> meta = new DefineXmlMetadataProvider(e2Stub, null)
+                .getVariableMetadata("DM", "SEX");
         assertEquals("Derived", meta.get("origin_type"));
         assertEquals("true", meta.get("has_comment"));
         assertEquals("false", meta.get("has_method"));
@@ -192,7 +192,8 @@ class DefineXmlMetadataProviderTest
     void variableMetadata_forwardsCodelistExtendedValues()
     {
         DefineXmlMetadataProvider provider = new DefineXmlMetadataProvider(oneVariable(
-                Map.of("name", "VSPOS", "codelist_extended_values", "[\"BOGUS\",\"OTHER\"]")));
+                Map.of("name", "VSPOS", "codelist_extended_values", "[\"BOGUS\",\"OTHER\"]")),
+                null);
         Map<String, String> meta = provider.getVariableMetadata("DM", "VSPOS");
 
         assertEquals("[\"BOGUS\",\"OTHER\"]", meta.get("codelist_extended_values"),
@@ -206,7 +207,7 @@ class DefineXmlMetadataProviderTest
     @Test
     void variableMetadata_extendedValuesDefaultToEmptyList()
     {
-        DefineXmlMetadataProvider provider = new DefineXmlMetadataProvider(stub());
+        DefineXmlMetadataProvider provider = new DefineXmlMetadataProvider(stub(), null);
         assertEquals("[]",
                 provider.getVariableMetadata("DM", "DOMAIN").get("codelist_extended_values"),
                 "an ItemDef with no extended terms reads as the empty list, like coded values");
@@ -216,7 +217,7 @@ class DefineXmlMetadataProviderTest
     @Test
     void domainVariablesAndColumnOrder()
     {
-        DefineXmlMetadataProvider provider = new DefineXmlMetadataProvider(stub());
+        DefineXmlMetadataProvider provider = new DefineXmlMetadataProvider(stub(), null);
         assertEquals(1, provider.getDomainVariables("DM").size());
         assertEquals(List.of("DOMAIN"), provider.getColumnOrder("DM"));
     }
@@ -225,7 +226,7 @@ class DefineXmlMetadataProviderTest
     @Test
     void codelistTerms_returnsCodedValues()
     {
-        DefineXmlMetadataProvider provider = new DefineXmlMetadataProvider(stub());
+        DefineXmlMetadataProvider provider = new DefineXmlMetadataProvider(stub(), null);
         assertEquals(List.of("DM", "AE"), provider.getCodelistTerms("CL.DOMAIN"));
     }
 
@@ -233,7 +234,7 @@ class DefineXmlMetadataProviderTest
     @Test
     void unknownVariable_returnsEmpty()
     {
-        DefineXmlMetadataProvider provider = new DefineXmlMetadataProvider(stub());
+        DefineXmlMetadataProvider provider = new DefineXmlMetadataProvider(stub(), null);
         assertTrue(provider.getVariableMetadata("DM", "NOPE").isEmpty());
     }
 
@@ -286,7 +287,7 @@ class DefineXmlMetadataProviderTest
                 new DefineXmlMetadataProvider(stub(), fb).declaredStructureKeyedProducts());
         // ...and is empty for a define-only provider (nothing product-backed to cite).
         assertEquals(List.of(),
-                new DefineXmlMetadataProvider(stub()).declaredStructureKeyedProducts());
+                new DefineXmlMetadataProvider(stub(), null).declaredStructureKeyedProducts());
     }
 
 
@@ -315,7 +316,7 @@ class DefineXmlMetadataProviderTest
 
         // With no fallback there is no CDISC Library behind this provider: null, i.e. "cannot
         // answer" — never an empty list, which would read as "requires nothing".
-        DefineXmlMetadataProvider defineOnly = new DefineXmlMetadataProvider(stub());
+        DefineXmlMetadataProvider defineOnly = new DefineXmlMetadataProvider(stub(), null);
         org.junit.jupiter.api.Assertions.assertNull(defineOnly
                 .getRequiredVariablesForStructure("OCCURRENCE DATA STRUCTURE", subclasses));
         org.junit.jupiter.api.Assertions.assertNull(defineOnly

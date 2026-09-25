@@ -45,7 +45,7 @@ class DefineVlmE2ETest
             odm = new DefineXmlParser().parse(in);
         }
         OdmDefineXMLProvider provider = new OdmDefineXMLProvider(odm);
-        define = new DefineXmlMetadataProvider(provider);
+        define = new DefineXmlMetadataProvider(provider, null);
         vlm = VlmResolver.from(provider.metaDataVersion());
         org.junit.jupiter.api.Assertions.assertNotNull(vlm,
                 "the fixture must carry value-level metadata (ValueListDef/WhereClauseDef)");
