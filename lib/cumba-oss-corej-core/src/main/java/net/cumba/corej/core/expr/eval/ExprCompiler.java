@@ -474,17 +474,18 @@ public final class ExprCompiler
         // negation: the legacy operator treats both-missing as "equal" (no violation), so a literal
         // [0,rowCount) flip would turn both-missing rows into spurious violations. Map it straight
         // to
-        // the negated case-insensitive equality (parent-plan micro-decision (i) / Q1), mirroring
-        // ExprLowering.lowerNot.
+        // the negated case-insensitive equality (parent-plan micro-decision (i) / Q1), as the
+        // retired ExprLowering.lowerNot did.
         if (isCaseInsensitiveEqualityCall(n.inner()))
         {
             return compileCaseInsensitiveEquality((Expr.Call) n.inner(), true);
         }
-        // Q1 negation pairs: the converter spells the negative group operators as not
-        // <positive>(…).
+        // Q1 negation pairs: the retired offline converter spelled the negative group operators as
+        // not <positive>(…), and rules it converted still carry that spelling.
         // Map them straight to the negative group semantics — never a structural [0,rowCount) flip,
         // which would wrongly flag rows in no group (missing/invalid within-key, or the per-group
-        // unflagged rows). Mirrors ExprLowering.lowerNot -> negative operator-leaf.
+        // unflagged rows). The retired ExprLowering.lowerNot mapped them the same way (to the
+        // negative operator-leaf).
         if (n.inner() instanceof Expr.Call call)
         {
             if ("present_on_multiple_rows_within".equals(call.name()))
@@ -517,8 +518,9 @@ public final class ExprCompiler
             // an absent or null member is dropped inside the key loop rather than short-circuited.
             //
             // It is kept anyway, deliberately: it costs nothing, it states the negative the
-            // converter actually emitted instead of deriving it, it keeps this path identical to
-            // ExprLowering's POSITIVE_TO_NEGATIVE mapping and the legacy leaf, and
+            // retired converter actually emitted instead of deriving it, it keeps this path
+            // identical to what the retired ExprLowering's POSITIVE_TO_NEGATIVE mapping and the
+            // legacy leaf did, and
             // uniqueSetViolations is a public method taking List<? extends @Nullable String> —
             // so the partition invariant this would otherwise depend on is a property of a
             // collaborator, not of a private contract. Removing it would trade a free branch for
@@ -538,8 +540,9 @@ public final class ExprCompiler
      * Inverts a boolean plan over the run's row count. The four positive group functions (change
      * #1) — {@code is_unique_relationship}, {@code contains_all}, {@code shares_elements_with},
      * {@code is_ordered_subset_of} — are the logical complement of their existing negative operator
-     * plans, so the {@code not <positive>(…)} the converter emits double-inverts back to the
-     * negative bit-for-bit, while a bare {@code <positive>(…)} reads as the natural positive.
+     * plans, so the {@code not <positive>(…)} the retired offline converter emitted (and converted
+     * rules still carry) double-inverts back to the negative bit-for-bit, while a bare
+     * {@code <positive>(…)} reads as the natural positive.
      */
     private static ExprProgram.BoolPlan invert(ExprProgram.BoolPlan inner)
     {
@@ -1360,7 +1363,8 @@ public final class ExprCompiler
     {
         // str(A) ==/!= str(B): a type-insensitive equality (the type_insensitive operator-leaf
         // surface). Both operands are coerced to strings before comparison — matching the legacy
-        // CheckEvaluator path. Only the symmetric ==/!= form is supported (mirrors ExprLowering).
+        // CheckEvaluator path. Only the symmetric ==/!= form is supported (as it was in the
+        // retired ExprLowering).
         if ((b.op() == Expr.BinOp.EQ || b.op() == Expr.BinOp.NEQ) && isStr(b.left())
                 && isStr(b.right()))
         {
@@ -1426,8 +1430,8 @@ public final class ExprCompiler
         // Affix-compare RHS (Phase 5): both EQ and NEQ resolve the RHS through the generic
         // valuePlan (value position), so `prefix(X,2) == REF` reads REF as a per-row column /
         // $-var identical to the != form and to plain ==. A quoted-literal RHS (`== "FA"`) still
-        // folds to a ConstVector via valuePlan, matching the converter's emitted form, so existing
-        // converted-rule parity is preserved.
+        // folds to a ConstVector via valuePlan, matching the form the retired converter emitted,
+        // so rules it converted evaluate as they did.
         ValuePlan rightP = valuePlan(rp);
         // Phase 3 (R4/R9) — the column-type gate's statically-known side kinds: a numeric literal
         // or num() conversion sets a NUMERIC expectation, a string literal a CHARACTER one;
@@ -1866,7 +1870,8 @@ public final class ExprCompiler
         }
         // The four positive group functions (change #1): each is the logical complement of the
         // existing negative operator plan above (operand resolution reused unchanged). The
-        // converter emits not <positive>(…), which double-inverts back to the negative; a bare
+        // retired converter emitted not <positive>(…), which double-inverts back to the negative; a
+        // bare
         // <positive>(…) is the natural positive.
         if ("is_unique_relationship".equals(name))
         {
@@ -4323,11 +4328,13 @@ public final class ExprCompiler
      * ⭐ <b>The three sibling not-supplied arms now apply the SAME rule, by a different channel</b>
      * — {@code DatasetLookup.lookupValue}, {@code KeyMatchExpandedLookup.lookupValue} and
      * {@code RelrecExpandedLookup.lookupValue} each read the expectation through
-     * {@link JoinLookup#lookupValue(net.cumba.datatable.IDataTable, long, String, boolean)}, the
-     * four-argument overload whose {@code numericExpected} flag carries the one fact that seam
-     * previously could not see. So an absent JOINED column takes its rule-expected default exactly
-     * as this method's absent DOTTED name does — which is the dotted-parity invariant (§9c) holding
-     * across both access forms rather than in one of them.
+     * {@link JoinLookup#lookupValue(net.cumba.datatable.IDataTable, long, String, boolean)}, whose
+     * {@code numericExpected} flag carries the one fact that seam previously could not see (it
+     * landed as a four-argument overload beside a three-argument form; the three-argument form is
+     * retired, U14 of {@code PLAN-retire-dead-multi-match-lookup}, so it is now the only one). So
+     * an absent JOINED column takes its rule-expected default exactly as this method's absent
+     * DOTTED name does — which is the dotted-parity invariant (§9c) holding across both access
+     * forms rather than in one of them.
      * </p>
      *
      * <p>
@@ -4438,8 +4445,8 @@ public final class ExprCompiler
                 // Present-but-null vs absent (guard-residual D4): a $-entry that EXISTS in the
                 // context with a null value (e.g. a per-variable VariableMetadataResult projection
                 // with no entry for the current column) is a MISSING VALUE — the legacy
-                // evaluateLeafAgainstMetadata treats it as metaMissing (so `empty` fires) and the
-                // legacy CheckEvaluator containsKey guard lets such leaves evaluate. Only a name
+                // evaluateLeafAgainstMetadata treated it as metaMissing (so `empty` fired) and the
+                // retired CheckEvaluator's containsKey guard let such leaves evaluate. Only a name
                 // truly ABSENT from the context is unresolved (null ⇒ empty BitSet), mirroring
                 // CheckEvaluator's "Variable not in context" contract.
                 return ctx.getVariables().containsKey(name) ? ConstVector.of(null) : null;
@@ -4704,13 +4711,18 @@ public final class ExprCompiler
         // Resolve `--` domain wildcards in name/domain/group against the run's domain prefix before
         // executing. Since D77 the compiled program is per (rule × dataset), NOT shared across
         // domains: RuleSpecialiser.specialise runs ExprPrefixResolver over the Check, so a `--` in
-        // an inline call is normally already resolved by the time it is compiled. What
-        // ExprPrefixResolver deliberately leaves as a TEMPLATE still has to resolve here, per
-        // iterated dataset: the name operand of variable_count / variable_value_count (D92a, the
-        // inventory fold — `--LNKGRP` re-resolves per dataset) and the keyword-argument KEYS of a
-        // filter= map, which travel into the Operation's filter map and are resolved only by
-        // OperationExecutor.resolvePrefixes. Without this call such an operand names a
-        // non-existent column and the operation silently resolves to null.
+        // an inline call is normally already resolved by the time it is compiled. What this call
+        // is FOR are the keyword-argument KEYS of a filter= map: ExprPrefixResolver leaves them as
+        // written, they travel into the Operation's filter map, and resolvePrefixes (its
+        // resolveFilterKeys step) is the only place they are resolved — without this call a
+        // `--`-keyed filter names a non-existent column and matches nothing, silently.
+        // ⚑ For the name operand of variable_count / variable_value_count (D92a, the inventory
+        // fold), which ExprPrefixResolver also leaves as a TEMPLATE, the call is not what makes
+        // it work: resolvePrefixes resolves the name against THIS dataset but stashes the
+        // template as originalName, and the executor re-resolves that template (originalName, or
+        // the name when nothing was stashed) against each inventory dataset itself
+        // (countVariableAcrossInventory / evalVariableValueCount → resolveTemplate), so `--LNKGRP`
+        // becomes AELNKGRP, CMLNKGRP, … whether or not this call ran.
         Operation resolved = OperationExecutor.resolvePrefixes(op, ctx.getDomainPrefix(),
                 ctx.getVariableWildcardPrefix());
         return OperationExecutor.executeOne(resolved, ctx.getTable(), ctx.getDatasetResolver(),

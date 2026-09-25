@@ -661,9 +661,9 @@ public final class ScopeMatcher
 
 
     /**
-     * Whether {@code varName} is a qualified entry that {@code policy} makes a mismatch purely
-     * because it cannot be decided. Shared by the three legs so they cannot disagree about which
-     * entries are undecidable.
+     * Whether {@code varName} is a qualified entry that is a mismatch purely because it cannot be
+     * decided (no foreign-metadata source could be built). Shared by the three legs so they cannot
+     * disagree about which entries are undecidable.
      *
      * @param varName
      *            the entry as authored

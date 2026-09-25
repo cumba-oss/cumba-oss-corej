@@ -67,17 +67,21 @@ import org.jspecify.annotations.Nullable;
  * with the loader's {@code inner}, unreachable from production (the last minter of loader-bypassing
  * rules, the {@code CROSS_DATASET_METADATA} generator, is deleted) and load-bearing only for
  * hand-built test fixtures — which were therefore asserting a semantics the loader would never have
- * produced for them. A 2026-09-15 attempt to delete it was reverted for exactly that reason; those
- * fixtures now set {@code Join_Type} explicitly. Whether the <em>loader's</em> {@code inner}
- * default should itself be {@code left} (triage finding {@code S2},
- * {@code plans/done/PLAN-expired-justifications-triage.md}) is a separate question about the load
- * side and stays open; this class no longer holds a default of its own.
+ * produced for them. A 2026-09-15 attempt to delete it was reverted for exactly that reason. Since
+ * U15 those fixtures either author {@code Join_Type} explicitly ({@code left}, the value their
+ * assertions were written for) or — the three integration probe classes — pass their hand-built
+ * rule through {@code RulePackageLoader.normalizeJoinTypes(Rule)}, exactly as a load does. The
+ * <em>loader's</em> {@code inner} default is itself RULED: triage finding {@code S2}
+ * ({@code plans/done/PLAN-expired-justifications-triage.md}) was answered by the owner on
+ * 2026-09-25 — <i>"inner stays default"</i> — and is registered in
+ * {@code .claude/docs/rulings/value-semantics.md} §11. This class holds no default of its own.
  * </p>
  *
  * <p>
  * ⚠ The test below is still a NEGATION — {@code !JoinType.INNER.getJsonValue().equalsIgnoreCase(…)}
  * — because the gate leaves exactly two legal values, and changing the semantics of either would
- * move findings on the 38 shipped rules that author {@code left}. Adding a third join type means
+ * move findings on the 17 {@code rules-src} rules that author {@code left} (measured 2026-09-25 in
+ * {@code cumba-corej-rules}: every authored value is {@code left}). Adding a third join type means
  * auditing every {@code inner} comparison site, not adding a branch here.
  * </p>
  *

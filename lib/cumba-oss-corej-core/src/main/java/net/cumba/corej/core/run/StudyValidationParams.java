@@ -41,8 +41,8 @@ import org.jspecify.annotations.Nullable;
  * <h2>Rule selection</h2>
  *
  * <p>
- * Mirrors the CLI's include/exclude semantics exactly. The "use none / all / filtered" intent is
- * made explicit via {@link #ruleSelectionMode()}:
+ * Mirrors the CLI's include/exclude semantics exactly. The "use all / filtered" intent is made
+ * explicit via {@link #ruleSelectionMode()}:
  * </p>
  * <ul>
  * <li>{@link RuleSelectionMode#ALL} — include all loaded rules ({@link #includeRules()} and
@@ -596,7 +596,7 @@ public final class StudyValidationParams
 
         /**
          * Include CORE-id filter ({@code -r}). A non-empty list implicitly switches the mode to
-         * {@link RuleSelectionMode#FILTERED} unless the mode was set explicitly. A {@code null}
+         * {@link RuleSelectionMode#FILTERED} (the mode has no setter of its own). A {@code null}
          * argument clears the list.
          */
         public Builder includeRules(List<String> aIncludeRules)
@@ -610,7 +610,7 @@ public final class StudyValidationParams
 
         /**
          * Exclude CORE-id filter ({@code -er}). A non-empty list implicitly switches the mode to
-         * {@link RuleSelectionMode#FILTERED} unless the mode was set explicitly. A {@code null}
+         * {@link RuleSelectionMode#FILTERED} (the mode has no setter of its own). A {@code null}
          * argument clears the list.
          */
         public Builder excludeRules(List<String> aExcludeRules)

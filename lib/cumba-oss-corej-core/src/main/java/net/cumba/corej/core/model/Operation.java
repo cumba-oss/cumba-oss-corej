@@ -111,8 +111,9 @@ public class Operation
      * {@code name} column's per-row value is split into a token list (mirrors the Python reference
      * engine's {@code operations/split_by.py} {@code params.delimiter}). coreJ has no
      * {@code SPLIT_BY} {@link OperationType} — a broadcast operation cannot produce a per-row list
-     * — so the converter ({@link net.cumba.corej.core.expr.convert.SplitByInliner}) lowers a
-     * {@code split_by} operation to the per-row native value function {@code split_by(<col>,
+     * — so the load-time rewriter {@link net.cumba.corej.core.expr.convert.SplitByInliner} (run by
+     * {@code RulePackageLoader.inlineSplitByOps}) lowers a {@code split_by} operation to the
+     * per-row native value function {@code split_by(<col>,
      * "<delimiter>")}; this field is the delimiter it reads. JSON key {@code "delimiter"}.
      */
     private @Nullable String delimiter;

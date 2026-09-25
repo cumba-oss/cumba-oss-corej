@@ -46,8 +46,10 @@ import org.jspecify.annotations.Nullable;
  * qualified entries" plus a one-time WARN — which left a rule whose {@code Check}-side guard had
  * been hoisted into {@code Requirements} running with nothing in its place. An undecidable entry
  * now skips the rule with a reason naming the <em>resolver</em>, not the dataset — the only policy
- * since K6 (2026-09-25) retired the "ignore" option. The WARN survives only for the {@code Any}
- * leg, where an unqualified sibling can still satisfy the leg on its own.
+ * since K6 (2026-09-25) retired the "ignore" option. No WARN is emitted any more, in any leg. In
+ * the {@code Any} leg an undecidable entry is a mismatch like any other, so a decidable sibling in
+ * the same group can still satisfy the group on its own; when none does, the group reports the
+ * undecidable reason rather than "absent" ({@code ScopeMatcher.describeAnyLeg}).
  * </p>
  *
  * <h2>Threading</h2> The production path validates rules in parallel

@@ -303,8 +303,8 @@ public class RulePackageLoader
      * <p>
      * ⚠⚠ <b>A caller that bypasses {@link #finishLoad} must invoke this method itself.</b>
      * {@code LibraryRuleMapper.mapRulePackage} (retired with the CDISC-Library rules ingestion,
-     * cache P4) is exactly that case — it hand-picks the passes that make sense without
-     * {@code normalizeOperations} rather than running the whole pipeline — so it calls this
+     * cache P4) was exactly that case — it hand-picked the passes that made sense without
+     * {@code normalizeOperations} rather than running the whole pipeline — so it called this
      * explicitly. That is why this method is package-private rather than private. Any future path
      * that assembles a {@link RulePackage} outside {@code finishLoad} inherits the same obligation,
      * or a rule sourced through it will declare itself not executable and run anyway. ⚠ The
@@ -344,9 +344,9 @@ public class RulePackageLoader
             // interchangeable: in a shipped package the key IS the Core.Id, but on the retired
             // CDISC-Library path (LibraryRuleMapper.mapRuleMap, gone with cache P4) it was the
             // rule's UUID — naming that in a warning told the reader nothing. The key still beats
-            // ruleId()'s
-            // "<unknown>" literal for a body that omits `Core` altogether, which is the only case
-            // where a multi-rule summary would otherwise degrade to "<unknown>, <unknown>".
+            // ruleId()'s "<unknown>" literal for a body that omits `Core` altogether, which is the
+            // only case where a multi-rule summary would otherwise degrade to "<unknown>,
+            // <unknown>".
             String id = ruleId(rule);
             if (UNKNOWN_RULE_ID.equals(id) && entry.getKey() != null && !entry.getKey().isBlank())
             {
@@ -417,10 +417,13 @@ public class RulePackageLoader
      * rule omitting the field produced the same rows in both engines. Wave 33 deleted
      * {@code rules-legacy/} and the entire Python lane — <b>there is no second engine to agree with
      * any more.</b> The behaviour is deliberately left unchanged, but it is now justified only by
-     * compatibility with the findings the shipped corpus currently produces, not by parity. Whether
-     * {@code inner} is the right default at all is an open behavioural question (triage finding S2,
-     * {@code plans/done/PLAN-expired-justifications-triage.md}, and
-     * {@code plans/done/PLAN-outer-join-type.md}).
+     * compatibility with the findings the shipped corpus currently produces, not by parity. ⭐
+     * <b>Whether {@code inner} is the right default is now RULED:</b> triage finding S2
+     * ({@code plans/done/PLAN-expired-justifications-triage.md}, and
+     * {@code plans/done/PLAN-outer-join-type.md}) was answered by the owner on 2026-09-25 —
+     * <i>"inner stays default"</i> — registered in {@code .claude/docs/rulings/value-semantics.md}
+     * §11. Measured the same day: 192 of the 209 {@code rules-src} rules with
+     * {@code Match_Datasets} rely on it.
      * </p>
      *
      * <p>
@@ -472,9 +475,12 @@ public class RulePackageLoader
      *
      * <p>
      * Public so a harness that bypasses {@link #load} can apply the identical normalisation a
-     * production load performs rather than re-implementing it. Its only caller outside this class
-     * is {@code RuleScaffold}, the {@code rulespec} drift-guard harness in the rule-corpus
-     * repository's tests.
+     * production load performs rather than re-implementing it. It has no production caller outside
+     * this class. Its callers outside it are test harnesses: {@code RuleScaffold}, the
+     * {@code rulespec} drift-guard harness in the rule-corpus repository's tests, and three
+     * integration probe classes in this repository's tests
+     * ({@code CrossStandardCompositeProbeTest}, {@code AdamG2HardeningProbeTest},
+     * {@code PmdaAdValueIndexedTwinsProbeTest}), which build rules by hand.
      * </p>
      *
      * <p>
@@ -1467,10 +1473,11 @@ public class RulePackageLoader
      *
      * <p>
      * Idempotent by term presence: gates already in the {@code Precondition} (the entire shipped
-     * corpus — held to zero injections by a committed corpus test) are never duplicated. An
-     * existing Precondition that cannot be raised to an expression leaves the rule untouched with a
-     * {@link Rule#getLoadWarning() load warning}, mirroring the inliner's own bail-out. Injections
-     * are recorded on {@link Rule#getInjectedPreconditionGates()} and logged at {@code INFO}.
+     * corpus — held to zero injections by a committed corpus test) are never duplicated. Every
+     * existing Precondition raises to an expression ({@code tryRaiseToExpr} cannot fail — the
+     * load-warning bail-out for an unraisable one went with K7 of
+     * {@code PLAN-retire-dead-multi-match-lookup}). Injections are recorded on
+     * {@link Rule#getInjectedPreconditionGates()} and logged at {@code INFO}.
      * </p>
      */
     static void injectInlineOperationGates(@Nullable Rule rule)
@@ -1693,11 +1700,12 @@ public class RulePackageLoader
      * and compiles on the native backend, storing it on {@link Rule#getCheckExpr()} (mirroring the
      * {@code loadError} runtime-only precedent — never serialised). The dispatch sites use it
      * unconditionally: since the legacy {@code CheckEvaluator} retirement the native evaluator is
-     * the only backend, so there is no flag and no kill-switch. A rule that fails to raise or to
-     * compile keeps {@code checkExpr == null} and can no longer be evaluated at all —
-     * {@code RuleRunner} reports it as a per-rule {@code ERROR} rather than falling back — and that
-     * every shipped rule does compile is gated corpus-wide by {@code NativeCorpusFullCoverageTest}.
-     * Sees the same materialised Check tree.
+     * the only backend, so there is no flag and no kill-switch. Every Check raises
+     * ({@code tryRaiseToExpr} cannot fail); a rule whose raised levels fail to compile keeps
+     * {@code checkExpr == null} and can no longer be evaluated at all — {@code RuleRunner} reports
+     * it as a per-rule {@code ERROR} rather than falling back — and that every shipped rule does
+     * compile is gated corpus-wide by {@code NativeCorpusFullCoverageTest}. Sees the same
+     * materialised Check tree.
      *
      * <p>
      * Per-rule work is {@link #installNativeExpr(Rule)}; this driver only walks the package.
@@ -2003,8 +2011,8 @@ public class RulePackageLoader
      * The mapping itself is {@link net.cumba.corej.core.expr.convert.VariableExistsInliner}, the
      * one place it is defined. Eligibility spans every declared Check level and the Precondition:
      * an operation is inlined only when every reference to its {@code $}-id is a
-     * {@code $X == true/false} operand, and a Precondition that cannot be raised leaves the
-     * operations field-form.
+     * {@code $X == true/false} operand, the Precondition's references included (every Precondition
+     * raises — {@code tryRaiseToExpr} cannot fail).
      * </p>
      */
     private static void inlineVariableExistsOps(Rule rule,
@@ -2018,9 +2026,8 @@ public class RulePackageLoader
         }
         // Eligibility (and the rewrite) span the Check AND the Precondition — an operation may only
         // be inlined when *every* reference to its $-id (in either tree) is a `$X == true/false`
-        // operand. If a Precondition is present but cannot be raised, bail conservatively (leave
-        // the operations field-form) rather than drop an op that an un-analysable Precondition
-        // might still reference.
+        // operand. The Precondition always raises (tryRaiseToExpr cannot fail since K7), so its
+        // references are counted like the Check's.
         net.cumba.corej.core.expr.ast.Expr pre = null;
         if (rule.getPrecondition() != null)
         {
@@ -2113,8 +2120,8 @@ public class RulePackageLoader
      * <p>
      * The mapping itself is {@link net.cumba.corej.core.expr.convert.SplitByInliner}, the one place
      * it is defined. Eligibility spans the Check and the Precondition (an eligible {@code $}-id may
-     * appear in either); a present-but-unraisable Precondition bails conservatively (leaves the
-     * operations field-form).
+     * appear in either); every Precondition raises ({@code tryRaiseToExpr} cannot fail), so its
+     * references are always counted.
      * </p>
      */
     private static void inlineSplitByOps(Rule rule,
@@ -2928,9 +2935,10 @@ public class RulePackageLoader
     /**
      * Whether every AND-term of {@code precondition} is one of the machine-emitted availability
      * gates — the exact shape {@code injectInlineOperationGates} writes (the two inliners,
-     * {@code inlineVariableExistsOps} and {@code inlineSplitByOps}, rewrite the Check and write no
-     * gate), and the shape the retired {@code OperationInliner}'s
-     * {@code addLibraryPreconditionGate} wrote.
+     * {@code inlineVariableExistsOps} and {@code inlineSplitByOps}, rewrite the Check <em>and</em>
+     * the Precondition — {@code setPrecondition} with the rewritten tree — but add no gate term),
+     * and the shape the retired {@code OperationInliner}'s {@code addLibraryPreconditionGate}
+     * wrote.
      *
      * <p>
      * ⚠⚠ This is what keeps gate R8 an <b>authoring</b> gate rather than a corpus gate. The
@@ -2945,8 +2953,8 @@ public class RulePackageLoader
      * </p>
      *
      * <p>
-     * An unraisable {@code Precondition} answers {@code false}: no writer emits one, so it can only
-     * be authored.
+     * ⚑ An earlier arm answered {@code false} for an unraisable {@code Precondition}; it went with
+     * K7 of {@code PLAN-retire-dead-multi-match-lookup}, since {@code tryRaiseToExpr} cannot fail.
      * </p>
      */
     private static boolean isAvailabilityGateOnly(CheckCondition precondition)

@@ -22,11 +22,14 @@ import org.jspecify.annotations.Nullable;
  * has to survive into the error message.
  * </p>
  *
- * <h2>⚠⚠ {@code null} is legal everywhere and must never be rejected</h2> {@code null} means
+ * <h2>⚠⚠ {@code null} is legal at load and must never be rejected there</h2> {@code null} means
  * <i>"not authored"</i>: {@code RulePackageLoader.normalizeJoinTypes} stamps {@code inner} onto a
- * null/blank value at load, and a hand-built {@code MatchDataset} (every test fixture that never
- * sets it) keeps the null and runs through {@code KeyMatchRowExpander}'s {@code left} fallback.
- * Validation therefore judges <b>the string when present</b>, never its absence.
+ * null/blank value at load (the owner's S2 ruling, 2026-09-25: <i>"inner stays default"</i>).
+ * Load-time validation therefore judges <b>the string when present</b>, never its absence. At
+ * <b>execution</b> an absent value is no longer legal: a hand-built {@code MatchDataset} that never
+ * sets it — a rule that bypassed the loader — is refused by {@code KeyMatchRowExpander} with an
+ * {@code IllegalStateException} (U15 of {@code PLAN-retire-dead-multi-match-lookup}); until then it
+ * fell through to a {@code left} fallback.
  *
  * <p>
  * ⚑ That null used to carry a second consequence — it was what kept {@code RuleCohortGrouper}'s
@@ -57,8 +60,10 @@ public enum JoinType
      * Keep a primary row that has no matching child row, binding it to a {@code null} child so
      * dotted references resolve to {@code null} and absence/empty checks fire. The only value the
      * shipped corpus authors — 85 {@code Match_Datasets} entries across 18 distinct rules
-     * (2026-08-17; was 158 across 38 before {@code D-TA-2} removed the over-firing ones) — and the
-     * defensive fallback {@code KeyMatchRowExpander} applies to a loader-bypassing rule.
+     * (2026-08-17; was 158 across 38 before {@code D-TA-2} removed the over-firing ones;
+     * re-measured 2026-09-25: 17 {@code rules-src} rules, one entry each). Until U15 of
+     * {@code PLAN-retire-dead-multi-match-lookup} it was also {@code KeyMatchRowExpander}'s
+     * fallback for a loader-bypassing rule; such a rule is refused now.
      */
     LEFT("left");
 

@@ -242,8 +242,8 @@ public final class BuiltinFunctions implements FunctionProvider
         }));
         // record_count(): the primary table's row count — the dataset-level fact the retired legacy
         // dataset fold read (CheckConditionOptimizer.evaluateDatasetLeaf, name "record_count").
-        // Broadcast-constant and numeric. (When the fold was retired, its compareNumeric /
-        // string-equality verdicts were confirmed identical for the integral counts involved.)
+        // Broadcast-constant and numeric. (The retired fold's compareNumeric and string-equality
+        // paths gave identical verdicts for the integral counts involved.)
         fns.add(new FunctionDescriptor("record_count", List.of(), FunctionKind.VALUE,
                 (run, _) -> ConstVector.of(run.ctx().getTable().getRowCount())));
         // value(): the per-row VALUE of the "current variable" — the cells of the column named by

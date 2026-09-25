@@ -942,9 +942,12 @@ public final class OperationExecutor
      * This is the single source of the {@code --}-resolution applied before an Operation runs.
      * {@code RuleSpecialiser.specialise} calls it once per (rule × dataset) for declared
      * Operations; the native inline-operation path ({@code ExprCompiler.inlineOperationResult})
-     * calls it at eval time for what {@code ExprPrefixResolver} deliberately leaves as a template
-     * (the inventory-fold name operand, {@code filter=} keys). Without it an inline operation whose
-     * {@code group}/{@code name} names a {@code --}-prefixed column would hand this executor a
+     * calls it at eval time for what {@code ExprPrefixResolver} leaves unresolved — the
+     * {@code filter=} keys, which only {@code resolveFilterKeys} resolves. (The inventory-fold name
+     * operand of {@code variable_count} / {@code variable_value_count} is also left as a template,
+     * but this method only stashes it as {@code originalName}; the executor re-resolves it per
+     * iterated dataset through {@code resolveTemplate}.) For a declared Operation, without it a
+     * {@code group}/{@code name} naming a {@code --}-prefixed column would hand this executor a
      * non-existent column and silently resolve to {@code null}.
      * </p>
      *

@@ -156,9 +156,9 @@ public class EvaluationContext
      * {@code dictionary_available} skip-gate. {@code null} when no dictionaries are supplied —
      * every dictionary-dependent rule then SKIPs, never false-passing: a declared ({@code $}-ref)
      * operation through {@link RuleRunner}'s eager dictionary arm ({@code Fix #268}), an inlined
-     * one through the {@code dictionary_available(<type>)} precondition the converter injects for
-     * it. The same holds for a provider that is present but does not hold the rule's own
-     * {@code external_dictionary_type}.
+     * one through the {@code dictionary_available(<type>)} precondition the loader's
+     * {@code RulePackageLoader.injectInlineOperationGates} injects for it. The same holds for a
+     * provider that is present but does not hold the rule's own {@code external_dictionary_type}.
      */
     @Nullable
     RuntimeDictionaryProvider dictionaryProvider;

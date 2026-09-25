@@ -682,7 +682,8 @@ public final class RuleRunner
         }
 
         // Phase 2a.7: key-based Match_Datasets row expansion (mirrors Python merge_datasets). One
-        // expanded row per (primary, matched child) pair, honoring join_type (default left); each
+        // expanded row per (primary, matched child) pair, honoring the entry's Join_Type (the
+        // loader stamps `inner` where none is authored — S2; the expander has no default); each
         // expanded row binds its matching child, served by the KeyMatchExpandedLookup added below —
         // so a dot-qualified AE.AESDTH predicate sees the matching child, not a first-wins guess.
         // ⭐ PLAN-keymatch-shared-join-index: the child indexes come from the run's shared cache, so
