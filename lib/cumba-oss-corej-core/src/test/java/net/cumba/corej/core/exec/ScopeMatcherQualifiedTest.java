@@ -111,7 +111,8 @@ class ScopeMatcherQualifiedTest
 
     private static @Nullable String check(Rule rule, ScopeVariableSource src)
     {
-        return ScopeMatcher.describeVariablesMismatch(rule, primary().getMetaData(), "AE", src);
+        return ScopeMatcherCalls.describeVariablesMismatch(rule, primary().getMetaData(), "AE",
+                src);
     }
 
     // ------------------------------------------------------------------
@@ -418,10 +419,10 @@ class ScopeMatcherQualifiedTest
         assertNull(ScopeVariableSource.of(_ -> null, primary()),
                 "a bare DatasetResolver cannot enumerate datasets");
         assertNull(
-                ScopeMatcher.describeVariablesMismatch(include("DM.ARM"), primary().getMetaData(),
-                        "AE", null),
+                ScopeMatcherCalls.describeVariablesMismatch(include("DM.ARM"),
+                        primary().getMetaData(), "AE", null),
                 "under IGNORE (this overload's documented default) a qualified entry must not skip");
-        assertNull(ScopeMatcher.describeVariablesMismatch(exclude("DM.ARM"),
+        assertNull(ScopeMatcherCalls.describeVariablesMismatch(exclude("DM.ARM"),
                 primary().getMetaData(), "AE", null));
     }
 
@@ -435,7 +436,7 @@ class ScopeMatcherQualifiedTest
     @Test
     void bareResolverUnderSkipPolicyReportsTheEntryAsUndecidable()
     {
-        String all = ScopeMatcher.describeVariablesMismatch(include("DM.ARM"),
+        String all = ScopeMatcherCalls.describeVariablesMismatch(include("DM.ARM"),
                 primary().getMetaData(), "AE", null, ScopeMatcher.QualifiedEntryPolicy.SKIP);
         assertNotNull(all, "under SKIP an undecidable qualified entry must skip the rule");
         assertTrue(all.contains("could not be decided") && all.contains("resolver"),
@@ -445,7 +446,7 @@ class ScopeMatcherQualifiedTest
                 "⛔ it must not borrow the dataset-absent wording: " + all);
         assertTrue(all.contains("DM.ARM"), "and it must name the entry: " + all);
 
-        String none = ScopeMatcher.describeVariablesMismatch(exclude("DM.ARM"),
+        String none = ScopeMatcherCalls.describeVariablesMismatch(exclude("DM.ARM"),
                 primary().getMetaData(), "AE", null, ScopeMatcher.QualifiedEntryPolicy.SKIP);
         assertNotNull(none, "None is as undecidable as All");
         assertTrue(none.contains("None"), "and says which facet it was: " + none);
@@ -467,12 +468,11 @@ class ScopeMatcherQualifiedTest
         req.setVariables(vars);
         rule.setRequirements(req);
 
-        assertNull(
-                ScopeMatcher.describeVariablesMismatch(rule, primary().getMetaData(), "AE", null),
-                "IGNORE: the qualified entry satisfies the leg vacuously");
+        assertNull(ScopeMatcherCalls.describeVariablesMismatch(rule, primary().getMetaData(), "AE",
+                null), "IGNORE: the qualified entry satisfies the leg vacuously");
 
-        String reason = ScopeMatcher.describeVariablesMismatch(rule, primary().getMetaData(), "AE",
-                null, ScopeMatcher.QualifiedEntryPolicy.SKIP);
+        String reason = ScopeMatcherCalls.describeVariablesMismatch(rule, primary().getMetaData(),
+                "AE", null, ScopeMatcher.QualifiedEntryPolicy.SKIP);
         assertNotNull(reason, "SKIP: neither entry is satisfied, so the leg is unmet");
         assertTrue(reason.contains("could not be decided"),
                 "and it reports the undecidable entry, not absence: " + reason);
@@ -507,10 +507,10 @@ class ScopeMatcherQualifiedTest
         assertNotNull(check(exclude("AESEQ"), src), "present ⇒ excluded");
         // The three-arg overload must agree with the four-arg one passing null.
         assertEquals(
-                ScopeMatcher.describeVariablesMismatch(include("AESTDTC"), primary().getMetaData(),
-                        "AE"),
-                ScopeMatcher.describeVariablesMismatch(include("AESTDTC"), primary().getMetaData(),
-                        "AE", null));
+                ScopeMatcherCalls.describeVariablesMismatch(include("AESTDTC"),
+                        primary().getMetaData(), "AE"),
+                ScopeMatcherCalls.describeVariablesMismatch(include("AESTDTC"),
+                        primary().getMetaData(), "AE", null));
     }
 
 

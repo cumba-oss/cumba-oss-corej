@@ -71,7 +71,7 @@ class RuleRunnerRecordKeyTest
             {
                 System.setProperty(FindingKeyMode.PROP, aMode);
             }
-            return RuleRunner.execute(aRule, aTable, _ -> null, "SUPPAE");
+            return RuleRunnerCalls.execute(aRule, aTable, _ -> null, "SUPPAE");
         }
         finally
         {
@@ -164,7 +164,7 @@ class RuleRunnerRecordKeyTest
         try
         {
             System.setProperty(FindingKeyMode.PROP, "define");
-            RuleExecutionResult result = RuleRunner.execute(qvalNonEmptyRule(), suppTable(),
+            RuleExecutionResult result = RuleRunnerCalls.execute(qvalNonEmptyRule(), suppTable(),
                     _ -> null, "SUPPAE", null, null, define);
 
             Violation v = result.getViolations().get(0);
@@ -200,7 +200,7 @@ class RuleRunnerRecordKeyTest
         try
         {
             System.setProperty(FindingKeyMode.PROP, "full");
-            RuleExecutionResult result = RuleRunner.execute(rule, table, _ -> null, "AE");
+            RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, _ -> null, "AE");
 
             assertEquals(1, result.getViolationCount());
             Violation v = result.getViolations().get(0);

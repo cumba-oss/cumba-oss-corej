@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
@@ -40,7 +41,7 @@ class Cx1FileMetadataRulesProbeTest
 
     private static int violations(Rule rule, IDataTable table)
     {
-        RuleExecutionResult result = RuleRunner.execute(rule, table, _ -> null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, _ -> null);
         return result.getViolationCount();
     }
 

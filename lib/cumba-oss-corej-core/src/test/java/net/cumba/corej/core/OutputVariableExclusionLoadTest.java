@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
@@ -310,7 +310,7 @@ class OutputVariableExclusionLoadTest
 
             IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("AETERM", "H")
                     .col("AEDECOD", "").col("AESEV", "MILD").build();
-            RuleExecutionResult result = RuleRunner.execute(ok, ae);
+            RuleExecutionResult result = RuleRunnerCalls.execute(ok, ae);
             assertEquals(1, result.getViolationCount(), "status=" + result.getStatus());
             Map<String, String> values = result.getViolations().get(0).getValues();
             assertEquals("H", values.get("AETERM"));

@@ -81,8 +81,8 @@ class RuleRunnerDefineItemFindingTest
                 + "\"define_variable_role\",\"library_variable_role\","
                 + "\"define_variable_codelist_coded_codes\",\"record_count\",\"$flag\"]}}");
 
-        RuleExecutionResult r = RuleRunner.execute(rule, dm(), _ -> null, "DM", library(), null,
-                define());
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, dm(), _ -> null, "DM", library(),
+                null, define());
 
         assertEquals(2, r.getViolations().size(), "AAA and CCC mismatch; BBB matches");
 
@@ -117,8 +117,8 @@ class RuleRunnerDefineItemFindingTest
                 + "\"Sensitivity\":\"Dataset\"," + "\"Check\":" + CHECK + ","
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_name\"]}}");
 
-        RuleExecutionResult r = RuleRunner.execute(rule, dm(), _ -> null, "DM", library(), null,
-                define());
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, dm(), _ -> null, "DM", library(),
+                null, define());
 
         assertEquals(1, r.getViolations().size(), "DATASET sensitivity emits exactly one");
         assertEquals(0L, r.getViolations().get(0).getRow());
@@ -141,8 +141,8 @@ class RuleRunnerDefineItemFindingTest
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":"
                 + "[\"!define_variable_role\",\"!library_variable_role\",\"!variable_name\"]}}");
 
-        RuleExecutionResult r = RuleRunner.execute(rule, dm(), _ -> null, "DM", library(), null,
-                define());
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, dm(), _ -> null, "DM", library(),
+                null, define());
 
         assertEquals(2, r.getViolations().size());
         Map<String, String> aaa = r.getViolations().get(0).getValues();

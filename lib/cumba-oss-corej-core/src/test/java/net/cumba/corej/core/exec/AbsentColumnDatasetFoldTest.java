@@ -84,7 +84,7 @@ class AbsentColumnDatasetFoldTest
     {
         Rule negative = rule("D111-NEG", expression("TSVAL != \"PLANNED\""));
 
-        RuleExecutionResult result = RuleRunner.execute(negative, absent());
+        RuleExecutionResult result = RuleRunnerCalls.execute(negative, absent());
         assertTrue(result.hasViolations(), "missing != populated literal fires");
         assertEquals(1, result.getViolationCount(),
                 "the absent-column fact is a dataset fact and reports once (D111/D39)");
@@ -97,7 +97,7 @@ class AbsentColumnDatasetFoldTest
     {
         Rule negative = rule("D111-BLANK", expression("TSVAL != \"PLANNED\""));
 
-        RuleExecutionResult result = RuleRunner.execute(negative, allBlank());
+        RuleExecutionResult result = RuleRunnerCalls.execute(negative, allBlank());
         assertEquals(4, result.getViolationCount(),
                 "blankness is a data fact: the row path answers, one finding per row — the ruled"
                         + " asymmetry (D111: epistemic, not semantic)");
@@ -110,7 +110,7 @@ class AbsentColumnDatasetFoldTest
     {
         Rule positive = rule("D111-POS", expression("len(TSVAL) > 8"));
 
-        RuleExecutionResult result = RuleRunner.execute(positive, absent());
+        RuleExecutionResult result = RuleRunnerCalls.execute(positive, absent());
         assertEquals(0, result.getViolationCount(),
                 "len(missing) is 0, the CDISC-CG0149 shape: dataset-decided FALSE");
     }
@@ -125,7 +125,7 @@ class AbsentColumnDatasetFoldTest
         // the rows the sibling selects — no flooding and no lost selectivity.
         Rule mixed = rule("D111-MIXED", expression("TSPARMCD == \"B\" and TSVAL != \"PLANNED\""));
 
-        RuleExecutionResult result = RuleRunner.execute(mixed, absent());
+        RuleExecutionResult result = RuleRunnerCalls.execute(mixed, absent());
         assertEquals(1, result.getViolationCount(), "exactly the TSPARMCD == B row");
         assertEquals(1L, result.getViolations().getFirst().getRow());
     }

@@ -47,24 +47,6 @@ public class VariableMetadataResult
      * @param resolver
      *            the dataset resolver
      * @param domainName
-     *            the target dataset name (e.g., "ADSL")
-     * @param metadataField
-     *            the metadata field to extract: "label", "data_type", "length", "format"
-     * @return the result, or an empty result if the dataset is not available
-     */
-    public static VariableMetadataResult build(DatasetResolver resolver,
-            @Nullable String domainName, @Nullable String metadataField)
-    {
-        return build(resolver, domainName, metadataField, null);
-    }
-
-
-    /**
-     * Builds a {@code VariableMetadataResult} from a dataset's column metadata.
-     *
-     * @param resolver
-     *            the dataset resolver
-     * @param domainName
      *            the target dataset name (e.g., "ADSL"), or {@code "*"} to scan all datasets
      * @param metadataField
      *            the metadata field to extract: "label", "data_type", "length", "format"

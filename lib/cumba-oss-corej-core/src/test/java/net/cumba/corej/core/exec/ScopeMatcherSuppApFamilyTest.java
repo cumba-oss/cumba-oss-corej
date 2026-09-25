@@ -85,7 +85,7 @@ class ScopeMatcherSuppApFamilyTest
     void exclude_supp_dashdash_excludes_canonical_6char_supp()
     {
         Rule r = withScope(null, List.of("SUPP--"));
-        assertFalse(ScopeMatcher.matchesDomain(r, "SUPPAE"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(r, "SUPPAE"));
     }
 
 
@@ -93,7 +93,7 @@ class ScopeMatcherSuppApFamilyTest
     void exclude_ap_dashdash_excludes_canonical_4char_ap()
     {
         Rule r = withScope(null, List.of("AP--"));
-        assertFalse(ScopeMatcher.matchesDomain(r, "APMH"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(r, "APMH"));
     }
 
 
@@ -101,7 +101,7 @@ class ScopeMatcherSuppApFamilyTest
     void exclude_sq_dashdash_excludes_canonical_4char_sq()
     {
         Rule r = withScope(null, List.of("SQ--"));
-        assertFalse(ScopeMatcher.matchesDomain(r, "SQLB"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(r, "SQLB"));
     }
 
 
@@ -110,8 +110,8 @@ class ScopeMatcherSuppApFamilyTest
     {
         // Open question 3: once the family set is gone, APFA-- is just APFA + exactly 2.
         Rule r = withScope(null, List.of("APFA--"));
-        assertFalse(ScopeMatcher.matchesDomain(r, "APFAMH"));
-        assertTrue(ScopeMatcher.matchesDomain(r, "APFA"),
+        assertFalse(ScopeMatcherCalls.matchesDomain(r, "APFAMH"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "APFA"),
                 "APFA-- needs the two trailing characters");
     }
 
@@ -127,7 +127,7 @@ class ScopeMatcherSuppApFamilyTest
         // Exclude:["SUPP--"] silently excluded AP too. 16 shipped SUPP---scoped rules were
         // wrongly skipping AP datasets because of it.
         Rule r = withScope(null, List.of("SUPP--"));
-        assertTrue(ScopeMatcher.matchesDomain(r, "APMH"),
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "APMH"),
                 "SUPP-- must not reach AP datasets — the whole point of the deletion");
     }
 
@@ -136,8 +136,9 @@ class ScopeMatcherSuppApFamilyTest
     void exclude_ap_dashdash_no_longer_excludes_supp_or_sq()
     {
         Rule r = withScope(null, List.of("AP--"));
-        assertTrue(ScopeMatcher.matchesDomain(r, "SUPPAE"), "AP-- must not reach SUPP datasets");
-        assertTrue(ScopeMatcher.matchesDomain(r, "SQLB"), "AP-- must not reach SQ datasets");
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "SUPPAE"),
+                "AP-- must not reach SUPP datasets");
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "SQLB"), "AP-- must not reach SQ datasets");
     }
 
 
@@ -145,9 +146,9 @@ class ScopeMatcherSuppApFamilyTest
     void include_supp_dashdash_no_longer_includes_ap()
     {
         Rule r = withScope(List.of("SUPP--"), null);
-        assertFalse(ScopeMatcher.matchesDomain(r, "APMH"),
+        assertFalse(ScopeMatcherCalls.matchesDomain(r, "APMH"),
                 "Include:[SUPP--] must not select AP datasets");
-        assertTrue(ScopeMatcher.matchesDomain(r, "SUPPAE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "SUPPAE"));
     }
 
 
@@ -157,9 +158,9 @@ class ScopeMatcherSuppApFamilyTest
         // CDISC-CG0309 / CG0650 shape: AP---scoped rules were
         // firing on SUPPLB. CDISC-CG0309-absent-DOMAIN-SUPPLB.cdt pinned that bug.
         Rule r = withScope(List.of("AP--"), null);
-        assertFalse(ScopeMatcher.matchesDomain(r, "SUPPLB"),
+        assertFalse(ScopeMatcherCalls.matchesDomain(r, "SUPPLB"),
                 "Include:[AP--] must not select SUPP datasets");
-        assertTrue(ScopeMatcher.matchesDomain(r, "APMH"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "APMH"));
     }
 
     // -----------------------------------------------------------------------
@@ -173,7 +174,7 @@ class ScopeMatcherSuppApFamilyTest
         Rule r = withScope(null, List.of("SUPP--"));
         // Name-only path: SplitDatasetUtil.unsplitName("SUPPMYAEXTRA") is not a recognised split,
         // so neither the name nor the base is 6 characters.
-        assertTrue(ScopeMatcher.matchesDomain(r, "SUPPMYAEXTRA"),
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "SUPPMYAEXTRA"),
                 "SUPP-- is prefix + exactly 2; it is not a startsWith test");
     }
 
@@ -189,19 +190,19 @@ class ScopeMatcherSuppApFamilyTest
         // caller, from the DOMAIN / RDOMAIN columns, not guessed from the name.
         Rule supp = withScope(null, List.of("SUPP--"));
         // SUPPLBHM carrying RDOMAIN=LB -> base SUPPLB (6 chars) -> strict SUPP-- matches.
-        assertNotNull(ScopeMatcher.describeDomainMismatch(supp, "SUPPLBHM", "SUPPLB"),
+        assertNotNull(ScopeMatcherCalls.describeDomainMismatch(supp, "SUPPLBHM", "SUPPLB"),
                 "the data-derived base SUPPLB is what SUPP-- matches");
         // ...and it stays inside its own family: an AP dataset is untouched.
-        assertNull(ScopeMatcher.describeDomainMismatch(supp, "APMH", "APMH"));
+        assertNull(ScopeMatcherCalls.describeDomainMismatch(supp, "APMH", "APMH"));
 
         Rule sq = withScope(null, List.of("SQ--"));
         // An SQ dataset resolves to "SQ" + RDOMAIN, e.g. SQLB (4 chars) -> strict SQ-- matches.
-        assertNotNull(ScopeMatcher.describeDomainMismatch(sq, "SQLBHM", "SQLB"),
+        assertNotNull(ScopeMatcherCalls.describeDomainMismatch(sq, "SQLBHM", "SQLB"),
                 "the data-derived base SQLB is what SQ-- matches");
 
         Rule ap = withScope(null, List.of("AP--"));
         // APMH1 carries DOMAIN=APMH -> base APMH (4 chars) -> strict AP-- matches.
-        assertNotNull(ScopeMatcher.describeDomainMismatch(ap, "APMH1", "APMH"),
+        assertNotNull(ScopeMatcherCalls.describeDomainMismatch(ap, "APMH1", "APMH"),
                 "the data-derived base APMH is what AP-- matches");
     }
 
@@ -215,7 +216,7 @@ class ScopeMatcherSuppApFamilyTest
         // point of the assertion is that the ONE inexpressible shape is the one the standard
         // removes — recorded so nobody reintroduces the family wildcard to "fix" it.
         Rule supp = withScope(null, List.of("SUPP--"));
-        assertNull(ScopeMatcher.describeDomainMismatch(supp, "SUPPAPFAMH", "SUPPAPFA"),
+        assertNull(ScopeMatcherCalls.describeDomainMismatch(supp, "SUPPAPFAMH", "SUPPAPFA"),
                 "strict SUPP-- cannot reach an 8-character base — by design");
     }
 
@@ -228,9 +229,9 @@ class ScopeMatcherSuppApFamilyTest
     void exclude_supp_dashdash_does_not_exclude_non_family_dataset()
     {
         Rule r = withScope(null, List.of("SUPP--"));
-        assertTrue(ScopeMatcher.matchesDomain(r, "AE"));
-        assertTrue(ScopeMatcher.matchesDomain(r, "LB"));
-        assertTrue(ScopeMatcher.matchesDomain(r, "ADAE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "AE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "LB"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "ADAE"));
     }
 
 
@@ -240,8 +241,8 @@ class ScopeMatcherSuppApFamilyTest
         // APMH1 -> SplitDatasetUtil.unsplitName -> APMH, matched by strict AP--. The
         // table-less caller still works for digit splits.
         Rule r = withScope(List.of("AP--"), null);
-        assertTrue(ScopeMatcher.matchesDomain(r, "APMH"));
-        assertTrue(ScopeMatcher.matchesDomain(r, "APMH1"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "APMH"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "APMH1"));
     }
 
 
@@ -251,9 +252,9 @@ class ScopeMatcherSuppApFamilyTest
         // CDISC-CG0017 shape: include_split_datasets=true, Exclude=[SUPP--, AP--]. Both tokens
         // are now present, so both families are excluded — explicitly, not by inference.
         Rule r = withSplitFilterAndExclude(true, List.of("SUPP--", "AP--"));
-        assertNotNull(ScopeMatcher.describeDomainMismatch(r, "SUPPLBHM", "SUPPLB"));
-        assertNotNull(ScopeMatcher.describeDomainMismatch(r, "APMH1", "APMH"));
-        assertTrue(ScopeMatcher.matchesDomain(r, "LB1"), "Non-SUPP/AP split still in scope");
+        assertNotNull(ScopeMatcherCalls.describeDomainMismatch(r, "SUPPLBHM", "SUPPLB"));
+        assertNotNull(ScopeMatcherCalls.describeDomainMismatch(r, "APMH1", "APMH"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "LB1"), "Non-SUPP/AP split still in scope");
     }
 
 
@@ -261,9 +262,9 @@ class ScopeMatcherSuppApFamilyTest
     void empty_include_and_exclude_match_everything()
     {
         Rule r = withScope(null, null);
-        assertTrue(ScopeMatcher.matchesDomain(r, "AE"));
-        assertTrue(ScopeMatcher.matchesDomain(r, "SUPPAE"));
-        assertTrue(ScopeMatcher.matchesDomain(r, "APMH"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "AE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "SUPPAE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "APMH"));
     }
 
 
@@ -271,8 +272,8 @@ class ScopeMatcherSuppApFamilyTest
     void exclude_with_no_family_pattern_unchanged()
     {
         Rule r = withScope(null, List.of("AE"));
-        assertFalse(ScopeMatcher.matchesDomain(r, "AE"));
-        assertTrue(ScopeMatcher.matchesDomain(r, "SUPPAE"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(r, "AE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(r, "SUPPAE"));
     }
 
 }

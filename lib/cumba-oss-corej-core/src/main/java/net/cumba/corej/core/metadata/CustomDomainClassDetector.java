@@ -52,7 +52,7 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * Returns {@code null} when no pattern matches — the caller (e.g.
  * {@link MetadataLibraryProvider#getDatasetClass(String)}) propagates that to the rule generator,
- * where Fix #41's strict-on-null {@code ScopeMatcher.matchesClass} flip skips the affected
+ * where Fix #41's strict-on-null {@code ScopeMatcher.describeClassMismatch} flip skips the affected
  * class-scoped rules.
  * </p>
  *

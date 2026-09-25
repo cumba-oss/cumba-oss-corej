@@ -67,8 +67,8 @@ class AbsentDatasetSkipTest
     private static RuleExecutionResult run(Rule rule, IDataTable primary, DatasetResolver resolver,
             Set<String> reported)
     {
-        return RuleRunner.execute(rule, primary, resolver, primary.getMetaData().getName(), null,
-                null, null, Integer.MAX_VALUE, null, null, null, reported);
+        return RuleRunnerCalls.execute(rule, primary, resolver, primary.getMetaData().getName(),
+                null, null, null, Integer.MAX_VALUE, null, null, null, reported);
     }
 
 
@@ -388,8 +388,7 @@ class AbsentDatasetSkipTest
                 + "\"Check\":{\"expression\":\"not empty(AGE) and AGE != DM.AGE\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AGE\"]}}");
         // The primary IS DM, so DM cannot be "absent" here whatever the resolver says.
-        AbsentDatasetSkip.Decision d = AbsentDatasetSkip.decide(rule, _ -> null, Set.of("DM"), "DM",
-                "DM");
+        AbsentDatasetSkip.Decision d = ExecCalls.decide(rule, _ -> null, Set.of("DM"), "DM", "DM");
         assertFalse(d.applies());
     }
 
@@ -465,7 +464,7 @@ class AbsentDatasetSkipTest
         // today's behaviour, whatever it is. (§0.5 stratum C — every intent case sits here.)
         Rule rule = load(DM_DEPENDENT);
         IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("AGE", "31").build();
-        AbsentDatasetSkip.Decision d = AbsentDatasetSkip.decide(rule, resolverOf(Map.of("AE", ae)),
+        AbsentDatasetSkip.Decision d = ExecCalls.decide(rule, resolverOf(Map.of("AE", ae)),
                 Set.of("TS", "EX"), "AE", "AE");
         assertFalse(d.applies());
         assertEquals(List.of(), d.suppressedDatasets());
@@ -483,7 +482,7 @@ class AbsentDatasetSkipTest
                 + "\"Check\":{\"expression\":\"not empty(AGE)\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AGE\"]}}");
         IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("AGE", "31").build();
-        AbsentDatasetSkip.Decision d = AbsentDatasetSkip.decide(rule, resolverOf(Map.of("AE", ae)),
+        AbsentDatasetSkip.Decision d = ExecCalls.decide(rule, resolverOf(Map.of("AE", ae)),
                 Set.of("DM"), "AE", "AE");
         assertFalse(d.applies());
         assertEquals(1,
@@ -519,8 +518,8 @@ class AbsentDatasetSkipTest
         DatasetResolver noDm = resolverOf(Map.of("AE", ae));
         Map<Long, Map<String, String>> withCoverage = valuesOf(run(rule, ae, noDm, Set.of()));
         // The 11-argument overload (every pre-Fix #222 caller) must route to the same behaviour.
-        Map<Long, Map<String, String>> legacyOverload = valuesOf(RuleRunner.execute(rule, ae, noDm,
-                "AE", null, null, null, Integer.MAX_VALUE, null, null, null));
+        Map<Long, Map<String, String>> legacyOverload = valuesOf(RuleRunnerCalls.execute(rule, ae,
+                noDm, "AE", null, null, null, Integer.MAX_VALUE, null, null, null));
         assertEquals(legacyOverload, withCoverage);
         assertEquals(2, withCoverage.size());
     }

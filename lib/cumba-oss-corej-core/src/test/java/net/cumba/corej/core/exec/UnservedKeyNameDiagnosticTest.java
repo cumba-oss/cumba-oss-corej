@@ -85,7 +85,7 @@ class UnservedKeyNameDiagnosticTest
 
     private static Map<String, Object> run(List<Map<String, String>> rows, Operation op)
     {
-        return OperationExecutor.execute(List.of(op), ae(), NO_RESOLVER,
+        return OperationExecutorCalls.execute(List.of(op), ae(), NO_RESOLVER,
                 new ModelRowProvider(rows));
     }
 

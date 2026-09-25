@@ -220,8 +220,8 @@ class RuleSpecialiserTest
         Rule rule = exprRule("TEST-D92A", "var_exists(\"--LNKGRP\") and $variable_count < 2");
         rule.setOperations(List.of(op));
 
-        RuleExecutionResult result = RuleRunner.execute(rule, ae, inventory(ae, cm), "AE", null,
-                null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, ae, inventory(ae, cm), "AE",
+                null, null);
 
         assertFalse(result.isError(), String.valueOf(result.getStatusMessage()));
         assertFalse(result.hasViolations(),
@@ -229,7 +229,7 @@ class RuleSpecialiserTest
                         + "counted only the current domain (D92a)");
         // And the rule still fires when the column genuinely exists nowhere else:
         IDataTable cmWithout = MockTable.of().name("CM").col("CMTRT", "X").build();
-        RuleExecutionResult lone = RuleRunner.execute(rule, ae, inventory(ae, cmWithout), "AE",
+        RuleExecutionResult lone = RuleRunnerCalls.execute(rule, ae, inventory(ae, cmWithout), "AE",
                 null, null);
         assertTrue(lone.hasViolations(), "non-vacuity: a lone --LNKGRP must still be flagged");
     }
@@ -245,8 +245,8 @@ class RuleSpecialiserTest
         Rule rule = exprRule("TEST-D92A-INLINE",
                 "var_exists(\"--LNKGRP\") and variable_count(--LNKGRP) < 2");
 
-        RuleExecutionResult result = RuleRunner.execute(rule, ae, inventory(ae, cm), "AE", null,
-                null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, ae, inventory(ae, cm), "AE",
+                null, null);
 
         assertFalse(result.isError(), String.valueOf(result.getStatusMessage()));
         assertFalse(result.hasViolations(),
@@ -346,7 +346,7 @@ class RuleSpecialiserTest
         IDataTable nameless = MockTable.of().col("AESTDTC", "2020-01-01").build();
 
         ExpressionException ex = assertThrows(ExpressionException.class,
-                () -> RuleRunner.execute(rule, nameless, name -> null, null, null, null));
+                () -> RuleRunnerCalls.execute(rule, nameless, name -> null, null, null, null));
         assertTrue(ex.getMessage().contains("--STDTC"), ex.getMessage());
         assertTrue(ex.getMessage().contains("RuleSpecialiser"), ex.getMessage());
     }

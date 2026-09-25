@@ -18,6 +18,7 @@ import java.util.stream.Stream;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
 import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
 import net.cumba.corej.core.metadata.ValueMapDictionary;
 import net.cumba.corej.core.metadata.dictionary.HouseFormatValidator;
@@ -70,8 +71,9 @@ class DictionaryValidationTest
 
     private static RuleExecutionResult run(Rule r, IDataTable t, RuntimeDictionaryProvider dicts)
     {
-        return RuleRunner.execute(r, t, name -> name.equals(t.getMetaData().getName()) ? t : null,
-                null, null, null, null, Integer.MAX_VALUE, null, dicts);
+        return RuleRunnerCalls.execute(r, t,
+                name -> name.equals(t.getMetaData().getName()) ? t : null, null, null, null, null,
+                Integer.MAX_VALUE, null, dicts);
     }
 
 

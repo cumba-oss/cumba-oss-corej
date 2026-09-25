@@ -38,7 +38,7 @@ class RuleRunnerEdgeCaseTest
 
         installExpr(rule);
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         assertEquals("CORE-NULL", result.getRuleId());
         assertFalse(result.hasViolations());
@@ -63,7 +63,7 @@ class RuleRunnerEdgeCaseTest
 
         installExpr(rule);
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         // Non-row-based: at most 1 violation even though 2 rows match
         assertTrue(result.hasViolations());
@@ -92,7 +92,7 @@ class RuleRunnerEdgeCaseTest
 
         installExpr(rule);
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         assertEquals(2, result.getViolationCount()); // rows 1 (U) and 2 (X)
         assertEquals("U", result.getViolations().get(0).getValues().get("SEX"));
@@ -112,7 +112,7 @@ class RuleRunnerEdgeCaseTest
 
         installExpr(rule);
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         assertEquals("fallback-uuid", result.getRuleId());
     }
@@ -130,7 +130,7 @@ class RuleRunnerEdgeCaseTest
 
         installExpr(rule);
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         assertNull(result.getMessage());
     }
@@ -157,7 +157,7 @@ class RuleRunnerEdgeCaseTest
 
         installExpr(rule);
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         // variable_name check evaluates per column → STUDYID matches
         assertEquals("CORE-VARMETA", result.getRuleId());
@@ -180,7 +180,7 @@ class RuleRunnerEdgeCaseTest
         rule.setCore(core);
         rule.setCheck(expr("completely_unknown_op_xyz(X, 1)"));
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         // Unknown operator returns empty BitSet → no violations, not an error crash
         assertEquals("CORE-BADOP", result.getRuleId());
@@ -222,7 +222,7 @@ class RuleRunnerEdgeCaseTest
 
         installExpr(rule);
 
-        RuleExecutionResult result = RuleRunner.execute(rule, dm, resolver);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, dm, resolver);
 
         assertEquals(1, result.getViolationCount()); // only S02 (AGE=30)
         assertEquals("30", result.getViolations().getFirst().getValues().get("AGE"));
@@ -248,7 +248,7 @@ class RuleRunnerEdgeCaseTest
 
         installExpr(rule);
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         assertEquals(1, result.getViolationCount()); // only row 0
     }
@@ -279,7 +279,7 @@ class RuleRunnerEdgeCaseTest
 
         installExpr(rule);
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         // Rows 0, 2, 3 have AETERM=Headache
         assertTrue(result.hasViolations());

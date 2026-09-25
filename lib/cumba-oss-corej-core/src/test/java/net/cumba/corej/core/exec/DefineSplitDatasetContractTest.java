@@ -235,7 +235,7 @@ class DefineSplitDatasetContractTest
 
     private static RuleExecutionResult run(Rule rule, IDataTable table, DatasetResolver resolver)
     {
-        return RuleRunner.execute(rule, table, resolver, BASE, null, null, defineProvider);
+        return RuleRunnerCalls.execute(rule, table, resolver, BASE, null, null, defineProvider);
     }
 
     // -----------------------------------------------------------------------
@@ -364,15 +364,15 @@ class DefineSplitDatasetContractTest
     void scopeMatchingStillResolvesTheUnsplitBase()
     {
         Rule scopedToLogicalDomain = scopedTo(List.of(BASE), null);
-        assertNull(ScopeMatcher.describeDomainMismatch(scopedToLogicalDomain, PART_A, BASE),
+        assertNull(ScopeMatcherCalls.describeDomainMismatch(scopedToLogicalDomain, PART_A, BASE),
                 "a rule scoped to QS must keep running on QSPH");
-        assertNull(ScopeMatcher.describeDomainMismatch(scopedToLogicalDomain, PART_B, BASE),
+        assertNull(ScopeMatcherCalls.describeDomainMismatch(scopedToLogicalDomain, PART_B, BASE),
                 "a rule scoped to QS must keep running on QSSL");
 
         // ⚠ The one scope key that can remove a split part outright (CDISC-CG0333's only user):
         // include_split_datasets is a CONJUNCTIVE gate, so `false` drops both parts.
         Rule nonSplitsOnly = scopedTo(List.of(BASE), Boolean.FALSE);
-        assertTrue(ScopeMatcher.describeDomainMismatch(nonSplitsOnly, PART_A, BASE) != null,
+        assertTrue(ScopeMatcherCalls.describeDomainMismatch(nonSplitsOnly, PART_A, BASE) != null,
                 "include_split_datasets: false removes a split part from scope");
     }
 

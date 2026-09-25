@@ -9,7 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
@@ -52,7 +52,7 @@ class FdaSe2280PredosePt0hProbeTest
 
     private static int violations(Rule rule, IDataTable pc)
     {
-        RuleExecutionResult result = RuleRunner.execute(rule, pc, _ -> null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, pc, _ -> null);
         return result.getViolationCount();
     }
 

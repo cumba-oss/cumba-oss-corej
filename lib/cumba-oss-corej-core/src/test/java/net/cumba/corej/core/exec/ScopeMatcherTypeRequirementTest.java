@@ -101,7 +101,7 @@ class ScopeMatcherTypeRequirementTest
 
     private static @Nullable String describe(Rule rule, DataTableMeta meta)
     {
-        return ScopeMatcher.describeVariablesMismatch(rule, meta);
+        return ScopeMatcherCalls.describeVariablesMismatch(rule, meta);
     }
 
     // ------------------------------------------------------------------
@@ -360,8 +360,8 @@ class ScopeMatcherTypeRequirementTest
             IDataTable primary = MockTable.of().name("AE").col("USUBJID", "S1").build();
             ScopeVariableSource src = ScopeVariableSource.of(inventory(byName), primary);
             assertNotNull(src);
-            return ScopeMatcher.describeVariablesMismatch(rule, primary.getMetaData(), null, src,
-                    ScopeMatcher.QualifiedEntryPolicy.SKIP);
+            return ScopeMatcherCalls.describeVariablesMismatch(rule, primary.getMetaData(), null,
+                    src, ScopeMatcher.QualifiedEntryPolicy.SKIP);
         }
 
 

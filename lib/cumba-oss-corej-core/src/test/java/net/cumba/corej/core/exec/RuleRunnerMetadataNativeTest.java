@@ -60,7 +60,7 @@ class RuleRunnerMetadataNativeTest
     private static RuleExecutionResult run(Rule rule, @Nullable MetadataProvider library,
             @Nullable MetadataProvider define)
     {
-        return RuleRunner.execute(rule, dmTable(), _ -> null, "DM", library, null, define);
+        return RuleRunnerCalls.execute(rule, dmTable(), _ -> null, "DM", library, null, define);
     }
 
 
@@ -93,7 +93,7 @@ class RuleRunnerMetadataNativeTest
         rule.setVariableUniverse(net.cumba.corej.core.model.VariableUniverse.DEFINE);
         rule.setCheck(new net.cumba.corej.core.model.CheckConditionExpression(e, src));
         rule.setCheckExpr(e);
-        RuleExecutionResult r = RuleRunner.execute(rule, dmTable(), _ -> null, "DM",
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, dmTable(), _ -> null, "DM",
                 providerWithRole("Record Qualifier"), null, providerWithRole("Identifier"));
         assertTrue(r.hasViolations(), "native-authored metadata rule fires with nativeEval off");
     }

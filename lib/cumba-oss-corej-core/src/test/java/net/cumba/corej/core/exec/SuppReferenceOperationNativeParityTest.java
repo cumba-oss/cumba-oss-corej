@@ -210,7 +210,7 @@ class SuppReferenceOperationNativeParityTest
         // Diagnostic: the operation result under the truncated "SU" prefix.
         net.cumba.corej.core.model.Operation op = rule.getOperations().get(0);
         net.cumba.corej.core.model.Operation rewritten = rewriteDomain(op, "SUPP--", "SUPPSU");
-        Object res = OperationExecutor.execute(List.of(rewritten), supp, resolver)
+        Object res = OperationExecutorCalls.execute(List.of(rewritten), supp, resolver)
                 .get("$rdomain_variables");
         // Q17-a: an unresolvable target now publishes the operator's declared EmptyResult rather
         // than an unclassified null. `distinct` declares SET, so the value is the empty list — and
@@ -248,8 +248,8 @@ class SuppReferenceOperationNativeParityTest
     private static List<String> flaggedIdvars(Rule rule, IDataTable supp, DatasetResolver resolver,
             String domainPrefix)
     {
-        RuleExecutionResult result = RuleRunner.execute(rule, supp, resolver, domainPrefix, null,
-                null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, supp, resolver, domainPrefix,
+                null, null);
         List<String> idvars = new ArrayList<>();
         result.getViolations().forEach(v -> idvars.add(v.getValues().get("IDVAR")));
         return idvars;

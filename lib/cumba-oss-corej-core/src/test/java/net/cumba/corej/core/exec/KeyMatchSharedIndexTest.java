@@ -180,8 +180,8 @@ class KeyMatchSharedIndexTest
     private static List<String> run(Shape aShape, IDataTable aChild,
             JoinCache.@Nullable SharedIndexCache aCache)
     {
-        return render(KeyMatchRowExpander.expand(aShape.primary(), aShape.entries(),
-                Map.of(AE, aChild)::get, "R-" + aShape.name(), aCache));
+        return render(ExecCalls.expand(aShape.primary(), aShape.entries(), Map.of(AE, aChild)::get,
+                "R-" + aShape.name(), aCache));
     }
 
 
@@ -290,9 +290,9 @@ class KeyMatchSharedIndexTest
                 MatchDataset plain = bind("{\"Name\":\"AE\",\"Keys\":[\"USUBJID\"],\"Join_Type\":\""
                         + joinType + "\"}");
                 IDataTable view = MatchFilter.apply(filtered, ae, "R");
-                List<String> oldPath = render(KeyMatchRowExpander.expand(primary, List.of(plain),
+                List<String> oldPath = render(ExecCalls.expand(primary, List.of(plain),
                         Map.of(AE, Objects2.nonNull(view))::get, "R", null));
-                List<String> newPath = render(KeyMatchRowExpander.expand(primary, List.of(filtered),
+                List<String> newPath = render(ExecCalls.expand(primary, List.of(filtered),
                         Map.of(AE, ae)::get, "R", cache));
                 assertEquals(oldPath, newPath, filter + " / " + joinType);
             }
@@ -479,7 +479,7 @@ class KeyMatchSharedIndexTest
                 "{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"],\"Join_Type\":\"inner\"}");
         JoinCache.SharedIndexCache cache = new JoinCache.SharedIndexCache();
 
-        List<String> rows = render(KeyMatchRowExpander.expand(primary, List.of(aeJoin, dmJoin),
+        List<String> rows = render(ExecCalls.expand(primary, List.of(aeJoin, dmJoin),
                 Map.of(AE, ae, "DM", dm)::get, "R", cache));
 
         assertEquals(n, rows.size(),
@@ -501,7 +501,7 @@ class KeyMatchSharedIndexTest
         List<MatchDataset> entries = List.of(md("[\"USUBJID\"]", ""));
         DatasetResolver resolver = Map.of(AE, child())::get;
         ArithmeticException ex = assertThrows(ArithmeticException.class,
-                () -> KeyMatchRowExpander.expand(huge, entries, resolver, "R", null));
+                () -> ExecCalls.expand(huge, entries, resolver, "R", null));
         assertTrue(ex.getMessage().contains("overflow"), ex.getMessage());
     }
 
@@ -519,7 +519,7 @@ class KeyMatchSharedIndexTest
         DatasetResolver resolver = Map.of(AE, huge)::get;
         IDataTable primary = primaryNum();
         assertThrows(ArithmeticException.class,
-                () -> KeyMatchRowExpander.expand(primary, entries, resolver, "R", null));
+                () -> ExecCalls.expand(primary, entries, resolver, "R", null));
     }
 
 
@@ -538,7 +538,7 @@ class KeyMatchSharedIndexTest
         List<MatchDataset> entries = List.of(md("[\"USUBJID\",\"AESEQ\"]", ""));
         DatasetResolver resolver = Map.of(AE, huge)::get;
         assertThrows(JoinKeyTypeMismatchException.class,
-                () -> KeyMatchRowExpander.expand(primary, entries, resolver, "R", null));
+                () -> ExecCalls.expand(primary, entries, resolver, "R", null));
     }
 
     /** Local null check with a message, so a missing view fails as an assertion, not an NPE. */

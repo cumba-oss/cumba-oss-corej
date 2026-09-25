@@ -79,7 +79,7 @@ class RuleCheckLevelsExecutionTest
 
     private static RuleExecutionResult run(Rule aRule, IDataTable aTable, Severity aThreshold)
     {
-        return RuleRunner.execute(aRule, aTable, _ -> null, "AE", null, null, null,
+        return RuleRunnerCalls.execute(aRule, aTable, _ -> null, "AE", null, null, null,
                 Integer.MAX_VALUE, null, null, null, Set.of(), Set.of(), aThreshold);
     }
 
@@ -374,7 +374,7 @@ class RuleCheckLevelsExecutionTest
 
     private static RuleExecutionResult runJoined(Rule aRule, Severity aThreshold)
     {
-        return RuleRunner.execute(aRule, joinPrimary(), joinChild(), "DM", null, null, null,
+        return RuleRunnerCalls.execute(aRule, joinPrimary(), joinChild(), "DM", null, null, null,
                 Integer.MAX_VALUE, null, null, null, Set.of(), Set.of(), aThreshold);
     }
 

@@ -97,7 +97,7 @@ class PerBindingExecutionTest
     void perVariableExecutionCarriesOneOutcomePerFiringBinding() throws Exception
     {
         Rule r = load("PB1", "var_label(\"DATA\") != \"\"", "\"Sensitivity\":\"Record\",");
-        RuleExecutionResult res = RuleRunner.execute(r, ex(), with(ex()));
+        RuleExecutionResult res = RuleRunnerCalls.execute(r, ex(), with(ex()));
         BindingLedger ledger = res.getBindings();
         assertNotNull(ledger, "a variable-cursor execution must carry the ledger");
         assertEquals(2, ledger.iterated());
@@ -112,7 +112,7 @@ class PerBindingExecutionTest
     void silentBindingsCountTowardIteratedOnly() throws Exception
     {
         Rule r = load("PB2", "var_label(\"DATA\") == \"NOPE\"", "\"Sensitivity\":\"Record\",");
-        RuleExecutionResult res = RuleRunner.execute(r, ex(), with(ex()));
+        RuleExecutionResult res = RuleRunnerCalls.execute(r, ex(), with(ex()));
         BindingLedger ledger = res.getBindings();
         assertNotNull(ledger);
         assertEquals(2, ledger.iterated());
@@ -124,7 +124,7 @@ class PerBindingExecutionTest
     void datasetSensitivityStopsTheLoopAtTheFirstFiringBinding() throws Exception
     {
         Rule r = load("PB3", "var_label(\"DATA\") != \"\"", "\"Sensitivity\":\"Dataset\",");
-        RuleExecutionResult res = RuleRunner.execute(r, ex(), with(ex()));
+        RuleExecutionResult res = RuleRunnerCalls.execute(r, ex(), with(ex()));
         BindingLedger ledger = res.getBindings();
         assertNotNull(ledger);
         assertEquals(1, ledger.iterated(), "the collapse stops after the first firing binding");
@@ -140,7 +140,7 @@ class PerBindingExecutionTest
         // ("1"), EXTRT fires at row 0 ("A").
         Rule r = load("PB4", "value() != \"\" and EXTRT == \"A\"", "\"Sensitivity\":\"Record\",");
         assertEquals(Domain.CELL, r.getEvaluationDomain());
-        RuleExecutionResult res = RuleRunner.execute(r, ex(), with(ex()));
+        RuleExecutionResult res = RuleRunnerCalls.execute(r, ex(), with(ex()));
         assertEquals(2, res.getViolationCount());
         BindingLedger ledger = res.getBindings();
         assertNotNull(ledger);
@@ -155,9 +155,9 @@ class PerBindingExecutionTest
     void nonCursorPathsCarryNoLedger() throws Exception
     {
         Rule row = load("PB5", "EXTRT == \"A\"", "\"Sensitivity\":\"Record\",");
-        assertNull(RuleRunner.execute(row, ex(), with(ex())).getBindings());
+        assertNull(RuleRunnerCalls.execute(row, ex(), with(ex())).getBindings());
         Rule broadcast = load("PB6", "ds_label(\"DATA\") == \"x\"", "");
-        assertNull(RuleRunner.execute(broadcast, ex(), with(ex())).getBindings(),
+        assertNull(RuleRunnerCalls.execute(broadcast, ex(), with(ex())).getBindings(),
                 "the broadcast binding is the dataset — the result itself is its carrier");
     }
 
@@ -229,13 +229,14 @@ class PerBindingExecutionTest
         assertEquals(Domain.CELL, narrow.getEvaluationDomain());
         AtomicInteger narrowReads = new AtomicInteger();
         IDataTable narrowTable = counting(flags(2), "TRTEMFL", narrowReads);
-        RuleExecutionResult narrowRes = RuleRunner.execute(narrow, narrowTable, with(narrowTable));
+        RuleExecutionResult narrowRes = RuleRunnerCalls.execute(narrow, narrowTable,
+                with(narrowTable));
         assertEquals(RuleExecutionStatus.EXECUTED, narrowRes.getStatus());
 
         Rule wide = load("PH2", check, "\"Sensitivity\":\"Record\",");
         AtomicInteger wideReads = new AtomicInteger();
         IDataTable wideTable = counting(flags(8), "TRTEMFL", wideReads);
-        RuleExecutionResult wideRes = RuleRunner.execute(wide, wideTable, with(wideTable));
+        RuleExecutionResult wideRes = RuleRunnerCalls.execute(wide, wideTable, with(wideTable));
 
         // Correctness first: only EXFIRE fires (row 1), whatever the width.
         assertEquals(1, narrowRes.getViolationCount());
@@ -256,7 +257,7 @@ class PerBindingExecutionTest
                 .col("variable_name", "a", "b").build();
         Rule r = load("PH3", "value() == \"Y\" and TRTEMFL != \"Y\"",
                 "\"Sensitivity\":\"Record\",");
-        RuleExecutionResult res = RuleRunner.execute(r, odd, with(odd));
+        RuleExecutionResult res = RuleRunnerCalls.execute(r, odd, with(odd));
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
         assertEquals(0, res.getViolationCount(),
                 "no cell is 'Y' on a row where TRTEMFL != 'Y' except TRTEMFL's own — which the "
@@ -278,7 +279,7 @@ class PerBindingExecutionTest
         AtomicInteger narrowResolves = new AtomicInteger();
         Rule narrow = load("PO1", "varname() not in $dm_arms", extra);
         IDataTable narrowEx = flags(2);
-        RuleExecutionResult narrowRes = RuleRunner.execute(narrow, narrowEx,
+        RuleExecutionResult narrowRes = RuleRunnerCalls.execute(narrow, narrowEx,
                 countingResolver(narrowResolves, narrowEx, dm));
         assertEquals(RuleExecutionStatus.EXECUTED, narrowRes.getStatus());
         assertEquals(4, narrowRes.getViolationCount(), "4 EX columns, none of them a DM arm");
@@ -286,7 +287,7 @@ class PerBindingExecutionTest
         AtomicInteger wideResolves = new AtomicInteger();
         Rule wide = load("PO2", "varname() not in $dm_arms", extra);
         IDataTable wideEx = flags(8);
-        RuleExecutionResult wideRes = RuleRunner.execute(wide, wideEx,
+        RuleExecutionResult wideRes = RuleRunnerCalls.execute(wide, wideEx,
                 countingResolver(wideResolves, wideEx, dm));
         assertEquals(10, wideRes.getViolationCount());
         assertEquals(narrowResolves.get(), wideResolves.get(),

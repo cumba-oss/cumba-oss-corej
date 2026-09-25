@@ -55,7 +55,7 @@ class OperationEmptyResultClassificationTest
 
     private static GroupedResult run(Operation o, IDataTable table)
     {
-        Object v = OperationExecutor.executeOne(o, table, NO_RESOLVER, null, new HashMap<>());
+        Object v = OperationExecutorCalls.executeOne(o, table, NO_RESOLVER, null, new HashMap<>());
         return assertInstanceOf(GroupedResult.class, v,
                 "operation " + o.getOperator() + " should yield a GroupedResult");
     }
@@ -163,8 +163,8 @@ class OperationEmptyResultClassificationTest
         // and the ungrouped sibling has always said the same thing for an absent column
         Operation ungrouped = op("$u", "distinct");
         ungrouped.setName("NOPE");
-        assertEquals(List.of(),
-                OperationExecutor.executeOne(ungrouped, t, NO_RESOLVER, null, new HashMap<>()));
+        assertEquals(List.of(), OperationExecutorCalls.executeOne(ungrouped, t, NO_RESOLVER, null,
+                new HashMap<>()));
     }
 
 
@@ -210,7 +210,7 @@ class OperationEmptyResultClassificationTest
         o.setName("RDOMAIN");
         MetadataProvider p = mock(MetadataProvider.class);
         lenient().when(p.getDatasetClass("AE", "AE")).thenReturn("EVENTS");
-        Object v = OperationExecutor.executeOne(o, t, NO_RESOLVER, p, new HashMap<>());
+        Object v = OperationExecutorCalls.executeOne(o, t, NO_RESOLVER, p, new HashMap<>());
         GroupedResult gr = assertInstanceOf(GroupedResult.class, v);
         assertEquals("EVENTS", gr.results().get("AE"));
         assertEquals("", gr.defaultForMissingKey());
@@ -316,7 +316,7 @@ class OperationEmptyResultClassificationTest
         Operation present = op("$q", "supp_qnam_present");
         present.setDomain("SUPPPC");
         present.setKeyValue("PCCALCN");
-        Object presentResult = OperationExecutor.executeOne(present, parent, resolver, null,
+        Object presentResult = OperationExecutorCalls.executeOne(present, parent, resolver, null,
                 new HashMap<>());
         assertEquals(false,
                 assertInstanceOf(GroupedResult.class, presentResult).defaultForMissingKey(),
@@ -325,7 +325,7 @@ class OperationEmptyResultClassificationTest
         Operation value = op("$v", "supp_qnam_value");
         value.setDomain("SUPPPC");
         value.setKeyValue("PCCALCN");
-        Object valueResult = OperationExecutor.executeOne(value, parent, resolver, null,
+        Object valueResult = OperationExecutorCalls.executeOne(value, parent, resolver, null,
                 new HashMap<>());
         assertNull(assertInstanceOf(GroupedResult.class, valueResult).defaultForMissingKey(),
                 "there is no qualifier VALUE to report");
@@ -336,7 +336,8 @@ class OperationEmptyResultClassificationTest
         // empty case above produces, which is the point: absence of the dataset and absence of the
         // qualifier are the same study fact and must not report differently.
         assertEquals(false,
-                OperationExecutor.executeOne(present, parent, NO_RESOLVER, null, new HashMap<>()),
+                OperationExecutorCalls.executeOne(present, parent, NO_RESOLVER, null,
+                        new HashMap<>()),
                 "an absent SUPP dataset publishes the declared PREDICATE, not an unclassified null");
         assertEquals(EmptyResult.PREDICATE.value(),
                 OperationType.emptyValueOf(OperationType.SUPP_QNAM_PRESENT),
@@ -362,8 +363,8 @@ class OperationEmptyResultClassificationTest
                         org.mockito.ArgumentMatchers.any()))
                 .thenReturn(List.of("USUBJID", "AETERM"));
 
-        Object v = OperationExecutor.executeOne(op("$model", "get_parent_model_column_order"), supp,
-                name -> "AE".equals(name) ? ae : null, p, new HashMap<>());
+        Object v = OperationExecutorCalls.executeOne(op("$model", "get_parent_model_column_order"),
+                supp, name -> "AE".equals(name) ? ae : null, p, new HashMap<>());
         GroupedResult gr = assertInstanceOf(GroupedResult.class, v);
         assertEquals(List.of("USUBJID", "AETERM"), gr.results().get("AE"));
         assertEquals(List.of(), gr.defaultForMissingKey());

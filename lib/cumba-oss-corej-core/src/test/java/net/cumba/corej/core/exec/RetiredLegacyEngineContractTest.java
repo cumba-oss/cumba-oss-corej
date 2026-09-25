@@ -71,7 +71,7 @@ class RetiredLegacyEngineContractTest
     @Test
     void rowPathReportsErrorInsteadOfFallingBackToALegacyEngine()
     {
-        RuleExecutionResult result = RuleRunner.execute(
+        RuleExecutionResult result = RuleRunnerCalls.execute(
                 ruleWithoutNativeForm(Sensitivity.RECORD, null), table(), NO_RESOLVER, "AE", null,
                 null);
         assertNotNull(result);
@@ -87,7 +87,7 @@ class RetiredLegacyEngineContractTest
     @Test
     void groupSensitivityPathReportsErrorInsteadOfFallingBackToALegacyEngine()
     {
-        RuleExecutionResult result = RuleRunner.execute(
+        RuleExecutionResult result = RuleRunnerCalls.execute(
                 ruleWithoutNativeForm(Sensitivity.GROUP, List.of("USUBJID")), table(), NO_RESOLVER,
                 "AE", null, null);
         assertNotNull(result);

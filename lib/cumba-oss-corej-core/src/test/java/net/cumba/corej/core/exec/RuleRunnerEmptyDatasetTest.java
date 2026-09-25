@@ -82,7 +82,7 @@ class RuleRunnerEmptyDatasetTest
 
         Rule rule = trtsdtNotExistsRule("CORE-EMPTY-FIRE", List.of("TRTSDT"));
 
-        RuleExecutionResult result = assertDoesNotThrow(() -> RuleRunner.execute(rule, empty));
+        RuleExecutionResult result = assertDoesNotThrow(() -> RuleRunnerCalls.execute(rule, empty));
 
         assertTrue(result.hasViolations(),
                 "dataset-level metadata check must fire on empty dataset");
@@ -100,7 +100,7 @@ class RuleRunnerEmptyDatasetTest
 
         Rule rule = trtsdtNotExistsRule("CORE-EMPTY-OUTVAR", List.of("STUDYID"));
 
-        RuleExecutionResult result = assertDoesNotThrow(() -> RuleRunner.execute(rule, empty));
+        RuleExecutionResult result = assertDoesNotThrow(() -> RuleRunnerCalls.execute(rule, empty));
 
         assertTrue(result.hasViolations());
         assertEquals("", result.getViolations().getFirst().getValues().get("STUDYID"),
@@ -117,7 +117,7 @@ class RuleRunnerEmptyDatasetTest
 
         Rule rule = trtsdtNotExistsRule("CORE-NONEMPTY", List.of("STUDYID"));
 
-        RuleExecutionResult result = RuleRunner.execute(rule, populated);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, populated);
 
         assertTrue(result.hasViolations());
         assertEquals(1, result.getViolationCount());
@@ -173,7 +173,7 @@ class RuleRunnerEmptyDatasetTest
         rule.setOutcome(outcome);
         net.cumba.corej.core.RulePackageLoader.installNativeExpr(rule);
 
-        RuleExecutionResult result = assertDoesNotThrow(() -> RuleRunner.execute(rule, empty));
+        RuleExecutionResult result = assertDoesNotThrow(() -> RuleRunnerCalls.execute(rule, empty));
 
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
                 "nothing to check is an execution with no findings, never SKIPPED");
@@ -195,7 +195,7 @@ class RuleRunnerEmptyDatasetTest
         rowBased.setSensitivity(Sensitivity.RECORD);
         rowBased.setOutcome(outcome);
         net.cumba.corej.core.RulePackageLoader.installNativeExpr(rowBased);
-        assertFalse(RuleRunner.execute(rowBased, empty).hasViolations(),
+        assertFalse(RuleRunnerCalls.execute(rowBased, empty).hasViolations(),
                 "a row-based rule on a 0-row dataset has no rows to fire on");
     }
 
@@ -239,7 +239,7 @@ class RuleRunnerEmptyDatasetTest
 
         assertTrue(String.valueOf(rule.getCheckExpr()).contains("var_exists"),
                 () -> "precondition: the guard must be present — " + rule.getCheckExpr());
-        RuleExecutionResult result = RuleRunner.execute(rule, empty);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, empty);
         assertFalse(result.hasViolations(),
                 "var_exists(TSVAL) is TRUE on the real metadata, so the guarded negative is not "
                         + "decidable without a row — and the 0-row table has none");
@@ -273,7 +273,7 @@ class RuleRunnerEmptyDatasetTest
         net.cumba.corej.core.RulePackageLoader.installNativeExpr(rule);
         assertNotNull(rule.getCheckExpr(), "precondition: the leaf compiled natively");
 
-        RuleExecutionResult result = assertDoesNotThrow(() -> RuleRunner.execute(rule, empty));
+        RuleExecutionResult result = assertDoesNotThrow(() -> RuleRunnerCalls.execute(rule, empty));
 
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
                 "a row-based rule on an empty dataset EXECUTES with nothing to report");
@@ -321,7 +321,8 @@ class RuleRunnerEmptyDatasetTest
         assertTrue(
                 dataset.getCheck() instanceof net.cumba.corej.core.model.CheckConditionExpression,
                 "precondition: expression form, so the leaf-form fold short-circuit is not in play");
-        RuleExecutionResult result = assertDoesNotThrow(() -> RuleRunner.execute(dataset, empty));
+        RuleExecutionResult result = assertDoesNotThrow(
+                () -> RuleRunnerCalls.execute(dataset, empty));
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus());
         assertEquals(0, result.getViolationCount(),
                 "a positive bare empty(SPECIES) must read a row to decide; the zero-column table "
@@ -329,7 +330,7 @@ class RuleRunnerEmptyDatasetTest
         assertEquals(0L, result.getTotalViolationCount(), "decided on the row path, not by a fold");
 
         Rule record = bareEmptyExpressionRule("CORE-EMPTY-FIX330-RECORD", Sensitivity.RECORD);
-        assertFalse(RuleRunner.execute(record, empty).hasViolations(),
+        assertFalse(RuleRunnerCalls.execute(record, empty).hasViolations(),
                 "the same Check at RECORD sensitivity is row-based and has nothing to fire on");
     }
 
@@ -362,7 +363,7 @@ class RuleRunnerEmptyDatasetTest
         Rule rule = expressionRule("CORE-EMPTY-DOMAIN-LEN", "len(DOMAIN) != 2",
                 Sensitivity.DATASET);
 
-        RuleExecutionResult result = assertDoesNotThrow(() -> RuleRunner.execute(rule, empty));
+        RuleExecutionResult result = assertDoesNotThrow(() -> RuleRunnerCalls.execute(rule, empty));
 
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
                 "nothing to check is EXECUTED with no findings, never SKIPPED (ruling Q5)");
@@ -375,7 +376,7 @@ class RuleRunnerEmptyDatasetTest
         // spurious finding, not the rule's teeth.
         IDataTable bad = MockTable.of().name("DM").col("STUDYID", "S1").col("DOMAIN", "DMX")
                 .build();
-        assertEquals(1, RuleRunner.execute(rule, bad).getViolationCount());
+        assertEquals(1, RuleRunnerCalls.execute(rule, bad).getViolationCount());
     }
 
 
@@ -396,7 +397,7 @@ class RuleRunnerEmptyDatasetTest
         Rule rule = expressionRule("CORE-EMPTY-METADATA",
                 "var_exists(\"STUDYID\") and not var_exists(\"TRTSDT\")", Sensitivity.DATASET);
 
-        RuleExecutionResult result = assertDoesNotThrow(() -> RuleRunner.execute(rule, empty));
+        RuleExecutionResult result = assertDoesNotThrow(() -> RuleRunnerCalls.execute(rule, empty));
 
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus());
         assertEquals(1, result.getViolationCount(),
@@ -425,7 +426,7 @@ class RuleRunnerEmptyDatasetTest
         IDataTable empty = MockTable.of().name("LB").col("STUDYID").col("DOMAIN").build();
         assertEquals(0, empty.getRowCount(), "precondition: table must be empty");
 
-        RuleExecutionResult result = assertDoesNotThrow(() -> RuleRunner.execute(rule, empty));
+        RuleExecutionResult result = assertDoesNotThrow(() -> RuleRunnerCalls.execute(rule, empty));
 
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus());
         assertEquals(1, result.getViolationCount(), "an empty dataset is reported ONCE, here");
@@ -437,7 +438,7 @@ class RuleRunnerEmptyDatasetTest
 
         IDataTable populated = MockTable.of().name("LB").col("STUDYID", "S1", "S1")
                 .col("DOMAIN", "LB", "LB").build();
-        assertFalse(RuleRunner.execute(rule, populated).hasViolations(),
+        assertFalse(RuleRunnerCalls.execute(rule, populated).hasViolations(),
                 "two records: $records_in_dataset == 2, no finding");
     }
 

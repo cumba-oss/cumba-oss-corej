@@ -126,8 +126,8 @@ class KeyMatchMissingJoinKeyTest
     {
         IDataTable dm = withMissingKeyOnRowOne("DM", "AGE", "34", "51");
         IDataTable ae = withMissingKeyOnRowOne(AE, "AETERM", "HEADACHE", "NAUSEA");
-        var exp = KeyMatchRowExpander.expand(dm, List.of(md(joinType)),
-                Map.of("DM", dm, AE, ae)::get, "R-TEST");
+        var exp = ExecCalls.expand(dm, List.of(md(joinType)), Map.of("DM", dm, AE, ae)::get,
+                "R-TEST");
         assertNotNull(exp, "the expansion must be built — one key entry is expandable");
         return exp;
     }
@@ -221,7 +221,7 @@ class KeyMatchMissingJoinKeyTest
                 .name("DM").build();
         IDataTable ae = MockTable.of().colSasMissing(USUBJID, ".A", ".")
                 .col("AETERM", "HEADACHE", "NAUSEA").name(AE).build();
-        var exp = KeyMatchRowExpander.expand(dm, List.of(md("left")), Map.of("DM", dm, AE, ae)::get,
+        var exp = ExecCalls.expand(dm, List.of(md("left")), Map.of("DM", dm, AE, ae)::get,
                 "R-TEST");
         assertNotNull(exp);
         assertEquals(List.of("0:HEADACHE", "1:null"), rows(exp, "AETERM"),
@@ -250,7 +250,7 @@ class KeyMatchMissingJoinKeyTest
                 .col("AGE", "34", "51", "62").name("DM").build();
         IDataTable ae = MockTable.of().col(USUBJID, "P1", ".", "")
                 .col("AETERM", "HEADACHE", "DOTTED", "BLANK").name(AE).build();
-        var exp = KeyMatchRowExpander.expand(dm, List.of(md("left")), Map.of("DM", dm, AE, ae)::get,
+        var exp = ExecCalls.expand(dm, List.of(md("left")), Map.of("DM", dm, AE, ae)::get,
                 "R-TEST");
         assertNotNull(exp);
         assertEquals(List.of("0:HEADACHE", "1:null", "2:null"), rows(exp, "AETERM"),

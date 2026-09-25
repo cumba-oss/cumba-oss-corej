@@ -209,13 +209,13 @@ class GroupKeyPolicyUnificationTest
 
         // Site 1 (max/distinct/record_count/date-extreme/mixed-emptiness): the blank-keyed row 1
         // survives as its own "" -keyed block.
-        IndexHelper.Grouping folded = IndexHelper.groupByPresent(t, List.of("K"), "test");
+        IndexHelper.Grouping folded = ExecCalls.groupByPresent(t, List.of("K"), "test");
         assertEquals(3, folded.blocks().size(), "the fold keeps three blocks: K=1, K=missing, K=2");
         int foldedRows = folded.blocks().stream().mapToInt(b -> b.rows().length).sum();
         assertEquals(4, foldedRows, "the fold loses no row");
 
         // Site 7 (is_last_in_group): the same key list, the blank-keyed block dropped.
-        List<int[]> discarded = GroupSemantics.partition(t, List.of("K"));
+        List<int[]> discarded = GroupSemanticsCalls.partition(t, List.of("K"));
         assertEquals(2, discarded.size(), "the discard drops the missing-keyed block");
         int discardedRows = discarded.stream().mapToInt(g -> g.length).sum();
         assertEquals(3, discardedRows, "the discard loses exactly the one blank-keyed row");
@@ -236,14 +236,14 @@ class GroupKeyPolicyUnificationTest
     {
         IDataTable t = numericKeyWithMissing();
 
-        IndexHelper.Grouping foldedByDefault = IndexHelper.groupByPresent(t, List.of("K"), "test",
+        IndexHelper.Grouping foldedByDefault = ExecCalls.groupByPresent(t, List.of("K"), "test",
                 GroupKeyPolicy.KEEP_MISSING_KEYS);
         List<int[]> keptViaGroup = GroupSemantics.group(t, List.of("K"),
                 GroupKeyPolicy.KEEP_MISSING_KEYS);
         assertEquals(foldedByDefault.blocks().size(), keptViaGroup.size(),
                 "keep_missings: true makes is_last_in_group agree with its five siblings");
 
-        IndexHelper.Grouping droppedOnDemand = IndexHelper.groupByPresent(t, List.of("K"), "test",
+        IndexHelper.Grouping droppedOnDemand = ExecCalls.groupByPresent(t, List.of("K"), "test",
                 GroupKeyPolicy.DROP_MISSING_KEYS);
         List<int[]> droppedViaGroup = GroupSemantics.group(t, List.of("K"),
                 GroupKeyPolicy.DROP_MISSING_KEYS);
@@ -296,13 +296,13 @@ class GroupKeyPolicyUnificationTest
         // SINGLETON, INVERTED: "" is now blank, so the two blank-keyed rows DROP and only S3
         // survives. Pre-ruling this asserted 3 — "a singleton component keeps \"\" as a real key
         // and drops no row".
-        List<int[]> singleton = GroupSemantics.partitionCoalesced(t, comps("USUBJID"));
+        List<int[]> singleton = GroupSemanticsCalls.partitionCoalesced(t, comps("USUBJID"));
         assertEquals(1, singleton.stream().mapToInt(g -> g.length).sum(),
                 "W32-E3: a singleton component now treats \"\" as blank and drops those rows");
 
         // COALESCE, UNCHANGED: row 0 (blank subject AND blank pool) is still dropped; rows 1 and 2
         // still fall through to their populated column. This half did not move.
-        List<int[]> coalesced = GroupSemantics.partitionCoalesced(t,
+        List<int[]> coalesced = GroupSemanticsCalls.partitionCoalesced(t,
                 comps(List.of("USUBJID", "POOLID")));
         assertEquals(2, coalesced.stream().mapToInt(g -> g.length).sum(),
                 "the coalesce branch still drops only the all-blank row");
@@ -313,13 +313,13 @@ class GroupKeyPolicyUnificationTest
         // component is blank to the coalesce branch and REAL to the singleton branch.
         IDataTable ws = MockTable.of().col("USUBJID", "   ", "S2").col("POOLID", "", "").build();
         assertEquals(2,
-                GroupSemantics.partitionCoalesced(ws, comps("USUBJID")).stream()
+                GroupSemanticsCalls.partitionCoalesced(ws, comps("USUBJID")).stream()
                         .mapToInt(g -> g.length).sum(),
                 "the singleton branch keeps a whitespace-only key as a REAL key — "
                         + "MISSING_OR_EMPTY stops at \"\"");
         assertEquals(1,
-                GroupSemantics.partitionCoalesced(ws, comps(List.of("USUBJID", "POOLID"))).stream()
-                        .mapToInt(g -> g.length).sum(),
+                GroupSemanticsCalls.partitionCoalesced(ws, comps(List.of("USUBJID", "POOLID")))
+                        .stream().mapToInt(g -> g.length).sum(),
                 "the coalesce branch calls whitespace unpopulated and drops the row — "
                         + "collapsing the two predicates would silently change FDA-SE2279");
     }
@@ -338,7 +338,7 @@ class GroupKeyPolicyUnificationTest
         for (GroupKeyPolicy policy : List.of(GroupKeyPolicy.DROP_MISSING_KEYS,
                 GroupKeyPolicy.KEEP_MISSING_KEYS, GroupKeyPolicy.FOLD_BLANK_KEYS))
         {
-            List<int[]> groups = GroupSemantics.partitionCoalesced(t,
+            List<int[]> groups = GroupSemanticsCalls.partitionCoalesced(t,
                     comps(List.of("USUBJID", "POOLID")), policy);
             assertEquals(1, groups.size(),
                     "a whitespace-only USUBJID must fall through to POOLID under " + policy);
@@ -352,7 +352,8 @@ class GroupKeyPolicyUnificationTest
     {
         IDataTable t = MockTable.of().col("USUBJID", "", "", "S3").col("POOLID", "", "P2", "")
                 .build();
-        List<int[]> kept = GroupSemantics.partitionCoalesced(t, comps(List.of("USUBJID", "POOLID")),
+        List<int[]> kept = GroupSemanticsCalls.partitionCoalesced(t,
+                comps(List.of("USUBJID", "POOLID")),
                 GroupKeyPolicy.COALESCE_COMPONENT.withKeepMissings(true));
         assertEquals(3, kept.stream().mapToInt(g -> g.length).sum(),
                 "keep_missings: true folds the all-blank component to \"\" and keeps the row —"
@@ -390,7 +391,7 @@ class GroupKeyPolicyUnificationTest
         // A real DataValueMissing renders "." (MissingValue.MIS), so the fold is observable.
         IDataTable t = MockTable.of().colSasMissing("K", "1", null, "1", "2")
                 .col("V", "a", "b", "c", "d").build();
-        IndexHelper.Grouping grouping = IndexHelper.groupByPresent(t, List.of("K"), "test");
+        IndexHelper.Grouping grouping = ExecCalls.groupByPresent(t, List.of("K"), "test");
 
         for (IndexHelper.GroupBlock block : grouping.blocks())
         {
@@ -420,17 +421,17 @@ class GroupKeyPolicyUnificationTest
 
         assertEquals(
                 groupSet(GroupSemantics.group(t, List.of("K"), GroupKeyPolicy.DROP_MISSING_KEYS)),
-                groupSet(GroupSemantics.partition(t, List.of("K"))),
+                groupSet(GroupSemanticsCalls.partition(t, List.of("K"))),
                 "partition() must be group() under DROP_MISSING_KEYS");
 
         assertEquals(
-                groupSet(GroupSemantics.partitionCoalesced(t, comps("K"),
+                groupSet(GroupSemanticsCalls.partitionCoalesced(t, comps("K"),
                         GroupKeyPolicy.DROP_MISSING_KEYS)),
-                groupSet(GroupSemantics.partitionCoalesced(t, comps("K"))),
+                groupSet(GroupSemanticsCalls.partitionCoalesced(t, comps("K"))),
                 "partitionCoalesced()'s legacy overload must be DROP_MISSING_KEYS");
 
-        IndexHelper.Grouping legacy = IndexHelper.groupByPresent(t, List.of("K"), "test");
-        IndexHelper.Grouping explicit = IndexHelper.groupByPresent(t, List.of("K"), "test",
+        IndexHelper.Grouping legacy = ExecCalls.groupByPresent(t, List.of("K"), "test");
+        IndexHelper.Grouping explicit = ExecCalls.groupByPresent(t, List.of("K"), "test",
                 GroupKeyPolicy.KEEP_MISSING_KEYS);
         assertEquals(legacy.blocks().size(), explicit.blocks().size(),
                 "groupByPresent()'s legacy overload must be KEEP_MISSING_KEYS");
@@ -510,14 +511,14 @@ class GroupKeyPolicyUnificationTest
         IDataTable t = MockTable.of().colSasMissing("G", null, null).col("ORD", "1", "2")
                 .col("SEQ", "2", "1").build();
 
-        BitSet folded = GroupSemantics.targetIsNotSortedByViolations(t, 2, "SEQ", List.of("ORD"),
-                "G");
+        BitSet folded = GroupSemanticsCalls.targetIsNotSortedByViolations(t, 2, "SEQ",
+                List.of("ORD"), "G");
         assertFalse(folded.isEmpty(),
                 "the shipped fold chains the two blank-keyed rows and fires — the fabricated"
                         + " record chain this operator's family is exposed to");
 
-        BitSet discarded = GroupSemantics.targetIsNotSortedByViolations(t, 2, "SEQ", List.of("ORD"),
-                "G", GroupKeyPolicy.FOLD_BLANK_KEYS.withKeepMissings(false));
+        BitSet discarded = GroupSemanticsCalls.targetIsNotSortedByViolations(t, 2, "SEQ",
+                List.of("ORD"), "G", GroupKeyPolicy.FOLD_BLANK_KEYS.withKeepMissings(false));
         assertTrue(discarded.isEmpty(),
                 "a declared discard forms no chain across rows with no common key");
     }
@@ -533,12 +534,12 @@ class GroupKeyPolicyUnificationTest
         // Two blank-keyed rows disagreeing on the target: invisible today, a finding when kept.
         IDataTable t = MockTable.of().colSasMissing("G", null, null).col("V", "a", "b").build();
 
-        BitSet dropped = GroupSemantics.inconsistentAcrossDatasetViolations(t, "V", List.of("G"),
-                2);
+        BitSet dropped = GroupSemanticsCalls.inconsistentAcrossDatasetViolations(t, "V",
+                List.of("G"), 2);
         assertTrue(dropped.isEmpty(), "the shipped default discards the missing-keyed group");
 
-        BitSet kept = GroupSemantics.inconsistentAcrossDatasetViolations(t, "V", List.of("G"), 2,
-                false, GroupKeyPolicy.KEEP_MISSING_KEYS);
+        BitSet kept = GroupSemanticsCalls.inconsistentAcrossDatasetViolations(t, "V", List.of("G"),
+                2, false, GroupKeyPolicy.KEEP_MISSING_KEYS);
         assertFalse(kept.isEmpty(),
                 "keep_missings: true evaluates the stratum the default silently drops");
     }
@@ -565,7 +566,7 @@ class GroupKeyPolicyUnificationTest
     void blankKeyRendersItsIdentityAndDoesNotCollideWithAPopulatedKey()
     {
         IDataTable t = numericKeyWithMissing();
-        IndexHelper.Grouping grouping = IndexHelper.groupByPresent(t, List.of("K"), "test");
+        IndexHelper.Grouping grouping = ExecCalls.groupByPresent(t, List.of("K"), "test");
         Set<String> keys = new HashSet<>();
         for (IndexHelper.GroupBlock b : grouping.blocks())
         {

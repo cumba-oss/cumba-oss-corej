@@ -247,7 +247,7 @@ class OperationExecutorCodelistTermsShapesTest
         op.setCodelists(List.of("SEX"));
         op.setLevel(aLevel);
         op.setReturntype(aReturntype);
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER,
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
                 aProvider);
         return vars.get("$terms");
     }

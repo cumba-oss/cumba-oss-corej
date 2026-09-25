@@ -14,6 +14,7 @@ import java.util.Map;
 import net.cumba.corej.core.exec.DatasetRuleResolver;
 import net.cumba.corej.core.exec.OperationExecutor;
 import net.cumba.corej.core.exec.ScopeMatcher;
+import net.cumba.corej.core.exec.SplitDatasetUtil;
 import net.cumba.corej.core.gen.GeneratedRulePackage;
 import net.cumba.corej.core.gen.SkippedSourceRule;
 import net.cumba.corej.core.model.DomainScope;
@@ -194,8 +195,12 @@ class ApSqDomainScopeFromDataTest
     void theNameOnlyHeuristicDisagreesOnTheSplitSuppForm()
     {
         Rule supp = scoped(null, List.of("SUPP--"));
-        assertNull(ScopeMatcher.describeDomainMismatch(supp, "SUPPLBHM"),
-                "the 2-arg overload strips one letter (SUPPLBH, 7 chars) and misses SUPP--");
+        // The table-less reading (the retired 2-arg overload, U1 / A5): the base is derived from
+        // the NAME by SplitDatasetUtil.unsplitName, which strips one letter.
+        assertNull(
+                ScopeMatcher.describeDomainMismatch(supp, "SUPPLBHM",
+                        SplitDatasetUtil.unsplitName("SUPPLBHM")),
+                "the name heuristic strips one letter (SUPPLBH, 7 chars) and misses SUPP--");
         assertOutOfScope(supp, "SUPPLBHM",
                 "the data-derived base SUPPLB (6 chars) is what SUPP-- excludes");
     }

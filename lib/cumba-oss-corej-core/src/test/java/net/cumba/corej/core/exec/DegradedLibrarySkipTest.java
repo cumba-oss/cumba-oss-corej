@@ -155,7 +155,7 @@ class DegradedLibrarySkipTest
 
     private static RuleExecutionResult run(Rule rule, IDataTable table, MetadataProvider provider)
     {
-        return RuleRunner.execute(rule, table, name -> "LB".equals(name) ? table : null, "LB",
+        return RuleRunnerCalls.execute(rule, table, name -> "LB".equals(name) ? table : null, "LB",
                 provider);
     }
 

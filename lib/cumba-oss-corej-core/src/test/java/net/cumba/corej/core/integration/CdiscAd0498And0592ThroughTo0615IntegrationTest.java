@@ -12,7 +12,8 @@ import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleRunner;
-import net.cumba.corej.core.exec.ScopeMatcher;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
+import net.cumba.corej.core.exec.ScopeMatcherCalls;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
@@ -63,7 +64,7 @@ class CdiscAd0498And0592ThroughTo0615IntegrationTest
 
     private static int violationsOn(Rule rule, IDataTable table, DatasetResolver resolver)
     {
-        RuleExecutionResult result = RuleRunner.execute(rule, table, resolver);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, resolver);
         return result.getViolationCount();
     }
 
@@ -253,15 +254,17 @@ class CdiscAd0498And0592ThroughTo0615IntegrationTest
         // M2-D23: the declaration moved from Scope.Classes to Scope.Data_Structures, so the
         // matcher under test is the data-structure one — the channel RuleRunner actually gates on.
         Rule rule = findByCoreId("CDISC-AD0592");
-        assertTrue(ScopeMatcher.matchesDataStructure(rule, "BASIC DATA STRUCTURE"));
-        assertTrue(ScopeMatcher.matchesDataStructure(rule, "OCCURRENCE DATA STRUCTURE"));
-        assertFalse(ScopeMatcher.matchesDataStructure(rule, "SUBJECT LEVEL ANALYSIS DATASET"));
+        assertTrue(ScopeMatcherCalls.matchesDataStructure(rule, "BASIC DATA STRUCTURE"));
+        assertTrue(ScopeMatcherCalls.matchesDataStructure(rule, "OCCURRENCE DATA STRUCTURE"));
+        assertFalse(ScopeMatcherCalls.matchesDataStructure(rule, "SUBJECT LEVEL ANALYSIS DATASET"));
 
         Rule rule0498 = findByCoreId("CDISC-AD0498");
-        assertFalse(ScopeMatcher.matchesDataStructure(rule0498, "SUBJECT LEVEL ANALYSIS DATASET"));
+        assertFalse(
+                ScopeMatcherCalls.matchesDataStructure(rule0498, "SUBJECT LEVEL ANALYSIS DATASET"));
 
         Rule rule0604 = findByCoreId("CDISC-AD0604");
-        assertFalse(ScopeMatcher.matchesDataStructure(rule0604, "SUBJECT LEVEL ANALYSIS DATASET"));
+        assertFalse(
+                ScopeMatcherCalls.matchesDataStructure(rule0604, "SUBJECT LEVEL ANALYSIS DATASET"));
     }
 
 }

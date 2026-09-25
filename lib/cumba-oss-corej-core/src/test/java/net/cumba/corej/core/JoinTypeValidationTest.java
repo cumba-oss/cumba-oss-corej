@@ -11,7 +11,7 @@ import java.io.IOException;
 import java.util.List;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.model.JoinType;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
@@ -130,7 +130,7 @@ class JoinTypeValidationTest
         Rule rule = loadWith("outer");
         IDataTable adlb = MockTable.of().name("ADLB").col("USUBJID", "P1").col("AGE", "41").build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, adlb);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, adlb);
 
         assertNotNull(result);
         assertEquals(RuleExecutionStatus.ERROR, result.getStatus(),

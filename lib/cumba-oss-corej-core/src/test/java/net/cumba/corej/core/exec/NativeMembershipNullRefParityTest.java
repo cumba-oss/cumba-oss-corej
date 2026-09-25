@@ -59,8 +59,8 @@ class NativeMembershipNullRefParityTest
         IDataTable ae = MockTable.of().col("STUDYID", "S1").col("USUBJID", "001")
                 .colLong("AESEQ", 1L).build();
         DatasetResolver resolver = name -> "AE".equals(name) ? ae : null;
-        Map<String, Object> vars = OperationExecutor.execute(List.of(distinctVariableNamesOp()),
-                supp, resolver);
+        Map<String, Object> vars = OperationExecutorCalls
+                .execute(List.of(distinctVariableNamesOp()), supp, resolver);
 
         EvaluationContext ctx = EvaluationContext.builder().table(supp).variables(vars).build();
         BitSet nativ = NativeExprEvaluator.evaluate(membershipExpr(), ctx);
@@ -76,8 +76,8 @@ class NativeMembershipNullRefParityTest
         // The native path must do the same instead of throwing.
         IDataTable supp = MockTable.of().col("IDVAR", "AESEQ", "AEBOGUS").build();
         DatasetResolver resolver = _ -> null;
-        Map<String, Object> vars = OperationExecutor.execute(List.of(distinctVariableNamesOp()),
-                supp, resolver);
+        Map<String, Object> vars = OperationExecutorCalls
+                .execute(List.of(distinctVariableNamesOp()), supp, resolver);
 
         Expr e = membershipExpr();
         EvaluationContext ctx = EvaluationContext.builder().table(supp).variables(vars).build();

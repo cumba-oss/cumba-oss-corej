@@ -11,7 +11,7 @@ import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.DatasetRuleResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.exec.StubMetadataProvider;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
@@ -181,7 +181,7 @@ class CdiscAd0078And0079IntegrationTest
     /** Fix #223 — every execution goes through the declare channel. */
     private static RuleExecutionResult run(Rule rule, IDataTable adsl)
     {
-        return RuleRunner.execute(rule, adsl, self(adsl), null, null, null, DEFINE);
+        return RuleRunnerCalls.execute(rule, adsl, self(adsl), null, null, null, DEFINE);
     }
 
     // ---- CDISC-AD0078: TRTxxP exists ∧ TRxxSDT not_exists, xx > 01 ----

@@ -84,7 +84,7 @@ class DefineXmlDirectAccessE2ETest
                 .variable("DM", Map.of("name", "SEX", "role", "Qualifier"));
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("SEX", "M").build();
 
-        RuleExecutionResult r = RuleRunner.execute(cg0010, dm, _ -> null, "DM", library, null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(cg0010, dm, _ -> null, "DM", library, null,
                 define);
 
         assertTrue(r.hasViolations(), "AGE define-role (Topic) != library-role (Identifier)");
@@ -100,7 +100,7 @@ class DefineXmlDirectAccessE2ETest
                 .variable("DM", Map.of("name", "SEX", "role", "Qualifier"));
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("SEX", "M").build();
 
-        RuleExecutionResult r = RuleRunner.execute(cg0010, dm, _ -> null, "DM", library, null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(cg0010, dm, _ -> null, "DM", library, null,
                 define);
         assertFalse(r.hasViolations(), "define roles match library roles -> no finding");
     }

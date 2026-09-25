@@ -42,9 +42,8 @@ import org.jspecify.annotations.Nullable;
  * The partition is built from a {@link IDataTableIndex} over the {@code within} columns — the same
  * datatable-level index primitive the legacy operators used inline — and what a blank key component
  * means is decided by a {@link GroupKeyPolicy} rather than by each call site independently. The
- * single entry point is {@link #group(IDataTable, List, GroupKeyPolicy)}; {@link #partition} is
- * that primitive under {@link GroupKeyPolicy#DROP_MISSING_KEYS}, the shipped default for the
- * {@code within:} operator family.
+ * single entry point is {@link #group(IDataTable, List, GroupKeyPolicy)}, which the {@code within:}
+ * operator family runs under {@link GroupKeyPolicy#DROP_MISSING_KEYS}, its shipped default.
  * </p>
  */
 public final class GroupSemantics
@@ -62,62 +61,25 @@ public final class GroupSemantics
 
 
     /**
-     * Partitions the table rows by the {@code withinCols} key tuple. Returns the groups as arrays
-     * of absolute row indices, in index-block order. A group whose key has a missing/invalid
-     * component (per {@code IDataValue.isMissingOrInvalid}, the legacy {@code isBlockKeyMissing}
-     * test) is excluded.
-     *
-     * <p>
-     * <b>EC-44 (Fix #134).</b> A {@code within} column <em>absent</em> from the table is
-     * <b>ignored</b>, and the surviving columns do the partitioning; when none survives — including
-     * when {@code withinCols} is itself empty — the whole table is one group. An absent column
-     * cannot differentiate any row from any other, so every row is homogeneous with respect to that
-     * key and it partitions nothing. Before this, any absent column returned {@code null} and the
-     * caller yielded no violations, so a check silently stopped running on every study that did not
-     * collect an optional (Perm/Cond) partitioning variable. Fix #133 established this contract for
-     * the grouped operation evaluators (see {@link IndexHelper#groupByPresent}); Fix #134 completes
-     * it for the Check-level {@code within:} operators.
-     * </p>
-     *
-     * <p>
-     * <b>Absence is not missingness.</b> The blank-key exclusion above still applies to the
-     * <em>surviving</em> columns: a missing <em>value</em> in a column that <em>exists</em> is a
-     * key that is unknown relative to known peers, which is a different thing from a column the
-     * study never collected. Whether that unknown key drops its group is now the
-     * {@link GroupKeyPolicy#keepMissings()} decision rather than a fact hard-coded here.
-     * </p>
-     *
-     * <p>
-     * ⚠ The warrant previously cited here — "the EC-26 / Fix #122 parity contract" — is <b>void</b>
-     * and has been removed. The ledger records {@code Fix #122} as <em>Python fork only; Java
-     * unchanged</em>: it moved the <b>fork</b> to match coreJ, so coreJ's discard was never derived
-     * from parity and the citation was retroactive. See {@link GroupKeyPolicy#DROP_MISSING_KEYS}.
-     * </p>
-     *
-     * @param table
-     *            the dataset
-     * @param withinCols
-     *            the partitioning column names; entries absent from the table are ignored
-     * @return the row-index groups; never {@code null}, and empty only for an empty table
-     */
-    public static List<int[]> partition(IDataTable table, List<String> withinCols)
-    {
-        return group(table, withinCols, GroupKeyPolicy.DROP_MISSING_KEYS);
-    }
-
-
-    /**
      * <b>The single grouping primitive.</b> Every index-based grouping path in the engine goes
      * through this method, and the EC-44 absent-column contract (an absent column is ignored; if
      * none survives, one whole-table group) is applied <b>once</b>, here.
      *
      * <p>
-     * {@link #partition(IDataTable, List)} is this primitive under
-     * {@link GroupKeyPolicy#DROP_MISSING_KEYS} and {@code IndexHelper.groupByPresent} is its
-     * reporting-key twin under {@link GroupKeyPolicy#KEEP_MISSING_KEYS}. Before the unification
-     * each grouping path decided the blank-key question for itself, which is how one authoring
-     * surface ({@code Operations[].group:}) ended up folding for five operators and discarding for
-     * a sixth with nothing in the YAML to tell the author which they would get.
+     * The Check-level {@code within:} operator family runs this primitive under
+     * {@link GroupKeyPolicy#DROP_MISSING_KEYS} — a group whose key has a missing/invalid component
+     * is excluded — and {@code IndexHelper.groupByPresent} is its reporting-key twin under
+     * {@link GroupKeyPolicy#KEEP_MISSING_KEYS}. ⚠ The EC-44 (Fix #134) contract holds here for the
+     * {@code within:} operators: an absent column cannot differentiate any row from any other, so
+     * it is ignored and the surviving columns partition; when none survives the whole table is one
+     * group. Before this, any absent column returned {@code null} and the caller yielded no
+     * violations, so a check silently stopped running on every study that did not collect an
+     * optional (Perm/Cond) partitioning variable. Absence is not missingness: a missing
+     * <em>value</em> in a column that <em>exists</em> is a key unknown relative to known peers, and
+     * whether that drops its group is the {@link GroupKeyPolicy#keepMissings()} decision. Before
+     * the unification each grouping path decided the blank-key question for itself, which is how
+     * one authoring surface ({@code Operations[].group:}) ended up folding for five operators and
+     * discarding for a sixth with nothing in the YAML to tell the author which they would get.
      * </p>
      *
      * @param table
@@ -224,9 +186,9 @@ public final class GroupSemantics
      *
      * <p>
      * When <b>no</b> component is a coalesce-group (every component is a singleton) this delegates
-     * to the index-based {@link #partition(IDataTable, List)} over the flattened column list, so
-     * the result — group membership and order — is <b>bit-for-bit identical</b> to the pre-EC-24
-     * behaviour. Only the presence of a genuine coalesce-group switches to the computed-key path.
+     * to the index-based {@link #group} over the flattened column list, so the result — group
+     * membership and order — is <b>bit-for-bit identical</b> to the pre-EC-24 behaviour. Only the
+     * presence of a genuine coalesce-group switches to the computed-key path.
      * </p>
      *
      * <p>
@@ -239,24 +201,6 @@ public final class GroupSemantics
      * {@code MISSING_OR_EMPTY} notion instead ({@code W32-E3} / Fix #241), so for them a
      * whitespace-only value stays a real key.
      * </p>
-     *
-     * @param table
-     *            the dataset
-     * @param components
-     *            the key components (normalised {@code List<List<String>>}; must be non-empty)
-     * @return the row-index groups (index-block order for the delegated path, first-seen key order
-     *         for the computed-key path); never {@code null}. An absent column inside a surviving
-     *         grouping is tolerated by dropping it and regrouping on the remaining columns, and
-     *         when no component survives at all the whole table is one group (EC-44 / Fix #134)
-     */
-    public static List<int[]> partitionCoalesced(IDataTable table, List<List<String>> components)
-    {
-        return partitionCoalesced(table, components, GroupKeyPolicy.DROP_MISSING_KEYS);
-    }
-
-
-    /**
-     * {@link #partitionCoalesced(IDataTable, List)} under an explicit {@link GroupKeyPolicy}.
      *
      * <p>
      * ⚠⚠ <b>Two blankness notions are load-bearing inside this one method</b> and the policy
@@ -448,43 +392,20 @@ public final class GroupSemantics
      * The {@code has_multiple_values_for} functional-dependency check over a sequence of rows
      * addressed by {@code rowAt} (position {@code i} ⇒ absolute row {@code rowAt.applyAsInt(i)}).
      * Returns a {@link java.util.BitSet} over <i>positions</i> {@code [0, sequenceSize)} — the
-     * caller maps a set position {@code i} back to its absolute row {@code rowAt.applyAsInt(i)}.
+     * caller maps a set position {@code i} back to its absolute row {@code rowAt.applyAsInt(i)}. A
+     * position fires when its key value ({@code valueCol}) maps to more than one distinct dependent
+     * value ({@code nameCol}) across the sequence.
      *
      * <p>
-     * A position fires when its key value ({@code valueCol}) maps to more than one distinct
-     * dependent value ({@code nameCol}) across the sequence. A position whose key <b>or</b>
-     * dependent is blank ({@code ""} or a genuine missing — not {@link KeyPart.Present}) is
-     * excluded from the dependency entirely — it neither seeds a key nor ever fires
-     * (operator-examples.md D.13).
-     * </p>
-     *
-     * @param nameCol
-     *            the dependent column (the {@code name} operand)
-     * @param valueCol
-     *            the key column (the {@code value} operand)
-     * @param rowAt
-     *            position-to-row mapping
-     * @param sequenceSize
-     *            the number of positions
-     * @return the violating positions
-     */
-    public static BitSet hasMultipleValuesForRows(IDataTableColumn nameCol,
-            IDataTableColumn valueCol, IntUnaryOperator rowAt, int sequenceSize)
-    {
-        return hasMultipleValuesForRows(nameCol, valueCol, rowAt, sequenceSize, false);
-    }
-
-
-    /**
-     * The {@code has_multiple_values_for} check with an explicit emptiness switch (Fix #121,
-     * Java-only). With {@code includeEmpty == false} this is exactly
-     * {@link #hasMultipleValuesForRows(IDataTableColumn, IDataTableColumn, IntUnaryOperator, int)}
-     * — the D.13 exclusion applies. With {@code includeEmpty == true} the exclusion is disabled: a
-     * blank is a real key and a real dependent value, so a key mapping to a populated dependent on
-     * one row and a blank dependent on another has two distinct dependents and fires — including on
-     * the blank rows. Since {@code W38-A1} (Fix #249) a participating blank keeps its own
-     * {@link KeyPart} identity — {@code ""} and each missing marker are distinct keys and distinct
-     * dependent values, exactly as they are distinct groups everywhere blanks are kept.
+     * With {@code includeEmpty == false} a position whose key <b>or</b> dependent is blank
+     * ({@code ""} or a genuine missing — not {@link KeyPart.Present}) is excluded from the
+     * dependency entirely — it neither seeds a key nor ever fires (operator-examples.md D.13). With
+     * {@code includeEmpty == true} (Fix #121, Java-only) the exclusion is disabled: a blank is a
+     * real key and a real dependent value, so a key mapping to a populated dependent on one row and
+     * a blank dependent on another has two distinct dependents and fires — including on the blank
+     * rows. Since {@code W38-A1} (Fix #249) a participating blank keeps its own {@link KeyPart}
+     * identity — {@code ""} and each missing marker are distinct keys and distinct dependent
+     * values, exactly as they are distinct groups everywhere blanks are kept.
      *
      * @param nameCol
      *            the dependent column (the {@code name} operand)
@@ -761,7 +682,7 @@ public final class GroupSemantics
      * of rows sharing both the {@code within} value and the {@code name} value.
      *
      * @param groups
-     *            the composite-key row groups (from {@link #partition})
+     *            the composite-key row groups (from {@link #group})
      * @param flagMultiple
      *            fire size&ge;2 groups when {@code true}, singletons when {@code false}
      * @param result
@@ -865,10 +786,9 @@ public final class GroupSemantics
 
     /**
      * For one group, orders the rows by {@code orderCol} and flags every row (except the last)
-     * whose {@code nameCol} value does not equal the {@code valueCol} value on the next ordered row
-     * ({@code does_not_have_next_corresponding_record}). The two cells are compared as their
-     * {@link KeyPart} identities ({@link #identityCorresponds}) — this overload is the shipped
-     * behaviour of every rule that authors no {@code relation=}.
+     * whose {@code nameCol} value does not correspond to the {@code valueCol} value on the next
+     * ordered row ({@code does_not_have_next_corresponding_record}), the correspondence supplied by
+     * the caller (EC-87, {@code relation=}).
      *
      * @param nameCol
      *            the current-row column
@@ -880,22 +800,10 @@ public final class GroupSemantics
      *            the group's absolute row indices (sorted in place)
      * @param result
      *            the absolute-row violation set to populate
-     */
-    public static void flagNoNextCorrespondingRecord(IDataTableColumn nameCol,
-            IDataTableColumn valueCol, IDataTableColumn orderCol, int[] rows, BitSet result)
-    {
-        flagNoNextCorrespondingRecord(nameCol, valueCol, orderCol, rows, result,
-                GroupSemantics::identityCorresponds);
-    }
-
-
-    /**
-     * {@link #flagNoNextCorrespondingRecord(IDataTableColumn, IDataTableColumn, IDataTableColumn, int[], BitSet)}
-     * with the correspondence supplied by the caller (EC-87, {@code relation=}).
-     *
      * @param relation
-     *            see {@link NeighbourRelation}; the five-argument overload passes
-     *            {@link #identityCorresponds}
+     *            see {@link NeighbourRelation}; a rule that authors no {@code relation=} runs under
+     *            {@link #identityCorresponds} — the two cells compared as their {@link KeyPart}
+     *            identities
      */
     public static void flagNoNextCorrespondingRecord(IDataTableColumn nameCol,
             IDataTableColumn valueCol, IDataTableColumn orderCol, int[] rows, BitSet result,
@@ -952,46 +860,21 @@ public final class GroupSemantics
     /**
      * The {@code target_is_not_sorted_by} verdict: groups rows by {@code withinColName}'s
      * {@link KeyPart} identity (one whole-table bucket when the column is {@code null} or absent;
-     * blank within values are kept, each blank kind its own bucket — {@code W38-A1}), and within
-     * each group of &ge; 2 rows orders by the {@code sortVars} key columns (multi-key string
-     * {@code compareTo}, missing treated as {@code ""}); if the {@code targetCol} is then not
-     * monotonically non-decreasing — compared numeric-first, string-fallback (so
-     * {@code "2" < "10"}) — every row of that group is flagged. Empty {@code sortVars}, a missing
-     * target column, or {@code rowCount <= 1} yields no violations.
+     * under the shipped {@link GroupKeyPolicy#FOLD_BLANK_KEYS} blank within values are kept, each
+     * blank kind its own bucket — {@code W38-A1}), and within each group of &ge; 2 rows orders by
+     * the {@code sortVars} key columns (multi-key string {@code compareTo}, missing treated as
+     * {@code ""}); if the {@code targetCol} is then not monotonically non-decreasing — compared
+     * numeric-first, string-fallback (so {@code "2" < "10"}) — every row of that group is flagged.
+     * Empty {@code sortVars}, a missing target column, or {@code rowCount <= 1} yields no
+     * violations.
      *
      * <p>
-     * This deliberately uses its own value-keyed grouping (not {@link #partition}) because blank
-     * within values are KEPT rather than dropped — each blank kind its own bucket ({@code W38-A1},
-     * above), where {@link #partition} excludes a blank-keyed row. (The retired legacy operator
-     * pooled every blank into one {@code ""} bucket; W38-A1 replaced that pooling with the per-kind
-     * buckets.)
+     * This deliberately uses its own value-keyed grouping (not {@link #group}) because blank within
+     * values are KEPT rather than dropped — each blank kind its own bucket ({@code W38-A1}), where
+     * {@link #group} under a discarding policy excludes a blank-keyed row. (The retired legacy
+     * operator pooled every blank into one {@code ""} bucket; W38-A1 replaced that pooling with the
+     * per-kind buckets.)
      * </p>
-     *
-     * @param table
-     *            the dataset
-     * @param rowCount
-     *            the row count
-     * @param targetCol
-     *            the column whose ascending order is checked
-     * @param sortVars
-     *            the ordering key columns (in priority order)
-     * @param withinColName
-     *            the partitioning column, or {@code null} for a single group
-     * @return the violating absolute rows
-     */
-    public static BitSet targetIsNotSortedByViolations(IDataTable table, int rowCount,
-            @Nullable String targetCol, List<String> sortVars, @Nullable String withinColName)
-    {
-        return targetIsNotSortedByViolations(table, rowCount, targetCol, sortVars, withinColName,
-                GroupKeyPolicy.FOLD_BLANK_KEYS);
-    }
-
-
-    /**
-     * {@link #targetIsNotSortedByViolations(IDataTable, int, String, List, String)} under an
-     * explicit {@link GroupKeyPolicy}. The five-argument overload is this one under
-     * {@link GroupKeyPolicy#FOLD_BLANK_KEYS} — the shipped behaviour, which <b>keeps</b> a blank
-     * {@code within} key (each blank kind its own bucket since {@code W38-A1}).
      *
      * <p>
      * ⚠ Keeping blanks is questionable for an <em>ordering</em> operator and this is the surface
@@ -1117,55 +1000,17 @@ public final class GroupSemantics
 
 
     /**
-     * The {@code is_not_unique_relationship} verdict: flags rows where the {@code nameCol} /
-     * {@code valueCol} pair is not a 1:1 (bijective) mapping — i.e. some name maps to multiple
-     * values <i>or</i> some value maps to multiple names. A row with a blank cell — empty or
-     * genuine-missing, i.e. not {@link KeyPart.Present} — in either column is <b>excluded</b>: such
-     * a cell is not a participant in the relationship, so it is neither a key nor ever flagged.
-     * (This is the key-exclusion half of Python's {@code dropna(how="all")} + empty-key skip; Java
-     * does not additionally implement Python's {@code has_null} decode-present/code-blank flag —
-     * that signal is owned by the dedicated decode/code coverage rules, see plan J1/1b.)
-     *
-     * @param nameCol
-     *            the first relation column
-     * @param valueCol
-     *            the second relation column
-     * @param rowCount
-     *            the row count
-     * @return the violating absolute rows
-     */
-    public static BitSet relationshipNotUniqueViolations(IDataTableColumn nameCol,
-            IDataTableColumn valueCol, int rowCount)
-    {
-        KeyPart[] aVals = new KeyPart[rowCount];
-        Object[] bVals = new Object[rowCount];
-        boolean[] participates = new boolean[rowCount];
-        for (int r = 0; r < rowCount; r++)
-        {
-            KeyPart a = keyPart(nameCol, r);
-            KeyPart b = keyPart(valueCol, r);
-            aVals[r] = a;
-            bVals[r] = b;
-            // A blank cell is not a participant in the relationship — pairing it would make an
-            // all-blank code column map its blank -> every term and flag every row. A TYPE test
-            // (W38-A1): Empty and Missing are non-participants, whatever they render as.
-            participates[r] = a.present() && b.present();
-        }
-        return relationshipNotUniqueCore(aVals, bVals, participates, rowCount);
-    }
-
-
-    /**
-     * Multi-column {@code is_not_unique_relationship(NAME, keys=[V1, V2, …])}: flags rows whose
+     * The {@code is_not_unique_relationship(NAME, keys=[V1, V2, …])} verdict: flags rows whose
      * {@code nameColName} value and the <i>tuple</i> {@code (valueColNames…)} are not a 1:1
-     * mapping. Mirrors Python's list-comparator form (a name mapping to multiple distinct value
-     * tuples, or a value tuple mapping to multiple names, is a violation). A value column absent
-     * from the table is dropped (the legacy contract); if none remain the relationship has no
-     * comparator side and nothing fires. A row whose name <i>or any</i> value component is blank
-     * (not {@link KeyPart.Present}) is excluded as a non-participant — the same key-exclusion rule
-     * the single-column form applies, generalised component-wise. (Like the single-column overload,
-     * Java does not additionally implement Python's {@code has_null} present-code/blank-decode
-     * flag; that signal is owned by the dedicated coverage rules.)
+     * (bijective) mapping — some name maps to multiple distinct value tuples, or some value tuple
+     * maps to multiple names (a single {@code keys=[V]} is the plain two-column relation). A value
+     * column absent from the table is dropped (the legacy contract); if none remain the
+     * relationship has no comparator side and nothing fires. A row whose name <i>or any</i> value
+     * component is blank — empty or genuine-missing, i.e. not {@link KeyPart.Present} — is excluded
+     * as a non-participant: such a cell is neither a key nor ever flagged. (This is the
+     * key-exclusion half of Python's {@code dropna(how="all")} + empty-key skip; Java does not
+     * additionally implement Python's {@code has_null} decode-present/code-blank flag — that signal
+     * is owned by the dedicated decode/code coverage rules, see plan J1/1b.)
      *
      * @param table
      *            the dataset
@@ -1432,66 +1277,19 @@ public final class GroupSemantics
      * (silently dropping any column absent from the table, the legacy contract), and within each
      * inconsistent group (more than one distinct non-blank {@code nameColName} value) flags the
      * <b>minority</b> rows — those not holding the group's most-common value, all rows on a tie —
-     * matching Python {@code _check_inconsistency} (operator-examples.md D.2). A blank target
-     * (empty, genuine missing, or whitespace-only) is excluded from both the count and the flag
-     * pass — a deliberate emptiness-exception. Groups with a missing/invalid <i>key</i> are skipped
-     * (via {@link #partition}).
+     * matching Python {@code _check_inconsistency} (operator-examples.md D.2). Under the shipped
+     * {@link GroupKeyPolicy#DROP_MISSING_KEYS} a group whose key carries a genuine missing marker
+     * is skipped.
      *
-     * @param table
-     *            the dataset
-     * @param nameColName
-     *            the column whose per-group consistency is checked
-     * @param groupColNames
-     *            the grouping columns
-     * @param rowCount
-     *            the row count
-     * @return the violating absolute rows
-     */
-    public static BitSet inconsistentAcrossDatasetViolations(IDataTable table,
-            @Nullable String nameColName, List<String> groupColNames, int rowCount)
-    {
-        return inconsistentAcrossDatasetViolations(table, nameColName, groupColNames, rowCount,
-                false);
-    }
-
-
-    /**
-     * The {@code is_inconsistent_across_dataset} verdict with an explicit emptiness switch (Fix
-     * #121, Java-only). With {@code includeEmpty == false} this is exactly
-     * {@link #inconsistentAcrossDatasetViolations(IDataTable, String, List, int)} — the D.2
-     * emptiness-exception applies. With {@code includeEmpty == true} a blank target participates as
-     * a real value: every blank flavour (empty {@code ""}, genuine missing, whitespace-only)
-     * contributes the single canonical blank value ({@link KeyPart#EMPTY}) — mirroring the
-     * operator's own whitespace-aware blankness notion — which counts toward the group's distinct
-     * values and is flagged when it is a minority (or on a tie) like any other value. Grouping-key
-     * semantics are unchanged.
-     *
-     * @param table
-     *            the dataset
-     * @param nameColName
-     *            the column whose per-group consistency is checked
-     * @param groupColNames
-     *            the grouping columns
-     * @param rowCount
-     *            the row count
-     * @param includeEmpty
-     *            {@code true} to let blank targets participate (folded to {@code ""})
-     * @return the violating absolute rows
-     */
-    public static BitSet inconsistentAcrossDatasetViolations(IDataTable table,
-            @Nullable String nameColName, List<String> groupColNames, int rowCount,
-            boolean includeEmpty)
-    {
-        return inconsistentAcrossDatasetViolations(table, nameColName, groupColNames, rowCount,
-                includeEmpty, GroupKeyPolicy.DROP_MISSING_KEYS);
-    }
-
-
-    /**
-     * {@link #inconsistentAcrossDatasetViolations(IDataTable, String, List, int, boolean)} under an
-     * explicit {@link GroupKeyPolicy}. The five-argument overload is this one under
-     * {@link GroupKeyPolicy#DROP_MISSING_KEYS} — the shipped behaviour, where a group whose key
-     * carries a genuine missing marker is skipped.
+     * <p>
+     * With {@code includeEmpty == false} a blank target (empty, genuine missing, or
+     * whitespace-only) is excluded from both the count and the flag pass — a deliberate
+     * emptiness-exception. With {@code includeEmpty == true} (Fix #121, Java-only) a blank target
+     * participates as a real value: every blank flavour contributes the single canonical blank
+     * value ({@link KeyPart#EMPTY}) — mirroring the operator's own whitespace-aware blankness
+     * notion — which counts toward the group's distinct values and is flagged when it is a minority
+     * (or on a tie) like any other value.
+     * </p>
      *
      * <p>
      * ⚠ {@code policy} is the <b>group-membership</b> axis and {@code includeEmpty} is the

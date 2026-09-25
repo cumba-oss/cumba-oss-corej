@@ -45,8 +45,8 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setName("MYDTC");
         op.setReference("REFDTC");
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, ds, NO_RESOLVER, null,
-                new java.util.HashMap<>());
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, ds, NO_RESOLVER,
+                null, new java.util.HashMap<>());
         assertEquals(List.of("MYDTC", "REFDTC"), gr.groupColumns());
         // 2020-01-10 - 2020-01-01 = 9 (no +1)
         assertEquals(9L, gr.results().get("2020-01-10" + NUL + "2020-01-01"));
@@ -67,8 +67,8 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setReference("REFDTC");
         op.setOffset("5");
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, ds, NO_RESOLVER, null,
-                new java.util.HashMap<>());
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, ds, NO_RESOLVER,
+                null, new java.util.HashMap<>());
         // 9 + 5 = 14
         assertEquals(14L, gr.results().get("2020-01-10" + NUL + "2020-01-01"));
     }
@@ -89,8 +89,8 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setReference("REFDTC");
         op.setOffset("OFF");
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, ds, NO_RESOLVER, null,
-                new java.util.HashMap<>());
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, ds, NO_RESOLVER,
+                null, new java.util.HashMap<>());
         assertEquals(List.of("MYDTC", "REFDTC", "OFF"), gr.groupColumns());
         // 9 + 3 and 9 + 10 keyed by (MYDTC, REFDTC, OFF)
         assertEquals(12L, gr.results().get("2020-01-10" + NUL + "2020-01-01" + NUL + "3"));
@@ -107,8 +107,8 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setName("MYDTC");
         op.setReference("REFDTC");
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, ds, NO_RESOLVER, null,
-                new java.util.HashMap<>());
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, ds, NO_RESOLVER,
+                null, new java.util.HashMap<>());
         assertEquals(9L, gr.results().get("2020-01-10" + NUL + "2020-01-01"));
         // partial "2020" (len 4) and blank are omitted
         assertNull(gr.results().get("2020" + NUL + "2020-01-01"));
@@ -137,8 +137,8 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setReference("SJSTDTC");
         op.setGroup(List.of("USUBJID", "RPHASE"));
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, target, resolver, null,
-                new java.util.HashMap<>());
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, target, resolver,
+                null, new java.util.HashMap<>());
         assertEquals(List.of("MYDTC", "USUBJID", "RPHASE"), gr.groupColumns());
         // S1 earliest SJSTDTC = 2020-01-01; 2020-01-10 - 2020-01-01 = 9
         assertEquals(9L, gr.results().get("2020-01-10" + NUL + "S1" + NUL + "P1"));
@@ -170,8 +170,8 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setReferenceExtreme("max");
         op.setGroup(List.of("USUBJID", "RPHASE"));
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, target, resolver, null,
-                new java.util.HashMap<>());
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, target, resolver,
+                null, new java.util.HashMap<>());
         // S1 LATEST SJENDTC = 2020-01-08; 2020-01-10 - 2020-01-08 = 2
         assertEquals(2L, gr.results().get("2020-01-10" + NUL + "S1" + NUL + "P1"));
         // 2020-01-20 - 2020-01-08 = 12
@@ -192,7 +192,7 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setReference("SJSTDTC");
         op.setGroup(List.of("USUBJID", "RPHASE"));
 
-        Object result = OperationExecutor.executeOne(op, target, NO_RESOLVER, null,
+        Object result = OperationExecutorCalls.executeOne(op, target, NO_RESOLVER, null,
                 new java.util.HashMap<>());
         assertNull(result, "absent reference domain ⇒ unresolvable ⇒ rule SKIPs");
     }
@@ -215,8 +215,8 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setReference("EXSTDTC");
         op.setGroup(List.of("USUBJID"));
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, target, resolver, null,
-                new java.util.HashMap<>());
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, target, resolver,
+                null, new java.util.HashMap<>());
         // earliest EXSTDTC for S1 = 2020-02-01; 2020-03-01 - 2020-02-01 = 29; 2020-03-10 = 38
         assertEquals(29L, gr.results().get("2020-03-01" + NUL + "S1"));
         assertEquals(38L, gr.results().get("2020-03-10" + NUL + "S1"));
@@ -235,8 +235,8 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setGroup(List.of("USUBJID"));
         op.setOrdering("SESEQ");
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, se, NO_RESOLVER, null,
-                new java.util.HashMap<>());
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, se, NO_RESOLVER,
+                null, new java.util.HashMap<>());
         assertEquals(List.of("USUBJID", "SESEQ"), gr.groupColumns());
         assertEquals(false, gr.results().get("S1" + NUL + "1"));
         assertEquals(false, gr.results().get("S1" + NUL + "2"));
@@ -257,8 +257,8 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setGroup(List.of("USUBJID"));
         op.setOrdering("SESEQ");
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, se, NO_RESOLVER, null,
-                new java.util.HashMap<>());
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, se, NO_RESOLVER,
+                null, new java.util.HashMap<>());
         assertEquals(true, gr.results().get("S1" + NUL + "3"), "SESEQ 3 is the max");
         assertEquals(false, gr.results().get("S1" + NUL + "1"));
         assertEquals(false, gr.results().get("S1" + NUL + "2"));
@@ -273,7 +273,7 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setGroup(List.of("USUBJID"));
         op.setOrdering("SESEQ");
 
-        Object result = OperationExecutor.executeOne(op, se, NO_RESOLVER, null,
+        Object result = OperationExecutorCalls.executeOne(op, se, NO_RESOLVER, null,
                 new java.util.HashMap<>());
         assertNull(result, "absent ordering column ⇒ unresolvable");
     }
@@ -285,12 +285,12 @@ class OperationExecutorDateDiffLastInGroupTest
         IDataTable se = MockTable.of().col("USUBJID", "S1").col("SESEQ", "1").name("SE").build();
         Operation noOrdering = makeOp("$last", "is_last_in_group");
         noOrdering.setGroup(List.of("USUBJID"));
-        assertNull(OperationExecutor.executeOne(noOrdering, se, NO_RESOLVER, null,
+        assertNull(OperationExecutorCalls.executeOne(noOrdering, se, NO_RESOLVER, null,
                 new java.util.HashMap<>()), "no ordering ⇒ null");
 
         Operation noGroup = makeOp("$last", "is_last_in_group");
         noGroup.setOrdering("SESEQ");
-        assertNull(OperationExecutor.executeOne(noGroup, se, NO_RESOLVER, null,
+        assertNull(OperationExecutorCalls.executeOne(noGroup, se, NO_RESOLVER, null,
                 new java.util.HashMap<>()), "no group ⇒ null");
     }
 
@@ -315,7 +315,7 @@ class OperationExecutorDateDiffLastInGroupTest
         // `--`-prefixed qualifier column is resolved to the evaluation domain.
         op.setQualifyingAnyPopulated(List.of("BASE", "--BASEC"));
 
-        Operation resolved = OperationExecutor.resolvePrefixes(op, "TF");
+        Operation resolved = OperationExecutorCalls.resolvePrefixes(op, "TF");
 
         assertEquals("TFDTC", resolved.getName(), "--DTC must resolve to the evaluation domain");
         assertEquals("1", resolved.getOffset(), "offset must survive prefix resolution");
@@ -326,7 +326,7 @@ class OperationExecutorDateDiffLastInGroupTest
         // EC-18 / P5c: Mode-3 foreign-minuend fields must survive prefix resolution too.
         op.setMinuendDomain("PM");
         op.setMinuendMatch(List.of("USUBJID", "--SPID"));
-        Operation resolved2 = OperationExecutor.resolvePrefixes(op, "TF");
+        Operation resolved2 = OperationExecutorCalls.resolvePrefixes(op, "TF");
         assertEquals("PM", resolved2.getMinuendDomain(), "minuend_domain must survive");
         assertEquals(List.of("USUBJID", "--SPID"), resolved2.getMinuendMatch(),
                 "minuend_match `--` tokens are copied verbatim (resolved per-side at eval time)");
@@ -365,7 +365,7 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setGroup(List.of("USUBJID"));
         op.setOffset("1");
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, tf, resolver, null,
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, tf, resolver, null,
                 new java.util.HashMap<>());
         // Key columns = left match keys (USUBJID, TFSPID) + group (USUBJID, deduped) = [USUBJID,
         // TFSPID].
@@ -397,7 +397,7 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setGroup(List.of("USUBJID"));
         op.setOffset("1");
 
-        Object result = OperationExecutor.executeOne(op, tf, resolver, null,
+        Object result = OperationExecutorCalls.executeOne(op, tf, resolver, null,
                 new java.util.HashMap<>());
         assertNull(result, "absent minuend_domain ⇒ unresolvable ⇒ rule SKIPs");
     }
@@ -430,7 +430,7 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setGroup(List.of("USUBJID"));
         op.setOffset("1");
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, tf, resolver, null,
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, tf, resolver, null,
                 new java.util.HashMap<>());
         // S1/M1 resolves; the blank-SPID S2 row produces no value.
         assertEquals(16L, gr.results().get("S1" + NUL + "M1"));
@@ -465,7 +465,7 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setGroup(List.of("USUBJID"));
         op.setOffset("1");
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, tf, resolver, null,
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, tf, resolver, null,
                 new java.util.HashMap<>());
         assertEquals(List.of("USUBJID"), gr.groupColumns());
         assertEquals(16L, gr.results().get("S1"));
@@ -500,8 +500,8 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setReference("SJSTDTC");
         op.setGroup(List.of("USUBJID"));
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, target, resolver, null,
-                new java.util.HashMap<>());
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, target, resolver,
+                null, new java.util.HashMap<>());
         assertFalse(gr.results().containsKey("2012-07-10" + NUL + "S1"),
                 "S1's earliest reference is indeterminate, so no day count may be published");
         // S2: 2012-07-10 - 2012-06-10 = 30
@@ -531,8 +531,8 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setGroup(List.of("USUBJID"));
         op.setReferenceExtreme("max");
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, target, resolver, null,
-                new java.util.HashMap<>());
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, target, resolver,
+                null, new java.util.HashMap<>());
         assertFalse(gr.results().containsKey("2012-07-10" + NUL + "S1"),
                 "2012-06 could be the 30th, later than 2012-06-20");
         // S2: 2012-07-10 - 2012-06-20 = 20
@@ -559,8 +559,8 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setReference("SJSTDTC");
         op.setGroup(List.of("USUBJID"));
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, target, resolver, null,
-                new java.util.HashMap<>());
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, target, resolver,
+                null, new java.util.HashMap<>());
         // earliest = 2012-06-01 (no completion of 2012-06 precedes it); 2012-07-10 - 2012-06-01 =
         // 39
         assertEquals(39L, gr.results().get("2012-07-10" + NUL + "S1"));
@@ -586,8 +586,8 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setGroup(List.of("USUBJID"));
         op.setOrdering("SESEQ");
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, se, NO_RESOLVER, null,
-                new java.util.HashMap<>());
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, se, NO_RESOLVER,
+                null, new java.util.HashMap<>());
         assertEquals(false, gr.results().get("S1" + NUL + "1"), "below the max");
         assertEquals(false, gr.results().get("S1" + NUL + "2"),
                 "first-occurrence tie: the max is row 1, so row 2 writes false last");
@@ -608,8 +608,8 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setGroup(List.of("USUBJID"));
         op.setOrdering("ORD");
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, se, NO_RESOLVER, null,
-                new java.util.HashMap<>());
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, se, NO_RESOLVER,
+                null, new java.util.HashMap<>());
         assertEquals(true, gr.results().get("S1" + NUL + "C"), "lexicographic max is the last");
         assertEquals(false, gr.results().get("S1" + NUL + "B"),
                 "the first row is NOT the last under string ordering");
@@ -633,8 +633,8 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setName("AESTDTC");
         DatasetResolver dmResolver = name -> "DM".equals(name) ? dm : null;
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, ae, dmResolver, null,
-                new java.util.HashMap<>());
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, ae, dmResolver,
+                null, new java.util.HashMap<>());
         assertEquals(List.of("USUBJID", "AESTDTC"), gr.groupColumns());
         assertEquals(1L, gr.results().get("S1" + NUL + "2020-01-15"),
                 "a date equal to RFSTDTC is Day 1 -- there is no Day 0");

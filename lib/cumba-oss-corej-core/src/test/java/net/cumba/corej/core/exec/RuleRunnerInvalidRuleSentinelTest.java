@@ -44,7 +44,7 @@ class RuleRunnerInvalidRuleSentinelTest
         Rule rule = invalidRule("test error");
         IDataTable table = MockTable.of().col("USUBJID", "S1").col("AESTDY", "1").name("ADAE")
                 .build();
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertEquals(1, result.getViolationCount(), "exactly one sentinel violation");
         Violation v = result.getViolations().get(0);
         assertEquals(0L, v.getRow());
@@ -61,7 +61,7 @@ class RuleRunnerInvalidRuleSentinelTest
         // produce one violation. The presence of the sentinel proves the early-return path.
         Rule rule = invalidRule("schema error");
         IDataTable emptyTable = MockTable.of().col("USUBJID").name("ADAE").build();
-        RuleExecutionResult result = RuleRunner.execute(rule, emptyTable);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, emptyTable);
         assertEquals(1, result.getViolationCount());
         Violation v = result.getViolations().get(0);
         assertEquals("schema error", v.getValues().get("__error__"));

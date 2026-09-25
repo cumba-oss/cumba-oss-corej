@@ -53,7 +53,8 @@ class OperationExecutorGroupBFuOpsTest
         lenient().when(p.getDatasetClass("DM", "DM")).thenReturn("SPECIAL PURPOSE");
 
         Operation op = makeOp("$c", "referenced_domain_class"); // name defaults to RDOMAIN
-        Object result = OperationExecutor.executeOne(op, supp, NO_RESOLVER, p, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, supp, NO_RESOLVER, p,
+                new HashMap<>());
         assertTrue(result instanceof GroupedResult, "GroupedResult keyed by RDOMAIN");
         GroupedResult gr = (GroupedResult) result;
         assertEquals(List.of("RDOMAIN"), gr.groupColumns());
@@ -76,8 +77,8 @@ class OperationExecutorGroupBFuOpsTest
         lenient().when(p.getDatasetClass("FA", "FA")).thenReturn("Findings About");
 
         Operation op = makeOp("$c", "referenced_domain_class");
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, supp, NO_RESOLVER, p,
-                new HashMap<>());
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, supp, NO_RESOLVER,
+                p, new HashMap<>());
         assertEquals("EVENTS", gr.results().get("AE"));
         assertEquals("FINDINGS ABOUT", gr.results().get("FA"));
     }
@@ -91,7 +92,8 @@ class OperationExecutorGroupBFuOpsTest
         MetadataProvider p = mock(MetadataProvider.class); // getDatasetClass → null (default)
 
         Operation op = makeOp("$c", "referenced_domain_class");
-        Object result = OperationExecutor.executeOne(op, supp, NO_RESOLVER, p, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, supp, NO_RESOLVER, p,
+                new HashMap<>());
         GroupedResult gr = (GroupedResult) result;
         assertEquals("", gr.results().get("ZZ"), "null class ⇒ \"\" (Library cannot classify)");
     }
@@ -104,7 +106,8 @@ class OperationExecutorGroupBFuOpsTest
         MetadataProvider p = mock(MetadataProvider.class);
 
         Operation op = makeOp("$c", "referenced_domain_class"); // RDOMAIN column absent
-        Object result = OperationExecutor.executeOne(op, supp, NO_RESOLVER, p, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, supp, NO_RESOLVER, p,
+                new HashMap<>());
         assertEquals("<library not available>", String.valueOf(result));
     }
 
@@ -114,7 +117,8 @@ class OperationExecutorGroupBFuOpsTest
     {
         IDataTable supp = MockTable.of().col("RDOMAIN", "AE").name("SUPPAE").build();
         Operation op = makeOp("$c", "referenced_domain_class");
-        Object result = OperationExecutor.executeOne(op, supp, NO_RESOLVER, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, supp, NO_RESOLVER, null,
+                new HashMap<>());
         assertEquals("<library not available>", String.valueOf(result));
     }
 
@@ -131,7 +135,8 @@ class OperationExecutorGroupBFuOpsTest
         op.setName("MHSTDTC");
         op.setDelimiter("/");
 
-        Object result = OperationExecutor.executeOne(op, mh, NO_RESOLVER, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, mh, NO_RESOLVER, null,
+                new HashMap<>());
         GroupedResult gr = (GroupedResult) result;
         assertEquals(true, gr.results().get("2020-01-01/2020-01"), "day vs month ⇒ mismatch");
         assertEquals(false, gr.results().get("2020-01-01/2020-06-15"), "day vs day ⇒ match");
@@ -149,7 +154,8 @@ class OperationExecutorGroupBFuOpsTest
         Operation op = makeOp("$m", "interval_uncertainty_precision_mismatch");
         op.setName("MHSTDTC"); // no delimiter set → default "/"
 
-        Object result = OperationExecutor.executeOne(op, mh, NO_RESOLVER, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, mh, NO_RESOLVER, null,
+                new HashMap<>());
         GroupedResult gr = (GroupedResult) result;
         // "2020-01-01T10" length 13 (hour) vs "2020-01-01" length 10 (day) ⇒ mismatch.
         assertEquals(true, gr.results().get("2020-01-01T10/2020-01-01"));
@@ -177,7 +183,8 @@ class OperationExecutorGroupBFuOpsTest
         op.setName("MHSTDTC");
         op.setDelimiter("/");
 
-        Object result = OperationExecutor.executeOne(op, mh, NO_RESOLVER, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, mh, NO_RESOLVER, null,
+                new HashMap<>());
         GroupedResult gr = (GroupedResult) result;
         // assertAll so that neutering the fix reports every regressed shape, not just the first.
         assertAll(
@@ -209,7 +216,8 @@ class OperationExecutorGroupBFuOpsTest
         Operation op = makeOp("$m", "interval_uncertainty_precision_mismatch");
         op.setName("MHSTDTC");
 
-        Object result = OperationExecutor.executeOne(op, mh, NO_RESOLVER, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, mh, NO_RESOLVER, null,
+                new HashMap<>());
         GroupedResult gr = (GroupedResult) result;
         assertEquals(true, gr.results().get("2020-01-01+02:00/2020-01-01T10:30"),
                 "day vs minute ⇒ mismatch, even though both raw halves are 16 chars long");
@@ -232,7 +240,8 @@ class OperationExecutorGroupBFuOpsTest
         op.setName("MHSTDTC");
         op.setDelimiter("/");
 
-        Object result = OperationExecutor.executeOne(op, mh, NO_RESOLVER, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, mh, NO_RESOLVER, null,
+                new HashMap<>());
         GroupedResult gr = (GroupedResult) result;
         assertAll(
                 () -> assertEquals(false,
@@ -262,7 +271,8 @@ class OperationExecutorGroupBFuOpsTest
         op.setName("MHSTDTC");
         op.setDelimiter("/");
 
-        Object result = OperationExecutor.executeOne(op, mh, NO_RESOLVER, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, mh, NO_RESOLVER, null,
+                new HashMap<>());
         GroupedResult gr = (GroupedResult) result;
         assertAll(
                 () -> assertEquals(true, gr.results().get("2003-12-15T10:00/2003-12-15"),
@@ -287,8 +297,8 @@ class OperationExecutorGroupBFuOpsTest
         op.setName("CMTRT");
         op.setExternalDictionaryType("unii");
 
-        Object result = OperationExecutor.executeOne(op, cm, NO_RESOLVER, null, new HashMap<>(),
-                null, dicts);
+        Object result = OperationExecutorCalls.executeOne(op, cm, NO_RESOLVER, null,
+                new HashMap<>(), null, dicts);
         GroupedResult gr = (GroupedResult) result;
         assertEquals(true, gr.results().get("R16CO5Y76E"), "code present in unii pairs");
         assertEquals(false, gr.results().get("ZZZNOTACODE"), "code absent ⇒ no decode");
@@ -304,8 +314,8 @@ class OperationExecutorGroupBFuOpsTest
         op.setName("CMTRT");
         op.setExternalDictionaryType("unii");
 
-        Object result = OperationExecutor.executeOne(op, cm, NO_RESOLVER, null, new HashMap<>(),
-                null, null);
+        Object result = OperationExecutorCalls.executeOne(op, cm, NO_RESOLVER, null,
+                new HashMap<>(), null, null);
         assertNull(result, "no dictionary ⇒ unresolvable ⇒ rule SKIPs");
     }
 
@@ -324,7 +334,7 @@ class OperationExecutorGroupBFuOpsTest
         DatasetResolver.WithInventory resolver = inventory(Map.of("LB1", lb1, "LB2", lb2));
 
         Operation op = makeOp("$mism", "split_sibling_length_mismatch");
-        Object result = OperationExecutor.executeOne(op, lb1, resolver, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, lb1, resolver, null, new HashMap<>());
         @SuppressWarnings("unchecked")
         List<String> mism = (List<String>) result;
         assertEquals(List.of("LBORRES"), mism, "only LBORRES diverges (20 vs 40)");
@@ -339,7 +349,7 @@ class OperationExecutorGroupBFuOpsTest
         DatasetResolver.WithInventory resolver = inventory(Map.of("LB", lb));
 
         Operation op = makeOp("$mism", "split_sibling_length_mismatch");
-        Object result = OperationExecutor.executeOne(op, lb, resolver, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, lb, resolver, null, new HashMap<>());
         @SuppressWarnings("unchecked")
         List<String> mism = (List<String>) result;
         assertTrue(mism.isEmpty(), "single-member family cannot diverge");
@@ -351,7 +361,8 @@ class OperationExecutorGroupBFuOpsTest
     {
         IDataTable lb = MockTable.of().col("DOMAIN", "LB").col("LBORRES", "x").name("LB").build();
         Operation op = makeOp("$mism", "split_sibling_length_mismatch");
-        Object result = OperationExecutor.executeOne(op, lb, NO_RESOLVER, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, lb, NO_RESOLVER, null,
+                new HashMap<>());
         @SuppressWarnings("unchecked")
         List<String> mism = (List<String>) result;
         assertTrue(mism.isEmpty(), "plain resolver (no WithInventory) ⇒ empty");
@@ -372,7 +383,8 @@ class OperationExecutorGroupBFuOpsTest
                 .colMeta("AELLT", "Reported Term", 0, null).colMeta("AESEV", "Severity", 0, null)
                 .name("AE").build();
         Operation op = makeOp("$dup", "duplicate_label_variables");
-        Object result = OperationExecutor.executeOne(op, ae, NO_RESOLVER, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, ae, NO_RESOLVER, null,
+                new HashMap<>());
         @SuppressWarnings("unchecked")
         List<String> dup = (List<String>) result;
         assertEquals(List.of("AETERM", "AEDECOD", "AELLT"), dup,
@@ -387,7 +399,8 @@ class OperationExecutorGroupBFuOpsTest
                 .colMeta("AESTDTC", "Start Date/Time", 0, null)
                 .colMeta("AETERM", "Reported Term", 0, null).name("AE").build();
         Operation op = makeOp("$dup", "duplicate_label_variables");
-        Object result = OperationExecutor.executeOne(op, ae, NO_RESOLVER, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, ae, NO_RESOLVER, null,
+                new HashMap<>());
         @SuppressWarnings("unchecked")
         List<String> dup = (List<String>) result;
         assertTrue(dup.isEmpty(), "unique labels ⇒ no duplicates");
@@ -400,7 +413,8 @@ class OperationExecutorGroupBFuOpsTest
         // Two columns with no declared label must not count as a duplicate label bucket.
         IDataTable ae = MockTable.of().col("AAA", "x").col("BBB", "y").name("AE").build();
         Operation op = makeOp("$dup", "duplicate_label_variables");
-        Object result = OperationExecutor.executeOne(op, ae, NO_RESOLVER, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, ae, NO_RESOLVER, null,
+                new HashMap<>());
         @SuppressWarnings("unchecked")
         List<String> dup = (List<String>) result;
         assertTrue(dup.isEmpty(), "blank/absent labels are not treated as duplicates");
@@ -418,7 +432,8 @@ class OperationExecutorGroupBFuOpsTest
         Operation op = makeOp("$s", "column_series_metadata");
         op.setNamePattern("^COVAL\\d+$");
         op.setName("COVAL");
-        Object result = OperationExecutor.executeOne(op, co, NO_RESOLVER, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, co, NO_RESOLVER, null,
+                new HashMap<>());
         assertEquals(false, result, "contiguous series is complete ⇒ no fire");
     }
 
@@ -430,7 +445,8 @@ class OperationExecutorGroupBFuOpsTest
         IDataTable co = MockTable.of().col("COVAL1", "b").col("COVAL3", "d").name("CO").build();
         Operation op = makeOp("$s", "column_series_metadata");
         op.setNamePattern("^COVAL\\d+$");
-        Object result = OperationExecutor.executeOne(op, co, NO_RESOLVER, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, co, NO_RESOLVER, null,
+                new HashMap<>());
         assertEquals(true, result, "gap in the numeric suffixes ⇒ series incomplete ⇒ fire");
     }
 
@@ -447,7 +463,8 @@ class OperationExecutorGroupBFuOpsTest
         op.setNamePattern("^COVAL\\d+$");
         op.setName("COVAL");
         op.setMinLength(200);
-        Object result = OperationExecutor.executeOne(op, co, NO_RESOLVER, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, co, NO_RESOLVER, null,
+                new HashMap<>());
         assertEquals(true, result, "a short non-terminal continuation member fires");
     }
 
@@ -458,7 +475,8 @@ class OperationExecutorGroupBFuOpsTest
         IDataTable co = MockTable.of().col("COVAL1", "b").name("CO").build();
         Operation op = makeOp("$s", "column_series_metadata");
         op.setNamePattern("^COVAL\\d+$");
-        Object result = OperationExecutor.executeOne(op, co, NO_RESOLVER, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, co, NO_RESOLVER, null,
+                new HashMap<>());
         assertEquals(false, result, "fewer than two members ⇒ no series to flag");
     }
 

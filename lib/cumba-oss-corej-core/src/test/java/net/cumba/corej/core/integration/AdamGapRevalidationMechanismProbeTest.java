@@ -11,7 +11,7 @@ import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.exec.StubMetadataProvider;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
@@ -89,8 +89,8 @@ class AdamGapRevalidationMechanismProbeTest
 
     private static int violationsOn(Rule rule, IDataTable table, Map<String, IDataTable> tables)
     {
-        RuleExecutionResult result = RuleRunner.execute(rule, table, resolverOf(tables), null, null,
-                null, DEFINE);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, resolverOf(tables), null,
+                null, null, DEFINE);
         return result.getViolationCount();
     }
 

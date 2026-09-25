@@ -112,8 +112,8 @@ class ScopeMatcherDescribeTest
     void domainMatch_returnsNull()
     {
         Rule rule = ruleWithDomainInclude("AE", "CM");
-        assertNull(ScopeMatcher.describeDomainMismatch(rule, "AE"));
-        assertNull(ScopeMatcher.describeDomainMismatch(rule, "CM"));
+        assertNull(ScopeMatcherCalls.describeDomainMismatch(rule, "AE"));
+        assertNull(ScopeMatcherCalls.describeDomainMismatch(rule, "CM"));
     }
 
 
@@ -122,7 +122,7 @@ class ScopeMatcherDescribeTest
     {
         Rule rule = ruleWithDomainInclude("AE", "CM");
         assertEquals("domain EX not in Scope.Domains.Include [AE, CM]",
-                ScopeMatcher.describeDomainMismatch(rule, "EX"));
+                ScopeMatcherCalls.describeDomainMismatch(rule, "EX"));
     }
 
 
@@ -131,7 +131,7 @@ class ScopeMatcherDescribeTest
     {
         Rule rule = ruleWithDomainExclude("SUPP--");
         assertEquals("domain SUPPAE matches Scope.Domains.Exclude entry SUPP--",
-                ScopeMatcher.describeDomainMismatch(rule, "SUPPAE"));
+                ScopeMatcherCalls.describeDomainMismatch(rule, "SUPPAE"));
     }
 
 
@@ -140,7 +140,7 @@ class ScopeMatcherDescribeTest
     {
         Rule rule = ruleWithDomainExclude("DM", "AE");
         assertEquals("domain AE matches Scope.Domains.Exclude entry AE",
-                ScopeMatcher.describeDomainMismatch(rule, "AE"));
+                ScopeMatcherCalls.describeDomainMismatch(rule, "AE"));
     }
 
 
@@ -149,7 +149,7 @@ class ScopeMatcherDescribeTest
     {
         // LB1 is a split dataset whose base LB matches the Exclude entry.
         Rule rule = ruleWithDomainExclude("LB");
-        String reason = ScopeMatcher.describeDomainMismatch(rule, "LB1");
+        String reason = ScopeMatcherCalls.describeDomainMismatch(rule, "LB1");
         assertNotNull(reason);
         assertTrue(reason.contains("Scope.Domains.Exclude entry LB"), reason);
     }
@@ -158,8 +158,8 @@ class ScopeMatcherDescribeTest
     @Test
     void domainNoScope_returnsNull()
     {
-        assertNull(ScopeMatcher.describeDomainMismatch(new Rule(), "DM"));
-        assertNull(ScopeMatcher.describeDomainMismatch(ruleWithDomainInclude("TE"), null));
+        assertNull(ScopeMatcherCalls.describeDomainMismatch(new Rule(), "DM"));
+        assertNull(ScopeMatcherCalls.describeDomainMismatch(ruleWithDomainInclude("TE"), null));
     }
 
 
@@ -174,8 +174,8 @@ class ScopeMatcherDescribeTest
         rule.setScope(scope);
         assertEquals(
                 "domain DM is not a split dataset but Scope.Domains.Include_Split_Datasets is true",
-                ScopeMatcher.describeDomainMismatch(rule, "DM"));
-        assertNull(ScopeMatcher.describeDomainMismatch(rule, "LB1"));
+                ScopeMatcherCalls.describeDomainMismatch(rule, "DM"));
+        assertNull(ScopeMatcherCalls.describeDomainMismatch(rule, "LB1"));
     }
 
 
@@ -190,8 +190,8 @@ class ScopeMatcherDescribeTest
         rule.setScope(scope);
         assertEquals(
                 "domain LB1 is a split dataset but Scope.Domains.Include_Split_Datasets is false",
-                ScopeMatcher.describeDomainMismatch(rule, "LB1"));
-        assertNull(ScopeMatcher.describeDomainMismatch(rule, "DM"));
+                ScopeMatcherCalls.describeDomainMismatch(rule, "LB1"));
+        assertNull(ScopeMatcherCalls.describeDomainMismatch(rule, "DM"));
     }
 
     // ------------------------------------------------------------------
@@ -257,9 +257,9 @@ class ScopeMatcherDescribeTest
     void variablesMatch_returnsNull()
     {
         Rule rule = ruleWithVariableInclude("AESTDTC");
-        assertNull(ScopeMatcher.describeVariablesMismatch(rule, meta("AESTDTC", "USUBJID")));
-        assertNull(ScopeMatcher.describeVariablesMismatch(new Rule(), meta("USUBJID")));
-        assertNull(ScopeMatcher.describeVariablesMismatch(rule, null));
+        assertNull(ScopeMatcherCalls.describeVariablesMismatch(rule, meta("AESTDTC", "USUBJID")));
+        assertNull(ScopeMatcherCalls.describeVariablesMismatch(new Rule(), meta("USUBJID")));
+        assertNull(ScopeMatcherCalls.describeVariablesMismatch(rule, null));
     }
 
 
@@ -268,7 +268,7 @@ class ScopeMatcherDescribeTest
     {
         Rule rule = ruleWithVariableInclude("AESTDTC");
         assertEquals("Requirements.Variables.All variable AESTDTC not present in dataset",
-                ScopeMatcher.describeVariablesMismatch(rule, meta("USUBJID")));
+                ScopeMatcherCalls.describeVariablesMismatch(rule, meta("USUBJID")));
     }
 
 
@@ -277,7 +277,7 @@ class ScopeMatcherDescribeTest
     {
         Rule rule = ruleWithVariableExclude("QVAL");
         assertEquals("Requirements.Variables.None variable QVAL present in dataset",
-                ScopeMatcher.describeVariablesMismatch(rule, meta("USUBJID", "QVAL")));
+                ScopeMatcherCalls.describeVariablesMismatch(rule, meta("USUBJID", "QVAL")));
     }
 
     // ------------------------------------------------------------------
@@ -299,8 +299,8 @@ class ScopeMatcherDescribeTest
         {
             for (String domain : domains)
             {
-                assertEquals(ScopeMatcher.describeDomainMismatch(rule, domain) == null,
-                        ScopeMatcher.matchesDomain(rule, domain),
+                assertEquals(ScopeMatcherCalls.describeDomainMismatch(rule, domain) == null,
+                        ScopeMatcherCalls.matchesDomain(rule, domain),
                         "domain parity for " + domain + " on " + describeScope(rule));
             }
         }
@@ -315,7 +315,7 @@ class ScopeMatcherDescribeTest
             for (String cls : classes)
             {
                 assertEquals(ScopeMatcher.describeClassMismatch(rule, cls) == null,
-                        ScopeMatcher.matchesClass(rule, cls), "class parity for " + cls);
+                        ScopeMatcherCalls.matchesClass(rule, cls), "class parity for " + cls);
             }
         }
 
@@ -327,8 +327,8 @@ class ScopeMatcherDescribeTest
         {
             for (DataTableMeta m : metas)
             {
-                assertEquals(ScopeMatcher.describeVariablesMismatch(rule, m) == null,
-                        ScopeMatcher.matchesVariables(rule, m), "variables parity");
+                assertEquals(ScopeMatcherCalls.describeVariablesMismatch(rule, m) == null,
+                        ScopeMatcherCalls.matchesVariables(rule, m), "variables parity");
             }
         }
     }

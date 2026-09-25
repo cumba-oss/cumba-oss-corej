@@ -32,7 +32,7 @@ class OperationExecutorVariableIsNullTest
 
     private static boolean run(Operation o, IDataTable t)
     {
-        return (Boolean) OperationExecutor.executeOne(o, t, NO_RESOLVER, null,
+        return (Boolean) OperationExecutorCalls.executeOne(o, t, NO_RESOLVER, null,
                 new LinkedHashMap<>());
     }
 

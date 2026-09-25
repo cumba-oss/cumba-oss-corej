@@ -36,7 +36,7 @@ class RuleRunnerTest
                 new CheckConditionAll(List.of(expr("SEX not in [\"M\", \"F\"]"))),
                 List.of("USUBJID", "SEX"));
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         assertEquals("CDISC-CG0176", result.getRuleId());
         assertEquals("SEX not in codelist", result.getMessage());
@@ -60,7 +60,7 @@ class RuleRunnerTest
         Rule rule = buildRule("CDISC-CG0208", "SEX must be M or F",
                 new CheckConditionAll(List.of(expr("SEX not in [\"M\", \"F\"]"))), List.of("SEX"));
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         assertFalse(result.hasViolations());
         assertEquals(0, result.getViolationCount());
@@ -80,7 +80,7 @@ class RuleRunnerTest
         Rule rule = buildRule("CDISC-CG0299", "Non-empty AETERM in AE domain", all,
                 List.of("AETERM"));
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         assertEquals(1, result.getViolationCount());
         assertEquals(0, result.getViolations().get(0).getRow()); // row 0: AE + Headache
@@ -95,7 +95,7 @@ class RuleRunnerTest
         Rule rule = buildRule("CDISC-CG0101", "test",
                 new CheckConditionAll(List.of(expr("not empty(NONEXISTENT)"))), List.of());
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertFalse(result.hasViolations());
     }
 
@@ -125,7 +125,7 @@ class RuleRunnerTest
         rule.setOperations(List.of(op));
 
         DatasetResolver resolver = name -> "DM".equals(name) ? dmTable : null;
-        RuleExecutionResult result = RuleRunner.execute(rule, aeTable, resolver);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, aeTable, resolver);
 
         assertEquals(1, result.getViolationCount());
         assertEquals(1, result.getViolations().get(0).getRow()); // row 1: S03
@@ -149,7 +149,7 @@ class RuleRunnerTest
                 new CheckConditionAll(List.of(expr("$VARIABLE_COUNT > 3"))), List.of());
         rule.setOperations(List.of(op));
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         assertFalse(result.hasViolations());
     }
@@ -171,7 +171,7 @@ class RuleRunnerTest
                 new CheckConditionAll(List.of(expr("$VARIABLE_COUNT > 3"))), List.of());
         rule.setOperations(List.of(op));
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         assertTrue(result.hasViolations());
         assertEquals(1, result.getViolationCount()); // dataset-level: single violation
@@ -187,7 +187,7 @@ class RuleRunnerTest
         Rule rule = buildRule("CDISC-CG0102", "Bad SEX",
                 new CheckConditionAll(List.of(expr("SEX not in [\"M\", \"F\"]"))), List.of("SEX"));
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertEquals(1, result.getViolationCount());
         assertEquals("X", result.getViolations().get(0).getValues().get("SEX"));
     }
@@ -233,7 +233,7 @@ class RuleRunnerTest
         rule.setOperations(List.of(op1, op2));
 
         DatasetResolver resolver = name -> "EX".equals(name) ? exTable : null;
-        RuleExecutionResult result = RuleRunner.execute(rule, dmTable, resolver);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, dmTable, resolver);
 
         // S01: RFXSTDTC=2024-01-15, min EX=2024-01-15 → match, no violation
         // S02: RFXSTDTC=2024-03-01, min EX=2024-02-10 → mismatch! violation

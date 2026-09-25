@@ -144,7 +144,7 @@ class ScopeDatasetsMatcherTest
         domains.setInclude(List.of("LB"));
         scope.setDomains(domains);
         byDomain.setScope(scope);
-        assertNull(ScopeMatcher.describeDomainMismatch(byDomain, "LB1", "LB"),
+        assertNull(ScopeMatcherCalls.describeDomainMismatch(byDomain, "LB1", "LB"),
                 "control: Scope.Domains DOES cover the split part through its base re-test — if this"
                         + " ever goes red the contrast above is measuring nothing");
     }

@@ -11,7 +11,7 @@ import java.nio.file.Path;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.exec.StubMetadataProvider;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.model.Rule;
@@ -78,7 +78,7 @@ class PmdaAdSimpleTwinsProbeTest
 
     private static RuleExecutionResult execute(Rule rule, IDataTable table)
     {
-        return RuleRunner.execute(rule, table, _ -> null, null, null, null, DEFINE);
+        return RuleRunnerCalls.execute(rule, table, _ -> null, null, null, null, DEFINE);
     }
 
 

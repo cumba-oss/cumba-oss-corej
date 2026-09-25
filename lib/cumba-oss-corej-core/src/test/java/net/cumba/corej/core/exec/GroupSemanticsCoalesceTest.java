@@ -70,8 +70,8 @@ class GroupSemanticsCoalesceTest
         // Two singleton components == the pre-EC-24 flat two-column composite key.
         IDataTable t = MockTable.of().col("A", "x", "x", "y", "y").col("B", "1", "2", "1", "1")
                 .build();
-        List<int[]> viaCoalesce = GroupSemantics.partitionCoalesced(t, comps("A", "B"));
-        List<int[]> viaPartition = GroupSemantics.partition(t, List.of("A", "B"));
+        List<int[]> viaCoalesce = GroupSemanticsCalls.partitionCoalesced(t, comps("A", "B"));
+        List<int[]> viaPartition = GroupSemanticsCalls.partition(t, List.of("A", "B"));
         assertEquals(groupSet(viaPartition), groupSet(viaCoalesce),
                 "singleton components must reproduce the index-based partition exactly");
     }
@@ -101,7 +101,7 @@ class GroupSemanticsCoalesceTest
         // W32-E3: "" is blank under MISSING_OR_EMPTY, so rows 0 and 1 drop entirely and only the
         // populated "y" group survives. Under the pre-ruling contract this was {{0,1},{2}}.
         IDataTable t = MockTable.of().col("A", "", "", "y").build();
-        List<int[]> groups = GroupSemantics.partitionCoalesced(t, comps("A"));
+        List<int[]> groups = GroupSemanticsCalls.partitionCoalesced(t, comps("A"));
         assertEquals(Set.of(Set.of(2)), groupSet(groups),
                 "W32-E3: a blank singleton key drops its rows, exactly as a genuine missing does");
     }
@@ -112,7 +112,7 @@ class GroupSemanticsCoalesceTest
     {
         // A genuine missing (null) singleton key drops the row (isBlockKeyMissing contract).
         IDataTable t = MockTable.of().col("A", "x", null, "x").build();
-        List<int[]> groups = GroupSemantics.partitionCoalesced(t, comps("A"));
+        List<int[]> groups = GroupSemanticsCalls.partitionCoalesced(t, comps("A"));
         assertEquals(Set.of(Set.of(0, 2)), groupSet(groups));
     }
 
@@ -125,7 +125,7 @@ class GroupSemanticsCoalesceTest
         // USUBJID blank -> fall through to POOLID; per-pool groups, no "" collapse.
         IDataTable t = MockTable.of().col("USUBJID", "", "", "", "001", "001")
                 .col("POOLID", "P1", "P1", "P2", "", "").build();
-        List<int[]> groups = GroupSemantics.partitionCoalesced(t,
+        List<int[]> groups = GroupSemanticsCalls.partitionCoalesced(t,
                 comps(List.of("USUBJID", "POOLID")));
         // rows 0,1 -> P1 ; row 2 -> P2 ; rows 3,4 -> 001
         assertEquals(Set.of(Set.of(0, 1), Set.of(2), Set.of(3, 4)), groupSet(groups));
@@ -138,7 +138,7 @@ class GroupSemanticsCoalesceTest
         // USUBJID="" is UNPOPULATED in the coalesce (approved deviation) -> use POOLID.
         IDataTable t = MockTable.of().col("USUBJID", "", "  ", "A").col("POOLID", "P1", "P1", "P9")
                 .build();
-        List<int[]> groups = GroupSemantics.partitionCoalesced(t,
+        List<int[]> groups = GroupSemanticsCalls.partitionCoalesced(t,
                 comps(List.of("USUBJID", "POOLID")));
         // rows 0 ("" -> P1) and 1 (" " whitespace -> P1) group together; row 2 uses USUBJID=A
         assertEquals(Set.of(Set.of(0, 1), Set.of(2)), groupSet(groups));
@@ -150,7 +150,7 @@ class GroupSemanticsCoalesceTest
     {
         // Both USUBJID and POOLID unpopulated -> component missing -> row drops.
         IDataTable t = MockTable.of().col("USUBJID", "", "A").col("POOLID", "", "").build();
-        List<int[]> groups = GroupSemantics.partitionCoalesced(t,
+        List<int[]> groups = GroupSemanticsCalls.partitionCoalesced(t,
                 comps(List.of("USUBJID", "POOLID")));
         // row 0 drops (both blank); row 1 keyed by USUBJID=A
         assertEquals(Set.of(Set.of(1)), groupSet(groups));
@@ -163,7 +163,7 @@ class GroupSemanticsCoalesceTest
         // component 0 = coalesce(USUBJID, POOLID); component 1 = PARAMCD (singleton, "" real key).
         IDataTable t = MockTable.of().col("USUBJID", "", "", "").col("POOLID", "P1", "P1", "P2")
                 .col("PARAMCD", "X", "X", "X").build();
-        List<int[]> groups = GroupSemantics.partitionCoalesced(t,
+        List<int[]> groups = GroupSemanticsCalls.partitionCoalesced(t,
                 comps(List.of("USUBJID", "POOLID"), "PARAMCD"));
         // (P1,X) rows 0,1 ; (P2,X) row 2
         assertEquals(Set.of(Set.of(0, 1), Set.of(2)), groupSet(groups));
@@ -178,7 +178,7 @@ class GroupSemanticsCoalesceTest
         // blank-USUBJID row still drops instead of forming a "" group.
         IDataTable t = MockTable.of().col("USUBJID", "", "001", "001", "002")
                 .col("POOLID", "P1", "", "", "").build();
-        List<int[]> groups = GroupSemantics.partitionCoalesced(t,
+        List<int[]> groups = GroupSemanticsCalls.partitionCoalesced(t,
                 comps(List.of("USUBJID", "NOPE")));
         // row 0 (blank USUBJID, no fallback column) drops; 001 pair groups; 002 alone.
         assertEquals(Set.of(Set.of(1, 2), Set.of(3)), groupSet(groups));
@@ -192,7 +192,7 @@ class GroupSemanticsCoalesceTest
         // [[USUBJID, POOLID]] component must degrade to the plain per-USUBJID check instead of
         // silencing the whole rule.
         IDataTable t = MockTable.of().col("USUBJID", "001", "001", "002").build();
-        List<int[]> groups = GroupSemantics.partitionCoalesced(t,
+        List<int[]> groups = GroupSemanticsCalls.partitionCoalesced(t,
                 comps(List.of("USUBJID", "POOLID")));
         assertEquals(Set.of(Set.of(0, 1), Set.of(2)), groupSet(groups));
     }
@@ -207,7 +207,7 @@ class GroupSemanticsCoalesceTest
         // shape keeps the strict flat contract (any absent column -> null, see partition()).
         IDataTable t = MockTable.of().col("USUBJID", "001", "001", "002").col("POOLID", "", "", "")
                 .build();
-        List<int[]> groups = GroupSemantics.partitionCoalesced(t,
+        List<int[]> groups = GroupSemanticsCalls.partitionCoalesced(t,
                 comps("VISITNUM", List.of("USUBJID", "POOLID")));
         // VISITNUM (absent singleton) is pruned; coalesce(USUBJID, POOLID) groups per subject.
         assertEquals(Set.of(Set.of(0, 1), Set.of(2)), groupSet(groups));
@@ -221,7 +221,7 @@ class GroupSemanticsCoalesceTest
     {
         IDataTable t = MockTable.of().col("USUBJID", "S1", "S1", "S2").build();
 
-        List<int[]> groups = GroupSemantics.partition(t, List.of("USUBJID", "EPOCH"));
+        List<int[]> groups = GroupSemanticsCalls.partition(t, List.of("USUBJID", "EPOCH"));
 
         assertEquals(Set.of(Set.of(0, 1), Set.of(2)), groupSet(groups));
     }
@@ -235,7 +235,7 @@ class GroupSemanticsCoalesceTest
         IDataTable t = MockTable.of().col("ASPER", "1", "2", "3").build();
 
         assertEquals(Set.of(Set.of(0, 1, 2)),
-                groupSet(GroupSemantics.partition(t, List.of("APERIOD"))));
+                groupSet(GroupSemanticsCalls.partition(t, List.of("APERIOD"))));
     }
 
 
@@ -246,7 +246,7 @@ class GroupSemanticsCoalesceTest
         // it no longer short-circuits, it asks for a partition on nothing.
         IDataTable t = MockTable.of().col("LBSTRESU", "g/L", "mg/dL").build();
 
-        assertEquals(Set.of(Set.of(0, 1)), groupSet(GroupSemantics.partition(t, List.of())));
+        assertEquals(Set.of(Set.of(0, 1)), groupSet(GroupSemanticsCalls.partition(t, List.of())));
     }
 
 
@@ -290,21 +290,21 @@ class GroupSemanticsCoalesceTest
         })
         {
             assertEquals(
-                    GroupSemantics.inconsistentAcrossDatasetViolations(allBlank, "LBSTRESU",
+                    GroupSemanticsCalls.inconsistentAcrossDatasetViolations(allBlank, "LBSTRESU",
                             List.of("USUBJID"), 3, includeEmpty),
-                    GroupSemantics.inconsistentAcrossDatasetViolations(absent, "LBSTRESU",
+                    GroupSemanticsCalls.inconsistentAcrossDatasetViolations(absent, "LBSTRESU",
                             List.of("USUBJID"), 3, includeEmpty),
                     "absent target must equal present-but-all-blank, includeEmpty=" + includeEmpty);
             assertEquals(new BitSet(),
-                    GroupSemantics.inconsistentAcrossDatasetViolations(absent, "LBSTRESU",
+                    GroupSemanticsCalls.inconsistentAcrossDatasetViolations(absent, "LBSTRESU",
                             List.of("USUBJID"), 3, includeEmpty),
                     "…and the shared answer is 'nothing flagged': at most one distinct value "
                             + "survives the blank fold, includeEmpty=" + includeEmpty);
         }
         // The control that makes the two assertions above non-vacuous: the same shape with a
         // POPULATED target does flag, so the group really was capable of being inconsistent.
-        BitSet flagged = GroupSemantics.inconsistentAcrossDatasetViolations(populated, "LBSTRESU",
-                List.of("USUBJID"), 3);
+        BitSet flagged = GroupSemanticsCalls.inconsistentAcrossDatasetViolations(populated,
+                "LBSTRESU", List.of("USUBJID"), 3);
         assertEquals(2, flagged.cardinality(),
                 "S1 holds two distinct units with no majority ⇒ both its rows are flagged");
         assertTrue(flagged.get(0));
@@ -318,8 +318,8 @@ class GroupSemanticsCoalesceTest
     {
         IDataTable t = MockTable.of().col("USUBJID", new String[0]).build();
 
-        assertEquals(Set.of(), groupSet(GroupSemantics.partition(t, List.of("USUBJID"))));
-        assertEquals(Set.of(), groupSet(GroupSemantics.partition(t, List.of("EPOCH"))));
+        assertEquals(Set.of(), groupSet(GroupSemanticsCalls.partition(t, List.of("USUBJID"))));
+        assertEquals(Set.of(), groupSet(GroupSemanticsCalls.partition(t, List.of("EPOCH"))));
     }
 
 
@@ -335,10 +335,10 @@ class GroupSemanticsCoalesceTest
 
         // Row 1's key is missing ⇒ dropped. Rows 0 and 2 keep their own groups.
         assertEquals(Set.of(Set.of(0), Set.of(2)),
-                groupSet(GroupSemantics.partition(t, List.of("USUBJID"))));
+                groupSet(GroupSemanticsCalls.partition(t, List.of("USUBJID"))));
         // …and that is NOT the same as the column being absent, which yields one group of all rows.
         assertEquals(Set.of(Set.of(0, 1, 2)),
-                groupSet(GroupSemantics.partition(t, List.of("EPOCH"))));
+                groupSet(GroupSemanticsCalls.partition(t, List.of("EPOCH"))));
     }
 
 
@@ -351,7 +351,7 @@ class GroupSemanticsCoalesceTest
         // than derived, and the last place the engine disagreed with its own absent-column
         // contract. The partial-absence case above is unchanged.
         IDataTable t = MockTable.of().col("PCTPTREF", "D1", "D2").build();
-        List<int[]> groups = GroupSemantics.partitionCoalesced(t,
+        List<int[]> groups = GroupSemanticsCalls.partitionCoalesced(t,
                 comps(List.of("USUBJID", "POOLID")));
         assertEquals(Set.of(Set.of(0, 1)), groupSet(groups));
     }
@@ -362,7 +362,7 @@ class GroupSemanticsCoalesceTest
     {
         IDataTable t = MockTable.of().col("PCTPTREF", new String[0]).build();
         assertEquals(Set.of(), groupSet(
-                GroupSemantics.partitionCoalesced(t, comps(List.of("USUBJID", "POOLID")))));
+                GroupSemanticsCalls.partitionCoalesced(t, comps(List.of("USUBJID", "POOLID")))));
     }
 
     // ---- has_multiple_values_for end-to-end (legacy == native) ----

@@ -76,7 +76,7 @@ class OperationExecutorAbsentDomainTest
 
     private static Object run(Operation o, IDataTable table, DatasetResolver resolver)
     {
-        return OperationExecutor.executeOne(o, table, resolver, null, new LinkedHashMap<>());
+        return OperationExecutorCalls.executeOne(o, table, resolver, null, new LinkedHashMap<>());
     }
 
 
@@ -285,7 +285,7 @@ class OperationExecutorAbsentDomainTest
         priors.put("$a", List.of("X", "Y"));
         priors.put("$b", List.of("Y"));
         assertEquals(List.of("X"),
-                OperationExecutor.executeOne(minus, dm(), EMPTY_STUDY, null, priors),
+                OperationExecutorCalls.executeOne(minus, dm(), EMPTY_STUDY, null, priors),
                 "minus reads prior $-refs and never resolves a target dataset");
 
         assertEquals(false, run(op("variable_exists", "ZZ"), dm(), EMPTY_STUDY),

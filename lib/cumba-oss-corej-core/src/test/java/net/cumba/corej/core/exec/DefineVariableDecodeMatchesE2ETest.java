@@ -71,7 +71,7 @@ class DefineVariableDecodeMatchesE2ETest
 
     private static RuleExecutionResult run(IDataTable xx, MetadataProvider def) throws IOException
     {
-        return RuleRunner.execute(draft900025(), xx, _ -> null, "XX", null, null, def, null);
+        return RuleRunnerCalls.execute(draft900025(), xx, _ -> null, "XX", null, null, def, null);
     }
 
 

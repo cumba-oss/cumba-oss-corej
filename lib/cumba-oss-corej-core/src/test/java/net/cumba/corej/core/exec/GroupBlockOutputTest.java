@@ -98,7 +98,7 @@ class GroupBlockOutputTest
                 "X", "HEADACHE", "HEADACHE"
         });
 
-        RuleExecutionResult result = RuleRunner.execute(fatalRule(), table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(fatalRule(), table);
 
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus());
         assertEquals(1, result.getViolations().size());
@@ -127,7 +127,7 @@ class GroupBlockOutputTest
                 "X", "HEADACHE", "HEADACHE"
         });
 
-        RuleRunner.execute(fatalRule(), table);
+        RuleRunnerCalls.execute(fatalRule(), table);
 
         assertNull(seen.get(), "non-flagged rows must not enter the value-set");
     }
@@ -154,7 +154,7 @@ class GroupBlockOutputTest
                 "NAUSEA", "RASH"
         });
 
-        RuleExecutionResult result = RuleRunner.execute(fatalRule(), table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(fatalRule(), table);
 
         assertEquals(1, result.getViolations().size());
         assertEquals("[NAUSEA, RASH]", result.getViolations().get(0).getValues().get("AEDECOD"));
@@ -181,7 +181,7 @@ class GroupBlockOutputTest
                 "HEADACHE", "HEADACHE", "X", "RASH"
         });
 
-        RuleExecutionResult result = RuleRunner.execute(fatalRule(), table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(fatalRule(), table);
 
         assertEquals(2, result.getViolations().size());
         Map<String, String> byRow0 = result.getViolations().get(0).getValues();
@@ -211,7 +211,7 @@ class GroupBlockOutputTest
                 "NAUSEA", "RASH"
         });
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         assertEquals(1, result.getViolations().size());
         assertEquals("[NAUSEA, RASH]", result.getViolations().get(0).getValues().get("AEDECOD"));

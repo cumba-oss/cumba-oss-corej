@@ -145,7 +145,7 @@ class TierBDefineAccessorParityTest
 
     private static Map<Long, Map<String, String>> findings(Rule rule, IDataTable table)
     {
-        RuleExecutionResult r = RuleRunner.execute(rule, table, _ -> null, "AE", null, null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, table, _ -> null, "AE", null, null,
                 DEFINE);
         Map<Long, Map<String, String>> out = new HashMap<>();
         for (Violation v : r.getViolations())
@@ -186,7 +186,8 @@ class TierBDefineAccessorParityTest
         Rule rule = loadRule();
         IDataTable ae = MockTable.of().name("AE").col("AEACN", "x").build();
 
-        RuleExecutionResult ran = RuleRunner.execute(rule, ae, _ -> null, "AE", null, null, DEFINE);
+        RuleExecutionResult ran = RuleRunnerCalls.execute(rule, ae, _ -> null, "AE", null, null,
+                DEFINE);
         assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "the Tier-B rule must evaluate on the NATIVE backend");
     }

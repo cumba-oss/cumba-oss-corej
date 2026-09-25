@@ -295,7 +295,7 @@ class GroupKeyCompositeIdentityTest
         // so the dependency never sees two values and nothing fires.
         IDataTableColumn key = column("a", "a");
         IDataTableColumn dep = columnCells(mis(MissingValue.MIS), str("x"));
-        BitSet fired = GroupSemantics.hasMultipleValuesForRows(dep, key, i -> i, 2, false);
+        BitSet fired = GroupSemanticsCalls.hasMultipleValuesForRows(dep, key, i -> i, 2, false);
         assertTrue(fired.isEmpty(), "a blank dependent never enters the dependency: " + fired);
     }
 
@@ -308,7 +308,7 @@ class GroupKeyCompositeIdentityTest
         // key fires.
         IDataTableColumn key = column("a", "a");
         IDataTableColumn dep = columnCells(mis(MissingValue.MIS), str(""));
-        BitSet fired = GroupSemantics.hasMultipleValuesForRows(dep, key, i -> i, 2, true);
+        BitSet fired = GroupSemanticsCalls.hasMultipleValuesForRows(dep, key, i -> i, 2, true);
         assertEquals(Set.of(0, 1), bits(fired),
                 "Empty and Missing(MIS) are distinct participating dependents");
     }
@@ -359,13 +359,13 @@ class GroupKeyCompositeIdentityTest
         IDataTableColumn valueSame = columnCells(str("ignored"), mis(MissingValue.MIS));
         IDataTableColumn order = columnCells(str("1"), str("2"));
         BitSet fires = new BitSet();
-        GroupSemantics.flagNoNextCorrespondingRecord(name, valueDifferent, order, new int[]
+        GroupSemanticsCalls.flagNoNextCorrespondingRecord(name, valueDifferent, order, new int[]
         {
                 0, 1
         }, fires);
         assertEquals(Set.of(0), bits(fires), "Missing(MIS) does not correspond to \"\"");
         BitSet quiet = new BitSet();
-        GroupSemantics.flagNoNextCorrespondingRecord(name, valueSame, order, new int[]
+        GroupSemanticsCalls.flagNoNextCorrespondingRecord(name, valueSame, order, new int[]
         {
                 0, 1
         }, quiet);
@@ -389,7 +389,8 @@ class GroupKeyCompositeIdentityTest
             IDataTableView block = mock(IDataTableView.class);
             long row = r;
             lenient().when(block.getRealRow(t, 0)).thenReturn(row);
-            String blockKey = IndexHelper.buildGroupKey(block, t, meta, List.of("K"));
+            String blockKey = IndexHelper.buildGroupKey(block, t, meta, List.of("K"),
+                    GroupKeyPolicy.KEEP_MISSING_KEYS);
             String rowKey = GroupedResult.buildKey(meta, t, List.of("K"), r);
             assertEquals(blockKey, rowKey, "lockstep at row " + r);
             keys.add(rowKey);
@@ -424,7 +425,8 @@ class GroupKeyCompositeIdentityTest
         // distinct value remains, nothing fires — a rendering-based test would have counted "."
         // as a second value and flagged the group (arm1's +9 528 mechanism).
         IDataTable t = table("T", mis(MissingValue.MIS), str("x"), str("x"));
-        BitSet fired = GroupSemantics.inconsistentAcrossDatasetViolations(t, "T", List.of(), 3);
+        BitSet fired = GroupSemanticsCalls.inconsistentAcrossDatasetViolations(t, "T", List.of(),
+                3);
         assertTrue(fired.isEmpty(), "a genuinely missing target never participates: " + fired);
     }
 
@@ -454,7 +456,7 @@ class GroupKeyCompositeIdentityTest
                         str(""), str(""), str("")
                 }
         });
-        List<int[]> groups = GroupSemantics.partitionCoalesced(t,
+        List<int[]> groups = GroupSemanticsCalls.partitionCoalesced(t,
                 List.of(List.of("K"), List.of("A", "B")),
                 GroupKeyPolicy.DROP_MISSING_KEYS.withKeepMissings(true));
         Set<Set<Integer>> got = new HashSet<>();

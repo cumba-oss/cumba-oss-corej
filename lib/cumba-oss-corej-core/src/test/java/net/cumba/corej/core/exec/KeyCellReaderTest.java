@@ -338,8 +338,8 @@ class KeyCellReaderTest
     private static List<String> expansion(IDataTable aPrimary, IDataTable aChild,
             MatchDataset aEntry)
     {
-        KeyMatchRowExpander.KeyMatchExpansion exp = KeyMatchRowExpander.expand(aPrimary,
-                List.of(aEntry), Map.of("AE", aChild)::get, "R", null);
+        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(aPrimary, List.of(aEntry),
+                Map.of("AE", aChild)::get, "R", null);
         assertNotNull(exp);
         IDataTable t = exp.table();
         JoinLookup lk = exp.lookups().get("AE");

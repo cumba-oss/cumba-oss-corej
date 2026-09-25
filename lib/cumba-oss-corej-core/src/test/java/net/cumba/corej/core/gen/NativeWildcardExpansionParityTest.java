@@ -12,7 +12,7 @@ import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.exec.Violation;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
@@ -45,7 +45,7 @@ class NativeWildcardExpansionParityTest
     private static Map<Long, Map<String, String>> findings(Rule rule, IDataTable t)
     {
         Map<Long, Map<String, String>> out = new TreeMap<>();
-        for (Violation v : RuleRunner.execute(rule, t, NO_RESOLVER, null, null, null, null)
+        for (Violation v : RuleRunnerCalls.execute(rule, t, NO_RESOLVER, null, null, null, null)
                 .getViolations())
         {
             out.put(v.getRowNumber(), v.getValues());
@@ -90,8 +90,8 @@ class NativeWildcardExpansionParityTest
         // would report the same empty findings as one that ran and found nothing.
         for (Rule concrete : expanded)
         {
-            RuleExecutionResult ran = RuleRunner.execute(concrete, t, NO_RESOLVER, null, null, null,
-                    null);
+            RuleExecutionResult ran = RuleRunnerCalls.execute(concrete, t, NO_RESOLVER, null, null,
+                    null, null);
             assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                     "every expansion must execute: " + concrete.effectiveId() + " -> "
                             + ran.getStatusMessage());

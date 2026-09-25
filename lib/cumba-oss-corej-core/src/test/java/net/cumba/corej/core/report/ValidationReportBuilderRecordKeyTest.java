@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import net.cumba.corej.core.exec.ExecCalls;
 import net.cumba.corej.core.exec.RecordKeyResolver;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.Violation;
@@ -37,7 +38,7 @@ class ValidationReportBuilderRecordKeyTest
     {
         Map<String, String> values = new LinkedHashMap<>();
         values.put("AETERM", "HEADACHE");
-        Violation v = new Violation(41L, values, "STUDY-001-002", "3");
+        Violation v = ExecCalls.violation(41L, values, "STUDY-001-002", "3");
 
         ValidationFinding f = firstFinding(build(v, RecordKeyResolver.KeySource.NONE));
 
@@ -56,7 +57,7 @@ class ValidationReportBuilderRecordKeyTest
     {
         Map<String, String> values = new LinkedHashMap<>();
         values.put("USUBJID", "STUDY-001-002");
-        Violation v = new Violation(0L, values, "STUDY-001-002", "3");
+        Violation v = ExecCalls.violation(0L, values, "STUDY-001-002", "3");
 
         ValidationFinding f = firstFinding(build(v, RecordKeyResolver.KeySource.NONE));
 
@@ -81,8 +82,8 @@ class ValidationReportBuilderRecordKeyTest
         partial.put("AETERM", "COUGH");
 
         ValidationFinding f = firstFinding(build(
-                List.of(new Violation(0L, declared, "STUDY-001-002", "1"),
-                        new Violation(1L, partial, "STUDY-001-003", "2")),
+                List.of(ExecCalls.violation(0L, declared, "STUDY-001-002", "1"),
+                        ExecCalls.violation(1L, partial, "STUDY-001-003", "2")),
                 RecordKeyResolver.KeySource.NONE));
 
         assertTrue(f.getLocation().getVariableNames().contains("USUBJID"));
@@ -101,7 +102,7 @@ class ValidationReportBuilderRecordKeyTest
         keys.put("IDVAR", "AESEQ");
         keys.put("IDVARVAL", "3");
         keys.put("QNAM", "AESOSP");
-        Violation v = new Violation(6L, values, "STUDY-001-002", null, keys);
+        Violation v = ExecCalls.violation(6L, values, "STUDY-001-002", null, keys);
 
         ValidationFinding f = firstFinding(build(v, RecordKeyResolver.KeySource.STRUCTURAL));
         ValidationFindingLocation loc = f.getLocation();
@@ -125,7 +126,7 @@ class ValidationReportBuilderRecordKeyTest
     @Test
     void caseD_allInjectedIdentityYieldsAnEmptyFlaggedColumnList()
     {
-        Violation v = new Violation(0L, Map.of(), "STUDY-001-002", "3");
+        Violation v = ExecCalls.violation(0L, Map.of(), "STUDY-001-002", "3");
 
         ValidationFinding f = firstFinding(build(v, RecordKeyResolver.KeySource.NONE));
 
@@ -141,7 +142,7 @@ class ValidationReportBuilderRecordKeyTest
     {
         Map<String, String> values = new LinkedHashMap<>();
         values.put("AETERM", "HEADACHE");
-        Violation v = new Violation(0L, values, "S01", "1");
+        Violation v = ExecCalls.violation(0L, values, "S01", "1");
 
         ValidationFinding f = firstFinding(build(v, RecordKeyResolver.KeySource.NONE));
 
@@ -158,7 +159,7 @@ class ValidationReportBuilderRecordKeyTest
         // Defensive: a NONE tier must never surface a key source, whatever the result says.
         Map<String, String> values = new LinkedHashMap<>();
         values.put("AETERM", "HEADACHE");
-        Violation v = new Violation(0L, values, "S01", "1");
+        Violation v = ExecCalls.violation(0L, values, "S01", "1");
 
         ValidationFinding f = firstFinding(build(v, RecordKeyResolver.KeySource.DEFINE_KEY));
 
@@ -182,8 +183,8 @@ class ValidationReportBuilderRecordKeyTest
         keys2.put("AEREFID", "R1");
 
         ValidationFinding f = firstFinding(build(
-                List.of(new Violation(0L, Map.of("QVAL", "Y"), "S01", null, keys1),
-                        new Violation(1L, Map.of("QVAL", "N"), "S02", null, keys2)),
+                List.of(ExecCalls.violation(0L, Map.of("QVAL", "Y"), "S01", null, keys1),
+                        ExecCalls.violation(1L, Map.of("QVAL", "N"), "S02", null, keys2)),
                 RecordKeyResolver.KeySource.STRUCTURAL));
 
         // AESPID is blank on both rows and goes; AEREFID is populated on one and stays.
@@ -202,7 +203,7 @@ class ValidationReportBuilderRecordKeyTest
         blank.put("AEREFID", "");
 
         ValidationFinding f = firstFinding(
-                build(List.of(new Violation(0L, Map.of("AETERM", "X"), "S01", "1", blank)),
+                build(List.of(ExecCalls.violation(0L, Map.of("AETERM", "X"), "S01", "1", blank)),
                         RecordKeyResolver.KeySource.SPONSOR_ID));
 
         assertTrue(f.getLocation().getKeyVariableNames().isEmpty());
@@ -220,7 +221,7 @@ class ValidationReportBuilderRecordKeyTest
     {
         Rule rule = ruleWithOutputVariables("USUBJID");
         // USUBJID declared but unresolved => omitted from values (EC-37 omit-don't-null).
-        Violation v = new Violation(0L, Map.of(), "STUDY-001-002", "3");
+        Violation v = ExecCalls.violation(0L, Map.of(), "STUDY-001-002", "3");
 
         RuleExecutionResult result = RuleExecutionResult.builder().ruleId("CORE-KEY-TEST")
                 .message("test message").violations(List.of(v)).totalRows(10)

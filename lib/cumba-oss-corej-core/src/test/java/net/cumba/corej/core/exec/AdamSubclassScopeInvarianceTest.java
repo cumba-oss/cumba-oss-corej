@@ -75,7 +75,7 @@ class AdamSubclassScopeInvarianceTest
         List<String> structures = AdamStructureContext.detectAll(adae().getMetaData(), null, null);
 
         assertNull(
-                ScopeMatcher.describeDataStructureMismatch(
+                ScopeMatcherCalls.describeDataStructureMismatch(
                         scopedTo(AdamDataStructureDetector.OCCDS), structures),
                 "an AE dataset is an OCCDS dataset — the gate must still admit it");
     }
@@ -125,7 +125,7 @@ class AdamSubclassScopeInvarianceTest
         assertEquals(List.of(AdamDataStructureDetector.OCCDS), structures);
         assertEquals(List.of(),
                 AdamStructureContext.detectSubclasses(adcm.getMetaData(), null, null, structures));
-        assertNull(ScopeMatcher.describeDataStructureMismatch(
+        assertNull(ScopeMatcherCalls.describeDataStructureMismatch(
                 scopedTo(AdamDataStructureDetector.OCCDS), structures));
     }
 }

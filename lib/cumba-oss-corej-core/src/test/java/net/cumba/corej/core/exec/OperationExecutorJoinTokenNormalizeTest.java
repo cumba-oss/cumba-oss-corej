@@ -43,7 +43,8 @@ class OperationExecutorJoinTokenNormalizeTest
     @SuppressWarnings("unchecked")
     private static Set<List<String>> run(Operation op, IDataTable table)
     {
-        Object result = OperationExecutor.execute(List.of(op), table, NO_RESOLVER).get("$keys");
+        Object result = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER)
+                .get("$keys");
         assertInstanceOf(Set.class, result, "distinct with names yields a tuple set");
         return (Set<List<String>>) result;
     }

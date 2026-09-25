@@ -45,84 +45,29 @@ public final class ScopeMatcher
 
 
     /**
-     * Returns {@code true} if the rule applies to the given domain.
-     * <p>
-     * Supports the {@code ALL} wildcard in Include lists, and the {@code --} wildcard pattern
-     * (e.g., {@code SUPP--} matches any 6-character domain starting with {@code SUPP}; {@code AP--}
-     * matches any 4-character domain starting with {@code AP}). The {@code --} contract is
-     * <b>strict</b>: exactly two characters, never "any suffix" — longer split forms are reached
-     * through the callers' data-derived split-base re-test, not by relaxing the token. See
-     * {@link #describeDomainMismatch(Rule, String, String)}.
-     * </p>
-     * <p>
-     * ⚠ This is the <em>table-less</em> API: it resolves the split base from the name alone. See
-     * {@link #describeDomainMismatch(Rule, String)} for what that costs on a SUPP/AP letter-suffix
-     * split, and prefer the three-argument describer when a dataset is available.
-     * </p>
+     * The {@code Scope.Domains} matcher: returns {@code null} when the rule's domain scope matches
+     * the dataset, or a short human-readable message naming the failing criterion and the
+     * responsible scope entry (e.g. {@code "domain EX not in Scope.Domains.Include [AE, CM]"} or
+     * {@code "domain SUPPAE matches Scope.Domains.Exclude entry SUPP--"}). Supports the {@code ALL}
+     * wildcard in Include lists, and the {@code --} wildcard pattern (e.g. {@code SUPP--} matches
+     * any 6-character domain starting with {@code SUPP}; {@code AP--} any 4-character domain
+     * starting with {@code AP}). The {@code --} contract is <b>strict</b>: exactly two characters,
+     * never "any suffix" — longer split forms are reached through the data-derived split-base
+     * re-test below, not by relaxing the token.
      *
-     * @param rule
-     *            the rule to check
-     * @param domainName
-     *            the domain name of the target table (e.g. "DM", "AE")
-     * @return true if the rule should be executed against this domain
-     */
-    public static boolean matchesDomain(Rule rule, String domainName)
-    {
-        return describeDomainMismatch(rule, domainName) == null;
-    }
-
-
-    /**
-     * Reason-bearing variant of {@link #matchesDomain}: returns {@code null} when the rule's domain
-     * scope matches the dataset, or a short human-readable message naming the failing criterion and
-     * the responsible scope entry (e.g. {@code "domain EX not in Scope.Domains.Include [AE, CM]"}
-     * or {@code "domain SUPPAE matches Scope.Domains.Exclude entry SUPP--"}). The boolean API is
-     * implemented on top of this method, so the two can never diverge.
      * <p>
-     * ⚠ <b>Prefer {@link #describeDomainMismatch(Rule, String, String)} whenever a dataset is in
-     * hand.</b> This table-less overload has no data to read, so it derives the split base from the
-     * <em>name</em> via {@link SplitDatasetUtil#unsplitName}, and the two do not always agree. The
-     * name heuristic strips a single trailing letter, the data path resolves the real parent:
-     * {@code SUPPLBHM} becomes {@code SUPPLBH} (7 characters) here but {@code SUPPLB} (6) from
-     * {@code RDOMAIN=LB} — and the strict {@code --} contract wants exactly 6, so a rule scoped
-     * {@code Include: ["SUPP--"]} <b>silently misses</b> that dataset on this path and matches it
-     * on the other. The divergence needs a SUPP/AP letter-suffix split to appear; digit-suffix
-     * splits ({@code LB1}) agree on both paths.
-     * <p>
-     * Nothing in the engine's own execution path is affected: {@code DatasetRuleResolver} computes
-     * {@code unsplitName} from the dataset ({@code OperationExecutor.unsplitNameFromData}) and
-     * calls the three-argument overload. This overload survives for callers that genuinely have
-     * only a name — it is <em>not</em> a shorthand for the data-driven one. No guard is placed on
-     * it deliberately: the shortened base is a legitimate answer to the question actually asked
-     * ("what does this name look like?"), and there is no signal at this point that would let a
-     * guard distinguish a caller that has no table from one that merely forgot to pass it.
-     * </p>
-     *
-     * @param rule
-     *            the rule to check
-     * @param domainName
-     *            the domain name of the target table (e.g. "DM", "AE")
-     * @return {@code null} when matching, otherwise the mismatch description
-     */
-    public static @Nullable String describeDomainMismatch(Rule rule, String domainName)
-    {
-        // Table-less callers fall back to the name-pattern base. SplitDatasetUtil.unsplitName
-        // shortens the name exactly when SplitDatasetUtil.isSplitDataset is true, so deriving
-        // isSplit from `!domainName.equals(base)` reproduces the legacy heuristic precisely.
-        return describeDomainMismatch(rule, domainName,
-                domainName == null ? null : SplitDatasetUtil.unsplitName(domainName));
-    }
-
-
-    /**
-     * Data-driven variant of {@link #describeDomainMismatch(Rule, String)} that takes the dataset's
-     * canonical unsplit (base) name — computed from the {@code DOMAIN}/{@code RDOMAIN} columns via
-     * {@link OperationExecutor#unsplitNameFromData} — rather than guessing it from the name. This
-     * is what mirrors Python's {@code SDTMDatasetMetadata.is_split}/{@code unsplit_name}: a dataset
-     * named {@code FAAE} carrying {@code DOMAIN=FA} has {@code unsplitName="FA"} and is therefore a
-     * split of FA, which the name-only heuristic ({@link SplitDatasetUtil#isSplitDataset}) misses.
-     * The dataset is a split iff {@code domainName} differs from {@code unsplitName}, and the base
-     * used for Include/Exclude split re-tests is {@code unsplitName}.
+     * It is <b>data-driven</b>: it takes the dataset's canonical unsplit (base) name — computed
+     * from the {@code DOMAIN}/{@code RDOMAIN} columns via
+     * {@link OperationExecutor#unsplitNameFromData} — rather than guessing it from the name (a
+     * table-less overload that derived the base through {@link SplitDatasetUtil#unsplitName} was
+     * retired 2026-09-25, U1 / A5: the name heuristic strips a single trailing letter, so
+     * {@code SUPPLBHM} became {@code SUPPLBH} there and {@code SUPPLB} here, and a strict
+     * {@code SUPP--} scope silently missed the dataset on the name path). This is what mirrors
+     * Python's {@code SDTMDatasetMetadata.is_split}/{@code unsplit_name}: a dataset named
+     * {@code FAAE} carrying {@code DOMAIN=FA} has {@code unsplitName="FA"} and is therefore a split
+     * of FA, which a name-only heuristic misses. The dataset is a split iff {@code domainName}
+     * differs from {@code unsplitName}, and the base used for Include/Exclude split re-tests is
+     * {@code unsplitName}.
      * <p>
      * <b>There is no SUPP/AP "family wildcard".</b> Fix #34 used to add a third leg here —
      * {@code firstMatchingSuppApFamilyEntry} — under which <em>any</em> of {@code SUPP--},
@@ -374,29 +319,11 @@ public final class ScopeMatcher
 
 
     /**
-     * Returns {@code true} if the rule applies to the given observation class.
-     * <p>
-     * Supports the {@code ALL} wildcard in Include lists.
-     * </p>
-     *
-     * @param rule
-     *            the rule to check
-     * @param className
-     *            the observation class (e.g. "EVENTS", "SPECIAL PURPOSE")
-     * @return true if the rule's class scope matches
-     */
-    public static boolean matchesClass(Rule rule, @Nullable String className)
-    {
-        return describeClassMismatch(rule, className) == null;
-    }
-
-
-    /**
-     * Reason-bearing variant of {@link #matchesClass}: returns {@code null} when the rule's class
-     * scope matches, or a short human-readable message naming the failing criterion and the
-     * responsible scope entry (e.g. {@code "class EVENTS not in Scope.Classes.Include [FINDINGS]"}
-     * or {@code "dataset class undetermined but rule has a Classes scope"}). The boolean API is
-     * implemented on top of this method, so the two can never diverge.
+     * The {@code Scope.Classes} matcher: returns {@code null} when the rule's class scope matches,
+     * or a short human-readable message naming the failing criterion and the responsible scope
+     * entry (e.g. {@code "class EVENTS not in Scope.Classes.Include [FINDINGS]"} or
+     * {@code "dataset class undetermined but rule has a Classes scope"}). Supports the {@code ALL}
+     * wildcard in Include lists.
      *
      * @param rule
      *            the rule to check
@@ -518,171 +445,6 @@ public final class ScopeMatcher
                 .anyMatch(useCase::equalsIgnoreCase);
     }
 
-
-    /**
-     * Returns {@code true} if the rule applies to a dataset with the given metadata.
-     * <p>
-     * When the rule declares a {@link VariableRequirement}, the dataset must contain <b>all</b>
-     * variables listed in {@code All}, at least one of {@code Any}, and <b>none</b> of the
-     * variables listed in {@code None}. Rules without a variable requirement match all datasets.
-     * </p>
-     *
-     * @param rule
-     *            the rule to check
-     * @param meta
-     *            the dataset metadata (provides column names via
-     *            {@link DataTableMeta#getColumnIndex(String)})
-     * @return true if the dataset satisfies the rule's variable scope
-     */
-    public static boolean matchesVariables(Rule rule, DataTableMeta meta)
-    {
-        return describeVariablesMismatch(rule, meta, null) == null;
-    }
-
-
-    /**
-     * Variant of {@link #matchesVariables(Rule, DataTableMeta)} that resolves {@code --}-prefix
-     * entries against the dataset's variable wildcard prefix (e.g. {@code --SEQ} → {@code AESEQ}
-     * when {@code domainPrefix} is {@code "AE"}) before matching. See
-     * {@link #describeVariablesMismatch(Rule, DataTableMeta, String)} for the entry semantics.
-     *
-     * @param rule
-     *            the rule to check
-     * @param meta
-     *            the dataset metadata (provides column names via
-     *            {@link DataTableMeta#getColumnIndex(String)})
-     * @param domainPrefix
-     *            the variable wildcard prefix used to resolve a leading {@code --} ("" for SUPP/SQ,
-     *            the AP parent suffix for AP, else the domain code), or {@code null} when
-     *            unresolved (entries are then looked up verbatim)
-     * @return true if the dataset satisfies the rule's variable scope
-     */
-    public static boolean matchesVariables(Rule rule, DataTableMeta meta,
-            @Nullable String domainPrefix)
-    {
-        return describeVariablesMismatch(rule, meta, domainPrefix) == null;
-    }
-
-
-    /**
-     * Reason-bearing variant of {@link #matchesVariables}: returns {@code null} when the rule's
-     * variable scope matches the dataset, or a short human-readable message naming the failing
-     * criterion and the responsible variable (e.g. {@code "Requirements.Variables.All variable
-     * AESTDTC not present in dataset"}). The boolean API is implemented on top of this method, so
-     * the two can never diverge.
-     *
-     * @param rule
-     *            the rule to check
-     * @param meta
-     *            the dataset metadata (provides column names via
-     *            {@link DataTableMeta#getColumnIndex(String)})
-     * @return {@code null} when matching, otherwise the mismatch description
-     */
-    public static @Nullable String describeVariablesMismatch(Rule rule, DataTableMeta meta)
-    {
-        return describeVariablesMismatch(rule, meta, null);
-    }
-
-
-    /**
-     * Variant of {@link #describeVariablesMismatch(Rule, DataTableMeta)} that resolves
-     * {@code --}-prefix entries against the dataset's variable wildcard prefix and supports
-     * glob/regex pattern entries ({@link #scopePattern}). Per entry:
-     * <ul>
-     * <li>a leading {@code --} is first replaced by {@code domainPrefix} when it is exactly two
-     * characters (mirroring the expression language's {@code --} resolution, e.g. {@code --SEQ} →
-     * {@code AESEQ}); otherwise the entry keeps its raw form and the lookup simply misses;</li>
-     * <li>a pattern entry ({@code *}/{@code ?} glob or {@code /…/} regex) is satisfied when <b>at
-     * least one</b> column name matches (anchored full match, case-insensitive) — so an
-     * {@code Exclude} pattern rejects the dataset when <em>any</em> column matches;</li>
-     * <li>an entry carrying the wildcard markers ({@code xx}, {@code zz}, {@code y}, {@code w} —
-     * e.g. {@code TRTxxP}, see
-     * {@link net.cumba.corej.core.gen.WildcardExpander#scopeVariableWildcardPattern}) is likewise
-     * satisfied when at least one column matches the marker pattern (anchored, case-sensitive — the
-     * same regex the wildcard expansion matches against the Check), so a template scoped to
-     * {@code TRTxxP} applies when {@code TRT01P} exists and is skipped — naming the entry — when no
-     * concrete column matches;</li>
-     * <li>a literal entry keeps the exact-lookup semantics
-     * ({@link DataTableMeta#getColumnIndex(String)}).</li>
-     * </ul>
-     * {@code --} resolution happens before pattern detection, so {@code --*DT} (prefix + glob)
-     * composes naturally.
-     * <p>
-     * <b>This overload is qualified-blind.</b> A cross-dataset entry ({@code DM.ARM}, Fix #124)
-     * needs foreign metadata that only a {@link ScopeVariableSource} can supply, so this signature
-     * <em>ignores</em> such entries — the rule is never skipped on their account. Production paths
-     * must call
-     * {@link #describeVariablesMismatch(Rule, DataTableMeta, String, ScopeVariableSource)}.
-     * </p>
-     *
-     * @param rule
-     *            the rule to check
-     * @param meta
-     *            the dataset metadata (provides column names via
-     *            {@link DataTableMeta#getColumnIndex(String)})
-     * @param domainPrefix
-     *            the variable wildcard prefix used to resolve a leading {@code --} ("" for SUPP/SQ,
-     *            the AP parent suffix for AP, else the domain code), or {@code null} when
-     *            unresolved
-     * @return {@code null} when matching, otherwise the mismatch description
-     */
-    public static @Nullable String describeVariablesMismatch(Rule rule, DataTableMeta meta,
-            @Nullable String domainPrefix)
-    {
-        return describeVariablesMismatch(rule, meta, domainPrefix, null);
-    }
-
-
-    /**
-     * Fix #124 variant of {@link #describeVariablesMismatch(Rule, DataTableMeta, String)} that can
-     * also decide <b>qualified</b> entries — {@code DATASET.VARIABLE} forms naming a variable in
-     * another dataset ({@code DM.ARM}, {@code ADSL.TRTxxPN}, {@code SUPP--.QVAL}). An entry is
-     * qualified per {@link ScopeVariableEntry#parse}; the variable half keeps every semantic the
-     * unqualified form has (literal, glob, {@code /…/} regex, wildcard-marker template), while the
-     * qualifier is resolved through {@code foreign}.
-     * <p>
-     * Include requires the foreign dataset to exist <em>and</em> to carry the variable; Exclude
-     * rejects only when both hold — so a rule guarded by {@code Include: [DM.ARM]} is skipped (with
-     * a reason naming the dataset) when DM is absent, instead of silently evaluating against an
-     * unresolved join.
-     * </p>
-     * <p>
-     * When {@code foreign} is {@code null} the resolver in effect cannot enumerate datasets (see
-     * {@link ScopeVariableSource#of}), so a qualified entry cannot be <em>decided</em>.
-     * {@link QualifiedEntryPolicy} says what that means, and <b>this overload chooses
-     * {@code IGNORE}</b> — the entry counts as satisfied and the rule is not skipped.
-     * </p>
-     *
-     * <p>
-     * ⚠⚠ <b>Production callers pass {@code SKIP}</b> ({@code RuleRunner},
-     * {@code DatasetRuleResolver}; owner ruling 2026-09-10,
-     * {@code plans/PLAN-qualified-requirements-cross-standard.md} §8.4 disposition (b)).
-     * {@code IGNORE} is retained only for the qualified-blind overloads above, whose published
-     * contract is that they ignore qualified entries. ⛔ Do not "simplify" a production call site
-     * back onto this overload: under {@code IGNORE} a rule whose {@code var_exists(DM.ARM)} guard
-     * was hoisted into {@code Requirements} runs with nothing in the guard's place, which is the
-     * flood the hoist was supposed to make auditable.
-     * </p>
-     *
-     * @param rule
-     *            the rule to check
-     * @param meta
-     *            the primary dataset's metadata
-     * @param domainPrefix
-     *            the variable wildcard prefix used to resolve a leading {@code --} in an
-     *            <em>unqualified</em> entry, or {@code null}
-     * @param foreign
-     *            the foreign-metadata source, or {@code null} when qualified entries cannot be
-     *            evaluated
-     * @return {@code null} when matching, otherwise the mismatch description
-     */
-    public static @Nullable String describeVariablesMismatch(Rule rule, DataTableMeta meta,
-            @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign)
-    {
-        return describeVariablesMismatch(rule, meta, domainPrefix, foreign,
-                QualifiedEntryPolicy.IGNORE);
-    }
-
     /**
      * What a <b>qualified</b> entry means when {@code foreign} is {@code null} — i.e. when the
      * resolver in effect cannot enumerate datasets and the entry therefore cannot be
@@ -700,8 +462,9 @@ public final class ScopeMatcher
     public enum QualifiedEntryPolicy
     {
         /**
-         * Undecidable ⇒ <b>satisfied</b>; the rule runs. The pre-2026-09-10 behaviour, kept for the
-         * qualified-blind overloads whose contract is explicitly "ignores qualified entries".
+         * Undecidable ⇒ <b>satisfied</b>; the rule runs. The pre-2026-09-10 behaviour. No
+         * production caller passes it since the qualified-blind overloads were retired
+         * (2026-09-25).
          */
         IGNORE,
         /**
@@ -712,9 +475,54 @@ public final class ScopeMatcher
     }
 
     /**
-     * Full form of
-     * {@link #describeVariablesMismatch(Rule, DataTableMeta, String, ScopeVariableSource)} — see
-     * {@link QualifiedEntryPolicy} for what {@code policy} decides.
+     * The {@code Requirements.Variables} matcher: returns {@code null} when the rule's variable
+     * scope matches the dataset, or a short human-readable message naming the failing criterion and
+     * the responsible variable (e.g.
+     * {@code "Requirements.Variables.All variable AESTDTC not present
+     * in dataset"}). When the rule declares a {@link VariableRequirement}, the dataset must contain
+     * <b>all</b> variables listed in {@code All}, at least one of {@code Any}, and <b>none</b> of
+     * the variables listed in {@code None}; rules without a variable requirement match all
+     * datasets. Per entry:
+     * <ul>
+     * <li>a leading {@code --} is first replaced by {@code domainPrefix} when it is exactly two
+     * characters (mirroring the expression language's {@code --} resolution, e.g. {@code --SEQ} →
+     * {@code AESEQ}); otherwise the entry keeps its raw form and the lookup simply misses;</li>
+     * <li>a pattern entry ({@code *}/{@code ?} glob or {@code /…/} regex, {@link #scopePattern}) is
+     * satisfied when <b>at least one</b> column name matches (anchored full match,
+     * case-insensitive) — so an {@code Exclude} pattern rejects the dataset when <em>any</em>
+     * column matches;</li>
+     * <li>an entry carrying the wildcard markers ({@code xx}, {@code zz}, {@code y}, {@code w} —
+     * e.g. {@code TRTxxP}, see
+     * {@link net.cumba.corej.core.gen.WildcardExpander#scopeVariableWildcardPattern}) is likewise
+     * satisfied when at least one column matches the marker pattern (anchored, case-sensitive — the
+     * same regex the wildcard expansion matches against the Check), so a template scoped to
+     * {@code TRTxxP} applies when {@code TRT01P} exists and is skipped — naming the entry — when no
+     * concrete column matches;</li>
+     * <li>a literal entry keeps the exact-lookup semantics
+     * ({@link DataTableMeta#getColumnIndex(String)});</li>
+     * <li>a <b>qualified</b> entry — {@code DATASET.VARIABLE}, naming a variable in another dataset
+     * ({@code DM.ARM}, {@code ADSL.TRTxxPN}, {@code SUPP--.QVAL}; Fix #124, parsed per
+     * {@link ScopeVariableEntry#parse}) — keeps every semantic above on its variable half while the
+     * qualifier is resolved through {@code foreign}. Include requires the foreign dataset to exist
+     * <em>and</em> to carry the variable; Exclude rejects only when both hold — so a rule guarded
+     * by {@code Include: [DM.ARM]} is skipped (with a reason naming the dataset) when DM is absent,
+     * instead of silently evaluating against an unresolved join. When {@code foreign} is
+     * {@code null} the resolver in effect cannot enumerate datasets (see
+     * {@link ScopeVariableSource#of}), so a qualified entry cannot be <em>decided</em>;
+     * {@link QualifiedEntryPolicy} says what that means.</li>
+     * </ul>
+     * {@code --} resolution happens before pattern detection, so {@code --*DT} (prefix + glob)
+     * composes naturally.
+     *
+     * <p>
+     * ⚠⚠ <b>Production callers pass {@code SKIP}</b> ({@code RuleRunner},
+     * {@code DatasetRuleResolver}; owner ruling 2026-09-10,
+     * {@code plans/PLAN-qualified-requirements-cross-standard.md} §8.4 disposition (b)). Under
+     * {@code IGNORE} a rule whose {@code var_exists(DM.ARM)} guard was hoisted into
+     * {@code Requirements} runs with nothing in the guard's place, which is the flood the hoist was
+     * supposed to make auditable. ⚑ The qualified-blind conveniences that passed {@code IGNORE}
+     * were retired 2026-09-25 (U1 / A7); nothing in {@code src/main} passes it any more.
+     * </p>
      *
      * @param rule
      *            the rule to check
@@ -1376,32 +1184,12 @@ public final class ScopeMatcher
 
 
     /**
-     * Returns {@code true} if the rule applies to a dataset with the given detected ADaM data
-     * structure. See {@link #describeDataStructureMismatch(Rule, String)}.
-     */
-    public static boolean matchesDataStructure(Rule rule, @Nullable String detectedStructure)
-    {
-        return describeDataStructureMismatch(rule, detectedStructure) == null;
-    }
-
-
-    /**
-     * Set-valued variant of {@link #matchesDataStructure(Rule, String)}. See
-     * {@link #describeDataStructureMismatch(Rule, List)}.
-     */
-    public static boolean matchesDataStructure(Rule rule, List<String> detectedStructures)
-    {
-        return describeDataStructureMismatch(rule, detectedStructures) == null;
-    }
-
-
-    /**
-     * Reason-bearing {@code Scope.Data_Structures} matcher. {@code detectedStructure} is the
-     * dataset's structure token from
-     * {@link net.cumba.corej.core.metadata.AdamDataStructureDetector#detect} (total — never
-     * {@code null} from that detector; a {@code null} argument is handled defensively as
-     * "undetermined" and rejected by an Include list). Semantics mirror the Python engine's
-     * {@code rule_applies_to_data_structure} with two documented house deviations:
+     * <b>Fix #179 — the set-valued {@code Scope.Data_Structures} matcher, and the one production
+     * callers use.</b> A dataset carries a <em>set</em> of structures, most-specific first
+     * ({@link net.cumba.corej.core.metadata.AdamDataStructureDetector#detectAll}): a medical-device
+     * BDS dataset is {@code [MEDICAL DEVICE BASIC DATA STRUCTURE, BASIC DATA STRUCTURE]}. An empty
+     * set means "undetermined" and is rejected by an Include list. Semantics mirror the Python
+     * engine's {@code rule_applies_to_data_structure} with two documented house deviations:
      * <ul>
      * <li>an <b>Exclude-only</b> scope excludes exactly the listed structures (upstream's missing
      * {@code if included:} guard makes an Exclude-only scope match nothing — an evident defect we
@@ -1418,39 +1206,8 @@ public final class ScopeMatcher
      * that is the change to look for here. (The clause this replaced said "no shipped rule authors
      * the field yet"; the field itself has been authored in bulk since — the ADaM migration — while
      * Exclude stayed at zero. Triage finding S3.) Tokens are compared via {@link #normalize}
-     * (case/separator-insensitive), consistent with the class matcher.
-     *
-     * <p>
-     * <b>Single-token convenience since Fix #179</b> — equivalent to
-     * {@link #describeDataStructureMismatch(Rule, List)} with a one-element set, i.e. it does
-     * <em>not</em> apply the structure hierarchy. Use it only where the caller genuinely holds one
-     * token and no is-a relation applies (a caller that holds exactly one token — the single-token
-     * wrapper {@link #matchesDataStructure(Rule, String)} above, and unit tests). Production
-     * callers pass the set from
-     * {@link net.cumba.corej.core.metadata.AdamDataStructureDetector#detectAll}.
-     * </p>
-     *
-     * @param rule
-     *            the rule to check
-     * @param detectedStructure
-     *            the dataset's detected structure token, or {@code null} when undetermined
-     * @return {@code null} when matching, otherwise the mismatch description
-     */
-    public static @Nullable String describeDataStructureMismatch(Rule rule,
-            @Nullable String detectedStructure)
-    {
-        return describeDataStructureMismatch(rule,
-                detectedStructure == null ? List.of() : List.of(detectedStructure));
-    }
-
-
-    /**
-     * <b>Fix #179 — the set-valued {@code Scope.Data_Structures} matcher, and the one production
-     * callers use.</b> A dataset carries a <em>set</em> of structures, most-specific first
-     * ({@link net.cumba.corej.core.metadata.AdamDataStructureDetector#detectAll}): a medical-device
-     * BDS dataset is {@code [MEDICAL DEVICE BASIC DATA STRUCTURE, BASIC DATA STRUCTURE]}. Semantics
-     * are those of {@link #describeDataStructureMismatch(Rule, String)}, lifted over the set
-     * exactly as {@link #describeSubclassMismatch(Rule, List)} lifts the subclass gate:
+     * (case/separator-insensitive), consistent with the class matcher. Lifted over the set exactly
+     * as {@link #describeSubclassMismatch(Rule, List)} lifts the subclass gate:
      * <ul>
      * <li>{@code Include} (without {@code ALL}) is satisfied when <b>any</b> detected token is in
      * the list — so an {@code Include:[BASIC DATA STRUCTURE]} rule covers a device BDS dataset,
@@ -1557,40 +1314,16 @@ public final class ScopeMatcher
 
 
     /**
-     * Reason-bearing {@code Scope.Subclasses} matcher. {@code detectedSubclass} is the dataset's
-     * subclass token from {@link net.cumba.corej.core.metadata.AdamSubclassDetector#detect}, or
-     * {@code null} when the dataset has no detectable subclass — the normal case for a plain
-     * BDS/OCCDS/ADSL dataset. Null-detection semantics (decided 2026-07-26):
-     * <ul>
-     * <li>{@code Include} (without {@code ALL}) requires a positively detected subclass in the list
-     * — a null-detected dataset is skipped with a reason naming the Include list;</li>
-     * <li>{@code Exclude} rejects only on a positive match — a null-detected dataset passes an
-     * Exclude-only scope.</li>
-     * </ul>
-     * No engine-side Python counterpart exists upstream (schema-only field). Tokens compare via
-     * {@link #normalize}.
-     *
-     * @param rule
-     *            the rule to check
-     * @param detectedSubclass
-     *            the dataset's detected subclass token, or {@code null} when none
-     * @return {@code null} when matching, otherwise the mismatch description
-     */
-    public static @Nullable String describeSubclassMismatch(Rule rule,
-            @Nullable String detectedSubclass)
-    {
-        return describeSubclassMismatch(rule,
-                detectedSubclass == null ? List.of() : List.of(detectedSubclass));
-    }
-
-
-    /**
-     * Multi-token variant of {@link #describeSubclassMismatch(Rule, String)}: a dataset may carry
-     * several subclasses (Define-XML allows multiple {@code <def:SubClass>} declarations —
-     * {@link net.cumba.corej.core.metadata.AdamSubclassDetector#resolve}). {@code Include} (without
-     * {@code ALL}) is satisfied when <b>any</b> detected token is in the list; {@code Exclude}
-     * rejects when any detected token matches; an empty {@code detectedSubclasses} means "no
-     * subclass" with the semantics of the single-token variant.
+     * The {@code Scope.Subclasses} matcher. {@code detectedSubclasses} are the dataset's subclass
+     * tokens from {@link net.cumba.corej.core.metadata.AdamSubclassDetector#resolve} (Define-XML
+     * allows multiple {@code <def:SubClass>} declarations), empty when the dataset has no
+     * detectable subclass — the normal case for a plain BDS/OCCDS/ADSL dataset. {@code Include}
+     * (without {@code ALL}) requires a positively detected subclass in the list — with none
+     * detected the dataset is skipped with a reason naming the Include list; it is satisfied when
+     * <b>any</b> detected token is in the list. {@code Exclude} rejects only on a positive match,
+     * when any detected token matches — a dataset with no subclass passes an Exclude-only scope
+     * (decided 2026-07-26). No engine-side Python counterpart exists upstream (schema-only field).
+     * Tokens compare via {@link #normalize}.
      *
      * @param rule
      *            the rule to check
@@ -1874,16 +1607,16 @@ public final class ScopeMatcher
 
 
     /**
-     * Domain-pattern matcher used by {@link #matchesDomain} / {@link #describeDomainMismatch}.
-     * Literal entries match the dataset name by <em>exact</em> equality after {@link #normalize
-     * normalisation} ({@link #matchesDomainLiteral}), mirroring the reference Python engine's
+     * Domain-pattern matcher used by {@link #describeDomainMismatch}. Literal entries match the
+     * dataset name by <em>exact</em> equality after {@link #normalize normalisation}
+     * ({@link #matchesDomainLiteral}), mirroring the reference Python engine's
      * {@code rule_processor._is_domain_name_included} / {@code _is_domain_name_excluded}, which are
      * plain list-membership tests
      * ({@code dataset_metadata.domain in included_domains or dataset_metadata.name in
-     * included_domains}) with no prefix logic. Class-level matching ({@link #matchesClass})
-     * continues to use {@link #firstMatchingClassEntry}; the two now differ only in this method's
-     * glob / regex support. Returns the matching entry (so mismatch describers can name it), or
-     * {@code null} when no entry matches.
+     * included_domains}) with no prefix logic. Class-level matching
+     * ({@link #describeClassMismatch}) continues to use {@link #firstMatchingClassEntry}; the two
+     * now differ only in this method's glob / regex support. Returns the matching entry (so
+     * mismatch describers can name it), or {@code null} when no entry matches.
      * <p>
      * Extended-name and split-form datasets are reached through the <em>callers'</em> split-base
      * re-test, not through this method: {@link #describeDomainMismatch(Rule, String, String)}

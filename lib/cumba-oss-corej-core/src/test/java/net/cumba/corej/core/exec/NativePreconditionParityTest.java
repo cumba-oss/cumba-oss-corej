@@ -65,7 +65,7 @@ class NativePreconditionParityTest
 
     private static RuleExecutionResult run(Rule rule, IDataTable t)
     {
-        return RuleRunner.execute(rule, t, NO_RESOLVER, "AE", null, null, null);
+        return RuleRunnerCalls.execute(rule, t, NO_RESOLVER, "AE", null, null, null);
     }
 
     private static final String GUARDED_RULE = "{\"Core\":{\"Id\":\"R1\"},"

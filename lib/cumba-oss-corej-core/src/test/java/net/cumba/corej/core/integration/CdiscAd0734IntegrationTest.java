@@ -6,7 +6,7 @@ import java.nio.file.Path;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
@@ -62,7 +62,7 @@ class CdiscAd0734IntegrationTest
                 .col("PARAMCD", "PARAM1", "PARAM2", "PARAM1").col("BASETYPE", "BASE1", "", "BASE1")
                 .name("ADBDS").build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table, self(table));
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, self(table));
 
         assertEquals(1, result.getViolationCount(),
                 "BASETYPE populated on rows 1+3 but empty on row 2 → mixed → fires once");
@@ -77,7 +77,7 @@ class CdiscAd0734IntegrationTest
         IDataTable table = MockTable.of().col("USUBJID", "S01", "S02")
                 .col("BASETYPE", "BASE1", "BASE2").name("ADBDS").build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table, self(table));
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, self(table));
 
         assertEquals(0, result.getViolationCount(),
                 "All rows have BASETYPE → not mixed → no violation");
@@ -92,7 +92,7 @@ class CdiscAd0734IntegrationTest
         IDataTable table = MockTable.of().col("USUBJID", "S01", "S02").col("BASETYPE", "", "")
                 .name("ADBDS").build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table, self(table));
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, self(table));
 
         assertEquals(0, result.getViolationCount(),
                 "All rows have BASETYPE empty → $bt_pop=0 → first leaf false → no violation");
@@ -111,7 +111,7 @@ class CdiscAd0734IntegrationTest
         IDataTable table = MockTable.of().col("USUBJID", "S01", "S02", "S03")
                 .col("BASETYPE", "", "", "").name("ADBDS").build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table, self(table));
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, self(table));
 
         assertEquals(0, result.getViolationCount(),
                 "Empty strings are missing → no populated rows → no violation");
@@ -129,7 +129,7 @@ class CdiscAd0734IntegrationTest
         IDataTable table = MockTable.of().col("USUBJID", "S01").col("BASETYPE", "").name("ADBDS")
                 .build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table, self(table));
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, self(table));
 
         assertEquals(0, result.getViolationCount());
     }
@@ -145,7 +145,7 @@ class CdiscAd0734IntegrationTest
         IDataTable table = MockTable.of().col("USUBJID", "S01").col("BASETYPE", "BASE1")
                 .name("ADBDS").build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table, self(table));
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, self(table));
 
         assertEquals(0, result.getViolationCount());
     }

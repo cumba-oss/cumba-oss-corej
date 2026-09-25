@@ -213,8 +213,8 @@ class VariableMetadataOperandListResolutionTest
                 "AEENDTC");
         MetadataProvider provider = providerWithAllowed(allowed);
 
-        RuleExecutionResult result = RuleRunner.execute(allowedVariablesRule(), table, _ -> null,
-                "AE", provider);
+        RuleExecutionResult result = RuleRunnerCalls.execute(allowedVariablesRule(), table,
+                _ -> null, "AE", provider);
 
         assertEquals("FDA-SD0058", result.getRuleId());
         assertEquals(0, result.getViolationCount(),
@@ -237,8 +237,8 @@ class VariableMetadataOperandListResolutionTest
         List<String> allowed = List.of("STUDYID", "USUBJID", "AESEQ", "AETERM");
         MetadataProvider provider = providerWithAllowed(allowed);
 
-        RuleExecutionResult result = RuleRunner.execute(allowedVariablesRule(), table, _ -> null,
-                "AE", provider);
+        RuleExecutionResult result = RuleRunnerCalls.execute(allowedVariablesRule(), table,
+                _ -> null, "AE", provider);
 
         assertEquals(1, result.getViolationCount(),
                 "dataset-sensitivity collapse: only the first disallowed variable fires");
@@ -260,8 +260,8 @@ class VariableMetadataOperandListResolutionTest
         List<String> allowed = List.of("OTHER_VAR");
         MetadataProvider provider = providerWithAllowed(allowed);
 
-        RuleExecutionResult result = RuleRunner.execute(allowedVariablesRule(), table, _ -> null,
-                "AE", provider);
+        RuleExecutionResult result = RuleRunnerCalls.execute(allowedVariablesRule(), table,
+                _ -> null, "AE", provider);
 
         assertEquals(1, result.getViolationCount());
         assertEquals("STUDYID", result.getViolations().get(0).getValues().get("variable_name"));
@@ -278,8 +278,8 @@ class VariableMetadataOperandListResolutionTest
         IDataTable table = MockTable.of().col("STUDYID", "S001").build();
         MetadataProvider provider = providerWithAllowed(List.of());
 
-        RuleExecutionResult result = RuleRunner.execute(allowedVariablesRule(), table, _ -> null,
-                "AE", provider);
+        RuleExecutionResult result = RuleRunnerCalls.execute(allowedVariablesRule(), table,
+                _ -> null, "AE", provider);
 
         assertEquals(RuleExecutionStatus.SKIPPED, result.getStatus());
         assertTrue(result.getViolations().isEmpty());

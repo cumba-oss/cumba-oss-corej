@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
@@ -84,7 +84,7 @@ class OperandTemplateScalarIntegrationTest
         DatasetResolver resolver = tables::get;
 
         Rule rule = notExistsRule();
-        RuleExecutionResult result = RuleRunner.execute(rule, adae, resolver);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, adae, resolver);
         assertEquals(1, result.getViolationCount(),
                 "only the APERIOD=3 row fires (AP03SDT does not exist in ADSL)");
         assertEquals(2L, result.getViolations().get(0).getRow(),

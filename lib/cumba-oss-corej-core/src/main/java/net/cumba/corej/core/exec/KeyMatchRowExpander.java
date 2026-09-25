@@ -133,14 +133,6 @@ final class KeyMatchRowExpander
     }
 
 
-    static @Nullable KeyMatchExpansion expand(IDataTable primaryTable,
-            @Nullable List<MatchDataset> matchDatasets, DatasetResolver resolver,
-            @Nullable String ruleId)
-    {
-        return expand(primaryTable, matchDatasets, resolver, ruleId, null);
-    }
-
-
     /**
      * The row expansion, with the child indexes taken from — and left in — {@code aShared} when one
      * is given ({@code PLAN-keymatch-shared-join-index}). With {@code null} every index is built

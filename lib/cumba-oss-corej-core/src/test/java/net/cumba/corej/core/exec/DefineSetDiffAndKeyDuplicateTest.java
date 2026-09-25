@@ -81,7 +81,7 @@ class DefineSetDiffAndKeyDuplicateTest
     {
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").build();
 
-        RuleExecutionResult r = RuleRunner.execute(sd0054, dm, _ -> null, "DM", null, null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(sd0054, dm, _ -> null, "DM", null, null,
                 dmDefine);
         assertTrue(r.hasViolations(), "SEX is declared in the Define but absent from the data");
     }
@@ -93,7 +93,7 @@ class DefineSetDiffAndKeyDuplicateTest
     {
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("SEX", "M").build();
 
-        RuleExecutionResult r = RuleRunner.execute(sd0054, dm, _ -> null, "DM", null, null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(sd0054, dm, _ -> null, "DM", null, null,
                 dmDefine);
         assertFalse(r.hasViolations(), "AGE and SEX are both present in the data");
     }
@@ -105,7 +105,8 @@ class DefineSetDiffAndKeyDuplicateTest
     {
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").build();
 
-        RuleExecutionResult r = RuleRunner.execute(sd0054, dm, _ -> null, "DM", null, null, null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(sd0054, dm, _ -> null, "DM", null, null,
+                null);
         assertTrue(r.isSkipped(), "no Define-XML -> rule SKIPPED");
         assertFalse(r.hasViolations(), "SKIPPED rule reports no violations");
     }
@@ -119,7 +120,7 @@ class DefineSetDiffAndKeyDuplicateTest
                 .col("USUBJID", "S1-001", "S1-001", "S1-001").col("LBTESTCD", "ALB", "ALB", "GLUC")
                 .col("LBORRES", "40", "41", "90").build();
 
-        RuleExecutionResult r = RuleRunner.execute(sd1152, lb, _ -> null, "LB", null, null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(sd1152, lb, _ -> null, "LB", null, null,
                 lbDefine);
         assertTrue(r.hasViolations(),
                 "rows 1-2 repeat the Define key set (USUBJID S1-001, LBTESTCD ALB)");
@@ -134,7 +135,7 @@ class DefineSetDiffAndKeyDuplicateTest
                 .col("USUBJID", "S1-001", "S1-001", "S1-002").col("LBTESTCD", "ALB", "GLUC", "ALB")
                 .col("LBORRES", "40", "90", "42").build();
 
-        RuleExecutionResult r = RuleRunner.execute(sd1152, lb, _ -> null, "LB", null, null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(sd1152, lb, _ -> null, "LB", null, null,
                 lbDefine);
         assertFalse(r.hasViolations(), "every (USUBJID, LBTESTCD) combination is distinct");
     }
@@ -154,7 +155,7 @@ class DefineSetDiffAndKeyDuplicateTest
 
         // StubMetadataProvider.getKeyVariables returns an empty list for every domain.
         MetadataProvider emptyKeys = new StubMetadataProvider();
-        RuleExecutionResult r = RuleRunner.execute(sd1152, lb, _ -> null, "LB", null, null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(sd1152, lb, _ -> null, "LB", null, null,
                 emptyKeys);
         assertTrue(r.isSkipped(),
                 "empty Define key set -> rule SKIPPED, not every-record-duplicate");
@@ -169,7 +170,8 @@ class DefineSetDiffAndKeyDuplicateTest
         IDataTable lb = MockTable.of().name("LB").col("STUDYID", "S1", "S1")
                 .col("USUBJID", "S1-001", "S1-001").col("LBTESTCD", "ALB", "ALB").build();
 
-        RuleExecutionResult r = RuleRunner.execute(sd1152, lb, _ -> null, "LB", null, null, null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(sd1152, lb, _ -> null, "LB", null, null,
+                null);
         assertTrue(r.isSkipped(), "no Define-XML -> rule SKIPPED");
         assertFalse(r.hasViolations(), "SKIPPED rule reports no violations");
     }

@@ -85,7 +85,7 @@ class KeyMatchRowExpanderTest
                         "P1"
                 }
         });
-        assertNull(KeyMatchRowExpander.expand(dm, List.of(), resolver(Map.of()), "R"));
+        assertNull(ExecCalls.expand(dm, List.of(), resolver(Map.of()), "R"));
     }
 
 
@@ -119,7 +119,7 @@ class KeyMatchRowExpanderTest
                         "P2", "N"
                 }
         });
-        KeyMatchRowExpander.KeyMatchExpansion exp = KeyMatchRowExpander.expand(dm,
+        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
                 List.of(md("AE", null, "USUBJID")), resolver(Map.of("AE", ae)), "R");
         assertNotNull(exp);
         // P1 -> 2 AE rows (N, Y); P2 -> 1 AE row (N). 3 expanded rows; each binds its own child.
@@ -154,7 +154,7 @@ class KeyMatchRowExpanderTest
                         "P1", "Y"
                 }
         });
-        KeyMatchRowExpander.KeyMatchExpansion exp = KeyMatchRowExpander.expand(dm,
+        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
                 List.of(md("AE", "inner", "USUBJID")), resolver(Map.of("AE", ae)), "R");
         // explicit inner: P2 (no AE) is dropped.
         assertEquals(1, exp.table().getRowCount());
@@ -187,7 +187,7 @@ class KeyMatchRowExpanderTest
                 }
         });
         // null join_type defaults to left: P2 kept with a null-bound child.
-        KeyMatchRowExpander.KeyMatchExpansion exp = KeyMatchRowExpander.expand(dm,
+        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
                 List.of(md("AE", null, "USUBJID")), resolver(Map.of("AE", ae)), "R");
         assertEquals(2, exp.table().getRowCount());
         List<String> got = collect(exp, "AE", "AESDTH");
@@ -213,7 +213,7 @@ class KeyMatchRowExpanderTest
                         "P1"
                 }
         });
-        assertNull(KeyMatchRowExpander.expand(dm, List.of(child, relrec), resolver(Map.of()), "R"));
+        assertNull(ExecCalls.expand(dm, List.of(child, relrec), resolver(Map.of()), "R"));
     }
 
 
@@ -233,7 +233,7 @@ class KeyMatchRowExpanderTest
                 }
         });
         // AE not registered -> merge skipped, rows unchanged, no AE lookup.
-        KeyMatchRowExpander.KeyMatchExpansion exp = KeyMatchRowExpander.expand(dm,
+        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
                 List.of(md("AE", null, "USUBJID")), resolver(Map.of()), "R");
         assertNotNull(exp);
         assertEquals(2, exp.table().getRowCount());
@@ -274,7 +274,7 @@ class KeyMatchRowExpanderTest
                         "P1", "DEATH"
                 }
         });
-        KeyMatchRowExpander.KeyMatchExpansion exp = KeyMatchRowExpander.expand(dm,
+        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
                 List.of(md("AE", null, "USUBJID"), md("CE", null, "USUBJID")),
                 resolver(Map.of("AE", ae, "CE", ce)), "R");
         // P1 x 2 AE x 1 CE = 2 expanded rows; each binds one AE and the one CE.
@@ -299,12 +299,12 @@ class KeyMatchRowExpanderTest
         });
         // SUPP-- / SQ-- qualifier datasets (Python pivots those) and -- wildcard names are not
         // key-merge-expandable; each, as the sole entry, yields no expansion.
-        assertNull(KeyMatchRowExpander.expand(dm, List.of(md("SUPPAE", null, "USUBJID")),
-                resolver(Map.of()), "R"));
-        assertNull(KeyMatchRowExpander.expand(dm, List.of(md("SQAPSC", null, "USUBJID")),
-                resolver(Map.of()), "R"));
-        assertNull(KeyMatchRowExpander.expand(dm, List.of(md("AE--", null, "USUBJID")),
-                resolver(Map.of()), "R"));
+        assertNull(ExecCalls.expand(dm, List.of(md("SUPPAE", null, "USUBJID")), resolver(Map.of()),
+                "R"));
+        assertNull(ExecCalls.expand(dm, List.of(md("SQAPSC", null, "USUBJID")), resolver(Map.of()),
+                "R"));
+        assertNull(ExecCalls.expand(dm, List.of(md("AE--", null, "USUBJID")), resolver(Map.of()),
+                "R"));
     }
 
 
@@ -332,7 +332,7 @@ class KeyMatchRowExpanderTest
                         "P1", "Y"
                 }
         });
-        KeyMatchRowExpander.KeyMatchExpansion exp = KeyMatchRowExpander.expand(dm,
+        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(dm,
                 List.of(md("AE", null, "USUBJID")), resolver(Map.of("AE", ae)), "R");
         assertNotNull(exp);
         JoinLookup lk = exp.lookups().get("AE");
@@ -372,7 +372,7 @@ class KeyMatchRowExpanderTest
         IDataTable lbhe = RealTables.of("lbhe").str("DOMAIN", "LB").str("USUBJID", "U2")
                 .str("LBSEQ", "9").str("LBORRES", "res-he").build();
 
-        KeyMatchRowExpander.KeyMatchExpansion exp = KeyMatchRowExpander.expand(primary,
+        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(primary,
                 List.of(md("LB", "left", "USUBJID", "LBSEQ")), RealTables.inventoryOf(lbch, lbhe),
                 "R");
         assertNotNull(exp, "a split LB must expand, not silently skip the merge");
@@ -398,8 +398,7 @@ class KeyMatchRowExpanderTest
         List<MatchDataset> mds = List.of(md("LB", "left", "USUBJID", "LBSEQ"));
         DatasetResolver inv = RealTables.inventoryOf(lbch, lbhe);
         InvalidJoinedDomainException ex = org.junit.jupiter.api.Assertions.assertThrows(
-                InvalidJoinedDomainException.class,
-                () -> KeyMatchRowExpander.expand(primary, mds, inv, "R"));
+                InvalidJoinedDomainException.class, () -> ExecCalls.expand(primary, mds, inv, "R"));
         assertTrue(ex.getMessage().contains("LBSTRESN"), ex.getMessage());
     }
 }

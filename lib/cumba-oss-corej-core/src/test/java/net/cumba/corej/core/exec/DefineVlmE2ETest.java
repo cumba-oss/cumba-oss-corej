@@ -70,7 +70,7 @@ class DefineVlmE2ETest
     private static RuleExecutionResult run(Rule rule, IDataTable lb, MetadataProvider def,
             VlmResolver resolver)
     {
-        return RuleRunner.execute(rule, lb, _ -> null, "LB", null, null, def, resolver);
+        return RuleRunnerCalls.execute(rule, lb, _ -> null, "LB", null, null, def, resolver);
     }
 
     // ---- SD1231: value length within the value-level @Length --------------------------------
@@ -177,7 +177,7 @@ class DefineVlmE2ETest
         IDataTable lb = MockTable.of().name("LB").col("LBTESTCD", "PH", "PH", "PH", "GLUC")
                 .col("LBSPEC", "URINE", "URINE", "BLOOD", "")
                 .col("LBSTRESC", "PURPLE", "ACIDIC", "PURPLE", "PURPLE").build();
-        RuleExecutionResult r = RuleRunner.execute(ct2004, lb, _ -> null, "LB", library, null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(ct2004, lb, _ -> null, "LB", library, null,
                 define, vlm);
         assertEquals(1, r.getViolationCount(),
                 "only the matched value outside its non-extensible value-level codelist fires");
@@ -196,7 +196,7 @@ class DefineVlmE2ETest
         StubMetadataProvider library = new StubMetadataProvider().extensible("C99999", true);
         IDataTable lb = MockTable.of().name("LB").col("LBTESTCD", "PH").col("LBSPEC", "URINE")
                 .col("LBSTRESC", "PURPLE").build();
-        RuleExecutionResult r = RuleRunner.execute(ct2004, lb, _ -> null, "LB", library, null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(ct2004, lb, _ -> null, "LB", library, null,
                 define, vlm);
         assertEquals(0, r.getViolationCount(), "an extensible codelist does not fire CT2004");
     }
@@ -218,8 +218,8 @@ class DefineVlmE2ETest
         IDataTable qs = MockTable.of().name("QS").col("QSCAT", "FUNC", "FUNC", "OTHER", "FUNC")
                 .col("QSTESTCD", "WALK", "WALK", "WALK", "XYZ")
                 .col("QSTEST", "Walk Test", "Wrong", "Wrong", "x").build();
-        RuleExecutionResult r = RuleRunner.execute(ct2006, qs, _ -> null, "QS", null, null, define,
-                vlm);
+        RuleExecutionResult r = RuleRunnerCalls.execute(ct2006, qs, _ -> null, "QS", null, null,
+                define, vlm);
         assertEquals(1, r.getViolationCount(),
                 "only the matched code with a wrong paired decode fires (CT2006)");
     }

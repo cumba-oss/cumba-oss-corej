@@ -89,7 +89,8 @@ class VariableMetadataNativeParityTest
      */
     private static Set<String> findings(Rule rule, IDataTable table)
     {
-        RuleExecutionResult r = RuleRunner.execute(rule, table, _ -> null, "DM", null, null, null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, table, _ -> null, "DM", null, null,
+                null);
         Set<String> out = new TreeSet<>();
         for (Violation v : r.getViolations())
         {
@@ -169,10 +170,10 @@ class VariableMetadataNativeParityTest
         assertNotNull(rule.getCheckExpr());
         // And the two backends agree on the full finding set including the label projection.
         IDataTable table = dmTable();
-        List<Violation> nativeV = RuleRunner.execute(rule, table, _ -> null, "DM", null, null, null)
-                .getViolations();
-        List<Violation> legacyV = RuleRunner.execute(rule, table, _ -> null, "DM", null, null, null)
-                .getViolations();
+        List<Violation> nativeV = RuleRunnerCalls
+                .execute(rule, table, _ -> null, "DM", null, null, null).getViolations();
+        List<Violation> legacyV = RuleRunnerCalls
+                .execute(rule, table, _ -> null, "DM", null, null, null).getViolations();
         assertEquals(legacyV.size(), nativeV.size(), "same number of per-variable findings");
         assertFalse(nativeV.isEmpty(), "the long-label AGE column must fire");
     }
@@ -203,7 +204,7 @@ class VariableMetadataNativeParityTest
                 "only the first out-of-allowlist variable fires under the dataset collapse: "
                         + nativeF);
 
-        RuleExecutionResult ran = RuleRunner.execute(rule, table, _ -> null, "DM", null, null,
+        RuleExecutionResult ran = RuleRunnerCalls.execute(rule, table, _ -> null, "DM", null, null,
                 null);
         assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "the anchored rule must take the native per-variable broadcast path");
@@ -241,13 +242,13 @@ class VariableMetadataNativeParityTest
         DatasetResolver resolver = n -> "AE".equals(n) ? ae : null;
 
         Map<Integer, String> nativeF = new TreeMap<>();
-        for (Violation v : RuleRunner.execute(rule, adae, resolver, "AE", null, null, null)
+        for (Violation v : RuleRunnerCalls.execute(rule, adae, resolver, "AE", null, null, null)
                 .getViolations())
         {
             nativeF.put((int) v.getRowNumber(), v.getValues().get("variable_name"));
         }
         Map<Integer, String> legacyF = new TreeMap<>();
-        for (Violation v : RuleRunner.execute(rule, adae, resolver, "AE", null, null, null)
+        for (Violation v : RuleRunnerCalls.execute(rule, adae, resolver, "AE", null, null, null)
                 .getViolations())
         {
             legacyF.put((int) v.getRowNumber(), v.getValues().get("variable_name"));
@@ -257,7 +258,8 @@ class VariableMetadataNativeParityTest
                 "only the label-mismatched variable fires");
 
         // And the rule must actually run on the NATIVE backend now (the P4 gate).
-        RuleExecutionResult ran = RuleRunner.execute(rule, adae, resolver, "AE", null, null, null);
+        RuleExecutionResult ran = RuleRunnerCalls.execute(rule, adae, resolver, "AE", null, null,
+                null);
         assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "the $-operand VMC rule must take the native per-variable broadcast path");
     }
@@ -304,13 +306,13 @@ class VariableMetadataNativeParityTest
         IDataTable adae = adaeFixture();
         DatasetResolver resolver = aeResolver();
         Set<String> nativeVars = new TreeSet<>();
-        for (Violation v : RuleRunner.execute(rule, adae, resolver, "AE", null, null, null)
+        for (Violation v : RuleRunnerCalls.execute(rule, adae, resolver, "AE", null, null, null)
                 .getViolations())
         {
             nativeVars.add(v.getValues().get("variable_name"));
         }
         Set<String> legacyVars = new TreeSet<>();
-        for (Violation v : RuleRunner.execute(rule, adae, resolver, "AE", null, null, null)
+        for (Violation v : RuleRunnerCalls.execute(rule, adae, resolver, "AE", null, null, null)
                 .getViolations())
         {
             legacyVars.add(v.getValues().get("variable_name"));
@@ -319,7 +321,8 @@ class VariableMetadataNativeParityTest
         assertEquals(Set.of("NEWVAR"), nativeVars,
                 "only the variable without an SDTM counterpart fires");
 
-        RuleExecutionResult ran = RuleRunner.execute(rule, adae, resolver, "AE", null, null, null);
+        RuleExecutionResult ran = RuleRunnerCalls.execute(rule, adae, resolver, "AE", null, null,
+                null);
         assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "the VMR-ref rule must run natively (legacy Step-3 cascade retired)");
     }
@@ -342,15 +345,16 @@ class VariableMetadataNativeParityTest
 
         IDataTable adae = adaeFixture();
         DatasetResolver resolver = aeResolver();
-        RuleExecutionResult nativ = RuleRunner.execute(rule, adae, resolver, "AE", null, null,
+        RuleExecutionResult nativ = RuleRunnerCalls.execute(rule, adae, resolver, "AE", null, null,
                 null);
-        RuleExecutionResult legacy = RuleRunner.execute(rule, adae, resolver, "AE", null, null,
+        RuleExecutionResult legacy = RuleRunnerCalls.execute(rule, adae, resolver, "AE", null, null,
                 null);
         assertEquals(1, nativ.getViolations().size(),
                 "the TRUE-collapse emits ONE dataset-level violation, never per-variable");
         assertEquals(legacy.getViolations().size(), nativ.getViolations().size());
 
-        RuleExecutionResult ran = RuleRunner.execute(rule, adae, resolver, "AE", null, null, null);
+        RuleExecutionResult ran = RuleRunnerCalls.execute(rule, adae, resolver, "AE", null, null,
+                null);
         assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus());
     }
 
@@ -379,13 +383,13 @@ class VariableMetadataNativeParityTest
         DatasetResolver resolver = aeResolver();
 
         Set<String> nativeF = new TreeSet<>();
-        for (Violation v : RuleRunner.execute(rule, adae, resolver, "AE", null, null, null)
+        for (Violation v : RuleRunnerCalls.execute(rule, adae, resolver, "AE", null, null, null)
                 .getViolations())
         {
             nativeF.add(v.getValues().get("variable_name") + "@" + v.getRow());
         }
         Set<String> legacyF = new TreeSet<>();
-        for (Violation v : RuleRunner.execute(rule, adae, resolver, "AE", null, null, null)
+        for (Violation v : RuleRunnerCalls.execute(rule, adae, resolver, "AE", null, null, null)
                 .getViolations())
         {
             legacyF.add(v.getValues().get("variable_name") + "@" + v.getRow());
@@ -397,7 +401,8 @@ class VariableMetadataNativeParityTest
         assertTrue(nativeF.stream().noneMatch(f -> f.startsWith("NEWVAR")),
                 "the guard (projected per column) excludes the counterpart-less variable");
 
-        RuleExecutionResult ran = RuleRunner.execute(rule, adae, resolver, "AE", null, null, null);
+        RuleExecutionResult ran = RuleRunnerCalls.execute(rule, adae, resolver, "AE", null, null,
+                null);
         assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "S7b must run on the native per-(variable, row) path");
     }

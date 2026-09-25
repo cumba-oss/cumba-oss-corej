@@ -194,7 +194,8 @@ class OperationExecutorAdamRequiredVariablesTest
 
     private static @Nullable Object run(IDataTable table, MetadataProvider provider)
     {
-        return OperationExecutor.execute(List.of(requiredVariables()), table, NO_RESOLVER, provider)
+        return OperationExecutorCalls
+                .execute(List.of(requiredVariables()), table, NO_RESOLVER, provider)
                 .get("$required_variables");
     }
 

@@ -89,8 +89,8 @@ class NextRecordRelationTest
 
     private static Set<Long> firedRows(Rule rule, IDataTable table)
     {
-        return RuleRunner.execute(rule, table).getViolations().stream().map(Violation::getRowNumber)
-                .collect(Collectors.toSet());
+        return RuleRunnerCalls.execute(rule, table).getViolations().stream()
+                .map(Violation::getRowNumber).collect(Collectors.toSet());
     }
 
     // ---------------------------------------------------------------- §4.3, rows 1-4 and 8
@@ -269,12 +269,12 @@ class NextRecordRelationTest
             IDataTableColumn value = cells(str("unused"), nxt[i]);
             IDataTableColumn order = cells(str("1"), str("2"));
             BitSet five = new BitSet();
-            GroupSemantics.flagNoNextCorrespondingRecord(name, value, order, new int[]
+            GroupSemanticsCalls.flagNoNextCorrespondingRecord(name, value, order, new int[]
             {
                     0, 1
             }, five);
             BitSet six = new BitSet();
-            GroupSemantics.flagNoNextCorrespondingRecord(name, value, order, new int[]
+            GroupSemanticsCalls.flagNoNextCorrespondingRecord(name, value, order, new int[]
             {
                     0, 1
             }, six, GroupSemantics::identityCorresponds);

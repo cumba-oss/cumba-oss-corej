@@ -45,7 +45,7 @@ class RuleRunnerOutputValuesTest
         Rule rule = buildRule("CORE-TEST-1", "SEX not in codelist",
                 new CheckConditionAll(List.of(leaf)), List.of("USUBJID", "SEX", "AESEV", "AESMIE"));
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertEquals(1, result.getViolationCount());
         Map<String, String> values = result.getViolations().get(0).getValues();
         assertEquals("S02", values.get("USUBJID"));
@@ -65,7 +65,7 @@ class RuleRunnerOutputValuesTest
         Rule rule = buildRule("CORE-TEST-2", "AETERM must be populated",
                 new CheckConditionAll(List.of(leaf)), List.of("AETERM", "DOMAIN", "AESMIE"));
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertTrue(result.hasViolations());
         Map<String, String> values = result.getViolations().get(0).getValues();
         assertEquals("Headache", values.get("AETERM"));
@@ -84,7 +84,7 @@ class RuleRunnerOutputValuesTest
         Rule rule = buildRule("CORE-TEST-3", "SEX", new CheckConditionAll(List.of(leaf)),
                 List.of("USUBJID", "SEX", "AESEV")); // AESEV unresolved
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         Map<String, String> values = result.getViolations().get(0).getValues();
         assertTrue(values.values().stream().noneMatch("Not in dataset"::equals),
                 "no \"Not in dataset\" sentinel — adapter strips it on Python lane, "

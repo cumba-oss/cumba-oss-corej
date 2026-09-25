@@ -1054,8 +1054,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * {@code adamClassForDomain} returned one verbatim — so declaring {@code adam/adam-adae-1-0}
      * made {@code getDatasetClass("ADAE")} answer the raw {@code "ADAE"}, which is in no token
      * vocabulary any consumer knows ({@code OperationExecutor}'s class-keyed grouping,
-     * {@code LibraryValidator}'s AP-inherit walk, {@code ScopeMatcher.matchesClass}). Factoring it
-     * here makes the mapping a single implementation shared by every caller.
+     * {@code LibraryValidator}'s AP-inherit walk, {@code ScopeMatcher.describeClassMismatch}).
+     * Factoring it here makes the mapping a single implementation shared by every caller.
      * </p>
      */
     static @Nullable String canonicalStructureToken(@Nullable String aPublishedClass)
@@ -2803,7 +2803,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
         // so SUPP-- and other datasets absent from the metadata library still classify. Otherwise
         // fall back to the IMetadataLibrary view (member-name-keyed). The topic-variable prefix is
         // the CDISC code so e.g. LBHE's columns are matched against LBTESTCD, not LBHETESTCD.
-        // Returns null when no pattern matches; ScopeMatcher.matchesClass treats null strictly
+        // Returns null when no pattern matches; ScopeMatcher.describeClassMismatch treats null
+        // strictly
         // under Fix #41, skipping any class-scoped rule on this dataset and emitting a one-time
         // WARN
         // per dataset from DatasetRuleResolver.
@@ -3372,10 +3373,10 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * {@code -mp adam/adam-adae-1-0} therefore made {@code getDatasetClass("ADAE")} answer the raw
      * {@code "ADAE"}, which is in none of {@link AdamDataStructureDetector#STRUCTURE_TOKENS} — so
      * every consumer of the class token ({@code OperationExecutor}'s class-keyed grouping,
-     * {@code LibraryValidator}'s AP-inherit walk, {@code ScopeMatcher.matchesClass}) saw a token it
-     * has no vocabulary for. Before the product could be declared at all the same dataset fell
-     * through to the FU-4 {@code ADAM OTHER} sentinel, i.e. declaring the product made the answer
-     * <em>worse</em>. Running the class through {@link #structureTokenOf} — alias table and
+     * {@code LibraryValidator}'s AP-inherit walk, {@code ScopeMatcher.describeClassMismatch}) saw a
+     * token it has no vocabulary for. Before the product could be declared at all the same dataset
+     * fell through to the FU-4 {@code ADAM OTHER} sentinel, i.e. declaring the product made the
+     * answer <em>worse</em>. Running the class through {@link #structureTokenOf} — alias table and
      * product-keyed override included — answers {@code OCCURRENCE DATA STRUCTURE}, and a class that
      * maps to no token yields {@code null} so the remaining tiers (curated map, sniffer,
      * {@code ADAM OTHER}) still get their turn.

@@ -148,10 +148,10 @@ public final class CompanionDomainsProvider implements MetadataProvider
 
 
     /**
-     * ⚠ The <b>two-arg</b> form is the primary one (see
-     * {@link MetadataProvider#getRequiredVariablesForStructure(String, List)}). Delegating only the
-     * one-arg convenience would drop the dataset's subclass on the floor and re-open the
-     * most-strict-wins union this decorator is not entitled to decide.
+     * ⚠ Delegates the full form, subclass tokens included (see
+     * {@link MetadataProvider#getRequiredVariablesForStructure(String, List)}): dropping the
+     * dataset's subclass on the floor would re-open the most-strict-wins union this decorator is
+     * not entitled to decide.
      */
     @Override
     public @Nullable List<String> getRequiredVariablesForStructure(String structureToken,

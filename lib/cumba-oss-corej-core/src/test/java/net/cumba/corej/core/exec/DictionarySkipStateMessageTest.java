@@ -58,7 +58,7 @@ class DictionarySkipStateMessageTest
     {
         IDataTable t = MockTable.of().col("USUBJID", "S1").col("AEDECOD", "Cephalgia").name("AE")
                 .build();
-        RuleExecutionResult result = RuleRunner.execute(meddraRule(), t,
+        RuleExecutionResult result = RuleRunnerCalls.execute(meddraRule(), t,
                 name -> name.equals("AE") ? t : null, "AE", null, null, null, Integer.MAX_VALUE,
                 null, dicts);
         assertEquals(RuleExecutionStatus.SKIPPED, result.getStatus());
@@ -155,7 +155,7 @@ class DictionarySkipStateMessageTest
         assertNull(rule.getLoadError());
 
         IDataTable t = MockTable.of().col("USUBJID", "S1").col("AEDECOD", "X").name("AE").build();
-        RuleExecutionResult result = RuleRunner.execute(rule, t,
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, t,
                 name -> name.equals("AE") ? t : null, "AE", null, null, null, Integer.MAX_VALUE,
                 null, dicts);
         assertEquals(RuleExecutionStatus.SKIPPED, result.getStatus());

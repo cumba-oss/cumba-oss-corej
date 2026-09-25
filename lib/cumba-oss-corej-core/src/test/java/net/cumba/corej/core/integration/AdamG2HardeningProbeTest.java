@@ -13,7 +13,7 @@ import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.exec.StubMetadataProvider;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.model.Rule;
@@ -98,8 +98,8 @@ class AdamG2HardeningProbeTest
 
     private static int violationsOn(Rule rule, IDataTable table, DatasetResolver resolver)
     {
-        RuleExecutionResult result = RuleRunner.execute(rule, table, resolver, null, null, null,
-                DEFINE);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, resolver, null, null,
+                null, DEFINE);
         return result.getViolationCount();
     }
 

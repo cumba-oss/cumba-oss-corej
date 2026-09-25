@@ -57,7 +57,7 @@ class RuleLoadValidationDsExistsTest
                 "a dotted dataset name must be refused by the compiler (no native form)");
 
         IDataTable table = MockTable.of().name("ADAE").col("USUBJID", "S1").build();
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertEquals(RuleExecutionStatus.ERROR, result.getStatus());
         assertNotNull(result.getStatusMessage());
         assertTrue(result.getStatusMessage().contains("no native expression form"),

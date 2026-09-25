@@ -65,8 +65,9 @@ class DatasetNamesCaseParityTest
         when(define.getDatasetNames()).thenReturn(List.of("dm", "lb"));
         IDataTable table = MockTable.of().name("DM").col("AGE", "56").build();
 
-        Object result = OperationExecutor.executeOne(makeOp("$define_ds", "define_dataset_names"),
-                table, _ -> null, null, Map.of(), null, null, define);
+        Object result = OperationExecutorCalls.executeOne(
+                makeOp("$define_ds", "define_dataset_names"), table, _ -> null, null, Map.of(),
+                null, null, define);
         assertEquals(List.of("DM", "LB"), result);
     }
 
@@ -77,8 +78,8 @@ class DatasetNamesCaseParityTest
         IDataTable table = MockTable.of().name("DM").col("AGE", "56").build();
         DatasetResolver.WithInventory resolver = inventory(Set.of("dm", "lb"));
 
-        Object result = OperationExecutor.executeOne(makeOp("$study_ds", "dataset_names"), table,
-                resolver, null, Map.of(), null, null, null);
+        Object result = OperationExecutorCalls.executeOne(makeOp("$study_ds", "dataset_names"),
+                table, resolver, null, Map.of(), null, null, null);
         @SuppressWarnings("unchecked")
         List<String> names = (List<String>) result;
         assertEquals(Set.of("DM", "LB"), new HashSet<>(names));
@@ -96,11 +97,11 @@ class DatasetNamesCaseParityTest
         DatasetResolver.WithInventory resolver = inventory(Set.of("DM", "LB", "AE"));
 
         @SuppressWarnings("unchecked")
-        List<String> defineNames = (List<String>) OperationExecutor.executeOne(
+        List<String> defineNames = (List<String>) OperationExecutorCalls.executeOne(
                 makeOp("$define_ds", "define_dataset_names"), table, resolver, null, Map.of(), null,
                 null, define);
         @SuppressWarnings("unchecked")
-        List<String> studyNames = (List<String>) OperationExecutor.executeOne(
+        List<String> studyNames = (List<String>) OperationExecutorCalls.executeOne(
                 makeOp("$study_ds", "dataset_names"), table, resolver, null, Map.of(), null, null,
                 define);
 

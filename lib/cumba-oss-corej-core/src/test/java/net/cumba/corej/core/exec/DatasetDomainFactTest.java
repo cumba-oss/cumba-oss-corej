@@ -79,8 +79,8 @@ class DatasetDomainFactTest
     private static Map<Long, Map<String, String>> findings(Rule rule, IDataTable primary,
             String domainPrefix)
     {
-        RuleExecutionResult r = RuleRunner.execute(rule, primary, NO_RESOLVER, domainPrefix, null,
-                null, null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, primary, NO_RESOLVER, domainPrefix,
+                null, null, null);
         Map<Long, Map<String, String>> out = new HashMap<>();
         for (Violation v : r.getViolations())
         {
@@ -302,7 +302,7 @@ class DatasetDomainFactTest
         op.setId("$dd");
         op.setOperator("dataset_domain");
         assertEquals("SUPPLB",
-                OperationExecutor.executeOne(op, supp, NO_RESOLVER, null, new HashMap<>()));
+                OperationExecutorCalls.executeOne(op, supp, NO_RESOLVER, null, new HashMap<>()));
     }
 
     // ------------------------------------------------------------------

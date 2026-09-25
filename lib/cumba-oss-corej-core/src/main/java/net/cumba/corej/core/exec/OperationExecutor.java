@@ -90,49 +90,12 @@ public final class OperationExecutor
     }
 
 
-    public static Map<String, Object> execute(List<Operation> operations, IDataTable table,
-            DatasetResolver resolver)
-    {
-        return execute(operations, table, resolver, null);
-    }
-
-
-    public static Map<String, Object> execute(List<Operation> operations, IDataTable table,
-            DatasetResolver resolver, @Nullable MetadataProvider libraryProvider)
-    {
-        Map<String, Object> variables = new LinkedHashMap<>();
-        for (Operation op : operations)
-        {
-            Object result = executeOne(op, table, resolver, libraryProvider, variables);
-            if (result != null && op.getId() != null)
-            {
-                variables.put(op.getId(), result);
-            }
-        }
-        return variables;
-    }
-
-
     /**
-     * Backwards-compatible overload — see
-     * {@link #executeOne(Operation, IDataTable, DatasetResolver, MetadataProvider, Map, String)}.
-     * {@code ruleId} defaults to {@code null}; diagnostic log lines from this Operation will render
-     * with {@code [?]} for the rule context. Used by tests and the legacy multi-op driver where
-     * rule context isn't available.
-     */
-    public static @Nullable Object executeOne(Operation op, IDataTable table,
-            DatasetResolver resolver, @Nullable MetadataProvider libraryProvider,
-            Map<String, Object> priorResults)
-    {
-        return executeOne(op, table, resolver, libraryProvider, priorResults, null);
-    }
-
-
-    /**
-     * Single-Operation entry point used by {@link RuleRunner}'s lazy wrapper (Fix #36). The caller
-     * supplies the prior-Operations result map (with all referenced {@link LazyValue}s already
-     * forced) so {@link #expandGroupRefs} can resolve {@code $variable} references in this
-     * Operation's {@code group} list.
+     * Single-Operation entry point, called by {@link RuleRunner}'s lazy wrapper (Fix #36) and the
+     * inline-operation path ({@code ExprCompiler.inlineOperationResult}). The caller supplies the
+     * prior-Operations result map (with all referenced {@link LazyValue}s already forced) so
+     * {@link #expandGroupRefs} can resolve {@code $variable} references in this Operation's
+     * {@code group} list.
      *
      * <p>
      * Returns {@code null} when the Operation is skipped (unknown type). Q17-a: a <em>missing
@@ -144,44 +107,21 @@ public final class OperationExecutor
      * provider — the caller decides how to surface that.
      * </p>
      *
+     * <p>
+     * {@code dictionaryProvider} (T1) is the runtime {@link RuntimeDictionaryProvider} for the
+     * external-dictionary operations ({@code valid_external_dictionary_*},
+     * {@code dictionary_available}) and is {@code null} on every non-dictionary path.
+     * {@code defineProvider} (T2-residual) is the sponsor {@link MetadataProvider} Define-XML
+     * overlay for the define-set operations ({@code define_variable_names},
+     * {@code define_key_variables}); it is {@code null} on every non-define path, and the two
+     * define operations then return {@code null} — an unresolvable result — so the caller SKIPs the
+     * rule (see {@link #isDefineDependent}).
+     * </p>
+     *
      * @param ruleId
      *            CORE id of the rule whose Operations are being evaluated, used as a leading
      *            {@code [<ruleId>]} prefix on every diagnostic emitted from this dispatch.
      *            {@code null} renders as {@code [?]}.
-     */
-    public static @Nullable Object executeOne(Operation op, IDataTable table,
-            DatasetResolver resolver, @Nullable MetadataProvider libraryProvider,
-            Map<String, Object> priorResults, @Nullable String ruleId)
-    {
-        return executeOne(op, table, resolver, libraryProvider, priorResults, ruleId, null);
-    }
-
-
-    /**
-     * T1 overload carrying the runtime {@link RuntimeDictionaryProvider} for the
-     * external-dictionary operations ({@code valid_external_dictionary_*},
-     * {@code dictionary_available}). All other behaviour is identical to
-     * {@link #executeOne(Operation, IDataTable, DatasetResolver, MetadataProvider, Map, String)};
-     * the dictionary provider is {@code null} on every non-dictionary path.
-     */
-    public static @Nullable Object executeOne(Operation op, IDataTable table,
-            DatasetResolver resolver, @Nullable MetadataProvider libraryProvider,
-            Map<String, Object> priorResults, @Nullable String ruleId,
-            @Nullable RuntimeDictionaryProvider dictionaryProvider)
-    {
-        return executeOne(op, table, resolver, libraryProvider, priorResults, ruleId,
-                dictionaryProvider, null);
-    }
-
-
-    /**
-     * T2-residual overload carrying the sponsor {@link MetadataProvider} Define-XML overlay for the
-     * define-set operations ({@code define_variable_names}, {@code define_key_variables}). All
-     * other behaviour is identical to
-     * {@link #executeOne(Operation, IDataTable, DatasetResolver, MetadataProvider, Map, String, RuntimeDictionaryProvider)};
-     * the define provider is {@code null} on every non-define path (and the two define operations
-     * return {@code null} — an unresolvable result — when it is {@code null}, so the caller SKIPs
-     * the rule; see {@link #isDefineDependent}).
      */
     public static @Nullable Object executeOne(Operation op, IDataTable table,
             DatasetResolver resolver, @Nullable MetadataProvider libraryProvider,
@@ -994,31 +934,21 @@ public final class OperationExecutor
 
     /**
      * Resolves the {@code --} domain-prefix wildcard in an Operation's {@code name},
-     * {@code domain}, and {@code group} against {@code prefix}, returning a new Operation (the
-     * original is left untouched). Returns the Operation unchanged when {@code prefix} is
-     * {@code null} or no field carries a {@code --}.
+     * {@code domain}, {@code group} (and the other variable-name fields) against the two prefixes,
+     * returning a new Operation (the original is left untouched). Returns the Operation unchanged
+     * when {@code domainCodePrefix} is {@code null} or no field carries a {@code --}.
      *
      * <p>
-     * This is the single source of the {@code --}-resolution applied before an Operation runs. The
-     * legacy path calls it once at rule-prep time (see {@code RuleRunner.resolveOperationPrefix});
-     * the native inline-operation path ({@code ExprCompiler.inlineOperationResult}) calls it at
-     * eval time, because the compiled program is domain-agnostic and shared across domains. Without
-     * it an inline operation whose {@code group}/{@code name} names a {@code --}-prefixed column
-     * (e.g. {@code record_count(group=[USUBJID, --TESTCD, …])}) would hand
-     * {@code OperationExecutor} a non-existent column and silently resolve to {@code null}.
+     * This is the single source of the {@code --}-resolution applied before an Operation runs.
+     * {@code RuleSpecialiser.specialise} calls it once per (rule × dataset) for declared
+     * Operations; the native inline-operation path ({@code ExprCompiler.inlineOperationResult})
+     * calls it at eval time for what {@code ExprPrefixResolver} deliberately leaves as a template
+     * (the inventory-fold name operand, {@code filter=} keys). Without it an inline operation whose
+     * {@code group}/{@code name} names a {@code --}-prefixed column would hand this executor a
+     * non-existent column and silently resolve to {@code null}.
      * </p>
-     */
-    public static Operation resolvePrefixes(Operation op, @Nullable String prefix)
-    {
-        // Passing null (not `prefix`) is what preserves the pre-EC-36 contract: the two-prefix
-        // form falls back to the Fix #33 SUPP/SQAP-stripped `subPrefix` for variable fields, so
-        // resolvePrefixes(op, "SUPPAE") still yields name=AEQNAM as it always did. Delegating with
-        // (prefix, prefix) silently disabled Fix #33 on this overload.
-        return resolvePrefixes(op, prefix, null);
-    }
-
-
-    /**
+     *
+     * <p>
      * Two-prefix form (EC-36). {@code domainCodePrefix} substitutes {@code --} in {@code op.domain}
      * — a <em>dataset-name</em> wildcard, so it keeps the CDISC domain code and the Fix #33
      * SUPP/SQAP parent-stripping. {@code variablePrefix} substitutes {@code --} everywhere else
@@ -1027,7 +957,7 @@ public final class OperationExecutor
      * the 2-character AP suffix for an AP dataset, {@code ""} for SUPP/SQ.
      * <p>
      * A {@code null} {@code variablePrefix} falls back to the Fix #33-stripped domain prefix, which
-     * is exactly the pre-EC-36 behaviour and is what the single-argument overload passes.
+     * is exactly the pre-EC-36 behaviour (what the retired single-prefix overload passed).
      * </p>
      */
     public static Operation resolvePrefixes(Operation op, @Nullable String domainCodePrefix,

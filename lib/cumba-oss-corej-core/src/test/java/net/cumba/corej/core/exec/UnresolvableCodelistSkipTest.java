@@ -56,7 +56,7 @@ class UnresolvableCodelistSkipTest
     {
         IDataTable vs = MockTable.of().name("VS").col("VSPOS", "BOGUS").build();
         MetadataProvider library = new StubMetadataProvider().variable("VS", attrs);
-        return RuleRunner.execute(rule(), vs, _ -> null, "VS", library, null, null);
+        return RuleRunnerCalls.execute(rule(), vs, _ -> null, "VS", library, null, null);
     }
 
 

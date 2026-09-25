@@ -19,6 +19,7 @@ import java.util.Map;
 import net.cumba.cdisc.library.api.model.adam.AdamProduct;
 import net.cumba.cdisc.library.api.model.sdtm.SdtmProduct;
 import net.cumba.corej.core.exec.ScopeMatcher;
+import net.cumba.corej.core.exec.ScopeMatcherCalls;
 import net.cumba.corej.core.model.ClassScope;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.Scope;
@@ -378,7 +379,7 @@ class MetadataLibraryProviderProductsTest
         String cls = provider.getDatasetClass("ADEFF");
         Rule rule = ruleWithClassInclude("BASIC DATA STRUCTURE", "ADAM OTHER");
         assertNull(ScopeMatcher.describeClassMismatch(rule, cls));
-        assertTrue(ScopeMatcher.matchesClass(rule, cls));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, cls));
     }
 
 
@@ -394,7 +395,7 @@ class MetadataLibraryProviderProductsTest
                 "adamig", "1-3");
         String cls = provider.getDatasetClass("ADLBC");
         assertEquals("BASIC DATA STRUCTURE", cls);
-        assertFalse(ScopeMatcher.matchesClass(ruleWithClassInclude("ADAM OTHER"), cls));
+        assertFalse(ScopeMatcherCalls.matchesClass(ruleWithClassInclude("ADAM OTHER"), cls));
     }
 
 
@@ -428,7 +429,7 @@ class MetadataLibraryProviderProductsTest
                 "adamig", "1-3");
         String cls = provider.getDatasetClass("ADBDS");
         assertNull(cls);
-        assertFalse(ScopeMatcher.matchesClass(ruleWithClassInclude("ADAM OTHER"), cls));
+        assertFalse(ScopeMatcherCalls.matchesClass(ruleWithClassInclude("ADAM OTHER"), cls));
     }
 
 
@@ -460,7 +461,7 @@ class MetadataLibraryProviderProductsTest
                 "adamig", "1-3");
         String cls = provider.getDatasetClass("ADXAE");
         assertNull(cls);
-        assertFalse(ScopeMatcher.matchesClass(ruleWithClassInclude("ADAM OTHER"), cls));
+        assertFalse(ScopeMatcherCalls.matchesClass(ruleWithClassInclude("ADAM OTHER"), cls));
     }
 
 

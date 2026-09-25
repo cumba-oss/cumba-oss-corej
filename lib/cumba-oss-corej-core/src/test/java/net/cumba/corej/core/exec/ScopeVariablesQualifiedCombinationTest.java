@@ -114,7 +114,7 @@ class ScopeVariablesQualifiedCombinationTest
 
     private static RuleExecutionResult run(Rule r, DatasetResolver resolver)
     {
-        return RuleRunner.execute(r, aeTable(), resolver, "AE", null);
+        return RuleRunnerCalls.execute(r, aeTable(), resolver, "AE", null);
     }
 
 

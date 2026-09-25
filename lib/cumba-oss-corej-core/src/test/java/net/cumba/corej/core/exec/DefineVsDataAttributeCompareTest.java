@@ -80,7 +80,8 @@ class DefineVsDataAttributeCompareTest
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("SEX", "M")
                 .colMeta("AGE", "WRONG", 8, null).colMeta("SEX", "Sex", 1, null).build();
 
-        RuleExecutionResult r = RuleRunner.execute(sd1324, dm, _ -> null, "DM", null, null, define);
+        RuleExecutionResult r = RuleRunnerCalls.execute(sd1324, dm, _ -> null, "DM", null, null,
+                define);
         assertTrue(r.hasViolations(), "AGE data label (WRONG) != define label (Age)");
     }
 
@@ -92,7 +93,8 @@ class DefineVsDataAttributeCompareTest
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("SEX", "M")
                 .colMeta("AGE", "Age", 8, null).colMeta("SEX", "Sex", 1, null).build();
 
-        RuleExecutionResult r = RuleRunner.execute(sd1324, dm, _ -> null, "DM", null, null, define);
+        RuleExecutionResult r = RuleRunnerCalls.execute(sd1324, dm, _ -> null, "DM", null, null,
+                define);
         assertFalse(r.hasViolations(), "labels match the define -> no finding");
     }
 
@@ -104,7 +106,8 @@ class DefineVsDataAttributeCompareTest
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").colMeta("AGE", "WRONG", 8, null)
                 .build();
 
-        RuleExecutionResult r = RuleRunner.execute(sd1324, dm, _ -> null, "DM", null, null, null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(sd1324, dm, _ -> null, "DM", null, null,
+                null);
         assertTrue(r.isSkipped(), "no Define-XML -> rule SKIPPED");
         assertFalse(r.hasViolations(), "SKIPPED rule reports no violations");
     }
@@ -116,7 +119,8 @@ class DefineVsDataAttributeCompareTest
     {
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("SEX", "M").build();
 
-        RuleExecutionResult r = RuleRunner.execute(sd0059, dm, _ -> null, "DM", null, null, define);
+        RuleExecutionResult r = RuleRunnerCalls.execute(sd0059, dm, _ -> null, "DM", null, null,
+                define);
         assertTrue(r.hasViolations(), "AGE data type Char != define type Num");
     }
 
@@ -127,7 +131,8 @@ class DefineVsDataAttributeCompareTest
     {
         IDataTable dm = MockTable.of().name("DM").colLong("AGE", 56L).col("SEX", "M").build();
 
-        RuleExecutionResult r = RuleRunner.execute(sd0059, dm, _ -> null, "DM", null, null, define);
+        RuleExecutionResult r = RuleRunnerCalls.execute(sd0059, dm, _ -> null, "DM", null, null,
+                define);
         assertFalse(r.hasViolations(), "AGE numeric (Num) and SEX text (Char) match the define");
     }
 
@@ -138,7 +143,8 @@ class DefineVsDataAttributeCompareTest
     {
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").build();
 
-        RuleExecutionResult r = RuleRunner.execute(sd0059, dm, _ -> null, "DM", null, null, null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(sd0059, dm, _ -> null, "DM", null, null,
+                null);
         assertTrue(r.isSkipped(), "no Define-XML -> rule SKIPPED");
     }
 
@@ -150,7 +156,8 @@ class DefineVsDataAttributeCompareTest
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("SEX", "M").col("ZZ", "x")
                 .build();
 
-        RuleExecutionResult r = RuleRunner.execute(sd0060, dm, _ -> null, "DM", null, null, define);
+        RuleExecutionResult r = RuleRunnerCalls.execute(sd0060, dm, _ -> null, "DM", null, null,
+                define);
         assertTrue(r.hasViolations(), "ZZ is not declared in the Define-XML");
     }
 
@@ -161,7 +168,8 @@ class DefineVsDataAttributeCompareTest
     {
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("SEX", "M").build();
 
-        RuleExecutionResult r = RuleRunner.execute(sd0060, dm, _ -> null, "DM", null, null, define);
+        RuleExecutionResult r = RuleRunnerCalls.execute(sd0060, dm, _ -> null, "DM", null, null,
+                define);
         assertFalse(r.hasViolations(), "AGE and SEX are both declared in the define");
     }
 
@@ -172,7 +180,8 @@ class DefineVsDataAttributeCompareTest
     {
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("ZZ", "x").build();
 
-        RuleExecutionResult r = RuleRunner.execute(sd0060, dm, _ -> null, "DM", null, null, null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(sd0060, dm, _ -> null, "DM", null, null,
+                null);
         assertTrue(r.isSkipped(), "no Define-XML -> rule SKIPPED");
     }
 
@@ -217,7 +226,8 @@ class DefineVsDataAttributeCompareTest
         IDataTable dm = MockTable.of().name("DM").colLong("AGE", 56L).col("SEX", "M").build();
         Rule rule = assertDoesNotThrowLoad();
 
-        RuleExecutionResult r = RuleRunner.execute(rule, dm, _ -> null, "DM", null, null, define);
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, dm, _ -> null, "DM", null, null,
+                define);
         assertFalse(r.hasViolations(),
                 "legacy lane: Num AGE == define integer(→Num), Char SEX == define text(→Char)");
     }
@@ -234,7 +244,8 @@ class DefineVsDataAttributeCompareTest
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("SEX", "M").build();
         Rule rule = assertDoesNotThrowLoad();
 
-        RuleExecutionResult r = RuleRunner.execute(rule, dm, _ -> null, "DM", null, null, define);
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, dm, _ -> null, "DM", null, null,
+                define);
         assertTrue(r.hasViolations(), "legacy lane: Char AGE != define integer(→Num)");
     }
 

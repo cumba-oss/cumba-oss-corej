@@ -44,8 +44,8 @@ class RuleRunnerGatesGroupedAndLevelsTest
 
     private static RuleExecutionResult runAtInfo(Rule rule, IDataTable table)
     {
-        return RuleRunner.execute(rule, table, _ -> null, "AE", null, null, null, Integer.MAX_VALUE,
-                null, null, null, Set.of(), Set.of(), Severity.INFO);
+        return RuleRunnerCalls.execute(rule, table, _ -> null, "AE", null, null, null,
+                Integer.MAX_VALUE, null, null, null, Set.of(), Set.of(), Severity.INFO);
     }
 
     // -----------------------------------------------------------------------
@@ -69,16 +69,16 @@ class RuleRunnerGatesGroupedAndLevelsTest
         IDataTable ae = MockTable.of().name("AE").col("AESEV", "library_variable_role", "OK")
                 .build();
 
-        RuleExecutionResult noLibrary = RuleRunner.execute(operand, ae, _ -> null, "AE", null, null,
-                null);
+        RuleExecutionResult noLibrary = RuleRunnerCalls.execute(operand, ae, _ -> null, "AE", null,
+                null, null);
         assertTrue(noLibrary.isSkipped());
         assertEquals("Rule skipped — no Library metadata (rule requires library_* operands)",
                 noLibrary.getStatusMessage());
 
         MetadataProvider degraded = org.mockito.Mockito.mock(MetadataProvider.class);
         org.mockito.Mockito.when(degraded.isLibraryUnavailable()).thenReturn(true);
-        RuleExecutionResult degradedRun = RuleRunner.execute(operand, ae, _ -> null, "AE", degraded,
-                null, null);
+        RuleExecutionResult degradedRun = RuleRunnerCalls.execute(operand, ae, _ -> null, "AE",
+                degraded, null, null);
         assertTrue(degradedRun.isSkipped());
         assertEquals(
                 "Rule skipped — the CDISC Library could not be consulted for this run, and "
@@ -88,7 +88,7 @@ class RuleRunnerGatesGroupedAndLevelsTest
         Rule literal = load("{\"Core\":{\"Id\":\"R1\"},\"Sensitivity\":\"Record\","
                 + "\"Check\":{\"any\":[{\"expression\": \"AESEV == \\\"library_variable_role\\\"\"}]},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEV\"]}}");
-        RuleExecutionResult literalRun = RuleRunner.execute(literal, ae, _ -> null, "AE", null,
+        RuleExecutionResult literalRun = RuleRunnerCalls.execute(literal, ae, _ -> null, "AE", null,
                 null, null);
         assertFalse(literalRun.isSkipped(), "a literal must not trip the operand gate");
         assertEquals(1, literalRun.getViolations().size());
@@ -113,15 +113,15 @@ class RuleRunnerGatesGroupedAndLevelsTest
         IDataTable ae = MockTable.of().name("AE").col("AESEV", "x")
                 .colMeta("AESEV", "Severity", 0, null).build();
 
-        RuleExecutionResult missing = RuleRunner.execute(rule, ae, _ -> null, "AE", null, null,
+        RuleExecutionResult missing = RuleRunnerCalls.execute(rule, ae, _ -> null, "AE", null, null,
                 null);
         assertTrue(missing.isSkipped());
         assertEquals("Rule skipped — no Library metadata available", missing.getStatusMessage());
 
         MetadataProvider degraded = org.mockito.Mockito.mock(MetadataProvider.class);
         org.mockito.Mockito.when(degraded.isLibraryUnavailable()).thenReturn(true);
-        RuleExecutionResult degradedRun = RuleRunner.execute(rule, ae, _ -> null, "AE", degraded,
-                null, null);
+        RuleExecutionResult degradedRun = RuleRunnerCalls.execute(rule, ae, _ -> null, "AE",
+                degraded, null, null);
         assertTrue(degradedRun.isSkipped());
         assertEquals(
                 "Rule skipped — the CDISC Library could not be consulted for this run, and "
@@ -146,7 +146,8 @@ class RuleRunnerGatesGroupedAndLevelsTest
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEV\"]}}");
         IDataTable ae = MockTable.of().name("AE").col("AESEV", "BAD").build();
 
-        RuleExecutionResult r = RuleRunner.execute(rule, ae, _ -> null, "AE", null, null, null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, ae, _ -> null, "AE", null, null,
+                null);
         assertNotNull(r.getSeverity(), "the severity stamp must never be dropped");
         assertEquals(rule.effectiveSeverity(), r.getSeverity());
     }
@@ -167,7 +168,7 @@ class RuleRunnerGatesGroupedAndLevelsTest
         rule.setLoadError("boom");
         IDataTable ae = MockTable.of().name("AE").col("AESEV", "a", "b", "c").build();
 
-        RuleExecutionResult r = RuleRunner.execute(rule, ae);
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, ae);
         assertTrue(r.isError());
         assertEquals("boom", r.getViolations().get(0).getValues().get("__error__"));
         assertEquals(3L, r.getTotalRows(), "the sentinel keeps the dataset's true row count");
@@ -197,15 +198,15 @@ class RuleRunnerGatesGroupedAndLevelsTest
         IDataTable t = MockTable.of().name("AE").col("GRP", "A", "A", "B", "B", "C", "")
                 .col("VAL", "ok", "BAD", "ok", "ok", "BAD", "BAD").build();
 
-        RuleExecutionResult r = RuleRunner.execute(rule, t, _ -> null, "AE", null, null, null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, t, _ -> null, "AE", null, null, null);
         assertEquals(2, r.getViolations().size(), "one finding per failing NON-missing-key group");
         assertEquals(1L, r.getViolations().get(0).getRow(), "group A anchors at its flagged row");
         assertEquals("A", r.getViolations().get(0).getValues().get("GRP"));
         assertEquals(4L, r.getViolations().get(1).getRow());
         assertEquals("C", r.getViolations().get(1).getValues().get("GRP"));
 
-        RuleExecutionResult capped = RuleRunner.execute(rule, t, _ -> null, "AE", null, null, null,
-                1, null, null, null, Set.of(), Set.of(), Severity.WARNING);
+        RuleExecutionResult capped = RuleRunnerCalls.execute(rule, t, _ -> null, "AE", null, null,
+                null, 1, null, null, null, Set.of(), Set.of(), Severity.WARNING);
         assertEquals(1, capped.getViolations().size(), "the cap materialises one group finding");
         assertEquals(2, capped.getViolationCount(), "the TRUE group count survives the cap");
     }
@@ -226,7 +227,7 @@ class RuleRunnerGatesGroupedAndLevelsTest
         IDataTable t = MockTable.of().name("AE").col("GRP", "A", "").col("VAL", "BAD", "BAD")
                 .build();
 
-        RuleExecutionResult r = RuleRunner.execute(rule, t, _ -> null, "AE", null, null, null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, t, _ -> null, "AE", null, null, null);
         assertEquals(2, r.getViolations().size(),
                 "the declared keep_missings keeps the blank-key group");
     }
@@ -318,8 +319,8 @@ class RuleRunnerGatesGroupedAndLevelsTest
                  "Outcome":{"Message":"m","Output_Variables":["A"]}}""");
         IDataTable t = MockTable.of().name("AE").col("A", "a", "b", "c").build();
 
-        RuleExecutionResult r = RuleRunner.execute(rule, t, _ -> null, "AE", null, null, null, 1,
-                null, null, null, Set.of(), Set.of(), Severity.INFO);
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, t, _ -> null, "AE", null, null, null,
+                1, null, null, null, Set.of(), Set.of(), Severity.INFO);
 
         assertEquals(1, r.getViolations().size(), "the cap materialises one");
         assertEquals(2, r.getViolationCount(),

@@ -118,7 +118,7 @@ class IsoIntervalInvalidDateRuleTest
         {
             throw new AssertionError("invalid_date must raise to the native IR", e);
         }
-        return RuleRunner.execute(rule, table);
+        return RuleRunnerCalls.execute(rule, table);
     }
 
 }

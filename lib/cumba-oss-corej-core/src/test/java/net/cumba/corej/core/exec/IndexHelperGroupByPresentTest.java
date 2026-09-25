@@ -49,7 +49,7 @@ class IndexHelperGroupByPresentTest
         IDataTable t = MockTable.of().col("USUBJID", "S1", "S1", "S2").col("VAL", "a", "b", "c")
                 .build();
 
-        IndexHelper.Grouping g = IndexHelper.groupByPresent(t, List.of("USUBJID", "EPOCH"), "ctx");
+        IndexHelper.Grouping g = ExecCalls.groupByPresent(t, List.of("USUBJID", "EPOCH"), "ctx");
 
         assertNotNull(g);
         assertEquals(List.of("USUBJID"), g.present());
@@ -64,7 +64,7 @@ class IndexHelperGroupByPresentTest
         // The seven-TS-rule path: a single `group: [TSGRPID]` on a study that never collected it.
         IDataTable t = MockTable.of().col("TSPARMCD", "A", "B", "C").build();
 
-        IndexHelper.Grouping g = IndexHelper.groupByPresent(t, List.of("TSGRPID"), "ctx");
+        IndexHelper.Grouping g = ExecCalls.groupByPresent(t, List.of("TSGRPID"), "ctx");
 
         assertNotNull(g);
         assertEquals(List.of(), g.present());
@@ -93,7 +93,7 @@ class IndexHelperGroupByPresentTest
      * <p>
      * It is also fragile: it holds only because these evaluators never call
      * {@link IndexHelper#isBlockKeyMissing}. Anyone "aligning" them with
-     * {@link GroupSemantics#partition}'s drop-missing-key behaviour would silently return the five
+     * {@link GroupSemantics#group}'s drop-missing-key behaviour would silently return the five
      * operations to zero findings, which is the defect EC-44 exists to fix. There is deliberately
      * <b>no family-2 twin</b> of this test: on the {@code partition} paths a missing key drops the
      * row (Fix #122 / EC-26 parity), so absence and missingness legitimately differ there.
@@ -106,10 +106,10 @@ class IndexHelperGroupByPresentTest
         IDataTable allMissing = MockTable.of().col("TSPARMCD", "A", "B", "C")
                 .col("TSGRPID", null, null, null).build();
 
-        IndexHelper.Grouping fromAbsent = IndexHelper.groupByPresent(absent, List.of("TSGRPID"),
+        IndexHelper.Grouping fromAbsent = ExecCalls.groupByPresent(absent, List.of("TSGRPID"),
                 "ctx");
-        IndexHelper.Grouping fromMissing = IndexHelper.groupByPresent(allMissing,
-                List.of("TSGRPID"), "ctx");
+        IndexHelper.Grouping fromMissing = ExecCalls.groupByPresent(allMissing, List.of("TSGRPID"),
+                "ctx");
 
         assertNotNull(fromAbsent);
         assertNotNull(fromMissing);
@@ -134,7 +134,7 @@ class IndexHelperGroupByPresentTest
                 .build();
         List<String> declared = List.of("USUBJID", "EPOCH");
 
-        IndexHelper.Grouping g = IndexHelper.groupByPresent(t, declared, "ctx");
+        IndexHelper.Grouping g = ExecCalls.groupByPresent(t, declared, "ctx");
 
         assertNotNull(g);
         assertEquals(1, g.blocks().size());
@@ -158,7 +158,7 @@ class IndexHelperGroupByPresentTest
         Operation op = makeOp("$N", "record_count");
         op.setGroup(List.of("USUBJID", "EPOCH"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$N"));
 
         assertEquals(2, gr.results().size());
@@ -174,7 +174,7 @@ class IndexHelperGroupByPresentTest
     {
         IDataTable t = MockTable.of().col("USUBJID", "S1", "S2", "S1").build();
 
-        IndexHelper.Grouping g = IndexHelper.groupByPresent(t, List.of("USUBJID"), "ctx");
+        IndexHelper.Grouping g = ExecCalls.groupByPresent(t, List.of("USUBJID"), "ctx");
 
         assertNotNull(g);
         assertEquals(List.of("USUBJID"), g.present());
@@ -190,8 +190,8 @@ class IndexHelperGroupByPresentTest
     {
         IDataTable t = MockTable.of().col("TSPARMCD", new String[0]).build();
 
-        IndexHelper.Grouping present = IndexHelper.groupByPresent(t, List.of("TSPARMCD"), "ctx");
-        IndexHelper.Grouping absent = IndexHelper.groupByPresent(t, List.of("TSGRPID"), "ctx");
+        IndexHelper.Grouping present = ExecCalls.groupByPresent(t, List.of("TSPARMCD"), "ctx");
+        IndexHelper.Grouping absent = ExecCalls.groupByPresent(t, List.of("TSGRPID"), "ctx");
 
         assertNotNull(present);
         assertNotNull(absent);
@@ -210,8 +210,8 @@ class IndexHelperGroupByPresentTest
     {
         IDataTable t = MockTable.of().col("X", "1").build();
 
-        assertNull(IndexHelper.groupByPresent(t, List.of("$TIMING_VARIABLES"), "ctx"));
-        assertNull(IndexHelper.groupByPresent(t, List.of("X", "$N"), "ctx"));
+        assertNull(ExecCalls.groupByPresent(t, List.of("$TIMING_VARIABLES"), "ctx"));
+        assertNull(ExecCalls.groupByPresent(t, List.of("X", "$N"), "ctx"));
     }
 
     // -----------------------------------------------------------------------
@@ -233,7 +233,7 @@ class IndexHelperGroupByPresentTest
         op.setGroup(List.of("TSGRPID"));
         op.setFilter(Map.of("TSPARMCD", "HLTSUBJI", "TSVAL", "N"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
 
         GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$HLTSUBJI_N"));
         assertEquals(1, gr.results().size());
@@ -257,7 +257,7 @@ class IndexHelperGroupByPresentTest
         Operation op = makeOp("$N", "record_count");
         op.setGroup(List.of("TSGRPID"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$N"));
 
         String rowKey = GroupedResult.buildKey(t.getMetaData(), t, List.of("TSGRPID"), 0);
@@ -278,7 +278,7 @@ class IndexHelperGroupByPresentTest
         op.setGroup(List.of("TSGRPID"));
         op.setFilter(Map.of("TSPARMCD", "HLTSUBJI"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$N"));
 
         // No row matches the filter, but the group exists ⇒ 0, and an unknown key also reads 0.
@@ -299,7 +299,7 @@ class IndexHelperGroupByPresentTest
         op.setName("SEQ");
         op.setGroup(List.of("TSGRPID"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$MAX"));
 
         assertEquals(1, gr.results().size());
@@ -316,7 +316,7 @@ class IndexHelperGroupByPresentTest
         op.setName("ARM");
         op.setGroup(List.of("TSGRPID"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$D"));
 
         assertEquals(1, gr.results().size());
@@ -352,7 +352,7 @@ class IndexHelperGroupByPresentTest
         op.setGroup(List.of("USUBJID"));
         op.setFilter(Map.of("AESER", "Y"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$D"));
 
         assertEquals(1, gr.results().size());
@@ -373,7 +373,7 @@ class IndexHelperGroupByPresentTest
         op.setGroup(List.of("TSGRPID"));
         op.setFilter(Map.of("AESER", "Y"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$D"));
 
         assertEquals(1, gr.results().size());
@@ -397,7 +397,7 @@ class IndexHelperGroupByPresentTest
         op.setGroup(List.of("USUBJID"));
         op.setFilter(Map.of("AESER", "Y"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$D"));
 
         assertEquals(1, gr.results().size());
@@ -414,7 +414,7 @@ class IndexHelperGroupByPresentTest
         op.setName("DTC");
         op.setGroup(List.of("TSGRPID"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$MD"));
 
         assertEquals(1, gr.results().size());
@@ -431,7 +431,7 @@ class IndexHelperGroupByPresentTest
         op.setName("VAL");
         op.setGroup(List.of("EPOCH"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$MIX"));
 
         assertEquals(1, gr.results().size());
@@ -479,7 +479,7 @@ class IndexHelperGroupByPresentTest
         op.setDomain("DM");
         op.setGroup(List.of("USUBJID", "EPOCH"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), eval,
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), eval,
                 d -> "DM".equals(d) ? foreign : null);
         GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$N"));
 

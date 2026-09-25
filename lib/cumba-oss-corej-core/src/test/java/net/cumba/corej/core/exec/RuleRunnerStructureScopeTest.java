@@ -71,7 +71,7 @@ class RuleRunnerStructureScopeTest
     {
         Rule rule = rule(List.of("BASIC DATA STRUCTURE"), null);
         IDataTable table = MockTable.of().name("ADXX").col("STUDYID", "S1").build();
-        RuleExecutionResult result = RuleRunner.execute(rule, table, NO_DATASETS);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, NO_DATASETS);
         assertTrue(result.isSkipped());
         assertEquals("Rule skipped — data structure ADAM OTHER not in Scope.Data_Structures.Include"
                 + " [BASIC DATA STRUCTURE]", result.getStatusMessage());
@@ -84,7 +84,7 @@ class RuleRunnerStructureScopeTest
         Rule rule = rule(List.of("BASIC DATA STRUCTURE"), null);
         IDataTable table = MockTable.of().name("ADLBC").col("STUDYID", "S1").col("PARAMCD", "P1")
                 .col("AVAL", "1").build();
-        RuleExecutionResult result = RuleRunner.execute(rule, table, NO_DATASETS);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, NO_DATASETS);
         assertFalse(result.isSkipped());
         assertFalse(result.isError());
     }
@@ -97,7 +97,7 @@ class RuleRunnerStructureScopeTest
         Rule rule = rule(null, List.of("TIME-TO-EVENT"));
         IDataTable table = MockTable.of().name("ADLBC").col("STUDYID", "S1").col("PARAMCD", "P1")
                 .col("AVAL", "1").build();
-        RuleExecutionResult result = RuleRunner.execute(rule, table, NO_DATASETS);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, NO_DATASETS);
         assertTrue(result.isSkipped());
         assertEquals("Rule skipped — no subclass detected but rule has Scope.Subclasses.Include"
                 + " [TIME-TO-EVENT]", result.getStatusMessage());
@@ -110,7 +110,7 @@ class RuleRunnerStructureScopeTest
         Rule rule = rule(null, List.of("TIME-TO-EVENT"));
         IDataTable table = MockTable.of().name("ADTTE").col("STUDYID", "S1").col("PARAMCD", "P1")
                 .col("AVAL", "1").col("CNSR", "0").build();
-        RuleExecutionResult result = RuleRunner.execute(rule, table, NO_DATASETS);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, NO_DATASETS);
         assertFalse(result.isSkipped());
         assertFalse(result.isError());
     }
@@ -122,7 +122,7 @@ class RuleRunnerStructureScopeTest
         // A rule without either scope executes as before on any dataset shape.
         Rule rule = rule(null, null);
         IDataTable table = MockTable.of().name("ADXX").col("STUDYID", "S1").build();
-        RuleExecutionResult result = RuleRunner.execute(rule, table, NO_DATASETS);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, NO_DATASETS);
         assertFalse(result.isSkipped());
     }
 
@@ -245,7 +245,7 @@ class RuleRunnerStructureScopeTest
     private static RuleExecutionResult executeWithDefine(Rule rule, IDataTable table,
             MetadataProvider defineProvider)
     {
-        return RuleRunner.execute(rule, table, NO_DATASETS, null, null, null, defineProvider);
+        return RuleRunnerCalls.execute(rule, table, NO_DATASETS, null, null, null, defineProvider);
     }
 
 
@@ -371,7 +371,7 @@ class RuleRunnerStructureScopeTest
         MetadataProvider silentDefine = declaring(null, List.of());
         MetadataProvider libraryDeclaring = declaring(null, List.of("TIME-TO-EVENT"));
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table, NO_DATASETS, null,
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, NO_DATASETS, null,
                 libraryDeclaring, null, silentDefine);
         assertFalse(result.isSkipped(),
                 "the library's declaration must be reached past a silent define: "
@@ -379,13 +379,13 @@ class RuleRunnerStructureScopeTest
 
         // Counter-proof that the fixture is not vacuous: with neither provider declaring anything
         // the same plain-BDS dataset has no subclass and the rule skips.
-        RuleExecutionResult noDeclaration = RuleRunner.execute(rule, table, NO_DATASETS, null,
+        RuleExecutionResult noDeclaration = RuleRunnerCalls.execute(rule, table, NO_DATASETS, null,
                 declaring(null, List.of()), null, silentDefine);
         assertTrue(noDeclaration.isSkipped(), noDeclaration.getStatusMessage());
 
         // …and that the define still WINS when it does declare: a contradicting define beats the
         // library, so the chain is ordered, not a union.
-        RuleExecutionResult defineWins = RuleRunner.execute(rule, table, NO_DATASETS, null,
+        RuleExecutionResult defineWins = RuleRunnerCalls.execute(rule, table, NO_DATASETS, null,
                 libraryDeclaring, null, declaring(null, List.of("NON-COMPARTMENTAL ANALYSIS")));
         assertTrue(defineWins.isSkipped(), defineWins.getStatusMessage());
     }
@@ -406,7 +406,7 @@ class RuleRunnerStructureScopeTest
         IDataTable table = MockTable.of().name("ADPPK").col("STUDYID", "S1").col("PARAMCD", "P1")
                 .col("AVAL", "1").build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table, NO_DATASETS);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, NO_DATASETS);
         assertFalse(result.isSkipped(),
                 "the ADPPK name is the last-resort popPK signal: " + result.getStatusMessage());
 
@@ -414,7 +414,7 @@ class RuleRunnerStructureScopeTest
         // out of scope, so the verdict above is the NAME's doing and nothing else's.
         IDataTable sponsorNamed = MockTable.of().name("ADPK01").col("STUDYID", "S1")
                 .col("PARAMCD", "P1").col("AVAL", "1").build();
-        RuleExecutionResult skipped = RuleRunner.execute(rule, sponsorNamed, NO_DATASETS);
+        RuleExecutionResult skipped = RuleRunnerCalls.execute(rule, sponsorNamed, NO_DATASETS);
         assertTrue(skipped.isSkipped(), skipped.getStatusMessage());
     }
 
@@ -483,7 +483,7 @@ class RuleRunnerStructureScopeTest
         Rule rule = rule(List.of("MEDICAL DEVICE BASIC DATA STRUCTURE"), null);
         IDataTable table = MockTable.of().name("ADLBC").col("STUDYID", "S1").col("PARAMCD", "P1")
                 .col("AVAL", "1").build();
-        RuleExecutionResult result = RuleRunner.execute(rule, table, NO_DATASETS);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, NO_DATASETS);
         assertTrue(result.isSkipped());
         assertEquals(
                 "Rule skipped — data structure BASIC DATA STRUCTURE not in"

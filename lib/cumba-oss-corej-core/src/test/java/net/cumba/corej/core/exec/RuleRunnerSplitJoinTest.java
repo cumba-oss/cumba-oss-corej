@@ -134,8 +134,8 @@ class RuleRunnerSplitJoinTest
     void splitDomainKeyJoin_firesOnlyWhereNoMemberMatches()
     {
         DatasetResolver.WithInventory inv = RealTables.inventoryOf(adlb(), lbch(), lbhe());
-        RuleExecutionResult res = RuleRunner.execute(ad0898Like("LB", "LBSEQ"), adlb(), inv, null,
-                null);
+        RuleExecutionResult res = RuleRunnerCalls.execute(ad0898Like("LB", "LBSEQ"), adlb(), inv,
+                null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
         // U1/1 matches lbch, U2/9 matches lbhe, U3/7 matches neither — the ONLY finding.
         assertEquals(List.of(2L), rows(res));
@@ -150,8 +150,8 @@ class RuleRunnerSplitJoinTest
         // for the orphan row. This is exactly the CDISC-AD0898 silent no-op of plan §1.
         Map<String, IDataTable> tables = Map.of("LBCH", lbch(), "LBHE", lbhe());
         DatasetResolver plain = name -> name == null ? null : tables.get(name);
-        RuleExecutionResult res = RuleRunner.execute(ad0898Like("LB", "LBSEQ"), adlb(), plain, null,
-                null);
+        RuleExecutionResult res = RuleRunnerCalls.execute(ad0898Like("LB", "LBSEQ"), adlb(), plain,
+                null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
         assertEquals(List.of(), rows(res), "without an inventory the rule stays a no-op");
     }
@@ -183,10 +183,10 @@ class RuleRunnerSplitJoinTest
         // Same rule, same primary — once through the WithInventory resolver of a submission that
         // also splits LB, once through a plain exact-name lambda. Identical findings = the exact
         // path is untouched by the union fallback.
-        RuleExecutionResult viaInventory = RuleRunner.execute(rule, ae,
+        RuleExecutionResult viaInventory = RuleRunnerCalls.execute(rule, ae,
                 RealTables.inventoryOf(ae, dm, lbch(), lbhe()), null, null);
         Map<String, IDataTable> flat = Map.of("DM", dm, "AE", ae);
-        RuleExecutionResult viaLambda = RuleRunner.execute(rule, ae,
+        RuleExecutionResult viaLambda = RuleRunnerCalls.execute(rule, ae,
                 name -> name == null ? null : flat.get(name), null, null);
         assertEquals(rows(viaLambda), rows(viaInventory));
         assertEquals(viaLambda.getStatus(), viaInventory.getStatus());
@@ -203,8 +203,8 @@ class RuleRunnerSplitJoinTest
         MatchDataset entry = md("LB", "left", "USUBJID", "LBSEQ");
 
         // Path A — the row expander (the corpus path, 231/260 entries).
-        KeyMatchRowExpander.KeyMatchExpansion expansion = KeyMatchRowExpander.expand(primary,
-                List.of(entry), inv, "R");
+        KeyMatchRowExpander.KeyMatchExpansion expansion = ExecCalls.expand(primary, List.of(entry),
+                inv, "R");
         assertNotNull(expansion);
         List<String> viaExpander = new ArrayList<>();
         IDataTable expanded = expansion.table();
@@ -216,8 +216,8 @@ class RuleRunnerSplitJoinTest
         }
 
         // Path B — the fallback key join.
-        JoinLookup direct = RuleRunner.buildJoinedDatasets(List.of(entry), primary, inv, null, "R")
-                .get("LB");
+        JoinLookup direct = RuleRunnerCalls
+                .buildJoinedDatasets(List.of(entry), primary, inv, null, "R").get("LB");
         assertNotNull(direct);
         List<String> viaLookup = new ArrayList<>();
         for (long r = 0; r < primary.getRowCount(); r++)
@@ -241,7 +241,7 @@ class RuleRunnerSplitJoinTest
                 MatchDataset.class);
         assertTrue(sided.hasSidedKeys());
         IDataTable primary = RealTables.of("ADLB").str("SUBJ", "U1", "U2").build();
-        JoinLookup lookup = RuleRunner.buildJoinedDatasets(List.of(sided), primary,
+        JoinLookup lookup = RuleRunnerCalls.buildJoinedDatasets(List.of(sided), primary,
                 RealTables.inventoryOf(lbch(), lbhe()), null, "R").get("LB");
         assertNotNull(lookup, "the sided branch must resolve the split domain");
         assertEquals("res-ch-1", lookup.lookup(primary, 0, "LBORRES"));
@@ -256,8 +256,8 @@ class RuleRunnerSplitJoinTest
     {
         DatasetResolver.WithInventory inv = RealTables.inventoryOf(adlb(), lbchClash(),
                 lbheClash());
-        RuleExecutionResult res = RuleRunner.execute(ad0898Like("LB", "LBSEQ"), adlb(), inv, null,
-                null);
+        RuleExecutionResult res = RuleRunnerCalls.execute(ad0898Like("LB", "LBSEQ"), adlb(), inv,
+                null, null);
         assertEquals(RuleExecutionStatus.ERROR, res.getStatus());
         assertEquals(1, res.getViolations().size());
         String sentinel = res.getViolations().get(0).getValues().get("__error__");
@@ -294,7 +294,7 @@ class RuleRunnerSplitJoinTest
         rule.setCheck(new CheckConditionAll(List.of(expr("not empty(IDVARVAL)"))));
         RulePackageLoader.installNativeExpr(rule);
 
-        RuleExecutionResult res = RuleRunner.execute(rule, supplbch,
+        RuleExecutionResult res = RuleRunnerCalls.execute(rule, supplbch,
                 RealTables.inventoryOf(supplbch, lbchClash(), lbheClash()), null, null);
         assertEquals(RuleExecutionStatus.ERROR, res.getStatus());
         String sentinel = res.getViolations().get(0).getValues().get("__error__");
@@ -326,7 +326,7 @@ class RuleRunnerSplitJoinTest
         DatasetResolver resolver = RealTables.inventoryOf(primary, lbchClash(), lbheClash());
         for (Rule rule : List.of(a, b))
         {
-            RuleExecutionResult res = RuleRunner.execute(rule, primary, resolver, null, null);
+            RuleExecutionResult res = RuleRunnerCalls.execute(rule, primary, resolver, null, null);
             assertEquals(RuleExecutionStatus.ERROR, res.getStatus(), rule.effectiveId());
             String sentinel = res.getViolations().get(0).getValues().get("__error__");
             assertNotNull(sentinel);
@@ -412,7 +412,7 @@ class RuleRunnerSplitJoinTest
         rule.setCheck(new CheckConditionAll(List.of(expr("not empty(USUBJID)"))));
         RulePackageLoader.installNativeExpr(rule);
 
-        RuleExecutionResult res = RuleRunner.execute(rule, primary,
+        RuleExecutionResult res = RuleRunnerCalls.execute(rule, primary,
                 RealTables.inventoryOf(primary, member1, member2), null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
         assertEquals(1, res.getViolations().size());
@@ -445,7 +445,7 @@ class RuleRunnerSplitJoinTest
         rule.setCheck(new CheckConditionAll(List.of(expr("empty(LBORRES)"))));
         RulePackageLoader.installNativeExpr(rule);
 
-        RuleExecutionResult res = RuleRunner.execute(rule, primary,
+        RuleExecutionResult res = RuleRunnerCalls.execute(rule, primary,
                 RealTables.inventoryOf(primary, lbch(), lbhe()), null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
         // ⭐⭐ INVERTED 2026-09-21 (D3 of PLAN-unqualified-name-primary-only). This asserted
@@ -496,7 +496,7 @@ class RuleRunnerSplitJoinTest
         rule.setCheck(new CheckConditionAll(List.of(expr("empty(LB.LBORRES)"))));
         RulePackageLoader.installNativeExpr(rule);
 
-        RuleExecutionResult res = RuleRunner.execute(rule, primary,
+        RuleExecutionResult res = RuleRunnerCalls.execute(rule, primary,
                 RealTables.inventoryOf(primary, lbch(), lbhe()), null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
         // U1/1 binds lbch's res-ch-1 (non-empty); U3/7 binds no member -> missing -> fires.

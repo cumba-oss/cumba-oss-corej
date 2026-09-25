@@ -55,7 +55,7 @@ class OperationExecutorVariableExistsTest
 
     private static Object run(Operation o, IDataTable t, DatasetResolver r)
     {
-        return OperationExecutor.executeOne(o, t, r, null, new LinkedHashMap<>());
+        return OperationExecutorCalls.executeOne(o, t, r, null, new LinkedHashMap<>());
     }
 
 

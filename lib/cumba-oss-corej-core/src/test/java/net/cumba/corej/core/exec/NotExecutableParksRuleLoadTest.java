@@ -96,7 +96,7 @@ class NotExecutableParksRuleLoadTest
                 () -> "fixture must be load-clean: " + rule.getLoadWarning());
         // ⚠ Not just "loads": it must actually check something, or "the parked twin produced no
         // violation" would be a fact about the fixture rather than about the parking.
-        RuleExecutionResult result = RuleRunner.execute(rule, table());
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table());
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus());
         assertEquals(1, result.getViolationCount(), "the control fires on the fixture table");
     }

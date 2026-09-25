@@ -58,12 +58,12 @@ class ScopeMatcherStructureSubclassTest
     @Test
     void structure_noScope_matches()
     {
-        assertNull(ScopeMatcher.describeDataStructureMismatch(new Rule(),
+        assertNull(ScopeMatcherCalls.describeDataStructureMismatch(new Rule(),
                 AdamDataStructureDetector.BDS));
-        assertNull(ScopeMatcher.describeDataStructureMismatch(structureRule(null, null),
+        assertNull(ScopeMatcherCalls.describeDataStructureMismatch(structureRule(null, null),
                 AdamDataStructureDetector.BDS));
-        assertNull(ScopeMatcher.describeDataStructureMismatch(structureRule(List.of(), List.of()),
-                AdamDataStructureDetector.BDS));
+        assertNull(ScopeMatcherCalls.describeDataStructureMismatch(
+                structureRule(List.of(), List.of()), AdamDataStructureDetector.BDS));
     }
 
 
@@ -71,13 +71,15 @@ class ScopeMatcherStructureSubclassTest
     void structure_includeMatchAndMiss()
     {
         Rule rule = structureRule(List.of("BASIC DATA STRUCTURE"), null);
-        assertNull(ScopeMatcher.describeDataStructureMismatch(rule, AdamDataStructureDetector.BDS));
+        assertNull(ScopeMatcherCalls.describeDataStructureMismatch(rule,
+                AdamDataStructureDetector.BDS));
         assertEquals(
                 "data structure OCCURRENCE DATA STRUCTURE not in Scope.Data_Structures.Include"
                         + " [BASIC DATA STRUCTURE]",
-                ScopeMatcher.describeDataStructureMismatch(rule, AdamDataStructureDetector.OCCDS));
-        assertTrue(ScopeMatcher.matchesDataStructure(rule, AdamDataStructureDetector.BDS));
-        assertFalse(ScopeMatcher.matchesDataStructure(rule, AdamDataStructureDetector.OCCDS));
+                ScopeMatcherCalls.describeDataStructureMismatch(rule,
+                        AdamDataStructureDetector.OCCDS));
+        assertTrue(ScopeMatcherCalls.matchesDataStructure(rule, AdamDataStructureDetector.BDS));
+        assertFalse(ScopeMatcherCalls.matchesDataStructure(rule, AdamDataStructureDetector.OCCDS));
     }
 
 
@@ -87,11 +89,13 @@ class ScopeMatcherStructureSubclassTest
         // Deviation from Python (documented): Exclude-only excludes exactly the listed
         // structures; upstream's missing include-guard would reject every dataset.
         Rule rule = structureRule(null, List.of("ADAM OTHER"));
-        assertNull(ScopeMatcher.describeDataStructureMismatch(rule, AdamDataStructureDetector.BDS));
+        assertNull(ScopeMatcherCalls.describeDataStructureMismatch(rule,
+                AdamDataStructureDetector.BDS));
         assertEquals(
                 "data structure ADAM OTHER matches Scope.Data_Structures.Exclude entry"
                         + " ADAM OTHER",
-                ScopeMatcher.describeDataStructureMismatch(rule, AdamDataStructureDetector.OTHER));
+                ScopeMatcherCalls.describeDataStructureMismatch(rule,
+                        AdamDataStructureDetector.OTHER));
     }
 
 
@@ -99,13 +103,14 @@ class ScopeMatcherStructureSubclassTest
     void structure_allSentinel_stillHonoursExclude()
     {
         Rule rule = structureRule(List.of("ALL"), List.of("ADAM OTHER"));
-        assertNull(
-                ScopeMatcher.describeDataStructureMismatch(rule, AdamDataStructureDetector.ADSL));
+        assertNull(ScopeMatcherCalls.describeDataStructureMismatch(rule,
+                AdamDataStructureDetector.ADSL));
         // House deviation from Python's early return: Exclude still applies under ALL.
         assertEquals(
                 "data structure ADAM OTHER matches Scope.Data_Structures.Exclude entry"
                         + " ADAM OTHER",
-                ScopeMatcher.describeDataStructureMismatch(rule, AdamDataStructureDetector.OTHER));
+                ScopeMatcherCalls.describeDataStructureMismatch(rule,
+                        AdamDataStructureDetector.OTHER));
     }
 
 
@@ -116,14 +121,14 @@ class ScopeMatcherStructureSubclassTest
         assertEquals(
                 "dataset data structure undetermined but rule has a Scope.Data_Structures.Include"
                         + " [BASIC DATA STRUCTURE]",
-                ScopeMatcher.describeDataStructureMismatch(rule, (String) null));
+                ScopeMatcherCalls.describeDataStructureMismatch(rule, (String) null));
         // Fix #179: the set-valued form spells "undetermined" as an EMPTY set, and must agree.
         assertEquals(
                 "dataset data structure undetermined but rule has a Scope.Data_Structures.Include"
                         + " [BASIC DATA STRUCTURE]",
-                ScopeMatcher.describeDataStructureMismatch(rule, List.of()));
+                ScopeMatcherCalls.describeDataStructureMismatch(rule, List.of()));
         // Exclude-only passes a null detection (nothing positively matches).
-        assertNull(ScopeMatcher.describeDataStructureMismatch(
+        assertNull(ScopeMatcherCalls.describeDataStructureMismatch(
                 structureRule(null, List.of("BASIC DATA STRUCTURE")), (String) null));
     }
 
@@ -132,7 +137,8 @@ class ScopeMatcherStructureSubclassTest
     void structure_caseAndSeparatorInsensitive()
     {
         Rule rule = structureRule(List.of("Basic Data Structure"), null);
-        assertNull(ScopeMatcher.describeDataStructureMismatch(rule, AdamDataStructureDetector.BDS));
+        assertNull(ScopeMatcherCalls.describeDataStructureMismatch(rule,
+                AdamDataStructureDetector.BDS));
     }
 
     // ------------------------------------------------------------------
@@ -163,13 +169,14 @@ class ScopeMatcherStructureSubclassTest
     void structure_includeOfTheBaseCoversTheSpecialisation_fix179()
     {
         Rule rule = structureRule(List.of("BASIC DATA STRUCTURE"), null);
-        assertNull(ScopeMatcher.describeDataStructureMismatch(rule, DEVICE_BDS),
+        assertNull(ScopeMatcherCalls.describeDataStructureMismatch(rule, DEVICE_BDS),
                 "a BDS-scoped rule must still cover a medical-device BDS dataset");
-        assertTrue(ScopeMatcher.matchesDataStructure(rule, DEVICE_BDS));
+        assertTrue(ScopeMatcherCalls.matchesDataStructure(rule, DEVICE_BDS));
         // The occurrence side of the same relation.
         Rule occdsRule = structureRule(List.of("OCCURRENCE DATA STRUCTURE"), null);
-        assertNull(ScopeMatcher.describeDataStructureMismatch(occdsRule, AdamDataStructureDetector
-                .structureSet(AdamDataStructureDetector.MEDICAL_DEVICE_OCCDS)));
+        assertNull(
+                ScopeMatcherCalls.describeDataStructureMismatch(occdsRule, AdamDataStructureDetector
+                        .structureSet(AdamDataStructureDetector.MEDICAL_DEVICE_OCCDS)));
         // ⚠⚠ …and NOT on the ADAM OTHER side. Phase 3a (owner decision 2026-08-09) dropped
         // DEVICE LEVEL ANALYSIS DATASET's ADAM OTHER supertype, so an ADAM OTHER-scoped rule no
         // longer covers a device-level dataset — which is the intended change, not a regression.
@@ -185,12 +192,12 @@ class ScopeMatcherStructureSubclassTest
         // context only — the ZERO claim on the last line is the part that is a real invariant.
         Rule otherRule = structureRule(List.of("ADAM OTHER"), null);
         assertNotNull(
-                ScopeMatcher.describeDataStructureMismatch(otherRule,
+                ScopeMatcherCalls.describeDataStructureMismatch(otherRule,
                         AdamDataStructureDetector.structureSet(
                                 AdamDataStructureDetector.DEVICE_LEVEL_ANALYSIS_DATASET)),
                 "Phase 3a: DEVICE LEVEL ANALYSIS DATASET no longer carries ADAM OTHER");
         // The plain structure-less dataset is of course still covered.
-        assertNull(ScopeMatcher.describeDataStructureMismatch(otherRule,
+        assertNull(ScopeMatcherCalls.describeDataStructureMismatch(otherRule,
                 AdamDataStructureDetector.structureSet(AdamDataStructureDetector.OTHER)));
     }
 
@@ -211,15 +218,15 @@ class ScopeMatcherStructureSubclassTest
     void structure_includeOfTheVariantMatchesOnlyTheVariant_fix179()
     {
         Rule rule = structureRule(List.of("MEDICAL DEVICE BASIC DATA STRUCTURE"), null);
-        assertNull(ScopeMatcher.describeDataStructureMismatch(rule, DEVICE_BDS),
+        assertNull(ScopeMatcherCalls.describeDataStructureMismatch(rule, DEVICE_BDS),
                 "a device-BDS-scoped rule must match a device BDS dataset — this is exactly what the"
                         + " pre-Fix-#175 fold made impossible");
         assertEquals(
                 "data structure BASIC DATA STRUCTURE not in Scope.Data_Structures.Include"
                         + " [MEDICAL DEVICE BASIC DATA STRUCTURE]",
-                ScopeMatcher.describeDataStructureMismatch(rule, PLAIN_BDS),
+                ScopeMatcherCalls.describeDataStructureMismatch(rule, PLAIN_BDS),
                 "a device-BDS-scoped rule must NOT match a plain BDS dataset");
-        assertFalse(ScopeMatcher.matchesDataStructure(rule, PLAIN_BDS));
+        assertFalse(ScopeMatcherCalls.matchesDataStructure(rule, PLAIN_BDS));
     }
 
 
@@ -241,16 +248,16 @@ class ScopeMatcherStructureSubclassTest
         assertEquals(
                 "data structure MEDICAL DEVICE BASIC DATA STRUCTURE (also BASIC DATA STRUCTURE)"
                         + " matches Scope.Data_Structures.Exclude entry BASIC DATA STRUCTURE",
-                ScopeMatcher.describeDataStructureMismatch(rule, DEVICE_BDS));
+                ScopeMatcherCalls.describeDataStructureMismatch(rule, DEVICE_BDS));
         // The converse is NOT true: excluding the specialisation leaves the plain structure alone.
         Rule variantExclude = structureRule(null, List.of("MEDICAL DEVICE BASIC DATA STRUCTURE"));
-        assertNull(ScopeMatcher.describeDataStructureMismatch(variantExclude, PLAIN_BDS),
+        assertNull(ScopeMatcherCalls.describeDataStructureMismatch(variantExclude, PLAIN_BDS),
                 "Exclude of a subtype must not exclude its supertype");
         assertEquals(
                 "data structure MEDICAL DEVICE BASIC DATA STRUCTURE (also BASIC DATA STRUCTURE)"
                         + " matches Scope.Data_Structures.Exclude entry"
                         + " MEDICAL DEVICE BASIC DATA STRUCTURE",
-                ScopeMatcher.describeDataStructureMismatch(variantExclude, DEVICE_BDS));
+                ScopeMatcherCalls.describeDataStructureMismatch(variantExclude, DEVICE_BDS));
     }
 
 
@@ -269,16 +276,17 @@ class ScopeMatcherStructureSubclassTest
         assertEquals(
                 "data structure BASIC DATA STRUCTURE not in Scope.Data_Structures.Include"
                         + " [SUBJECT LEVEL ANALYSIS DATASET]",
-                ScopeMatcher.describeDataStructureMismatch(rule, PLAIN_BDS));
+                ScopeMatcherCalls.describeDataStructureMismatch(rule, PLAIN_BDS));
         // Set: most specific first, then the tail.
         assertEquals(
                 "data structure MEDICAL DEVICE BASIC DATA STRUCTURE (also BASIC DATA STRUCTURE) not"
                         + " in Scope.Data_Structures.Include [SUBJECT LEVEL ANALYSIS DATASET]",
-                ScopeMatcher.describeDataStructureMismatch(rule, DEVICE_BDS));
+                ScopeMatcherCalls.describeDataStructureMismatch(rule, DEVICE_BDS));
         // The single-token overload and a one-element set are the same call.
         assertEquals(
-                ScopeMatcher.describeDataStructureMismatch(rule, AdamDataStructureDetector.BDS),
-                ScopeMatcher.describeDataStructureMismatch(rule, PLAIN_BDS));
+                ScopeMatcherCalls.describeDataStructureMismatch(rule,
+                        AdamDataStructureDetector.BDS),
+                ScopeMatcherCalls.describeDataStructureMismatch(rule, PLAIN_BDS));
     }
 
 
@@ -286,14 +294,14 @@ class ScopeMatcherStructureSubclassTest
     @Test
     void structure_allSentinelAndNoScope_onASet_fix179()
     {
-        assertNull(ScopeMatcher.describeDataStructureMismatch(new Rule(), DEVICE_BDS));
-        assertNull(ScopeMatcher.describeDataStructureMismatch(structureRule(List.of("ALL"), null),
-                DEVICE_BDS));
+        assertNull(ScopeMatcherCalls.describeDataStructureMismatch(new Rule(), DEVICE_BDS));
+        assertNull(ScopeMatcherCalls
+                .describeDataStructureMismatch(structureRule(List.of("ALL"), null), DEVICE_BDS));
         // ALL still honours Exclude, and the exclusion sees the whole set.
         assertEquals(
                 "data structure MEDICAL DEVICE BASIC DATA STRUCTURE (also BASIC DATA STRUCTURE)"
                         + " matches Scope.Data_Structures.Exclude entry BASIC DATA STRUCTURE",
-                ScopeMatcher.describeDataStructureMismatch(
+                ScopeMatcherCalls.describeDataStructureMismatch(
                         structureRule(List.of("ALL"), List.of("BASIC DATA STRUCTURE")),
                         DEVICE_BDS));
     }
@@ -306,9 +314,10 @@ class ScopeMatcherStructureSubclassTest
     @Test
     void subclass_noScope_matches()
     {
-        assertNull(ScopeMatcher.describeSubclassMismatch(new Rule(),
+        assertNull(ScopeMatcherCalls.describeSubclassMismatch(new Rule(),
                 AdamSubclassDetector.TIME_TO_EVENT));
-        assertNull(ScopeMatcher.describeSubclassMismatch(subclassRule(null, null), (String) null));
+        assertNull(ScopeMatcherCalls.describeSubclassMismatch(subclassRule(null, null),
+                (String) null));
     }
 
 
@@ -316,12 +325,14 @@ class ScopeMatcherStructureSubclassTest
     void subclass_includeRequiresPositiveDetection()
     {
         Rule rule = subclassRule(List.of("TIME-TO-EVENT"), null);
-        assertNull(ScopeMatcher.describeSubclassMismatch(rule, AdamSubclassDetector.TIME_TO_EVENT));
+        assertNull(ScopeMatcherCalls.describeSubclassMismatch(rule,
+                AdamSubclassDetector.TIME_TO_EVENT));
         // Q1 decision: a null-detected dataset (plain BDS) is skipped by an Include list.
         assertEquals("no subclass detected but rule has Scope.Subclasses.Include [TIME-TO-EVENT]",
-                ScopeMatcher.describeSubclassMismatch(rule, (String) null));
+                ScopeMatcherCalls.describeSubclassMismatch(rule, (String) null));
         assertEquals("subclass ADVERSE EVENT not in Scope.Subclasses.Include [TIME-TO-EVENT]",
-                ScopeMatcher.describeSubclassMismatch(rule, AdamSubclassDetector.ADVERSE_EVENT));
+                ScopeMatcherCalls.describeSubclassMismatch(rule,
+                        AdamSubclassDetector.ADVERSE_EVENT));
     }
 
 
@@ -330,10 +341,12 @@ class ScopeMatcherStructureSubclassTest
     {
         Rule rule = subclassRule(null, List.of("TIME-TO-EVENT"));
         // Q1 decision: null-detected passes an Exclude-only scope.
-        assertNull(ScopeMatcher.describeSubclassMismatch(rule, (String) null));
-        assertNull(ScopeMatcher.describeSubclassMismatch(rule, AdamSubclassDetector.ADVERSE_EVENT));
+        assertNull(ScopeMatcherCalls.describeSubclassMismatch(rule, (String) null));
+        assertNull(ScopeMatcherCalls.describeSubclassMismatch(rule,
+                AdamSubclassDetector.ADVERSE_EVENT));
         assertEquals("subclass TIME-TO-EVENT matches Scope.Subclasses.Exclude entry TIME-TO-EVENT",
-                ScopeMatcher.describeSubclassMismatch(rule, AdamSubclassDetector.TIME_TO_EVENT));
+                ScopeMatcherCalls.describeSubclassMismatch(rule,
+                        AdamSubclassDetector.TIME_TO_EVENT));
     }
 
 
@@ -342,16 +355,16 @@ class ScopeMatcherStructureSubclassTest
     {
         // Fix #119: a dataset may declare several subclasses — Include matches on ANY of them.
         Rule include = subclassRule(List.of("TIME-TO-EVENT"), null);
-        assertNull(ScopeMatcher.describeSubclassMismatch(include,
+        assertNull(ScopeMatcherCalls.describeSubclassMismatch(include,
                 List.of("ADVERSE EVENT", "TIME-TO-EVENT")));
         assertEquals("subclass ADVERSE EVENT not in Scope.Subclasses.Include [TIME-TO-EVENT]",
-                ScopeMatcher.describeSubclassMismatch(include, List.of("ADVERSE EVENT")));
+                ScopeMatcherCalls.describeSubclassMismatch(include, List.of("ADVERSE EVENT")));
         assertEquals("no subclass detected but rule has Scope.Subclasses.Include [TIME-TO-EVENT]",
-                ScopeMatcher.describeSubclassMismatch(include, List.of()));
+                ScopeMatcherCalls.describeSubclassMismatch(include, List.of()));
         // Exclude rejects when ANY detected token matches, naming the offender.
         Rule exclude = subclassRule(null, List.of("ADVERSE EVENT"));
         assertEquals("subclass ADVERSE EVENT matches Scope.Subclasses.Exclude entry ADVERSE EVENT",
-                ScopeMatcher.describeSubclassMismatch(exclude,
+                ScopeMatcherCalls.describeSubclassMismatch(exclude,
                         List.of("TIME-TO-EVENT", "ADVERSE EVENT")));
     }
 
@@ -360,8 +373,9 @@ class ScopeMatcherStructureSubclassTest
     void subclass_allSentinel()
     {
         Rule rule = subclassRule(List.of("ALL"), null);
-        assertNull(ScopeMatcher.describeSubclassMismatch(rule, (String) null));
-        assertNull(ScopeMatcher.describeSubclassMismatch(rule, AdamSubclassDetector.TIME_TO_EVENT));
+        assertNull(ScopeMatcherCalls.describeSubclassMismatch(rule, (String) null));
+        assertNull(ScopeMatcherCalls.describeSubclassMismatch(rule,
+                AdamSubclassDetector.TIME_TO_EVENT));
     }
 
 
@@ -400,11 +414,11 @@ class ScopeMatcherStructureSubclassTest
         assertEquals(
                 "subclass TIME-TO-EVENT not in Scope.Subclasses.Include"
                         + " [NON-COMPARTMENTAL ANALYSIS]",
-                ScopeMatcher.describeSubclassMismatch(ncaRule,
+                ScopeMatcherCalls.describeSubclassMismatch(ncaRule,
                         AdamSubclassDetector.resolve(plainBds, ambiguous, List.of(), true)),
                 "an NCA-scoped rule is SKIPPED on the ambiguous dataset");
         // Control: drop CNSR and the same rule matches — branch 3 was live all along.
-        assertNull(ScopeMatcher.describeSubclassMismatch(ncaRule, AdamSubclassDetector
+        assertNull(ScopeMatcherCalls.describeSubclassMismatch(ncaRule, AdamSubclassDetector
                 .resolve(plainBds, List.of("PARAMCD", "AVAL", "NFRLT", "AFRLT"), List.of(), true)));
         // The same shape under the popPK branch: the 6 popPK rules are skipped just as the 17 NCA
         // ones are.
@@ -413,10 +427,11 @@ class ScopeMatcherStructureSubclassTest
         assertEquals(
                 "subclass TIME-TO-EVENT not in Scope.Subclasses.Include"
                         + " [POPULATION PHARMACOKINETIC ANALYSIS]",
-                ScopeMatcher.describeSubclassMismatch(popPkRule,
+                ScopeMatcherCalls.describeSubclassMismatch(popPkRule,
                         AdamSubclassDetector.resolve(plainBds, ambiguousPopPk, List.of(), true)));
-        assertNull(ScopeMatcher.describeSubclassMismatch(popPkRule, AdamSubclassDetector.resolve(
-                plainBds, List.of("PARAMCD", "AVAL", "DV", "MDV", "AMT"), List.of(), true)));
+        assertNull(ScopeMatcherCalls.describeSubclassMismatch(popPkRule,
+                AdamSubclassDetector.resolve(plainBds,
+                        List.of("PARAMCD", "AVAL", "DV", "MDV", "AMT"), List.of(), true)));
     }
 
 
@@ -425,7 +440,8 @@ class ScopeMatcherStructureSubclassTest
     {
         // normalize() collapses case AND separators — "Time-To-Event" and "TIME TO EVENT" match.
         Rule rule = subclassRule(Arrays.asList("Time-To-Event"), null);
-        assertNull(ScopeMatcher.describeSubclassMismatch(rule, AdamSubclassDetector.TIME_TO_EVENT));
+        assertNull(ScopeMatcherCalls.describeSubclassMismatch(rule,
+                AdamSubclassDetector.TIME_TO_EVENT));
     }
 
 }

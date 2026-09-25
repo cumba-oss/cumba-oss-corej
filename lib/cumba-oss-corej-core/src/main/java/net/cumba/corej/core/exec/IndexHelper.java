@@ -55,8 +55,8 @@ final class IndexHelper
      *
      * <p>
      * A class rather than a record because {@code rows} is an {@code int[]}: the row-index arrays
-     * are the same shape {@link GroupSemantics#partition} already hands around, and array
-     * components would give a record broken {@code equals}/{@code hashCode} semantics (Error Prone
+     * are the same shape {@link GroupSemantics#group} already hands around, and array components
+     * would give a record broken {@code equals}/{@code hashCode} semantics (Error Prone
      * {@code ArrayRecordComponent}). Instances are never compared or hashed.
      * </p>
      */
@@ -162,6 +162,17 @@ final class IndexHelper
      * did before EC-44.
      * </p>
      *
+     * <p>
+     * Under {@link GroupKeyPolicy#KEEP_MISSING_KEYS} — the shipped behaviour of every
+     * {@code Operations[].group:} evaluator except {@code is_last_in_group} — a blank key component
+     * renders its identity in the reporting key ({@code ""} for an empty cell, the marker token for
+     * a genuine missing — {@code W38-A1} / Fix #249) and the group is still formed. With
+     * {@link GroupKeyPolicy#keepMissings()} {@code false} a block whose representative row carries
+     * a blank key component is dropped instead, which is what lets the {@code group:} surface
+     * answer an authored {@code keep_missings: false} — the half of the fold/discard asymmetry that
+     * lives here.
+     * </p>
+     *
      * @param table
      *            the dataset to partition
      * @param groupCols
@@ -172,39 +183,10 @@ final class IndexHelper
      * @param context
      *            an optional label for the INFO log emitted when columns are dropped (the operation
      *            id, prefixed with the rule id when known)
-     * @return the grouping, empty only for an empty table; {@code null} when a group entry is an
-     *         unexpanded {@code $}-reference
-     */
-    static @Nullable Grouping groupByPresent(IDataTable table, List<String> groupCols,
-            @Nullable String context)
-    {
-        return groupByPresent(table, groupCols, context, GroupKeyPolicy.KEEP_MISSING_KEYS);
-    }
-
-
-    /**
-     * {@link #groupByPresent(IDataTable, List, String)} under an explicit {@link GroupKeyPolicy}.
-     *
-     * <p>
-     * The three-argument overload is this one under {@link GroupKeyPolicy#KEEP_MISSING_KEYS}, the
-     * shipped behaviour of every {@code Operations[].group:} evaluator except
-     * {@code is_last_in_group}: a blank key component renders its identity in the reporting key
-     * ({@code ""} for an empty cell, the marker token for a genuine missing — {@code W38-A1} / Fix
-     * #249) and the group is still formed. With {@link GroupKeyPolicy#keepMissings()} {@code false}
-     * a block whose representative row carries a blank key component is dropped instead, which is
-     * what lets the {@code group:} surface answer an authored {@code keep_missings: false} — the
-     * half of the fold/discard asymmetry that lives here.
-     * </p>
-     *
-     * @param table
-     *            the dataset to partition
-     * @param groupCols
-     *            the declared group columns
-     * @param context
-     *            an optional label for the INFO log emitted when columns are dropped
      * @param policy
      *            the grouping-key policy
-     * @return the grouping, or {@code null} when a group entry is an unexpanded {@code $}-reference
+     * @return the grouping, empty only for an empty table; {@code null} when a group entry is an
+     *         unexpanded {@code $}-reference
      */
     static @Nullable Grouping groupByPresent(IDataTable table, List<String> groupCols,
             @Nullable String context, GroupKeyPolicy policy)
@@ -364,19 +346,6 @@ final class IndexHelper
 
 
     /**
-     * {@link #isBlockKeyMissing(IDataTableView, IDataTable, int[], GroupKeyPolicy)} under
-     * {@link GroupKeyPolicy#DROP_MISSING_KEYS} — the shipped notion, where a genuine
-     * missing/invalid marker <em>or</em> {@code ""} is blank ({@code W32-E3} / Fix #241 moved the
-     * policy's blankness to {@code MISSING_OR_EMPTY}; the pre-ruling notion that {@code ""} was a
-     * real key here is retired).
-     */
-    static boolean isBlockKeyMissing(IDataTableView block, IDataTable table, int[] keyColIndices)
-    {
-        return isBlockKeyMissing(block, table, keyColIndices, GroupKeyPolicy.DROP_MISSING_KEYS);
-    }
-
-
-    /**
      * Build a {@link GroupedResult}-compatible string key from the representative row (first row)
      * of a block. Uses the same format as {@link GroupedResult#buildKey} — ⚑ <b>lockstep</b>: this
      * is the block-side half of the key encoding and {@code GroupedResult.buildKey} the per-row
@@ -425,17 +394,6 @@ final class IndexHelper
 
 
     /**
-     * {@link #buildGroupKey(IDataTableView, IDataTable, DataTableMeta, List, GroupKeyPolicy)} under
-     * {@link GroupKeyPolicy#KEEP_MISSING_KEYS} — the shipped notion for the reporting key.
-     */
-    static String buildGroupKey(IDataTableView block, IDataTable table, DataTableMeta meta,
-            List<String> groupCols)
-    {
-        return buildGroupKey(block, table, meta, groupCols, GroupKeyPolicy.KEEP_MISSING_KEYS);
-    }
-
-
-    /**
      * Resolve column names to column indices. Returns {@code null} if any column is not found in
      * the table metadata.
      */
@@ -453,25 +411,4 @@ final class IndexHelper
         }
         return indices;
     }
-
-
-    /**
-     * Resolve column names to column indices. Returns {@code null} if any column is not found in
-     * the table metadata.
-     */
-    static int @Nullable [] resolveColumnIndices(DataTableMeta meta, String... colNames)
-    {
-        int[] indices = new int[colNames.length];
-        for (int i = 0; i < colNames.length; i++)
-        {
-            int idx = meta.getColumnIndex(colNames[i]);
-            if (idx < 0)
-            {
-                return null;
-            }
-            indices[i] = idx;
-        }
-        return indices;
-    }
-
 }

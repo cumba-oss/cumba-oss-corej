@@ -36,7 +36,7 @@ class OperationExecutorRowExtremeTest
 
     private static GroupedResult run(Operation op, IDataTable table)
     {
-        return (GroupedResult) OperationExecutor.executeOne(op, table, NO_RESOLVER, null,
+        return (GroupedResult) OperationExecutorCalls.executeOne(op, table, NO_RESOLVER, null,
                 new HashMap<>());
     }
 

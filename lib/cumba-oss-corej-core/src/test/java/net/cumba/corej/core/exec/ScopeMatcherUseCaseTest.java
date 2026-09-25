@@ -74,7 +74,7 @@ class ScopeMatcherUseCaseTest
     void matchesClass_nullScope_returnsTrue()
     {
         Rule rule = new Rule();
-        assertTrue(ScopeMatcher.matchesClass(rule, "EVENTS"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "EVENTS"));
     }
 
 
@@ -85,7 +85,7 @@ class ScopeMatcherUseCaseTest
         Scope s = new Scope();
         // no ClassScope set
         rule.setScope(s);
-        assertTrue(ScopeMatcher.matchesClass(rule, "EVENTS"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "EVENTS"));
     }
 
 
@@ -99,7 +99,7 @@ class ScopeMatcherUseCaseTest
         net.cumba.corej.core.model.ClassScope cls = new net.cumba.corej.core.model.ClassScope();
         s.setClasses(cls);
         rule.setScope(s);
-        assertTrue(ScopeMatcher.matchesClass(rule, null));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, null));
     }
 
     // -----------------------------------------------------------------------

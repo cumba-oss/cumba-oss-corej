@@ -160,8 +160,9 @@ class RelrecNativeEvalTest
                 "RELREC dotted-ref Check must lower to a native Expr so the native backend runs");
 
         IDataTable ae = aePrimary();
-        RuleExecutionResult legacy = RuleRunner.execute(rule, ae, resolver(), "AE", null, null);
-        RuleExecutionResult nativ = RuleRunner.execute(rule, ae, resolver(), "AE", null, null);
+        RuleExecutionResult legacy = RuleRunnerCalls.execute(rule, ae, resolver(), "AE", null,
+                null);
+        RuleExecutionResult nativ = RuleRunnerCalls.execute(rule, ae, resolver(), "AE", null, null);
 
         // One-to-many: AE record 0 expands to 3 FA pairs (AETERM != FAOBJ for all three); AE
         // record 1 (AELNKID=2) has no FA -> excluded by the inner join.
@@ -190,7 +191,7 @@ class RelrecNativeEvalTest
         assertNotNull(rule.getCheckExpr());
 
         IDataTable ae = aePrimary();
-        RuleExecutionResult nativ = RuleRunner.execute(rule, ae, resolver(), "AE", null, null);
+        RuleExecutionResult nativ = RuleRunnerCalls.execute(rule, ae, resolver(), "AE", null, null);
 
         // Exactly the PAIN pair fires (1 expanded row), on AE record 0, with RELREC.FAOBJ=PAIN.
         assertEquals(1, nativ.getViolations().size());
@@ -216,13 +217,14 @@ class RelrecNativeEvalTest
                 "RELREC.** Check must compile natively after the P5b carve-out");
 
         IDataTable ae = aePrimary();
-        RuleExecutionResult legacy = RuleRunner.execute(rule, ae, resolver(), "AE", null, null);
-        RuleExecutionResult nativ = RuleRunner.execute(rule, ae, resolver(), "AE", null, null);
+        RuleExecutionResult legacy = RuleRunnerCalls.execute(rule, ae, resolver(), "AE", null,
+                null);
+        RuleExecutionResult nativ = RuleRunnerCalls.execute(rule, ae, resolver(), "AE", null, null);
         assertEquals(3, legacy.getViolations().size(),
                 "legacy: AETERM differs from every related FAOBJ");
         assertEquals(norm(legacy), norm(nativ), "native RELREC.** verdicts must equal legacy");
 
-        RuleExecutionResult ran = RuleRunner.execute(rule, ae, resolver(), "AE", null, null);
+        RuleExecutionResult ran = RuleRunnerCalls.execute(rule, ae, resolver(), "AE", null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "the RELREC.** rule must run on the NATIVE backend");
     }

@@ -90,7 +90,7 @@ class RuleRunnerRequirementsDatasetsTest
 
     private static RuleExecutionResult run(Rule rule, IDataTable primary, DatasetResolver resolver)
     {
-        return RuleRunner.execute(rule, primary, resolver, "AE", null, null, null);
+        return RuleRunnerCalls.execute(rule, primary, resolver, "AE", null, null, null);
     }
 
 
@@ -368,8 +368,8 @@ class RuleRunnerRequirementsDatasetsTest
         rule.setRequirements(req);
 
         DatasetResolver.WithInventory resolver = inventory(study(ae()));
-        RuleExecutionResult declared = RuleRunner.execute(rule, ae(), resolver, "AE", null, null,
-                null, 100, null, null, null, Set.of("EX"));
+        RuleExecutionResult declared = RuleRunnerCalls.execute(rule, ae(), resolver, "AE", null,
+                null, null, 100, null, null, null, Set.of("EX"));
         assertEquals(RuleExecutionStatus.SKIPPED, declared.getStatus());
         assertEquals("Rule skipped — Requirements.Datasets dataset EX not available",
                 declared.getStatusMessage(),
@@ -379,8 +379,8 @@ class RuleRunnerRequirementsDatasetsTest
         // Control: WITHOUT the declaration the same run reaches AbsentDatasetSkip and reports its
         // reason instead — so the assertion above is measuring the ordering, not an empty branch.
         rule.setRequirements(null);
-        RuleExecutionResult underived = RuleRunner.execute(rule, ae(), resolver, "AE", null, null,
-                null, 100, null, null, null, Set.of("EX"));
+        RuleExecutionResult underived = RuleRunnerCalls.execute(rule, ae(), resolver, "AE", null,
+                null, null, 100, null, null, null, Set.of("EX"));
         assertEquals(RuleExecutionStatus.SKIPPED, underived.getStatus());
         assertNotEquals("Rule skipped — Requirements.Datasets dataset EX not available",
                 underived.getStatusMessage());

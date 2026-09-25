@@ -119,7 +119,7 @@ class GroupSensitivityGroupingResolutionTest
 
     private static int run(Rule rule, IDataTable table)
     {
-        RuleExecutionResult res = RuleRunner.execute(rule, table, _ -> null, "LB", null);
+        RuleExecutionResult res = RuleRunnerCalls.execute(rule, table, _ -> null, "LB", null);
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(), "rule should execute");
         return res.getViolationCount();
     }

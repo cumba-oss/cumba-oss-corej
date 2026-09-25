@@ -95,7 +95,8 @@ class AbsentColumnTypeDefaultTest
 
     private static long violations(String expression, IDataTable table)
     {
-        RuleExecutionResult result = RuleRunner.execute(rule("CORE-ABSDEF-1", expression), table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule("CORE-ABSDEF-1", expression),
+                table);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
                 () -> expression + " must execute, got " + result.getStatusMessage());
         return result.getViolationCount();
@@ -267,13 +268,13 @@ class AbsentColumnTypeDefaultTest
     @DisplayName("empty(absent) stays TRUE at dataset level; empty(blank) stays TRUE per row")
     void emptyOverAbsentStaysTrueAndDatasetLevel()
     {
-        RuleExecutionResult absent = RuleRunner.execute(rule("CORE-ABSDEF-2", "empty(MHENDTC)"),
-                absentEnd());
+        RuleExecutionResult absent = RuleRunnerCalls
+                .execute(rule("CORE-ABSDEF-2", "empty(MHENDTC)"), absentEnd());
         assertTrue(absent.hasViolations(), "empty(<absent>) is TRUE (D34 #7)");
         assertEquals(1, absent.getViolationCount(),
                 "the absent-column fact is reported once per dataset (D111a)");
 
-        RuleExecutionResult blank = RuleRunner.execute(rule("CORE-ABSDEF-3", "empty(MHENDTC)"),
+        RuleExecutionResult blank = RuleRunnerCalls.execute(rule("CORE-ABSDEF-3", "empty(MHENDTC)"),
                 blankEnd());
         assertEquals(2, blank.getViolationCount(),
                 "a present-but-blank column keeps its per-row report (EC43 control)");

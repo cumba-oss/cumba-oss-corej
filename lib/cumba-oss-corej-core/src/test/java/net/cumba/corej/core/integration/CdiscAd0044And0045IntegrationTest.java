@@ -8,7 +8,7 @@ import java.nio.file.Path;
 import java.util.List;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.gen.WildcardExpander;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
@@ -60,7 +60,7 @@ class CdiscAd0044And0045IntegrationTest
         int sum = 0;
         for (Rule r : expanded)
         {
-            RuleExecutionResult result = RuleRunner.execute(r, table);
+            RuleExecutionResult result = RuleRunnerCalls.execute(r, table);
             sum += result.getViolationCount();
         }
         return sum;

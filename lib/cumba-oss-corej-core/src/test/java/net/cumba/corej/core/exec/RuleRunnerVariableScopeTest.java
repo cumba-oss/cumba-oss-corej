@@ -67,7 +67,7 @@ class RuleRunnerVariableScopeTest
     {
         Rule rule = ruleWithVarScope(List.of("AESTDTC"), null);
         IDataTable table = aeTable("USUBJID", "AESTDY", "AESTDTC");
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertNotEquals(RuleExecutionStatus.SKIPPED, result.getStatus(),
                 "rule must run when the All variable is present");
     }
@@ -78,7 +78,7 @@ class RuleRunnerVariableScopeTest
     {
         Rule rule = ruleWithVarScope(List.of("AESTDTC"), null);
         IDataTable table = aeTable("USUBJID", "AESTDY"); // no AESTDTC
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertEquals(RuleExecutionStatus.SKIPPED, result.getStatus(),
                 "rule must be skipped when a required All variable is absent");
         assertTrue(result.getStatusMessage().contains("AESTDTC"),
@@ -92,7 +92,7 @@ class RuleRunnerVariableScopeTest
         // --STDTC resolves to AESTDTC on AE.
         Rule rule = ruleWithVarScope(List.of("--STDTC"), null);
         IDataTable table = aeTable("USUBJID", "AESTDY", "AESTDTC");
-        RuleExecutionResult result = RuleRunner.execute(rule, table, null, "AE");
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, null, "AE");
         assertNotEquals(RuleExecutionStatus.SKIPPED, result.getStatus(),
                 "--STDTC resolves to AESTDTC, which is present");
     }
@@ -103,7 +103,7 @@ class RuleRunnerVariableScopeTest
     {
         Rule rule = ruleWithVarScope(List.of("--STDTC"), null);
         IDataTable table = aeTable("USUBJID", "AESTDY"); // no AESTDTC
-        RuleExecutionResult result = RuleRunner.execute(rule, table, null, "AE");
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, null, "AE");
         assertEquals(RuleExecutionStatus.SKIPPED, result.getStatus(),
                 "--STDTC resolves to AESTDTC, which is absent");
     }
@@ -114,7 +114,7 @@ class RuleRunnerVariableScopeTest
     {
         Rule rule = ruleWithVarScope(null, List.of("POOLID"));
         IDataTable table = aeTable("USUBJID", "AESTDY", "POOLID");
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertEquals(RuleExecutionStatus.SKIPPED, result.getStatus(),
                 "rule must be skipped when a None variable is present");
         assertTrue(result.getStatusMessage().contains("POOLID"),
@@ -131,7 +131,7 @@ class RuleRunnerVariableScopeTest
         rule.setCore(core);
         rule.setCheck(expr("var_exists(\"AESTDY\")"));
         IDataTable table = aeTable("USUBJID", "AESTDY");
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertNotEquals(RuleExecutionStatus.SKIPPED, result.getStatus(),
                 "a rule without Requirements.Variables is never skipped by the variable gate");
     }

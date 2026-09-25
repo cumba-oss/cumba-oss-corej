@@ -201,30 +201,6 @@ public class Violation
     }
 
 
-    /** Compatibility constructor for sites with row identity but no record key. */
-    public Violation(long row, Map<String, String> values, @Nullable String usubjid,
-            @Nullable String seq)
-    {
-        this(row, values, usubjid, seq, Map.of(), null, null);
-    }
-
-
-    /** Compatibility constructor for sites that resolve a record key but no level. */
-    public Violation(long row, Map<String, String> values, @Nullable String usubjid,
-            @Nullable String seq, Map<String, String> keys)
-    {
-        this(row, values, usubjid, seq, keys, null, null);
-    }
-
-
-    /** Compatibility constructor for sites that resolve a level but stamp no finding unit. */
-    public Violation(long row, Map<String, String> values, @Nullable String usubjid,
-            @Nullable String seq, Map<String, String> keys, @Nullable Severity level)
-    {
-        this(row, values, usubjid, seq, keys, level, null, null);
-    }
-
-
     /** Compatibility constructor for sites that stamp a unit but no group key (row paths). */
     public Violation(long row, Map<String, String> values, @Nullable String usubjid,
             @Nullable String seq, Map<String, String> keys, @Nullable Severity level,

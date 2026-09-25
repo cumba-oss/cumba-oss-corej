@@ -54,8 +54,8 @@ class NativeBroadcastVerdictParityTest
     private static Map<Long, Map<String, String>> findings(Rule rule, IDataTable primary,
             String domainPrefix)
     {
-        RuleExecutionResult r = RuleRunner.execute(rule, primary, NO_RESOLVER, domainPrefix, null,
-                null, null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, primary, NO_RESOLVER, domainPrefix,
+                null, null, null);
         Map<Long, Map<String, String>> out = new HashMap<>();
         for (Violation v : r.getViolations())
         {
@@ -93,7 +93,7 @@ class NativeBroadcastVerdictParityTest
         Rule rule = loadRule(VMC_EXISTS);
         IDataTable with = MockTable.of().name("AE").col("AEOCCUR", "Y").build();
 
-        RuleExecutionResult ran = RuleRunner.execute(rule, with, NO_RESOLVER, "AE", null, null,
+        RuleExecutionResult ran = RuleRunnerCalls.execute(rule, with, NO_RESOLVER, "AE", null, null,
                 null);
         assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "the broadcast path must reach dispatch and come back EXECUTED");
@@ -191,7 +191,7 @@ class NativeBroadcastVerdictParityTest
         Map<Long, Map<String, String>> fired = findings(rule, dup, "DS");
         assertEquals(1, fired.size(), "dataset sensitivity collapses to ONE violation");
 
-        RuleExecutionResult ran = RuleRunner.execute(rule, dup, NO_RESOLVER, "DS", null, null,
+        RuleExecutionResult ran = RuleRunnerCalls.execute(rule, dup, NO_RESOLVER, "DS", null, null,
                 null);
         assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "the relaxed non-row-based gate must run native");
@@ -358,7 +358,8 @@ class NativeBroadcastVerdictParityTest
         Rule rule = loadRule(RD_DS_NAME);
         IDataTable ae = MockTable.of().name("AE").col("AETERM", "x").build();
 
-        RuleExecutionResult ran = RuleRunner.execute(rule, ae, NO_RESOLVER, "AE", null, null, null);
+        RuleExecutionResult ran = RuleRunnerCalls.execute(rule, ae, NO_RESOLVER, "AE", null, null,
+                null);
         assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "the broadcast fast path must come back EXECUTED");
     }

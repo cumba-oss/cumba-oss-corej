@@ -142,7 +142,7 @@ class AbsentColumnFoldLogTest
         Rule twoLeaves = rule("CORE-LOG-1", new CheckConditionAny(
                 List.of(foldingNegative("TSVAL"), doesNotContain("TSVAL", "X"))));
 
-        List<String> lines = capture(() -> RuleRunner.execute(twoLeaves, ts()));
+        List<String> lines = capture(() -> RuleRunnerCalls.execute(twoLeaves, ts()));
 
         assertEquals(1, lines.size(), () -> "expected exactly one aggregated line, got " + lines);
         assertTrue(lines.getFirst().contains("CORE-LOG-1"), lines::toString);
@@ -162,8 +162,8 @@ class AbsentColumnFoldLogTest
 
         List<String> lines = capture(() ->
         {
-            RuleRunner.execute(twoColumns, ts());
-            RuleRunner.execute(twoColumns, ts());
+            RuleRunnerCalls.execute(twoColumns, ts());
+            RuleRunnerCalls.execute(twoColumns, ts());
         });
 
         assertEquals(2, lines.size(),
@@ -178,7 +178,7 @@ class AbsentColumnFoldLogTest
     void silentWhenNothingFolds()
     {
         Rule present = rule("CORE-LOG-3", neq("TSPARMCD", "X"));
-        assertEquals(List.of(), capture(() -> RuleRunner.execute(present, ts())));
+        assertEquals(List.of(), capture(() -> RuleRunnerCalls.execute(present, ts())));
     }
 
 
@@ -206,7 +206,7 @@ class AbsentColumnFoldLogTest
                 new CheckConditionAll(List.of(expr("var_exists(\"TSVAL\")"), neq("TSVAL", "X"))));
         assertTrue(String.valueOf(guarded.getCheckExpr()).contains("var_exists"),
                 () -> "precondition: the guard must be present — " + guarded.getCheckExpr());
-        assertEquals(List.of(), capture(() -> RuleRunner.execute(guarded, ts())),
+        assertEquals(List.of(), capture(() -> RuleRunnerCalls.execute(guarded, ts())),
                 "the guard short-circuits the leaf, so no column is ever folded");
     }
 

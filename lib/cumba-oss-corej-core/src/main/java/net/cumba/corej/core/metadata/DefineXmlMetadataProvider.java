@@ -322,9 +322,9 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
 
 
     /**
-     * ⚠ The <b>two-arg</b> form is the primary one (see
-     * {@link MetadataProvider#getRequiredVariablesForStructure(String, List)}); delegating only the
-     * one-arg convenience would silently drop the dataset's subclass.
+     * ⚠ Delegates the full form, subclass tokens included (see
+     * {@link MetadataProvider#getRequiredVariablesForStructure(String, List)}); dropping them would
+     * silently drop the dataset's subclass.
      */
     @Override
     public @Nullable List<String> getRequiredVariablesForStructure(String structureToken,

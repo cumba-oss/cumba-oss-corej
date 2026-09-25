@@ -82,7 +82,8 @@ class DomainPresenceNativeParityTest
     private static Map<Long, Map<String, String>> findings(Rule rule, IDataTable primary,
             DatasetResolver resolver)
     {
-        RuleExecutionResult r = RuleRunner.execute(rule, primary, resolver, null, null, null, null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, primary, resolver, null, null, null,
+                null);
         Map<Long, Map<String, String>> out = new HashMap<>();
         for (Violation v : r.getViolations())
         {

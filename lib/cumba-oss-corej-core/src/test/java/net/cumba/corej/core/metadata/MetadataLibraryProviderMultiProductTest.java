@@ -123,11 +123,11 @@ class MetadataLibraryProviderMultiProductTest
         // Supplement first: AE's Req set answers; the base product is NOT consulted, so its
         // Req USUBJID must not leak in (that would be the old union, resurrected).
         assertEquals(List.of("AEDECOD"), provider(supplement, base)
-                .getRequiredVariablesForStructure("OCCURRENCE DATA STRUCTURE"));
+                .getRequiredVariablesForStructure("OCCURRENCE DATA STRUCTURE", List.of()));
 
         // Base first: the opposite answer — order is the user's, not the engine's.
         assertEquals(List.of("USUBJID"), provider(base, supplement)
-                .getRequiredVariablesForStructure("OCCURRENCE DATA STRUCTURE"));
+                .getRequiredVariablesForStructure("OCCURRENCE DATA STRUCTURE", List.of()));
     }
 
 
@@ -142,12 +142,13 @@ class MetadataLibraryProviderMultiProductTest
 
         MetadataLibraryProvider p = provider(bdsOnly, base);
         // First product answers its own token...
-        assertEquals(List.of("CNSR"), p.getRequiredVariablesForStructure("BASIC DATA STRUCTURE"));
+        assertEquals(List.of("CNSR"),
+                p.getRequiredVariablesForStructure("BASIC DATA STRUCTURE", List.of()));
         // ...and the chain falls through to the later product for a token it lacks.
         assertEquals(List.of("USUBJID"),
-                p.getRequiredVariablesForStructure("OCCURRENCE DATA STRUCTURE"));
+                p.getRequiredVariablesForStructure("OCCURRENCE DATA STRUCTURE", List.of()));
         // A token no declared product defines is null — "no such structure", never empty.
-        assertNull(p.getRequiredVariablesForStructure("SUBJECT LEVEL ANALYSIS DATASET"));
+        assertNull(p.getRequiredVariablesForStructure("SUBJECT LEVEL ANALYSIS DATASET", List.of()));
     }
 
     // ------------------------------------------------------------------
@@ -161,7 +162,7 @@ class MetadataLibraryProviderMultiProductTest
         MetadataLibraryProvider p = new MetadataLibraryProvider(study(), List.of(), "adamig",
                 "1-3");
         assertFalse(p.supportsStructureKeyedVariables());
-        assertNull(p.getRequiredVariablesForStructure("OCCURRENCE DATA STRUCTURE"));
+        assertNull(p.getRequiredVariablesForStructure("OCCURRENCE DATA STRUCTURE", List.of()));
         assertEquals(List.of(), p.declaredStructureKeyedProducts());
     }
 
@@ -262,7 +263,7 @@ class MetadataLibraryProviderMultiProductTest
         try
         {
             assertEquals(List.of("AEDECOD", "CMTRT"),
-                    p.getRequiredVariablesForStructure("OCCURRENCE DATA STRUCTURE"));
+                    p.getRequiredVariablesForStructure("OCCURRENCE DATA STRUCTURE", List.of()));
         }
         finally
         {

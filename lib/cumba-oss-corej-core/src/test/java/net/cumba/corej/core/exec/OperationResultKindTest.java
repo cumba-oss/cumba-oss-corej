@@ -35,7 +35,7 @@ class OperationResultKindTest
 
     private static ResultKind observed(Operation o, IDataTable t, MetadataProvider p)
     {
-        Object v = OperationExecutor.executeOne(o, t, NO_RESOLVER, p, new HashMap<>());
+        Object v = OperationExecutorCalls.executeOne(o, t, NO_RESOLVER, p, new HashMap<>());
         if (v instanceof GroupedResult)
         {
             return ResultKind.PER_ROW;
@@ -137,7 +137,7 @@ class OperationResultKindTest
         MetadataProvider p = mock(MetadataProvider.class);
         lenient().when(p.getDatasetClass("AE", "AE")).thenReturn("EVENTS");
         assertInstanceOf(GroupedResult.class,
-                OperationExecutor.executeOne(o, t, NO_RESOLVER, p, new HashMap<>()));
+                OperationExecutorCalls.executeOne(o, t, NO_RESOLVER, p, new HashMap<>()));
         assertKindMatchesRuntime(o, t, p);
     }
 
@@ -159,8 +159,8 @@ class OperationResultKindTest
                         org.mockito.ArgumentMatchers.any()))
                 .thenReturn(List.of("USUBJID", "AETERM"));
         Operation o = op("get_parent_model_column_order");
-        Object v = OperationExecutor.executeOne(o, supp, name -> "AE".equals(name) ? ae : null, p,
-                new HashMap<>());
+        Object v = OperationExecutorCalls.executeOne(o, supp, name -> "AE".equals(name) ? ae : null,
+                p, new HashMap<>());
         assertInstanceOf(GroupedResult.class, v);
         assertEquals(ResultKind.PER_ROW, OperationExecutor.resultKind(o));
     }

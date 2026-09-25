@@ -50,8 +50,8 @@ class VarExistsEqTrueAlignmentTest
 
     private static Map<Long, Map<String, String>> findings(Rule rule, IDataTable primary)
     {
-        RuleExecutionResult r = RuleRunner.execute(rule, primary, NO_RESOLVER, "AE", null, null,
-                null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, primary, NO_RESOLVER, "AE", null,
+                null, null);
         Map<Long, Map<String, String>> out = new HashMap<>();
         for (Violation v : r.getViolations())
         {
@@ -141,8 +141,8 @@ class VarExistsEqTrueAlignmentTest
     void eqTrue_runsOnNativeBackend() throws Exception
     {
         Rule rule = loadRule("var_exists(AEOCCUR) == true");
-        RuleExecutionResult ran = RuleRunner.execute(rule, present(), NO_RESOLVER, "AE", null, null,
-                null);
+        RuleExecutionResult ran = RuleRunnerCalls.execute(rule, present(), NO_RESOLVER, "AE", null,
+                null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "var_exists == true must reach dispatch and come back EXECUTED");
     }

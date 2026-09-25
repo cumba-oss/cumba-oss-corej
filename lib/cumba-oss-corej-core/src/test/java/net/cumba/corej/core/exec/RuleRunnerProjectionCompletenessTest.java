@@ -134,7 +134,7 @@ class RuleRunnerProjectionCompletenessTest
         assertTrue(rule.getCheckExpr() != null, "precondition: rule must raise natively");
         IDataTable table = MockTable.of().name("AE").col("AETERM", "X", "Y").build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         assertEquals(1, result.getViolationCount(),
                 "status=" + result.getStatus() + " violations=" + result.getViolations());
@@ -153,7 +153,7 @@ class RuleRunnerProjectionCompletenessTest
         Rule rule = loadVmcRule("variable_name", "variable_format");
         IDataTable table = MockTable.of().name("AE").col("AETERM", "X", "Y").build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         assertEquals(1, result.getViolationCount(),
                 "status=" + result.getStatus() + " violations=" + result.getViolations());

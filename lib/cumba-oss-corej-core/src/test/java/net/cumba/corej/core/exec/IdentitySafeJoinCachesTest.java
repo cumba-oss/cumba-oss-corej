@@ -199,8 +199,8 @@ class IdentitySafeJoinCachesTest
     private static List<String> expansion(IDataTable aPrimary, MatchDataset aEntry,
             IDataTable aChild, JoinCache.@Nullable SharedIndexCache aCache)
     {
-        KeyMatchRowExpander.KeyMatchExpansion exp = KeyMatchRowExpander.expand(aPrimary,
-                List.of(aEntry), Map.of("AE", aChild)::get, "R", aCache);
+        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(aPrimary, List.of(aEntry),
+                Map.of("AE", aChild)::get, "R", aCache);
         assertNotNull(exp);
         IDataTable t = exp.table();
         JoinLookup lk = exp.lookups().get("AE");
@@ -284,14 +284,14 @@ class IdentitySafeJoinCachesTest
         DatasetResolver resolver = RealTables.inventoryOf(primary, lb);
         JoinCache.SharedIndexCache shared = new JoinCache.SharedIndexCache();
 
-        RuleExecutionResult first = RuleRunner.execute(wildcardRule("R-1"), primary, resolver,
+        RuleExecutionResult first = RuleRunnerCalls.execute(wildcardRule("R-1"), primary, resolver,
                 (String) null, null, new JoinCache(shared));
         assertEquals("d1", first.getViolations().get(0).getValues().get("LB.TRT01PN"),
                 "the fixture must actually expand the wildcard");
         assertEquals(1, shared.wildcardColumns().computeCount(),
                 "the rule must have used the RUN's wildcard cache, not a private one");
 
-        RuleRunner.execute(wildcardRule("R-2"), primary, resolver, (String) null, null,
+        RuleRunnerCalls.execute(wildcardRule("R-2"), primary, resolver, (String) null, null,
                 new JoinCache(shared));
         assertEquals(1, shared.wildcardColumns().computeCount(),
                 "a second rule of the same run must HIT the shared entry");
@@ -365,8 +365,8 @@ class IdentitySafeJoinCachesTest
             md.setKeys(USUBJID);
             md.setJoinType("left");
             IDataTable primary = MockTable.of().name("ADAE").col("USUBJID", "P1").build();
-            assertNotNull(KeyMatchRowExpander.expand(primary, List.of(md), Map.of("AE", t)::get,
-                    "R", aCache));
+            assertNotNull(
+                    ExecCalls.expand(primary, List.of(md), Map.of("AE", t)::get, "R", aCache));
             aCache.wildcardColumns().matchingColumns(t, Pattern.compile("TRT.*PN"));
             assertEquals(1, aCache.lookupIndexedTableCount());
             assertEquals(1, aCache.childMatchIndexedTableCount());

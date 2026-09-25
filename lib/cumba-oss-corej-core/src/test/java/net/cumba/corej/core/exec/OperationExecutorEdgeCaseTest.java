@@ -63,7 +63,7 @@ class OperationExecutorEdgeCaseTest
         op.setOperator("extract_metadata");
         // op.setName is NOT called
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         assertFalse(vars.containsKey("$result"));
     }
 
@@ -78,7 +78,7 @@ class OperationExecutorEdgeCaseTest
         op.setOperator("extract_metadata");
         op.setName("some_custom_field");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         // Custom metadata not available on mock → null → not stored
         assertFalse(vars.containsKey("$result"));
     }
@@ -96,7 +96,7 @@ class OperationExecutorEdgeCaseTest
         op.setOperator("distinct");
         // op.setName is NOT called
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         @SuppressWarnings("unchecked")
         List<String> result = (List<String>) vars.get("$result");
         assertNotNull(result);
@@ -116,7 +116,7 @@ class OperationExecutorEdgeCaseTest
         op.setOperator("max");
         // op.setName is NOT called
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         assertFalse(vars.containsKey("$result"));
     }
 
@@ -131,7 +131,7 @@ class OperationExecutorEdgeCaseTest
         op.setOperator("max");
         op.setName("X");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         assertEquals("def", vars.get("$result")); // string fallback returns lexicographic max
     }
 
@@ -147,7 +147,7 @@ class OperationExecutorEdgeCaseTest
         // op.setId is NOT called → id is null
         op.setOperator("variable_count");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         assertTrue(vars.isEmpty());
     }
 
@@ -158,7 +158,7 @@ class OperationExecutorEdgeCaseTest
     void testEmptyOperationsList()
     {
         IDataTable table = MockTable.of().col("X", "1").build();
-        Map<String, Object> vars = OperationExecutor.execute(List.of(), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(), table, NO_RESOLVER);
         assertTrue(vars.isEmpty());
     }
 

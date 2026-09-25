@@ -52,7 +52,7 @@ class RuleRunnerDefineItemIterationTest
             IDataTable table)
         throws Exception
     {
-        return RuleRunner.execute(roleRule(), table, _ -> null, "DM", library, null, define);
+        return RuleRunnerCalls.execute(roleRule(), table, _ -> null, "DM", library, null, define);
     }
 
 

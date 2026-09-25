@@ -159,8 +159,8 @@ class AbsentDatasetSkipCrossStandardTest
     private static RuleExecutionResult run(Rule rule, IDataTable primary, DatasetResolver resolver,
             Set<String> reported, Set<String> crossStandard)
     {
-        return RuleRunner.execute(rule, primary, resolver, primary.getMetaData().getName(), null,
-                null, null, Integer.MAX_VALUE, null, null, null, reported, crossStandard);
+        return RuleRunnerCalls.execute(rule, primary, resolver, primary.getMetaData().getName(),
+                null, null, null, Integer.MAX_VALUE, null, null, null, reported, crossStandard);
     }
 
     // ---------------------------------------------------- the headline: SKIPPED, never a PASS
@@ -232,8 +232,8 @@ class AbsentDatasetSkipCrossStandardTest
         // pre-Fix #218 one, whatever the resolver says.
         Rule rule = load(AD0204);
         IDataTable adsl = adsl();
-        AbsentDatasetSkip.Decision d = AbsentDatasetSkip.decide(rule,
-                resolverOf(Map.of("ADSL", adsl)), Set.of(), Set.of(), "ADSL", "ADSL");
+        AbsentDatasetSkip.Decision d = ExecCalls.decide(rule, resolverOf(Map.of("ADSL", adsl)),
+                Set.of(), Set.of(), "ADSL", "ADSL");
         assertFalse(d.applies());
         assertEquals(AbsentDatasetSkip.Decision.NONE, d);
     }
@@ -353,8 +353,8 @@ class AbsentDatasetSkipCrossStandardTest
     {
         Rule rule = load(BOTH_KINDS);
         IDataTable adsl = adsl();
-        AbsentDatasetSkip.Decision d = AbsentDatasetSkip.decide(rule,
-                resolverOf(Map.of("ADSL", adsl)), Set.of("TS"), Set.of("DM"), "ADSL", "ADSL");
+        AbsentDatasetSkip.Decision d = ExecCalls.decide(rule, resolverOf(Map.of("ADSL", adsl)),
+                Set.of("TS"), Set.of("DM"), "ADSL", "ADSL");
         assertTrue(d.collapsed());
         // ⚠ They are DIFFERENT facts about the run: TS is a property of the DATA (the submission
         // omitted a dataset the run reports on), DM of the INVOCATION (a whole standard was not
@@ -374,8 +374,8 @@ class AbsentDatasetSkipCrossStandardTest
         // wins and the cross-standard clause must not appear.
         Rule rule = load(AD0204);
         IDataTable adsl = adsl();
-        AbsentDatasetSkip.Decision d = AbsentDatasetSkip.decide(rule,
-                resolverOf(Map.of("ADSL", adsl)), Set.of("DM"), Set.of("DM"), "ADSL", "ADSL");
+        AbsentDatasetSkip.Decision d = ExecCalls.decide(rule, resolverOf(Map.of("ADSL", adsl)),
+                Set.of("DM"), Set.of("DM"), "ADSL", "ADSL");
         assertTrue(d.collapsed());
         assertEquals(List.of("DM"), d.suppressedDatasets());
         assertEquals(List.of(), d.unsuppliedDatasets());
@@ -393,8 +393,8 @@ class AbsentDatasetSkipCrossStandardTest
         {
             Rule rule = load(AD0204.replace("CDISC-AD0204", id));
             IDataTable adsl = adsl();
-            AbsentDatasetSkip.Decision d = AbsentDatasetSkip.decide(rule,
-                    resolverOf(Map.of("ADSL", adsl)), Set.of(), Set.of("DM"), "ADSL", "ADSL");
+            AbsentDatasetSkip.Decision d = ExecCalls.decide(rule, resolverOf(Map.of("ADSL", adsl)),
+                    Set.of(), Set.of("DM"), "ADSL", "ADSL");
             assertFalse(d.applies(), id + " must never be silenced");
         }
     }
@@ -406,8 +406,8 @@ class AbsentDatasetSkipCrossStandardTest
         // A rule executing ON DM cannot declare DM absent, whatever the resolver or the catalogue
         // says — otherwise an SDTM run of the same rule would silence itself.
         Rule rule = load(AD0204);
-        AbsentDatasetSkip.Decision d = AbsentDatasetSkip.decide(rule, _ -> null, Set.of(),
-                Set.of("DM"), "DM", "DM");
+        AbsentDatasetSkip.Decision d = ExecCalls.decide(rule, _ -> null, Set.of(), Set.of("DM"),
+                "DM", "DM");
         assertFalse(d.applies());
     }
 

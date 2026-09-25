@@ -59,7 +59,7 @@ class OperationExecutorSurvivorPinsTest
         }
         Operation op = makeOp("$f", "extract_metadata");
         op.setName("filename");
-        return OperationExecutor.execute(List.of(op), mt.build(), NO_RESOLVER).get("$f");
+        return OperationExecutorCalls.execute(List.of(op), mt.build(), NO_RESOLVER).get("$f");
     }
 
 
@@ -104,7 +104,7 @@ class OperationExecutorSurvivorPinsTest
         op.setName("TSVCDREF");
         op.setVersion("TSVCDVER");
         op.setCtAttribute("Term CCODE");
-        return OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p).get("$attrs");
+        return OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER, p).get("$attrs");
     }
 
 
@@ -182,7 +182,7 @@ class OperationExecutorSurvivorPinsTest
         Operation op = makeOp("$q", operator);
         op.setDomain("SUPPPC");
         op.setKeyValue("PCCALCN");
-        return OperationExecutor
+        return OperationExecutorCalls
                 .execute(List.of(op), pc(), n -> "SUPPPC".equals(n) ? suppTable : null).get("$q");
     }
 
@@ -298,7 +298,7 @@ class OperationExecutorSurvivorPinsTest
         op.setName("AVAL");
         op.setGroup(List.of("USUBJID"));
         op.setFilter(filter);
-        return OperationExecutor.execute(List.of(op), table, NO_RESOLVER).get("$max");
+        return OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER).get("$max");
     }
 
 
@@ -374,7 +374,7 @@ class OperationExecutorSurvivorPinsTest
             @Nullable RecordingProvider provider, DatasetResolver resolver)
     {
         Operation op = makeOp("$model", "get_parent_model_column_order");
-        return OperationExecutor.execute(List.of(op), table, resolver, provider).get("$model");
+        return OperationExecutorCalls.execute(List.of(op), table, resolver, provider).get("$model");
     }
 
 

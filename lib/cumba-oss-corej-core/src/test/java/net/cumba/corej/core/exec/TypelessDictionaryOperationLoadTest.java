@@ -67,7 +67,7 @@ class TypelessDictionaryOperationLoadTest
         assertTrue(rule.getLoadError().contains("installing dictionaries cannot help"),
                 rule.getLoadError());
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table());
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table());
         assertEquals(RuleExecutionStatus.ERROR, result.getStatus(),
                 "ERROR through the loadError sentinel — not a SKIP, and never a silent pass");
         assertEquals(rule.getLoadError(), result.getStatusMessage());
@@ -121,7 +121,7 @@ class TypelessDictionaryOperationLoadTest
         assertTrue(rule.getLoadError().contains(DEFECTIVE), rule.getLoadError());
         assertTrue(rule.getLoadError().contains("inline operation"), rule.getLoadError());
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table());
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table());
         assertEquals(RuleExecutionStatus.ERROR, result.getStatus());
     }
 

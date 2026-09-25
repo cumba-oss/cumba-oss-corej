@@ -255,7 +255,7 @@ class ViolationLocationCheckTest
     @Test
     void toExpectations_valueBased_emitsRowAndIdentityPins()
     {
-        Violation v = new Violation(2, Map.of(), "002", "1");
+        Violation v = new Violation(2, Map.of(), "002", "1", Map.of(), null, null);
         Expectations e = ViolationLocationCheck.toExpectations(List.of(v), 1, false, true, "AE");
         assertEquals(1, e.count());
         assertEquals(1, e.ats().size());
@@ -293,7 +293,8 @@ class ViolationLocationCheckTest
     @Test
     void toExpectations_valueBased_carriesDollarPinsBesideTheIdentityPins()
     {
-        Violation v = new Violation(2, Map.of("$dataset_size", "6000000000"), "002", "1");
+        Violation v = new Violation(2, Map.of("$dataset_size", "6000000000"), "002", "1", Map.of(),
+                null, null);
         Expectations e = ViolationLocationCheck.toExpectations(List.of(v), 1, false, true, "AE");
         assertEquals(1, e.ats().size());
         ExpectedViolation ev = e.ats().get(0);
@@ -313,7 +314,8 @@ class ViolationLocationCheckTest
     void toExpectations_dollarPin_roundTripsThroughChecker()
     {
         RuleTestScenario base = scn("#note plain");
-        Violation v = new Violation(2, Map.of("$dataset_size", "6000000000"), "002", "1");
+        Violation v = new Violation(2, Map.of("$dataset_size", "6000000000"), "002", "1", Map.of(),
+                null, null);
         Expectations e = ViolationLocationCheck.toExpectations(List.of(v), 1, false, true, "AE");
         RuleTestScenario withExp = base.toBuilder().expectViolationCount(e.count())
                 .clearExpectedViolations().expectedViolations(e.ats()).build();
@@ -321,7 +323,7 @@ class ViolationLocationCheckTest
                 ViolationLocationCheck.verify(withExp, List.of(v), 1, false, primary(base)).pass());
 
         // The teeth: the same violation without the operation result must NOT satisfy the pin.
-        Violation noPayload = new Violation(2, Map.of(), "002", "1");
+        Violation noPayload = new Violation(2, Map.of(), "002", "1", Map.of(), null, null);
         assertFalse(
                 ViolationLocationCheck.verify(withExp, List.of(noPayload), 1, false, primary(base))
                         .pass(),
@@ -358,7 +360,7 @@ class ViolationLocationCheckTest
     {
         // Emitter output, fed back as a scenario's expectations, verifies as a pass.
         RuleTestScenario base = scn("#note plain");
-        Violation v = new Violation(2, Map.of(), "002", "1");
+        Violation v = new Violation(2, Map.of(), "002", "1", Map.of(), null, null);
         Expectations e = ViolationLocationCheck.toExpectations(List.of(v), 1, false, true, "AE");
         RuleTestScenario withExp = base.toBuilder().expectViolationCount(e.count())
                 .clearExpectedViolations().expectedViolations(e.ats()).build();

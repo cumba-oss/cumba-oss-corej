@@ -233,7 +233,7 @@ class MetadataLibraryProviderSubclassGovernanceTest
         // old union, and never the interface's "cannot answer" null.
         MetadataLibraryProvider p = occdsProvider();
         assertEquals(p.getRequiredVariablesForStructure(OCCDS_TOKEN, List.of()),
-                p.getRequiredVariablesForStructure(OCCDS_TOKEN));
+                p.getRequiredVariablesForStructure(OCCDS_TOKEN, List.of()));
     }
 
 

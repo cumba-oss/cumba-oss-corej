@@ -83,7 +83,7 @@ class ScopeMatcherRequirementsTest
 
     private static @Nullable String describe(Rule rule, DataTableMeta meta)
     {
-        return ScopeMatcher.describeVariablesMismatch(rule, meta, null, null);
+        return ScopeMatcherCalls.describeVariablesMismatch(rule, meta, null, null);
     }
 
     @Nested
@@ -172,9 +172,9 @@ class ScopeMatcherRequirementsTest
             Rule any = ruleWithRequirement(null, List.of("--ENRL", "--DUR"), null);
             Rule all = ruleWithRequirement(List.of("--DUR"), null, null);
             DataTableMeta te = meta("TE", "TEDUR");
-            assertNull(ScopeMatcher.describeVariablesMismatch(any, te, "TE", null));
-            assertNull(ScopeMatcher.describeVariablesMismatch(all, te, "TE", null));
-            assertNotNull(ScopeMatcher.describeVariablesMismatch(
+            assertNull(ScopeMatcherCalls.describeVariablesMismatch(any, te, "TE", null));
+            assertNull(ScopeMatcherCalls.describeVariablesMismatch(all, te, "TE", null));
+            assertNotNull(ScopeMatcherCalls.describeVariablesMismatch(
                     ruleWithRequirement(null, List.of("--ENRL", "--XXX"), null), te, "TE", null));
         }
     }
@@ -216,8 +216,8 @@ class ScopeMatcherRequirementsTest
             Rule rule = ruleWithRequirement(null, List.of("DM.ARM", "TEDUR"), null);
             ScopeVariableSource foreign = sourceOf(Map.of("TE", te), te);
             assertNotNull(foreign);
-            String reason = ScopeMatcher.describeVariablesMismatch(rule, te.getMetaData(), "TE",
-                    foreign);
+            String reason = ScopeMatcherCalls.describeVariablesMismatch(rule, te.getMetaData(),
+                    "TE", foreign);
             assertNotNull(reason,
                     "an unavailable foreign dataset is a MISMATCH in describeIncludeEntry, which is"
                             + " exactly the 'counts as absent' behaviour a disjunction needs");
@@ -234,8 +234,8 @@ class ScopeMatcherRequirementsTest
             Rule rule = ruleWithRequirement(null, List.of("DM.ARM", "TEDUR"), null);
             ScopeVariableSource foreign = sourceOf(Map.of("TE", te, "DM", dm), te);
             assertNotNull(foreign);
-            assertNull(
-                    ScopeMatcher.describeVariablesMismatch(rule, te.getMetaData(), "TE", foreign));
+            assertNull(ScopeMatcherCalls.describeVariablesMismatch(rule, te.getMetaData(), "TE",
+                    foreign));
         }
 
 

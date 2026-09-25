@@ -69,11 +69,11 @@ class LeafScopeDispatchTest
         Rule r = load("MIX1", "ds_exists(\"EX\") and num(EXDOSE) > 0", "");
         assertNull(r.getLoadError());
         assertEquals(Domain.ROW, r.getEvaluationDomain());
-        RuleExecutionResult res = RuleRunner.execute(r, ex(), with(ex()));
+        RuleExecutionResult res = RuleRunnerCalls.execute(r, ex(), with(ex()));
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
         assertEquals(List.of(0L, 2L), res.getViolations().stream().map(Violation::getRow).toList());
         // The guard is a study fact: EX absent from the submission ⇒ nothing fires.
-        assertEquals(0, RuleRunner.execute(r, ex(), _ -> null).getViolationCount());
+        assertEquals(0, RuleRunnerCalls.execute(r, ex(), _ -> null).getViolationCount());
     }
 
 
@@ -85,7 +85,7 @@ class LeafScopeDispatchTest
                 "");
         assertNull(r.getLoadError());
         assertEquals(Domain.CELL, r.getEvaluationDomain());
-        RuleExecutionResult res = RuleRunner.execute(r, ex(), with(ex()));
+        RuleExecutionResult res = RuleRunnerCalls.execute(r, ex(), with(ex()));
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
         // two labelled columns × the non-empty cells: EXDOSE 3 rows, EXTRT rows 0 and 2
         assertEquals(5, res.getViolationCount());
@@ -99,10 +99,10 @@ class LeafScopeDispatchTest
         assertNull(r.getLoadError());
         assertEquals(Domain.DATASET, r.getEvaluationDomain());
         IDataTable suppae = MockTable.of().name("SUPPAE").col("QNAM", "X").build();
-        RuleExecutionResult both = RuleRunner.execute(r, ex(), with(ex(), suppae));
+        RuleExecutionResult both = RuleRunnerCalls.execute(r, ex(), with(ex(), suppae));
         assertEquals(1, both.getViolationCount(), "both facts hold ⇒ one dataset-level finding");
         assertEquals(0L, both.getViolations().getFirst().getRow());
-        assertEquals(0, RuleRunner.execute(r, ex(), with(ex())).getViolationCount(),
+        assertEquals(0, RuleRunnerCalls.execute(r, ex(), with(ex())).getViolationCount(),
                 "SUPPAE absent ⇒ nothing fires");
     }
 
@@ -115,14 +115,14 @@ class LeafScopeDispatchTest
         String check = "var_label(\"DATA\") != \"\"";
         Rule record = load("V-REC", check, "\"Sensitivity\":\"Record\",");
         assertEquals(Domain.VARIABLE, record.getEvaluationDomain());
-        RuleExecutionResult perVariable = RuleRunner.execute(record, ex(), with(ex()));
+        RuleExecutionResult perVariable = RuleRunnerCalls.execute(record, ex(), with(ex()));
         assertEquals(2, perVariable.getViolationCount(), "one finding per labelled variable");
         assertEquals(List.of(0L, 1L),
                 perVariable.getViolations().stream().map(Violation::getRow).toList(),
                 "violationRow is the column index on the per-variable path");
 
         Rule dataset = load("V-DS", check, "\"Sensitivity\":\"Dataset\",");
-        RuleExecutionResult collapsed = RuleRunner.execute(dataset, ex(), with(ex()));
+        RuleExecutionResult collapsed = RuleRunnerCalls.execute(dataset, ex(), with(ex()));
         assertEquals(1, collapsed.getViolationCount(), "Dataset collapses to the first variable");
         assertEquals(0L, collapsed.getViolations().getFirst().getRow());
     }
@@ -134,10 +134,10 @@ class LeafScopeDispatchTest
         // num(EXDOSE): the Char fixture's numeric read, per R3 (see MIX1 above).
         Rule record = load("R-REC", "num(EXDOSE) >= 1", "\"Sensitivity\":\"Record\",");
         assertEquals(Domain.ROW, record.getEvaluationDomain());
-        assertEquals(2, RuleRunner.execute(record, ex(), with(ex())).getViolationCount());
+        assertEquals(2, RuleRunnerCalls.execute(record, ex(), with(ex())).getViolationCount());
 
         Rule dataset = load("R-DS", "num(EXDOSE) >= 1", "\"Sensitivity\":\"Dataset\",");
-        RuleExecutionResult collapsed = RuleRunner.execute(dataset, ex(), with(ex()));
+        RuleExecutionResult collapsed = RuleRunnerCalls.execute(dataset, ex(), with(ex()));
         assertEquals(1, collapsed.getViolationCount());
         assertEquals(0L, collapsed.getViolations().getFirst().getRow(), "the first firing row");
     }
@@ -151,10 +151,10 @@ class LeafScopeDispatchTest
         String check = "var_label(varname(), \"DATA\") != \"\" and value() != \"\"";
         Rule record = load("C-REC", check, "\"Sensitivity\":\"Record\",");
         assertEquals(Domain.CELL, record.getEvaluationDomain());
-        assertEquals(5, RuleRunner.execute(record, ex(), with(ex())).getViolationCount());
+        assertEquals(5, RuleRunnerCalls.execute(record, ex(), with(ex())).getViolationCount());
 
         Rule dataset = load("C-DS", check, "\"Sensitivity\":\"Dataset\",");
-        RuleExecutionResult collapsed = RuleRunner.execute(dataset, ex(), with(ex()));
+        RuleExecutionResult collapsed = RuleRunnerCalls.execute(dataset, ex(), with(ex()));
         assertEquals(1, collapsed.getViolationCount(), "one (variable, row) point");
         assertEquals("EXDOSE",
                 collapsed.getViolations().getFirst().getValues().get("variable_name"));
@@ -199,13 +199,13 @@ class LeafScopeDispatchTest
         // Data universe: every cursor variable is a column ⇒ nothing fires.
         Rule data = load("U-DATA", check, "\"Sensitivity\":\"Record\",");
         assertEquals(Domain.VARIABLE, data.getEvaluationDomain());
-        assertEquals(0, RuleRunner.execute(data, ex(), with(ex()), "EX", null, null, define)
+        assertEquals(0, RuleRunnerCalls.execute(data, ex(), with(ex()), "EX", null, null, define)
                 .getViolationCount());
         // Define universe: EXDOSU is declared but absent from the data ⇒ the discriminator fires
         // for it and only it.
         Rule def = load("U-DEF", check,
                 "\"Sensitivity\":\"Record\",\"Variable_Universe\":\"Define\",");
-        RuleExecutionResult res = RuleRunner.execute(def, ex(), with(ex()), "EX", null, null,
+        RuleExecutionResult res = RuleRunnerCalls.execute(def, ex(), with(ex()), "EX", null, null,
                 define);
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
         assertEquals(1, res.getViolationCount());
@@ -214,11 +214,11 @@ class LeafScopeDispatchTest
         Rule noProvider = load("U-DEF2", "var_label(\"DEFINE\") != \"\"",
                 "\"Variable_Universe\":\"Define\",");
         assertEquals(RuleExecutionStatus.SKIPPED,
-                RuleRunner.execute(noProvider, ex(), with(ex())).getStatus());
+                RuleRunnerCalls.execute(noProvider, ex(), with(ex())).getStatus());
         // ... even when no leaf reads the DEFINE level (the discriminator reads DATA only): the
         // universe itself needs the provider, and must never fall back to the data columns
         // (review finding 4, 2026-08-22).
-        RuleExecutionResult noDef = RuleRunner.execute(def, ex(), with(ex()), "EX", null, null,
+        RuleExecutionResult noDef = RuleRunnerCalls.execute(def, ex(), with(ex()), "EX", null, null,
                 (MetadataProvider) null);
         assertEquals(RuleExecutionStatus.SKIPPED, noDef.getStatus(),
                 () -> noDef.getStatusMessage() + " / " + noDef.getViolations());

@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
@@ -89,7 +89,7 @@ class GroupFindingKeyTest
                 "X", "HEADACHE", "RASH", "Y"
         });
         Rule rule = fatalRule();
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertEquals(2, result.getViolations().size(), "one violation per failing group");
         net.cumba.datatable.report.ValidationReport report = new ValidationReportBuilder()
                 .add("AE", "ae.xpt", rule, result).build();
@@ -156,7 +156,7 @@ class GroupFindingKeyTest
         });
         Rule rule = fatalRule();
         rule.setGroupingVariables(List.of("ZZGRP"));
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         net.cumba.datatable.report.ValidationReport report = new ValidationReportBuilder()
                 .add("AE", "ae.xpt", rule, result).build();
         Map<String, Object> v2 = new ReportAssembler().report(report).rules(List.of(rule))

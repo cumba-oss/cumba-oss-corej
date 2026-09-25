@@ -93,7 +93,8 @@ class OperationExecutorMoreCoverageTest
         IDataTable table = MockTable.of().col("X", "1").name("DM").build();
 
         Operation op = makeOp("$req", "required_variables");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, null);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                null);
 
         Object sentinel = vars.get("$req");
         assertNotNull(sentinel);
@@ -111,8 +112,8 @@ class OperationExecutorMoreCoverageTest
         op.setId("$x");
         op.setOperator("not_a_real_operator");
 
-        Object result = OperationExecutor.executeOne(op, table, NO_RESOLVER, null, new HashMap<>(),
-                "RULE-XYZ");
+        Object result = OperationExecutorCalls.executeOne(op, table, NO_RESOLVER, null,
+                new HashMap<>(), "RULE-XYZ");
         assertNull(result);
     }
 
@@ -127,7 +128,8 @@ class OperationExecutorMoreCoverageTest
         op.setOperator("nope");
 
         // Two-arg overload (legacy) — covers the wrapper line that defaults ruleId to null.
-        Object result = OperationExecutor.executeOne(op, table, NO_RESOLVER, null, new HashMap<>());
+        Object result = OperationExecutorCalls.executeOne(op, table, NO_RESOLVER, null,
+                new HashMap<>());
         assertNull(result);
     }
 
@@ -144,7 +146,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$lit", "constant");
         op.setName("SOME-LITERAL");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         assertEquals("SOME-LITERAL", vars.get("$lit"));
     }
 
@@ -160,7 +162,7 @@ class OperationExecutorMoreCoverageTest
                 .col("AESEQ", "1").build();
 
         Operation op = makeOp("$cols", "get_column_order_from_dataset");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         @SuppressWarnings("unchecked")
         List<String> cols = (List<String>) vars.get("$cols");
@@ -200,7 +202,7 @@ class OperationExecutorMoreCoverageTest
         };
 
         Operation op = makeOp("$names", "dataset_names");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, inv);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, inv);
 
         @SuppressWarnings("unchecked")
         List<String> result = (List<String>) vars.get("$names");
@@ -214,7 +216,7 @@ class OperationExecutorMoreCoverageTest
         IDataTable table = MockTable.of().col("X", "1").build();
 
         Operation op = makeOp("$domains", "study_domains");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         @SuppressWarnings("unchecked")
         List<String> result = (List<String>) vars.get("$domains");
@@ -258,7 +260,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$counts", "variable_value_count");
         op.setName("USUBJID");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), ae, inv);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, inv);
 
         @SuppressWarnings("unchecked")
         Map<String, Long> counts = (Map<String, Long>) vars.get("$counts");
@@ -279,7 +281,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$counts", "variable_value_count");
         op.setName("X");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         @SuppressWarnings("unchecked")
         Map<String, Long> counts = (Map<String, Long>) vars.get("$counts");
@@ -302,7 +304,7 @@ class OperationExecutorMoreCoverageTest
         op.setId("$counts");
         op.setOperator("variable_value_count");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         @SuppressWarnings("unchecked")
         Map<String, Long> counts = (Map<String, Long>) vars.get("$counts");
         assertNotNull(counts);
@@ -318,7 +320,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$counts", "variable_value_count");
         op.setName("NOPE");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         @SuppressWarnings("unchecked")
         Map<String, Long> counts = (Map<String, Long>) vars.get("$counts");
         assertNotNull(counts);
@@ -450,7 +452,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$counts", "variable_value_count");
         op.setOriginalName("--TESTCD");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), ae,
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae,
                 inventoryOf("AE", ae, "LB", lb));
         @SuppressWarnings("unchecked")
         Map<String, Long> counts = (Map<String, Long>) vars.get("$counts");
@@ -513,7 +515,7 @@ class OperationExecutorMoreCoverageTest
                 break;
             }
         }
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), primary, inv);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), primary, inv);
         @SuppressWarnings("unchecked")
         Map<String, Long> counts = (Map<String, Long>) vars.get("$counts");
         assertNotNull(counts);
@@ -569,7 +571,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$cnt", "variable_count");
         op.setNamePattern("AESE.+");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         assertEquals(3L, vars.get("$cnt"));
     }
 
@@ -582,7 +584,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$cnt", "variable_count");
         op.setNamePattern("[unbalanced");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         assertEquals(0L, vars.get("$cnt"));
     }
 
@@ -597,7 +599,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$cnt", "variable_count");
         op.setNamePattern("");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         assertEquals(2L, vars.get("$cnt"));
     }
 
@@ -622,7 +624,8 @@ class OperationExecutorMoreCoverageTest
         Operation op2 = makeOp("$count", "record_count");
         op2.setGroup(List.of("$grouping"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op1, op2), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op1, op2), table,
+                NO_RESOLVER);
 
         // op2 group becomes ["USUBJID"] (string scalar branch), then grouped record_count runs.
         assertInstanceOf(GroupedResult.class, vars.get("$count"));
@@ -643,7 +646,8 @@ class OperationExecutorMoreCoverageTest
         Operation op2 = makeOp("$rcount", "record_count");
         op2.setGroup(List.of("$N"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op1, op2), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op1, op2), table,
+                NO_RESOLVER);
 
         // op1 returns a Long → expansion keeps "$N" as-is → grouping fails → null → key absent.
         assertFalse(vars.containsKey("$rcount"));
@@ -661,7 +665,7 @@ class OperationExecutorMoreCoverageTest
         group.add("USUBJID");
         op.setGroup(group);
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         assertInstanceOf(GroupedResult.class, vars.get("$count"));
     }
 
@@ -674,7 +678,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$count", "record_count");
         op.setGroup(List.of("USUBJID")); // no $-refs anywhere
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         assertInstanceOf(GroupedResult.class, vars.get("$count"));
     }
 
@@ -784,7 +788,7 @@ class OperationExecutorMoreCoverageTest
         op.setName("VAL");
         op.setGroup(List.of("USUBJID"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         GroupedResult gr = (GroupedResult) vars.get("$mixed");
         assertNotNull(gr);
         assertEquals(true, gr.results().get("S01"));
@@ -803,7 +807,7 @@ class OperationExecutorMoreCoverageTest
         op.setOperator("has_mixed_emptiness_within_group");
         op.setGroup(List.of("USUBJID"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         assertFalse(vars.containsKey("$mixed"));
     }
 
@@ -823,7 +827,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$mixed", "has_mixed_emptiness_within_group");
         op.setName("VAL"); // no group set
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         GroupedResult gr = (GroupedResult) vars.get("$mixed");
         assertNotNull(gr);
         assertEquals(List.of(), gr.groupColumns());
@@ -844,7 +848,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$mixed", "has_mixed_emptiness_within_group");
         op.setName("VAL"); // no group set
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         GroupedResult gr = (GroupedResult) vars.get("$mixed");
         assertNotNull(gr);
         assertEquals(List.of(true), List.copyOf(gr.results().values()));
@@ -866,7 +870,7 @@ class OperationExecutorMoreCoverageTest
         op.setName("NOPE");
         op.setGroup(List.of("USUBJID"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         GroupedResult gr = (GroupedResult) vars.get("$mixed");
         assertNotNull(gr);
         assertEquals(List.of(false, false), List.copyOf(gr.results().values()));
@@ -886,7 +890,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$mixed", "has_mixed_emptiness_within_group");
         op.setGroup(List.of("USUBJID"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         assertFalse(vars.containsKey("$mixed"));
     }
 
@@ -915,7 +919,7 @@ class OperationExecutorMoreCoverageTest
         op.setGroup(List.of("USUBJID"));
         // No qualifier ⇒ every row scanned (today's behavior): each group is populated-then-empty.
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         GroupedResult gr = (GroupedResult) vars.get("$mixed");
         assertNotNull(gr);
         assertEquals(true, gr.results().get("S01"));
@@ -934,7 +938,7 @@ class OperationExecutorMoreCoverageTest
         op.setGroup(List.of("USUBJID"));
         op.setQualifyingAnyPopulated(List.of("BASE", "BASEC"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         GroupedResult gr = (GroupedResult) vars.get("$mixed");
         assertNotNull(gr);
         // S01: only the BASE="x" row qualifies (VAL="a") ⇒ no unpopulated survivor ⇒ not mixed.
@@ -959,7 +963,7 @@ class OperationExecutorMoreCoverageTest
         op.setGroup(List.of("USUBJID"));
         op.setQualifyingAnyPopulated(List.of("BASE"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         GroupedResult gr = (GroupedResult) vars.get("$mixed");
         assertNotNull(gr);
         assertEquals(false, gr.results().get("S01"));
@@ -987,7 +991,7 @@ class OperationExecutorMoreCoverageTest
         op.setName("IDVAR");
         op.setValueIsReference(Boolean.TRUE);
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), supp, resolver);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), supp, resolver);
         GroupedResult gr = (GroupedResult) vars.get("$dvn");
         assertNotNull(gr);
         assertEquals(List.of("RDOMAIN"), gr.groupColumns());
@@ -1014,7 +1018,7 @@ class OperationExecutorMoreCoverageTest
         op.setName("IDVAR");
         op.setValueIsReference(Boolean.TRUE);
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         assertFalse(vars.containsKey("$dvn"));
     }
 
@@ -1035,7 +1039,7 @@ class OperationExecutorMoreCoverageTest
         DatasetResolver resolver = name -> "AE".equals(name) ? ae : null;
         IDataTable base = MockTable.of().col("X", "1").name("DM").build();
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), base, resolver);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), base, resolver);
         Object result = vars.get("$meta");
         assertNotNull(result);
         assertInstanceOf(VariableMetadataResult.class, result);
@@ -1055,7 +1059,7 @@ class OperationExecutorMoreCoverageTest
         op.setDomain("*");
         op.setName("label");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), adae,
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), adae,
                 inventory(Map.of("ADAE", adae, "AE", ae)));
         assertTrue(vars.containsKey("$sdtm_label"));
         assertInstanceOf(VariableMetadataResult.class, vars.get("$sdtm_label"));
@@ -1077,7 +1081,7 @@ class OperationExecutorMoreCoverageTest
         op.setDomain("*");
         op.setName("data_type");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), adae,
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), adae,
                 inventory(Map.of("ADAE", adae, "AE", ae, "ADSL", adsl)));
         VariableMetadataResult vmr = (VariableMetadataResult) vars.get("$sdtm_type");
         assertEquals("Num", vmr.getForVariable("SHARED")); // AE (shortest) wins, not ADSL
@@ -1098,7 +1102,7 @@ class OperationExecutorMoreCoverageTest
         op.setDomain("*");
         op.setName("data_type");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), adae,
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), adae,
                 inventory(Map.of("ADAE", adae, "AE", ae)));
         VariableMetadataResult vmr = (VariableMetadataResult) vars.get("$sdtm_type");
         assertEquals("Num", vmr.getForVariable("SHARED")); // AE wins; ADAE (primary) skipped
@@ -1143,7 +1147,7 @@ class OperationExecutorMoreCoverageTest
         filter.put("QNAM", "RACE&");
         op.setFilter(filter);
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), supp, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), supp, NO_RESOLVER);
         // All five rows start with "RACE" prefix: RACE, RACE1, RACE2, RACEX (not AGE).
         assertEquals(4L, vars.get("$cnt"));
     }
@@ -1157,7 +1161,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$cnt", "record_count");
         op.setFilter(Map.of("NOPE", "anything"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         assertEquals(0L, vars.get("$cnt"));
     }
 
@@ -1170,7 +1174,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$cnt", "record_count");
         op.setFilter(Map.of("VAL", "AE"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         assertEquals(2L, vars.get("$cnt"));
     }
 
@@ -1289,7 +1293,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$dy", "dy");
         op.setName("AESTDTC");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), ae, resolver);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, resolver);
         GroupedResult gr = (GroupedResult) vars.get("$dy");
         assertNotNull(gr);
         // Group cols default to [USUBJID, AESTDTC] because name was provided.
@@ -1315,7 +1319,7 @@ class OperationExecutorMoreCoverageTest
         op.setName("AESTDTC");
         op.setReference("RFXSTDTC");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), ae, resolver);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, resolver);
         GroupedResult gr = (GroupedResult) vars.get("$dy");
         assertNotNull(gr);
         assertEquals(1, gr.results().size());
@@ -1338,7 +1342,7 @@ class OperationExecutorMoreCoverageTest
         op.setName("AESTDTC");
         // No reference set → RFSTDTC (2024-01-05): 2024-01-10 − 2024-01-05 = 5, +1 = 6.
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), ae, resolver);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, resolver);
         GroupedResult gr = (GroupedResult) vars.get("$dy");
         assertNotNull(gr);
         assertEquals(6L, gr.results().values().iterator().next());
@@ -1356,7 +1360,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = new Operation();
         op.setId("$d");
         op.setOperator(operator);
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         assertFalse(vars.containsKey("$d"));
     }
 
@@ -1368,7 +1372,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$dy", "dy");
         op.setName("AESTDTC"); // not in dataset
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), ae, _ -> null);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, _ -> null);
         assertFalse(vars.containsKey("$dy"));
     }
 
@@ -1382,7 +1386,7 @@ class OperationExecutorMoreCoverageTest
 
         // DM resolver returns null → eval skips
         DatasetResolver resolver = _ -> null;
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), ae, resolver);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, resolver);
         assertFalse(vars.containsKey("$dy"));
     }
 
@@ -1400,7 +1404,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$dy", "dy");
         op.setName("AESTDTC");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), ae, resolver);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, resolver);
         GroupedResult gr = (GroupedResult) vars.get("$dy");
         assertNotNull(gr);
         // One result (for the valid date row); the short string is skipped.
@@ -1424,7 +1428,7 @@ class OperationExecutorMoreCoverageTest
         op.setName("AESTDTC");
         op.setGroup(List.of("STUDYID", "USUBJID")); // explicit group
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), ae, resolver);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, resolver);
         GroupedResult gr = (GroupedResult) vars.get("$dy");
         assertNotNull(gr);
         assertEquals(List.of("STUDYID", "USUBJID"), gr.groupColumns());
@@ -1445,7 +1449,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$d", "max_date");
         op.setName("NOPE");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         assertFalse(vars.containsKey("$d"));
     }
 
@@ -1458,7 +1462,7 @@ class OperationExecutorMoreCoverageTest
         op.setName("MISSING");
         op.setGroup(List.of("USUBJID"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         assertFalse(vars.containsKey("$d"));
     }
 
@@ -1472,7 +1476,7 @@ class OperationExecutorMoreCoverageTest
         op.setOperator("max");
         op.setGroup(List.of("USUBJID"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         assertFalse(vars.containsKey("$m"));
     }
 
@@ -1485,7 +1489,7 @@ class OperationExecutorMoreCoverageTest
         op.setName("NOPE");
         op.setGroup(List.of("USUBJID"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         assertFalse(vars.containsKey("$m"));
     }
 
@@ -1498,7 +1502,7 @@ class OperationExecutorMoreCoverageTest
         op.setName("NOPE");
         op.setGroup(List.of("USUBJID"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         assertFalse(vars.containsKey("$d"));
     }
 
@@ -1512,7 +1516,7 @@ class OperationExecutorMoreCoverageTest
         op.setOperator("max_date");
         op.setGroup(List.of("USUBJID"));
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         assertFalse(vars.containsKey("$d"));
     }
 
@@ -1555,7 +1559,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$cnt", "variable_count");
         op.setName("USUBJID");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), ae, inv);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, inv);
         // Both AE and DM have USUBJID → count = 2.
         assertEquals(2L, vars.get("$cnt"));
     }
@@ -1596,7 +1600,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$cnt", "variable_count");
         op.setOriginalName("--LNKGRP");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), ae, inv);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, inv);
         // AE has AELNKGRP, CM has CMLNKGRP, DM has no DMLNKGRP → count = 2.
         assertEquals(2L, vars.get("$cnt"));
     }
@@ -1638,7 +1642,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$cnt", "variable_count");
         op.setName("USUBJID");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), ae1, inv);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae1, inv);
         // AE1 and AE2 both unsplit to "AE" → counted once.
         assertEquals(1L, vars.get("$cnt"));
     }
@@ -1653,13 +1657,13 @@ class OperationExecutorMoreCoverageTest
         op.setName("USUBJID");
         // NO_RESOLVER is not a WithInventory → fallback path runs.
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), ae, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, NO_RESOLVER);
         assertEquals(1L, vars.get("$cnt"));
 
         Operation op2 = makeOp("$cnt2", "variable_count");
         op2.setName("NOPE");
 
-        Map<String, Object> vars2 = OperationExecutor.execute(List.of(op2), ae, NO_RESOLVER);
+        Map<String, Object> vars2 = OperationExecutorCalls.execute(List.of(op2), ae, NO_RESOLVER);
         assertEquals(0L, vars2.get("$cnt2"));
     }
 
@@ -1672,7 +1676,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$cnt", "variable_count");
         op.setOriginalName("--SEQ");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), ae, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, NO_RESOLVER);
         // resolveTemplate("--SEQ", AE-table) → "AESEQ"; column exists → 1.
         assertEquals(1L, vars.get("$cnt"));
     }
@@ -1707,7 +1711,7 @@ class OperationExecutorMoreCoverageTest
         Operation op = makeOp("$cnt", "variable_count");
         op.setName("USUBJID");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), ae, inv);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, inv);
         // Only AE counted; MISSING resolves to null and is skipped.
         assertEquals(1L, vars.get("$cnt"));
     }
@@ -1725,7 +1729,7 @@ class OperationExecutorMoreCoverageTest
         op.setName("X");
         op.setGroup(List.of());
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), t, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         GroupedResult gr = (GroupedResult) vars.get("$mixed");
         assertNotNull(gr);
         assertEquals(List.of(), gr.groupColumns());

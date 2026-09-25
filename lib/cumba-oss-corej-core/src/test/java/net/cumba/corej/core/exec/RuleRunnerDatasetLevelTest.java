@@ -72,8 +72,8 @@ class RuleRunnerDatasetLevelTest
     private static RuleExecutionResult run(@Nullable MetadataProvider library,
             @Nullable MetadataProvider define)
     {
-        return RuleRunner.execute(defineVsLibraryLabelRule(), dmTable(), _ -> null, "DM", library,
-                null, define);
+        return RuleRunnerCalls.execute(defineVsLibraryLabelRule(), dmTable(), _ -> null, "DM",
+                library, null, define);
     }
 
 

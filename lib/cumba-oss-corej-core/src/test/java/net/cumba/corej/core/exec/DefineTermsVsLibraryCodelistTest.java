@@ -86,7 +86,7 @@ class DefineTermsVsLibraryCodelistTest
         throws Exception
     {
         IDataTable vs = MockTable.of().name("VS").col("VSPOS", "SUPINE").build();
-        RuleExecutionResult r = RuleRunner.execute(rule(), vs, _ -> null, "VS",
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule(), vs, _ -> null, "VS",
                 library(libraryValuesJson, extensible), null, define(defineValuesJson));
         return r.hasViolations();
     }

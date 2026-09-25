@@ -136,7 +136,7 @@ class AdamAdditionsReauthoredRulesTest
 
     private static int violationCount(Rule rule, IDataTable table)
     {
-        return RuleRunner.execute(rule, table, _ -> null, "ADSL", LIBRARY, null, null)
+        return RuleRunnerCalls.execute(rule, table, _ -> null, "ADSL", LIBRARY, null, null)
                 .getViolationCount();
     }
 
@@ -190,7 +190,7 @@ class AdamAdditionsReauthoredRulesTest
         Rule rule = corpusRule("ADAM-ADD-100025");
         IDataTable t = MockTable.of().name("ADSL").col("USUBJID", "01").build();
 
-        RuleExecutionResult ran = RuleRunner.execute(rule, t, _ -> null, "ADSL", LIBRARY, null,
+        RuleExecutionResult ran = RuleRunnerCalls.execute(rule, t, _ -> null, "ADSL", LIBRARY, null,
                 null);
         assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "the re-authored rule must reach a verdict, not skip: " + ran.getStatusMessage());

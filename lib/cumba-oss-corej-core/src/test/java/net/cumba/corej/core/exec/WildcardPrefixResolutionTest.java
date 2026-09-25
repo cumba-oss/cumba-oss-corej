@@ -77,7 +77,7 @@ class WildcardPrefixResolutionTest
         IDataTable apmh = MockTable.of().col("DOMAIN", "APMH", "APMH").col("APID", "A1", "A2")
                 .col("MHTERM", "BAD", "GOOD").name("APMH").build();
 
-        RuleExecutionResult r = RuleRunner.execute(wildcardTermRule(), apmh, _ -> null, "APMH",
+        RuleExecutionResult r = RuleRunnerCalls.execute(wildcardTermRule(), apmh, _ -> null, "APMH",
                 null, null);
 
         assertFalse(r.isSkipped(), "rule must no longer be skipped on an AP dataset");
@@ -94,7 +94,7 @@ class WildcardPrefixResolutionTest
         IDataTable apmh = MockTable.of().col("DOMAIN", "APMH").col("MHTERM", "BAD").name("APMH")
                 .build();
 
-        RuleExecutionResult r = RuleRunner.execute(wildcardTermRule(), apmh, _ -> null, "APMH",
+        RuleExecutionResult r = RuleRunnerCalls.execute(wildcardTermRule(), apmh, _ -> null, "APMH",
                 null, null);
 
         assertTrue(r.isSkipped(), "without APID the AP suffix does not apply");
@@ -127,7 +127,7 @@ class WildcardPrefixResolutionTest
         IDataTable suppae = MockTable.of().col("RDOMAIN", "AE", "AE").col("QNAM", "BAD", "OK")
                 .name("SUPPAE").build();
 
-        RuleExecutionResult r = RuleRunner.execute(qnamRule, suppae, _ -> null, "SUPPAE", null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(qnamRule, suppae, _ -> null, "SUPPAE", null,
                 null);
 
         assertFalse(r.isSkipped(), "SUPP rule must not be skipped");
@@ -147,7 +147,7 @@ class WildcardPrefixResolutionTest
         op.setDomain("SUPP--");
         op.setName("--QNAM");
 
-        net.cumba.corej.core.model.Operation resolved = OperationExecutor.resolvePrefixes(op,
+        net.cumba.corej.core.model.Operation resolved = OperationExecutorCalls.resolvePrefixes(op,
                 "SUPPLB", "");
 
         assertEquals("SUPPLB", resolved.getDomain(), "dataset-name wildcard keeps the domain code");
@@ -162,8 +162,8 @@ class WildcardPrefixResolutionTest
         IDataTable ae = MockTable.of().col("DOMAIN", "AE", "AE").col("AETERM", "BAD", "OK")
                 .name("AE").build();
 
-        RuleExecutionResult r = RuleRunner.execute(wildcardTermRule(), ae, _ -> null, "AE", null,
-                null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(wildcardTermRule(), ae, _ -> null, "AE",
+                null, null);
 
         assertFalse(r.isSkipped());
         assertEquals(1, r.getViolations().size());
@@ -187,8 +187,8 @@ class WildcardPrefixResolutionTest
         IDataTable relrec = MockTable.of().col("RDOMAIN", "AE").col("RELID", "1").name("RELREC")
                 .build();
 
-        RuleExecutionResult r = RuleRunner.execute(wildcardTermRule(), relrec, _ -> null, "RELREC",
-                null, null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(wildcardTermRule(), relrec, _ -> null,
+                "RELREC", null, null);
 
         assertTrue(r.isSkipped());
         assertTrue(r.getStatusMessage().contains("resolved RELRECTERM"),
@@ -205,8 +205,8 @@ class WildcardPrefixResolutionTest
         IDataTable ae = MockTable.of().col("DOMAIN", "GRP1", "GRP1").col("AETERM", "BAD", "OK")
                 .name("AE").build();
 
-        RuleExecutionResult r = RuleRunner.execute(wildcardTermRule(), ae, _ -> null, "AE", null,
-                null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(wildcardTermRule(), ae, _ -> null, "AE",
+                null, null);
 
         assertFalse(r.isSkipped(), "a corrupt DOMAIN cell must not suppress the rule");
         assertEquals(1, r.getViolations().size());
@@ -234,7 +234,7 @@ class WildcardPrefixResolutionTest
         IDataTable relrec = MockTable.of().col("RDOMAIN", "AE").col("RELID", "1").name("RELREC")
                 .build();
 
-        RuleExecutionResult r = RuleRunner.execute(concrete, relrec, _ -> null, "RELREC", null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(concrete, relrec, _ -> null, "RELREC", null,
                 null);
 
         assertFalse(r.isSkipped(), "a rule without -- must not be skipped");
@@ -248,8 +248,8 @@ class WildcardPrefixResolutionTest
         // A metadata-only dataset still gets the caller's domain code, so --TERM -> AETERM.
         IDataTable emptyAe = MockTable.of().col("DOMAIN").col("AETERM").name("AE").build();
 
-        RuleExecutionResult r = RuleRunner.execute(wildcardTermRule(), emptyAe, _ -> null, "AE",
-                null, null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(wildcardTermRule(), emptyAe, _ -> null,
+                "AE", null, null);
 
         assertFalse(r.isSkipped(), "a zero-row dataset named AE resolves --TERM to AETERM");
         assertEquals(0, r.getViolations().size());
@@ -288,8 +288,8 @@ class WildcardPrefixResolutionTest
         op.setName("--HLT");
         op.setDictionaryParent("--SOC");
 
-        net.cumba.corej.core.model.Operation resolved = OperationExecutor.resolvePrefixes(op, "AE",
-                "AE");
+        net.cumba.corej.core.model.Operation resolved = OperationExecutorCalls.resolvePrefixes(op,
+                "AE", "AE");
 
         assertEquals("AEHLT", resolved.getName());
         assertEquals("AESOC", resolved.getDictionaryParent());
@@ -308,7 +308,7 @@ class WildcardPrefixResolutionTest
         op.setDictionaryParent("--SOC");
 
         assertEquals("AESOC",
-                OperationExecutor.resolvePrefixes(op, "AE", "AE").getDictionaryParent());
+                OperationExecutorCalls.resolvePrefixes(op, "AE", "AE").getDictionaryParent());
     }
 
     // -----------------------------------------------------------------------
@@ -374,7 +374,7 @@ class WildcardPrefixResolutionTest
         op.setName("--QNAM");
         op.setDomain("SUPP--");
 
-        net.cumba.corej.core.model.Operation resolved = OperationExecutor.resolvePrefixes(op,
+        net.cumba.corej.core.model.Operation resolved = OperationExecutorCalls.resolvePrefixes(op,
                 "SUPPAE");
 
         assertEquals("AEQNAM", resolved.getName(), "Fix #33 parent-stripping must still apply");
@@ -393,7 +393,7 @@ class WildcardPrefixResolutionTest
         op.setQualifyingAnyPopulated(java.util.List.of("--ORRES"));
 
         assertEquals(java.util.List.of("AEORRES"),
-                OperationExecutor.resolvePrefixes(op, "AE", "AE").getQualifyingAnyPopulated());
+                OperationExecutorCalls.resolvePrefixes(op, "AE", "AE").getQualifyingAnyPopulated());
     }
 
     // -----------------------------------------------------------------------
@@ -426,7 +426,8 @@ class WildcardPrefixResolutionTest
                 .col("APID", "A1", "A1", "A2", "A2").col("MHCAT", "C1", "C1", "C2", "C2")
                 .col("MHTERM", "BAD", "BAD", "BAD", "BAD").name("APMH").build();
 
-        RuleExecutionResult r = RuleRunner.execute(grouped, apmh, _ -> null, "APMH", null, null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(grouped, apmh, _ -> null, "APMH", null,
+                null);
 
         assertFalse(r.isSkipped());
         assertEquals(2, r.getViolations().size(),
@@ -456,7 +457,7 @@ class WildcardPrefixResolutionTest
                 .col("NAM", "N1", "N1", "N2", "N2").col("VAL", "BAD", "BAD", "BAD", "BAD")
                 .name("SUPPAE").build();
 
-        RuleExecutionResult r = RuleRunner.execute(grouped, suppae, _ -> null, "SUPPAE", null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(grouped, suppae, _ -> null, "SUPPAE", null,
                 null);
 
         assertFalse(r.isSkipped());

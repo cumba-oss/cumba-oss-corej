@@ -109,8 +109,8 @@ class MatchedFlagExecutionTest
         assertNull(r.getLoadError(), "flag rule must load cleanly");
         IDataTable primary = adae();
         IDataTable dm = MockTable.of().name("DM").col("USUBJID", "P1", "P3").build();
-        RuleExecutionResult result = RuleRunner.execute(r, primary, inventory(study(primary, dm)),
-                "ADAE", null, null, null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                inventory(study(primary, dm)), "ADAE", null, null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
         assertEquals(List.of("P2"), firedSubjects(result, primary));
     }
@@ -123,8 +123,8 @@ class MatchedFlagExecutionTest
         Rule r = rule("DM", "left", "[\"USUBJID\"]", "not DM._matched_");
         IDataTable primary = adae();
         IDataTable dm = MockTable.of().name("DM").col("USUBJID", "P1", "P2", "P3").build();
-        RuleExecutionResult result = RuleRunner.execute(r, primary, inventory(study(primary, dm)),
-                "ADAE", null, null, null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                inventory(study(primary, dm)), "ADAE", null, null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
         assertEquals(List.of(), result.getViolations());
     }
@@ -137,8 +137,8 @@ class MatchedFlagExecutionTest
         Rule r = rule("DM", "left", "[\"USUBJID\"]", "not DM._matched_");
         IDataTable primary = adae();
         IDataTable dm = MockTable.of().name("DM").col("USUBJID", new String[0]).build();
-        RuleExecutionResult result = RuleRunner.execute(r, primary, inventory(study(primary, dm)),
-                "ADAE", null, null, null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                inventory(study(primary, dm)), "ADAE", null, null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
         assertEquals(List.of("P1", "P2", "P3"), firedSubjects(result, primary));
     }
@@ -153,8 +153,8 @@ class MatchedFlagExecutionTest
         IDataTable primary = adae();
         IDataTable dm = MockTable.of().name("DM").col("USUBJID", "P1", "P2", "P3")
                 .col("ARM", "", "A", "B").build();
-        RuleExecutionResult result = RuleRunner.execute(r, primary, inventory(study(primary, dm)),
-                "ADAE", null, null, null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                inventory(study(primary, dm)), "ADAE", null, null, null);
         assertEquals(List.of(), result.getViolations(),
                 "a partner row with blank cells is a partner");
     }
@@ -170,8 +170,8 @@ class MatchedFlagExecutionTest
                 .col("DTHFL", "", "", "Y").build();
         IDataTable ae = MockTable.of().name("AE").col("USUBJID", "P1", "P1", "P3")
                 .col("AEDECOD", "H", "N", "F").build();
-        RuleExecutionResult result = RuleRunner.execute(r, primary, inventory(study(primary, ae)),
-                "DM", null, null, null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                inventory(study(primary, ae)), "DM", null, null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
         // P1 appears once per expanded (P1, AE-partner) pair; P2 (unmatched) and P3 (DTHFL=Y)
         // never fire.
@@ -192,8 +192,8 @@ class MatchedFlagExecutionTest
         IDataTable primary = MockTable.of().name("AE").col("USUBJID", "P1", "P2").build();
         IDataTable supp = MockTable.of().name("SUPPAE").col("USUBJID", "P2").col("QNAM", "X")
                 .build();
-        RuleExecutionResult result = RuleRunner.execute(r, primary, inventory(study(primary, supp)),
-                "AE", null, null, null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                inventory(study(primary, supp)), "AE", null, null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
         assertEquals(List.of("P1"), firedSubjects(result, primary));
     }
@@ -217,7 +217,7 @@ class MatchedFlagExecutionTest
         assertNotNull(r);
         assertNull(r.getLoadError());
         IDataTable primary = adae();
-        RuleExecutionResult result = RuleRunner.execute(r, primary, inventory(study(primary)),
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary, inventory(study(primary)),
                 "ADAE", null, null, null);
         assertEquals(RuleExecutionStatus.SKIPPED, result.getStatus(), result.getStatusMessage());
         assertNotEquals(null, result.getStatusMessage());

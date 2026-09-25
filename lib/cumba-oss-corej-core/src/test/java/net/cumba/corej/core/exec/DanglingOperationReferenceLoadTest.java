@@ -68,7 +68,7 @@ class DanglingOperationReferenceLoadTest
         assertTrue(rule.getLoadError().contains(DANGLES), rule.getLoadError());
         assertNull(rule.getLoadWarning(), "the executable case uses the error channel only");
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table());
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table());
         assertEquals(RuleExecutionStatus.ERROR, result.getStatus());
         assertEquals(rule.getLoadError(), result.getStatusMessage());
         assertEquals(1, result.getViolationCount(), "exactly one sentinel violation");

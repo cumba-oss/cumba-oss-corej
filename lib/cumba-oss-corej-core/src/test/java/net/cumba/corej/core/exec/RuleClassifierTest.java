@@ -88,7 +88,7 @@ class RuleClassifierTest
             assertNotNull(r.getCheckExpr(), "ds_exists compiles context-independently"
                     + " (ExprCompiler.ExistsMode.DATASET), so the expr is retained");
 
-            RuleExecutionResult result = RuleRunner.execute(r, sv(), tvResolver(), null, null,
+            RuleExecutionResult result = RuleRunnerCalls.execute(r, sv(), tvResolver(), null, null,
                     null);
             assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
                     () -> "shape B must execute, got: " + result.getStatusMessage());
@@ -112,7 +112,7 @@ class RuleClassifierTest
             assertNotNull(r.getCheckExpr(), "retention no longer consults the type");
             assertEquals(net.cumba.corej.core.expr.eval.Domain.ROW, r.getEvaluationDomain());
 
-            RuleExecutionResult result = RuleRunner.execute(r, sv(), tvResolver(), null, null,
+            RuleExecutionResult result = RuleRunnerCalls.execute(r, sv(), tvResolver(), null, null,
                     null);
             assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
                     () -> "shape B must execute whatever the type says: "

@@ -67,7 +67,7 @@ class KeyMatchProbeMemoTest
                 .col("ROWID", "D0", "D1").build();
         Mockito.clearInvocations(primary);
 
-        KeyMatchRowExpander.KeyMatchExpansion exp = KeyMatchRowExpander.expand(primary,
+        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(primary,
                 List.of(md("AE"), md("DM")), Map.of("AE", ae, "DM", dm)::get, "R",
                 new JoinCache.SharedIndexCache());
         assertNotNull(exp);
@@ -93,7 +93,7 @@ class KeyMatchProbeMemoTest
         IDataTable ae = MockTable.of().name("AE").col("USUBJID", "P1").col("ROWID", "A0").build();
         IDataTable dm = MockTable.of().name("DM").col("USUBJID", "P9", "P1")
                 .col("ROWID", "D0", "D1").build();
-        KeyMatchRowExpander.KeyMatchExpansion exp = KeyMatchRowExpander.expand(primary,
+        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(primary,
                 List.of(md("AE"), md("DM")), Map.of("AE", ae, "DM", dm)::get, "R", null);
         assertNotNull(exp);
         assertEquals(List.of("0 AE=A0 DM=D1"), render(exp),

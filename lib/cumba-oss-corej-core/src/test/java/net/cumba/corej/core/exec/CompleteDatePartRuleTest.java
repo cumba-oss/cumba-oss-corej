@@ -72,7 +72,7 @@ class CompleteDatePartRuleTest
     /** The 0-based row indices the rule reports, in ascending order. */
     private static List<Long> firedRows(String operator, IDataTable table)
     {
-        return RuleRunner.execute(oneLeafRule(operator), table).getViolations().stream()
+        return RuleRunnerCalls.execute(oneLeafRule(operator), table).getViolations().stream()
                 .map(Violation::getRow).sorted().toList();
     }
 

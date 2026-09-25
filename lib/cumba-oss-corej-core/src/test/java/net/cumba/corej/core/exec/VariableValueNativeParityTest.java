@@ -77,7 +77,7 @@ class VariableValueNativeParityTest
      */
     private static java.util.Set<String> findings(Rule rule, IDataTable table)
     {
-        RuleExecutionResult r = RuleRunner.execute(rule, table, _ -> null, "ADSL", null, null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, table, _ -> null, "ADSL", null, null,
                 null);
         java.util.Set<String> out = new java.util.TreeSet<>();
         for (Violation v : r.getViolations())
@@ -187,9 +187,9 @@ class VariableValueNativeParityTest
                 "{\"all\":[{\"expression\": \"varname() =~ /^.+FL$/\"},{\"expression\": \"not empty(value())\"},{\"expression\": \"value() not in [\\\"Y\\\", \\\"N\\\"]\"}]}",
                 "variable_name", "variable_value");
         IDataTable table = adslTable();
-        List<Violation> nativeV = RuleRunner
+        List<Violation> nativeV = RuleRunnerCalls
                 .execute(rule, table, _ -> null, "ADSL", null, null, null).getViolations();
-        List<Violation> legacyV = RuleRunner
+        List<Violation> legacyV = RuleRunnerCalls
                 .execute(rule, table, _ -> null, "ADSL", null, null, null).getViolations();
         assertEquals(legacyV.size(), nativeV.size(), "same finding count");
         assertEquals(1, nativeV.size(), "only TRTPFL=X (row 1) fires");
@@ -211,9 +211,9 @@ class VariableValueNativeParityTest
                 "{\"all\":[{\"expression\": \"varname() =~ /^.+FL$/\"},{\"expression\": \"not empty(value())\"},{\"expression\": \"value() not in [\\\"Y\\\", \\\"N\\\"]\"}]}");
         assertNotNull(rule.getCheckExpr());
         IDataTable table = adslTable();
-        List<Violation> nativeV = RuleRunner
+        List<Violation> nativeV = RuleRunnerCalls
                 .execute(rule, table, _ -> null, "ADSL", null, null, null).getViolations();
-        List<Violation> legacyV = RuleRunner
+        List<Violation> legacyV = RuleRunnerCalls
                 .execute(rule, table, _ -> null, "ADSL", null, null, null).getViolations();
         assertEquals(legacyV.size(), nativeV.size(), "same finding count (no Output_Variables)");
         assertEquals(1, nativeV.size());

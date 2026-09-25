@@ -71,7 +71,7 @@ class RuleRunnerLazyOperationsTest
         rule.setOperations(List.of(op));
 
         DatasetResolver resolver = _ -> null;
-        RuleExecutionResult result = RuleRunner.execute(rule, table, resolver, null, provider);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, resolver, null, provider);
 
         assertNotNull(result);
         assertEquals(0, result.getViolationCount(), "guard folds to FALSE → no violations");
@@ -117,7 +117,7 @@ class RuleRunnerLazyOperationsTest
         rule.setOperations(List.of(op));
 
         DatasetResolver resolver = _ -> null;
-        RuleExecutionResult result = RuleRunner.execute(rule, table, resolver, null, provider);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, resolver, null, provider);
 
         assertNotNull(result);
         assertEquals(1, libraryCalls.get(),
@@ -151,8 +151,8 @@ class RuleRunnerLazyOperationsTest
         rule.setOperations(List.of(op));
 
         DatasetResolver resolver = _ -> null;
-        RuleRunner.execute(rule, table, resolver, null, provider);
-        RuleRunner.execute(rule, table, resolver, null, provider);
+        RuleRunnerCalls.execute(rule, table, resolver, null, provider);
+        RuleRunnerCalls.execute(rule, table, resolver, null, provider);
 
         assertEquals(2, libraryCalls.get(),
                 "each rule execution owns its own LazyValue → counter increments by 2");
@@ -201,7 +201,7 @@ class RuleRunnerLazyOperationsTest
         Rule rule = buildRule("CORE-LAZY-NOOP", "no ops",
                 new CheckConditionAll(List.of(expr("SEX not in [\"M\", \"F\"]"))), List.of("SEX"));
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertEquals(1, result.getViolationCount());
     }
 
@@ -228,7 +228,7 @@ class RuleRunnerLazyOperationsTest
                 new CheckConditionAll(List.of(opLeaf)), List.of("USUBJID"));
         rule.setOperations(List.of(op));
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table, _ -> null, null, null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, _ -> null, null, null);
         assertEquals(RuleExecutionStatus.SKIPPED, result.getStatus());
         assertNotNull(result.getStatusMessage());
     }

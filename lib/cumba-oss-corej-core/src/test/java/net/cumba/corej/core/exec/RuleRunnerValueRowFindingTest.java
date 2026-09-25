@@ -62,7 +62,7 @@ class RuleRunnerValueRowFindingTest
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_name\","
                 + "\"variable_label\",\"variable_value\",\"variable_data_type\",\"USUBJID\"]}}");
 
-        RuleExecutionResult r = RuleRunner.execute(rule, adsl(), _ -> null, "ADSL", null, null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, adsl(), _ -> null, "ADSL", null, null,
                 null);
 
         assertEquals(2, r.getViolations().size(), "rows 0 and 2 exceed the length");
@@ -101,8 +101,8 @@ class RuleRunnerValueRowFindingTest
                  "Outcome":{"Message":"m","Output_Variables":
                    ["!variable_name","!variable_value"]}}""");
 
-        RuleExecutionResult r = RuleRunner.execute(present, adsl(), _ -> null, "ADSL", null, null,
-                null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(present, adsl(), _ -> null, "ADSL", null,
+                null, null);
         assertEquals(2, r.getViolations().size());
         assertEquals(0L, r.getViolations().get(0).getRow());
         assertEquals(2L, r.getViolations().get(1).getRow());
@@ -126,8 +126,8 @@ class RuleRunnerValueRowFindingTest
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"variable_value\"]}}");
         IDataTable t = MockTable.of().name("ADSL").col("DESC", "aaa", "bbb", "ccc").build();
 
-        RuleExecutionResult r = RuleRunner.execute(rule, t, _ -> null, "ADSL", null, null, null, 1,
-                null, null, null, Set.of(), Set.of(), Severity.WARNING);
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, t, _ -> null, "ADSL", null, null,
+                null, 1, null, null, null, Set.of(), Set.of(), Severity.WARNING);
 
         assertEquals(1, r.getViolations().size(), "the cap materialises one");
         assertEquals(3, r.getViolationCount(), "the TRUE count survives the cap");
@@ -144,8 +144,8 @@ class RuleRunnerValueRowFindingTest
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEV\"]}}");
         IDataTable t = MockTable.of().name("AE").col("AESEV", "BAD", "BAD", "BAD").build();
 
-        RuleExecutionResult r = RuleRunner.execute(rule, t, _ -> null, "AE", null, null, null, 1,
-                null, null, null, Set.of(), Set.of(), Severity.WARNING);
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, t, _ -> null, "AE", null, null, null,
+                1, null, null, null, Set.of(), Set.of(), Severity.WARNING);
 
         assertEquals(1, r.getViolations().size());
         assertEquals(3, r.getViolationCount());
@@ -169,14 +169,16 @@ class RuleRunnerValueRowFindingTest
         IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1", "S2", "S3")
                 .col("AESEQ", "1", "2", "3").col("AESEV", "OK", "BAD", "BAD").build();
 
-        RuleExecutionResult rec = RuleRunner.execute(record, ae, _ -> null, "AE", null, null, null);
+        RuleExecutionResult rec = RuleRunnerCalls.execute(record, ae, _ -> null, "AE", null, null,
+                null);
         assertEquals(2, rec.getViolations().size(), "one finding per firing record");
         assertEquals(1L, rec.getViolations().get(0).getRow());
         assertEquals("S2", rec.getViolations().get(0).getUsubjid());
         assertEquals("2", rec.getViolations().get(0).getSeq());
         assertEquals(2L, rec.getViolations().get(1).getRow());
 
-        RuleExecutionResult ds = RuleRunner.execute(dataset, ae, _ -> null, "AE", null, null, null);
+        RuleExecutionResult ds = RuleRunnerCalls.execute(dataset, ae, _ -> null, "AE", null, null,
+                null);
         assertEquals(1, ds.getViolations().size(), "a dataset verdict collapses to one");
         assertEquals(1L, ds.getViolations().get(0).getRow(), "anchored at the first firing row");
         assertNull(ds.getViolations().get(0).getUsubjid(),
@@ -205,8 +207,8 @@ class RuleRunnerValueRowFindingTest
                  "Outcome":{"Message":"m","Output_Variables":["variable_name"]}}""");
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").build();
 
-        RuleExecutionResult noDefine = RuleRunner.execute(needsDefine, dm, _ -> null, "DM", null,
-                null, null);
+        RuleExecutionResult noDefine = RuleRunnerCalls.execute(needsDefine, dm, _ -> null, "DM",
+                null, null, null);
         assertTrue(noDefine.isSkipped());
         assertEquals("Rule skipped — no Define-XML metadata available",
                 noDefine.getStatusMessage());
@@ -218,14 +220,14 @@ class RuleRunnerValueRowFindingTest
                 upper(value()) != upper(var_role(\\"LIBRARY\\"))"},
                  "Outcome":{"Message":"m","Output_Variables":["variable_name"]}}""");
 
-        RuleExecutionResult noLibrary = RuleRunner.execute(needsLibrary, dm, _ -> null, "DM", null,
-                null, null);
+        RuleExecutionResult noLibrary = RuleRunnerCalls.execute(needsLibrary, dm, _ -> null, "DM",
+                null, null, null);
         assertTrue(noLibrary.isSkipped());
         assertEquals("Rule skipped — no Library metadata available", noLibrary.getStatusMessage());
 
         MetadataProvider degraded = org.mockito.Mockito.mock(MetadataProvider.class);
         org.mockito.Mockito.when(degraded.isLibraryUnavailable()).thenReturn(true);
-        RuleExecutionResult degradedRun = RuleRunner.execute(needsLibrary, dm, _ -> null, "DM",
+        RuleExecutionResult degradedRun = RuleRunnerCalls.execute(needsLibrary, dm, _ -> null, "DM",
                 degraded, null, null);
         assertTrue(degradedRun.isSkipped());
         assertEquals(
@@ -258,7 +260,7 @@ class RuleRunnerValueRowFindingTest
                 Map.of("name", "AGE", "role", "Qualifier"));
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").build();
 
-        RuleExecutionResult r = RuleRunner.execute(rule, dm, _ -> null, "DM", library, null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, dm, _ -> null, "DM", library, null,
                 define);
 
         assertFalse(r.isSkipped(), () -> String.valueOf(r.getStatusMessage()));

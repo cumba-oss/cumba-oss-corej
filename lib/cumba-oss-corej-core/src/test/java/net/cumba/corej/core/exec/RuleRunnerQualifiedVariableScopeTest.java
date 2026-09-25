@@ -95,7 +95,7 @@ class RuleRunnerQualifiedVariableScopeTest
 
     private static RuleExecutionResult run(Rule rule, DatasetResolver resolver)
     {
-        return RuleRunner.execute(rule, aeTable(), resolver, "AE", null);
+        return RuleRunnerCalls.execute(rule, aeTable(), resolver, "AE", null);
     }
 
     // ------------------------------------------------------------------

@@ -411,7 +411,7 @@ class RuleRunnerOutputProjectionHelpersTest
         md.setName("SUPP--");
         md.setKeys(List.of("USUBJID"));
 
-        Map<String, JoinLookup> joins = RuleRunner.buildJoinedDatasets(List.of(md), ae,
+        Map<String, JoinLookup> joins = RuleRunnerCalls.buildJoinedDatasets(List.of(md), ae,
                 name -> "SUPPAE".equals(name) ? suppae : null, null);
         assertEquals(List.of("SUPPAE"), List.copyOf(joins.keySet()),
                 "wildcard names register under the resolved dataset name");
@@ -420,13 +420,13 @@ class RuleRunnerOutputProjectionHelpersTest
         MatchDataset nonWildcard = new MatchDataset();
         nonWildcard.setName("SUPPAE");
         nonWildcard.setKeys(List.of("USUBJID"));
-        Map<String, JoinLookup> plain = RuleRunner.buildJoinedDatasets(List.of(nonWildcard), ae,
-                name -> "SUPPAE".equals(name) ? suppae : null, null);
+        Map<String, JoinLookup> plain = RuleRunnerCalls.buildJoinedDatasets(List.of(nonWildcard),
+                ae, name -> "SUPPAE".equals(name) ? suppae : null, null);
         assertEquals(List.of("SUPPAE"), List.copyOf(plain.keySet()));
 
         MatchDataset keyless = new MatchDataset();
         keyless.setName("SUPPAE");
-        Map<String, JoinLookup> none = RuleRunner.buildJoinedDatasets(List.of(keyless), ae,
+        Map<String, JoinLookup> none = RuleRunnerCalls.buildJoinedDatasets(List.of(keyless), ae,
                 name -> "SUPPAE".equals(name) ? suppae : null, null);
         assertTrue(none.isEmpty(), "a keyless Match_Dataset has no usable join");
     }

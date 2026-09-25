@@ -35,7 +35,7 @@ class ScopeMatcherDomainPrefixTest
     void includeExactMatchStillWorks()
     {
         Rule rule = ruleWithDomainInclude("ADAE");
-        assertTrue(ScopeMatcher.matchesDomain(rule, "ADAE"),
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "ADAE"),
                 "literal name must match its own Include entry");
     }
 
@@ -44,9 +44,9 @@ class ScopeMatcherDomainPrefixTest
     void includeDoesNotMatchExtendedForms()
     {
         Rule rule = ruleWithDomainInclude("ADAE");
-        assertFalse(ScopeMatcher.matchesDomain(rule, "ADAEDV"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "ADAESI"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "ADAE_BACKUP"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "ADAEDV"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "ADAESI"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "ADAE_BACKUP"));
     }
 
 
@@ -54,16 +54,16 @@ class ScopeMatcherDomainPrefixTest
     void includeDoesNotMatchDifferentFamilies()
     {
         Rule rule = ruleWithDomainInclude("ADAE");
-        assertFalse(ScopeMatcher.matchesDomain(rule, "ADCM"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "ADLB"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "ADCM"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "ADLB"));
     }
 
 
     @Test
     void includeReachesFamilyBreadthOnlyViaGlobOrRegex()
     {
-        assertTrue(ScopeMatcher.matchesDomain(ruleWithDomainInclude("ADAE*"), "ADAEDV"));
-        assertTrue(ScopeMatcher.matchesDomain(ruleWithDomainInclude("/^ADLB.*$/"), "ADLBC"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(ruleWithDomainInclude("ADAE*"), "ADAEDV"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(ruleWithDomainInclude("/^ADLB.*$/"), "ADLBC"));
     }
 
 
@@ -71,11 +71,11 @@ class ScopeMatcherDomainPrefixTest
     void matchIsCaseAndSeparatorInsensitive()
     {
         Rule rule = ruleWithDomainInclude("ADAE");
-        assertTrue(ScopeMatcher.matchesDomain(rule, "adae"),
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "adae"),
                 "lowercase filename-derived name must match the uppercase Include entry");
-        assertTrue(ScopeMatcher.matchesDomain(rule, "AD-AE"),
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "AD-AE"),
                 "separator drift must still normalise to a match");
-        assertFalse(ScopeMatcher.matchesDomain(rule, "AdAeDv"),
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "AdAeDv"),
                 "case-insensitivity must not resurrect prefix matching");
     }
 
@@ -84,10 +84,10 @@ class ScopeMatcherDomainPrefixTest
     void multipleIncludeEntries_anyExactMatches()
     {
         Rule rule = ruleWithDomainInclude("ADAE", "ADCM");
-        assertTrue(ScopeMatcher.matchesDomain(rule, "ADAE"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "ADCM"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "ADCMRT"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "ADLB"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "ADAE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "ADCM"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "ADCMRT"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "ADLB"));
     }
 
     // ---- Regression: the SEND collisions this change exists to kill ----
@@ -97,12 +97,12 @@ class ScopeMatcherDomainPrefixTest
     void includeRE_doesNotSelectRelationshipDatasets()
     {
         Rule rule = ruleWithDomainInclude("RE");
-        assertTrue(ScopeMatcher.matchesDomain(rule, "RE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "RE"));
         assertEquals("domain RELREC not in Scope.Domains.Include [RE]",
-                ScopeMatcher.describeDomainMismatch(rule, "RELREC"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "RELSUB"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "RELSPEC"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "RELREF"));
+                ScopeMatcherCalls.describeDomainMismatch(rule, "RELREC"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "RELSUB"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "RELSPEC"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "RELREF"));
     }
 
 
@@ -110,9 +110,9 @@ class ScopeMatcherDomainPrefixTest
     void includeSU_doesNotSelectSuppDatasets()
     {
         Rule rule = ruleWithDomainInclude("SU");
-        assertTrue(ScopeMatcher.matchesDomain(rule, "SU"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "SUPPAE"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "SUPPQUAL"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "SU"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "SUPPAE"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "SUPPQUAL"));
     }
 
     // ---- Split / extended forms come from the unsplit-name re-test, not from prefixes ----
@@ -123,10 +123,10 @@ class ScopeMatcherDomainPrefixTest
     {
         // LBCHEM carrying DOMAIN=LB is a split of LB (Python SDTMDatasetMetadata.unsplit_name).
         Rule rule = ruleWithDomainInclude("LB");
-        assertNull(ScopeMatcher.describeDomainMismatch(rule, "LBCHEM", "LB"));
-        assertNull(ScopeMatcher.describeDomainMismatch(rule, "LB1", "LB"));
+        assertNull(ScopeMatcherCalls.describeDomainMismatch(rule, "LBCHEM", "LB"));
+        assertNull(ScopeMatcherCalls.describeDomainMismatch(rule, "LB1", "LB"));
         // …and without the DOMAIN evidence it is NOT a split, so it is out of scope (parity).
-        assertNotNull(ScopeMatcher.describeDomainMismatch(rule, "LBCHEM", "LBCHEM"));
+        assertNotNull(ScopeMatcherCalls.describeDomainMismatch(rule, "LBCHEM", "LBCHEM"));
     }
 
 
@@ -135,10 +135,10 @@ class ScopeMatcherDomainPrefixTest
     {
         // The table-less 2-arg overload derives the base from SplitDatasetUtil.unsplitName.
         Rule rule = ruleWithDomainInclude("ADAE");
-        assertTrue(ScopeMatcher.matchesDomain(rule, "ADAE01"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "ADAE01"));
         // The data-driven overload used in production sees no DOMAIN column for ADaM, so the
         // same dataset is not a split and falls out of scope — matching Python.
-        assertNotNull(ScopeMatcher.describeDomainMismatch(rule, "ADAE01", "ADAE01"));
+        assertNotNull(ScopeMatcherCalls.describeDomainMismatch(rule, "ADAE01", "ADAE01"));
     }
 
     // ---- Exclude path symmetry ----
@@ -148,8 +148,8 @@ class ScopeMatcherDomainPrefixTest
     void excludeMatchesExactFormOnly()
     {
         Rule rule = ruleWithDomainExclude("ADAE");
-        assertFalse(ScopeMatcher.matchesDomain(rule, "ADAE"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "ADAEDV"),
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "ADAE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "ADAEDV"),
                 "an extended name is no longer swallowed by an ADAE exclude");
     }
 
@@ -159,7 +159,7 @@ class ScopeMatcherDomainPrefixTest
     {
         Rule rule = ruleWithDomainExclude("LB");
         assertEquals("domain LB1 matches Scope.Domains.Exclude entry LB",
-                ScopeMatcher.describeDomainMismatch(rule, "LB1", "LB"));
+                ScopeMatcherCalls.describeDomainMismatch(rule, "LB1", "LB"));
     }
 
 
@@ -167,7 +167,7 @@ class ScopeMatcherDomainPrefixTest
     void excludeDoesNotAffectOtherFamilies()
     {
         Rule rule = ruleWithDomainExclude("ADAE");
-        assertTrue(ScopeMatcher.matchesDomain(rule, "ADCM"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "ADCM"));
     }
 
 
@@ -175,9 +175,9 @@ class ScopeMatcherDomainPrefixTest
     void excludeWinsOverInclude_onTheExactName()
     {
         Rule rule = ruleWithDomainIncludeExclude(List.of("ADLB", "ADLBC"), List.of("ADLBC"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "ADLB"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "ADLBC"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "ADLBH"), "not in Include any more");
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "ADLB"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "ADLBC"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "ADLBH"), "not in Include any more");
     }
 
     // ---- Empty-list defaults + degenerate entries ----
@@ -193,9 +193,9 @@ class ScopeMatcherDomainPrefixTest
         ds.setExclude(List.of());
         scope.setDomains(ds);
         rule.setScope(scope);
-        assertTrue(ScopeMatcher.matchesDomain(rule, "ADAE"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "ADCM"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "ADLB"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "ADAE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "ADCM"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "ADLB"));
     }
 
 
@@ -205,8 +205,8 @@ class ScopeMatcherDomainPrefixTest
         // "__" survives RulePackageLoader's empty-entry check but normalises to "" — it must not
         // match anything, not even a dataset whose name also normalises to "".
         Rule rule = ruleWithDomainInclude("__");
-        assertFalse(ScopeMatcher.matchesDomain(rule, "__"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "AE"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "__"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "AE"));
     }
 
     // ---- Helpers ----

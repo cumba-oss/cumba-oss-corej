@@ -9,7 +9,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.expr.eval.Domain;
 import net.cumba.corej.core.expr.eval.DomainScan;
@@ -136,7 +136,7 @@ class PmdaAd0253TupleContainmentProbeTest
 
     private static RuleExecutionResult run(Rule rule, IDataTable adae, IDataTable ae)
     {
-        return RuleRunner.execute(rule, adae, name -> "AE".equals(name) ? ae : null);
+        return RuleRunnerCalls.execute(rule, adae, name -> "AE".equals(name) ? ae : null);
     }
 
     // ------------------------------------------------------------------
@@ -277,7 +277,7 @@ class PmdaAd0253TupleContainmentProbeTest
         });
 
         // The resolver knows no AE at all — the study simply has none loaded.
-        RuleExecutionResult result = RuleRunner.execute(rule, adae, _ -> null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, adae, _ -> null);
         assertEquals(0, result.getViolationCount(),
                 "absent AE ⇒ $ae_keys is the operator's declared EmptyResult.SET ⇒"
                         + " containsAll([]) is true ⇒ the rule passes with no finding. This is"

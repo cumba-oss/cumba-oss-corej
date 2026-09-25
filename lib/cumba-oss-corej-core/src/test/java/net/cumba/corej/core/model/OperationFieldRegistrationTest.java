@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.OperationExecutor;
+import net.cumba.corej.core.exec.OperationExecutorCalls;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.convert.OperationExpressionParser;
 import org.junit.jupiter.api.Test;
@@ -197,7 +198,7 @@ class OperationFieldRegistrationTest
         Operation op = fullyPopulated();
         op.setName("--STDTC");
 
-        Operation resolved = OperationExecutor.resolvePrefixes(op, "EX");
+        Operation resolved = OperationExecutorCalls.resolvePrefixes(op, "EX");
 
         assertEquals("EXSTDTC", resolved.getName(), "sanity: the wildcard really did resolve");
         // `name` was rewritten by design, and `originalName` is where resolvePrefixes stashes the

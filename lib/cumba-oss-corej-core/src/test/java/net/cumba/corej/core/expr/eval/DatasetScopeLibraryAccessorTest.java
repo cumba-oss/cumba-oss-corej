@@ -25,7 +25,7 @@ import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
 import net.cumba.corej.core.model.Rule;
@@ -689,7 +689,7 @@ class DatasetScopeLibraryAccessorTest
         IDataTable qsco = MockTable.of().name("qsco").col("DOMAIN", "QS").col("QSTESTCD", "Q1")
                 .build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, qsco,
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, qsco,
                 name -> "QS".equals(name) ? qsco : null, "QS", library());
 
         assertNotEquals(RuleExecutionStatus.SKIPPED, result.getStatus(),
@@ -707,7 +707,7 @@ class DatasetScopeLibraryAccessorTest
         IDataTable ae = MockTable.of().name("AE").col("DOMAIN", "AE").col("AETERM", "HEADACHE")
                 .build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, ae,
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, ae,
                 name -> "AE".equals(name) ? ae : null, "AE", library());
 
         assertNotEquals(RuleExecutionStatus.SKIPPED, result.getStatus());

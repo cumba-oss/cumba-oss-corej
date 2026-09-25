@@ -137,8 +137,8 @@ class AbsentDatasetSkipCrossStandardCollapseTest
     private static RuleExecutionResult run(Rule rule, IDataTable primary, DatasetResolver resolver,
             Set<String> crossStandard)
     {
-        return RuleRunner.execute(rule, primary, resolver, primary.getMetaData().getName(), null,
-                null, null, Integer.MAX_VALUE, null, null, null, Set.of(), crossStandard);
+        return RuleRunnerCalls.execute(rule, primary, resolver, primary.getMetaData().getName(),
+                null, null, null, Integer.MAX_VALUE, null, null, null, Set.of(), crossStandard);
     }
 
     // ------------------------------------------------------- the guarded half: as claimed, exactly

@@ -22,9 +22,9 @@ class ScopeMatcherTest
     {
         // CDISC-CG0328: Domains.Include = ["TE"]
         Rule rule = ruleWithDomainInclude("TE");
-        assertTrue(ScopeMatcher.matchesDomain(rule, "TE"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "DM"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "AE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "TE"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "DM"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "AE"));
     }
 
 
@@ -32,9 +32,9 @@ class ScopeMatcherTest
     void testMatchesDomain_multipleIncludes()
     {
         Rule rule = ruleWithDomainInclude("DM", "AE");
-        assertTrue(ScopeMatcher.matchesDomain(rule, "DM"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "AE"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "VS"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "DM"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "AE"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "VS"));
     }
 
 
@@ -42,9 +42,9 @@ class ScopeMatcherTest
     void testMatchesDomain_excludeList()
     {
         Rule rule = ruleWithDomainExclude("DM", "SUPPQUAL");
-        assertFalse(ScopeMatcher.matchesDomain(rule, "DM"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "SUPPQUAL"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "AE"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "DM"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "SUPPQUAL"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "AE"));
     }
 
 
@@ -52,8 +52,8 @@ class ScopeMatcherTest
     void testMatchesDomain_noScope()
     {
         Rule rule = new Rule();
-        assertTrue(ScopeMatcher.matchesDomain(rule, "DM"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "AE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "DM"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "AE"));
     }
 
 
@@ -62,7 +62,7 @@ class ScopeMatcherTest
     {
         Rule rule = new Rule();
         rule.setScope(new Scope());
-        assertTrue(ScopeMatcher.matchesDomain(rule, "DM"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "DM"));
     }
 
 
@@ -76,7 +76,7 @@ class ScopeMatcherTest
         ds.setInclude(List.of());
         scope.setDomains(ds);
         rule.setScope(scope);
-        assertTrue(ScopeMatcher.matchesDomain(rule, "DM"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "DM"));
     }
 
 
@@ -84,7 +84,7 @@ class ScopeMatcherTest
     void testMatchesDomain_nullDomainName()
     {
         Rule rule = ruleWithDomainInclude("TE");
-        assertTrue(ScopeMatcher.matchesDomain(rule, null));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, null));
     }
 
     // ---- Domain matching: ALL wildcard ----
@@ -94,10 +94,10 @@ class ScopeMatcherTest
     void testMatchesDomain_includeAll()
     {
         Rule rule = ruleWithDomainInclude("ALL");
-        assertTrue(ScopeMatcher.matchesDomain(rule, "DM"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "AE"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "SUPPDM"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "RELREC"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "DM"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "AE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "SUPPDM"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "RELREC"));
     }
 
 
@@ -111,10 +111,10 @@ class ScopeMatcherTest
         ds.setExclude(List.of("DM", "AE"));
         scope.setDomains(ds);
         rule.setScope(scope);
-        assertFalse(ScopeMatcher.matchesDomain(rule, "DM"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "AE"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "VS"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "LB"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "DM"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "AE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "VS"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "LB"));
     }
 
     // ---- Domain matching: SUPP-- / AP-- patterns ----
@@ -124,16 +124,16 @@ class ScopeMatcherTest
     void testMatchesDomain_suppWildcard()
     {
         Rule rule = ruleWithDomainInclude("SUPP--");
-        assertTrue(ScopeMatcher.matchesDomain(rule, "SUPPDM"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "SUPPAE"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "SUPPLB"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "SUPPDM"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "SUPPAE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "SUPPLB"));
         // The family wildcard is DELETED (supersedes Fix #34): `--` is strict, so `SUPP--`
         // needs SUPP plus exactly two characters. The bare prefix `"SUPP"` no longer matches.
-        assertFalse(ScopeMatcher.matchesDomain(rule, "SUPP"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "SUPP"));
         // Fix #12: SUPP letter-suffix splits (SUPPDMX = letter-split of SUPPDM) are
         // recognised as splits and fall under the SUPP-- scope via their unsplit base.
-        assertTrue(ScopeMatcher.matchesDomain(rule, "SUPPDMX"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "DM"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "SUPPDMX"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "DM"));
     }
 
 
@@ -141,14 +141,14 @@ class ScopeMatcherTest
     void testMatchesDomain_apWildcard()
     {
         Rule rule = ruleWithDomainInclude("AP--");
-        assertTrue(ScopeMatcher.matchesDomain(rule, "APCE"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "APMH"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "APCE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "APMH"));
         // The family wildcard is DELETED (supersedes Fix #34): `AP--` needs AP plus exactly
         // two characters, so the bare prefix `"AP"` no longer matches.
-        assertFalse(ScopeMatcher.matchesDomain(rule, "AP"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "AP"));
         // Fix #12: AP letter-suffix splits (APMHX = letter-split of APMH) likewise match.
-        assertTrue(ScopeMatcher.matchesDomain(rule, "APMHX"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "DM"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "APMHX"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "DM"));
     }
 
 
@@ -161,10 +161,10 @@ class ScopeMatcherTest
         ds.setExclude(List.of("SUPP--", "AP--"));
         scope.setDomains(ds);
         rule.setScope(scope);
-        assertFalse(ScopeMatcher.matchesDomain(rule, "SUPPDM"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "APCE"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "DM"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "AE"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "SUPPDM"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "APCE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "DM"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "AE"));
     }
 
     // ---- Domain matching: NONE in Exclude ----
@@ -179,9 +179,9 @@ class ScopeMatcherTest
         ds.setExclude(List.of("NONE"));
         scope.setDomains(ds);
         rule.setScope(scope);
-        assertTrue(ScopeMatcher.matchesDomain(rule, "DM"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "AE"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "SUPPDM"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "DM"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "AE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "SUPPDM"));
     }
 
     // ---- Class matching ----
@@ -191,9 +191,9 @@ class ScopeMatcherTest
     void testMatchesClass_includeAll()
     {
         Rule rule = ruleWithClassInclude("ALL");
-        assertTrue(ScopeMatcher.matchesClass(rule, "EVENTS"));
-        assertTrue(ScopeMatcher.matchesClass(rule, "FINDINGS"));
-        assertTrue(ScopeMatcher.matchesClass(rule, "SPECIAL PURPOSE"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "EVENTS"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "FINDINGS"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "SPECIAL PURPOSE"));
     }
 
 
@@ -207,8 +207,8 @@ class ScopeMatcherTest
         cs.setExclude(List.of("RELATIONSHIP"));
         scope.setClasses(cs);
         rule.setScope(scope);
-        assertTrue(ScopeMatcher.matchesClass(rule, "EVENTS"));
-        assertFalse(ScopeMatcher.matchesClass(rule, "RELATIONSHIP"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "EVENTS"));
+        assertFalse(ScopeMatcherCalls.matchesClass(rule, "RELATIONSHIP"));
     }
 
 
@@ -216,8 +216,8 @@ class ScopeMatcherTest
     void testMatchesClass_includeList()
     {
         Rule rule = ruleWithClassInclude("SPECIAL PURPOSE");
-        assertTrue(ScopeMatcher.matchesClass(rule, "SPECIAL PURPOSE"));
-        assertFalse(ScopeMatcher.matchesClass(rule, "EVENTS"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "SPECIAL PURPOSE"));
+        assertFalse(ScopeMatcherCalls.matchesClass(rule, "EVENTS"));
     }
 
 
@@ -225,8 +225,8 @@ class ScopeMatcherTest
     void testMatchesClass_excludeList()
     {
         Rule rule = ruleWithClassExclude("RELATIONSHIP");
-        assertFalse(ScopeMatcher.matchesClass(rule, "RELATIONSHIP"));
-        assertTrue(ScopeMatcher.matchesClass(rule, "EVENTS"));
+        assertFalse(ScopeMatcherCalls.matchesClass(rule, "RELATIONSHIP"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "EVENTS"));
     }
 
 
@@ -234,7 +234,7 @@ class ScopeMatcherTest
     void testMatchesClass_noScope()
     {
         Rule rule = new Rule();
-        assertTrue(ScopeMatcher.matchesClass(rule, "EVENTS"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "EVENTS"));
     }
 
 
@@ -245,7 +245,7 @@ class ScopeMatcherTest
         // Python's rule_processor.rule_applies_to_class:255 (`class_name not in
         // included_classes`).
         Rule rule = ruleWithClassInclude("SPECIAL PURPOSE");
-        assertFalse(ScopeMatcher.matchesClass(rule, null));
+        assertFalse(ScopeMatcherCalls.matchesClass(rule, null));
     }
 
 
@@ -254,7 +254,7 @@ class ScopeMatcherTest
     {
         // Symmetric on Exclude — strict-on-null rejects any class-scoped rule.
         Rule rule = ruleWithClassExclude("RELATIONSHIP");
-        assertFalse(ScopeMatcher.matchesClass(rule, null));
+        assertFalse(ScopeMatcherCalls.matchesClass(rule, null));
     }
 
 
@@ -264,7 +264,7 @@ class ScopeMatcherTest
         // Strict-on-null only kicks in when the rule has a class scope. A rule with no class
         // Include/Exclude is permissive even when the class is undetermined.
         Rule rule = new Rule();
-        assertTrue(ScopeMatcher.matchesClass(rule, null));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, null));
     }
 
 
@@ -280,7 +280,7 @@ class ScopeMatcherTest
         cs.setExclude(List.of());
         scope.setClasses(cs);
         rule.setScope(scope);
-        assertTrue(ScopeMatcher.matchesClass(rule, null));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, null));
     }
 
 
@@ -290,8 +290,8 @@ class ScopeMatcherTest
         // CDISC Library returns "Events", "Findings", … in title case; rule scopes use
         // uppercase. Both must collide via normalisation.
         Rule rule = ruleWithClassInclude("EVENTS");
-        assertTrue(ScopeMatcher.matchesClass(rule, "Events"));
-        assertTrue(ScopeMatcher.matchesClass(rule, "events"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "Events"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "events"));
     }
 
 
@@ -300,9 +300,9 @@ class ScopeMatcherTest
     {
         // Library returns "Special-Purpose"; rules write "SPECIAL PURPOSE" (and vice versa).
         Rule rule = ruleWithClassInclude("SPECIAL PURPOSE");
-        assertTrue(ScopeMatcher.matchesClass(rule, "Special-Purpose"));
-        assertTrue(ScopeMatcher.matchesClass(rule, "SPECIAL-PURPOSE"));
-        assertTrue(ScopeMatcher.matchesClass(rule, "special purpose"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "Special-Purpose"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "SPECIAL-PURPOSE"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "special purpose"));
     }
 
 
@@ -311,11 +311,11 @@ class ScopeMatcherTest
     {
         // FA datasets (class = "FINDINGS ABOUT") must satisfy a rule scoped only to "FINDINGS".
         Rule rule = ruleWithClassInclude("FINDINGS");
-        assertTrue(ScopeMatcher.matchesClass(rule, "FINDINGS ABOUT"));
-        assertTrue(ScopeMatcher.matchesClass(rule, "Findings About"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "FINDINGS ABOUT"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "Findings About"));
         // And a rule scoped to FINDINGS ABOUT directly still works.
         Rule rule2 = ruleWithClassInclude("FINDINGS ABOUT");
-        assertTrue(ScopeMatcher.matchesClass(rule2, "FINDINGS ABOUT"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule2, "FINDINGS ABOUT"));
     }
 
 
@@ -324,9 +324,9 @@ class ScopeMatcherTest
     {
         // Symmetric on the exclude side: rule excluding FINDINGS also excludes FA datasets.
         Rule rule = ruleWithClassExclude("FINDINGS");
-        assertFalse(ScopeMatcher.matchesClass(rule, "FINDINGS ABOUT"));
-        assertFalse(ScopeMatcher.matchesClass(rule, "FINDINGS"));
-        assertTrue(ScopeMatcher.matchesClass(rule, "EVENTS"));
+        assertFalse(ScopeMatcherCalls.matchesClass(rule, "FINDINGS ABOUT"));
+        assertFalse(ScopeMatcherCalls.matchesClass(rule, "FINDINGS"));
+        assertTrue(ScopeMatcherCalls.matchesClass(rule, "EVENTS"));
     }
 
     // ---- Use_Case matching ----
@@ -465,9 +465,9 @@ class ScopeMatcherTest
     void testMatchesDomain_splitTrue_matchesRegularSplit()
     {
         Rule rule = ruleWithSplitFilter(true);
-        assertTrue(ScopeMatcher.matchesDomain(rule, "LB1"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "AE2"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "LB10"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "LB1"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "AE2"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "LB10"));
     }
 
 
@@ -475,10 +475,10 @@ class ScopeMatcherTest
     void testMatchesDomain_splitTrue_matchesSuppAndApSplit()
     {
         Rule rule = ruleWithSplitFilter(true);
-        assertTrue(ScopeMatcher.matchesDomain(rule, "SUPPDM1"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "SUPPAE2"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "APMH1"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "APCE2"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "SUPPDM1"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "SUPPAE2"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "APMH1"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "APCE2"));
     }
 
 
@@ -486,11 +486,11 @@ class ScopeMatcherTest
     void testMatchesDomain_splitTrue_rejectsNonSplit()
     {
         Rule rule = ruleWithSplitFilter(true);
-        assertFalse(ScopeMatcher.matchesDomain(rule, "DM"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "AE"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "RELREC"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "SUPPDM")); // base, not split
-        assertFalse(ScopeMatcher.matchesDomain(rule, "APMH")); // base, not split
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "DM"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "AE"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "RELREC"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "SUPPDM")); // base, not split
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "APMH")); // base, not split
     }
 
 
@@ -509,15 +509,15 @@ class ScopeMatcherTest
         scope.setDomains(ds);
         rule.setScope(scope);
 
-        assertTrue(ScopeMatcher.matchesDomain(rule, "SUPPDM1")); // base SUPPDM matches + split
-        assertTrue(ScopeMatcher.matchesDomain(rule, "SUPPAE2")); // base SUPPAE matches + split
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "SUPPDM1")); // base SUPPDM matches + split
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "SUPPAE2")); // base SUPPAE matches + split
         // Was true before the conjunctive split gate: matched Include but is NOT a split.
-        assertFalse(ScopeMatcher.matchesDomain(rule, "SUPPDM"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "SUPPDM"));
         // Was true before the conjunctive split gate: a split, but nothing in Include matches it.
         // This is
         // the leg that made `Include: [AP--]` inert on CDISC-CG0650.
-        assertFalse(ScopeMatcher.matchesDomain(rule, "LB1"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "DM")); // non-split, misses Include
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "LB1"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "DM")); // non-split, misses Include
     }
 
 
@@ -536,14 +536,14 @@ class ScopeMatcherTest
 
         // Split of AE: misses Include. (CDISC-CG0650's own four scenarios cover the AP-- side.)
         assertEquals("domain APTOOLONG not in Scope.Domains.Include [AP--]",
-                ScopeMatcher.describeDomainMismatch(rule, "APTOOLONG", "AE"));
+                ScopeMatcherCalls.describeDomainMismatch(rule, "APTOOLONG", "AE"));
         // Matches Include by name but is not a split.
         assertEquals(
                 "domain APMH is not a split dataset but Scope.Domains.Include_Split_Datasets is"
                         + " true",
-                ScopeMatcher.describeDomainMismatch(rule, "APMH", "APMH"));
+                ScopeMatcherCalls.describeDomainMismatch(rule, "APMH", "APMH"));
         // Split whose data-derived base matches AP--: in scope.
-        assertNull(ScopeMatcher.describeDomainMismatch(rule, "APTOOLONG", "APAE"));
+        assertNull(ScopeMatcherCalls.describeDomainMismatch(rule, "APTOOLONG", "APAE"));
     }
 
 
@@ -558,10 +558,10 @@ class ScopeMatcherTest
         scope.setDomains(ds);
         rule.setScope(scope);
 
-        assertTrue(ScopeMatcher.matchesDomain(rule, "LB1"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "DM"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "SUPPDM"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "SUPPDM1")); // split but base excluded
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "LB1"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "DM"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "SUPPDM"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "SUPPDM1")); // split but base excluded
     }
 
 
@@ -569,12 +569,12 @@ class ScopeMatcherTest
     void testMatchesDomain_splitFalse_rejectsSplitDatasets()
     {
         Rule rule = ruleWithSplitFilter(false);
-        assertTrue(ScopeMatcher.matchesDomain(rule, "DM"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "AE"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "SUPPDM"));
-        assertFalse(ScopeMatcher.matchesDomain(rule, "LB1")); // split → rejected
-        assertFalse(ScopeMatcher.matchesDomain(rule, "SUPPDM1")); // split → rejected
-        assertFalse(ScopeMatcher.matchesDomain(rule, "APMH1")); // split → rejected
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "DM"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "AE"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "SUPPDM"));
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "LB1")); // split → rejected
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "SUPPDM1")); // split → rejected
+        assertFalse(ScopeMatcherCalls.matchesDomain(rule, "APMH1")); // split → rejected
     }
 
 
@@ -583,9 +583,9 @@ class ScopeMatcherTest
     {
         // Default: no split filtering, matches everything
         Rule rule = ruleWithSplitFilter(null);
-        assertTrue(ScopeMatcher.matchesDomain(rule, "DM"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "LB1"));
-        assertTrue(ScopeMatcher.matchesDomain(rule, "SUPPDM1"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "DM"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "LB1"));
+        assertTrue(ScopeMatcherCalls.matchesDomain(rule, "SUPPDM1"));
     }
 
 
@@ -608,7 +608,7 @@ class ScopeMatcherTest
     {
         Rule rule = new Rule();
         DataTableMeta meta = metaWith("STUDYID", "USUBJID", "AGE");
-        assertTrue(ScopeMatcher.matchesVariables(rule, meta));
+        assertTrue(ScopeMatcherCalls.matchesVariables(rule, meta));
     }
 
 
@@ -617,7 +617,7 @@ class ScopeMatcherTest
     {
         Rule rule = ruleWithDomainInclude("ALL");
         DataTableMeta meta = metaWith("STUDYID", "DOMAIN");
-        assertTrue(ScopeMatcher.matchesVariables(rule, meta));
+        assertTrue(ScopeMatcherCalls.matchesVariables(rule, meta));
     }
 
 
@@ -626,7 +626,7 @@ class ScopeMatcherTest
     {
         Rule rule = ruleWithVariableInclude("USUBJID");
         DataTableMeta meta = metaWith("STUDYID", "USUBJID", "AGE");
-        assertTrue(ScopeMatcher.matchesVariables(rule, meta));
+        assertTrue(ScopeMatcherCalls.matchesVariables(rule, meta));
     }
 
 
@@ -635,7 +635,7 @@ class ScopeMatcherTest
     {
         Rule rule = ruleWithVariableInclude("USUBJID");
         DataTableMeta meta = metaWith("STUDYID", "DOMAIN", "VISITNUM");
-        assertFalse(ScopeMatcher.matchesVariables(rule, meta));
+        assertFalse(ScopeMatcherCalls.matchesVariables(rule, meta));
     }
 
 
@@ -644,10 +644,10 @@ class ScopeMatcherTest
     {
         Rule rule = ruleWithVariableInclude("USUBJID", "VISITNUM");
         DataTableMeta metaWith = metaWith("STUDYID", "USUBJID", "VISITNUM");
-        assertTrue(ScopeMatcher.matchesVariables(rule, metaWith));
+        assertTrue(ScopeMatcherCalls.matchesVariables(rule, metaWith));
 
         DataTableMeta metaPartial = metaWith("STUDYID", "USUBJID");
-        assertFalse(ScopeMatcher.matchesVariables(rule, metaPartial));
+        assertFalse(ScopeMatcherCalls.matchesVariables(rule, metaPartial));
     }
 
 
@@ -656,7 +656,7 @@ class ScopeMatcherTest
     {
         Rule rule = ruleWithVariableExclude("POOLID");
         DataTableMeta meta = metaWith("STUDYID", "POOLID", "AGE");
-        assertFalse(ScopeMatcher.matchesVariables(rule, meta));
+        assertFalse(ScopeMatcherCalls.matchesVariables(rule, meta));
     }
 
 
@@ -665,7 +665,7 @@ class ScopeMatcherTest
     {
         Rule rule = ruleWithVariableExclude("POOLID");
         DataTableMeta meta = metaWith("STUDYID", "USUBJID", "AGE");
-        assertTrue(ScopeMatcher.matchesVariables(rule, meta));
+        assertTrue(ScopeMatcherCalls.matchesVariables(rule, meta));
     }
 
 
@@ -674,11 +674,12 @@ class ScopeMatcherTest
     {
         Rule rule = ruleWithVariableIncludeExclude(List.of("USUBJID"), List.of("POOLID"));
         // Has USUBJID, no POOLID → matches
-        assertTrue(ScopeMatcher.matchesVariables(rule, metaWith("STUDYID", "USUBJID")));
+        assertTrue(ScopeMatcherCalls.matchesVariables(rule, metaWith("STUDYID", "USUBJID")));
         // Has USUBJID and POOLID → excluded
-        assertFalse(ScopeMatcher.matchesVariables(rule, metaWith("STUDYID", "USUBJID", "POOLID")));
+        assertFalse(
+                ScopeMatcherCalls.matchesVariables(rule, metaWith("STUDYID", "USUBJID", "POOLID")));
         // No USUBJID → required missing
-        assertFalse(ScopeMatcher.matchesVariables(rule, metaWith("STUDYID", "DOMAIN")));
+        assertFalse(ScopeMatcherCalls.matchesVariables(rule, metaWith("STUDYID", "DOMAIN")));
     }
 
 
@@ -686,7 +687,7 @@ class ScopeMatcherTest
     void testMatchesVariables_nullMeta_matchesAll()
     {
         Rule rule = ruleWithVariableInclude("USUBJID");
-        assertTrue(ScopeMatcher.matchesVariables(rule, null));
+        assertTrue(ScopeMatcherCalls.matchesVariables(rule, null));
     }
 
     // ---- Variable scope helpers ----

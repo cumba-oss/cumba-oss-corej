@@ -113,8 +113,8 @@ class MatchFilterExecutionTest
         Rule r = rule(aeJoin("AEOUT == \"FATAL\""), "AE._matched_ and DTHFL != \"Y\"");
         assertNull(r.getLoadError(), "filtered join must load cleanly");
         IDataTable primary = dm();
-        RuleExecutionResult result = RuleRunner.execute(r, primary, inventory(study(primary, ae())),
-                "DM", null, null, null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                inventory(study(primary, ae())), "DM", null, null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
         // P1 has a FATAL AE and DTHFL != Y -> fires; P2 has FATAL but DTHFL=Y; P3 has only MILD.
         assertEquals(List.of("P1"), firedSubjects(result, primary));
@@ -127,8 +127,8 @@ class MatchFilterExecutionTest
     {
         Rule r = rule(aeJoin(null), "AE._matched_ and DTHFL != \"Y\"");
         IDataTable primary = dm();
-        RuleExecutionResult result = RuleRunner.execute(r, primary, inventory(study(primary, ae())),
-                "DM", null, null, null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                inventory(study(primary, ae())), "DM", null, null, null);
         assertEquals(List.of("P1", "P3"), firedSubjects(result, primary));
     }
 
@@ -139,8 +139,8 @@ class MatchFilterExecutionTest
     {
         Rule r = rule(aeJoin("AEOUT == \"NEVER\""), "not AE._matched_");
         IDataTable primary = dm();
-        RuleExecutionResult result = RuleRunner.execute(r, primary, inventory(study(primary, ae())),
-                "DM", null, null, null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                inventory(study(primary, ae())), "DM", null, null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
         assertEquals(List.of("P1", "P2", "P3"), firedSubjects(result, primary));
     }
@@ -151,10 +151,10 @@ class MatchFilterExecutionTest
     void filterRemovingNothingChangesNothing() throws IOException
     {
         IDataTable primary = dm();
-        RuleExecutionResult filtered = RuleRunner.execute(
+        RuleExecutionResult filtered = RuleRunnerCalls.execute(
                 rule(aeJoin("non_empty(AEOUT)"), "not AE._matched_"), primary,
                 inventory(study(primary, ae())), "DM", null, null, null);
-        RuleExecutionResult plain = RuleRunner.execute(rule(aeJoin(null), "not AE._matched_"),
+        RuleExecutionResult plain = RuleRunnerCalls.execute(rule(aeJoin(null), "not AE._matched_"),
                 primary, inventory(study(primary, ae())), "DM", null, null, null);
         assertEquals(plain.getStatus(), filtered.getStatus());
         assertEquals(firedSubjects(plain, primary), firedSubjects(filtered, primary));
@@ -172,8 +172,8 @@ class MatchFilterExecutionTest
         // P1 has only a non-AESI qualifier row -> filtered away -> unmatched; P2 has AESI.
         IDataTable supp = MockTable.of().name("SUPPAE").col("USUBJID", "P1", "P2")
                 .col("QNAM", "OTHER", "AESI").build();
-        RuleExecutionResult result = RuleRunner.execute(r, primary, inventory(study(primary, supp)),
-                "AE", null, null, null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                inventory(study(primary, supp)), "AE", null, null, null);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
         assertEquals(List.of("P1"), firedSubjects(result, primary));
     }
@@ -185,8 +185,8 @@ class MatchFilterExecutionTest
     {
         Rule r = rule(aeJoin("AEBOGUS == \"X\""), "not AE._matched_");
         IDataTable primary = dm();
-        RuleExecutionResult result = RuleRunner.execute(r, primary, inventory(study(primary, ae())),
-                "DM", null, null, null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                inventory(study(primary, ae())), "DM", null, null, null);
         assertEquals(RuleExecutionStatus.ERROR, result.getStatus());
         assertTrue(String.valueOf(result.getStatusMessage()).contains("AE.AEBOGUS"),
                 result.getStatusMessage());
@@ -207,8 +207,8 @@ class MatchFilterExecutionTest
         assertNotNull(r);
         assertNull(r.getLoadError());
         IDataTable primary = dm();
-        RuleExecutionResult result = RuleRunner.execute(r, primary, inventory(study(primary, ae())),
-                "DM", null, null, null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                inventory(study(primary, ae())), "DM", null, null, null);
         assertEquals(RuleExecutionStatus.SKIPPED, result.getStatus(), result.getStatusMessage());
     }
 }

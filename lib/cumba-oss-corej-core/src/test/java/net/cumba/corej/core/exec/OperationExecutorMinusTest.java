@@ -37,7 +37,7 @@ class OperationExecutorMinusTest
     @SuppressWarnings("unchecked")
     private static List<String> run(Operation op, Map<String, Object> prior)
     {
-        Object r = OperationExecutor.executeOne(op, TABLE, NO_RESOLVER, null, prior);
+        Object r = OperationExecutorCalls.executeOne(op, TABLE, NO_RESOLVER, null, prior);
         return (List<String>) r;
     }
 
@@ -209,7 +209,7 @@ class OperationExecutorMinusTest
         d2.setOperator("distinct");
         d2.setName("B");
         Operation minus = minusOp("$all", "$some");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(d1, d2, minus), table,
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(d1, d2, minus), table,
                 NO_RESOLVER);
         assertEquals(List.of("X", "Z"), vars.get("$missing"));
     }

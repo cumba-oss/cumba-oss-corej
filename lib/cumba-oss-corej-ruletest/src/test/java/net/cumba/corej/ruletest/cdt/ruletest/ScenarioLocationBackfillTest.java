@@ -50,7 +50,7 @@ class ScenarioLocationBackfillTest
     {
         Path f = write(dir, VIOLATION);
         RuleTestScenario s = RuleTestCdt.parse(VIOLATION, f.toString());
-        Violation v = new Violation(0, Map.of(), "001", "1");
+        Violation v = new Violation(0, Map.of(), "001", "1", Map.of(), null, null);
 
         ScenarioLocationBackfill.run(f, s, List.of(v), 1, false, true);
 
@@ -143,8 +143,9 @@ class ScenarioLocationBackfillTest
         Path f = write(dir, VIOLATION);
         RuleTestScenario s = RuleTestCdt.parse(VIOLATION, f.toString());
 
-        ScenarioLocationBackfill.run(f, s, List.of(new Violation(0, Map.of(), "001", "1")), 1,
-                false, true);
+        ScenarioLocationBackfill.run(f, s,
+                List.of(new Violation(0, Map.of(), "001", "1", Map.of(), null, null)), 1, false,
+                true);
 
         String out = Files.readString(f);
         assertFalse(out.contains("severity="),
@@ -157,7 +158,7 @@ class ScenarioLocationBackfillTest
     {
         Path f = write(dir, VIOLATION);
         RuleTestScenario s = RuleTestCdt.parse(VIOLATION, f.toString());
-        Violation v = new Violation(0, Map.of(), "001", "1");
+        Violation v = new Violation(0, Map.of(), "001", "1", Map.of(), null, null);
 
         ScenarioLocationBackfill.run(f, s, List.of(v), 1, false, true);
         String first = Files.readString(f);
@@ -190,7 +191,7 @@ class ScenarioLocationBackfillTest
         String crlf = VIOLATION.replace("\n", "\r\n");
         Path f = write(dir, crlf);
         RuleTestScenario s = RuleTestCdt.parse(crlf, f.toString());
-        Violation v = new Violation(0, Map.of(), "001", "1");
+        Violation v = new Violation(0, Map.of(), "001", "1", Map.of(), null, null);
 
         ScenarioLocationBackfill.run(f, s, List.of(v), 1, false, true);
 

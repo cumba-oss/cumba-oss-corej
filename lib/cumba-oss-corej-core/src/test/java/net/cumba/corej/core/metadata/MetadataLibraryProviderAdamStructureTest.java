@@ -143,7 +143,7 @@ class MetadataLibraryProviderAdamStructureTest
         // would hard-code the concrete form (TRT01P) the standard never publishes, which is
         // precisely what the three PMDA-AD0047 fixtures did to hide the defect.
         assertEquals(List.of("STUDYID", "USUBJID", "SITEID", "TRTxxP"),
-                p.getRequiredVariablesForStructure(AdamDataStructureDetector.ADSL));
+                p.getRequiredVariablesForStructure(AdamDataStructureDetector.ADSL, List.of()));
     }
 
 
@@ -155,7 +155,7 @@ class MetadataLibraryProviderAdamStructureTest
         // BDS and TTE both class as BASIC DATA STRUCTURE; TTE requires nothing, so the union is
         // exactly BDS's list. An INTERSECTION here would be empty — silently vacuous.
         assertEquals(List.of("PARAM", "PARAMCD"),
-                p.getRequiredVariablesForStructure(AdamDataStructureDetector.BDS));
+                p.getRequiredVariablesForStructure(AdamDataStructureDetector.BDS, List.of()));
     }
 
 
@@ -167,9 +167,9 @@ class MetadataLibraryProviderAdamStructureTest
         // ⚠ Without the alias map both of these return null and every rule on adamig 1-0/1-1/1-2
         // silently skips — the same failure the lint-rules.py version-key bug produced.
         assertEquals(List.of("STUDYID", "SUBJID"),
-                p.getRequiredVariablesForStructure(AdamDataStructureDetector.ADSL));
+                p.getRequiredVariablesForStructure(AdamDataStructureDetector.ADSL, List.of()));
         assertEquals(List.of("PARAM"),
-                p.getRequiredVariablesForStructure(AdamDataStructureDetector.BDS));
+                p.getRequiredVariablesForStructure(AdamDataStructureDetector.BDS, List.of()));
     }
 
 
@@ -179,16 +179,16 @@ class MetadataLibraryProviderAdamStructureTest
         // The distinction the whole fix turns on. null => "no such structure, SKIP the rule";
         // empty => "the structure exists and requires nothing", a legitimate green pass.
         MetadataLibraryProvider p = providerFor(adamig13());
-        assertNull(p.getRequiredVariablesForStructure(AdamDataStructureDetector.OCCDS));
-        assertNull(
-                p.getRequiredVariablesForStructure(AdamDataStructureDetector.MEDICAL_DEVICE_BDS));
+        assertNull(p.getRequiredVariablesForStructure(AdamDataStructureDetector.OCCDS, List.of()));
+        assertNull(p.getRequiredVariablesForStructure(AdamDataStructureDetector.MEDICAL_DEVICE_BDS,
+                List.of()));
 
         List<Map<String, Object>> onlyPermissible = List
                 .of(structure("TTE", AdamDataStructureDetector.BDS,
                         List.of(varSet("Tte", List.of(var("CNSR", "1", "Perm"))))));
         MetadataLibraryProvider empty = providerFor(product(onlyPermissible));
         assertEquals(List.of(),
-                empty.getRequiredVariablesForStructure(AdamDataStructureDetector.BDS));
+                empty.getRequiredVariablesForStructure(AdamDataStructureDetector.BDS, List.of()));
     }
 
 
@@ -203,7 +203,8 @@ class MetadataLibraryProviderAdamStructureTest
         MetadataLibraryProvider studyOnly = new MetadataLibraryProvider(
                 DataTableLibraryMetadataAdapter.empty());
         assertFalse(studyOnly.supportsStructureKeyedVariables());
-        assertNull(studyOnly.getRequiredVariablesForStructure(AdamDataStructureDetector.ADSL));
+        assertNull(studyOnly.getRequiredVariablesForStructure(AdamDataStructureDetector.ADSL,
+                List.of()));
     }
 
 
@@ -211,8 +212,8 @@ class MetadataLibraryProviderAdamStructureTest
     void expectedMirrorsRequiredBecauseAdamHasNoExpCoreValue()
     {
         MetadataLibraryProvider p = providerFor(adamig13());
-        assertEquals(p.getRequiredVariablesForStructure(AdamDataStructureDetector.ADSL),
-                p.getExpectedVariablesForStructure(AdamDataStructureDetector.ADSL));
+        assertEquals(p.getRequiredVariablesForStructure(AdamDataStructureDetector.ADSL, List.of()),
+                p.getExpectedVariablesForStructure(AdamDataStructureDetector.ADSL, List.of()));
     }
 
 
@@ -227,6 +228,6 @@ class MetadataLibraryProviderAdamStructureTest
                 product(List.of(structure("ADSL", AdamDataStructureDetector.ADSL,
                         List.of(varSet("second", setA), varSet("first", setB))))));
         assertEquals(List.of("BBB", "AAA"),
-                p.getRequiredVariablesForStructure(AdamDataStructureDetector.ADSL));
+                p.getRequiredVariablesForStructure(AdamDataStructureDetector.ADSL, List.of()));
     }
 }

@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
@@ -86,7 +86,7 @@ class OperandTemplateWildcardIntegrationTest
         tables.put("ADAE", adae);
         DatasetResolver resolver = tables::get;
 
-        RuleExecutionResult result = RuleRunner.execute(wildcardRule(), adae, resolver);
+        RuleExecutionResult result = RuleRunnerCalls.execute(wildcardRule(), adae, resolver);
         assertEquals(1, result.getViolationCount(), "only the PHSDT=1999-12-31 row fires");
         assertEquals(1L, result.getViolations().get(0).getRow());
     }
@@ -104,7 +104,7 @@ class OperandTemplateWildcardIntegrationTest
         tables.put("ADAE", adae);
         DatasetResolver resolver = tables::get;
 
-        RuleExecutionResult result = RuleRunner.execute(wildcardRule(), adae, resolver);
+        RuleExecutionResult result = RuleRunnerCalls.execute(wildcardRule(), adae, resolver);
         assertEquals(2, result.getViolationCount(),
                 "both populated rows fire (loud failure mode for empty wildcard match)");
     }

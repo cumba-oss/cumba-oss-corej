@@ -54,8 +54,8 @@ class DefineCodedCodesListMembershipTest
     private static boolean fires(String operator, String codedCodesJson) throws Exception
     {
         IDataTable ae = MockTable.of().name("AE").col("AEACN", "x").build();
-        RuleExecutionResult r = RuleRunner.execute(rule(operator), ae, _ -> null, "AE", null, null,
-                define(codedCodesJson));
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule(operator), ae, _ -> null, "AE", null,
+                null, define(codedCodesJson));
         return r.hasViolations();
     }
 

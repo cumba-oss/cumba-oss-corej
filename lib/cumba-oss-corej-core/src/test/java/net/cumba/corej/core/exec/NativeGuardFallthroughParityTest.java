@@ -34,7 +34,7 @@ class NativeGuardFallthroughParityTest
 
     private static RuleExecutionResult run(Rule rule, IDataTable t, DatasetResolver resolver)
     {
-        return RuleRunner.execute(rule, t, resolver, "AE", null, null, null);
+        return RuleRunnerCalls.execute(rule, t, resolver, "AE", null, null, null);
     }
 
 

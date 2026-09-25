@@ -126,7 +126,7 @@ class PerDomainOutputExclusionTest
         IDataTable table = lb();
         Rule concrete = expandFor("LB", table);
 
-        RuleExecutionResult result = RuleRunner.execute(concrete, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(concrete, table);
         assertEquals(1, result.getViolationCount(), "LBORRES is empty on the only row");
         Map<String, String> values = result.getViolations().get(0).getValues();
         // Both arms — a filter that removed everything would pass the absence half alone.
@@ -145,7 +145,7 @@ class PerDomainOutputExclusionTest
         IDataTable table = lb();
         Rule concrete = expandFor("LB", table);
 
-        RuleExecutionResult result = RuleRunner.execute(concrete, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(concrete, table);
         // The snapshot's `status:` rows come from exactly this value. With the defect live it was
         // ERROR on every targeted dataset.
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
@@ -159,7 +159,7 @@ class PerDomainOutputExclusionTest
     {
         IDataTable table = lb();
         Rule concrete = expandFor("LB", table);
-        RuleExecutionResult result = RuleRunner.execute(concrete, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(concrete, table);
 
         ValidationReport report = new ValidationReportBuilder()
                 .add("LB", "lb.xpt", concrete, result).build();

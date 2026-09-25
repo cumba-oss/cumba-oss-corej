@@ -74,7 +74,7 @@ class UnresolvableIdentContractTest
     void unresolvableIdentIsNullNotLiteral()
     {
         IDataTable ae = MockTable.of().name("AE").col("AETERM", "PLACEBO", "DRUG").build();
-        RuleExecutionResult r = RuleRunner.execute(equalToLiteralRule(), ae, NO_RESOLVER, "AE",
+        RuleExecutionResult r = RuleRunnerCalls.execute(equalToLiteralRule(), ae, NO_RESOLVER, "AE",
                 null, null, null);
         assertNotNull(r);
         assertTrue(violatingRows(r).isEmpty(),

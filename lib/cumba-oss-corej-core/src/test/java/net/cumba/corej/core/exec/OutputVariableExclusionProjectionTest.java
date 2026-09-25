@@ -73,7 +73,7 @@ class OutputVariableExclusionProjectionTest
         IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("AETERM", "H")
                 .col("AEDECOD", "").col("AESEV", "MILD").build();
 
-        Map<String, String> values = singleViolationValues(RuleRunner.execute(rule, ae));
+        Map<String, String> values = singleViolationValues(RuleRunnerCalls.execute(rule, ae));
 
         assertFalse(values.containsKey("AEDECOD"), values.toString());
         assertEquals("H", values.get("AETERM"));
@@ -99,7 +99,7 @@ class OutputVariableExclusionProjectionTest
                 rule.getEffectiveOutputVariables());
         IDataTable table = MockTable.of().name("AE").col("AETERM", "X", "Y").build();
 
-        Map<String, String> values = singleViolationValues(RuleRunner.execute(rule, table));
+        Map<String, String> values = singleViolationValues(RuleRunnerCalls.execute(rule, table));
 
         assertFalse(values.containsKey("variable_format"), values.toString());
         assertEquals("AETERM", values.get("variable_name"));
@@ -121,7 +121,7 @@ class OutputVariableExclusionProjectionTest
                          "Outcome":{"Message":"m","Output_Variables":["variable_name","variable_format"]}}""");
         IDataTable table = MockTable.of().name("AE").col("AETERM", "X", "Y").build();
 
-        Map<String, String> values = singleViolationValues(RuleRunner.execute(rule, table));
+        Map<String, String> values = singleViolationValues(RuleRunnerCalls.execute(rule, table));
 
         assertTrue(values.containsKey("variable_format"));
         assertNull(values.get("variable_format"));
@@ -150,7 +150,7 @@ class OutputVariableExclusionProjectionTest
         IDataTable dm = MockTable.of().name("DM").col("SEX", "F").build();
 
         Map<String, String> values = singleViolationValues(
-                RuleRunner.execute(rule, dm, _ -> null, "DM", library, null, define));
+                RuleRunnerCalls.execute(rule, dm, _ -> null, "DM", library, null, define));
 
         assertFalse(values.containsKey("library_variable_role"), values.toString());
         assertEquals("SEX", values.get("define_variable_name"));
@@ -180,7 +180,7 @@ class OutputVariableExclusionProjectionTest
                 .col("DESC", "abcdef", "ab").build();
 
         Map<String, String> values = singleViolationValues(
-                RuleRunner.execute(rule, table, _ -> null, "ADSL", null, null, null));
+                RuleRunnerCalls.execute(rule, table, _ -> null, "ADSL", null, null, null));
 
         assertFalse(values.containsKey("variable_label"), values.toString());
         assertEquals("DESC", values.get("variable_name"));
@@ -264,7 +264,7 @@ class OutputVariableExclusionProjectionTest
         IDataTable adlb = adlb();
         DatasetResolver resolver = adslResolver();
 
-        RuleExecutionResult perRule = RuleRunner.execute(rule, adlb, resolver, "AD", null,
+        RuleExecutionResult perRule = RuleRunnerCalls.execute(rule, adlb, resolver, "AD", null,
                 new JoinCache(new JoinCache.SharedIndexCache()));
 
         Map<String, String> values = singleViolationValues(perRule);
@@ -289,7 +289,7 @@ class OutputVariableExclusionProjectionTest
         assertEquals(List.of("AGE"), List
                 .copyOf(RuleRunner.collectCheckLeafColumns(rule.getCheck(), adlb.getMetaData())));
 
-        RuleExecutionResult perRule = RuleRunner.execute(rule, adlb, resolver, "AD", null,
+        RuleExecutionResult perRule = RuleRunnerCalls.execute(rule, adlb, resolver, "AD", null,
                 new JoinCache(new JoinCache.SharedIndexCache()));
 
         Map<String, String> values = singleViolationValues(perRule);
@@ -313,7 +313,7 @@ class OutputVariableExclusionProjectionTest
         assertEquals(List.of("AGE"), List
                 .copyOf(RuleRunner.collectCheckLeafColumns(rule.getCheck(), adlb.getMetaData())));
 
-        RuleExecutionResult perRule = RuleRunner.execute(rule, adlb, resolver, "AD", null,
+        RuleExecutionResult perRule = RuleRunnerCalls.execute(rule, adlb, resolver, "AD", null,
                 new JoinCache(new JoinCache.SharedIndexCache()));
 
         Map<String, String> values = singleViolationValues(perRule);
@@ -339,7 +339,7 @@ class OutputVariableExclusionProjectionTest
         assertEquals(List.of("AETERM", "AEDECOD"),
                 List.copyOf(RuleRunner.collectCheckLeafColumns(rule.getCheck(), ae.getMetaData())));
 
-        RuleExecutionResult result = RuleRunner.execute(rule, ae);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, ae);
 
         Map<String, String> values = singleViolationValues(result);
         assertFalse(values.containsKey("AETERM"), values.toString());
@@ -364,7 +364,7 @@ class OutputVariableExclusionProjectionTest
         assertEquals(List.of(), rule.getEffectiveOutputVariables());
         IDataTable table = MockTable.of().name("AE").col("AETERM", "X").build();
 
-        Map<String, String> values = singleViolationValues(RuleRunner.execute(rule, table));
+        Map<String, String> values = singleViolationValues(RuleRunnerCalls.execute(rule, table));
 
         assertFalse(values.containsKey("variable_name"), values.toString());
         assertFalse(values.containsKey("variable_label"), values.toString());
@@ -388,7 +388,7 @@ class OutputVariableExclusionProjectionTest
                 .col("DESC", "abcdef", "ab").build();
 
         Map<String, String> values = singleViolationValues(
-                RuleRunner.execute(rule, table, _ -> null, "ADSL", null, null, null));
+                RuleRunnerCalls.execute(rule, table, _ -> null, "ADSL", null, null, null));
 
         assertFalse(values.containsKey("variable_name"), values.toString());
         assertFalse(values.containsKey("variable_value"), values.toString());
@@ -409,7 +409,7 @@ class OutputVariableExclusionProjectionTest
         IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1", "S1").col("AETERM", "H", "H")
                 .build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, ae);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, ae);
 
         assertNotNull(result);
         assertTrue(result.getViolationCount() >= 1, "status=" + result.getStatus());

@@ -43,7 +43,7 @@ class ComputedTargetOperationTest
         assertNotNull(op.getNameExpr(), "the computed target survives normalisation");
         assertNull(op.getName());
 
-        Object result = OperationExecutor.executeOne(op, t, name -> null, null, Map.of());
+        Object result = OperationExecutorCalls.executeOne(op, t, name -> null, null, Map.of());
         assertEquals(80.0, ((Number) result).doubleValue(), 1e-9);
     }
 
@@ -53,7 +53,7 @@ class ComputedTargetOperationTest
     {
         IDataTable t = MockTable.of().col("ARM", "a", "A", "b").build();
         Operation op = formB("distinct(upper(ARM))");
-        Object result = OperationExecutor.executeOne(op, t, name -> null, null, Map.of());
+        Object result = OperationExecutorCalls.executeOne(op, t, name -> null, null, Map.of());
         assertTrue(result instanceof java.util.Collection<?> c && c.size() == 2 && c.contains("A")
                 && c.contains("B"), String.valueOf(result));
     }
@@ -65,7 +65,7 @@ class ComputedTargetOperationTest
         IDataTable t = MockTable.of().col("USUBJID", "S1", "S1", "S2").col("WT", "70", "80", "75.5")
                 .build();
         Operation op = formB("max(num(WT), group=[USUBJID])");
-        Object result = OperationExecutor.executeOne(op, t, name -> null, null, Map.of());
+        Object result = OperationExecutorCalls.executeOne(op, t, name -> null, null, Map.of());
         assertTrue(result instanceof GroupedResult, String.valueOf(result));
     }
 
@@ -76,7 +76,7 @@ class ComputedTargetOperationTest
     {
         IDataTable t = MockTable.of().col("WT", "70").build();
         Operation op = formB("max(num(NOSUCH))");
-        assertNull(OperationExecutor.executeOne(op, t, name -> null, null, Map.of()),
+        assertNull(OperationExecutorCalls.executeOne(op, t, name -> null, null, Map.of()),
                 "max declares EmptyResult.MISSING");
     }
 
@@ -106,7 +106,7 @@ class ComputedTargetOperationTest
         IDataTable t = MockTable.of().col(TargetExpressionMaterializer.SYNTHETIC_NAME, "9", "9")
                 .col("WT", "70", "80").build();
         Operation op = formB("max(num(WT))");
-        Object result = OperationExecutor.executeOne(op, t, name -> null, null, Map.of());
+        Object result = OperationExecutorCalls.executeOne(op, t, name -> null, null, Map.of());
         assertEquals(80.0, ((Number) result).doubleValue(), 1e-9);
     }
 

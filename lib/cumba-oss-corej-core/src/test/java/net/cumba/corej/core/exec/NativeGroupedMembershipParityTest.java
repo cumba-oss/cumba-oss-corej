@@ -46,8 +46,10 @@ class NativeGroupedMembershipParityTest
                 .col("VISITNUM", "2", "3", "2", "1").build();
         DatasetResolver resolver = n -> "SV".equals(n) ? sv : null;
 
-        RuleExecutionResult nativ = RuleRunner.execute(rule, ae, resolver, "AE", null, null, null);
-        RuleExecutionResult legacy = RuleRunner.execute(rule, ae, resolver, "AE", null, null, null);
+        RuleExecutionResult nativ = RuleRunnerCalls.execute(rule, ae, resolver, "AE", null, null,
+                null);
+        RuleExecutionResult legacy = RuleRunnerCalls.execute(rule, ae, resolver, "AE", null, null,
+                null);
 
         BitSet nativeRows = rows(nativ);
         assertEquals(rows(legacy), nativeRows, "grouped $-membership must match legacy per row");

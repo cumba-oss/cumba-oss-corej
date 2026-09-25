@@ -40,7 +40,7 @@ class OperationExecutorTest
                 .build();
 
         Operation op = makeOp("$VAR_COUNT", "variable_count");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertEquals(3L, vars.get("$VAR_COUNT"));
     }
@@ -56,7 +56,7 @@ class OperationExecutorTest
         IDataTable table = MockTable.of().col("X", "a", "b", "c").build();
 
         Operation op = makeOp("$ROW_COUNT", "record_count");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertEquals(3L, vars.get("$ROW_COUNT"));
     }
@@ -70,7 +70,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$AE_COUNT", "record_count");
         op.setFilter(Map.of("DOMAIN", "AE"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertEquals(3L, vars.get("$AE_COUNT"));
     }
@@ -86,7 +86,8 @@ class OperationExecutorTest
         amp.setFilter(Map.of("QNAM", "RACE&"));
         Operation pct = makeOp("$pct", "record_count");
         pct.setFilter(Map.of("QNAM", "RACE%"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(amp, pct), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(amp, pct), table,
+                NO_RESOLVER);
 
         assertEquals(3L, vars.get("$amp"));
         assertEquals(3L, vars.get("$pct"), "trailing % prefix-wildcard matches like &");
@@ -101,7 +102,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$AE_M_COUNT", "record_count");
         op.setFilter(Map.of("DOMAIN", "AE", "SEX", "M"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertEquals(2L, vars.get("$AE_M_COUNT"));
     }
@@ -118,7 +119,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$distinct_sex", "distinct");
         op.setName("SEX");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         @SuppressWarnings("unchecked")
         List<String> result = (List<String>) vars.get("$distinct_sex");
@@ -137,7 +138,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$vals", "distinct");
         op.setName("VAL");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         @SuppressWarnings("unchecked")
         List<String> result = (List<String>) vars.get("$vals");
@@ -154,7 +155,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$vals", "distinct");
         op.setName("NONEXISTENT");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         @SuppressWarnings("unchecked")
         List<String> result = (List<String>) vars.get("$vals");
@@ -176,7 +177,7 @@ class OperationExecutorTest
         Operation op = makeOp("$scheduled", "distinct");
         op.setName("USUBJID");
         op.setFilter(Map.of("DSDECOD", "TERMINAL SACRIFICE"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         @SuppressWarnings("unchecked")
         List<String> result = (List<String>) vars.get("$scheduled");
@@ -203,7 +204,7 @@ class OperationExecutorTest
         Operation op = makeOp("$subjects", "distinct");
         op.setName("USUBJID");
         op.setFilter(Map.of("DSDECOD", List.of("INFORMED CONSENT OBTAINED", "RANDOMIZED")));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         @SuppressWarnings("unchecked")
         List<String> result = (List<String>) vars.get("$subjects");
@@ -219,7 +220,7 @@ class OperationExecutorTest
         eq.setName("USUBJID");
         eq.setFilter(Map.of("DSDECOD", "RANDOMIZED"));
         @SuppressWarnings("unchecked")
-        List<String> eqResult = (List<String>) OperationExecutor
+        List<String> eqResult = (List<String>) OperationExecutorCalls
                 .execute(List.of(eq), table, NO_RESOLVER).get("$eq");
         assertNotNull(eqResult);
         assertEquals(List.of("S02", "S04"), eqResult);
@@ -229,7 +230,7 @@ class OperationExecutorTest
         missing.setName("USUBJID");
         missing.setFilter(Map.of("NOSUCH", List.of("RANDOMIZED")));
         @SuppressWarnings("unchecked")
-        List<String> noneResult = (List<String>) OperationExecutor
+        List<String> noneResult = (List<String>) OperationExecutorCalls
                 .execute(List.of(missing), table, NO_RESOLVER).get("$none");
         assertNotNull(noneResult);
         assertTrue(noneResult.isEmpty(), "missing filter column => empty subset");
@@ -245,7 +246,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$cnt", "record_count");
         op.setFilter(Map.of("DSDECOD", List.of("RANDOMIZED", "INFORMED CONSENT OBTAINED")));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
         assertEquals(3L, vars.get("$cnt"));
     }
 
@@ -262,7 +263,7 @@ class OperationExecutorTest
         Operation op = makeOp("$pairs", "distinct");
         op.setNames(List.of("USUBJID", "AEDECOD"));
         op.setFilter(Map.of("DOMAIN", "AE"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         @SuppressWarnings("unchecked")
         Set<List<String>> result = (Set<List<String>>) vars.get("$pairs");
@@ -289,7 +290,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$max_score", "max");
         op.setName("SCORE");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertEquals(25.0, vars.get("$max_score"));
     }
@@ -305,7 +306,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$max_score", "max");
         op.setName("SCORE");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertEquals(30.0, vars.get("$max_score"));
     }
@@ -325,7 +326,7 @@ class OperationExecutorTest
         op.setName("USUBJID");
         op.setFilter(Map.of("--BLFL", "Y"));
 
-        Operation resolved = OperationExecutor.resolvePrefixes(op, "LB", "LB");
+        Operation resolved = OperationExecutorCalls.resolvePrefixes(op, "LB", "LB");
 
         assertEquals(Map.of("LBBLFL", "Y"), resolved.getFilter());
     }
@@ -340,7 +341,7 @@ class OperationExecutorTest
         op.setName("USUBJID");
         op.setFilter(Map.of("--QNAM", "AESOSP"));
 
-        Operation resolved = OperationExecutor.resolvePrefixes(op, "SUPPAE", "");
+        Operation resolved = OperationExecutorCalls.resolvePrefixes(op, "SUPPAE", "");
 
         assertEquals(Map.of("QNAM", "AESOSP"), resolved.getFilter());
     }
@@ -356,7 +357,7 @@ class OperationExecutorTest
         Map<String, Object> filter = Map.of("TSPARMCD", "PLANSUB");
         op.setFilter(filter);
 
-        Operation resolved = OperationExecutor.resolvePrefixes(op, "TS", "TS");
+        Operation resolved = OperationExecutorCalls.resolvePrefixes(op, "TS", "TS");
 
         assertSame(filter, resolved.getFilter());
     }
@@ -369,7 +370,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$max_score", "max");
         op.setName("SCORE");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertNull(vars.get("$max_score"));
     }
@@ -387,7 +388,7 @@ class OperationExecutorTest
         Operation op = makeOp("$max_score", "max");
         op.setName("SCORE");
         op.setFilter(Map.of("ABLFL", "Y"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         // max over the ABLFL=Y rows only: 10, not the unfiltered 25
         assertEquals(10.0, vars.get("$max_score"));
@@ -403,7 +404,7 @@ class OperationExecutorTest
         Operation op = makeOp("$max_dtc", "max");
         op.setName("DTC");
         op.setFilter(Map.of("ABLFL", "Y"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         // no numeric values -> string fallback, still filtered: 2024-03-20, not 2024-12-31
         assertEquals("2024-03-20", vars.get("$max_dtc"));
@@ -418,7 +419,7 @@ class OperationExecutorTest
         Operation op = makeOp("$max_score", "max");
         op.setName("SCORE");
         op.setFilter(Map.of("ABLFL", "Y"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertNull(vars.get("$max_score"));
     }
@@ -436,7 +437,7 @@ class OperationExecutorTest
         Operation op = makeOp("$max_score", "max");
         op.setName("SCORE");
         op.setFilter(Map.of("VISIT", "BASELINE&"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertEquals(7.0, vars.get("$max_score"));
     }
@@ -454,7 +455,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$max_dtc", "max_date");
         op.setName("DTC");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertEquals("2024-03-20", vars.get("$max_dtc"));
     }
@@ -468,7 +469,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$min_dtc", "min_date");
         op.setName("DTC");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertEquals("2024-01-15", vars.get("$min_dtc"));
     }
@@ -481,7 +482,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$min_dtc", "min_date");
         op.setName("DTC");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertEquals("2024-06-01", vars.get("$min_dtc"));
     }
@@ -505,7 +506,8 @@ class OperationExecutorTest
         min.setName("DTC");
         Operation max = makeOp("$max", "max_date");
         max.setName("DTC");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(min, max), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(min, max), table,
+                NO_RESOLVER);
 
         assertEquals("2024-06-01", vars.get("$min"), "an empty cell must not win the min");
         assertEquals("2024-06-01", vars.get("$max"));
@@ -525,7 +527,7 @@ class OperationExecutorTest
 
         Operation min = makeOp("$min", "min_date");
         min.setName("DTC");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(min), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(min), table, NO_RESOLVER);
 
         assertEquals("2024-06-01", vars.get("$min"),
                 "a whitespace-only cell used to win the min; EC-51 excludes it");
@@ -543,7 +545,7 @@ class OperationExecutorTest
 
         Operation min = makeOp("$min", "min_date");
         min.setName("DTC");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(min), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(min), table, NO_RESOLVER);
 
         assertEquals(" 2024-06-01 ", vars.get("$min"), "the raw cell text must be returned");
     }
@@ -563,7 +565,7 @@ class OperationExecutorTest
         Operation op = makeOp("$min_ex", "min_date");
         op.setName("EXSTDTC");
         op.setGroup(List.of("USUBJID"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         GroupedResult grouped = assertInstanceOf(GroupedResult.class, vars.get("$min_ex"));
         assertEquals("2024-03-01", grouped.results().get("S01"));
@@ -586,7 +588,8 @@ class OperationExecutorTest
         max.setName("DTC");
         Operation min = makeOp("$min", "min_date");
         min.setName("DTC");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(max, min), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(max, min), table,
+                NO_RESOLVER);
 
         assertNull(vars.get("$max"), "previously returned \" \"; now there is no candidate at all");
         assertNull(vars.get("$min"));
@@ -603,7 +606,7 @@ class OperationExecutorTest
         Operation op = makeOp("$max_ex", "max_date");
         op.setName("EXSTDTC");
         op.setGroup(List.of("USUBJID"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         GroupedResult grouped = assertInstanceOf(GroupedResult.class, vars.get("$max_ex"));
         assertFalse(grouped.results().containsKey("S01"),
@@ -624,7 +627,7 @@ class OperationExecutorTest
 
         Operation min = makeOp("$min", "min_date");
         min.setName("DTC");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(min), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(min), table, NO_RESOLVER);
 
         assertEquals("2024-06-01", vars.get("$min"),
                 "NBSP / narrow NBSP are blank on both lanes, so neither may win");
@@ -641,7 +644,7 @@ class OperationExecutorTest
         Operation op = makeOp("$min_ex", "min_date");
         op.setName("EXSTDTC");
         op.setGroup(List.of("USUBJID"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         GroupedResult grouped = assertInstanceOf(GroupedResult.class, vars.get("$min_ex"));
         assertFalse(grouped.results().containsKey("S01"), "no usable candidate ⇒ no key");
@@ -660,7 +663,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$ds_name", "extract_metadata");
         op.setName("dataset_name");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertEquals("DM", vars.get("$ds_name"));
     }
@@ -673,7 +676,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$ds_label", "extract_metadata");
         op.setName("dataset_label");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertEquals("Demographics", vars.get("$ds_label"));
     }
@@ -695,7 +698,7 @@ class OperationExecutorTest
         op.setDomain("DM");
 
         DatasetResolver resolver = name -> "DM".equals(name) ? dmTable : null;
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), mainTable, resolver);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), mainTable, resolver);
 
         @SuppressWarnings("unchecked")
         List<String> result = (List<String>) vars.get("$dm_usubjid");
@@ -715,7 +718,7 @@ class OperationExecutorTest
         op.setName("COL");
         op.setDomain("MISSING_DOMAIN");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         // Q17-a: an unresolvable target is no longer an unclassified null — the operator publishes
         // its declared EmptyResult, and `distinct` declares SET. The membership fold treats null
@@ -742,7 +745,7 @@ class OperationExecutorTest
         op.setDomain("SUPP--");
 
         DatasetResolver resolver = name -> "SUPPAE".equals(name) ? suppaeTable : null;
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), aeTable, resolver);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), aeTable, resolver);
 
         @SuppressWarnings("unchecked")
         List<String> result = (List<String>) vars.get("$supp_idvars");
@@ -762,7 +765,8 @@ class OperationExecutorTest
         op.setDomain("AP--");
 
         DatasetResolver resolver = name -> "APPOOLDEF".equals(name) ? pooldefTable : null;
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), pooldefTable, resolver);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), pooldefTable,
+                resolver);
 
         assertEquals(1L, vars.get("$count"));
     }
@@ -780,7 +784,7 @@ class OperationExecutorTest
         op.setDomain("DM");
 
         DatasetResolver resolver = name -> "DM".equals(name) ? dmTable : null;
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, resolver);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, resolver);
 
         assertNotNull(vars.get("$dm_subj"));
     }
@@ -795,7 +799,7 @@ class OperationExecutorTest
         Operation op = makeOp("$result", "variable_count");
         op.setDomain("SUPP--");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         // Resolver gets "SUPP--" literally and returns null, so no target dataset resolves.
         // Q17-a: variable_count declares EmptyResult.COUNT, so the unresolvable target answers 0
@@ -844,7 +848,7 @@ class OperationExecutorTest
         op.setDomain("SUPPLB"); // the already-collapsed unsplit family name
         op.setValueIsReference(true);
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), suppTable, resolver);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), suppTable, resolver);
 
         Object result = vars.get("$rdomain_variables");
         assertInstanceOf(GroupedResult.class, result);
@@ -869,7 +873,7 @@ class OperationExecutorTest
         op.setName("X");
         op.setDomain("ZZ");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertEquals(List.of(), vars.get("$result"));
     }
@@ -891,7 +895,7 @@ class OperationExecutorTest
         op.setName("X");
         op.setDomain("LB"); // "LBCH".startsWith("LB") is true, but LBCH is not SUPP/SQAP
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertEquals(List.of(), vars.get("$result"));
     }
@@ -907,7 +911,7 @@ class OperationExecutorTest
         IDataTable table = MockTable.of().col("X", "1").build();
 
         Operation op = makeOp("$result", "some_unknown_op");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertFalse(vars.containsKey("$result"));
     }
@@ -925,7 +929,8 @@ class OperationExecutorTest
         Operation op1 = makeOp("$count", "variable_count");
         Operation op2 = makeOp("$rows", "record_count");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op1, op2), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op1, op2), table,
+                NO_RESOLVER);
 
         assertEquals(2L, vars.get("$count"));
         assertEquals(3L, vars.get("$rows"));
@@ -948,7 +953,8 @@ class OperationExecutorTest
         Operation op = makeOp("$min_ex_exstdtc", "min_date");
         op.setName("EXSTDTC");
         op.setGroup(List.of("USUBJID"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), exTable, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), exTable,
+                NO_RESOLVER);
 
         Object result = vars.get("$min_ex_exstdtc");
         assertInstanceOf(GroupedResult.class, result);
@@ -970,7 +976,7 @@ class OperationExecutorTest
         Operation op = makeOp("$max_dtc", "max_date");
         op.setName("DTC");
         op.setGroup(List.of("USUBJID"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         GroupedResult grouped = (GroupedResult) vars.get("$max_dtc");
         assertEquals("2024-06-01", grouped.results().get("S01"));
@@ -987,7 +993,7 @@ class OperationExecutorTest
         Operation op = makeOp("$max_dtc", "max_date");
         op.setName("DTC");
         op.setFilter(Map.of("ABLFL", "Y"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         // max_date over the ABLFL=Y rows only: 2024-03-20, not 2024-12-31
         assertEquals("2024-03-20", vars.get("$max_dtc"));
@@ -1003,7 +1009,7 @@ class OperationExecutorTest
         Operation op = makeOp("$min_dtc", "min_date");
         op.setName("DTC");
         op.setFilter(Map.of("ABLFL", "Y"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         // min_date over the ABLFL=Y rows only: 2024-03-20, not 2024-01-01
         assertEquals("2024-03-20", vars.get("$min_dtc"));
@@ -1019,7 +1025,7 @@ class OperationExecutorTest
         Operation op = makeOp("$max_dtc", "max_date");
         op.setName("DTC");
         op.setFilter(Map.of("ABLFL", "Y"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertNull(vars.get("$max_dtc"));
     }
@@ -1036,7 +1042,7 @@ class OperationExecutorTest
         op.setName("DTC");
         op.setGroup(List.of("USUBJID"));
         op.setFilter(Map.of("ABLFL", "Y"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         GroupedResult grouped = (GroupedResult) vars.get("$max_dtc");
         // S01: max over its ABLFL=Y row -> 2024-01-01 (not 2024-06-01);
@@ -1057,7 +1063,7 @@ class OperationExecutorTest
         op.setName("DTC");
         op.setGroup(List.of("USUBJID"));
         op.setFilter(Map.of("ABLFL", "Y"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         GroupedResult grouped = (GroupedResult) vars.get("$min_dtc");
         // S01: min over its ABLFL=Y row -> 2024-05-01 (not 2024-01-15)
@@ -1077,7 +1083,7 @@ class OperationExecutorTest
         Operation op = makeOp("$count", "record_count");
         op.setGroup(List.of("USUBJID"));
         op.setFilter(Map.of("DSCAT", "DISPOSITION EVENT"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         GroupedResult grouped = (GroupedResult) vars.get("$count");
         assertEquals(2L, grouped.results().get("S01"));
@@ -1094,7 +1100,7 @@ class OperationExecutorTest
         Operation op = makeOp("$ae_aeout", "distinct");
         op.setName("AEOUT");
         op.setGroup(List.of("USUBJID"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         GroupedResult grouped = (GroupedResult) vars.get("$ae_aeout");
         @SuppressWarnings("unchecked")
@@ -1122,7 +1128,7 @@ class OperationExecutorTest
         Operation op = makeOp("$max_score", "max");
         op.setName("SCORE");
         op.setGroup(List.of("USUBJID"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         GroupedResult grouped = (GroupedResult) vars.get("$max_score");
         assertEquals(30.0, grouped.results().get("S01"));
@@ -1141,7 +1147,7 @@ class OperationExecutorTest
                 .col("SEX", "M").build();
 
         Operation op = makeOp("$col_order", "get_column_order_from_dataset");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         @SuppressWarnings("unchecked")
         List<String> order = (List<String>) vars.get("$col_order");
@@ -1160,7 +1166,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$meta", "extract_metadata");
         op.setName(null);
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertNull(vars.get("$meta"));
     }
@@ -1177,7 +1183,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$max", "max");
         op.setName("NONEXISTENT");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertNull(vars.get("$max"));
     }
@@ -1194,7 +1200,8 @@ class OperationExecutorTest
 
         Operation op = makeOp("$req", "required_variables");
         // No library provider → execute with null provider
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, null);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                null);
 
         // The sentinel value indicates library not available
         assertNotNull(vars.get("$req"));
@@ -1301,7 +1308,7 @@ class OperationExecutorTest
         };
 
         Operation op = makeOp("$req", "required_variables");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER,
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
                 provider);
 
         @SuppressWarnings("unchecked")
@@ -1339,7 +1346,7 @@ class OperationExecutorTest
         op.setLevel("term");
         op.setReturntype("code");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER,
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
                 provider);
 
         @SuppressWarnings("unchecked")
@@ -1364,7 +1371,7 @@ class OperationExecutorTest
         op.setLevel("term");
         op.setReturntype("value");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER,
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
                 provider);
 
         @SuppressWarnings("unchecked")
@@ -1387,7 +1394,7 @@ class OperationExecutorTest
         op.setLevel("term");
         op.setReturntype("value");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER,
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
                 provider);
 
         // No define.xml / CT package → empty terms → library-not-available sentinel so the rule is
@@ -1416,7 +1423,7 @@ class OperationExecutorTest
         op.setVersion("TSVCDVER");
         op.setCtAttribute("Term CCODE");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER,
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
                 provider);
 
         @SuppressWarnings("unchecked")
@@ -1444,7 +1451,7 @@ class OperationExecutorTest
         IDataTable table = MockTable.of()
                 .col("DTC", "2012-06-15", "2012-06-01", "2012-06-30", "2012-05-31").build();
 
-        Map<String, Object> vars = OperationExecutor.execute(
+        Map<String, Object> vars = OperationExecutorCalls.execute(
                 List.of(dateOp("$min", "min_date", "DTC"), dateOp("$max", "max_date", "DTC")),
                 table, NO_RESOLVER);
 
@@ -1463,7 +1470,7 @@ class OperationExecutorTest
     {
         IDataTable table = MockTable.of().col("DTC", "2012-06", "2012-06-15").build();
 
-        Map<String, Object> vars = OperationExecutor
+        Map<String, Object> vars = OperationExecutorCalls
                 .execute(List.of(dateOp("$max", "max_date", "DTC")), table, NO_RESOLVER);
 
         assertNull(vars.get("$max"), "2012-06 could be the 30th, so no max is determined");
@@ -1480,7 +1487,7 @@ class OperationExecutorTest
     {
         IDataTable table = MockTable.of().col("DTC", "2012-06", "2012-06-30").build();
 
-        Map<String, Object> vars = OperationExecutor
+        Map<String, Object> vars = OperationExecutorCalls
                 .execute(List.of(dateOp("$max", "max_date", "DTC")), table, NO_RESOLVER);
 
         assertEquals("2012-06-30", vars.get("$max"));
@@ -1493,7 +1500,7 @@ class OperationExecutorTest
     {
         IDataTable table = MockTable.of().col("DTC", "2012-05", "2012-06-15").build();
 
-        Map<String, Object> vars = OperationExecutor
+        Map<String, Object> vars = OperationExecutorCalls
                 .execute(List.of(dateOp("$max", "max_date", "DTC")), table, NO_RESOLVER);
 
         assertEquals("2012-06-15", vars.get("$max"));
@@ -1510,7 +1517,7 @@ class OperationExecutorTest
     {
         IDataTable table = MockTable.of().col("DTC", "2012-06", "2012-06-01").build();
 
-        Map<String, Object> vars = OperationExecutor
+        Map<String, Object> vars = OperationExecutorCalls
                 .execute(List.of(dateOp("$min", "min_date", "DTC")), table, NO_RESOLVER);
 
         assertEquals("2012-06-01", vars.get("$min"));
@@ -1527,7 +1534,7 @@ class OperationExecutorTest
     {
         IDataTable table = MockTable.of().col("DTC", "2012-06", "2012-06-02").build();
 
-        Map<String, Object> vars = OperationExecutor
+        Map<String, Object> vars = OperationExecutorCalls
                 .execute(List.of(dateOp("$min", "min_date", "DTC")), table, NO_RESOLVER);
 
         assertNull(vars.get("$min"), "2012-06 could be the 1st, which precedes 2012-06-02");
@@ -1541,9 +1548,9 @@ class OperationExecutorTest
         IDataTable a = MockTable.of().col("DTC", "2012-06-02", "2012-06-01", "2012-06").build();
         IDataTable b = MockTable.of().col("DTC", "2012-06", "2012-06-01", "2012-06-02").build();
 
-        Object minA = OperationExecutor
+        Object minA = OperationExecutorCalls
                 .execute(List.of(dateOp("$min", "min_date", "DTC")), a, NO_RESOLVER).get("$min");
-        Object minB = OperationExecutor
+        Object minB = OperationExecutorCalls
                 .execute(List.of(dateOp("$min", "min_date", "DTC")), b, NO_RESOLVER).get("$min");
 
         assertEquals("2012-06-01", minA);
@@ -1561,7 +1568,7 @@ class OperationExecutorTest
         IDataTable table = MockTable.of()
                 .col("DTC", "2012-06-15T00:00:00Z", "2012-06-15T01:00:00+02:00").build();
 
-        Map<String, Object> vars = OperationExecutor
+        Map<String, Object> vars = OperationExecutorCalls
                 .execute(List.of(dateOp("$min", "min_date", "DTC")), table, NO_RESOLVER);
 
         assertEquals("2012-06-15T01:00:00+02:00", vars.get("$min"),
@@ -1579,7 +1586,7 @@ class OperationExecutorTest
     {
         IDataTable table = MockTable.of().col("DTC", "2012-06--", "2012-06-15").build();
 
-        Map<String, Object> vars = OperationExecutor.execute(
+        Map<String, Object> vars = OperationExecutorCalls.execute(
                 List.of(dateOp("$min", "min_date", "DTC"), dateOp("$max", "max_date", "DTC")),
                 table, NO_RESOLVER);
 
@@ -1594,7 +1601,7 @@ class OperationExecutorTest
     {
         IDataTable table = MockTable.of().col("DTC", "2012-06--", "2012-06-30").build();
 
-        Map<String, Object> vars = OperationExecutor
+        Map<String, Object> vars = OperationExecutorCalls
                 .execute(List.of(dateOp("$max", "max_date", "DTC")), table, NO_RESOLVER);
 
         assertEquals("2012-06-30", vars.get("$max"));
@@ -1615,7 +1622,7 @@ class OperationExecutorTest
     {
         IDataTable table = MockTable.of().col("DTC", junk, "2012-06-15", "2012-07-20").build();
 
-        Map<String, Object> vars = OperationExecutor.execute(
+        Map<String, Object> vars = OperationExecutorCalls.execute(
                 List.of(dateOp("$min", "min_date", "DTC"), dateOp("$max", "max_date", "DTC")),
                 table, NO_RESOLVER);
 
@@ -1635,7 +1642,7 @@ class OperationExecutorTest
     {
         IDataTable table = MockTable.of().col("DTC", "", "2012-06-15", "   ", "2012-07-20").build();
 
-        Map<String, Object> vars = OperationExecutor.execute(
+        Map<String, Object> vars = OperationExecutorCalls.execute(
                 List.of(dateOp("$min", "min_date", "DTC"), dateOp("$max", "max_date", "DTC")),
                 table, NO_RESOLVER);
 
@@ -1653,7 +1660,7 @@ class OperationExecutorTest
 
         Operation op = dateOp("$max", "max_date", "DTC");
         op.setGroup(List.of("USUBJID"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         GroupedResult grouped = assertInstanceOf(GroupedResult.class, vars.get("$max"));
         assertFalse(grouped.results().containsKey("S01"),
@@ -1681,7 +1688,7 @@ class OperationExecutorTest
     {
         IDataTable table = MockTable.of().col("DTC", "2012-06-15", "2012-06-15T10:30:00").build();
 
-        Map<String, Object> vars = OperationExecutor.execute(
+        Map<String, Object> vars = OperationExecutorCalls.execute(
                 List.of(dateOp("$min", "min_date", "DTC"), dateOp("$max", "max_date", "DTC")),
                 table, NO_RESOLVER);
 
@@ -1704,7 +1711,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$max", "max");
         op.setName("ANRIND");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertEquals("NORMAL", vars.get("$max"), "a category column must keep lexicographic max");
     }
@@ -1718,7 +1725,7 @@ class OperationExecutorTest
 
         Operation op = makeOp("$max", "max");
         op.setName("DSSTDTC");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertNull(vars.get("$max"), "all candidates are dates, so EC-46's rule applies");
     }

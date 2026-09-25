@@ -53,21 +53,23 @@ class OperationExecutorMissingValuesTest
         Operation skip = makeOp("$min", "min_date");
         skip.setName("DTC");
         assertEquals("2024-06-01",
-                OperationExecutor.execute(List.of(skip), table, NO_RESOLVER).get("$min"),
+                OperationExecutorCalls.execute(List.of(skip), table, NO_RESOLVER).get("$min"),
                 "with no declaration the blank is skipped, exactly as before Half B");
 
         Operation explicitSkip = makeOp("$min", "min_date");
         explicitSkip.setName("DTC");
         explicitSkip.setMissingValues(Operation.MISSING_VALUES_SKIP);
-        assertEquals("2024-06-01",
-                OperationExecutor.execute(List.of(explicitSkip), table, NO_RESOLVER).get("$min"),
+        assertEquals(
+                "2024-06-01", OperationExecutorCalls
+                        .execute(List.of(explicitSkip), table, NO_RESOLVER).get("$min"),
                 "`skip` declared explicitly must equal the undeclared default");
 
         Operation indeterminate = makeOp("$min", "min_date");
         indeterminate.setName("DTC");
         indeterminate.setMissingValues(Operation.MISSING_VALUES_INDETERMINATE);
         assertNull(
-                OperationExecutor.execute(List.of(indeterminate), table, NO_RESOLVER).get("$min"),
+                OperationExecutorCalls.execute(List.of(indeterminate), table, NO_RESOLVER)
+                        .get("$min"),
                 "one missing candidate makes the whole ungrouped extreme undeterminable");
     }
 
@@ -84,10 +86,10 @@ class OperationExecutorMissingValuesTest
         Operation op = makeOp("$max", "max_date");
         op.setName("DTC");
         assertEquals("2024-07-01",
-                OperationExecutor.execute(List.of(op), table, NO_RESOLVER).get("$max"));
+                OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER).get("$max"));
 
         op.setMissingValues(Operation.MISSING_VALUES_INDETERMINATE);
-        assertNull(OperationExecutor.execute(List.of(op), table, NO_RESOLVER).get("$max"));
+        assertNull(OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER).get("$max"));
     }
 
 
@@ -105,7 +107,7 @@ class OperationExecutorMissingValuesTest
         op.setName("DTC");
         op.setMissingValues(Operation.MISSING_VALUES_INDETERMINATE);
 
-        assertNull(OperationExecutor.execute(List.of(op), table, NO_RESOLVER).get("$min"),
+        assertNull(OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER).get("$min"),
                 "a whitespace-only cell is missing, so it makes the extreme undeterminable");
     }
 
@@ -121,10 +123,10 @@ class OperationExecutorMissingValuesTest
 
         Operation skip = makeOp("$min", "min_date");
         skip.setName("DTC");
-        assertNull(OperationExecutor.execute(List.of(skip), table, NO_RESOLVER).get("$min"));
+        assertNull(OperationExecutorCalls.execute(List.of(skip), table, NO_RESOLVER).get("$min"));
 
         skip.setMissingValues(Operation.MISSING_VALUES_INDETERMINATE);
-        assertNull(OperationExecutor.execute(List.of(skip), table, NO_RESOLVER).get("$min"));
+        assertNull(OperationExecutorCalls.execute(List.of(skip), table, NO_RESOLVER).get("$min"));
     }
 
 
@@ -145,7 +147,7 @@ class OperationExecutorMissingValuesTest
         op.setMissingValues(Operation.MISSING_VALUES_INDETERMINATE);
 
         assertEquals("2024-06-01",
-                OperationExecutor.execute(List.of(op), table, NO_RESOLVER).get("$min"),
+                OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER).get("$min"),
                 "the blank row is filtered out, so the surviving candidate still determines it");
     }
 
@@ -170,14 +172,14 @@ class OperationExecutorMissingValuesTest
         op.setGroup(List.of("USUBJID"));
 
         GroupedResult skipped = assertInstanceOf(GroupedResult.class,
-                OperationExecutor.execute(List.of(op), table, NO_RESOLVER).get("$min_ex"));
+                OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER).get("$min_ex"));
         assertEquals("2024-03-01", skipped.results().get("S01"),
                 "the default still lets the populated sibling win");
         assertEquals("2024-05-01", skipped.results().get("S02"));
 
         op.setMissingValues(Operation.MISSING_VALUES_INDETERMINATE);
         GroupedResult declared = assertInstanceOf(GroupedResult.class,
-                OperationExecutor.execute(List.of(op), table, NO_RESOLVER).get("$min_ex"));
+                OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER).get("$min_ex"));
         assertFalse(declared.results().containsKey("S01"),
                 "S01 holds a missing candidate, so its extreme is undeterminable — no key");
         assertEquals("2024-05-01", declared.results().get("S02"),
@@ -205,7 +207,7 @@ class OperationExecutorMissingValuesTest
         Map<String, Object> priors = new HashMap<>();
         priors.put("$grp", List.of("USUBJID"));
         GroupedResult grouped = assertInstanceOf(GroupedResult.class,
-                OperationExecutor.executeOne(op, table, NO_RESOLVER, null, priors));
+                OperationExecutorCalls.executeOne(op, table, NO_RESOLVER, null, priors));
 
         assertTrue(grouped.results().isEmpty(),
                 "the declaration must survive the field-by-field rebuild in expandGroupRefs");
@@ -224,7 +226,7 @@ class OperationExecutorMissingValuesTest
         op.setName("--STDTC");
         op.setMissingValues(Operation.MISSING_VALUES_INDETERMINATE);
 
-        Operation resolved = OperationExecutor.resolvePrefixes(op, "EX");
+        Operation resolved = OperationExecutorCalls.resolvePrefixes(op, "EX");
 
         assertEquals("EXSTDTC", resolved.getName(), "sanity: the wildcard really did resolve");
         assertEquals(Operation.MISSING_VALUES_INDETERMINATE, resolved.getMissingValues());
@@ -256,15 +258,15 @@ class OperationExecutorMissingValuesTest
         op.setReference("SJSTDTC");
         op.setGroup(List.of("USUBJID"));
 
-        GroupedResult skipped = (GroupedResult) OperationExecutor.executeOne(op, target, resolver,
-                null, new HashMap<>());
+        GroupedResult skipped = (GroupedResult) OperationExecutorCalls.executeOne(op, target,
+                resolver, null, new HashMap<>());
         assertEquals(9L, skipped.results().get("2020-01-10" + NUL + "S1"),
                 "the default skips S1's blank reference and uses 2020-01-01");
         assertEquals(4L, skipped.results().get("2020-02-05" + NUL + "S2"));
 
         op.setMissingValues(Operation.MISSING_VALUES_INDETERMINATE);
-        GroupedResult declared = (GroupedResult) OperationExecutor.executeOne(op, target, resolver,
-                null, new HashMap<>());
+        GroupedResult declared = (GroupedResult) OperationExecutorCalls.executeOne(op, target,
+                resolver, null, new HashMap<>());
         assertFalse(declared.results().containsKey("2020-01-10" + NUL + "S1"),
                 "S1's reference group holds a missing candidate ⇒ no subtrahend ⇒ no day count");
         assertEquals(4L, declared.results().get("2020-02-05" + NUL + "S2"),
@@ -288,7 +290,7 @@ class OperationExecutorMissingValuesTest
         op.setReference("REF");
         op.setMissingValues(Operation.MISSING_VALUES_INDETERMINATE);
 
-        GroupedResult gr = (GroupedResult) OperationExecutor.executeOne(op, table, NO_RESOLVER,
+        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, table, NO_RESOLVER,
                 null, new HashMap<>());
         assertEquals(9L, gr.results().get("2020-01-10" + NUL + "2020-01-01"),
                 "the populated row still gets its day count");
@@ -315,7 +317,8 @@ class OperationExecutorMissingValuesTest
         op.setName("ANRIND");
         op.setMissingValues(Operation.MISSING_VALUES_INDETERMINATE);
 
-        assertEquals("LOW", OperationExecutor.execute(List.of(op), table, NO_RESOLVER).get("$max"),
+        assertEquals("LOW",
+                OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER).get("$max"),
                 "the generic string extreme stays lexicographic and blank-skipping");
     }
 

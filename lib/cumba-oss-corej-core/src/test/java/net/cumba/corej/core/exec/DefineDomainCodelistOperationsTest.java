@@ -99,8 +99,8 @@ class DefineDomainCodelistOperationsTest
         // $domain_is_custom == false (AE is standard), define_variable_ccode == C66734, and the
         // define DOMAIN CodeListItem alias "C99999" is not among the published term C-codes ->
         // the `not in` membership fires.
-        RuleExecutionResult r = RuleRunner.execute(cg0001, aeTable(), _ -> null, "AE", library(),
-                null, define(List.of("C99999")));
+        RuleExecutionResult r = RuleRunnerCalls.execute(cg0001, aeTable(), _ -> null, "AE",
+                library(), null, define(List.of("C99999")));
         assertTrue(r.hasViolations(), "unpublished domain code on a standard domain must fire");
     }
 
@@ -109,8 +109,8 @@ class DefineDomainCodelistOperationsTest
     void standardDomain_allCodesPublished_doesNotFire()
     {
         // every define DOMAIN alias C-code is published -> the `not in` membership does not fire.
-        RuleExecutionResult r = RuleRunner.execute(cg0001, aeTable(), _ -> null, "AE", library(),
-                null, define(List.of("C11111", "C22222")));
+        RuleExecutionResult r = RuleRunnerCalls.execute(cg0001, aeTable(), _ -> null, "AE",
+                library(), null, define(List.of("C11111", "C22222")));
         assertFalse(r.hasViolations());
     }
 
@@ -121,8 +121,8 @@ class DefineDomainCodelistOperationsTest
         // $domain_is_custom == true (AE marked custom) -> the first check fails, so no finding even
         // with an unpublished code.
         StubMetadataProvider lib = library().customDomain("AE");
-        RuleExecutionResult r = RuleRunner.execute(cg0001, aeTable(), _ -> null, "AE", lib, null,
-                define(List.of("C99999")));
+        RuleExecutionResult r = RuleRunnerCalls.execute(cg0001, aeTable(), _ -> null, "AE", lib,
+                null, define(List.of("C99999")));
         assertFalse(r.hasViolations(), "custom domain is out of scope for CDISC-CG0001");
     }
 }

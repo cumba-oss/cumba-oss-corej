@@ -480,7 +480,7 @@ class LevelInstrumentTest
         LevelInstrument.setFoldObserver(fold::set);
         LevelInstrument.setGranularityObserver(gran::set);
 
-        RuleExecutionResult result = RuleRunner.execute(rule, ae());
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, ae());
 
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus());
         assertNotNull(fold.get(), "the check fold site must observe");
@@ -505,7 +505,7 @@ class LevelInstrumentTest
         AtomicReference<LevelInstrument.FoldObservation> fold = new AtomicReference<>();
         LevelInstrument.setFoldObserver(fold::set);
 
-        RuleExecutionResult result = RuleRunner.execute(rule, ae());
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, ae());
 
         assertEquals(RuleExecutionStatus.SKIPPED, result.getStatus());
         assertNotNull(fold.get(), "the precondition fold site must observe");

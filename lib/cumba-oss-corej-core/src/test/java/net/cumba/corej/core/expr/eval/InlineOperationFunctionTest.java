@@ -9,6 +9,7 @@ import java.util.BitSet;
 import java.util.Map;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.OperationExecutor;
+import net.cumba.corej.core.exec.OperationExecutorCalls;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.model.Operation;
@@ -35,7 +36,7 @@ class InlineOperationFunctionTest
 
     private static BitSet evalRef(String refExpr, Operation fieldOp, EvaluationContext ctx)
     {
-        Object result = OperationExecutor.executeOne(fieldOp, ctx.getTable(),
+        Object result = OperationExecutorCalls.executeOne(fieldOp, ctx.getTable(),
                 ctx.getDatasetResolver(), ctx.getLibraryProvider(), Map.of(), null);
         EvaluationContext refCtx = ctx.toBuilder().variables(Map.of(fieldOp.getId(), result))
                 .build();

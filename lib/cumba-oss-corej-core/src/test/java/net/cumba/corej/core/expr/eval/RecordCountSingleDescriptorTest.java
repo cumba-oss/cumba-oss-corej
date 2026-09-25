@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import net.cumba.corej.core.exec.EvaluationContext;
-import net.cumba.corej.core.exec.OperationExecutor;
+import net.cumba.corej.core.exec.OperationExecutorCalls;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.convert.OperationDescriptors;
 import net.cumba.corej.core.expr.convert.OperationExpressionParser;
@@ -49,7 +49,7 @@ class RecordCountSingleDescriptorTest
         // the executor path (what any parameter-binding call compiles to), with no parameter bound
         Operation bare = OperationExpressionParser
                 .fromCall(new Expr.Call("record_count", List.of(), Map.of()), "$n");
-        Object executed = OperationExecutor.executeOne(bare, t, name -> null, null, Map.of());
+        Object executed = OperationExecutorCalls.executeOne(bare, t, name -> null, null, Map.of());
 
         assertEquals(3L, ((Number) fast.value(0).resolved()).longValue());
         assertEquals(3L, ((Number) executed).longValue(),

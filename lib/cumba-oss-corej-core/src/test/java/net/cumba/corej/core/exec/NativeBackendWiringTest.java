@@ -76,8 +76,8 @@ class NativeBackendWiringTest
         rule.setCheckExpr(CheckToExpr.toExpr(check));
         IDataTable t = MockTable.of().col("SEX", "M", "F", "M", "").build();
 
-        var legacy = RuleRunner.execute(rule, t, NO_RESOLVER, null, null, null);
-        var nativ = RuleRunner.execute(rule, t, NO_RESOLVER, null, null, null);
+        var legacy = RuleRunnerCalls.execute(rule, t, NO_RESOLVER, null, null, null);
+        var nativ = RuleRunnerCalls.execute(rule, t, NO_RESOLVER, null, null, null);
 
         assertEquals(rows(legacy), rows(nativ), "native must match legacy");
         assertEquals(bitsOf(0, 2), rows(nativ));
@@ -92,7 +92,7 @@ class NativeBackendWiringTest
         assertNull(rule.getCheckExpr());
         IDataTable t = MockTable.of().col("SEX", "M", "F").build();
 
-        var result = RuleRunner.execute(rule, t, NO_RESOLVER, null, null, null);
+        var result = RuleRunnerCalls.execute(rule, t, NO_RESOLVER, null, null, null);
         assertEquals(RuleExecutionStatus.ERROR, result.getStatus(),
                 "no native expression form and no legacy engine -> per-rule ERROR");
     }

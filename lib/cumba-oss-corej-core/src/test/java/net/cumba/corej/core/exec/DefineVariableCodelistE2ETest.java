@@ -67,7 +67,7 @@ class DefineVariableCodelistE2ETest
 
     private static RuleExecutionResult run(Rule rule, IDataTable dm, MetadataProvider def)
     {
-        return RuleRunner.execute(rule, dm, _ -> null, "DM", null, null, def, null);
+        return RuleRunnerCalls.execute(rule, dm, _ -> null, "DM", null, null, def, null);
     }
 
 

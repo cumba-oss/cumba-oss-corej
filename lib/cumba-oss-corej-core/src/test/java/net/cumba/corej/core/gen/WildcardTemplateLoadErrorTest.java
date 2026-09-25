@@ -12,6 +12,7 @@ import net.cumba.corej.core.exec.DatasetRuleResolver;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
 import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
@@ -94,7 +95,7 @@ class WildcardTemplateLoadErrorTest
         assertNotNull(fromTemplate.get(0).getLoadError(), "loadError must survive generation");
 
         // Executing the generated package's rule yields the ERROR sentinel.
-        RuleExecutionResult result = RuleRunner.execute(fromTemplate.get(0), table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(fromTemplate.get(0), table);
         assertEquals(RuleExecutionStatus.ERROR, result.getStatus());
         assertNotNull(result.getStatusMessage());
         assertTrue(result.getStatusMessage().contains("Invalid Sensitivity"),
@@ -118,7 +119,7 @@ class WildcardTemplateLoadErrorTest
         // The expansion executes normally (TRT01P empty → fires) — no ERROR.
         Rule concrete = out.getRules().stream().filter(r -> "T-OK-TRT01P".equals(coreId(r)))
                 .findFirst().orElseThrow();
-        RuleExecutionResult result = RuleRunner.execute(concrete, adsl());
+        RuleExecutionResult result = RuleRunnerCalls.execute(concrete, adsl());
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus());
         assertEquals(1, result.getViolationCount(), "TRT01P is empty on the only row");
     }

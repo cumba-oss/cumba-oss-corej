@@ -53,8 +53,8 @@ class TsParameterValueOperationTest
         IDataTable ts = tsDataset();
         DatasetResolver resolver = name -> "TS".equals(name) ? ts : null;
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(tsParamOp("$exp", "EXPSTDTC")),
-                ex, resolver);
+        Map<String, Object> vars = OperationExecutorCalls
+                .execute(List.of(tsParamOp("$exp", "EXPSTDTC")), ex, resolver);
 
         assertEquals("2020-01-05", vars.get("$exp"));
     }
@@ -67,8 +67,8 @@ class TsParameterValueOperationTest
         IDataTable ts = tsDataset();
         DatasetResolver resolver = name -> "TS".equals(name) ? ts : null;
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(tsParamOp("$exp", "NOTAPARM")),
-                ex, resolver);
+        Map<String, Object> vars = OperationExecutorCalls
+                .execute(List.of(tsParamOp("$exp", "NOTAPARM")), ex, resolver);
 
         // No TSPARMCD == NOTAPARM row ⇒ null ⇒ the operation result is dropped (rule skips).
         assertFalse(vars.containsKey("$exp"));
@@ -81,8 +81,8 @@ class TsParameterValueOperationTest
         IDataTable ex = MockTable.of().name("EX").col("EXSTDTC", "2020-06-01").build();
         DatasetResolver resolver = _ -> null; // TS not available
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(tsParamOp("$exp", "EXPSTDTC")),
-                ex, resolver);
+        Map<String, Object> vars = OperationExecutorCalls
+                .execute(List.of(tsParamOp("$exp", "EXPSTDTC")), ex, resolver);
 
         assertFalse(vars.containsKey("$exp"));
     }
@@ -96,11 +96,11 @@ class TsParameterValueOperationTest
         IDataTable ts = MockTable.of().name("TS").col("TSPARMCD", "EXPSTDTC").build();
         DatasetResolver resolver = name -> "TS".equals(name) ? ts : null;
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(tsParamOp("$exp", "EXPSTDTC")),
-                ex, resolver);
+        Map<String, Object> vars = OperationExecutorCalls
+                .execute(List.of(tsParamOp("$exp", "EXPSTDTC")), ex, resolver);
 
-        assertNull(OperationExecutor.executeOne(tsParamOp("$exp", "EXPSTDTC"), ex, resolver, null,
-                Map.of(), null));
+        assertNull(OperationExecutorCalls.executeOne(tsParamOp("$exp", "EXPSTDTC"), ex, resolver,
+                null, Map.of(), null));
         assertFalse(vars.containsKey("$exp"));
     }
 

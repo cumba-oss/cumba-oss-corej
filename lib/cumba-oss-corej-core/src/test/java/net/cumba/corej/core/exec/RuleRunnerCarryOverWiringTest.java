@@ -60,7 +60,7 @@ class RuleRunnerCarryOverWiringTest
     private static RuleExecutionResult run(Rule rule, IDataTable table, MetadataProvider library)
     {
         // INFO threshold so the weaker rung is evaluated at all (the default WARNING excludes it).
-        return RuleRunner.execute(rule, table, _ -> null, "ADSL", library, null, null,
+        return RuleRunnerCalls.execute(rule, table, _ -> null, "ADSL", library, null, null,
                 Integer.MAX_VALUE, null, null, null, Set.of(), Set.of(), Severity.INFO);
     }
 
@@ -158,8 +158,8 @@ class RuleRunnerCarryOverWiringTest
 
         IDataTable adsl = MockTable.of().name("ADSL").col("AGE", "56").col("ZZZ", "1").build();
 
-        RuleExecutionResult r = RuleRunner.execute(rule, adsl, _ -> null, "ADSL", library, null,
-                null);
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, adsl, _ -> null, "ADSL", library,
+                null, null);
 
         assertEquals(1, r.getViolations().size(), "the library-defined Identifier column fires");
         assertEquals("AGE", r.getViolations().get(0).getValues().get("variable_name"));

@@ -62,7 +62,7 @@ class DefineCodelistIdentityVsLibraryTest
     private static boolean fires(String defineCcode, String libraryCcode) throws Exception
     {
         IDataTable vs = MockTable.of().name("VS").col("VSPOS", "SUPINE").build();
-        RuleExecutionResult r = RuleRunner.execute(rule(), vs, _ -> null, "VS",
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule(), vs, _ -> null, "VS",
                 provider(libraryCcode), null, provider(defineCcode));
         return r.hasViolations();
     }

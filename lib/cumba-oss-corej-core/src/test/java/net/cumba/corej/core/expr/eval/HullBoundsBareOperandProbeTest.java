@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
@@ -159,7 +159,7 @@ class HullBoundsBareOperandProbeTest
             Rule rule = MAPPER.readValue(yaml, Rule.class);
             RulePackageLoader.deriveOmittedFields(rule);
             rule.setCheckExpr(CheckToExpr.toExpr(rule.getCheck()));
-            RuleExecutionResult result = RuleRunner.execute(rule, data);
+            RuleExecutionResult result = RuleRunnerCalls.execute(rule, data);
             return result.getViolations().stream()
                     .map(v -> String.valueOf(v.getValues().get("ROW"))).sorted().toList();
         }

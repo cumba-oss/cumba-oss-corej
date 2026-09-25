@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import java.util.BitSet;
 import java.util.List;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,16 +37,11 @@ class GroupSemanticsRelationshipTest
     }
 
 
-    private static IDataTableColumn col(IDataTable t, String name)
-    {
-        return t.getColumn(t.getMetaData().getColumnIndex(name));
-    }
-
-
     private static BitSet relationship(IDataTable t, String name, String value, int rowCount)
     {
-        return GroupSemantics.relationshipNotUniqueViolations(col(t, name), col(t, value),
-                rowCount);
+        // The single-column form is the table form over a one-element comparator tuple (the
+        // column-pair overload it used to call was retired as dead code, U1 / A15).
+        return GroupSemantics.relationshipNotUniqueViolations(t, rowCount, name, List.of(value));
     }
 
 

@@ -55,7 +55,8 @@ class RuleRunnerStageBGateTest
         IDataTable table = MockTable.of().col("AEOCCUR", "N").build();
         Rule rule = exprRule("TEST-0001", "--OCCUR != \"N\"");
 
-        RuleExecutionResult result = RuleRunner.stageBGate(rule, table, true, "TEST-0001", null);
+        RuleExecutionResult result = RuleRunnerCalls.stageBGate(rule, table, true, "TEST-0001",
+                null);
 
         assertNotNull(result);
         assertEquals(RuleExecutionStatus.ERROR, result.getStatus());
@@ -74,7 +75,7 @@ class RuleRunnerStageBGateTest
         IDataTable table = MockTable.of().col("AEOCCUR", "N").build();
         Rule rule = exprRule("TEST-0002", "AEOCCUR != \"N\"");
 
-        assertNull(RuleRunner.stageBGate(rule, table, true, "TEST-0002", null));
+        assertNull(RuleRunnerCalls.stageBGate(rule, table, true, "TEST-0002", null));
     }
 
 
@@ -86,7 +87,7 @@ class RuleRunnerStageBGateTest
         IDataTable table = MockTable.of().col("AESEQ", "1").build();
         Rule rule = exprRule("TEST-0003", "AESEQ > 5");
 
-        assertNull(RuleRunner.stageBGate(rule, table, true, "TEST-0003", null));
+        assertNull(RuleRunnerCalls.stageBGate(rule, table, true, "TEST-0003", null));
     }
 
 
@@ -101,7 +102,7 @@ class RuleRunnerStageBGateTest
         Rule rule = exprRule("TEST-0004", "AEOCCUR == \"N\"");
         rule.setCheck(expr("AEOCCUR == N"));
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
 
         assertNotNull(result);
         assertEquals(1, seen.get());

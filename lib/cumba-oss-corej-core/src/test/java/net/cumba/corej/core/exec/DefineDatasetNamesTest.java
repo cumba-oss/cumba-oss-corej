@@ -53,8 +53,8 @@ class DefineDatasetNamesTest
                 new OdmDefineXMLProvider(parse("/define/define-itemmeta-e2e.xml")));
         IDataTable table = MockTable.of().name("DM").col("AGE", "56").build();
 
-        Object result = OperationExecutor.executeOne(makeOp(), table, NO_RESOLVER, null, Map.of(),
-                null, null, define);
+        Object result = OperationExecutorCalls.executeOne(makeOp(), table, NO_RESOLVER, null,
+                Map.of(), null, null, define);
         assertEquals(List.of("DM"), result);
     }
 
@@ -67,8 +67,8 @@ class DefineDatasetNamesTest
                 new OdmDefineXMLProvider(parse("/define/define-keys-e2e.xml")));
         IDataTable table = MockTable.of().name("LB").col("LBORRES", "40").build();
 
-        Object result = OperationExecutor.executeOne(makeOp(), table, NO_RESOLVER, null, Map.of(),
-                null, null, define);
+        Object result = OperationExecutorCalls.executeOne(makeOp(), table, NO_RESOLVER, null,
+                Map.of(), null, null, define);
         assertEquals(List.of("LB"), result);
     }
 
@@ -79,8 +79,8 @@ class DefineDatasetNamesTest
     {
         IDataTable table = MockTable.of().name("DM").col("AGE", "56").build();
 
-        Object result = OperationExecutor.executeOne(makeOp(), table, NO_RESOLVER, null, Map.of(),
-                null, null, null);
+        Object result = OperationExecutorCalls.executeOne(makeOp(), table, NO_RESOLVER, null,
+                Map.of(), null, null, null);
         assertNull(result);
     }
 }

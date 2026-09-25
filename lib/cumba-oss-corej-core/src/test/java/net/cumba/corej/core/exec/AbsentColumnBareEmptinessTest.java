@@ -115,7 +115,7 @@ class AbsentColumnBareEmptinessTest
                 () -> "the load-time pass must not re-inject the retired guard — "
                         + bare.getCheckExpr());
 
-        RuleExecutionResult result = RuleRunner.execute(bare, ts());
+        RuleExecutionResult result = RuleRunnerCalls.execute(bare, ts());
         assertTrue(result.hasViolations(), "absent = all-missing: empty(TSVAL) is true");
         // ⭐ ONE dataset-level finding, not one per row — see the class javadoc. The rule is built
         // through installNativeExpr, exactly as the loader builds a shipped rule, so it takes the
@@ -133,7 +133,7 @@ class AbsentColumnBareEmptinessTest
         // the rule reports the defect on exactly the rows it selects — here one of four.
         Rule subset = rule("CORE-BARE-2", expression("TSPARMCD == \"B\" and empty(TSVAL)"));
 
-        RuleExecutionResult result = RuleRunner.execute(subset, ts());
+        RuleExecutionResult result = RuleRunnerCalls.execute(subset, ts());
         assertEquals(1, result.getViolationCount(), () -> "expected the single TSPARMCD == B row; "
                 + "check expr was " + subset.getCheckExpr());
         assertEquals(1L, result.getViolations().getFirst().getRow());
@@ -148,6 +148,6 @@ class AbsentColumnBareEmptinessTest
                 .col("TSVAL", "1", "", "3", "").build();
         Rule bare = rule("CORE-BARE-3", expression("empty(TSVAL)"));
 
-        assertEquals(2, RuleRunner.execute(bare, present).getViolationCount());
+        assertEquals(2, RuleRunnerCalls.execute(bare, present).getViolationCount());
     }
 }

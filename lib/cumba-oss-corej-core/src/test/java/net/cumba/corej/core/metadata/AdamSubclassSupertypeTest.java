@@ -12,7 +12,7 @@ import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
-import net.cumba.corej.core.exec.ScopeMatcher;
+import net.cumba.corej.core.exec.ScopeMatcherCalls;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.Scope;
 import net.cumba.corej.core.model.SubclassScope;
@@ -186,9 +186,11 @@ class AdamSubclassSupertypeTest
                 List.of("PARAMCD", "AVAL", "CNSR", AdamDataStructureDetector.DEVICE_IDENTIFIER),
                 List.of(), true);
 
-        assertNull(ScopeMatcher.describeSubclassMismatch(subclassRule(List.of(TTE)), deviceTte),
+        assertNull(
+                ScopeMatcherCalls.describeSubclassMismatch(subclassRule(List.of(TTE)), deviceTte),
                 "a device time-to-event dataset IS a time-to-event dataset");
-        assertNull(ScopeMatcher.describeSubclassMismatch(subclassRule(List.of(MD_TTE)), deviceTte));
+        assertNull(ScopeMatcherCalls.describeSubclassMismatch(subclassRule(List.of(MD_TTE)),
+                deviceTte));
     }
 
 
@@ -199,7 +201,7 @@ class AdamSubclassSupertypeTest
                 List.of("PARAMCD", "AVAL", "CNSR"), List.of(), true);
 
         assertNotNull(
-                ScopeMatcher.describeSubclassMismatch(subclassRule(List.of(MD_TTE)), plainTte),
+                ScopeMatcherCalls.describeSubclassMismatch(subclassRule(List.of(MD_TTE)), plainTte),
                 "is-a runs one way only; widening it both ways would silently grow every "
                         + "device-scoped rule's population");
     }

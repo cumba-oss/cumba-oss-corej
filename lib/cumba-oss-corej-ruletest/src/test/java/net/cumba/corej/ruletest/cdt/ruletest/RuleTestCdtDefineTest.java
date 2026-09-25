@@ -9,7 +9,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Set;
 import net.cumba.corej.core.RulePackageLoader;
+import net.cumba.corej.core.exec.EngineLimits;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleRunner;
 import net.cumba.corej.core.model.Rule;
@@ -150,16 +152,24 @@ class RuleTestCdtDefineTest
                 #test R1 expect=noViolation domain=VS
                 #define domain-variables VS VSPOS:Qualifier
                 #define variable-metadata VS VSPOS label="Position of Subject\""""), "t");
-        RuleExecutionResult ok = RuleRunner.execute(rule, match.primaryTable(), match.resolver(),
-                "VS", null, null, match.getDefine());
+        RuleExecutionResult ok = run(rule, match);
         assertFalse(ok.hasViolations(), "matching define label must not fire");
 
         RuleTestScenario mismatch = RuleTestCdt.parse(scenario("""
                 #test R1 expect=violation domain=VS
                 #define domain-variables VS VSPOS:Qualifier
                 #define variable-metadata VS VSPOS label="Wrong Label\""""), "t");
-        RuleExecutionResult bad = RuleRunner.execute(rule, mismatch.primaryTable(),
-                mismatch.resolver(), "VS", null, null, mismatch.getDefine());
+        RuleExecutionResult bad = run(rule, mismatch);
         assertTrue(bad.hasViolations(), "mismatching define label must fire");
     }
+
+
+    /** The engine's one entry point over a scenario, carrying only its Define-XML provider. */
+    private static RuleExecutionResult run(Rule rule, RuleTestScenario scenario)
+    {
+        return RuleRunner.execute(rule, scenario.primaryTable(), scenario.resolver(), "VS", null,
+                null, scenario.getDefine(), Integer.MAX_VALUE, null, null, null, Set.of(), Set.of(),
+                EngineLimits.DEFAULT_SEVERITY_THRESHOLD);
+    }
+
 }

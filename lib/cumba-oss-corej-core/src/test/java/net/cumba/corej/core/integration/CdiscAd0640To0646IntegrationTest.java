@@ -11,8 +11,8 @@ import java.util.Set;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunner;
-import net.cumba.corej.core.exec.ScopeMatcher;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
+import net.cumba.corej.core.exec.ScopeMatcherCalls;
 import net.cumba.corej.core.metadata.AdamDataStructureDetector;
 import net.cumba.corej.core.metadata.AdamSubclassDetector;
 import net.cumba.corej.core.model.Rule;
@@ -165,7 +165,7 @@ class CdiscAd0640To0646IntegrationTest
         IDataTable suppae = MockTable.of().col("USUBJID", "S01").col("QNAM", "AETRTEM")
                 .col("QVAL", "Y").name("SUPPAE").build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, adaeTable,
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, adaeTable,
                 resolverOf(aeTable, suppae));
 
         assertEquals(1, result.getViolationCount(),
@@ -183,7 +183,8 @@ class CdiscAd0640To0646IntegrationTest
         IDataTable adaeTable = adae(); // no AETRTEM column
         IDataTable aeTable = ae("AETRTEM");
 
-        RuleExecutionResult result = RuleRunner.execute(rule, adaeTable, resolverOf(aeTable, null));
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, adaeTable,
+                resolverOf(aeTable, null));
 
         assertEquals(1, result.getViolationCount(),
                 "AE has AETRTEM as a literal column → AE.AETRTEM exists → ADAE missing AETRTEM fires");
@@ -200,7 +201,7 @@ class CdiscAd0640To0646IntegrationTest
         IDataTable suppae = MockTable.of().col("USUBJID", "S01").col("QNAM", "AETRTEM")
                 .col("QVAL", "Y").name("SUPPAE").build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, adaeTable,
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, adaeTable,
                 resolverOf(aeTable, suppae));
 
         assertFalse(result.hasViolations(),
@@ -218,7 +219,7 @@ class CdiscAd0640To0646IntegrationTest
         IDataTable suppae = MockTable.of().col("USUBJID", "S01").col("QNAM", "OTHER")
                 .col("QVAL", "X").name("SUPPAE").build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, adaeTable,
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, adaeTable,
                 resolverOf(aeTable, suppae));
 
         assertFalse(result.hasViolations(),
@@ -236,7 +237,8 @@ class CdiscAd0640To0646IntegrationTest
 
         IDataTable adaeTable = adae();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, adaeTable, resolverOf(null, null));
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, adaeTable,
+                resolverOf(null, null));
 
         assertFalse(result.hasViolations(), "Neither AE nor SUPPAE in the resolver → no fire");
     }
@@ -261,7 +263,8 @@ class CdiscAd0640To0646IntegrationTest
         IDataTable adaeTable = adae(); // no <column>
         IDataTable aeTable = ae(column);
 
-        RuleExecutionResult result = RuleRunner.execute(rule, adaeTable, resolverOf(aeTable, null));
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, adaeTable,
+                resolverOf(aeTable, null));
 
         assertEquals(1, result.getViolationCount());
     }
@@ -280,7 +283,8 @@ class CdiscAd0640To0646IntegrationTest
         IDataTable adaeTable = adae(column);
         IDataTable aeTable = ae(column);
 
-        RuleExecutionResult result = RuleRunner.execute(rule, adaeTable, resolverOf(aeTable, null));
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, adaeTable,
+                resolverOf(aeTable, null));
 
         assertFalse(result.hasViolations());
     }
@@ -296,7 +300,8 @@ class CdiscAd0640To0646IntegrationTest
         IDataTable adaeTable = adae();
         IDataTable aeTable = ae(); // no AESTDY
 
-        RuleExecutionResult result = RuleRunner.execute(rule, adaeTable, resolverOf(aeTable, null));
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, adaeTable,
+                resolverOf(aeTable, null));
 
         assertFalse(result.hasViolations(),
                 "AE missing AESTDY → exists branch false → no violation regardless of ADAE");
@@ -319,7 +324,8 @@ class CdiscAd0640To0646IntegrationTest
         IDataTable aeTable = MockTable.of().col("USUBJID", "S01").col("AESEQ", "1").col("AEACN", "")
                 .name("AE").build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, adaeTable, resolverOf(aeTable, null));
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, adaeTable,
+                resolverOf(aeTable, null));
 
         assertFalse(result.hasViolations(),
                 "AE.AEACN column exists but all rows empty → not populated → no violation");
@@ -338,7 +344,8 @@ class CdiscAd0640To0646IntegrationTest
         IDataTable aeTable = MockTable.of().col("USUBJID", "S01", "S02").col("AESEQ", "1", "2")
                 .col("AEACN", "", "DOSE NOT CHANGED").name("AE").build();
 
-        RuleExecutionResult result = RuleRunner.execute(rule, adaeTable, resolverOf(aeTable, null));
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, adaeTable,
+                resolverOf(aeTable, null));
 
         assertEquals(1, result.getViolationCount(),
                 "AE has one populated AEACN row → rule fires once on the ADAE dataset");
@@ -374,16 +381,18 @@ class CdiscAd0640To0646IntegrationTest
             assertNotNull(rule.getScope().getSubclasses(),
                     id + ": expected Scope.Subclasses present");
             assertNull(
-                    ScopeMatcher.describeDataStructureMismatch(rule,
+                    ScopeMatcherCalls.describeDataStructureMismatch(rule,
                             AdamDataStructureDetector.OCCDS),
                     id + " must apply to an OCCURRENCE DATA STRUCTURE dataset");
             assertNull(
-                    ScopeMatcher.describeSubclassMismatch(rule, AdamSubclassDetector.ADVERSE_EVENT),
+                    ScopeMatcherCalls.describeSubclassMismatch(rule,
+                            AdamSubclassDetector.ADVERSE_EVENT),
                     id + " must apply to the ADVERSE EVENT subclass");
             assertNotNull(
-                    ScopeMatcher.describeDataStructureMismatch(rule, AdamDataStructureDetector.BDS),
+                    ScopeMatcherCalls.describeDataStructureMismatch(rule,
+                            AdamDataStructureDetector.BDS),
                     id + " must NOT apply to a BASIC DATA STRUCTURE dataset");
-            assertNotNull(ScopeMatcher.describeSubclassMismatch(rule, (String) null),
+            assertNotNull(ScopeMatcherCalls.describeSubclassMismatch(rule, (String) null),
                     id + " must NOT apply to an OCCDS dataset without the ADVERSE EVENT subclass"
                             + " (the ADCM / ADMH case)");
         }

@@ -201,7 +201,7 @@ class StoreMetadataProviderFactoryAdamTest
                 .forAdam("adamig", "9-9", List.of(ADAMIG_KEY), List.of(), List.of()).orElseThrow();
         assertTrue(p.supportsStructureKeyedVariables());
         assertEquals(List.of("USUBJID"),
-                p.getRequiredVariablesForStructure(AdamDataStructureDetector.ADSL));
+                p.getRequiredVariablesForStructure(AdamDataStructureDetector.ADSL, List.of()));
     }
 
 
@@ -243,7 +243,7 @@ class StoreMetadataProviderFactoryAdamTest
 
         assertEquals(List.of(TIG_ADAM_KEY, OCCDS_KEY), p.declaredStructureKeyedProducts());
         assertEquals(List.of("INPRM"), p.getRequiredVariablesForStructure(
-                AdamDataStructureDetector.REFERENCE_DATA_STRUCTURE));
+                AdamDataStructureDetector.REFERENCE_DATA_STRUCTURE, List.of()));
     }
 
     // ------------------------------------------------------------------

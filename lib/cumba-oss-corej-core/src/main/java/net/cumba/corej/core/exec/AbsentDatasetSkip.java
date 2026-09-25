@@ -369,32 +369,9 @@ public final class AbsentDatasetSkip
     }
 
     /**
-     * Decides whether — and how far — this rule must be silenced on {@code table}.
-     *
-     * @param rule
-     *            the rule about to be executed
-     * @param resolver
-     *            the run's dataset resolver; {@code resolve(D) == null} <em>is</em> the absence
-     *            fact the presence rule reports
-     * @param reportedDatasets
-     *            the run's coverage, from {@link #reportedDatasets(Collection)}
-     * @param primaryDataset
-     *            the name of the dataset under evaluation, so a rule can never suppress readings of
-     *            the very table it is running against
-     * @param domainPrefix
-     *            the dataset's CDISC domain code, used to reject an unresolved {@code --} domain
-     * @return the decision, never {@code null}
-     */
-    public static Decision decide(Rule rule, DatasetResolver resolver, Set<String> reportedDatasets,
-            @Nullable String primaryDataset, @Nullable String domainPrefix)
-    {
-        return decide(rule, resolver, reportedDatasets, Set.of(), primaryDataset, domainPrefix);
-    }
-
-
-    /**
-     * {@code Fix #218} — the terminal {@link #decide} additionally carrying the run's
-     * <b>cross-standard</b> coverage.
+     * Decides whether — and how far — this rule must be silenced on {@code table}, against the
+     * rule's strictest check expression; carries the run's presence-rule coverage and
+     * ({@code Fix #218}) its <b>cross-standard</b> coverage.
      *
      * @param rule
      *            the rule about to be executed

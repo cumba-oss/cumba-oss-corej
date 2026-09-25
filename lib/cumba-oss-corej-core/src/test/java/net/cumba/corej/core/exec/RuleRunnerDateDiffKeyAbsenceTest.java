@@ -162,7 +162,7 @@ class RuleRunnerDateDiffKeyAbsenceTest
     {
         IDataTable tf = tables.get("TF");
         assertTrue(tf != null, "fixture must carry TF");
-        return RuleRunner.execute(rule, tf, inventory(tables), "TF", null);
+        return RuleRunnerCalls.execute(rule, tf, inventory(tables), "TF", null);
     }
 
 

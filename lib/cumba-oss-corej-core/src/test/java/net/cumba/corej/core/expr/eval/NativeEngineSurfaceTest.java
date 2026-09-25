@@ -12,7 +12,7 @@ import java.util.Map;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.model.Rule;
@@ -201,7 +201,8 @@ class NativeEngineSurfaceTest
 
     private static void assertRunsNative(Rule rule, IDataTable t)
     {
-        RuleExecutionResult result = RuleRunner.execute(rule, t, _ -> null, "AE", null, null, null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, t, _ -> null, "AE", null, null,
+                null);
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
                 "rule must reach a verdict on the native backend, got " + result.getStatus() + ": "
                         + result.getStatusMessage());

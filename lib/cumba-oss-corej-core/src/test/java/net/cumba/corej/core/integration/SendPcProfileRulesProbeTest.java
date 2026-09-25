@@ -10,7 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
@@ -47,7 +47,7 @@ class SendPcProfileRulesProbeTest
 
     private static int violations(Rule rule, IDataTable pc)
     {
-        RuleExecutionResult result = RuleRunner.execute(rule, pc, _ -> null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, pc, _ -> null);
         return result.getViolationCount();
     }
 
@@ -118,7 +118,7 @@ class SendPcProfileRulesProbeTest
         Rule rule = load("CDISC-SEND-0324");
         IDataTable pc = MockTable.of().col("USUBJID", "S1").col("PCORRES", "2.5")
                 .col("PCSTRESC", "2.5").name("PC").build();
-        assertTrue(RuleRunner.execute(rule, pc, _ -> null).isSkipped(),
+        assertTrue(RuleRunnerCalls.execute(rule, pc, _ -> null).isSkipped(),
                 "an absent PCLLOQ must SKIP on the Requirements.Variables.All gate");
     }
 }

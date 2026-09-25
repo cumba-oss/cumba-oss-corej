@@ -8,10 +8,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.cumba.corej.core.RulePackageLoader;
+import net.cumba.corej.core.exec.EngineLimits;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleRunner;
 import net.cumba.corej.core.model.Rule;
+import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.support.OverlayDataTable;
 import org.junit.jupiter.api.Test;
 
@@ -63,8 +66,7 @@ class ExcludedOutputVariablePinFallbackTest
         assertEquals(List.of("AESEV", "AETERM"), rule.getEffectiveOutputVariables());
         OverlayDataTable ae = primary(scenario);
 
-        RuleExecutionResult result = RuleRunner.execute(rule, ae, _ -> null, "AE", null, null,
-                null);
+        RuleExecutionResult result = run(rule, ae);
 
         // Arm 1 — the projection really lacks the excluded column and keeps its siblings.
         assertEquals(1, result.getViolationCount(), "status=" + result.getStatus());
@@ -88,8 +90,7 @@ class ExcludedOutputVariablePinFallbackTest
         assertEquals(List.of("AESEV", "AETERM", "AEDECOD"), rule.getEffectiveOutputVariables());
         OverlayDataTable ae = primary(scenario);
 
-        RuleExecutionResult result = RuleRunner.execute(rule, ae, _ -> null, "AE", null, null,
-                null);
+        RuleExecutionResult result = run(rule, ae);
 
         Map<String, String> values = result.getViolations().get(0).getValues();
         assertEquals("RASH", values.get("AEDECOD"));
@@ -142,10 +143,8 @@ class ExcludedOutputVariablePinFallbackTest
         assertEquals(List.of("AESEV"), excluded.getEffectiveOutputVariables());
         OverlayDataTable ae = primary(scenario);
 
-        RuleExecutionResult servedResult = RuleRunner.execute(served, ae, _ -> null, "AE", null,
-                null, null);
-        RuleExecutionResult excludedResult = RuleRunner.execute(excluded, ae, _ -> null, "AE", null,
-                null, null);
+        RuleExecutionResult servedResult = run(served, ae);
+        RuleExecutionResult excludedResult = run(excluded, ae);
 
         assertEquals("3", servedResult.getViolations().get(0).getValues().get("$n"));
         ViolationLocationCheck.Result servedCheck = ViolationLocationCheck.verify(scenario,
@@ -156,4 +155,15 @@ class ExcludedOutputVariablePinFallbackTest
                 excludedResult, ae);
         assertFalse(check.pass(), "no table column to fall back to: " + check.detail());
     }
+
+
+    /**
+     * The engine's one entry point, with the defaults these tests need (no caches, no providers).
+     */
+    private static RuleExecutionResult run(Rule rule, IDataTable table)
+    {
+        return RuleRunner.execute(rule, table, _ -> null, "AE", null, null, null, Integer.MAX_VALUE,
+                null, null, null, Set.of(), Set.of(), EngineLimits.DEFAULT_SEVERITY_THRESHOLD);
+    }
+
 }

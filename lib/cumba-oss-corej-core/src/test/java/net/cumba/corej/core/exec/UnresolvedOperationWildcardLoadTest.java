@@ -80,7 +80,7 @@ class UnresolvedOperationWildcardLoadTest
                 "the message must name the offending operation, got " + rule.getLoadError());
         assertNull(rule.getLoadWarning(), "the executable case uses the error channel only");
 
-        RuleExecutionResult result = RuleRunner.execute(rule, table());
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table());
         assertEquals(RuleExecutionStatus.ERROR, result.getStatus());
         assertEquals(rule.getLoadError(), result.getStatusMessage());
     }

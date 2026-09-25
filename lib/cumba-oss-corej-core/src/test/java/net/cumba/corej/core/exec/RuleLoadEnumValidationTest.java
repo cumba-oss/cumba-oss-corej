@@ -126,7 +126,7 @@ class RuleLoadEnumValidationTest
         assertNotNull(rule.getLoadError());
         IDataTable table = MockTable.of().col("USUBJID", "S1").col("AESTDY", "1").name("ADAE")
                 .build();
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertEquals(RuleExecutionStatus.ERROR, result.getStatus());
         assertEquals(rule.getLoadError(), result.getStatusMessage());
         assertEquals(1, result.getViolationCount(), "exactly one sentinel violation");
@@ -205,7 +205,7 @@ class RuleLoadEnumValidationTest
         assertNull(rule.getRawExecutability());
         IDataTable table = MockTable.of().col("USUBJID", "S1").col("AESTDY", "1").name("ADAE")
                 .build();
-        RuleExecutionResult result = RuleRunner.execute(rule, table);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
         assertNotEquals(RuleExecutionStatus.ERROR, result.getStatus(),
                 "rules without the enum fields still execute");
     }

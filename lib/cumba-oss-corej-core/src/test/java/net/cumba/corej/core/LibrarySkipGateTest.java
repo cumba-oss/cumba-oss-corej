@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
@@ -50,7 +50,7 @@ class LibrarySkipGateTest
         IDataTable dm = MockTable.of().col("STUDYID", "S1").col("DOMAIN", "DM").name("DM").build();
 
         // No library provider (the 6th argument is null) → the precondition gate folds FALSE.
-        RuleExecutionResult result = RuleRunner.execute(r, dm,
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, dm,
                 name -> name.equals("DM") ? dm : null, "DM", null, null, null);
 
         assertEquals(RuleExecutionStatus.SKIPPED, result.getStatus(),

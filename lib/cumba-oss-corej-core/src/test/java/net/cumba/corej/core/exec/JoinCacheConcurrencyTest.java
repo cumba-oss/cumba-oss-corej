@@ -97,7 +97,7 @@ class JoinCacheConcurrencyTest
         // Sequential baseline.
         JoinCache.SharedIndexCache baselineShared = new JoinCache.SharedIndexCache();
         JoinCache baselineCache = new JoinCache(baselineShared);
-        RuleExecutionResult baseline = RuleRunner.execute(rule, primary, resolver, "AD", null,
+        RuleExecutionResult baseline = RuleRunnerCalls.execute(rule, primary, resolver, "AD", null,
                 baselineCache);
         // Guard against a vacuous comparison: the baseline must actually run and fire.
         assertTrue(baseline.getViolationCount() > 0, "the fixture must fire for SUBJ02: "
@@ -108,7 +108,7 @@ class JoinCacheConcurrencyTest
         JoinCache cache = new JoinCache(shared);
 
         List<RuleExecutionResult> results = runParallel(THREADS, RULES_PER_THREAD,
-                () -> RuleRunner.execute(rule, primary, resolver, "AD", null, cache));
+                () -> RuleRunnerCalls.execute(rule, primary, resolver, "AD", null, cache));
 
         for (RuleExecutionResult r : results)
         {
@@ -133,7 +133,7 @@ class JoinCacheConcurrencyTest
 
         // First call from N threads concurrently — the moment of maximum contention.
         List<RuleExecutionResult> firstWave = runParallel(THREADS, 1,
-                () -> RuleRunner.execute(rule, primary, resolver, "AD", null, cache));
+                () -> RuleRunnerCalls.execute(rule, primary, resolver, "AD", null, cache));
 
         RuleExecutionResult reference = firstWave.get(0);
         for (RuleExecutionResult r : firstWave)
@@ -166,16 +166,16 @@ class JoinCacheConcurrencyTest
         Rule b = buildJoinRule();
         b.getCore().setId("CORE-B");
 
-        RuleExecutionResult baseline = RuleRunner.execute(buildJoinRule(), primary, resolver, "AD",
-                null, new JoinCache(new JoinCache.SharedIndexCache()));
+        RuleExecutionResult baseline = RuleRunnerCalls.execute(buildJoinRule(), primary, resolver,
+                "AD", null, new JoinCache(new JoinCache.SharedIndexCache()));
         assertTrue(baseline.getViolationCount() > 0, "the fixture must fire for SUBJ02");
 
         // Run both in parallel a few times so any cache-rebuild race surfaces.
         for (int i = 0; i < 16; i++)
         {
             List<List<RuleExecutionResult>> pairs = runParallel(2, 1,
-                    () -> List.of(RuleRunner.execute(a, primary, resolver, "AD", null, cache),
-                            RuleRunner.execute(b, primary, resolver, "AD", null, cache)));
+                    () -> List.of(RuleRunnerCalls.execute(a, primary, resolver, "AD", null, cache),
+                            RuleRunnerCalls.execute(b, primary, resolver, "AD", null, cache)));
             assertEquals(2, pairs.size(), "both workers must report");
             for (List<RuleExecutionResult> pair : pairs)
             {
@@ -208,7 +208,7 @@ class JoinCacheConcurrencyTest
         Rule rule = buildCachedJoinRule();
 
         JoinCache baselineCache = new JoinCache(new JoinCache.SharedIndexCache());
-        RuleExecutionResult baseline = RuleRunner.execute(rule, primary, resolver, "AD", null,
+        RuleExecutionResult baseline = RuleRunnerCalls.execute(rule, primary, resolver, "AD", null,
                 baselineCache);
         assertTrue(baseline.getViolationCount() > 0, "the fixture must fire for SUBJ02: "
                 + baseline.getStatus() + " " + baseline.getStatusMessage());
@@ -219,7 +219,7 @@ class JoinCacheConcurrencyTest
 
         JoinCache cache = new JoinCache(new JoinCache.SharedIndexCache());
         List<RuleExecutionResult> firstWave = runParallel(THREADS, 1,
-                () -> RuleRunner.execute(rule, primary, resolver, "AD", null, cache));
+                () -> RuleRunnerCalls.execute(rule, primary, resolver, "AD", null, cache));
         assertEquals(THREADS, firstWave.size(), "every worker must report");
         for (RuleExecutionResult r : firstWave)
         {
@@ -229,7 +229,7 @@ class JoinCacheConcurrencyTest
         assertNotNull(built, "the cold-start wave must populate the JoinCache");
 
         List<RuleExecutionResult> secondWave = runParallel(THREADS, RULES_PER_THREAD,
-                () -> RuleRunner.execute(rule, primary, resolver, "AD", null, cache));
+                () -> RuleRunnerCalls.execute(rule, primary, resolver, "AD", null, cache));
         assertEquals(THREADS * RULES_PER_THREAD, secondWave.size(), "every iteration must report");
         for (RuleExecutionResult r : secondWave)
         {
@@ -258,16 +258,16 @@ class JoinCacheConcurrencyTest
         Rule b = buildCachedJoinRule();
         b.getCore().setId("CORE-B");
 
-        RuleExecutionResult baseline = RuleRunner.execute(buildCachedJoinRule(), primary, resolver,
-                "AD", null, new JoinCache(new JoinCache.SharedIndexCache()));
+        RuleExecutionResult baseline = RuleRunnerCalls.execute(buildCachedJoinRule(), primary,
+                resolver, "AD", null, new JoinCache(new JoinCache.SharedIndexCache()));
         assertTrue(baseline.getViolationCount() > 0, "the fixture must fire for SUBJ02");
 
         JoinLookup first = null;
         for (int i = 0; i < 16; i++)
         {
             List<List<RuleExecutionResult>> pairs = runParallel(2, 1,
-                    () -> List.of(RuleRunner.execute(a, primary, resolver, "AD", null, cache),
-                            RuleRunner.execute(b, primary, resolver, "AD", null, cache)));
+                    () -> List.of(RuleRunnerCalls.execute(a, primary, resolver, "AD", null, cache),
+                            RuleRunnerCalls.execute(b, primary, resolver, "AD", null, cache)));
             assertEquals(2, pairs.size(), "both workers must report");
             for (List<RuleExecutionResult> pair : pairs)
             {

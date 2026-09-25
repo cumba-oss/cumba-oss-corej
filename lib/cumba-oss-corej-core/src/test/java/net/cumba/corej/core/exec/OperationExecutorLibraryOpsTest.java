@@ -40,7 +40,8 @@ class OperationExecutorLibraryOpsTest
         p.columnOrder = List.of("STUDYID", "USUBJID", "DOMAIN");
 
         Operation op = makeOp("$order", "get_column_order_from_library");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         assertEquals(List.of("STUDYID", "USUBJID", "DOMAIN"), vars.get("$order"));
     }
 
@@ -57,7 +58,8 @@ class OperationExecutorLibraryOpsTest
         p.columnOrder = List.of();
 
         Operation op = makeOp("$order", "get_column_order_from_library");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         Object result = vars.get("$order");
         assertNotNull(result);
         assertEquals("<library not available>", result.toString());
@@ -72,7 +74,8 @@ class OperationExecutorLibraryOpsTest
         p.columnOrder = null;
 
         Operation op = makeOp("$order", "get_column_order_from_library");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         Object result = vars.get("$order");
         assertNotNull(result);
         assertEquals("<library not available>", result.toString());
@@ -87,7 +90,8 @@ class OperationExecutorLibraryOpsTest
         p.domainCustom = true;
 
         Operation op = makeOp("$custom", "domain_is_custom");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         assertEquals(true, vars.get("$custom"));
     }
 
@@ -105,7 +109,8 @@ class OperationExecutorLibraryOpsTest
         // resolves through getCodelist, whose honest default is empty (rule SKIPs).
         op.setLevel("term");
         op.setReturntype("value");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         assertEquals(List.of("M", "F", "U"), vars.get("$terms"));
     }
 
@@ -126,7 +131,8 @@ class OperationExecutorLibraryOpsTest
         op.setName("TSVCDREF");
         op.setVersion("TSVCDVER");
         op.setCtAttribute("Term CCODE");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         assertEquals(List.of("A", "B"), vars.get("$attrs"));
     }
 
@@ -139,7 +145,8 @@ class OperationExecutorLibraryOpsTest
         p.datasetMetadata = Map.of("className", "EVENTS");
 
         Operation op = makeOp("$class", "dataset_class_from_library");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         assertEquals("EVENTS", vars.get("$class"));
     }
 
@@ -152,7 +159,8 @@ class OperationExecutorLibraryOpsTest
         p.datasetMetadata = null;
 
         Operation op = makeOp("$class", "dataset_class_from_library");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         // Provider returned null map → null className → result not stored
         assertFalse(vars.containsKey("$class"));
     }
@@ -170,7 +178,8 @@ class OperationExecutorLibraryOpsTest
         );
 
         Operation op = makeOp("$dates", "valid_codelist_dates");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
 
         @SuppressWarnings("unchecked")
         List<String> dates = (List<String>) vars.get("$dates");
@@ -189,7 +198,8 @@ class OperationExecutorLibraryOpsTest
         p.standard = "sdtmig";
 
         Operation op = makeOp("$dates", "valid_codelist_dates");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         @SuppressWarnings("unchecked")
         List<String> dates = (List<String>) vars.get("$dates");
         assertNotNull(dates);
@@ -207,7 +217,8 @@ class OperationExecutorLibraryOpsTest
 
         Operation op = makeOp("$dates", "valid_codelist_dates");
         op.setCtPackageTypes(List.of("ADAM"));
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         @SuppressWarnings("unchecked")
         List<String> dates = (List<String>) vars.get("$dates");
         assertEquals(List.of("2024-10-01"), dates);
@@ -223,7 +234,8 @@ class OperationExecutorLibraryOpsTest
         p.standard = "unknownstandard"; // → applicable set is empty
 
         Operation op = makeOp("$dates", "valid_codelist_dates");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         @SuppressWarnings("unchecked")
         List<String> dates = (List<String>) vars.get("$dates");
         assertNotNull(dates);
@@ -240,7 +252,8 @@ class OperationExecutorLibraryOpsTest
         // standard null & no op.ctPackageTypes → applicable = empty
 
         Operation op = makeOp("$dates", "valid_codelist_dates");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         @SuppressWarnings("unchecked")
         List<String> dates = (List<String>) vars.get("$dates");
         assertNotNull(dates);
@@ -264,7 +277,8 @@ class OperationExecutorLibraryOpsTest
         op.setKeyName("role");
         op.setKeyValue("Identifier");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         @SuppressWarnings("unchecked")
         List<String> ids = (List<String>) vars.get("$ids");
         assertNotNull(ids);
@@ -284,7 +298,8 @@ class OperationExecutorLibraryOpsTest
 
         Operation op = makeOp("$x", "get_dataset_filtered_variables");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         @SuppressWarnings("unchecked")
         List<String> result = (List<String>) vars.get("$x");
         assertNotNull(result);
@@ -314,7 +329,8 @@ class OperationExecutorLibraryOpsTest
 
         Operation op = makeOp("$nk", "natural_key_variables");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         @SuppressWarnings("unchecked")
         List<String> nk = (List<String>) vars.get("$nk");
         assertNotNull(nk);
@@ -337,7 +353,8 @@ class OperationExecutorLibraryOpsTest
                 .build();
         Operation op = makeOp("$nk", "natural_key_variables");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, null);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                null);
         Object result = vars.get("$nk");
         assertNotNull(result);
         assertEquals("<library not available>", result.toString());
@@ -354,7 +371,8 @@ class OperationExecutorLibraryOpsTest
 
         Operation op = makeOp("$nk", "natural_key_variables");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         @SuppressWarnings("unchecked")
         List<String> result = (List<String>) vars.get("$nk");
         assertNotNull(result);
@@ -376,7 +394,8 @@ class OperationExecutorLibraryOpsTest
         op.setKeyName("role");
         op.setKeyValue("Identifier");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         @SuppressWarnings("unchecked")
         List<String> ids = (List<String>) vars.get("$ids");
         assertNotNull(ids);
@@ -398,7 +417,8 @@ class OperationExecutorLibraryOpsTest
 
         Operation op = makeOp("$x", "get_model_filtered_variables");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         @SuppressWarnings("unchecked")
         List<String> result = (List<String>) vars.get("$x");
         assertNotNull(result);
@@ -423,7 +443,8 @@ class OperationExecutorLibraryOpsTest
         Operation op = makeOp("$events", "get_model_filtered_variables");
         op.setModelClass("EVENTS");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         assertEquals("EVENTS", p.lastModelClassAsked);
         assertEquals(List.of("BWTERM", "BWDECOD"), vars.get("$events"));
     }
@@ -443,7 +464,8 @@ class OperationExecutorLibraryOpsTest
         op.setKeyName("role");
         op.setKeyValue("Topic");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         assertEquals(List.of("BWTERM"), vars.get("$events_topic"));
     }
 
@@ -464,7 +486,8 @@ class OperationExecutorLibraryOpsTest
         Operation op = makeOp("$events", "get_model_filtered_variables");
         op.setModelClass("EVENTS");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         assertEquals(List.of("BWTERM", "STUDYID"), vars.get("$events"));
     }
 
@@ -482,14 +505,15 @@ class OperationExecutorLibraryOpsTest
         Operation op = makeOp("$events", "get_model_filtered_variables");
         op.setModelClass("EVENTS");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         Object result = vars.get("$events");
         assertNotNull(result);
         assertEquals("<library not available>", result.toString());
 
         // ...and an EMPTY (non-null) resolver answer is the same SKIP.
         p.standardModelVariablesForClass = List.of();
-        vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER, p);
         assertEquals("<library not available>", String.valueOf(vars.get("$events")));
     }
 
@@ -509,7 +533,8 @@ class OperationExecutorLibraryOpsTest
 
         Operation op = makeOp("$x", "get_model_filtered_variables");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         assertEquals(List.of(), vars.get("$x"));
         assertNull(p.lastModelClassAsked, "no model_class ⇒ the class accessors are never asked");
     }
@@ -523,7 +548,8 @@ class OperationExecutorLibraryOpsTest
         p.standardModelVariables = List.of(); // empty → translates to LIBRARY_NOT_AVAILABLE
 
         Operation op = makeOp("$cols", "get_model_column_order");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         Object result = vars.get("$cols");
         assertNotNull(result);
         assertEquals("<library not available>", result.toString());
@@ -538,7 +564,8 @@ class OperationExecutorLibraryOpsTest
         p.standardModelVariables = null; // explicit null
 
         Operation op = makeOp("$cols", "get_model_column_order");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         Object result = vars.get("$cols");
         assertNotNull(result);
         assertEquals("<library not available>", result.toString());
@@ -553,7 +580,8 @@ class OperationExecutorLibraryOpsTest
         p.standardModelVariables = List.of("STUDYID", "USUBJID", "AESEQ");
 
         Operation op = makeOp("$cols", "get_model_column_order");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         assertEquals(List.of("STUDYID", "USUBJID", "AESEQ"), vars.get("$cols"));
     }
 
@@ -570,7 +598,8 @@ class OperationExecutorLibraryOpsTest
         p.standardVariableNames = List.of("STUDYID", "USUBJID", "AESEQ", "AETERM");
 
         Operation op = makeOp("$variable_names", "variable_names");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         assertEquals(List.of("STUDYID", "USUBJID", "AESEQ", "AETERM"), vars.get("$variable_names"));
     }
 
@@ -583,7 +612,8 @@ class OperationExecutorLibraryOpsTest
         p.standardVariableNames = List.of(); // empty ⇒ SKIP (never a `$`-ref against empty set)
 
         Operation op = makeOp("$variable_names", "variable_names");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         Object result = vars.get("$variable_names");
         assertNotNull(result);
         assertEquals("<library not available>", result.toString());
@@ -598,7 +628,8 @@ class OperationExecutorLibraryOpsTest
         p.standardVariableNames = null; // no product / degraded ⇒ SKIP
 
         Operation op = makeOp("$variable_names", "variable_names");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         assertEquals("<library not available>", vars.get("$variable_names").toString());
     }
 
@@ -609,7 +640,8 @@ class OperationExecutorLibraryOpsTest
         IDataTable table = MockTable.of().col("QNAM", "AESEQ").name("SUPPAE").build();
         Operation op = makeOp("$variable_names", "variable_names");
 
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, null);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                null);
         assertEquals("<library not available>", vars.get("$variable_names").toString());
     }
 
@@ -622,7 +654,8 @@ class OperationExecutorLibraryOpsTest
         p.standardDatasetNames = List.of("DM", "AE", "LB", "RELREC");
 
         Operation op = makeOp("$sdtm_domains", "standard_domains");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         assertEquals(List.of("DM", "AE", "LB", "RELREC"), vars.get("$sdtm_domains"));
     }
 
@@ -637,7 +670,8 @@ class OperationExecutorLibraryOpsTest
         p.standardDatasetNames = List.of();
 
         Operation op = makeOp("$sdtm_domains", "standard_domains");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         Object result = vars.get("$sdtm_domains");
         assertNotNull(result);
         assertEquals("<library not available>", result.toString());
@@ -653,7 +687,8 @@ class OperationExecutorLibraryOpsTest
         p.standardDatasetNames = null;
 
         Operation op = makeOp("$sdtm_domains", "standard_domains");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         assertEquals("<library not available>", vars.get("$sdtm_domains").toString());
     }
 
@@ -666,7 +701,8 @@ class OperationExecutorLibraryOpsTest
         p.expectedVariables = List.of("AESTDTC");
 
         Operation op = makeOp("$ev", "expected_variables");
-        Map<String, Object> vars = OperationExecutor.execute(List.of(op), table, NO_RESOLVER, p);
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
+                p);
         assertEquals(List.of("AESTDTC"), vars.get("$ev"));
     }
 

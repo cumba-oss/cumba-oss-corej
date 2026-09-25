@@ -13,7 +13,7 @@ import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.model.CheckConditionExpression;
 import net.cumba.corej.core.model.Rule;
@@ -341,7 +341,7 @@ class ColumnTypeGateTest
 
         // Dataset A ships DOSE as Char → ERROR with the __error__ sentinel, message naming types.
         IDataTable charDose = MockTable.of().name("EX").col("DOSE", "10", "3").build();
-        RuleExecutionResult error = RuleRunner.execute(r, charDose, _ -> charDose);
+        RuleExecutionResult error = RuleRunnerCalls.execute(r, charDose, _ -> charDose);
         assertEquals(RuleExecutionStatus.ERROR, error.getStatus());
         assertEquals(1, error.getViolationCount(), "one __error__ sentinel violation");
         String sentinel = error.getViolations().getFirst().getValues().get("__error__");
@@ -350,7 +350,7 @@ class ColumnTypeGateTest
 
         // Dataset B ships DOSE correctly as Num → the very same Rule object executes normally.
         IDataTable numDose = MockTable.of().name("EX").colLong("DOSE", 10L, 3L).build();
-        RuleExecutionResult ok = RuleRunner.execute(r, numDose, _ -> numDose);
+        RuleExecutionResult ok = RuleRunnerCalls.execute(r, numDose, _ -> numDose);
         assertEquals(RuleExecutionStatus.EXECUTED, ok.getStatus());
         assertEquals(1, ok.getViolationCount(), "row 0 (10 > 5) fires");
     }
@@ -366,7 +366,7 @@ class ColumnTypeGateTest
                 "the rule must keep its native expression — nothing may silently strip num()"
                         + " (historically the v1 lowering refused it; the model is now retired)");
         IDataTable charDose = MockTable.of().name("EX").col("DOSE", "10", "3", "abc").build();
-        RuleExecutionResult res = RuleRunner.execute(r, charDose, _ -> charDose);
+        RuleExecutionResult res = RuleRunnerCalls.execute(r, charDose, _ -> charDose);
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus());
         assertEquals(1, res.getViolationCount(), "only the parsing 10 fires; abc is missing (F1)");
     }

@@ -58,66 +58,6 @@ public final class RuleRunner
     }
 
 
-    public static @Nullable RuleExecutionResult execute(Rule rule, IDataTable table)
-    {
-        return execute(rule, table, _ -> null);
-    }
-
-
-    public static RuleExecutionResult execute(Rule rule, IDataTable table, DatasetResolver resolver)
-    {
-        return execute(rule, table, resolver, null);
-    }
-
-
-    /**
-     * Executes a rule against a data table.
-     *
-     * @param rule
-     *            the rule to execute
-     * @param table
-     *            the data table to check
-     * @param resolver
-     *            resolves cross-dataset references
-     * @param domainPrefix
-     *            the 2-character domain prefix for {@code --} substitution (e.g., "AE"). May be
-     *            {@code null} if the rule does not use prefix wildcards.
-     * @return the execution result
-     */
-    public static RuleExecutionResult execute(Rule rule, IDataTable table, DatasetResolver resolver,
-            @Nullable String domainPrefix)
-    {
-        return execute(rule, table, resolver, domainPrefix, (MetadataProvider) null);
-    }
-
-
-    /**
-     * Executes a rule against a data table with configurable literal fallback and an optional
-     * {@link MetadataProvider} for rules that depend on CDISC Library metadata (e.g., operations
-     * {@code domain_is_custom}, {@code required_variables}, {@code expected_variables},
-     * {@code get_column_order_from_library}, {@code codelist_terms}).
-     *
-     * @param rule
-     *            the rule to execute
-     * @param table
-     *            the data table to check
-     * @param resolver
-     *            resolves cross-dataset references
-     * @param domainPrefix
-     *            the 2-character domain prefix for {@code --} substitution (e.g., "AE"). May be
-     *            {@code null}.
-     * @param libraryProvider
-     *            provides CDISC Library metadata for Library-dependent operations. When
-     *            {@code null}, rules that use such operations are skipped with a warning.
-     * @return the execution result
-     */
-    public static RuleExecutionResult execute(Rule rule, IDataTable table, DatasetResolver resolver,
-            @Nullable String domainPrefix, @Nullable MetadataProvider libraryProvider)
-    {
-        return execute(rule, table, resolver, domainPrefix, libraryProvider, null);
-    }
-
-
     /**
      * Executes a rule with a {@link JoinCache} for reusing cross-dataset join structures across
      * multiple rule executions against the same primary table. When many rules join the same
@@ -220,28 +160,6 @@ public final class RuleRunner
     {
         return execute(rule, table, resolver, domainPrefix, libraryProvider, joinCache,
                 defineProvider, maxErrorsPerRule, exprCache, null);
-    }
-
-
-    /**
-     * As
-     * {@link #execute(Rule, IDataTable, DatasetResolver, String, MetadataProvider, JoinCache, MetadataProvider)}
-     * with the per-record Define-XML value-level metadata resolver ({@code Value Check against
-     * Define XML VLM}). {@code vlmResolver} is {@code null} when no Define-XML value-level metadata
-     * is present; it is carried read-only on the {@link EvaluationContext} for the {@code vlm_*}
-     * accessors. Convenience overload for tests / embedding (unlimited findings, no caches).
-     *
-     * @param vlmResolver
-     *            the per-record value-level metadata resolver, or {@code null}
-     * @return the execution result
-     */
-    public static RuleExecutionResult execute(Rule rule, IDataTable table, DatasetResolver resolver,
-            @Nullable String domainPrefix, @Nullable MetadataProvider libraryProvider,
-            @Nullable JoinCache joinCache, @Nullable MetadataProvider defineProvider,
-            @Nullable VlmResolver vlmResolver)
-    {
-        return execute(rule, table, resolver, domainPrefix, libraryProvider, joinCache,
-                defineProvider, Integer.MAX_VALUE, null, null, vlmResolver);
     }
 
 
@@ -1978,20 +1896,14 @@ public final class RuleRunner
      * this gate is live machinery with an empty population; the armed column-type check
      * deliberately stays the {@code ColumnTypeGate} exception path (D15 — absorbed, not
      * duplicated).
-     */
-    static @Nullable RuleExecutionResult stageBGate(Rule rule, IDataTable table,
-            boolean concreteContract, @Nullable String ruleId, @Nullable String message)
-    {
-        return stageBGate(rule, table, concreteContract, ruleId, message, null, Set.of());
-    }
-
-
-    /**
-     * The widened seam of phase 5b-J (D104d): the same gate, additionally carrying the run's
-     * foreign-dataset inventory (answered through the very {@link SplitDomainResolution} the join
-     * build uses, so stage B and the join hold one idea of "resolvable") and the datasets
-     * {@code AbsentDatasetSkip} already suppressed for this execution — the inputs the
-     * {@code Filter} (D89) and {@code _matched_} rows of spec §9 need.
+     *
+     * <p>
+     * Since phase 5b-J (D104d) the gate also carries the run's foreign-dataset inventory (answered
+     * through the very {@link SplitDomainResolution} the join build uses, so stage B and the join
+     * hold one idea of "resolvable") and the datasets {@code AbsentDatasetSkip} already suppressed
+     * for this execution — the inputs the {@code Filter} (D89) and {@code _matched_} rows of spec
+     * §9 need.
+     * </p>
      */
     static @Nullable RuleExecutionResult stageBGate(Rule rule, IDataTable table,
             boolean concreteContract, @Nullable String ruleId, @Nullable String message,
@@ -3668,19 +3580,6 @@ public final class RuleRunner
             }
         }
         return out;
-    }
-
-
-    /**
-     * Backwards-compatible overload — see
-     * {@link #buildJoinedDatasets(List, IDataTable, DatasetResolver, JoinCache, String)}.
-     * {@code ruleId} defaults to {@code null}; per-Match_Dataset DEBUG logs render with {@code [?]}
-     * for the rule context.
-     */
-    static Map<String, JoinLookup> buildJoinedDatasets(@Nullable List<MatchDataset> matchDatasets,
-            IDataTable primaryTable, DatasetResolver resolver, @Nullable JoinCache joinCache)
-    {
-        return buildJoinedDatasets(matchDatasets, primaryTable, resolver, joinCache, null);
     }
 
 

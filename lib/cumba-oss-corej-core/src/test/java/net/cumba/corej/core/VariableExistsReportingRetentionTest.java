@@ -10,6 +10,7 @@ import java.util.Map;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.model.OperationType;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
@@ -133,7 +134,7 @@ class VariableExistsReportingRetentionTest
         IDataTable ec = MockTable.of().name("EC").col("USUBJID", "S1").build();
         DatasetResolver resolver = Map.of("EX", ex, "EC", ec)::get;
 
-        RuleExecutionResult result = RuleRunner.execute(rule, ex, resolver, null, null);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, ex, resolver, null, null);
 
         assertEquals(1, result.getViolationCount(),
                 "EXVAMT present and EC present ⇒ the rule fires, exactly as before");

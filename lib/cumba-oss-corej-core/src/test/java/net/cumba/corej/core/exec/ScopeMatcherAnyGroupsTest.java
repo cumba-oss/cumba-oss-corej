@@ -68,7 +68,7 @@ class ScopeMatcherAnyGroupsTest
 
     private static @Nullable String describe(Rule rule, DataTableMeta meta)
     {
-        return ScopeMatcher.describeVariablesMismatch(rule, meta, null, null);
+        return ScopeMatcherCalls.describeVariablesMismatch(rule, meta, null, null);
     }
 
     @Nested
@@ -155,9 +155,10 @@ class ScopeMatcherAnyGroupsTest
         {
             Rule rule = ruleWithAnyGroups(
                     List.of(List.of("--STDTC", "--STRF"), List.of("--ENDTC", "--ENRF")));
-            assertNull(ScopeMatcher.describeVariablesMismatch(rule, meta("DSSTRF", "DSENDTC"), "DS",
-                    null));
-            assertNotNull(ScopeMatcher.describeVariablesMismatch(rule, meta("DSSTRF"), "DS", null));
+            assertNull(ScopeMatcherCalls.describeVariablesMismatch(rule, meta("DSSTRF", "DSENDTC"),
+                    "DS", null));
+            assertNotNull(
+                    ScopeMatcherCalls.describeVariablesMismatch(rule, meta("DSSTRF"), "DS", null));
         }
     }
 
@@ -234,7 +235,7 @@ class ScopeMatcherAnyGroupsTest
         void undecidableMemoryIsPerGroup()
         {
             Rule rule = ruleWithAnyGroups(List.of(List.of("DM.ARM", "DSSTDTC"), END));
-            String reason = ScopeMatcher.describeVariablesMismatch(rule, meta("DSSTDTC"), null,
+            String reason = ScopeMatcherCalls.describeVariablesMismatch(rule, meta("DSSTDTC"), null,
                     null, ScopeMatcher.QualifiedEntryPolicy.SKIP);
             assertEquals(
                     "no variable of Requirements.Variables.Any group 2 [DSENDTC, DSENRF]"
@@ -253,7 +254,7 @@ class ScopeMatcherAnyGroupsTest
         void anUndecidableGroupIsNotReportedAsAbsent()
         {
             Rule rule = ruleWithAnyGroups(List.of(START, List.of("DM.ARM", "DSENDTC")));
-            String reason = ScopeMatcher.describeVariablesMismatch(rule, meta("DSSTDTC"), null,
+            String reason = ScopeMatcherCalls.describeVariablesMismatch(rule, meta("DSSTDTC"), null,
                     null, ScopeMatcher.QualifiedEntryPolicy.SKIP);
             assertNotNull(reason);
             assertTrue(reason.contains("could not be decided"), reason);

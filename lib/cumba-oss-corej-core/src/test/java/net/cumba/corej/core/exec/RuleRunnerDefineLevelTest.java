@@ -71,7 +71,7 @@ class RuleRunnerDefineLevelTest
             @org.jspecify.annotations.Nullable MetadataProvider library,
             @org.jspecify.annotations.Nullable MetadataProvider define)
     {
-        return RuleRunner.execute(cg0010, dmTable(), _ -> null, "DM", library, null, define);
+        return RuleRunnerCalls.execute(cg0010, dmTable(), _ -> null, "DM", library, null, define);
     }
 
 

@@ -77,8 +77,8 @@ class JoinKeyTypeIdentityTest
     private static KeyMatchRowExpander.KeyMatchExpansion expand(IDataTable primary, IDataTable ae,
             MatchDataset entry)
     {
-        KeyMatchRowExpander.KeyMatchExpansion exp = KeyMatchRowExpander.expand(primary,
-                List.of(entry), Map.of("ADAE", primary, AE, ae)::get, "R-TEST");
+        KeyMatchRowExpander.KeyMatchExpansion exp = ExecCalls.expand(primary, List.of(entry),
+                Map.of("ADAE", primary, AE, ae)::get, "R-TEST");
         assertNotNull(exp, "the entry under test must be expandable");
         return exp;
     }
@@ -205,8 +205,8 @@ class JoinKeyTypeIdentityTest
         assertTrue(JoinKeyTypes.excludedFromKeyTypeCheck(entry),
                 "a Child:true entry must be excluded");
         assertNull(
-                KeyMatchRowExpander.expand(suppae, List.of(entry),
-                        Map.of("SUPPAE", suppae, AE, ae)::get, "R-TEST"),
+                ExecCalls.expand(suppae, List.of(entry), Map.of("SUPPAE", suppae, AE, ae)::get,
+                        "R-TEST"),
                 "an excluded entry is not expandable at all, so keySpec -- where the D4 check lives"
                         + " -- never sees it. THIS is what keeps JKM R6 intact");
     }

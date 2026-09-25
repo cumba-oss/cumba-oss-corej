@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import net.cumba.corej.core.exec.ExecCalls;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
 import net.cumba.corej.core.exec.Violation;
@@ -33,7 +34,7 @@ class ValidationReportBuilderIdentityTest
     {
         Map<String, String> values = new LinkedHashMap<>();
         values.put("AETERM", "Headache");
-        Violation v = new Violation(0L, values, "S01", null);
+        Violation v = ExecCalls.violation(0L, values, "S01", null);
 
         ValidationReport report = build(v, List.of("USUBJID", "AETERM"));
         assertNotNull(report);
@@ -56,7 +57,7 @@ class ValidationReportBuilderIdentityTest
     {
         Map<String, String> values = new LinkedHashMap<>();
         values.put("AETERM", "Nausea");
-        Violation v = new Violation(0L, values, null, "1");
+        Violation v = ExecCalls.violation(0L, values, null, "1");
 
         ValidationReport report = build(v, List.of("SEQ", "AETERM"));
         ValidationFinding f = report.getMembers().getFirst().getFindings().getFirst();
@@ -71,7 +72,7 @@ class ValidationReportBuilderIdentityTest
     {
         Map<String, String> values = new LinkedHashMap<>();
         values.put("AETERM", "Cough");
-        Violation v = new Violation(0L, values, null, null);
+        Violation v = ExecCalls.violation(0L, values, null, null);
 
         ValidationReport report = build(v, List.of("AETERM"));
         ValidationFinding f = report.getMembers().getFirst().getFindings().getFirst();
@@ -84,7 +85,7 @@ class ValidationReportBuilderIdentityTest
     void violationWithIdentityButValuesNull_buildsMapFromIdentity()
     {
         // Values are null but USUBJID/SEQ are set — withIdentity should build a fresh map.
-        Violation v = new Violation(0L, null, "S99", "3");
+        Violation v = ExecCalls.violation(0L, null, "S99", "3");
 
         ValidationReport report = build(v, List.of("USUBJID", "SEQ"));
         assertNotNull(report);
@@ -106,7 +107,7 @@ class ValidationReportBuilderIdentityTest
         values.put("USUBJID", "S01");
         values.put("SEQ", "1");
         values.put("AETERM", "Rash");
-        Violation v = new Violation(0L, values, "S01", "1");
+        Violation v = ExecCalls.violation(0L, values, "S01", "1");
 
         ValidationReport report = build(v, List.of("USUBJID", "SEQ", "AETERM"));
         ValidationFinding f = report.getMembers().getFirst().getFindings().getFirst();

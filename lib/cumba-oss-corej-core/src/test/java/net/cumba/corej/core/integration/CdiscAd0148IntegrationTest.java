@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.RuleExecutionResult;
-import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import net.cumba.datatable.IDataTable;
@@ -51,7 +51,7 @@ class CdiscAd0148IntegrationTest
     {
         DatasetResolver resolver = name -> name.equals(table.getMetaData().getName()) ? table
                 : null;
-        RuleExecutionResult result = RuleRunner.execute(rule(), table, resolver);
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule(), table, resolver);
         return result.getViolationCount();
     }
 

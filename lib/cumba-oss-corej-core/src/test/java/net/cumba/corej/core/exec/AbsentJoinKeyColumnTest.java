@@ -74,8 +74,7 @@ class AbsentJoinKeyColumnTest
     private static KeyMatchRowExpander.KeyMatchExpansion expand(IDataTable dm, IDataTable ae,
             List<String> keys)
     {
-        var exp = KeyMatchRowExpander.expand(dm, List.of(md(keys)), Map.of("DM", dm, AE, ae)::get,
-                "R-TEST");
+        var exp = ExecCalls.expand(dm, List.of(md(keys)), Map.of("DM", dm, AE, ae)::get, "R-TEST");
         assertNotNull(exp, "one keyed entry is expandable, so the expansion must be built");
         return exp;
     }
@@ -152,7 +151,7 @@ class AbsentJoinKeyColumnTest
         IDataTable dm = MockTable.of().col("AGE", "34", "51").name("DM").build();
         IDataTable ae = MockTable.of().col("AETERM", "HEADACHE", "NAUSEA").name(AE).build();
         var thrown = assertThrows(DegenerateJoinKeyException.class,
-                () -> KeyMatchRowExpander.expand(dm, List.of(md(List.of(USUBJID, VISIT))),
+                () -> ExecCalls.expand(dm, List.of(md(List.of(USUBJID, VISIT))),
                         Map.of("DM", dm, AE, ae)::get, "R-TEST"),
                 "R7: an empty key must ERROR, never match everything against everything");
         assertTrue(String.valueOf(thrown.getMessage()).contains("Requirements.Variables.All"),
@@ -177,8 +176,7 @@ class AbsentJoinKeyColumnTest
                 .col("AETERM", "HEADACHE", "NAUSEA").name(AE).build();
         MatchDataset m = md(List.of(USUBJID, VISIT));
         m.setKeepMissings(Boolean.FALSE);
-        var exp = KeyMatchRowExpander.expand(dm, List.of(m), Map.of("DM", dm, AE, ae)::get,
-                "R-TEST");
+        var exp = ExecCalls.expand(dm, List.of(m), Map.of("DM", dm, AE, ae)::get, "R-TEST");
         assertNotNull(exp);
         assertEquals(List.of("0:null", "1:null"), rows(exp, "AETERM"),
                 "keep_missings:false drops every blank-keyed row, and an absent column makes every"

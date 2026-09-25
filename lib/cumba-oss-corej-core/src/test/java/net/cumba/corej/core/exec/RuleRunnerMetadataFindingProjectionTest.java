@@ -79,7 +79,7 @@ class RuleRunnerMetadataFindingProjectionTest
                 .colMeta("STUDYID", "Study Identifier", 8, null).col("AGE", "56", "61")
                 .colMeta("AGE", "Age", 8, "8.").build();
 
-        RuleExecutionResult r = RuleRunner.execute(rule, dm, _ -> null, "DM", library, null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, dm, _ -> null, "DM", library, null,
                 define);
 
         assertEquals(1, r.getViolations().size(), "only AGE mismatches");
@@ -122,7 +122,7 @@ class RuleRunnerMetadataFindingProjectionTest
                 var("AGE", "Qualifier", "integer"));
         IDataTable dm = MockTable.of().name("DM").colLong("AGE", 56L, 61L).build();
 
-        RuleExecutionResult r = RuleRunner.execute(rule, dm, _ -> null, "DM", library, null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, dm, _ -> null, "DM", library, null,
                 define);
 
         assertEquals(1, r.getViolations().size());
@@ -162,7 +162,7 @@ class RuleRunnerMetadataFindingProjectionTest
         IDataTable dm = MockTable.of().name("DM").col("AGE", "56").colMeta("AGE", "Age", 0, null)
                 .col("ZED", "z").build();
 
-        RuleExecutionResult r = RuleRunner.execute(rule, dm, _ -> null, "DM", library, null,
+        RuleExecutionResult r = RuleRunnerCalls.execute(rule, dm, _ -> null, "DM", library, null,
                 define);
 
         assertEquals(2, r.getViolations().size(), "both mismatching columns fire");
@@ -210,15 +210,15 @@ class RuleRunnerMetadataFindingProjectionTest
                 .variable("DM", var("AGE", "Qualifier", "text"));
         IDataTable dm = MockTable.of().name("DM").col("STUDYID", "S1").col("AGE", "56").build();
 
-        RuleExecutionResult ds = RuleRunner.execute(dataset, dm, _ -> null, "DM", library, null,
-                define);
+        RuleExecutionResult ds = RuleRunnerCalls.execute(dataset, dm, _ -> null, "DM", library,
+                null, define);
         assertEquals(1, ds.getViolations().size(), "DATASET sensitivity emits exactly one");
         assertEquals(0L, ds.getViolations().get(0).getRow());
         assertEquals("STUDYID", ds.getViolations().get(0).getValues().get("variable_name"),
                 "the FIRST failing variable in column order");
 
-        RuleExecutionResult rec = RuleRunner.execute(record, dm, _ -> null, "DM", library, null,
-                define);
+        RuleExecutionResult rec = RuleRunnerCalls.execute(record, dm, _ -> null, "DM", library,
+                null, define);
         assertEquals(2, rec.getViolations().size(), "RECORD sensitivity emits one per variable");
         assertEquals(0L, rec.getViolations().get(0).getRow());
         assertEquals(1L, rec.getViolations().get(1).getRow());

@@ -160,24 +160,14 @@ public interface MetadataProvider
      * {@link net.cumba.corej.core.gen.WildcardExpander#scopeVariableWildcardPattern}.
      * </p>
      *
-     * <h4>⚠⚠ The two-arg overload is the PRIMARY method — implementations override THAT one</h4>
-     *
      * <p>
      * {@code subclassTokens} carries the dataset's resolved ADaM subclass(es) and selects which of
      * the token's structures <b>governs</b> — see
-     * {@link net.cumba.corej.core.metadata.MetadataLibraryProvider} for the precedence chain. The
-     * one-arg form below is a <b>convenience for callers with no subclass context</b> and delegates
-     * here with an empty list; it must never be overridden on its own.
-     * </p>
-     *
-     * <p>
-     * ⛔ The default direction is deliberate and inverting it is a trap. Were the two-arg method to
-     * default to the one-arg method, a decorator that forwards only the one-arg form would leave a
-     * two-arg call landing on the interface default → the one-arg → the base's one-arg → this
-     * interface's "cannot answer" {@code null}: the subclass silently dropped and
-     * {@code required_variables()} SKIPping. With the direction below, a decorator that forwards
-     * only the one-arg form still answers — it merely loses the subclass — and
-     * {@code MetadataProviderDecoratorDelegationGuardTest} rejects it outright.
+     * {@link net.cumba.corej.core.metadata.MetadataLibraryProvider} for the precedence chain. A
+     * caller with no subclass context passes {@link List#of()}, i.e. <em>"base structures
+     * only"</em>. ⚑ Until 2026-09-25 a one-argument convenience overload did exactly that; it had
+     * no production caller and was retired (U1 / A27), so this is the one method implementations
+     * override and decorators forward.
      * </p>
      *
      * @param structureToken
@@ -199,27 +189,6 @@ public interface MetadataProvider
 
 
     /**
-     * Convenience overload of {@link #getRequiredVariablesForStructure(String, List)} for callers
-     * with no subclass context — equivalent to passing {@link List#of()}, i.e. <em>"base structures
-     * only"</em>.
-     *
-     * <p>
-     * ⚠ <b>Never override this one.</b> It exists so callers and tests without a subclass context
-     * keep compiling; all behaviour lives in the two-arg primary.
-     * </p>
-     *
-     * @param structureToken
-     *            a structure token, as above
-     * @return the published Required names, or {@code null} when the structure is not in the
-     *         product
-     */
-    default @Nullable List<String> getRequiredVariablesForStructure(String structureToken)
-    {
-        return getRequiredVariablesForStructure(structureToken, List.of());
-    }
-
-
-    /**
      * The {@code Req}+{@code Exp} counterpart of {@link #getRequiredVariablesForStructure}, with
      * the same {@code null}-versus-empty contract.
      *
@@ -231,10 +200,7 @@ public interface MetadataProvider
      * </p>
      *
      * <p>
-     * ⚠⚠ As with the Required accessor, the <b>two-arg overload is primary</b> and the one-arg form
-     * is a convenience delegating to it with an empty subclass list. See
-     * {@link #getRequiredVariablesForStructure(String, List)} for why the default may not point the
-     * other way.
+     * As with the Required accessor, a caller with no subclass context passes {@link List#of()}.
      * </p>
      *
      * @param structureToken
@@ -249,21 +215,6 @@ public interface MetadataProvider
             List<String> subclassTokens)
     {
         return null;
-    }
-
-
-    /**
-     * Convenience overload of {@link #getExpectedVariablesForStructure(String, List)} for callers
-     * with no subclass context. ⚠ Never override this one.
-     *
-     * @param structureToken
-     *            a structure token, as above
-     * @return the published Required+Expected names, or {@code null} when the structure is not in
-     *         the product
-     */
-    default @Nullable List<String> getExpectedVariablesForStructure(String structureToken)
-    {
-        return getExpectedVariablesForStructure(structureToken, List.of());
     }
 
 
