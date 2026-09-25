@@ -538,51 +538,6 @@ class BroadcastFoldSurvivorPinsTest
     }
 
     // ------------------------------------------------------------------
-    // readsRowData — decides per-variable routing granularity: no row reads means one
-    // broadcast verdict per variable, row reads mean per-(variable, row) evaluation.
-    // ------------------------------------------------------------------
-
-
-    @Test
-    void rowDataDetectionCoversCombinators_existsSpellings_andKeywordArguments()
-    {
-        EvaluationContext c = ctx(
-                Map.of("$g", new GroupedResult(List.of("USUBJID"), Map.of()), "$s", "scalar"));
-        Expr rowRead = col("AETERM");
-        Expr constant = LIT_A;
-
-        assertTrue(BroadcastFold.readsRowData(new Expr.And(List.of(constant, rowRead)), c),
-                "an AND branch reading rows makes the tree row-reading");
-        assertFalse(BroadcastFold.readsRowData(new Expr.And(List.of(constant, constant)), c));
-        assertTrue(BroadcastFold.readsRowData(new Expr.Or(List.of(constant, rowRead)), c),
-                "an OR branch reading rows makes the tree row-reading");
-        assertFalse(BroadcastFold.readsRowData(new Expr.Or(List.of(constant, constant)), c));
-        // The exists family: a concrete name is a dataset fact, a ${...} template is a per-row
-        // driver substitution — and that holds for the STRING-LITERAL spelling too, which an
-        // argument-only walk would misclassify as constant.
-        assertFalse(BroadcastFold.readsRowData(call("var_exists", col("AETERM")), c));
-        assertFalse(
-                BroadcastFold.readsRowData(
-                        call("var_exists", new Expr.Lit(Expr.LitKind.STRING, "AETERM")), c),
-                "the string-literal spelling of a concrete name is still a dataset fact");
-        assertTrue(BroadcastFold.readsRowData(call("var_exists", col("${VAR}")), c),
-                "a ${...} template under exists is a per-row substitution");
-        assertTrue(
-                BroadcastFold.readsRowData(
-                        call("var_exists", new Expr.Lit(Expr.LitKind.STRING, "${VAR}")), c),
-                "... including when the template is spelled as a string literal");
-        // A non-exists call is classified by its own operands, in BOTH argument positions.
-        assertFalse(BroadcastFold.readsRowData(call("upper", constant), c));
-        assertTrue(BroadcastFold.readsRowData(call("upper", rowRead), c));
-        assertTrue(
-                BroadcastFold.readsRowData(
-                        new Expr.Call("f", List.of(constant), Map.of("k", rowRead)), c),
-                "a row read in a KEYWORD argument still reads rows");
-        assertFalse(BroadcastFold
-                .readsRowData(new Expr.Call("f", List.of(constant), Map.of("k", constant)), c));
-    }
-
-    // ------------------------------------------------------------------
     // vmrRefsOnlyInGuardPosition — position-dependent legacy behaviour. A VMR ref on
     // the RIGHT of a comparison reaches a resolver with no VMR branch, so projecting it
     // per column there would silently disagree with the legacy engine.

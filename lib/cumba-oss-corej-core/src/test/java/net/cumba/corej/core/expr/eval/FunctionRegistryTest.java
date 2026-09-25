@@ -1,7 +1,6 @@
 package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -20,10 +19,10 @@ class FunctionRegistryTest
     @Test
     void serviceLoaderDiscoversBuiltins()
     {
-        assertTrue(FunctionRegistry.isRegistered("lower"));
-        assertTrue(FunctionRegistry.isRegistered("contains"));
-        assertTrue(FunctionRegistry.isRegistered("is_valid_date"));
-        assertNotNull(FunctionRegistry.resolve("non_empty"));
+        assertNotNull(FunctionRegistry.descriptor("lower"));
+        assertNotNull(FunctionRegistry.descriptor("contains"));
+        assertNotNull(FunctionRegistry.descriptor("is_valid_date"));
+        assertNotNull(FunctionRegistryCalls.resolve("non_empty"));
         assertEquals(FunctionKind.VALUE, FunctionRegistry.descriptor("len").kind());
         assertEquals(FunctionKind.BOOLEAN, FunctionRegistry.descriptor("contains").kind());
     }
@@ -32,7 +31,7 @@ class FunctionRegistryTest
     @Test
     void unknownNameThrows()
     {
-        assertThrows(ExpressionException.class, () -> FunctionRegistry.resolve("no_such_fn"));
+        assertThrows(ExpressionException.class, () -> FunctionRegistryCalls.resolve("no_such_fn"));
         assertNull(FunctionRegistry.descriptor("no_such_fn"));
     }
 
@@ -64,13 +63,13 @@ class FunctionRegistryTest
                 List.of(Parameter.required("x", Unknown.UNKNOWN)), FunctionKind.BOOLEAN, one));
         try
         {
-            assertSame(one, FunctionRegistry.resolve("xtest"));
+            assertSame(one, FunctionRegistryCalls.resolve("xtest"));
         }
         finally
         {
             FunctionRegistry.unregister("xtest");
         }
-        assertFalse(FunctionRegistry.isRegistered("xtest"));
+        assertNull(FunctionRegistry.descriptor("xtest"));
     }
 
 

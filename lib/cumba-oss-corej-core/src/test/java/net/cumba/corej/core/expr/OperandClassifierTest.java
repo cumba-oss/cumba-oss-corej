@@ -1,6 +1,5 @@
 package net.cumba.corej.core.expr;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -115,7 +114,7 @@ class OperandClassifierTest
     {
         ExpressionException ex = assertThrows(ExpressionException.class,
                 () -> OperandClassifier.classify("mystery_token", 7));
-        assertEquals(7, ex.getPosition());
+        assertTrue(ex.getMessage().contains("(at position 7)"), ex.getMessage());
         assertTrue(ex.getMessage().contains("mystery_token"));
     }
 

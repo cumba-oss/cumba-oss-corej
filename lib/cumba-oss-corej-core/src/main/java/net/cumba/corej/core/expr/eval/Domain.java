@@ -70,22 +70,4 @@ public record Domain(boolean varCursor, boolean rowCursor)
         return rowCursor ? "{ROW}" : "{}";
     }
 
-
-    /**
-     * Parses a {@link #label()} back into a domain.
-     *
-     * @throws IllegalArgumentException
-     *             on any other spelling
-     */
-    public static Domain parse(String label)
-    {
-        return switch (label)
-        {
-        case "{}" -> DATASET;
-        case "{VAR}" -> VARIABLE;
-        case "{ROW}" -> ROW;
-        case "{VAR,ROW}" -> CELL;
-        default -> throw new IllegalArgumentException("not a domain label: " + label);
-        };
-    }
 }

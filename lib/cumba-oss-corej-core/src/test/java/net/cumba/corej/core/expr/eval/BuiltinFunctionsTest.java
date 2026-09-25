@@ -26,7 +26,7 @@ class BuiltinFunctionsTest
 
     private static Vector value(String name, int rowCount, Vector... args)
     {
-        Object out = FunctionRegistry.resolve(name).apply(EvalRun.ofRowCount(rowCount),
+        Object out = FunctionRegistryCalls.resolve(name).apply(EvalRun.ofRowCount(rowCount),
                 padded(name, args));
         return (Vector) out;
     }
@@ -34,7 +34,7 @@ class BuiltinFunctionsTest
 
     private static BitSet bool(String name, int rowCount, Vector... args)
     {
-        Object out = FunctionRegistry.resolve(name).apply(EvalRun.ofRowCount(rowCount),
+        Object out = FunctionRegistryCalls.resolve(name).apply(EvalRun.ofRowCount(rowCount),
                 padded(name, args));
         return (BitSet) out;
     }
@@ -75,7 +75,7 @@ class BuiltinFunctionsTest
     private static Vector valueOn(String name, IDataTable t, int rowCount, Vector... args)
     {
         EvaluationContext ctx = EvaluationContext.builder().table(t).build();
-        Object out = FunctionRegistry.resolve(name).apply(new EvalRun(ctx, 0, rowCount),
+        Object out = FunctionRegistryCalls.resolve(name).apply(new EvalRun(ctx, 0, rowCount),
                 padded(name, args));
         return (Vector) out;
     }
@@ -118,8 +118,8 @@ class BuiltinFunctionsTest
 
         // And the whole point: the folded collection reaches exact membership, so "Y" does NOT
         // match the element "YES" the way a substring probe on "[YES, N]" would have.
-        assertEquals(bits(1), Primitives.contains(up, "Y", 2, false));
-        assertEquals(bits(0), Primitives.contains(up, "Y", 2, true)); // does_not_contain
+        assertEquals(bits(1), Primitives.contains(up, ConstVector.of("Y"), 2, false));
+        assertEquals(bits(0), Primitives.contains(up, ConstVector.of("Y"), 2, true)); // does_not_contain
     }
 
 
@@ -614,7 +614,7 @@ class BuiltinFunctionsTest
         IDataTable t = MockTable.of().col("IDVAR", "NOPE").build();
         EvaluationContext ctx = EvaluationContext.builder().table(t)
                 .numericExpectedColumns(java.util.Set.of("NOPE")).build();
-        Vector r = (Vector) FunctionRegistry.resolve("colref").apply(new EvalRun(ctx, 0, 1),
+        Vector r = (Vector) FunctionRegistryCalls.resolve("colref").apply(new EvalRun(ctx, 0, 1),
                 padded("colref", new Vector[]
                 {
                         col(t, "IDVAR")
@@ -815,7 +815,7 @@ class BuiltinFunctionsTest
         IDataTable t = MockTable.of().col("AESEQ", "1", "2").build();
         EvaluationContext ctx = EvaluationContext.builder().table(t)
                 .variables(java.util.Map.of("variable_name", "AESEQ")).build();
-        Vector v = (Vector) FunctionRegistry.resolve("varname").apply(new EvalRun(ctx, 0, 2),
+        Vector v = (Vector) FunctionRegistryCalls.resolve("varname").apply(new EvalRun(ctx, 0, 2),
                 List.of());
         assertEquals("AESEQ", v.asString(0));
         assertEquals("AESEQ", v.asString(1), "broadcast constant across rows");
@@ -828,7 +828,7 @@ class BuiltinFunctionsTest
     {
         IDataTable t = MockTable.of().col("AESEQ", "1").build();
         EvaluationContext ctx = EvaluationContext.builder().table(t).build();
-        Vector v = (Vector) FunctionRegistry.resolve("varname").apply(new EvalRun(ctx, 0, 1),
+        Vector v = (Vector) FunctionRegistryCalls.resolve("varname").apply(new EvalRun(ctx, 0, 1),
                 List.of());
         assertTrue(v.isMissing(0), "no cursor ⇒ missing varname");
     }
@@ -841,7 +841,7 @@ class BuiltinFunctionsTest
         IDataTable t = MockTable.of().col("TRTPFL", "Y", "X").col("OTHER", "a", "b").build();
         EvaluationContext ctx = EvaluationContext.builder().table(t)
                 .variables(java.util.Map.of("variable_name", "TRTPFL")).build();
-        Vector v = (Vector) FunctionRegistry.resolve("value").apply(new EvalRun(ctx, 0, 2),
+        Vector v = (Vector) FunctionRegistryCalls.resolve("value").apply(new EvalRun(ctx, 0, 2),
                 List.of());
         assertEquals("Y", v.asString(0));
         assertEquals("X", v.asString(1));
@@ -854,13 +854,13 @@ class BuiltinFunctionsTest
     {
         IDataTable t = MockTable.of().col("TRTPFL", "Y").build();
         EvaluationContext noCursor = EvaluationContext.builder().table(t).build();
-        Vector v1 = (Vector) FunctionRegistry.resolve("value").apply(new EvalRun(noCursor, 0, 1),
-                List.of());
+        Vector v1 = (Vector) FunctionRegistryCalls.resolve("value")
+                .apply(new EvalRun(noCursor, 0, 1), List.of());
         assertTrue(v1.isMissing(0), "no cursor ⇒ missing value");
 
         EvaluationContext badCol = EvaluationContext.builder().table(t)
                 .variables(java.util.Map.of("variable_name", "NOSUCH")).build();
-        Vector v2 = (Vector) FunctionRegistry.resolve("value").apply(new EvalRun(badCol, 0, 1),
+        Vector v2 = (Vector) FunctionRegistryCalls.resolve("value").apply(new EvalRun(badCol, 0, 1),
                 List.of());
         assertTrue(v2.isMissing(0), "absent column ⇒ missing value");
     }

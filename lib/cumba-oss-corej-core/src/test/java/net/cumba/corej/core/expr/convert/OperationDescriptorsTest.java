@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import net.cumba.corej.core.expr.CheckExpressionParser;
@@ -36,7 +37,7 @@ class OperationDescriptorsTest
     {
         for (OperationType type : OperationType.values())
         {
-            FunctionDescriptor d = OperationDescriptors.of(type);
+            FunctionDescriptor d = OperationDescriptors.byName(type.getJsonValue());
             assertNotNull(d, type.name());
             assertEquals(type.getJsonValue(), d.name());
             assertNotNull(OperationDescriptors.byName(type.getJsonValue()));
@@ -73,7 +74,8 @@ class OperationDescriptorsTest
         Set<String> out = new TreeSet<>();
         for (OperationType type : OperationType.values())
         {
-            if (OperationDescriptors.of(type).parameter(parameter) != null)
+            if (Objects.requireNonNull(OperationDescriptors.byName(type.getJsonValue()))
+                    .parameter(parameter) != null)
             {
                 out.add(type.getJsonValue());
             }

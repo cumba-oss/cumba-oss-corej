@@ -277,8 +277,8 @@ public final class StudyRuleClassifier
         case BUILTIN -> true;
         // A dotted ref names its dataset, but in VALUE position it is a per-primary-row join
         // lookup (the joined-value lookup keys off the current row of the dataset
-        // under evaluation), so it very much reads that dataset — BroadcastFold.readsRowData
-        // classifies it the same way. It is study-safe only as the argument of a presence call,
+        // under evaluation), so it very much reads that dataset. It is study-safe only as the
+        // argument of a presence call,
         // where it is a pure metadata question; that case is decided in callReadsPrimaryDataset
         // before the operand walk ever sees the ref.
         case DOTTED_REF -> true;

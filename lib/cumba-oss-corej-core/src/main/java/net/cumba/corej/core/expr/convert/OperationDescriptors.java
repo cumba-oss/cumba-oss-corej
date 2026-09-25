@@ -8,7 +8,6 @@ import java.util.Map;
 import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionKind;
 import net.cumba.corej.core.expr.eval.Parameter;
-import net.cumba.corej.core.expr.typed.ExprType;
 import net.cumba.corej.core.expr.typed.ExprType.ListOf;
 import net.cumba.corej.core.expr.typed.ExprType.Primitive;
 import net.cumba.corej.core.expr.typed.ExprType.Unknown;
@@ -62,18 +61,6 @@ public final class OperationDescriptors
 
     private OperationDescriptors()
     {
-    }
-
-
-    /** The one descriptor of {@code type}; never {@code null} — every operation has one. */
-    public static FunctionDescriptor of(OperationType type)
-    {
-        // Asserted, not assumed: build() is required to cover every OperationType constant, and a
-        // constant added without its descriptor must fail HERE, naming itself, rather than as an
-        // unattributed NPE in whichever evaluator dereferenced the result.
-        return java.util.Objects.requireNonNull(DESCRIPTORS.get(type),
-                () -> "no operation descriptor is registered for " + type
-                        + " — OperationDescriptors.build() and OperationType have drifted");
     }
 
 
@@ -208,10 +195,4 @@ public final class OperationDescriptors
         return Parameter.optional("case_sensitive", Primitive.BOOLEAN);
     }
 
-
-    /** Unused reference to keep the import stable for the javadoc examples. */
-    static ExprType unknownType()
-    {
-        return Unknown.UNKNOWN;
-    }
 }

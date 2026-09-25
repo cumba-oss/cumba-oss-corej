@@ -146,9 +146,10 @@ class MissingAsMemberTest
     @Test
     void nothingIsAMemberOfAnEmptySet()
     {
-        assertFalse(Primitives.isMember(missingCell(), Primitives.MemberSet.EMPTY, false),
-                "an empty set has no members at all");
-        assertFalse(Primitives.isMember(presentCell("A"), Primitives.MemberSet.EMPTY, false),
+        assertFalse(Primitives.isMember(missingCell(), new Primitives.MemberSet(Set.of(), Set.of()),
+                false), "an empty set has no members at all");
+        assertFalse(Primitives.isMember(presentCell("A"),
+                new Primitives.MemberSet(Set.of(), Set.of()), false),
                 "control: the same holds for a present value");
     }
 

@@ -312,30 +312,6 @@ class BroadcastFoldTest
 
 
     @Test
-    void readsRowDataClassification()
-    {
-        EvaluationContext c = ctx();
-        assertTrue(
-                BroadcastFold.readsRowData(new Expr.Binary(Expr.BinOp.EQ,
-                        new Expr.Ref("AETERM", OperandKind.COLUMN), LIT_A), c),
-                "bare column comparison reads rows");
-        assertFalse(
-                BroadcastFold.readsRowData(new Expr.Call("var_exists",
-                        List.of(new Expr.Ref("AETERM", OperandKind.COLUMN)), Map.of()), c),
-                "presence facts are dataset-level, not row reads");
-        assertTrue(BroadcastFold.readsRowData(new Expr.Call("value", List.of(), Map.of()), c),
-                "value() reads the current variable's cells");
-        assertTrue(BroadcastFold.readsRowData(U, c), "a grouped $-ref resolves per row");
-        assertFalse(
-                BroadcastFold.readsRowData(
-                        new Expr.Binary(Expr.BinOp.EQ,
-                                new Expr.Ref("$x", OperandKind.OPERATION_REF), LIT_A),
-                        ctx(Map.of("$x", "scalar"))),
-                "a scalar $-ref is row-independent");
-    }
-
-
-    @Test
     void vmrGuardPositionDetection()
     {
         EvaluationContext c = ctx(

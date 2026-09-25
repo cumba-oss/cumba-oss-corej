@@ -269,28 +269,6 @@ class PrimitivesSurvivorPinsTest
         assertEquals(bits(0, 1, 2, 3), Primitives.isValidName(col(t, "X"), 7));
     }
 
-    // -------------------------------------------------------------------------
-    // lengthCompare / comparison — direction routing
-    // -------------------------------------------------------------------------
-
-
-    /**
-     * longer_than / shorter_than are strict (line 776): a value of exactly the probed length fires
-     * neither. The direction-0 row pins the current routing (non-positive directions take the
-     * less-than arm) so a boundary mutant cannot silently reroute it.
-     */
-    @Test
-    void lengthCompareIsStrictAtTheExactLength()
-    {
-        IDataTable t = MockTable.of().col("X", "AB", "ABC", "A", (String) null).build();
-        assertEquals(bits(1), Primitives.lengthCompare(col(t, "X"), 2, 4, 1),
-                "longer_than 2: only the length-3 value; length 2 sits ON the boundary");
-        assertEquals(bits(2, 3), Primitives.lengthCompare(col(t, "X"), 2, 4, -1),
-                "shorter_than 2: length 1 and the missing cell (folds to length 0)");
-        // direction 0 is not a compiled form today; pin that it routes to the less-than arm.
-        assertEquals(bits(2, 3), Primitives.lengthCompare(col(t, "X"), 2, 4, 0));
-    }
-
 
     /**
      * Numeric comparison direction routing (line 166): direction 0 is not a compiled form; pin that

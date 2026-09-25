@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import net.cumba.corej.core.exec.EvaluationContext;
@@ -43,7 +44,7 @@ class RecordCountSingleDescriptorTest
         EvaluationContext ctx = EvaluationContext.builder().table(t).build();
 
         // the registry fast path (what a bare record_count() compiles to)
-        Vector fast = (Vector) FunctionRegistry.resolve("record_count")
+        Vector fast = (Vector) FunctionRegistryCalls.resolve("record_count")
                 .apply(new EvalRun(ctx, 0, 3), List.of());
 
         // the executor path (what any parameter-binding call compiles to), with no parameter bound
@@ -61,7 +62,8 @@ class RecordCountSingleDescriptorTest
     @Test
     void recordCountHasOneParameterList()
     {
-        FunctionDescriptor operation = OperationDescriptors.of(OperationType.RECORD_COUNT);
+        FunctionDescriptor operation = Objects.requireNonNull(
+                OperationDescriptors.byName(OperationType.RECORD_COUNT.getJsonValue()));
         assertTrue(operation.parameter("filter") != null && operation.parameter("group") != null
                 && operation.parameter("domain") != null && operation.parameter("regex") != null,
                 "the operation surface");
@@ -86,7 +88,7 @@ class RecordCountSingleDescriptorTest
         Set<String> overlap = new TreeSet<>();
         for (OperationType type : OperationType.values())
         {
-            if (FunctionRegistry.isRegistered(type.getJsonValue()))
+            if (FunctionRegistry.descriptor(type.getJsonValue()) != null)
             {
                 overlap.add(type.getJsonValue());
             }

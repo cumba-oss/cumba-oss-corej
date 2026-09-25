@@ -326,9 +326,9 @@ class PrimitivesTest
                 default -> java.util.List.of("N");
                 });
         // contains: only the set that genuinely holds "Y".
-        assertEquals(bits(0), Primitives.contains(sets, "Y", 3, false));
+        assertEquals(bits(0), Primitives.contains(sets, ConstVector.of("Y"), 3, false));
         // does_not_contain: "YES" and "N" both lack the exact element "Y", so both fire.
-        assertEquals(bits(1, 2), Primitives.contains(sets, "Y", 3, true));
+        assertEquals(bits(1, 2), Primitives.contains(sets, ConstVector.of("Y"), 3, true));
     }
 
 
@@ -340,7 +340,7 @@ class PrimitivesTest
         // membership branch must not touch them.
         IDataTable t = MockTable.of().col("X", "SUDDEN DEATH", "RECOVERED").build();
         ColumnVector x = col(t, "X");
-        assertEquals(bits(0), Primitives.contains(x, "DEATH", 2, false));
+        assertEquals(bits(0), Primitives.contains(x, ConstVector.of("DEATH"), 2, false));
     }
 
 
@@ -352,7 +352,7 @@ class PrimitivesTest
         ComputedVector sets = new ComputedVector(1, net.cumba.datatable.values.DataValueType.STRING,
                 _ -> java.util.List.of("YES"));
         // The rendered form of List.of("YES") starts with "[" — proving the substring path ran.
-        assertEquals(bits(0), Primitives.startsWith(sets, "[", 1));
+        assertEquals(bits(0), Primitives.startsWith(sets, ConstVector.of("["), 1));
     }
 
 
@@ -361,7 +361,7 @@ class PrimitivesTest
     {
         ComputedVector sets = new ComputedVector(1, net.cumba.datatable.values.DataValueType.STRING,
                 _ -> java.util.Arrays.asList("N", null));
-        assertEquals(bits(0), Primitives.contains(sets, "", 1, false));
+        assertEquals(bits(0), Primitives.contains(sets, ConstVector.of(""), 1, false));
     }
 
 
@@ -370,11 +370,11 @@ class PrimitivesTest
     {
         IDataTable t = MockTable.of().col("X", "HELLO", "WORLD", "").build();
         ColumnVector x = col(t, "X");
-        assertEquals(bits(0), Primitives.contains(x, "ELL", 3, false));
+        assertEquals(bits(0), Primitives.contains(x, ConstVector.of("ELL"), 3, false));
         // Empty-string literal fix (A.2): does_not_contain "ELL" now fires on "" (row 2) too.
-        assertEquals(bits(1, 2), Primitives.contains(x, "ELL", 3, true)); // does_not_contain
-        assertEquals(bits(0), Primitives.startsWith(x, "HE", 3));
-        assertEquals(bits(0), Primitives.endsWith(x, "LO", 3));
+        assertEquals(bits(1, 2), Primitives.contains(x, ConstVector.of("ELL"), 3, true)); // does_not_contain
+        assertEquals(bits(0), Primitives.startsWith(x, ConstVector.of("HE"), 3));
+        assertEquals(bits(0), Primitives.endsWith(x, ConstVector.of("LO"), 3));
     }
 
 
@@ -386,10 +386,11 @@ class PrimitivesTest
         // fires.
         IDataTable t = MockTable.of().col("X", "XY", "", (String) null).build();
         ColumnVector x = col(t, "X");
-        assertEquals(bits(0), Primitives.contains(x, "X", 3, false));
-        assertEquals(bits(1, 2), Primitives.contains(x, "X", 3, true)); // does_not_contain "X"
-        assertEquals(bits(0), Primitives.startsWith(x, "X", 3));
-        assertEquals(bits(), Primitives.endsWith(x, "X", 3));
+        assertEquals(bits(0), Primitives.contains(x, ConstVector.of("X"), 3, false));
+        assertEquals(bits(1, 2), Primitives.contains(x, ConstVector.of("X"), 3, true)); // does_not_contain
+                                                                                        // "X"
+        assertEquals(bits(0), Primitives.startsWith(x, ConstVector.of("X"), 3));
+        assertEquals(bits(), Primitives.endsWith(x, ConstVector.of("X"), 3));
     }
 
 
@@ -418,17 +419,6 @@ class PrimitivesTest
 
 
     @Test
-    void lengthCompare()
-    {
-        IDataTable t = MockTable.of().col("X", "abcd", "ab", "").build();
-        ColumnVector x = col(t, "X");
-        assertEquals(bits(0), Primitives.lengthCompare(x, 3, 3, 1)); // longer_than 3
-        // shorter_than 3: "ab" (len 2) and "" (folds to length 0, A.5) both < 3
-        assertEquals(bits(1, 2), Primitives.lengthCompare(x, 3, 3, -1));
-    }
-
-
-    @Test
     void lengthEquality_emptyAndMissingAreLengthZero()
     {
         // operator-examples.md A.5: "" and «missing» fold to length 0.
@@ -436,9 +426,9 @@ class PrimitivesTest
         IDataTable t = MockTable.of().col("X", "AB", "", (String) null).build();
         ColumnVector x = col(t, "X");
         // has_equal_length 0: the length-0 rows fire.
-        assertEquals(bits(1, 2), Primitives.lengthEquality(x, 0, 3, false));
+        assertEquals(bits(1, 2), Primitives.lengthEquality(x, ConstVector.of(0L), 3, false));
         // has_not_equal_length 5: all rows differ from 5.
-        assertEquals(bits(0, 1, 2), Primitives.lengthEquality(x, 5, 3, true));
+        assertEquals(bits(0, 1, 2), Primitives.lengthEquality(x, ConstVector.of(5L), 3, true));
     }
 
 
@@ -577,29 +567,6 @@ class PrimitivesTest
         IDataTable t = MockTable.of().col("X", "P1Y", "", (String) null).build();
         ColumnVector x = col(t, "X");
         assertEquals(bits(1, 2), Primitives.invalidDuration(x, 3, false));
-    }
-
-
-    @Test
-    void structuralDatePredicates()
-    {
-        IDataTable t = MockTable.of().col("X", "2024-01-01", "2024-01", "").build();
-        ColumnVector x = col(t, "X");
-        assertEquals(bits(0), Primitives.isCompleteDateStructural(x, 3));
-        assertEquals(bits(1), Primitives.isIncompleteDateStructural(x, 3));
-
-        // Empty-string literal fix (A.4): "" (row 2) is not a partial date -> invalid_date fires.
-        IDataTable t2 = MockTable.of().col("X", "2024-01-01", "GARBAGE", "").build();
-        assertEquals(bits(1, 2), Primitives.invalidDateStructural(col(t2, "X"), 3));
-    }
-
-
-    @Test
-    void invalidDateStructural_emptyAndMissingFire()
-    {
-        // Empty-string literal fix (A.4): "" and a genuine missing both fold to "" -> invalid_date.
-        IDataTable t = MockTable.of().col("X", "2024-01-01", "", (String) null).build();
-        assertEquals(bits(1, 2), Primitives.invalidDateStructural(col(t, "X"), 3));
     }
 
 

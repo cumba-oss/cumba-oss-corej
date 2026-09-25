@@ -574,35 +574,13 @@ public final class StageAChecker
 
 
     /**
-     * Phase 5 entry point: the typed tree of one expression of {@code rule}, with the bind-time
-     * {@code columnLevels} refinement applied (D39a — an absent column is a dataset-level
-     * constant). Findings the walk records are deliberately discarded — this derivation feeds the
-     * level instrument and the effective-granularity observation, never the park channel — and a
-     * checker failure yields {@code null} rather than propagating, for the same reason
-     * {@link StageAErrorKind#CHECKER_FAILURE} exists on the load path.
-     *
-     * @param rule
-     *            the (specialised) rule the expression belongs to — supplies the {@code $}-binding
-     *            levels
-     * @param expr
-     *            the expression to type
-     * @param columnLevels
-     *            the bind-time column-level refinement
-     * @return the typed root, or {@code null} when the walk failed
-     */
-    public static @Nullable TypedExpr deriveTyped(Rule rule, Expr expr,
-            ColumnLevelResolver columnLevels)
-    {
-        return deriveTyped(rule, expr, columnLevels, null);
-    }
-
-
-    /**
-     * The phase-6 widening of the phase-5 entry point (D106d): the same typed tree, with the
-     * {@code $}-binding levels additionally refined from the run's dataset inventory — a
-     * cross-dataset operation over an absent foreign domain is typed at {@code dataset}, matching
-     * its runtime degeneration to a scalar (see {@link #degeneratesToScalar}). {@code null}
-     * inventory means "no refinement": the declaration-derived level stands as the upper bound.
+     * Phase 5 entry point, widened in phase 6 (D106d): the typed tree of one expression of
+     * {@code rule}, with the bind-time {@code columnLevels} refinement applied (D39a — an absent
+     * column is a dataset-level constant) and the {@code $}-binding levels additionally refined
+     * from the run's dataset inventory — a cross-dataset operation over an absent foreign domain is
+     * typed at {@code dataset}, matching its runtime degeneration to a scalar (see
+     * {@link #degeneratesToScalar}). {@code null} inventory means "no refinement": the
+     * declaration-derived level stands as the upper bound.
      *
      * @param rule
      *            the (specialised) rule the expression belongs to

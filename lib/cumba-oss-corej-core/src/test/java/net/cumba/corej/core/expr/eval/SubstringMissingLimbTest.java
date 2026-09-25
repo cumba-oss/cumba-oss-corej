@@ -136,7 +136,7 @@ class SubstringMissingLimbTest
         Vector subject = cells("HELLO", "", null); // present · blank · genuine missing
         Vector absentSubject = ConstVector.of("");
 
-        assertEquals(bits(0, 1), Primitives.contains(subject, "", 3, false),
+        assertEquals(bits(0, 1), Primitives.contains(subject, ConstVector.of(""), 3, false),
                 "BLANK subject contains \"\" (row 1, D34 #1); the MISSING subject (row 2) does NOT");
         // ⚠⚠ The same triple through the VECTOR-needle overload — which is the ONE the corpus
         // actually reaches (BuiltinFunctions binds all three arities to it). Without this row the
@@ -149,14 +149,16 @@ class SubstringMissingLimbTest
                 "vector-needle starts_with, same triple");
         assertEquals(bits(0, 1), Primitives.endsWith(subject, ConstVector.of(""), 3),
                 "vector-needle ends_with, same triple");
-        assertEquals(bits(0), Primitives.contains(absentSubject, "", 1, false),
+        assertEquals(bits(0), Primitives.contains(absentSubject, ConstVector.of(""), 1, false),
                 "ABSENT subject folds to \"\" and answers as the blank does");
-        assertEquals(bits(0, 1), Primitives.startsWith(subject, "", 3), "starts_with, same triple");
-        assertEquals(bits(0, 1), Primitives.endsWith(subject, "", 3), "ends_with, same triple");
+        assertEquals(bits(0, 1), Primitives.startsWith(subject, ConstVector.of(""), 3),
+                "starts_with, same triple");
+        assertEquals(bits(0, 1), Primitives.endsWith(subject, ConstVector.of(""), 3),
+                "ends_with, same triple");
 
-        assertEquals(bits(0), Primitives.contains(subject, "ELL", 3, false),
+        assertEquals(bits(0), Primitives.contains(subject, ConstVector.of("ELL"), 3, false),
                 "unchanged for a non-empty needle: only \"HELLO\" matches");
-        assertEquals(bits(1, 2), Primitives.contains(subject, "ELL", 3, true),
+        assertEquals(bits(1, 2), Primitives.contains(subject, ConstVector.of("ELL"), 3, true),
                 "…and does_not_contain still fires on BOTH the blank and the missing row");
     }
 

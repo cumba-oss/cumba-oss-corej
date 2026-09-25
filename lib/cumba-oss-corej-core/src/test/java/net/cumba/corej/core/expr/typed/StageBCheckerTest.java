@@ -44,7 +44,7 @@ class StageBCheckerTest
 
     private static StageBReport check(String expression, IDataTable table)
     {
-        return StageBChecker.check(rule(expression), table, true);
+        return StageBChecker.check(rule(expression), table, true, null, Set.of());
     }
 
 
@@ -242,7 +242,7 @@ class StageBCheckerTest
         match.setName("DM");
         rule.setMatchDatasets(List.of(match));
         IDataTable table = MockTable.of().col("USUBJID", "S1").build();
-        StageBReport report = StageBChecker.check(rule, table, true);
+        StageBReport report = StageBChecker.check(rule, table, true, null, Set.of());
         assertEquals(List.of(), of(report, StageBErrorKind.ABSENT_COLUMN),
                 "a dotted reference is not an absent PRIMARY column");
         assertEquals(List.of(), of(report, StageBErrorKind.COLUMN_TYPE_MISMATCH),
@@ -252,7 +252,7 @@ class StageBCheckerTest
         // ⭐ CONTROL: the very same gate, over the very same table, DOES file for the bare form of
         // the same names — so the four emptinesses above are the dotted exclusion, not a checker
         // that has stopped checking.
-        assertEquals(1, of(StageBChecker.check(rule("AGE > 30"), table, true),
+        assertEquals(1, of(StageBChecker.check(rule("AGE > 30"), table, true, null, Set.of()),
                 StageBErrorKind.ABSENT_COLUMN).size());
     }
 
@@ -265,7 +265,7 @@ class StageBCheckerTest
         match.setName("DM");
         rule.setMatchDatasets(List.of(match));
         StageBReport report = StageBChecker.check(rule, MockTable.of().col("USUBJID", "S1").build(),
-                true);
+                true, null, Set.of());
         List<StageBFinding> absent = of(report, StageBErrorKind.ABSENT_COLUMN);
         assertEquals(1, absent.size());
         assertTrue(absent.get(0).message().contains("Match_Datasets"));
@@ -295,7 +295,8 @@ class StageBCheckerTest
         // the rule unchanged when no domain code is available) — D77b's contract does not hold
         // there and the checker must not pretend it does.
         IDataTable table = MockTable.of().col("AEOCCUR", "N").build();
-        StageBReport report = StageBChecker.check(rule("--OCCUR != \"N\""), table, false);
+        StageBReport report = StageBChecker.check(rule("--OCCUR != \"N\""), table, false, null,
+                Set.of());
         assertEquals(List.of(), of(report, StageBErrorKind.UNRESOLVED_WILDCARD));
     }
 
@@ -332,16 +333,15 @@ class StageBCheckerTest
         child.setName("SUPP--");
         child.setChild(Boolean.TRUE);
         childRule.setMatchDatasets(List.of(child));
-        assertEquals(List.of(), of(StageBChecker.check(childRule, table, true),
+        assertEquals(List.of(), of(StageBChecker.check(childRule, table, true, null, Set.of()),
                 StageBErrorKind.UNRESOLVED_WILDCARD));
         // ... while the same name on a non-Child entry is the defect.
         Rule plainRule = rule("QNAM == \"X\"");
         MatchDataset plain = new MatchDataset();
         plain.setName("SUPP--");
         plainRule.setMatchDatasets(List.of(plain));
-        assertEquals(1,
-                of(StageBChecker.check(plainRule, table, true), StageBErrorKind.UNRESOLVED_WILDCARD)
-                        .size());
+        assertEquals(1, of(StageBChecker.check(plainRule, table, true, null, Set.of()),
+                StageBErrorKind.UNRESOLVED_WILDCARD).size());
     }
 
 
@@ -355,7 +355,7 @@ class StageBCheckerTest
         op.setName("--DY");
         rule.setOperations(List.of(op));
         StageBReport report = StageBChecker.check(rule, MockTable.of().col("AEDY", "1").build(),
-                true);
+                true, null, Set.of());
         List<StageBFinding> wildcards = of(report, StageBErrorKind.UNRESOLVED_WILDCARD);
         assertEquals(1, wildcards.size());
         assertEquals("--DY", wildcards.get(0).binding());
@@ -533,7 +533,7 @@ class StageBCheckerTest
         // misreport every foreign dataset as unresolvable.
         Rule rule = ruleWithFilteredJoin("not AE._matched_", "AEOUT == \"FATAL\"");
         IDataTable primary = MockTable.of().col("USUBJID", "P1").build();
-        StageBReport report = StageBChecker.check(rule, primary, true);
+        StageBReport report = StageBChecker.check(rule, primary, true, null, Set.of());
         assertEquals(List.of(), of(report, StageBErrorKind.FILTER_UNRESOLVABLE));
         assertEquals(List.of(), of(report, StageBErrorKind.MATCHED_FLAG_UNRESOLVABLE));
     }
@@ -624,8 +624,8 @@ class StageBCheckerTest
     {
         AtomicReference<StageBReport> seen = new AtomicReference<>();
         StageBChecker.setObserver((rule, report) -> seen.set(report));
-        StageBChecker.runAndApply(rule("AESEQ > 5"), MockTable.of().col("AESEQ", "1").build(),
-                true);
+        StageBChecker.runAndApply(rule("AESEQ > 5"), MockTable.of().col("AESEQ", "1").build(), true,
+                null, Set.of());
         assertNotNull(seen.get());
         assertEquals(1, seen.get().observedFindings().size());
     }
@@ -645,7 +645,7 @@ class StageBCheckerTest
         };
         broken.setCheckExpr(CheckExpressionParser.parse("AESEQ > 5"));
         StageBReport report = StageBChecker.check(broken, MockTable.of().col("AESEQ", "1").build(),
-                true);
+                true, null, Set.of());
         List<StageBFinding> failures = of(report, StageBErrorKind.CHECKER_FAILURE);
         assertEquals(1, failures.size());
         assertEquals(List.of(), report.armedFindings());
@@ -656,7 +656,7 @@ class StageBCheckerTest
     void aRuleWithoutANativeExpressionReportsNothing()
     {
         StageBReport report = StageBChecker.check(new Rule(),
-                MockTable.of().col("AESEQ", "1").build(), true);
+                MockTable.of().col("AESEQ", "1").build(), true, null, Set.of());
         assertEquals(List.of(), report.findings());
         assertEquals(List.of(), report.skips());
     }

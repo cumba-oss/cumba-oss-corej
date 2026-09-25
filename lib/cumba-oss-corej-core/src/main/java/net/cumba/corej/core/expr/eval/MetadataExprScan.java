@@ -8,10 +8,9 @@ import net.cumba.corej.core.expr.ast.Expr;
 
 /**
  * Static analysis of a compiled-rule {@link Expr} for the metadata accessor functions
- * ({@code var_*} / {@code ds_*}). Used to decide whether a rule must be evaluated natively
- * (variable / dataset granularity) and which metadata-provider levels it requires (so a rule that
- * reads an absent DEFINE / LIBRARY provider can be reported SKIPPED rather than silently producing
- * no findings).
+ * ({@code var_*} / {@code ds_*}). Used to decide whether a rule must be evaluated natively (which
+ * metadata-provider levels it requires, so a rule that reads an absent DEFINE / LIBRARY provider
+ * can be reported SKIPPED rather than silently producing no findings).
  */
 public final class MetadataExprScan
 {
@@ -113,38 +112,6 @@ public final class MetadataExprScan
 
 
     /**
-     * {@code true} iff {@code e} uses any variable-scope accessor ({@code var_*}). Such a rule is
-     * evaluated per column (one finding per failing variable); a rule using only dataset-scope
-     * ({@code ds_*}) accessors is evaluated once for the dataset.
-     */
-    public static boolean usesVariableScope(Expr e)
-    {
-        return switch (e)
-        {
-        case Expr.And a -> anyVariableScope(a.parts());
-        case Expr.Or o -> anyVariableScope(o.parts());
-        case Expr.Not n -> usesVariableScope(n.inner());
-        case Expr.Binary b -> usesVariableScope(b.left()) || usesVariableScope(b.right());
-        // varname() is variable-scope (the per-column "current variable" NAME), like a var_*
-        // accessor: it makes the rule iterate per variable (one verdict per column). value() is NOT
-        // variable-scope — it is the per-row current-variable VALUE (the legacy variable_value
-        // operand classifies as ROW, not VARIABLE), so it never on its own triggers per-variable
-        // iteration; a value()-using rule needs a separate varname()/var_* guard.
-        case Expr.Call c -> isVariableScope(c.name()) || isVarnameFn(c)
-                || anyVariableScope(c.args()) || anyVariableScope(c.kwargs().values());
-        case Expr.Ref _,Expr.Lit _ -> false;
-        };
-    }
-
-
-    /** Whether {@code c} is the zero-arg {@code varname()} current-variable-name function. */
-    private static boolean isVarnameFn(Expr.Call c)
-    {
-        return VARNAME_FN.equals(c.name()) && c.args().isEmpty() && c.kwargs().isEmpty();
-    }
-
-
-    /**
      * {@code true} iff every operand of {@code e} is row-independent — only metadata accessors,
      * literals, and the {@code variable_name} anchor (no bare column reference). Such an expression
      * has a single broadcast verdict and is safe to evaluate over one synthetic row
@@ -177,26 +144,6 @@ public final class MetadataExprScan
         case Expr.Ref r -> "variable_name".equals(r.name())
                 || r.kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF;
         };
-    }
-
-
-    private static boolean isVariableScope(String fn)
-    {
-        MetadataAttribute attr = MetadataAttribute.fromFunction(fn);
-        return attr != null && attr.scope() == MetadataAttribute.Scope.VARIABLE;
-    }
-
-
-    private static boolean anyVariableScope(java.util.Collection<Expr> exprs)
-    {
-        for (Expr e : exprs)
-        {
-            if (usesVariableScope(e))
-            {
-                return true;
-            }
-        }
-        return false;
     }
 
 

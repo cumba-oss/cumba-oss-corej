@@ -58,20 +58,6 @@ public record Level(Granularity granularity, Cursor cursor)
     }
 
 
-    /**
-     * §1.4 raising: an aggregate raises its operand to the level of the axis it folds — the whole
-     * dataset, or {@code group(K)} when {@code group=} names one. The cursor survives the fold ("…
-     * or the cursor names one": a per-variable aggregate stays per-variable).
-     *
-     * @throws ExcludedLevelCellException
-     *             when the axis is a group and the operand carries the cursor (D67)
-     */
-    public Level raise(Granularity axis)
-    {
-        return new Level(axis, cursor);
-    }
-
-
     /** A short human-readable spelling for error messages, e.g. {@code dataset × cursor}. */
     public String describe()
     {

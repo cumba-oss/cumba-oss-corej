@@ -200,9 +200,8 @@ class StudyRuleClassifierTest
 
     /**
      * A dotted ref in <em>value</em> position is a per-primary-row join lookup, not a metadata
-     * question — {@code BroadcastFold.readsRowData} classifies it the same way. Evaluated against
-     * the 0-column anchor every such lookup would silently resolve to {@code null} and the rule
-     * would quietly pass.
+     * question. Evaluated against the 0-column anchor every such lookup would silently resolve to
+     * {@code null} and the rule would quietly pass.
      */
     @Test
     void aDottedRefInValuePositionIsRejected() throws Exception

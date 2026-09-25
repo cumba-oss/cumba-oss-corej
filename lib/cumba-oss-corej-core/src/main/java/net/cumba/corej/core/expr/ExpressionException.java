@@ -8,8 +8,8 @@ package net.cumba.corej.core.expr;
  * all surfaced as this exception rather than degrading to a silent no-op.
  *
  * <p>
- * The {@link #getPosition() position} is a 0-based character offset into the source expression (or
- * {@code -1} when not applicable). Callers that load rule packages route this through the
+ * A 0-based character offset into the source expression, when one applies, is folded into the
+ * message ({@code "(at position N)"}). Callers that load rule packages route this through the
  * established per-rule load-error channel so a bad expression appears as a rule load error, not a
  * hard crash.
  * </p>
@@ -19,25 +19,20 @@ public class ExpressionException extends RuntimeException
 
     private static final long serialVersionUID = 1L;
 
-    /** 0-based character offset into the source expression, or {@code -1} if not applicable. */
-    private final int position;
-
+    /**
+     * @param position
+     *            0-based character offset into the source expression, folded into the message; or
+     *            {@code -1} when not applicable
+     */
     public ExpressionException(String message, int position)
     {
         super(position >= 0 ? message + " (at position " + position + ")" : message);
-        this.position = position;
     }
 
 
     public ExpressionException(String message)
     {
         this(message, -1);
-    }
-
-
-    public int getPosition()
-    {
-        return position;
     }
 
 }

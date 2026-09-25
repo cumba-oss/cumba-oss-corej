@@ -13,12 +13,7 @@ package net.cumba.corej.core.expr.typed;
  * job).
  * </p>
  */
-public sealed interface ExprType
-        permits
-        ExprType.Primitive,
-        ExprType.ListOf,
-        ExprType.SetOf,
-        ExprType.Unknown
+public sealed interface ExprType permits ExprType.Primitive, ExprType.ListOf, ExprType.Unknown
 {
 
     /** The scalar base types of spec §1.1, plus the two parameter-only types. */
@@ -63,18 +58,6 @@ public sealed interface ExprType
     }
 
 
-    /** {@code set<T>} — unordered, no duplicates, order not observable (§1.5). */
-    record SetOf(ExprType element) implements ExprType
-    {
-
-        @Override
-        public String describe()
-        {
-            return "set<" + element.describe() + ">";
-        }
-    }
-
-
     /**
      * Not statically known at stage A — a dereferenced column, a {@code $}-operation result, an
      * element the table does not yet specify. Compatible with every type by definition.
@@ -106,10 +89,13 @@ public sealed interface ExprType
     }
 
 
-    /** Whether this is a {@code list<T>} or {@code set<T>}. */
+    /**
+     * Whether this is a {@code list<T>} (the one collection type; {@code set<T>} was retired
+     * 2026-09-25, U3 / B1).
+     */
     default boolean isCollection()
     {
-        return this instanceof ListOf || this instanceof SetOf;
+        return this instanceof ListOf;
     }
 
 
@@ -129,10 +115,6 @@ public sealed interface ExprType
         {
             return b.isCollection() && compatible(la.element(), elementOf(b));
         }
-        if (a instanceof SetOf sa)
-        {
-            return b.isCollection() && compatible(sa.element(), elementOf(b));
-        }
         return !b.isCollection() && a == b;
     }
 
@@ -143,7 +125,6 @@ public sealed interface ExprType
         return switch (t)
         {
         case ListOf l -> l.element();
-        case SetOf s -> s.element();
         default -> Unknown.UNKNOWN;
         };
     }

@@ -36,7 +36,7 @@ class BuiltinFunctionsSpiRegistrationTest
 
         for (FunctionDescriptor fd : declared)
         {
-            assertTrue(FunctionRegistry.isRegistered(fd.name()),
+            assertTrue(FunctionRegistry.descriptor(fd.name()) != null,
                     () -> "BuiltinFunctions must be registered in META-INF/services — " + fd.name()
                             + " was not discovered through the SPI");
         }

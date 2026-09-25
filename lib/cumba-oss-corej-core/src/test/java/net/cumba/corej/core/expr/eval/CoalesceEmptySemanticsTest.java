@@ -52,8 +52,8 @@ class CoalesceEmptySemanticsTest
         {
                 args[0], args[1], null
         };
-        return (Vector) FunctionRegistry.resolve("coalesce").apply(EvalRun.ofRowCount(rowCount),
-                java.util.Arrays.asList(padded));
+        return (Vector) FunctionRegistryCalls.resolve("coalesce")
+                .apply(EvalRun.ofRowCount(rowCount), java.util.Arrays.asList(padded));
     }
 
 
@@ -120,7 +120,7 @@ class CoalesceEmptySemanticsTest
     {
         IDataTable t = MockTable.of().col("A", "a", "", (String) null, " ")
                 .col("B", "b", "b", "b", "b").build();
-        BitSet empty = (BitSet) FunctionRegistry.resolve("empty").apply(EvalRun.ofRowCount(4),
+        BitSet empty = (BitSet) FunctionRegistryCalls.resolve("empty").apply(EvalRun.ofRowCount(4),
                 List.of(col(t, "A")));
         Vector co = coalesce(4, col(t, "A"), col(t, "B"));
         BitSet fellThrough = new BitSet();

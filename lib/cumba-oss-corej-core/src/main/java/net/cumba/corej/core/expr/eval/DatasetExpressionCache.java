@@ -113,27 +113,10 @@ public final class DatasetExpressionCache
 
     /**
      * Derives the cache key (§3.2) for a candidate leaf: the live table <b>instance identity</b>,
-     * the canonical expression text ({@link ExpressionPrinter#print(Expr)}), and the domain prefix.
-     * Identity keying is safe by construction — a non-merging rule sees the shared base table, a
-     * merging / RELREC-expanded rule sees its own instance, so distinct merge states never collide.
-     *
-     * @param table
-     *            the evaluation table instance ({@code run.ctx().getTable()})
-     * @param leaf
-     *            the candidate expression subtree
-     * @param domainPrefix
-     *            the 2-character domain prefix for {@code --} substitution, or {@code null}
-     * @return the cache key
-     */
-    public static Key keyOf(IDataTable table, Expr leaf, @Nullable String domainPrefix)
-    {
-        return new Key(new IdentityKey(table), ExpressionPrinter.print(leaf), domainPrefix);
-    }
-
-
-    /**
-     * Key from an already-computed canonical string (the compiler prints the leaf once at compile
-     * time and reuses the string on every evaluation, avoiding a per-eval re-print).
+     * the canonical expression text ({@link ExpressionPrinter#print(Expr)}, printed once at compile
+     * time and reused on every evaluation), and the domain prefix. Identity keying is safe by
+     * construction — a non-merging rule sees the shared base table, a merging / RELREC-expanded
+     * rule sees its own instance, so distinct merge states never collide.
      *
      * @param table
      *            the evaluation table instance

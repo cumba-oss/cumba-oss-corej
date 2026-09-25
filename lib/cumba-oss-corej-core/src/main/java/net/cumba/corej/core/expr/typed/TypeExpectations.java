@@ -153,13 +153,6 @@ public final class TypeExpectations
     }
 
 
-    /** Every column name carrying at least one expectation, in first-seen order. */
-    public Set<String> expectedColumns()
-    {
-        return Set.copyOf(expectations.keySet());
-    }
-
-
     /**
      * The plain column-vs-column equality pairs (both kinds must agree at stage B). ⛔ <b>Bare
      * primary columns only</b> — a dotted side is excluded because the pair check reads both sides'

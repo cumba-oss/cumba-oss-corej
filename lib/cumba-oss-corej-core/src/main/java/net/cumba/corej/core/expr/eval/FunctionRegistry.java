@@ -105,13 +105,6 @@ public final class FunctionRegistry
     }
 
 
-    /** {@code true} iff a function is registered under the name. */
-    public static boolean isRegistered(String name)
-    {
-        return REGISTRY.containsKey(name);
-    }
-
-
     /** The descriptor for {@code name}, or {@code null} if none is registered. */
     public static @Nullable FunctionDescriptor descriptor(String name)
     {
@@ -142,23 +135,6 @@ public final class FunctionRegistry
             return null;
         }
         return d;
-    }
-
-
-    /**
-     * Resolves the implementation for {@code name}.
-     *
-     * @throws ExpressionException
-     *             if no function is registered for the name
-     */
-    public static EvalFunction resolve(String name)
-    {
-        FunctionDescriptor descriptor = REGISTRY.get(name);
-        if (descriptor == null || descriptor.fn() == null)
-        {
-            throw new ExpressionException("No native function '" + name + "'");
-        }
-        return descriptor.fn();
     }
 
 

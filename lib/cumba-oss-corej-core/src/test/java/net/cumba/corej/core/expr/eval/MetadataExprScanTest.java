@@ -31,19 +31,6 @@ class MetadataExprScanTest
 
 
     @Test
-    void distinguishesVariableFromDatasetScope()
-    {
-        assertTrue(MetadataExprScan
-                .usesVariableScope(parse("var_role(variable_name, \"DEFINE\") == \"Identifier\"")));
-        assertFalse(
-                MetadataExprScan.usesVariableScope(parse("ds_class(\"DEFINE\") == \"Events\"")));
-        // mixed: a var_* anywhere makes it variable-scope
-        assertTrue(MetadataExprScan.usesVariableScope(parse(
-                "ds_class(\"DEFINE\") == \"x\" || var_label(variable_name, \"DATA\") == \"y\"")));
-    }
-
-
-    @Test
     void collectsRequiredProviderLevels()
     {
         assertEquals(Set.of(MetadataLevel.DEFINE, MetadataLevel.LIBRARY),

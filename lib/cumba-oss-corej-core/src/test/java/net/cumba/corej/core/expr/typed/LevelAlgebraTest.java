@@ -9,7 +9,6 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 import net.cumba.corej.core.expr.typed.ExprType.ListOf;
 import net.cumba.corej.core.expr.typed.ExprType.Primitive;
-import net.cumba.corej.core.expr.typed.ExprType.SetOf;
 import net.cumba.corej.core.expr.typed.ExprType.Unknown;
 import org.junit.jupiter.api.Test;
 
@@ -81,17 +80,6 @@ class LevelAlgebraTest
 
 
     @Test
-    void raisingKeepsTheCursor()
-    {
-        assertEquals(Level.VARIABLE_METADATA,
-                Level.VARIABLE_VALUE.raise(Granularity.Simple.DATASET));
-        assertEquals(Level.DATASET, Level.RECORD.raise(Granularity.Simple.DATASET));
-        assertThrows(ExcludedLevelCellException.class,
-                () -> Level.VARIABLE_VALUE.raise(new Granularity.Group(Set.of("USUBJID"))));
-    }
-
-
-    @Test
     void emptyGroupKeysAreRejected()
     {
         assertThrows(IllegalArgumentException.class, () -> new Granularity.Group(Set.of()));
@@ -114,9 +102,6 @@ class LevelAlgebraTest
         assertTrue(ExprType.compatible(Primitive.STRING, Primitive.STRING));
         assertFalse(ExprType.compatible(Primitive.STRING, Primitive.NUMBER));
         assertFalse(ExprType.compatible(Primitive.STRING, new ListOf(Primitive.STRING)));
-        assertTrue(ExprType.compatible(new ListOf(Primitive.STRING), new SetOf(Primitive.STRING)));
-        assertFalse(ExprType.compatible(new ListOf(Primitive.STRING), new SetOf(Primitive.NUMBER)));
-        assertTrue(ExprType.compatible(new SetOf(Unknown.UNKNOWN), new ListOf(Primitive.NUMBER)));
     }
 
 
@@ -127,10 +112,8 @@ class LevelAlgebraTest
         assertEquals(Primitive.NUMBER, Primitive.NUMBER.dereference());
         assertEquals("column-reference", Primitive.COLUMN_REFERENCE.describe());
         assertEquals("list<string>", new ListOf(Primitive.STRING).describe());
-        assertEquals("set<number>", new SetOf(Primitive.NUMBER).describe());
         assertEquals("unknown", Unknown.UNKNOWN.describe());
         assertEquals(Primitive.NUMBER, ExprType.elementOf(new ListOf(Primitive.NUMBER)));
-        assertEquals(Primitive.NUMBER, ExprType.elementOf(new SetOf(Primitive.NUMBER)));
         assertEquals(Unknown.UNKNOWN, ExprType.elementOf(Primitive.STRING));
     }
 

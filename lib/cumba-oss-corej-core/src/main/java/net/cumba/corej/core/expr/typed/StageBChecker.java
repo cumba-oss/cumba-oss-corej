@@ -78,7 +78,11 @@ public final class StageBChecker
      * Checks one specialised rule against one dataset and reports: armed findings are the caller's
      * bind error (spec §9 — bind error, once per (rule, dataset), per binding), observe-only
      * findings are logged at DEBUG. Never throws: a checker failure is itself a finding
-     * ({@link StageBErrorKind#CHECKER_FAILURE}) and never errors the execution.
+     * ({@link StageBErrorKind#CHECKER_FAILURE}) and never errors the execution. Since phase 5b-J
+     * (D104d) it also carries the run's foreign-dataset inventory and the datasets whose readings
+     * {@code AbsentDatasetSkip} already suppressed for this execution — the two inputs the
+     * {@code Filter} (D89) and {@code _matched_} rows of spec §9 need and the primary table cannot
+     * supply.
      *
      * @param rule
      *            the rule, after {@code RuleSpecialiser.specialise}
@@ -87,19 +91,11 @@ public final class StageBChecker
      * @param concreteContract
      *            whether specialisation was applicable here (a resolvable domain context) — only
      *            then does D77b's "no {@code --} survives" contract hold and get asserted
-     * @return the report
-     */
-    public static StageBReport runAndApply(Rule rule, IDataTable table, boolean concreteContract)
-    {
-        return runAndApply(rule, table, concreteContract, null, Set.of());
-    }
-
-
-    /**
-     * The widened seam of phase 5b-J (D104d): {@link #runAndApply(Rule, IDataTable, boolean)} plus
-     * the run's foreign-dataset inventory and the datasets whose readings {@code AbsentDatasetSkip}
-     * already suppressed for this execution — the two inputs the {@code Filter} (D89) and
-     * {@code _matched_} rows of spec §9 need and the primary table cannot supply.
+     * @param foreignInventory
+     *            the run's foreign-dataset inventory, or {@code null} to disable the checks that
+     *            need it
+     * @param suppressedDatasets
+     *            the datasets whose readings were already suppressed for this execution
      */
     public static StageBReport runAndApply(Rule rule, IDataTable table, boolean concreteContract,
             @Nullable ForeignDatasetInventory foreignInventory, Set<String> suppressedDatasets)
@@ -120,15 +116,8 @@ public final class StageBChecker
     }
 
 
-    /** Checks one specialised rule against one dataset without logging or observers. */
-    public static StageBReport check(Rule rule, IDataTable table, boolean concreteContract)
-    {
-        return check(rule, table, concreteContract, null, Set.of());
-    }
-
-
     /**
-     * The widened-seam variant (D104d, phase 5b-J) — see
+     * Checks one specialised rule against one dataset without logging or observers — see
      * {@link #runAndApply(Rule, IDataTable, boolean, ForeignDatasetInventory, Set)}. A {@code null}
      * {@code foreignInventory} disables the checks that need it (the Filter and {@code _matched_}
      * bindings) rather than mis-reporting every foreign dataset as unresolvable.

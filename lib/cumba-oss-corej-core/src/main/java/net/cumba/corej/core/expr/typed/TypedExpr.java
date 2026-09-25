@@ -16,18 +16,4 @@ public record TypedExpr(Expr node, ExprType type, Level level, List<TypedExpr> c
         children = List.copyOf(children);
     }
 
-
-    /** The granularity half of the level. */
-    public Granularity granularity()
-    {
-        return level.granularity();
-    }
-
-
-    /** The cursor half of the level. */
-    public Cursor cursor()
-    {
-        return level.cursor();
-    }
-
 }

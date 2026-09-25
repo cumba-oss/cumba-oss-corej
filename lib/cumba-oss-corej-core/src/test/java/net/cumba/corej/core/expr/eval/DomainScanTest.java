@@ -2,7 +2,6 @@ package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -247,11 +246,9 @@ class DomainScanTest
         assertFalse(Domain.VARIABLE.isBroadcast());
         for (Domain d : List.of(Domain.DATASET, Domain.VARIABLE, Domain.ROW, Domain.CELL))
         {
-            assertEquals(d, Domain.parse(d.label()));
             assertEquals(d, Domain.of(d.varCursor(), d.rowCursor()));
         }
         assertEquals("{VAR,ROW}", Domain.CELL.label());
-        assertThrows(IllegalArgumentException.class, () -> Domain.parse("{STUDY}"));
         Expr list = CheckExpressionParser.parse("AESEV in [\"A\", \"B\"]");
         assertEquals(Domain.ROW, DomainScan.infer(list, OperationKinds.NONE));
     }

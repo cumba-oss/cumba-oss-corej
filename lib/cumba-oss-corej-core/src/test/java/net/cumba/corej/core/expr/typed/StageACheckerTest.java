@@ -103,8 +103,9 @@ class StageACheckerTest
         // group(K) ⊔ record = record (the comparison is per row)
         assertEquals(Level.RECORD, root.level());
         TypedExpr grouped = root.children().get(0);
-        assertEquals(new Granularity.Group(java.util.Set.of("USUBJID")), grouped.granularity());
-        assertEquals(Cursor.ABSENT, grouped.cursor());
+        assertEquals(new Granularity.Group(java.util.Set.of("USUBJID")),
+                grouped.level().granularity());
+        assertEquals(Cursor.ABSENT, grouped.level().cursor());
     }
 
 
@@ -120,7 +121,7 @@ class StageACheckerTest
         rule.setOperations(List.of(op));
         TypedExpr root = root(check(rule, "$m == AESEQ"));
         assertEquals(new Granularity.Group(java.util.Set.of("USUBJID")),
-                root.children().get(0).granularity());
+                root.children().get(0).level().granularity());
     }
 
 

@@ -867,56 +867,6 @@ public final class BroadcastFold
 
 
     /**
-     * Whether {@code e} reads per-row DATA: a bare column / wildcard / dotted reference outside an
-     * {@code exists} presence fact, the {@code value()} current-variable cells, or a
-     * {@code $}-reference resolving to a per-row {@link GroupedResult}. Metadata accessors,
-     * {@code varname()}, the {@code variable_name} anchor, literals, and scalar {@code $}-results
-     * are row-independent. Decides per-variable routing granularity: no row reads ⇒ one broadcast
-     * verdict per variable (the legacy Step-3 fold); row reads ⇒ per-(variable, row) evaluation
-     * (the legacy Step-4 residue).
-     */
-    public static boolean readsRowData(Expr e, EvaluationContext ctx)
-    {
-        return switch (e)
-        {
-        case Expr.And a -> a.parts().stream().anyMatch(p -> readsRowData(p, ctx));
-        case Expr.Or o -> o.parts().stream().anyMatch(p -> readsRowData(p, ctx));
-        case Expr.Not n -> readsRowData(n.inner(), ctx);
-        case Expr.Binary b -> readsRowData(b.left(), ctx) || readsRowData(b.right(), ctx);
-        case Expr.Call c ->
-        {
-            if (isEvaluableExistsCall(c))
-            {
-                // Column/dataset presence is a dataset fact, not a row read.
-                yield false;
-            }
-            if (isExistsCall(c))
-            {
-                // An exists over a ${...} operand template IS a row read (per-row driver
-                // substitution, Fix #37) — uniformly for the reference and the string-literal
-                // argument spelling (the argument walk would only catch the placeholder ref).
-                yield true;
-            }
-            if ("value".equals(c.name()) && c.args().isEmpty())
-            {
-                yield true; // current-variable per-row cells
-            }
-            yield c.args().stream().anyMatch(p -> readsRowData(p, ctx))
-                    || c.kwargs().values().stream().anyMatch(p -> readsRowData(p, ctx));
-        }
-        case Expr.Ref r -> switch (r.kind())
-        {
-        // MATCHED_FLAG is a per-row verdict (spec §3.3: a boolean at level record) — a row read.
-        case COLUMN, WILDCARD_COLUMN, DOTTED_REF, MATCHED_FLAG -> true;
-        case OPERATION_REF -> ctx.resolveVariable(r.name()) instanceof GroupedResult;
-        case BUILTIN -> false;
-        };
-        case Expr.Lit _ -> false;
-        };
-    }
-
-
-    /**
      * Whether every {@link VariableMetadataResult}-valued {@code $}-reference of {@code e} sits in
      * GUARD position (anywhere except the right-hand side of a comparison). Legacy is
      * position-dependent: a {@code $}-NAME-side VMR leaf is folded at Step 3 against the per-column

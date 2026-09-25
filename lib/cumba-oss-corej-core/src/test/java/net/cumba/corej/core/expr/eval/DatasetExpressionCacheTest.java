@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.JoinLookup;
+import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.datatable.DataTableMeta;
@@ -263,8 +264,8 @@ class DatasetExpressionCacheTest
         // Two independently-built `empty(VAR1)` leaves.
         Expr e1 = call("empty", new Expr.Ref("VAR1", OperandKind.COLUMN));
         Expr e2 = call("empty", new Expr.Ref("VAR1", OperandKind.COLUMN));
-        var k1 = DatasetExpressionCache.keyOf(table, e1, "AE");
-        var k2 = DatasetExpressionCache.keyOf(table, e2, "AE");
+        var k1 = DatasetExpressionCache.keyOf(table, ExpressionPrinter.print(e1), "AE");
+        var k2 = DatasetExpressionCache.keyOf(table, ExpressionPrinter.print(e2), "AE");
         assertEquals(k1, k2);
         assertEquals(k1.hashCode(), k2.hashCode());
         assertEquals("empty(VAR1)", k1.exprCanonical());
@@ -275,8 +276,10 @@ class DatasetExpressionCacheTest
     void differentTableInstanceDoesNotCollide()
     {
         Expr e = call("empty", COL);
-        var k1 = DatasetExpressionCache.keyOf(mock(IDataTable.class), e, "AE");
-        var k2 = DatasetExpressionCache.keyOf(mock(IDataTable.class), e, "AE");
+        var k1 = DatasetExpressionCache.keyOf(mock(IDataTable.class), ExpressionPrinter.print(e),
+                "AE");
+        var k2 = DatasetExpressionCache.keyOf(mock(IDataTable.class), ExpressionPrinter.print(e),
+                "AE");
         assertNotEquals(k1, k2);
     }
 
@@ -286,8 +289,8 @@ class DatasetExpressionCacheTest
     {
         IDataTable table = mock(IDataTable.class);
         Expr e = call("empty", COL);
-        var ae = DatasetExpressionCache.keyOf(table, e, "AE");
-        var dm = DatasetExpressionCache.keyOf(table, e, "DM");
+        var ae = DatasetExpressionCache.keyOf(table, ExpressionPrinter.print(e), "AE");
+        var dm = DatasetExpressionCache.keyOf(table, ExpressionPrinter.print(e), "DM");
         assertNotEquals(ae, dm);
     }
 
@@ -297,10 +300,11 @@ class DatasetExpressionCacheTest
     {
         IDataTable table = mock(IDataTable.class);
         Expr e = call("empty", COL);
-        var nullPrefix = DatasetExpressionCache.keyOf(table, e, null);
-        var nullPrefix2 = DatasetExpressionCache.keyOf(table, e, null);
+        var nullPrefix = DatasetExpressionCache.keyOf(table, ExpressionPrinter.print(e), null);
+        var nullPrefix2 = DatasetExpressionCache.keyOf(table, ExpressionPrinter.print(e), null);
         assertEquals(nullPrefix, nullPrefix2);
-        assertNotEquals(nullPrefix, DatasetExpressionCache.keyOf(table, e, "AE"));
+        assertNotEquals(nullPrefix,
+                DatasetExpressionCache.keyOf(table, ExpressionPrinter.print(e), "AE"));
     }
 
     // ------------------------------------------------------------------

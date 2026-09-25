@@ -13,6 +13,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
+import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.DatasetExpressionCache;
@@ -30,7 +31,8 @@ class ExpressionResultCacheTest
 
     private static DatasetExpressionCache.Key key(IDataTable table, String column)
     {
-        return DatasetExpressionCache.keyOf(table, new Expr.Ref(column, OperandKind.COLUMN), "AE");
+        return DatasetExpressionCache.keyOf(table,
+                ExpressionPrinter.print(new Expr.Ref(column, OperandKind.COLUMN)), "AE");
     }
 
 

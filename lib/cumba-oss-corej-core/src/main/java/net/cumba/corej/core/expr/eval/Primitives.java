@@ -1073,39 +1073,6 @@ public final class Primitives
     }
 
     /**
-     * Mirrors {@code evalContains}/{@code evalDoesNotContain}. A genuinely-missing <em>subject</em>
-     * answers {@code negate} (R2-20 / D13 — see
-     * {@link #substring(Vector, Vector, int, SubstringMode, boolean)}); a blank cell is a present
-     * {@code ""} and is probed literally.
-     *
-     * <p>
-     * ⚑ No main caller: the {@code String}-needle overloads of this family are reached only from
-     * the tests, because {@code BuiltinFunctions} binds {@code contains} / {@code starts_with} /
-     * {@code ends_with} to the per-row {@link Vector}-needle overloads for every arity. They are
-     * kept as the single-needle expression of the same contract and pinned as such.
-     * </p>
-     */
-    public static BitSet contains(Vector v, String target, int rowCount, boolean negate)
-    {
-        return substring(v, target, rowCount, SubstringMode.CONTAINS, negate);
-    }
-
-
-    /** Mirrors {@code evalStartsWith}; missing subject ⇒ {@code negate} (see {@link #contains}). */
-    public static BitSet startsWith(Vector v, String target, int rowCount)
-    {
-        return substring(v, target, rowCount, SubstringMode.STARTS_WITH, false);
-    }
-
-
-    /** Mirrors {@code evalEndsWith}; missing subject ⇒ {@code negate} (see {@link #contains}). */
-    public static BitSet endsWith(Vector v, String target, int rowCount)
-    {
-        return substring(v, target, rowCount, SubstringMode.ENDS_WITH, false);
-    }
-
-
-    /**
      * Per-row needle from {@code targets.value(row)}.
      *
      * <p>
@@ -1122,14 +1089,16 @@ public final class Primitives
     }
 
 
-    /** Per-row needle variant of {@link #startsWith(Vector, String, int)}. */
+    /**
+     * {@code starts_with} with a per-row needle: fires where the cell starts with the row's target.
+     */
     public static BitSet startsWith(Vector v, Vector targets, int rowCount)
     {
         return substring(v, targets, rowCount, SubstringMode.STARTS_WITH, false);
     }
 
 
-    /** Per-row needle variant of {@link #endsWith(Vector, String, int)}. */
+    /** {@code ends_with} with a per-row needle: fires where the cell ends with the row's target. */
     public static BitSet endsWith(Vector v, Vector targets, int rowCount)
     {
         return substring(v, targets, rowCount, SubstringMode.ENDS_WITH, false);
@@ -1302,39 +1271,6 @@ public final class Primitives
         return false;
     }
 
-
-    private static BitSet substring(Vector v, String target, int rowCount, SubstringMode mode,
-            boolean negate)
-    {
-        String needle = target != null ? target : "";
-        return scan(v, rowCount, (dv, r) ->
-        {
-            if (TypedValue.missingIdentityOf(dv) != null)
-            {
-                // R2-20 / D13, the substring limb — see the Vector-needle overload's javadoc. A
-                // literal needle is a present string (even ""), so only the SUBJECT can be missing
-                // here, and a genuine missing is not a string: the predicate is false.
-                return negate;
-            }
-            // EC-28(a): collection-valued LHS ⇒ exact membership (see membershipOperand).
-            Collection<?> asCollection = membershipOperand(v, r, mode);
-            if (asCollection != null)
-            {
-                return negate != containsElement(asCollection, needle);
-            }
-            // Blank fold (D96c): a BLANK cell is a present "" and is evaluated literally
-            // (e.g. does_not_contain "X" fires on a blank); the suppress short-circuit is gone.
-            String s = ScalarSemantics.isMissing(dv) ? "" : dv.getValueAsString();
-            boolean hit = switch (mode)
-            {
-            case CONTAINS -> s.contains(needle);
-            case STARTS_WITH -> s.startsWith(needle);
-            case ENDS_WITH -> s.endsWith(needle);
-            };
-            return negate != hit;
-        });
-    }
-
     // -------------------------------------------------------------------------
     // Length comparison (longer_than / shorter_than)
     // -------------------------------------------------------------------------
@@ -1342,25 +1278,11 @@ public final class Primitives
 
     /**
      * Mirrors {@code evalHasEqualLength}/{@code evalHasNotEqualLength}: fires where the cell's
-     * string length equals (or, when {@code negate}, does not equal) {@code length}. A missing cell
-     * folds to {@code ""} (length 0), so {@code len("")=0} (operator-examples.md A.5).
-     */
-    public static BitSet lengthEquality(Vector v, int length, int rowCount, boolean negate)
-    {
-        return scan(v, rowCount, (dv, _) ->
-        {
-            int len = ScalarSemantics.isMissing(dv) ? 0 : dv.getValueAsString().length();
-            return negate != (len == length);
-        });
-    }
-
-
-    /**
-     * Per-row length variant of {@link #lengthEquality(Vector, int, int, boolean)}: reads the
-     * target length for each row from {@code lengthVec} via the shared exact-integer
-     * {@code integral}. A missing / non-integral length folds to {@code 0} (legacy {@code asInt}
-     * parity, decision #5), so a blank length cell compares against length 0. A missing name cell
-     * folds to {@code ""} (length 0), consistent with the literal overload.
+     * string length equals (or, when {@code negate}, does not equal) the per-row target length,
+     * read from {@code lengthVec} via the shared exact-integer {@code integral}. A missing /
+     * non-integral length folds to {@code 0} (legacy {@code asInt} parity, decision #5), so a blank
+     * length cell compares against length 0. A missing name cell folds to {@code ""} (length 0), so
+     * {@code len("")=0} (operator-examples.md A.5).
      */
     public static BitSet lengthEquality(Vector v, Vector lengthVec, int rowCount, boolean negate)
     {
@@ -1372,20 +1294,6 @@ public final class Primitives
             int target = length == null ? 0 : length; // fold to 0 (legacy asInt)
             int len = ScalarSemantics.isMissing(dv) ? 0 : dv.getValueAsString().length();
             return negate != (len == target);
-        });
-    }
-
-
-    /** Mirrors {@code evalLongerThan}/{@code evalShorterThan}; missing/empty ⇒ length 0. */
-    public static BitSet lengthCompare(Vector v, int length, int rowCount, int direction)
-    {
-        return scan(v, rowCount, (dv, _) ->
-        {
-            // "" / missing fold to length 0 (operator-examples.md A.5), consistent with the live
-            // len(x) comparison path; no native caller routes here today but the mirror stays
-            // right.
-            int len = ScalarSemantics.isMissing(dv) ? 0 : dv.getValueAsString().length();
-            return direction > 0 ? len > length : len < length;
         });
     }
 
@@ -1475,8 +1383,6 @@ public final class Primitives
             missing = Set.copyOf(missing);
         }
 
-        /** An empty set — no members at all, so nothing is a member of it. */
-        public static final MemberSet EMPTY = new MemberSet(Set.of(), Set.of());
 
         /**
          * Classifies a collection of raw member objects, keeping any {@link MissingValue} by
@@ -2121,54 +2027,15 @@ public final class Primitives
                 ScalarSemantics.isMissing(dv) ? "" : dv.getValueAsString(), allowNegative));
     }
 
-    // -------------------------------------------------------------------------
-    // Structural ISO date predicates (legacy: is_complete_date / is_incomplete_date / invalid_date)
-    // -------------------------------------------------------------------------
-
-
-    /** Mirrors {@code evalIsCompleteDate} (structural, no calendar validation). */
-    public static BitSet isCompleteDateStructural(Vector v, int rowCount)
-    {
-        return scan(v, rowCount, (dv, _) -> !ScalarSemantics.isMissing(dv)
-                && ScalarSemantics.isCompleteDate(dv.getValueAsString()));
-    }
-
-
-    /** Mirrors {@code evalIsIncompleteDate} (structural): partial but not complete. */
-    public static BitSet isIncompleteDateStructural(Vector v, int rowCount)
-    {
-        return scan(v, rowCount, (dv, _) ->
-        {
-            if (ScalarSemantics.isMissing(dv))
-            {
-                return false;
-            }
-            String s = dv.getValueAsString();
-            return ScalarSemantics.isPartialDate(s) && !ScalarSemantics.isCompleteDate(s);
-        });
-    }
-
-
-    /**
-     * Mirrors {@code evalInvalidDate} (structural): not a valid partial-date prefix. Empty-string
-     * literal fix: a missing cell folds to {@code ""}, which is not a partial date, so
-     * {@code invalid_date} fires on a blank.
-     */
-    public static BitSet invalidDateStructural(Vector v, int rowCount)
-    {
-        return scan(v, rowCount, (dv, _) -> !ScalarSemantics
-                .isPartialDate(ScalarSemantics.isMissing(dv) ? "" : dv.getValueAsString()));
-    }
-
 
     /**
      * {@code invalid_date} as the native engine registers it: calendar-validating (a
      * calendar-impossible value such as {@code 2023-02-29} is invalid — see
      * {@code BuiltinFunctionsTest.dateFamilyRejectsImpossibleDay}) AND firing on a missing/blank
      * cell, since a blank is not a date at all (so an empty value is not silently hidden — it is
-     * reported as invalid, matching the legacy operator's blank handling). Differs from the
-     * structural {@link #invalidDateStructural} only on calendar-impossible-but-structural inputs;
-     * both fire on a blank.
+     * reported as invalid, matching the legacy operator's blank handling). (A purely structural
+     * {@code invalidDateStructural} twin — differing only on calendar-impossible-but-structural
+     * inputs, both firing on a blank — had no caller and was retired 2026-09-25, U3 / B7.)
      */
     public static BitSet invalidDateCalendar(Vector v, int rowCount)
     {
