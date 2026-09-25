@@ -31,7 +31,6 @@ class ViolationSinkTest
 
         assertEquals(3, sink.stored().size());
         assertEquals(10, sink.total());
-        assertTrue(sink.truncated());
     }
 
 
@@ -57,7 +56,6 @@ class ViolationSinkTest
 
         assertEquals(2, sink.stored().size());
         assertEquals(2, sink.total());
-        assertFalse(sink.truncated());
     }
 
 
@@ -71,7 +69,6 @@ class ViolationSinkTest
 
         assertEquals(1, sink.stored().size());
         assertEquals(3, sink.total());
-        assertTrue(sink.truncated());
     }
 
 
@@ -88,7 +85,6 @@ class ViolationSinkTest
         }
         assertEquals(1000, sink.stored().size());
         assertEquals(1000, sink.total());
-        assertFalse(sink.truncated());
     }
 
 

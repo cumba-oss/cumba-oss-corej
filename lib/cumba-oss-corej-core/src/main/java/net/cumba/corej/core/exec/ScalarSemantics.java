@@ -670,30 +670,6 @@ public final class ScalarSemantics
 
 
     /**
-     * Value-equality used by {@code equal_to} / {@code not_equal_to}: numeric comparison when the
-     * resolved {@code target} is a {@link Number} and the cell parses as a number, otherwise a
-     * string comparison.
-     */
-    public static boolean valueEquals(IDataValue dv, @Nullable Object target)
-    {
-        if (target instanceof Number targetNum)
-        {
-            double dvDouble = dv.getValueAsDouble();
-            if (!Double.isNaN(dvDouble))
-            {
-                return dvDouble == targetNum.doubleValue();
-            }
-        }
-        // Latent-NPE guard: a null RHS compares equal only to a missing cell.
-        if (target == null)
-        {
-            return dv.isMissingOrInvalid();
-        }
-        return dv.getValueAsString().equals(target.toString());
-    }
-
-
-    /**
      * Numeric-membership verdict (Phase 9b, decision D2). The probe {@code dv} is a member of an
      * <b>all-numeric</b> membership list iff its content parses to a finite number ({@code ==})
      * equal to one of the {@code numericMembers}. A missing / empty / non-numeric probe parses to
@@ -792,73 +768,11 @@ public final class ScalarSemantics
     }
 
 
-    /** {@code Double.parseDouble}, or {@code null} when the text is not a number. */
-    private static @Nullable Double parseOrNull(String text)
-    {
-        try
-        {
-            return Double.parseDouble(text);
-        }
-        catch (NumberFormatException _)
-        {
-            return null;
-        }
-    }
-
-
-    /**
-     * Coerces a resolved comparison target to a {@code Double}: directly for {@link Number}, parsed
-     * via {@code Double.parseDouble(target.toString())} otherwise, {@code null} when missing or
-     * non-parseable. Used by the numeric {@code less_than}/{@code greater_than} family (distinct
-     * from {@link #tryNumericRhs} only in that it parses the {@code toString()} of arbitrary
-     * non-string objects).
-     */
-    public static @Nullable Double comparisonTargetAsDouble(@Nullable Object target)
-    {
-        if (target == null)
-        {
-            return null;
-        }
-        if (target instanceof Number n)
-        {
-            return n.doubleValue();
-        }
-        // Step A: a typed numeric operand (an IDataValue cell) carries its exact value. Read
-        // it directly -- going through getValueAsString() would apply getAsDoubleCleaned's
-        // 12-significant-digit rounding and reintroduce the very defect this exists to remove.
-        if (target instanceof IDataValue v)
-        {
-            if (v.isMissingOrInvalid())
-            {
-                return null;
-            }
-            double d = v.getValueAsDouble();
-            if (!Double.isNaN(d))
-            {
-                return d;
-            }
-            // ⚠ Not a ternary: `isNaN(d) ? parseOrNull(…) : d` auto-unboxes the Double branch to
-            // match the double one, so an unparseable text cell NPE'd instead of answering null
-            // (found by phase 3d's TypedComparisonChannelParityTest; the typed sibling
-            // Primitives.targetAsDouble carries the same fix).
-            return parseOrNull(v.getValueAsString());
-        }
-        try
-        {
-            return Double.parseDouble(target.toString());
-        }
-        catch (NumberFormatException _)
-        {
-            return null;
-        }
-    }
-
-
     /**
      * Coerces the <b>LHS cell</b> of a numeric comparison ({@code less_than}/{@code greater_than}
-     * family) to a {@code Double}, mirroring {@link #comparisonTargetAsDouble(Object)} on the RHS
-     * so the two operands are treated symmetrically. A missing cell ⇒ {@code null} (no violation).
-     * A numeric-typed cell returns its double directly; a Character cell holding numeric text (the
+     * family) to a {@code Double} — the RHS is coerced by {@link #tryNumericRhs}, so the two
+     * operands are treated symmetrically. A missing cell ⇒ {@code null} (no violation). A
+     * numeric-typed cell returns its double directly; a Character cell holding numeric text (the
      * {@code --ORNRHI}/{@code --ORNRLO} reference-range case, where the SDTM variable is
      * {@code Char} but carries a number and the rule guards with {@code is_numeric}) is parsed from
      * its string form — matching the Python oracle, which parses both sides. A non-numeric cell ⇒
@@ -1618,13 +1532,6 @@ public final class ScalarSemantics
     // -------------------------------------------------------------------------
     // Integer check
     // -------------------------------------------------------------------------
-
-
-    /** {@code true} iff the value's string form parses as a finite whole number. */
-    public static boolean isIntegerValue(IDataValue dv)
-    {
-        return isIntegerString(dv.getValueAsString());
-    }
 
 
     /** {@code true} iff {@code s} parses as a finite whole number. */

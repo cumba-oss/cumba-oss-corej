@@ -838,11 +838,12 @@ final class KeyMatchRowExpander
      * {@link MissingValue} — or its column is absent on this side (every row is then blank there).
      *
      * <p>
-     * Per component it applies exactly {@link KeyHashing#anyKeyMissing}'s one-column test —
-     * {@code colId < 0 || isMissingOrNull} — inline, so no one-element {@code int[]} is allocated
-     * per component and row. ⚠ It counts a {@code -1} column as blank, which is precisely right for
-     * this predicate: an absent column contributes its type default to <em>every</em> row, and a
-     * default is blank.
+     * Per component it applies the one-column blank test — {@code colId < 0 || isMissingOrNull},
+     * routed through {@link IDataTable#isMissingOrNull(long, int)} so a buffer-backed table hits
+     * its typed missing sentinel without a value wrapper — inline, so no one-element {@code int[]}
+     * is allocated per component and row. ⚠ It counts a {@code -1} column as blank, which is
+     * precisely right for this predicate: an absent column contributes its type default to
+     * <em>every</em> row, and a default is blank.
      * </p>
      */
     private static boolean anyActiveKeyBlank(IDataTable t, int[] colIds, KeySpec spec, long row)
@@ -853,8 +854,8 @@ final class KeyMatchRowExpander
             {
                 continue;
             }
-            // #5(b) step 1: exactly KeyHashing.anyKeyMissing for one column, without allocating a
-            // one-element int[] per component and row.
+            // #5(b) step 1: the one-column blank test, without allocating a one-element int[] per
+            // component and row.
             if (colIds[i] < 0 || t.isMissingOrNull(row, colIds[i]))
             {
                 return true;

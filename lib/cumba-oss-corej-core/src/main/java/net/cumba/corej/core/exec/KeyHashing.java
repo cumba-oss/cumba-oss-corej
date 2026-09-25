@@ -139,32 +139,6 @@ final class KeyHashing
         return h != 0 ? h : 1;
     }
 
-
-    /**
-     * Returns {@code true} if any of the given key columns has a missing or invalid value in the
-     * given row. A column listed as {@code -1} (not present in the table) also counts as missing.
-     * <p>
-     * Routes through {@link IDataTable#isMissingOrNull(long, int)} so buffer-backed tables can hit
-     * the typed buffer's missing sentinel directly — no
-     * {@link net.cumba.datatable.values.IDataValue} wrapper allocation, no autoboxing on numeric
-     * columns.
-     */
-    static boolean anyKeyMissing(IDataTable table, int[] colIds, long row)
-    {
-        for (int colId : colIds)
-        {
-            if (colId < 0)
-            {
-                return true;
-            }
-            if (table.isMissingOrNull(row, colId))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
     /**
      * {@link HashLookup.BiRowMatcher} that compares key column values across two tables, tolerating
      * missing columns ({@code -1} in either {@code colIds}). A column missing on both sides is

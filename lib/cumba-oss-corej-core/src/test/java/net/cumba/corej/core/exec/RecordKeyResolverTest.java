@@ -27,6 +27,13 @@ class RecordKeyResolverTest
 
     private static final DatasetResolver NO_RESOLVER = _ -> null;
 
+    /** The key column names in order (the record's own accessor for this was test-only). */
+    private static List<String> names(RowKeySpec spec)
+    {
+        return spec.columns().stream().map(RecordKeyResolver.KeyColumn::name).toList();
+    }
+
+
     /** A Library provider whose legacy path serves the given variable attribute maps. */
     private static MetadataProvider legacyLibrary(List<Map<String, String>> aVars)
     {
@@ -78,7 +85,7 @@ class RecordKeyResolverTest
         assertEquals(KeySource.DEFINE_KEY, spec.source());
         // KeySequence order preserved; USUBJID subtracted (carried on its own field); LBCAT
         // dropped because the dataset has no such column.
-        assertEquals(List.of("LBTESTCD", "VISITNUM"), spec.names());
+        assertEquals(List.of("LBTESTCD", "VISITNUM"), names(spec));
     }
 
 
@@ -94,7 +101,7 @@ class RecordKeyResolverTest
                 null, NO_RESOLVER, "R1");
 
         assertEquals(KeySource.DEFINE_KEY, spec.source());
-        assertEquals(List.of("LBTESTCD"), spec.names());
+        assertEquals(List.of("LBTESTCD"), names(spec));
     }
 
 
@@ -111,7 +118,7 @@ class RecordKeyResolverTest
                 null, NO_RESOLVER, "R1");
 
         assertEquals(KeySource.STRUCTURAL, spec.source());
-        assertEquals(List.of("RDOMAIN", "IDVAR", "IDVARVAL", "QNAM"), spec.names());
+        assertEquals(List.of("RDOMAIN", "IDVAR", "IDVARVAL", "QNAM"), names(spec));
     }
 
 
@@ -126,7 +133,7 @@ class RecordKeyResolverTest
                 null, NO_RESOLVER, "R1");
 
         assertEquals(KeySource.STRUCTURAL, spec.source());
-        assertEquals(List.of("RDOMAIN", "IDVAR", "IDVARVAL", "RELID"), spec.names());
+        assertEquals(List.of("RDOMAIN", "IDVAR", "IDVARVAL", "RELID"), names(spec));
     }
 
 
@@ -143,7 +150,7 @@ class RecordKeyResolverTest
         assertEquals(KeySource.STRUCTURAL, spec.source());
         // COSEQ is the dataset's own sequence variable and is carried on the Violation's seq
         // field, so it must not be repeated in the key.
-        assertEquals(List.of("RDOMAIN", "IDVAR", "IDVARVAL"), spec.names());
+        assertEquals(List.of("RDOMAIN", "IDVAR", "IDVARVAL"), names(spec));
     }
 
 
@@ -167,7 +174,7 @@ class RecordKeyResolverTest
         assertEquals(KeySource.NATURAL, spec.source());
         // Topic is included (unlike natural_key_variables, whose consuming rule adds --TESTCD
         // itself); Identifier USUBJID is not; the `--` wildcard resolves to the LB prefix.
-        assertEquals(List.of("LBTESTCD", "VISITNUM", "LBSPEC", "LBMETHOD", "LBSCAT"), spec.names());
+        assertEquals(List.of("LBTESTCD", "VISITNUM", "LBSPEC", "LBMETHOD", "LBSCAT"), names(spec));
     }
 
 
@@ -213,7 +220,7 @@ class RecordKeyResolverTest
         assertEquals(KeySource.DEFINE_KEY, spec.source());
         // The `--`-prefixed sponsor identifiers resolve against the LB prefix and land after the
         // tier's own columns.
-        assertEquals(List.of("LBTESTCD", "LBSPID", "LBREFID"), spec.names());
+        assertEquals(List.of("LBTESTCD", "LBSPID", "LBREFID"), names(spec));
     }
 
 
@@ -229,7 +236,7 @@ class RecordKeyResolverTest
         RowKeySpec spec = RecordKeyResolver.resolve(table, "LB", FindingKeyMode.DEFINE, define,
                 null, NO_RESOLVER, "R1");
 
-        assertEquals(List.of("LBTESTCD", "POOLID"), spec.names());
+        assertEquals(List.of("LBTESTCD", "POOLID"), names(spec));
     }
 
 
@@ -261,8 +268,8 @@ class RecordKeyResolverTest
         RowKeySpec spec = RecordKeyResolver.resolve(table, "ADLB", FindingKeyMode.DEFINE, define,
                 null, NO_RESOLVER, "R1");
 
-        assertEquals(List.of("PARAMCD", "AVISITN"), spec.names());
-        assertFalse(spec.names().contains("ASEQ"));
+        assertEquals(List.of("PARAMCD", "AVISITN"), names(spec));
+        assertFalse(names(spec).contains("ASEQ"));
     }
 
 
@@ -330,7 +337,7 @@ class RecordKeyResolverTest
         RowKeySpec spec = RecordKeyResolver.resolve(table, "AE", FindingKeyMode.DEFINE, null, null,
                 NO_RESOLVER, "R1");
 
-        assertEquals(List.of("AESPID"), spec.names());
+        assertEquals(List.of("AESPID"), names(spec));
         assertEquals(KeySource.SPONSOR_ID, spec.source());
     }
 
@@ -370,8 +377,8 @@ class RecordKeyResolverTest
 
         // USUBJID and AESEQ subtracted despite the case difference; names come back in the data
         // set's own spelling so the per-row read resolves.
-        assertEquals(List.of("aeterm", "aespid"), spec.names());
-        assertFalse(spec.names().contains("aeseq"));
+        assertEquals(List.of("aeterm", "aespid"), names(spec));
+        assertFalse(names(spec).contains("aeseq"));
         assertEquals(Map.of("aeterm", "X", "aespid", "SP1"),
                 RecordKeyResolver.readRowKeys(table, spec, 0));
     }
@@ -389,7 +396,7 @@ class RecordKeyResolverTest
         RowKeySpec spec = RecordKeyResolver.resolve(table, "LB", FindingKeyMode.DEFINE, define,
                 null, NO_RESOLVER, "R1");
 
-        assertEquals(List.of("LBTESTCD", "LBSPID"), spec.names());
+        assertEquals(List.of("LBTESTCD", "LBSPID"), names(spec));
     }
 
 }

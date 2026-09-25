@@ -210,28 +210,6 @@ public final class OutputVariableDeriver
 
 
     /**
-     * The derived-only contribution ({@code DERIVED \ AUTHORED}), for reporting and linting. Both
-     * sides are post-exclusion: {@link #derive} has already subtracted the {@code !X} names and
-     * {@link #authoredOf} carries only the include entries, so an excluded name is on neither side.
-     */
-    public static List<String> derivedOnly(@Nullable Rule rule)
-    {
-        List<String> authored = authoredOf(rule);
-        List<String> delta = new ArrayList<>();
-        for (String name : derive(rule))
-        {
-            if (!authored.contains(name))
-            {
-                delta.add(name);
-            }
-        }
-        return List.copyOf(delta);
-    }
-
-    // ------------------------------------------------------------------ assembly
-
-
-    /**
      * The authored <em>include</em> entries, verbatim and in order — every {@code !X} exclusion
      * token stripped ({@link OutputVariableToken#includes}): an author writing {@code !X} is not
      * asking for {@code X}, so an exclusion never creates an entry.

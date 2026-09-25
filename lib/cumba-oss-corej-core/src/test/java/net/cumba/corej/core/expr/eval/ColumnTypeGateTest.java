@@ -99,8 +99,7 @@ class ColumnTypeGateTest
         EvaluationContext c = ctxOf(table());
         assertThrows(ColumnTypeMismatchException.class, () -> eval("DOSE == 10", c));
         assertThrows(ColumnTypeMismatchException.class, () -> eval("DOSE != 10", c));
-        // §4b F2 pins: num(X) == 10 and num(X) == "10" (string RHS parses via
-        // comparisonTargetAsDouble).
+        // §4b F2 pins: num(X) == 10 and num(X) == "10" (a string RHS is parsed as a number).
         assertEquals(bits(0), eval("num(DOSE) == 10", c));
         assertEquals(bits(0), eval("num(DOSE) == \"10\"", c));
         // The unparseable cell is missing → folds to "" → != fires (the pre-R10 verdict).

@@ -27,65 +27,6 @@ class ScalarSemanticsValueCoercionPinsTest
     }
 
     // -------------------------------------------------------------------------
-    // valueEquals — the equal_to / not_equal_to scalar anchor
-    // -------------------------------------------------------------------------
-
-
-    /**
-     * Pins the numeric branch: a DOUBLE cell 30.0 equals the Number target 30 numerically even
-     * though the string forms ("30.0" vs "30") differ. Kills the line-253 instanceof negation and
-     * the line-256 NaN-guard negation (both would fall through to the textual compare and answer
-     * false) and the line-258 {@code ==}→{@code !=} negation.
-     */
-    @Test
-    void valueEqualsComparesNumericallyWhenTargetIsANumber()
-    {
-        assertTrue(ScalarSemantics.valueEquals(DataValues.of(30.0), 30),
-                "30.0 == 30 numerically; the textual fold would wrongly answer false");
-        // Negative twin (kills the line-258 replaced-with-true mutant): a genuinely different
-        // number must NOT be equal — this is the mis-compared-dose case.
-        assertFalse(ScalarSemantics.valueEquals(DataValues.of(31.0), 30));
-    }
-
-
-    /**
-     * A non-parseable cell against a Number target falls back to the textual compare — "abc" is not
-     * "30". A parseable textual cell against the same target matches numerically.
-     */
-    @Test
-    void valueEqualsFallsBackToTextWhenTheCellDoesNotParse()
-    {
-        assertFalse(ScalarSemantics.valueEquals(DataValues.of("abc"), 30));
-        assertTrue(ScalarSemantics.valueEquals(DataValues.of("30"), 30));
-    }
-
-
-    /**
-     * Pins the null-target guard (line 262/264): a null RHS compares equal ONLY to a missing cell.
-     * Negating the guard would NPE on the present cell; replacing the return with a constant flips
-     * one of the two verdicts.
-     */
-    @Test
-    void valueEqualsWithNullTargetMatchesOnlyAMissingCell()
-    {
-        assertTrue(ScalarSemantics.valueEquals(DataValues.of(null), null),
-                "missing == missing under a null target");
-        assertFalse(ScalarSemantics.valueEquals(DataValues.of("A"), null),
-                "a present value never equals a null target");
-        // A missing cell against a PRESENT string target folds to "" and differs.
-        assertFalse(ScalarSemantics.valueEquals(DataValues.of(null), "A"));
-    }
-
-
-    /** Pins the plain string branch (line 266) in both directions. */
-    @Test
-    void valueEqualsStringBranchBothVerdicts()
-    {
-        assertTrue(ScalarSemantics.valueEquals(DataValues.of("A"), "A"));
-        assertFalse(ScalarSemantics.valueEquals(DataValues.of("A"), "B"));
-    }
-
-    // -------------------------------------------------------------------------
     // isNumericMember — the numeric IN-list anchor
     // -------------------------------------------------------------------------
 
@@ -162,22 +103,5 @@ class ScalarSemanticsValueCoercionPinsTest
                 "textual data must yield null (no violation), never 0");
         assertNull(ScalarSemantics.comparisonLhsAsDouble(cell(t, "X", 2)),
                 "a missing cell yields null");
-    }
-
-    // -------------------------------------------------------------------------
-    // isIntegerValue — is_integer anchor
-    // -------------------------------------------------------------------------
-
-
-    /** Pins both verdicts of the integer check (line 1202). */
-    @Test
-    void isIntegerValueBothVerdicts()
-    {
-        assertTrue(ScalarSemantics.isIntegerValue(DataValues.of("3")));
-        assertTrue(ScalarSemantics.isIntegerValue(DataValues.of("3.0")),
-                "a whole-valued decimal is an integer");
-        assertFalse(ScalarSemantics.isIntegerValue(DataValues.of("3.5")));
-        assertFalse(ScalarSemantics.isIntegerValue(DataValues.of(null)),
-                "a missing cell folds to \"\", which is not an integer");
     }
 }

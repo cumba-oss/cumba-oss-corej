@@ -63,10 +63,10 @@ public class DatasetRuleResolver
      * ({@code true}), or used only as a fallback ({@code false}). Initialised from
      * {@link net.cumba.corej.core.metadata.AdamDataStructureDetector#defineFirstPreference()} —
      * <b>{@code true} by default since Fix #154</b> (the CLI's {@code --define-first} forces it,
-     * {@code -Dcorej.defineFirst=false} opts out); overridable per instance via
-     * {@link #setDefineFirst} for tests / embedders.
+     * {@code -Dcorej.defineFirst=false} opts out). Fixed for the instance's lifetime: the
+     * per-instance setter had no caller and was retired (2026-09-25, U2 / A33).
      */
-    private boolean defineFirst = net.cumba.corej.core.metadata.AdamDataStructureDetector
+    private final boolean defineFirst = net.cumba.corej.core.metadata.AdamDataStructureDetector
             .defineFirstPreference();
 
     /** Static rules to expand/pass through. */
@@ -143,22 +143,6 @@ public class DatasetRuleResolver
     {
         this.className = className;
     }
-
-
-    /**
-     * Fix #119: overrides the {@code corej.defineFirst} preference for this generator instance —
-     * {@code true} prefers declared Define-XML class/subclass values over the column heuristics for
-     * the {@code Scope.Data_Structures} / {@code Scope.Subclasses} determination.
-     *
-     * @param defineFirst
-     *            {@code true} to prefer declared Define-XML values
-     */
-    public void setDefineFirst(boolean defineFirst)
-    {
-        this.defineFirst = defineFirst;
-    }
-
-    // ---- Generate ----
 
 
     /**

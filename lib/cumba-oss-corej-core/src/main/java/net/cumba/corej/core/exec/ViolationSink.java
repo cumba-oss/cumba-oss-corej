@@ -117,12 +117,4 @@ public final class ViolationSink
     {
         return total;
     }
-
-
-    /** {@code true} when the true total exceeds what was materialised. */
-    public boolean truncated()
-    {
-        return total > stored.size();
-    }
-
 }

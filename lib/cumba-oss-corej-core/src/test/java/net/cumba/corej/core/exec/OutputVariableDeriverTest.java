@@ -127,7 +127,6 @@ class OutputVariableDeriverTest
         Rule r = rule(List.of("ZZCUSTOM", "AESTDTC"), eq(col("AESTDTC"), col("AEENDTC")));
         List<String> effective = OutputVariableDeriver.derive(r);
         assertEquals(List.of("ZZCUSTOM", "AESTDTC", "AEENDTC"), effective);
-        assertEquals(List.of("AEENDTC"), OutputVariableDeriver.derivedOnly(r));
     }
 
 
@@ -139,7 +138,6 @@ class OutputVariableDeriverTest
         Rule r = rule(List.of("USUBJID", "variable_label", "GONE"),
                 new Expr.Not(call("var_exists", col("GONE"))));
         assertEquals(List.of("USUBJID", "variable_label", "GONE"), OutputVariableDeriver.derive(r));
-        assertEquals(List.of(), OutputVariableDeriver.derivedOnly(r));
     }
 
     // ------------------------------------------------------------- D2
@@ -604,18 +602,6 @@ class OutputVariableDeriverTest
         Rule r = rule(List.of("LBORRES", "!variable_value"),
                 eq(col("LBORRES"), call("vlm_codelist")));
         assertEquals(List.of("variable_name", "LBORRES"), OutputVariableDeriver.derive(r));
-    }
-
-
-    @Test
-    void derivedOnlyExcludesFromBothSides()
-    {
-        // AEDECOD is derived and excluded: it is on neither side of DERIVED \ AUTHORED, and the
-        // token itself is never an authored entry.
-        Rule r = rule(List.of("AETERM", "!AEDECOD"),
-                new Expr.And(List.of(eq(col("AETERM"), str("t")), eq(col("AEDECOD"), str("d")),
-                        eq(col("AESEV"), str("s")))));
-        assertEquals(List.of("AESEV"), OutputVariableDeriver.derivedOnly(r));
     }
 
 

@@ -1014,6 +1014,14 @@ public final class RuleClassifier
      * not pin the anchor the same verdict is emitted once per dataset in the study (plan
      * &sect;3.9).
      *
+     * <p>
+     * ⚑ No production caller. Its consumer is the corpus derivation census in the rule-corpus
+     * repository ({@code DerivationCorpusTest}, the §3.9 lint behind the tracked
+     * {@code generated/derivation/unanchored-scope.tsv}) — corpus tooling, which is why it is kept
+     * rather than retired with U2 / A38 (2026-09-25); the plan's criterion is about the product,
+     * and tooling that reads the classifier's private leaf walk cannot re-derive this itself.
+     * </p>
+     *
      * @param rule
      *            the rule to inspect
      * @return the anchor dataset names, in document order; empty when the rule has no anchor

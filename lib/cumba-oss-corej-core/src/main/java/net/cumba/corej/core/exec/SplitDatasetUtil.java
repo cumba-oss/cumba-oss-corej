@@ -6,8 +6,8 @@ package net.cumba.corej.core.exec;
  * SDTM splits datasets either by trailing digits ({@code LB1}, {@code LB2}) or — less commonly for
  * the SUPP-- family — by a trailing letter identifying the paired parent domain split
  * ({@code SUPPLBHM} = SUPP tied to LBHM). Both Fix #1 (dedup across split datasets during the
- * study-wide variable-count) and Fix #12 ({@link #isSplitDataset(String)}) must agree on the
- * canonical unsplit name of a dataset; routing both through a single helper prevents divergence.
+ * study-wide variable-count) and Fix #12 (letter-suffix recognition) must agree on the canonical
+ * unsplit name of a dataset; routing both through a single helper prevents divergence.
  * <p>
  * This is the <em>name-pattern</em> heuristic, used for table-less callers and as a fallback. The
  * authoritative, data-driven split key (mirroring Python's
@@ -30,9 +30,10 @@ public final class SplitDatasetUtil
      * letter-suffix splits (e.g., {@code "SUPPLBHM"}, {@code "APFACM"}) strips the trailing letter.
      * Returns the name unchanged when it does not match a recognised split pattern.
      * <p>
-     * The supported patterns mirror what {@link #isSplitDataset(String)} recognises as a split, so
-     * {@code unsplitName} always returns a shorter string exactly when {@code isSplitDataset}
-     * returns {@code true}.
+     * The recognised patterns are the SDTM digit-suffix splits and the SUPP/AP letter-suffix
+     * splits; a name is a split under this heuristic exactly when the result is shorter than the
+     * input. (A boolean {@code isSplitDataset} twin of this method had no production caller and was
+     * retired 2026-09-25, U2 / A32.)
      * </p>
      *
      * @param name
@@ -60,32 +61,6 @@ public final class SplitDatasetUtil
             return name.substring(0, name.length() - 1);
         }
         return name;
-    }
-
-
-    /**
-     * Returns {@code true} when the name looks like a split dataset. Recognises SDTM digit-suffix
-     * splits (e.g., {@code "LB1"}, {@code "SUPPDM2"}, {@code "APMH1"}) and SUPP/AP letter-suffix
-     * splits (e.g., {@code "SUPPLBHM"}, {@code "APFACM"}).
-     *
-     * @param name
-     *            the dataset name (may be {@code null})
-     * @return true if the name matches a recognised split pattern
-     */
-    public static boolean isSplitDataset(String name)
-    {
-        if (name == null || name.length() < 3)
-        {
-            return false;
-        }
-        int digitStart = trailingDigitStart(name);
-        int digitCount = name.length() - digitStart;
-        if (digitCount >= 1 && digitCount <= 2)
-        {
-            String base = name.substring(0, digitStart);
-            return base.length() >= 2 && isAllUpperLetters(base);
-        }
-        return isSuppLetterSplit(name) || isApLetterSplit(name);
     }
 
 

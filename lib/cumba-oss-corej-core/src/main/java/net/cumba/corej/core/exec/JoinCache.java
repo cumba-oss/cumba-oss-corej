@@ -332,16 +332,14 @@ public final class JoinCache
 
 
     /**
-     * Caches a JoinLookup under the given name (used for RELREC and other non-key-based lookups).
-     */
-    void put(String name, JoinLookup lookup)
-    {
-        lookupCache.put(name, lookup);
-    }
-
-
-    /**
      * Returns a previously cached JoinLookup by name.
+     *
+     * <p>
+     * ⚑ No production caller: a read seam for the concurrency tests, which assert that one
+     * {@code DatasetLookup} instance survives across parallel waves
+     * ({@code JoinCacheConcurrencyTest}). Kept as that instrument when its {@code put} twin — which
+     * nothing called at all — was retired (2026-09-25, U2 / A34).
+     * </p>
      */
     @Nullable
     JoinLookup get(String name)

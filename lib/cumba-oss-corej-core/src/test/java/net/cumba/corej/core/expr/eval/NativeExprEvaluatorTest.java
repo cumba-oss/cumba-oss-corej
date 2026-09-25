@@ -1186,7 +1186,7 @@ class NativeExprEvaluatorTest
     void orderedComparisonOperandShapesAreSymmetric()
     {
         // < > <= >= compare numerically on BOTH sides: the LHS is parsed via getValueAsDouble and
-        // the RHS via comparisonTargetAsDouble. So a numeric literal, a parsing string literal
+        // the RHS via ScalarSemantics.tryNumericRhs. So a numeric literal, a parsing string literal
         // ("5"), a numeric column, and a character column holding a number all give the SAME
         // comparison verdict; a non-numeric RHS (or a missing LHS) folds to "missing" => no fire.
         // AGE = [30, 10, 20, missing]; LIMITCOL/THRESHSTR carry the per-row threshold 0.

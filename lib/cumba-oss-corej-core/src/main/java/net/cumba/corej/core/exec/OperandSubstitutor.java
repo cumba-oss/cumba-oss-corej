@@ -81,11 +81,6 @@ public final class OperandSubstitutor
     public sealed interface ParsedOperand permits Scalar, Wildcard
     {
 
-        /** The "{@code <DOMAIN>.}" prefix, or {@code null} when absent. */
-        @Nullable
-        String foreignDataset();
-
-
         /** {@code true} if any {@code ${VAR}} placeholder appears. */
         boolean hasDrivers();
     }

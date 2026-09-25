@@ -208,16 +208,6 @@ public final class RecordKeyResolver
             return columns.isEmpty();
         }
 
-
-        /**
-         * The key column names, in order.
-         *
-         * @return the ordered key column names.
-         */
-        public List<String> names()
-        {
-            return columns.stream().map(KeyColumn::name).toList();
-        }
     }
 
     /**
