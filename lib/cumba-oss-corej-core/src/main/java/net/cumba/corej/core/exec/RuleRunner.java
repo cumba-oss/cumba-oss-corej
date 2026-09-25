@@ -3490,6 +3490,27 @@ public final class RuleRunner
             {
                 throw new MalformedSidedKeyException(originalName, malformedKey);
             }
+            // ⭐ A `Child: true` entry is joined ONLY through its pointer (owner, 2026-09-25,
+            // PLAN-hashed-join-arm-absent-columns §3, option A): ChildMatchPreMerger finds the
+            // parent row where parent[row.IDVAR] == row.IDVARVAL, the remaining keys compared
+            // column to column, and merges the parent's columns into the primary BARE. It builds
+            // no direct keyed lookup. Until 2026-09-25 one was built here as well — its keys
+            // [USUBJID, IDVAR, IDVARVAL] compared literally as columns on BOTH sides, which is
+            // meaningless for a pointer (on the AE side there are no such columns; on CO / RELREC
+            // / a SUPP-- self-join it paired SIBLING records pointing at the same parent) — and
+            // nothing read it: a `_matched_` or a dotted read on a Child entry is a stage-A load
+            // error (StageAChecker). Its only observable effects were the leaf-cache gate (a
+            // non-empty joined map disables leaf caching) and an AE hash index built on every
+            // SUPPAE pass that could never match. Removing it is also what lets KeyHashing's
+            // KeyMatcher apply JKM R7's one-side rule without pairing rows nobody asked to pair.
+            if (Boolean.TRUE.equals(md.getChild()))
+            {
+                LOGGER.log(System.Logger.Level.DEBUG,
+                        "[{0}] Match_Dataset {1} is Child: true — joined through its pointer by "
+                                + "the pre-merge, no direct lookup",
+                        ruleId != null ? ruleId : "?", originalName);
+                continue;
+            }
             // Resolve -- wildcard in dataset name (e.g., SUPP-- → SUPPAE). resolveWildcard only
             // returns null for a null input; originalName is non-null here (guarded above).
             String dsName = Objects.requireNonNull(

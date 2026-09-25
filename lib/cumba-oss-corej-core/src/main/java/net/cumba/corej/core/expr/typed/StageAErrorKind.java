@@ -157,6 +157,24 @@ public enum StageAErrorKind
     DOTTED_REF_UNDECLARED(false),
 
     /**
+     * A plain dotted operand {@code <DATASET>.<COLUMN>} whose qualifier names a {@code Child: true}
+     * {@code Match_Datasets} entry — the value-read sibling of {@link #MATCHED_FLAG_INVALID}'s
+     * Child arm. A Child entry is joined only through its pointer ({@code RDOMAIN} / {@code IDVAR}
+     * / {@code IDVARVAL}, {@code ChildMatchPreMerger}): the parent row's columns are merged into
+     * the primary and read <b>bare</b>, and no direct keyed lookup is built for the entry
+     * ({@code RuleRunner.buildJoinedDatasets} skips it). A dotted read of it therefore has nothing
+     * to read — it would take the not-supplied default on every row, a silent {@code PASS} for a
+     * comparison that never ran. Owner ruling 2026-09-25
+     * ({@code PLAN-hashed-join-arm-absent-columns} §3, follow-up 1): refused at load, as the flag
+     * already is. The qualifier is matched exactly, or as an instance of the entry's {@code --}
+     * template ({@code SUPPAE} names a {@code SUPP--} entry), because a Child entry keeps its
+     * template name through specialisation. Armed: 0 over both corpora — none of the 5 Child rules
+     * reads its entry dotted (phase 1 findings, §3), and the only {@code SUPPAE.QNAM} in them is
+     * prose in a {@code Source.Condition}.
+     */
+    DOTTED_REF_CHILD_ENTRY(true),
+
+    /**
      * Two {@code Match_Datasets} entries sharing one {@code Name} (phase 6b — D110g(iii), the
      * 2026-08 join-match-flag plan's ambiguity load-error, routed here by D88b as part of the
      * binding model): {@code RuleRunner.buildJoinedDatasets} keys the join lookups by name,

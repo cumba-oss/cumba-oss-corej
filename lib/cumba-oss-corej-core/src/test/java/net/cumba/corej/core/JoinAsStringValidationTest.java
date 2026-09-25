@@ -55,6 +55,32 @@ class JoinAsStringValidationTest
 
 
     /**
+     * {@link #pkg} for a {@code Child: true} entry: the Check reads the parent's column
+     * <b>bare</b>. ⚠ A Child entry is joined only through its pointer and builds no direct lookup,
+     * so a dotted {@code ADSL.AGE} on it is its own stage-A load error
+     * ({@code DOTTED_REF_CHILD_ENTRY}, owner ruling 2026-09-25) — a Child control written dotted
+     * would red for a reason this class does not test.
+     */
+    private static String childPkg(String entryExtra)
+    {
+        return """
+                {"rules":{"x":{"Core":{"Id":"T-JAS"},\
+                "Sensitivity":"Record",\
+                "Match_Datasets":[{"Name":"ADSL","Keys":["USUBJID"],"Child":true%s}],\
+                "Outcome":{"Message":"m","Output_Variables":["USUBJID","AGE"]},\
+                "Check":{"all":[{"expression": "not empty(AGE)"}]}}}}""".formatted(entryExtra);
+    }
+
+
+    private static Rule loadChild(String entryExtra) throws IOException
+    {
+        Rule rule = RulePackageLoader.loadFromString(childPkg(entryExtra)).getRules().get("x");
+        assertNotNull(rule, "the fixture must bind, or nothing below is measuring anything");
+        return rule;
+    }
+
+
+    /**
      * The same fixture with the entry's {@code Name} changed — ⚠ replacing only the {@code "Name"}
      * value, never blanket-replacing the string across the whole package, which would also rewrite
      * {@code ADSL.AGE} inside the Check and silently change what is under test.
@@ -177,12 +203,14 @@ class JoinAsStringValidationTest
     @Test
     void aSidedKeyOnAChildEntryFilesALoadError() throws IOException
     {
+        // The Child fixtures read the parent column BARE (see childPkg): a dotted AE.AGE on a
+        // Child entry is its own load error and would mask what this test measures.
         String json = """
                 {"rules":{"x":{"Core":{"Id":"T-JAS"},"Sensitivity":"Record",\
                 "Match_Datasets":[{"Name":"AE","Child":true,\
                 "Keys":["USUBJID",{"left":"IDVAR","right":"XIDVAR"}]}],\
                 "Outcome":{"Message":"m","Output_Variables":["USUBJID","AGE"]},\
-                "Check":{"all":[{"expression": "AGE != AE.AGE"}]}}}}""";
+                "Check":{"all":[{"expression": "not empty(AGE)"}]}}}}""";
         String error = String
                 .valueOf(RulePackageLoader.loadFromString(json).getRules().get("x").getLoadError());
         assertTrue(error.contains("combines sided Keys"),
@@ -193,7 +221,7 @@ class JoinAsStringValidationTest
                 {"rules":{"x":{"Core":{"Id":"T-JAS"},"Sensitivity":"Record",\
                 "Match_Datasets":[{"Name":"AE","Child":true,"Keys":["USUBJID","IDVAR"]}],\
                 "Outcome":{"Message":"m","Output_Variables":["USUBJID","AGE"]},\
-                "Check":{"all":[{"expression": "AGE != AE.AGE"}]}}}}""";
+                "Check":{"all":[{"expression": "not empty(AGE)"}]}}}}""";
         assertNull(
                 RulePackageLoader.loadFromString(ordinaryChild).getRules().get("x").getLoadError(),
                 "⛔ a Child entry with ORDINARY bare-string keys must still load clean — that is"
@@ -295,13 +323,12 @@ class JoinAsStringValidationTest
     @Test
     void theFlagOnAnExcludedEntryFilesALoadError() throws IOException
     {
-        String error = String
-                .valueOf(load(",\"Child\":true,\"Join_As_String\":true").getLoadError());
+        String error = String.valueOf(loadChild(",\"Join_As_String\":true").getLoadError());
         assertTrue(error.contains("no effect"),
                 "a Child:true entry is governed by JKM R6, not by this flag — an author who writes"
                         + " it there believes they controlled the join's type behaviour and did"
                         + " not; was: " + error);
-        assertNull(load(",\"Child\":true").getLoadError(),
+        assertNull(loadChild("").getLoadError(),
                 "⛔ and a Child entry WITHOUT the flag must still load — otherwise this check has"
                         + " broken the eleven shipped Child entries rather than guarded them");
     }

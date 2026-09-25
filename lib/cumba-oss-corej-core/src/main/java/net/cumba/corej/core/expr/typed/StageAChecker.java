@@ -1413,8 +1413,10 @@ public final class StageAChecker
      * under an inner join (D88e) or with no usable defining entry / in value position
      * ({@link StageAErrorKind#MATCHED_FLAG_INVALID}); per dotted operand, a qualifier naming no
      * entry ({@link StageAErrorKind#DOTTED_REF_UNDECLARED} — the value-read sibling of that same
-     * dangling-qualifier arm); and the D62 unqualified-merged-column heuristic (observe-only by
-     * ruling — D62a's three {@code SUPPAE} rules read {@code AESMIE} bare and work today).
+     * dangling-qualifier arm) or a {@code Child: true} entry
+     * ({@link StageAErrorKind#DOTTED_REF_CHILD_ENTRY}); and the D62 unqualified-merged-column
+     * heuristic (observe-only by ruling — D62a's three {@code SUPPAE} rules read {@code AESMIE}
+     * bare and work today).
      */
     private void checkMatchDatasets(java.util.Collection<Expr> roots)
     {
@@ -1575,7 +1577,12 @@ public final class StageAChecker
      * inner join. A flag whose qualifier matches no entry is silently deferred when any entry name
      * is still a template ({@code --} / {@code *} / {@code ${} / {@code &}) — this checker also
      * runs at package load, before specialisation binds those names, and the specialised
-     * per-dataset pass re-checks with concrete names.
+     * per-dataset pass re-checks with concrete names. ⚠ The qualifier is resolved by {@link
+     * #entryFor}, which also matches an instance of a {@code --} template ({@code SUPPAE._matched_}
+     * names a {@code SUPP--} entry): a {@code Child: true} entry keeps its template name through
+     * specialisation, so an exact comparison let {@code SUPPAE._matched_} slip past the Child arm
+     * at both passes and read a SUPPAE self-join at run time (the Stage-A hole of {@code
+     * PLAN-hashed-join-arm-absent-columns} §2b, closed 2026-09-25).
      */
     private void checkMatchedFlags(java.util.Collection<Expr> roots,
             @Nullable List<MatchDataset> matches)
@@ -1602,8 +1609,7 @@ public final class StageAChecker
         for (String flag : flags)
         {
             String qualifier = flag.substring(0, flag.indexOf('.'));
-            MatchDataset entry = entries.stream().filter(m -> qualifier.equals(m.getName()))
-                    .findFirst().orElse(null);
+            MatchDataset entry = entryFor(qualifier, entries);
             if (entry == null)
             {
                 if (!templates)
@@ -1635,6 +1641,77 @@ public final class StageAChecker
                                 + "Join_Type: \"left\" on the " + qualifier + " entry");
             }
         }
+    }
+
+
+    /**
+     * The {@code Match_Datasets} entry a qualifier names: the entry whose {@code Name} equals it,
+     * else an entry whose {@code --} template it instantiates ({@code SUPPAE} names
+     * {@code SUPP--}). ⭐ ONE resolution, shared by {@link #checkMatchedFlags} and
+     * {@link #checkDottedRefs} — a second copy is how the two qualifier checks would drift apart.
+     * The template arm exists because a {@code Child: true} entry keeps its template name through
+     * specialisation ({@code RuleSpecialiser} leaves a Child name for the per-row pointer, and
+     * {@code OperationExecutor.resolveWildcard} binds it only at run time), so an exact comparison
+     * alone found no entry for {@code SUPPAE._matched_} at either pass, deferred it as unbound, and
+     * let it read a SUPPAE self-join at run time (closed 2026-09-25,
+     * {@code PLAN-hashed-join-arm-absent-columns} §3 follow-up 2). An exact match wins over a
+     * template match.
+     *
+     * @param qualifier
+     *            the dotted operand's qualifier — the text before the first {@code .}
+     * @param entries
+     *            the rule's {@code Match_Datasets}, never {@code null}
+     *
+     * @return the entry, or {@code null} when none is named
+     */
+    private static @Nullable MatchDataset entryFor(String qualifier, List<MatchDataset> entries)
+    {
+        for (MatchDataset m : entries)
+        {
+            if (qualifier.equals(m.getName()))
+            {
+                return m;
+            }
+        }
+        for (MatchDataset m : entries)
+        {
+            if (instantiatesTemplate(m.getName(), qualifier))
+            {
+                return m;
+            }
+        }
+        return null;
+    }
+
+
+    /**
+     * Whether {@code qualifier} is an instance of the {@code --} template {@code name}: the same
+     * text before and after the {@code --}, with a non-empty domain in its place — exactly the
+     * shape {@code OperationExecutor.resolveWildcard} produces ({@code SUPP--} → {@code SUPPAE}). A
+     * name with no {@code --} is not a template of anything.
+     *
+     * @param name
+     *            an entry name, possibly {@code null}
+     * @param qualifier
+     *            the concrete qualifier
+     *
+     * @return whether the qualifier instantiates the template
+     */
+    static boolean instantiatesTemplate(@Nullable String name, String qualifier)
+    {
+        if (name == null)
+        {
+            return false;
+        }
+        int at = name.indexOf("--");
+        if (at < 0)
+        {
+            return false;
+        }
+        String prefix = name.substring(0, at);
+        String suffix = name.substring(at + 2);
+        return qualifier.length() > prefix.length() + suffix.length()
+                && qualifier.startsWith(prefix) && qualifier.endsWith(suffix);
     }
 
 
@@ -1702,6 +1779,13 @@ public final class StageAChecker
      * therefore never a {@code DOTTED_REF}. The template deferral this method does apply is for the
      * other side — a concrete qualifier against an entry name that is not concrete yet.
      * </p>
+     *
+     * <p>
+     * ⭐ And one refusal that is <b>not</b> deferred: a dotted read whose qualifier resolves ({@link
+     * #entryFor}) to a {@code Child: true} entry ({@link StageAErrorKind#DOTTED_REF_CHILD_ENTRY},
+     * armed). Owner ruling 2026-09-25: a Child entry is joined only through its pointer and builds
+     * no direct lookup, so the read has nothing to read — the parent's columns are merged in bare.
+     * </p>
      */
     private void checkDottedRefs(java.util.Collection<Expr> roots,
             @Nullable List<MatchDataset> matches)
@@ -1712,17 +1796,38 @@ public final class StageAChecker
             collectDottedRefs(root, dotted);
         }
         collectBindingDottedRefs(dotted);
-        if (dotted.isEmpty() || anyTemplateEntryName(matches))
+        if (dotted.isEmpty())
         {
             return;
         }
         List<MatchDataset> entries = matches == null ? List.of() : matches;
+        boolean templates = anyTemplateEntryName(matches);
         for (String ref : dotted)
         {
             String qualifier = ref.substring(0, ref.indexOf('.'));
-            if (entries.stream().anyMatch(m -> qualifier.equals(m.getName())))
+            MatchDataset entry = entryFor(qualifier, entries);
+            if (entry != null)
             {
+                // ⭐ Owner ruling 2026-09-25 (PLAN-hashed-join-arm-absent-columns §3, follow-up
+                // 1): a Child: true entry is joined only through its pointer, its parent columns
+                // arrive BARE through the pre-merge, and no direct lookup is built for it
+                // (RuleRunner.buildJoinedDatasets) — so a dotted read of it has nothing to read.
+                // Refused at load like the flag, and judged even while a template name remains:
+                // the entry was resolved, exactly or as an instance of its own template, so this
+                // is not the guess the deferral below exists to avoid.
+                if (Boolean.TRUE.equals(entry.getChild()))
+                {
+                    find(StageAErrorKind.DOTTED_REF_CHILD_ENTRY, ref + " reads a Child: true "
+                            + "entry — a Child entry is joined only through its pointer (RDOMAIN /"
+                            + " IDVAR / IDVARVAL) and builds no direct lookup; the parent row's "
+                            + "columns are merged into the primary and are read bare, never as "
+                            + qualifier + ".<column>");
+                }
                 continue;
+            }
+            if (templates)
+            {
+                continue; // a concrete qualifier against a name that is not concrete yet
             }
             find(StageAErrorKind.DOTTED_REF_UNDECLARED,
                     ref + " references no Match_Datasets entry named " + qualifier

@@ -1,6 +1,7 @@
 package net.cumba.corej.core.expr.typed;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -400,6 +401,46 @@ class StageACheckerTest
         assertEquals(List.of(), report.findings());
     }
 
+
+    /**
+     * ⭐ The Stage-A hole of {@code PLAN-hashed-join-arm-absent-columns} §2b, closed 2026-09-25: a
+     * {@code Child: true} entry keeps its {@code SUPP--} template name through specialisation, so
+     * an exact-name comparison found no entry for {@code SUPPAE._matched_} at either pass, deferred
+     * it (the test above), and the flag then read a SUPPAE self-join at run time — every row true.
+     * The qualifier now resolves as an instance of the template, and the Child arm refuses it.
+     */
+    @Test
+    void matchedFlagOnAChildTemplateEntryIsInvalidDespiteTheTemplate()
+    {
+        Rule rule = ruleJoining("SUPP--", "left", "USUBJID", "IDVAR", "IDVARVAL");
+        rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
+        StageAReport report = check(rule, "not SUPPAE._matched_");
+        assertEquals(List.of(StageAErrorKind.MATCHED_FLAG_INVALID), kinds(report),
+                "deferred (no finding) is the pre-fix hole");
+        String message = report.findings().get(0).toString();
+        assertTrue(message.contains("SUPPAE._matched_"), message);
+        assertTrue(message.contains("Child: true"), message);
+    }
+
+
+    @Test
+    void aQualifierThatIsNoInstanceOfTheTemplateStaysDeferred()
+    {
+        // DM is not an instance of SUPP--, so the flag is still unbound and still deferred while
+        // the template remains — the resolution widened only to the template's own instances.
+        Rule rule = ruleJoining("SUPP--", "left", "USUBJID");
+        rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
+        assertEquals(List.of(), check(rule, "not DM._matched_").findings());
+        assertTrue(StageAChecker.instantiatesTemplate("SUPP--", "SUPPAE"));
+        assertTrue(StageAChecker.instantiatesTemplate("SQ--", "SQAP"));
+        assertFalse(StageAChecker.instantiatesTemplate("SUPP--", "SUPP"),
+                "the template needs a non-empty domain in place of --");
+        assertFalse(StageAChecker.instantiatesTemplate("SUPP--", "DM"));
+        assertFalse(StageAChecker.instantiatesTemplate("AE", "AE"),
+                "a concrete name is not a template — the exact arm handles it");
+        assertFalse(StageAChecker.instantiatesTemplate(null, "AE"));
+    }
+
     // ------------------------------------------------------------------
     // DOTTED_REF_UNDECLARED (PLAN-null-free-value-channel §9c) — the value-read sibling of
     // MATCHED_FLAG_INVALID's dangling-qualifier arm.
@@ -438,6 +479,70 @@ class StageACheckerTest
         // checkMatchDatasets' empty-list early return.
         StageAReport report = check(new Rule(), "DM.AGE > 30");
         assertEquals(List.of(StageAErrorKind.DOTTED_REF_UNDECLARED), kinds(report));
+    }
+
+    // ------------------------------------------------------------------
+    // DOTTED_REF_CHILD_ENTRY (PLAN-hashed-join-arm-absent-columns §3 follow-up 1, owner
+    // 2026-09-25) — the value-read sibling of MATCHED_FLAG_INVALID's Child arm. Armed, and like
+    // that arm ZERO over the shipped corpus (none of the 5 Child rules reads its entry dotted), so
+    // these cases are the whole instrument.
+    // ------------------------------------------------------------------
+
+
+    @Test
+    void aDottedReadOfAChildEntryIsAnArmedStageAError()
+    {
+        Rule rule = ruleJoining("AE", null, "USUBJID", "IDVAR", "IDVARVAL");
+        rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
+        StageAReport report = check(rule, "AE.AESMIE != \"Y\"");
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY), kinds(report),
+                "a Child entry builds no direct lookup, so AE.AESMIE has nothing to read; clean is"
+                        + " the pre-ruling behaviour (the read took the not-supplied default)");
+        assertEquals(1, report.armedFindings().size(), "refused at load, as the flag is");
+        String message = report.findings().get(0).toString();
+        assertTrue(message.contains("AE.AESMIE"), message);
+        assertTrue(message.contains("read bare"), message);
+    }
+
+
+    @Test
+    void aDottedReadOfAChildTemplateEntryIsRefusedDespiteTheTemplate()
+    {
+        // The same template resolution as the flag: SUPPAE.QVAL names the SUPP-- Child entry, and
+        // the refusal is not deferred — the entry WAS resolved, so this is no guess.
+        Rule rule = ruleJoining("SUPP--", null, "USUBJID", "IDVAR", "IDVARVAL");
+        rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
+        StageAReport report = check(rule, "SUPPAE.QVAL == \"x\"");
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY), kinds(report));
+    }
+
+
+    @Test
+    void aDottedReadOfAnOrdinaryTemplateEntryStaysDeferred()
+    {
+        // Control for the two above: the same reads against the same names WITHOUT Child: true
+        // are what they were — deferred while the template remains, clean when concrete.
+        assertEquals(List.of(),
+                check(ruleJoining("SUPP--", null, "USUBJID"), "SUPPAE.QVAL == \"x\"").findings());
+        assertEquals(List.of(),
+                check(ruleJoining("SUPP--", null, "USUBJID"), "DM.AGE > 30").findings(),
+                "a qualifier that is no instance of the template is still deferred, as before");
+        assertEquals(List.of(),
+                check(ruleJoining("AE", null, "USUBJID"), "AE.AESMIE != \"Y\"").findings());
+    }
+
+
+    @Test
+    void theLoaderParksADottedReadOfAChildEntry() throws Exception
+    {
+        RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"X-1\":{\"Core\":{\"Id\":"
+                + "\"X-1\"},\"Match_Datasets\":[{\"Name\":\"AE\",\"Child\":true,\"Keys\":"
+                + "[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]}],\"Check\":{\"expression\":"
+                + "\"AE.AESMIE != \\\"Y\\\"\"}}}}");
+        Rule rule = pkg.getRules().get("X-1");
+        assertNotNull(rule.getLoadError(), "the armed kind parks the rule");
+        assertTrue(rule.getLoadError().contains("DOTTED_REF_CHILD_ENTRY"), rule.getLoadError());
+        assertNull(rule.getCheckExpr());
     }
 
 

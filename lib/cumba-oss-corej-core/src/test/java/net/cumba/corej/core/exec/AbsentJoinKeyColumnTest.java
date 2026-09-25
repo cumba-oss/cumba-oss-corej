@@ -1,6 +1,7 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -11,6 +12,7 @@ import java.util.Map;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -201,5 +203,105 @@ class AbsentJoinKeyColumnTest
         assertEquals(List.of("0:NAUSEA", "1:NAUSEA"),
                 rows(expand(dm, ae, List.of(USUBJID, VISIT)), "AETERM"),
                 "the default KEEP matches where the authored DROP matched nothing");
+    }
+
+    /**
+     * ⭐⭐ The same three one-side cases on the <b>hashed</b> arm ({@code KeyHashing.KeyMatcher},
+     * reached through {@link DatasetLookup}). Until 2026-09-25 this arm answered <i>no match</i>
+     * for a one-side-absent component — the one row of {@code JKM R7} that was implemented on the
+     * expander arm only, reverted here by the E4 non-harm review because a {@code Child: true}
+     * entry then also reached this arm. {@code PLAN-hashed-join-arm-absent-columns} (option A)
+     * removed that lookup and landed the rule here in the same change.
+     *
+     * <p>
+     * ⚠ No shipped entry reaches this arm any more (every non-expandable keyed entry in both
+     * corpora is {@code Child: true}), so no corpus scenario and no findings snapshot can see these
+     * cases. These tests ARE the instrument; the falsifier in each message is the pre-fix answer.
+     * </p>
+     */
+    @Nested
+    class TheHashedArm
+    {
+
+        private DatasetLookup lookupOver(IDataTable joined, List<String> keys)
+        {
+            DatasetLookup lk = DatasetLookup.build(AE, joined, keys);
+            assertNotNull(lk, "a keyed lookup over a non-null table must be built");
+            return lk;
+        }
+
+
+        /** Absent on the PRIMARY side, character: the primary contributes {@code ""}. */
+        @Test
+        void aCharacterKeyColumnAbsentOnThePrimarySideContributesTheEmptyString()
+        {
+            IDataTable dm = MockTable.of().col(USUBJID, "P1", "P1").col("AGE", "34", "51")
+                    .name("DM").build();
+            IDataTable ae = MockTable.of().col(USUBJID, "P1", "P1").col(VISIT, "2", "")
+                    .col("AETERM", "HEADACHE", "NAUSEA").name(AE).build();
+            DatasetLookup lk = lookupOver(ae, List.of(USUBJID, VISIT));
+            assertTrue(lk.matchedRow(dm, 0L) && lk.matchedRow(dm, 1L),
+                    "R7 on the hashed arm: the absent VISITNUM contributes \"\" on the primary"
+                            + " side, so both primary rows match the AE row whose VISITNUM is"
+                            + " \"\". Unmatched is the pre-fix guard (`return false`)");
+            assertEquals("NAUSEA", lk.lookup(dm, 0L, "AETERM"),
+                    "and it is THAT row: HEADACHE would mean the component was ignored");
+        }
+
+
+        /** Absent on the PRIMARY side, numeric: the constant is the numeric missing, not "". */
+        @Test
+        void aNumericKeyColumnAbsentOnThePrimarySideContributesTheNumericMissing()
+        {
+            IDataTable dm = MockTable.of().col(USUBJID, "P1", "P1").col("AGE", "34", "51")
+                    .name("DM").build();
+            IDataTable ae = MockTable.of().col(USUBJID, "P1", "P1").colLong(VISIT, 2L, null)
+                    .col("AETERM", "HEADACHE", "NAUSEA").name(AE).build();
+            DatasetLookup lk = lookupOver(ae, List.of(USUBJID, VISIT));
+            assertTrue(lk.matchedRow(dm, 0L),
+                    "R7: an absent NUMERIC column contributes a MissingValue, which pairs the"
+                            + " missing numeric cell. Unmatched is the pre-fix guard");
+            assertEquals("NAUSEA", lk.lookup(dm, 0L, "AETERM"),
+                    "HEADACHE would mean the absent side keyed as the present 2");
+        }
+
+
+        /**
+         * ⭐ Absent on the JOINED side — the shape of the two {@code AE} Child entries the plan
+         * measured ({@code [n, -1, -1]} on the joined side): a primary row whose present value is
+         * {@code ""} pairs the joined side's {@code ""}; a primary row holding a value does not.
+         */
+        @Test
+        void aCharacterKeyColumnAbsentOnTheJoinedSidePairsOnlyTheEmptyPrimaryCell()
+        {
+            IDataTable suppae = MockTable.of().col(USUBJID, "P1", "P1").col("IDVAR", "AESEQ", "")
+                    .name("SUPPAE").build();
+            IDataTable ae = MockTable.of().col(USUBJID, "P1").col("AETERM", "HEADACHE").name(AE)
+                    .build();
+            DatasetLookup lk = lookupOver(ae, List.of(USUBJID, "IDVAR"));
+            assertFalse(lk.matchedRow(suppae, 0L),
+                    "IDVAR=AESEQ against the joined side's \"\" is a mismatch — matched would"
+                            + " mean the absent component was dropped instead of defaulted");
+            assertTrue(lk.matchedRow(suppae, 1L),
+                    "IDVAR=\"\" against the joined side's \"\" is a match — unmatched is the"
+                            + " pre-fix guard");
+            assertEquals("HEADACHE", lk.lookup(suppae, 1L, "AETERM"));
+        }
+
+
+        /**
+         * Both-absent still leaves the key (unchanged behaviour; the control for the arm above).
+         */
+        @Test
+        void aKeyColumnAbsentOnBothSidesStillLeavesTheKey()
+        {
+            IDataTable dm = MockTable.of().col(USUBJID, "P1", "P2").col("AGE", "34", "51")
+                    .name("DM").build();
+            IDataTable ae = MockTable.of().col(USUBJID, "P2", "P1")
+                    .col("AETERM", "NAUSEA", "HEADACHE").name(AE).build();
+            DatasetLookup lk = lookupOver(ae, List.of(USUBJID, VISIT));
+            assertEquals("HEADACHE", lk.lookup(dm, 0L, "AETERM"));
+            assertEquals("NAUSEA", lk.lookup(dm, 1L, "AETERM"));
+        }
     }
 }

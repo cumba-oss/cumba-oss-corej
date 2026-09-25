@@ -2,9 +2,12 @@ package net.cumba.corej.core.exec;
 
 import java.util.List;
 import java.util.Objects;
+import net.cumba.corej.core.exec.GroupKeyPolicy.KeyPart;
+import net.cumba.corej.core.expr.eval.ColumnTypeGate;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.view.HashLookup;
+import net.cumba.datatable.values.DataValueType;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -104,7 +107,7 @@ final class KeyHashing
                 h = 31 * h; // absent column: the blank sentinel, same as any blank cell
                 continue;
             }
-            GroupKeyPolicy.KeyPart part = GroupKeyPolicy.KEEP_MISSING_KEYS
+            KeyPart part = GroupKeyPolicy.KEEP_MISSING_KEYS
                     .keyPart(table.getColumn(colId).getDataValue(row));
             h = 31 * h + (part.present() ? part.hashCode() : 0);
         }
@@ -133,7 +136,7 @@ final class KeyHashing
                 h = 31 * h; // absent column: the blank sentinel, same as any blank cell
                 continue;
             }
-            GroupKeyPolicy.KeyPart part = reader.read(row);
+            KeyPart part = reader.read(row);
             h = 31 * h + (part.present() ? part.hashCode() : 0);
         }
         return h != 0 ? h : 1;
@@ -141,8 +144,10 @@ final class KeyHashing
 
     /**
      * {@link HashLookup.BiRowMatcher} that compares key column values across two tables, tolerating
-     * missing columns ({@code -1} in either {@code colIds}). A column missing on both sides is
-     * considered equal at that position; a column missing on only one side is unequal.
+     * missing columns ({@code -1} in either {@code colIds}) under {@code JKM R7}: a column absent
+     * on <b>both</b> sides leaves the key at that position; a column absent on <b>one</b> side
+     * contributes the other side's <b>type default</b> ({@code ""} for a character column, the
+     * numeric missing {@code MIS} for a numeric one) and is compared like any other component.
      * <p>
      * A single instance can be reused across all probes in a loop — the matcher itself holds no
      * per-probe state.
@@ -155,19 +160,83 @@ final class KeyHashing
 
         private final @Nullable KeyCellReader[] readers2;
 
+        /**
+         * Per component, what an absent side contributes when the OTHER side has the column
+         * ({@code JKM R7}'s one-side rule) — {@code null} where both sides have it (the values
+         * compare) or neither does (the component leaves the key).
+         */
+        private final @Nullable KeyPart[] absentPart;
+
         KeyMatcher(IDataTable table1, int[] colIds1, IDataTable table2, int[] colIds2)
         {
             // Phase 3b: the readers are built once per matcher (a matcher serves a whole loop),
             // never per row. They answer exactly the keyPart the per-cell path did.
             readers1 = KeyCellReader.of(table1, colIds1);
             readers2 = KeyCellReader.of(table2, colIds2);
+            absentPart = absentParts(table1, colIds1, table2, colIds2);
+        }
+
+
+        /**
+         * {@code JKM R7}, the one-side rule, decided once per matcher: the present side's declared
+         * type decides what the absent side contributes — the same classification
+         * {@code KeyMatchRowExpander.keySpec} makes for the expander arm, through the one home of
+         * the numeric question ({@link ColumnTypeGate#kindOf}). A character column's default is the
+         * empty string (a PRESENT value, D34 #1); a numeric column's is a {@code MissingValue},
+         * since a numeric cell cannot hold {@code ""}. Under {@code JKM R5} that constant pairs
+         * exactly the rows whose present side holds it — {@code ""} joins {@code ""}, {@code MIS}
+         * joins {@code MIS} and no other marker.
+         *
+         * <p>
+         * ⭐ <b>Why the hash needs no change for this.</b> {@link #computeKeyHashSafe} folds an
+         * absent column as {@code 31 * h} and a non-{@code present()} part — {@code Empty} and
+         * every {@code Missing} — as {@code 31 * h + 0}: the same contribution. So the probe from
+         * the absent side already lands in the bucket of the rows this arm now matches; before it,
+         * the matcher refused them there.
+         * </p>
+         *
+         * <p>
+         * ⚑ <b>History, kept because the omission was deliberate.</b> This arm was implemented on
+         * 2026-09-21, measured, and REVERTED by {@code PLAN-join-key-missing-semantics}' non-harm
+         * review: a {@code Child: true} entry then ALSO reached {@link DatasetLookup} with a direct
+         * keyed lookup on {@code [USUBJID, IDVAR, IDVARVAL]}, and on the two entries whose joined
+         * side lacked {@code IDVAR}/{@code IDVARVAL} this arm would have paired subject-level rows
+         * nobody asked to pair. {@code PLAN-hashed-join-arm-absent-columns} (owner, 2026-09-25,
+         * option A) removed that lookup — a Child entry is joined only through its pointer, by
+         * {@code ChildMatchPreMerger} — and landed this arm in the same change. ⚠ The comment that
+         * stood here in between over-claimed: <i>"matched NOTHING, ever"</i> was true of 2 of the
+         * 11 entries, and <i>"{@code _matched_} would flip on 5 shipped rules"</i> of 0 — the flag
+         * on a Child entry has been a stage-A load error all along (phase 1 findings, §6).
+         * </p>
+         */
+        private static @Nullable KeyPart[] absentParts(IDataTable table1, int[] colIds1,
+                IDataTable table2, int[] colIds2)
+        {
+            @Nullable
+            KeyPart[] parts = new KeyPart[colIds1.length];
+            for (int i = 0; i < colIds1.length; i++)
+            {
+                boolean in1 = colIds1[i] >= 0;
+                boolean in2 = colIds2[i] >= 0;
+                if (in1 == in2)
+                {
+                    continue; // both present: the values compare; both absent: the component leaves
+                }
+                DataValueType type = in1 ? table1.getMetaData().getColumn(colIds1[i]).getType()
+                        : table2.getMetaData().getColumn(colIds2[i]).getType();
+                parts[i] = ColumnTypeGate.kindOf(type) == ColumnTypeGate.Kind.NUMERIC
+                        ? KeyPart.MISSING_MIS
+                        : KeyPart.EMPTY;
+            }
+            return parts;
         }
 
 
         /**
          * Whether two rows' keys are equal, component by component, as
          * {@link GroupKeyPolicy.KeyPart}s read through {@link KeyCellReader} (exactly
-         * {@code KEEP_MISSING_KEYS.keyPart} of each cell).
+         * {@code KEEP_MISSING_KEYS.keyPart} of each cell), an absent side reading its
+         * {@link #absentParts type default}.
          *
          * <p>
          * ⭐⭐ <b>{@code JKM R5} — why this is not {@code Objects.equals} on the raw value.</b> This
@@ -181,17 +250,6 @@ final class KeyHashing
          * {@link net.cumba.datatable.values.MissingValue}. Routing through
          * {@link GroupKeyPolicy#keyPart} makes the comparison the ruled one, by construction.
          * </p>
-         *
-         * <p>
-         * ⚠ <b>The value comparison is only reached for a component present on BOTH sides.</b> The
-         * two arms above it settle both-absent (the component leaves the key, {@code JKM R7}) and
-         * one-side-absent (no match, pending the plan's D7) first, which is why the comparison
-         * needs no knowledge of the other side's type. An earlier version took the other side's
-         * table/column to derive an absent side's type default; that arm went with R7's one-side
-         * rule when the non-harm review reverted it, and its {@code DOUBLE || LONG} predicate went
-         * too — leaving that classification in ONE place ({@code KeyMatchRowExpander.isNumeric})
-         * rather than two copies to keep in step.
-         * </p>
          */
         @Override
         public boolean matches(int row1, int row2)
@@ -203,43 +261,15 @@ final class KeyHashing
                 if (r1 == null && r2 == null)
                 {
                     // JKM R7: absent on BOTH sides -> the component leaves the key. Both sides
-                    // would
-                    // carry the same constant, so it cannot discriminate. ⭐ This site already
+                    // would carry the same constant, so it cannot discriminate. ⭐ This site already
                     // implemented that when the other builder did not.
                     continue;
                 }
-                if (r1 == null || r2 == null)
-                {
-                    // ⛔⛔ R7's ONE-SIDE-absent rule is deliberately NOT implemented here, and this
-                    // is not an oversight — it was implemented, measured, and REVERTED by the
-                    // plan's
-                    // own non-harm review (2026-09-21).
-                    //
-                    // R7 says an absent column contributes the other side's type default and
-                    // participates. Doing that HERE has a consequence R7 does not authorise: per
-                    // the
-                    // plan's D7, a `Child: true` entry ALSO gets a DatasetLookup built on
-                    // [USUBJID, IDVAR, IDVARVAL] against a primary (AE, DM…) that has neither IDVAR
-                    // nor IDVARVAL. That parasitic lookup matched NOTHING, ever, precisely because
-                    // of
-                    // this guard. With R7 applied, the primary's absent side contributes EMPTY and
-                    // a
-                    // subject-level CO comment or SUPPDM record — whose IDVAR/IDVARVAL are "" by
-                    // the
-                    // SDTM shape — also yields EMPTY, so it MATCHES: `_matched_` would flip false
-                    // ->
-                    // true on 5 shipped rules, and a dotted read would start answering the CO/SUPP
-                    // row's values instead of the absent-column default.
-                    //
-                    // D7 is bucket (4) of the plan's scope — "STILL UNDECIDED, deliberately".
-                    // Trading
-                    // one unruled wrong answer for a different unruled wrong answer is not this
-                    // plan's authorisation. ⇒ the conservative answer stays until D7 is ruled, and
-                    // R7's one-side rule lives on the expander arm (196 entries) where no parasite
-                    // rides along.
-                    return false;
-                }
-                if (!Objects.equals(r1.read(row1), r2.read(row2)))
+                // JKM R7: absent on ONE side -> that side contributes the other side's type
+                // default (absentPart, non-null exactly here) and the component is compared.
+                KeyPart p1 = r1 == null ? absentPart[i] : r1.read(row1);
+                KeyPart p2 = r2 == null ? absentPart[i] : r2.read(row2);
+                if (!Objects.equals(p1, p2))
                 {
                     return false;
                 }
