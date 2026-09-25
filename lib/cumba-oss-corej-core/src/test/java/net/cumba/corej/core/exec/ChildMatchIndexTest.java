@@ -37,6 +37,24 @@ class ChildMatchIndexTest
 
 
     @Test
+    void numericParentTokenIsThePlainCellText()
+    {
+        // B-MED-1 (PLAN-numeric-cleaning-and-key-text review): the coerced token is written into
+        // the merged IDVARVAL and compared as TEXT against the parent cell
+        // (`str(IDVARVAL) != str(colref(IDVAR))`, CDISC-CG0371 / FDA-SD0077 / PMDA-SD0077), so it
+        // must spell the way DataValueDouble.getValueAsString spells: plain, never scientific.
+        assertEquals("12345678.5", ChildMatchIndex.normalizeJoinToken("12345678.5", true),
+                "Double.toString would say \"1.23456785E7\" and the rule fires falsely");
+        assertEquals("0.0005", ChildMatchIndex.normalizeJoinToken("0.0005", true),
+                "Double.toString would say \"5.0E-4\"");
+        assertEquals("0.0005", ChildMatchIndex.normalizeJoinToken("5.0E-4", true),
+                "symmetric: a scientific token folds onto the same plain text");
+        assertEquals("100000000000000000000", ChildMatchIndex.normalizeJoinToken("1e20", true),
+                "no long saturation");
+    }
+
+
+    @Test
     void numericParentNonNumericTokenIsStrippedOnly()
     {
         assertEquals("ABC", ChildMatchIndex.normalizeJoinToken("  ABC  ", true));

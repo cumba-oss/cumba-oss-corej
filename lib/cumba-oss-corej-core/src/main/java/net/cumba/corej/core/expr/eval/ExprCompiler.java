@@ -4124,8 +4124,8 @@ public final class ExprCompiler
             int rc = run.rowCount();
             // Shape 4 (PLAN-joined-column-typing): the CELLS carry the joined column's real type,
             // so a substituted dotted operand (ADSL.AP${APERIOD:%02d}SDT and friends -- 44 Check
-            // occurrences across 33 rules, ADaM numeric dates among them) stops being rounded to
-            // 12 significant digits on its way through getValueAsString().
+            // occurrences across 33 rules, ADaM numeric dates among them) stops having its
+            // noise folded on its way through getValueAsString().
             //
             // ⚠ The DECLARED type stays STRING on purpose. This operand resolves its column name
             // PER ROW, so different rows can resolve to different columns with different types and
@@ -6274,7 +6274,10 @@ public final class ExprCompiler
      * render as {@code "Infinity"}/{@code "-Infinity"}. This is intentionally NOT
      * {@code DataValueDouble.getValueAsString()} — that cleans noise first, and a literal is what
      * the author wrote — but it shares that text's <em>notation</em>, so a cell and a literal of
-     * the same value render alike and a match between them is never lost to the spelling.
+     * the same value render alike <b>outside the ruled noise</b>: a noisy cell
+     * {@code 4.9999999999994} renders {@code "5"} against a literal {@code "4.9999999999994"} (and
+     * against a raw {@code IDVARVAL}/{@code QVAL} text in a text join) — the cleaning is the
+     * cell's, by ruling E7, never the literal's.
      */
     public static String canonicalNumberText(Number n)
     {

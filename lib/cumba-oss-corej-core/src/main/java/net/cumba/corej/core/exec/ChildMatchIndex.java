@@ -9,6 +9,7 @@ import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.impl.view.HashLookup;
+import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
@@ -316,10 +317,16 @@ final class ChildMatchIndex
      * &rarr; {@code "1"}) and the child's {@code IDVARVAL} value (which can carry SAS padding, e.g.
      * {@code "       1"}, or a float rendering such as {@code "1.0"}) compare equal. Mirrors
      * Python's {@code dataset_preprocessor} coercion of the child IDVARVAL to the parent key's
-     * type: a numeric token is canonicalized (integral &rarr; {@code "1"}, matching
-     * {@code DataValueDouble}; non-integral &rarr; {@code "1.5"}); a non-numeric token is returned
-     * stripped. Applied only to the two IDVAR-join arrays, so the hash and every matcher
-     * ({@code ProbeMatcher} / {@code scanFallback} / {@code SelfMatcher}) stay byte-consistent.
+     * type: a numeric token is canonicalized to {@link DataValueSupport#toPlainNumberText(double)}
+     * — the notation of the parent cell's own text (integral &rarr; {@code "1"}, non-integral
+     * &rarr; {@code "1.5"}, {@code "12345678.5"} stays plain, never {@code "1.23456785E7"}); a
+     * non-numeric token is returned stripped. Applied to BOTH IDVAR-join arrays, so the hash and
+     * every matcher ({@code ProbeMatcher} / {@code scanFallback} / {@code SelfMatcher}) stay
+     * byte-consistent — and, because the coerced token is exposed as the merged {@code IDVARVAL}
+     * and compared as text against the parent cell ({@code str(IDVARVAL) != str(colref(IDVAR))},
+     * CDISC-CG0371 / FDA-SD0077 / PMDA-SD0077), the token must spell exactly like that cell. ⚠ A
+     * LONG beyond {@code 2^53} still coerces through the double (the same class as the RELREC
+     * {@code normKey} fold, filed with PLAN-numeric-cleaning-and-key-text).
      *
      * @param raw
      *            the raw join token, or {@code null}
@@ -343,12 +350,7 @@ final class ChildMatchIndex
         }
         try
         {
-            double d = Double.parseDouble(t);
-            if (Double.isFinite(d) && d == Math.floor(d) && Math.abs(d) < 9.007199254740992E15)
-            {
-                return Long.toString((long) d);
-            }
-            return Double.toString(d);
+            return DataValueSupport.toPlainNumberText(Double.parseDouble(t));
         }
         catch (NumberFormatException _)
         {

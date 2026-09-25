@@ -75,7 +75,8 @@ class CanonicalNumberTextTest
         assertNotEquals("9223372036854775807", max, "the legacy (long) cast saturated here");
         assertEquals(309, max.length());
         assertFalse(max.contains("E"), max);
-        assertEquals(DataValueSupport.toPlainNumberText(Double.MIN_VALUE),
+        // 4.9E-324 written out: "0." then 323 zeros then "49" -- a literal, not the method
+        assertEquals("0." + "0".repeat(323) + "49",
                 ExprCompiler.canonicalNumberText(Double.MIN_VALUE));
     }
 

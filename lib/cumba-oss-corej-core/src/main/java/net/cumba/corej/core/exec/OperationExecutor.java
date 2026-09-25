@@ -1665,7 +1665,12 @@ public final class OperationExecutor
                 boolean member = false;
                 for (Object m : members)
                 {
-                    if (m != null && colValue.equals(m.toString()))
+                    // a numeric member spells like the cell (plain, no ".0"), as the scalar
+                    // branch below does
+                    String term = m instanceof Number n
+                            ? DataValueSupport.toPlainNumberText(n.doubleValue())
+                            : m == null ? null : m.toString();
+                    if (term != null && term.equals(colValue))
                     {
                         member = true;
                         break;

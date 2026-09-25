@@ -792,6 +792,47 @@ class ChildMatchPreMergerTest
     }
 
 
+    /**
+     * B-MED-1 (PLAN-numeric-cleaning-and-key-text review): the CDISC-CG0371 shape. The merged
+     * {@code IDVARVAL} is the coerced join token, and the rule compares it as TEXT against the
+     * parent's {@code IDVAR}-named cell. A DOUBLE parent {@code AESEQ 12345678.5} renders
+     * {@code "12345678.5"}; the token used to be {@code Double.toString}'s {@code "1.23456785E7"},
+     * so the rule fired on a matched, correct row. Both must spell alike.
+     */
+    @Test
+    void preMerge_coercedIdvarval_spellsLikeTheParentCell()
+    {
+        IDataTable primary = TableFixture.of("SUPPAE")//
+                .str("STUDYID", "S1", "S1").str("USUBJID", "U1", "U1")//
+                .str("IDVAR", "AESEQ", "AESEQ").str("IDVARVAL", "12345678.5", "0.0005")//
+                .str("RDOMAIN", "AE", "AE")//
+                .build();
+        IDataTable parent = TableFixture.of("AE")//
+                .str("STUDYID", "S1", "S1").str("USUBJID", "U1", "U1")//
+                .dbl("AESEQ", 12345678.5, 0.0005).str("AETERM", "big", "small")//
+                .build();
+
+        IDataTable merged = ChildMatchPreMerger.preMerge(primary, List.of(md("AE", true)),
+                resolver("AE", parent), "CDISC-CG0371", null);
+        DataTableMeta meta = merged.getMetaData();
+        int idvarval = meta.getColumnIndex("IDVARVAL");
+        int aeseq = meta.getColumnIndex("AESEQ");
+        int aeterm = meta.getColumnIndex("AETERM");
+        assertTrue(aeterm >= 0 && aeseq >= 0, "the rows must have matched their parent");
+        for (int r = 0; r < 2; r++)
+        {
+            String cell = merged.getColumn(aeseq).getDataValue(r).getValueAsString();
+            String token = merged.getColumn(idvarval).getDataValue(r).getValueAsString();
+            assertEquals(cell, token, "row " + r + ": str(IDVARVAL) != str(colref(IDVAR)) would"
+                    + " fire on a correct row -- the token must spell like the cell");
+        }
+        assertEquals("12345678.5", merged.getColumn(idvarval).getDataValue(0).getValueAsString());
+        assertEquals("0.0005", merged.getColumn(idvarval).getDataValue(1).getValueAsString());
+        assertEquals("big", merged.getColumn(aeterm).getDataValue(0).getValueAsString());
+        assertEquals("small", merged.getColumn(aeterm).getDataValue(1).getValueAsString());
+    }
+
+
     @Test
     void preMerge_numericParentColumn_survivesWithoutPrecisionLoss()
     {

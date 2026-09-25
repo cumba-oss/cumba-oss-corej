@@ -643,11 +643,13 @@ public final class OperandSubstitutor
     private static String rawString(IDataValue dv)
     {
         DataValueType t = dv.getType();
-        if (t == DataValueType.LONG || t == DataValueType.DOUBLE)
+        if (t == DataValueType.DOUBLE)
         {
             // the raw value, not the cleaned cell text: a driver value is substituted as written
             return DataValueSupport.toPlainNumberText(dv.getValueAsDouble());
         }
+        // a LONG's text is its digits (never cleaned); through the double a value beyond 2^53
+        // would lose them
         return dv.getValueAsString();
     }
 

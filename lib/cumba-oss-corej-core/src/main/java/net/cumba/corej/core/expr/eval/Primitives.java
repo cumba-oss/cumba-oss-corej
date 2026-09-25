@@ -275,6 +275,11 @@ public final class Primitives
             return cell.getValueAsString();
         }
         Object payload = target.resolved();
+        if (payload instanceof Number n)
+        {
+            // as canonicalNeedle does: a numeric payload spells like a cell, plain
+            return ExprCompiler.canonicalNumberText(n);
+        }
         return payload == null ? "" : payload.toString();
     }
 

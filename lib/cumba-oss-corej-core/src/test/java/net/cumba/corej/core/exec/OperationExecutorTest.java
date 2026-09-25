@@ -14,8 +14,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.cumba.corej.core.model.Operation;
+import net.cumba.datatable.DataTableColumnMeta;
+import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.impl.CachedDataTableColumn;
+import net.cumba.datatable.impl.ColumnCachedDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.values.DataValueType;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -73,6 +78,45 @@ class OperationExecutorTest
         Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
 
         assertEquals(3L, vars.get("$AE_COUNT"));
+    }
+
+
+    /**
+     * B-MED-2 (PLAN-numeric-cleaning-and-key-text review): a numeric filter literal — scalar or a
+     * LIST member — spells the way the cell does (plain, no {@code .0}), or a genuinely equal value
+     * never matches: {@code String.valueOf(12345678.5)} is {@code "1.23456785E7"} against a cell
+     * reading {@code "12345678.5"}. A REAL DOUBLE column, because a mocked cell renders
+     * {@code raw.toString()} and would hide exactly this.
+     */
+    @Test
+    void testRecordCount_numericFilterLiteralsSpellLikeTheCell()
+    {
+        DataTableMeta meta = DataTableMeta.builder().name("T").setColumns(
+                DataTableColumnMeta.builder().index(0).name("X").type(DataValueType.DOUBLE).build())
+                .rowCount(4).totalRowCount(4).build();
+        CachedDataTableColumn x = new CachedDataTableColumn(0, DataValueType.DOUBLE);
+        for (double v : new double[]
+        {
+                12345678.5, 0.0005, 12.0, 7.25
+        })
+        {
+            x.addElement(v);
+        }
+        x.complete();
+        IDataTable table = new ColumnCachedDataTable(meta, x);
+
+        Operation scalar = makeOp("$BIG", "record_count");
+        scalar.setFilter(Map.of("X", 12345678.5));
+        Operation list = makeOp("$LIST", "record_count");
+        list.setFilter(Map.of("X", List.of(12345678.5, 0.0005)));
+        Operation integral = makeOp("$INT", "record_count");
+        integral.setFilter(Map.of("X", List.of(12.0)));
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(scalar, list, integral),
+                table, NO_RESOLVER);
+
+        assertEquals(1L, vars.get("$BIG"), "scalar literal 12345678.5 must match the cell");
+        assertEquals(2L, vars.get("$LIST"), "list members [12345678.5, 0.0005] must match");
+        assertEquals(1L, vars.get("$INT"), "list member 12.0 must match the cell text \"12\"");
     }
 
 
