@@ -50,14 +50,13 @@ import org.jspecify.annotations.Nullable;
  * <li>{@link RuleSelectionMode#FILTERED} — keep only rules whose CORE id is in
  * {@link #includeRules()} (when non-empty) and not in {@link #excludeRules()}. This is the CLI's
  * behaviour whenever either list is non-empty.</li>
- * <li>{@link RuleSelectionMode#NONE} — select no bundled rules at all (an empty include set after
- * an explicit "none" request); the service treats the filtered result as empty.</li>
  * </ul>
  *
  * <p>
- * For backward compatibility with the CLI, {@link Builder#includeRules(List)} /
- * {@link Builder#excludeRules(List)} implicitly switch the mode to {@code FILTERED} when either is
- * non-empty (unless {@code NONE} was explicitly requested).
+ * The mode is derived, never set: {@link Builder#includeRules(List)} /
+ * {@link Builder#excludeRules(List)} switch it to {@code FILTERED} when either list is non-empty. ⚑
+ * An explicit setter and a third mode, {@code NONE} ("run no bundled rules"), existed until
+ * PLAN-retire-dead-multi-match-lookup U10 (2026-09-25); no product code ever set either.
  * </p>
  */
 public final class StudyValidationParams
@@ -71,10 +70,7 @@ public final class StudyValidationParams
         ALL,
 
         /** Run only rules surviving the include/exclude CORE-id filter. */
-        FILTERED,
-
-        /** Run no bundled rules at all. */
-        NONE
+        FILTERED
     }
 
     private final IDataTableManager manager;
@@ -115,8 +111,6 @@ public final class StudyValidationParams
 
     private final net.cumba.datatable.report.@Nullable Severity severityThreshold;
 
-    private final @Nullable String pickleCacheDir;
-
     private final @Nullable String metadataStore;
 
     private final @Nullable String dictionariesDir;
@@ -131,14 +125,11 @@ public final class StudyValidationParams
 
     private final UnaryOperator<Runnable> taskDecorator;
 
-    private final net.cumba.corej.core.gen.@Nullable DefineXMLProvider defineXmlProvider;
-
     private StudyValidationParams(Builder b)
     {
         manager = b.manager;
         dataLibrary = b.dataLibrary;
         defineXmlPath = b.defineXmlPath;
-        defineXmlProvider = b.defineXmlProvider;
         referenceData = List.copyOf(b.referenceData);
         // ⛔ Plan 2 R5 deleted §1b′ with -s / -v. An omitted --metadata-products is now simply
         // EMPTY here; the selected rule packages' declared standards supply the products, appended
@@ -159,7 +150,6 @@ public final class StudyValidationParams
         ruleThreads = b.ruleThreads;
         maxErrorsPerRule = b.maxErrorsPerRule;
         severityThreshold = b.severityThreshold;
-        pickleCacheDir = b.pickleCacheDir;
         metadataStore = b.metadataStore;
         dictionariesDir = b.dictionariesDir;
         dictionaryVersions = Collections.unmodifiableMap(new LinkedHashMap<>(b.dictionaryVersions));
@@ -195,20 +185,6 @@ public final class StudyValidationParams
     public @Nullable String defineXmlPath()
     {
         return defineXmlPath;
-    }
-
-
-    /**
-     * Optional direct Define-XML provider supplied by the caller. When present, the engine reads
-     * the {@code define_*} operands straight from it (wrapped in a
-     * {@link net.cumba.corej.core.metadata.DefineXmlMetadataProvider}) instead of converting the
-     * Define-XML into the datatable metadata model — the direct-access path for
-     * {@code Define Item Metadata Check against Library Metadata} rules. {@code null} falls back to
-     * the datatable-backed define provider derived from {@link #defineXmlPath()}.
-     */
-    public net.cumba.corej.core.gen.@Nullable DefineXMLProvider defineXmlProvider()
-    {
-        return defineXmlProvider;
     }
 
 
@@ -374,22 +350,6 @@ public final class StudyValidationParams
 
 
     /**
-     * Python pickle metadata cache directory ({@code --pickle-cache}). ⚠ <b>Unread by the engine
-     * since cache 8g</b> — the pickle provider leg this fed is deleted (the unified metadata store
-     * is the one metadata source; seed one from a pickle directory with {@code PickleStoreSeeder}).
-     * The field survives only so pre-P4b callers (the CLI, {@code CoreEngineRunner}) keep compiling
-     * until the P4b lane migrates them onto the store's configuration, exactly as the deleted
-     * {@code cacheDir} did for the API cache. Deliberately NOT {@code @Deprecated}: those callers
-     * build with {@code -Xlint:all} + {@code failOnWarning}, so the annotation would turn this
-     * compile-compatibility shim into the very compile break it exists to avoid.
-     */
-    public @Nullable String pickleCacheDir()
-    {
-        return pickleCacheDir;
-    }
-
-
-    /**
      * The caller's explicit unified-metadata-store file for THIS run (the GUI's
      * {@code Metadata Store} field, a CLI flag), or {@code null} when the caller named none.
      * Carried per-run because it is the <b>top</b> tier of
@@ -502,8 +462,6 @@ public final class StudyValidationParams
 
         private @Nullable String defineXmlPath;
 
-        private net.cumba.corej.core.gen.@Nullable DefineXMLProvider defineXmlProvider;
-
         private List<String> referenceData = new ArrayList<>();
 
         private List<String> metadataProducts = new ArrayList<>();
@@ -517,8 +475,6 @@ public final class StudyValidationParams
         private @Nullable String defineVersion;
 
         private RuleSelectionMode ruleSelectionMode = RuleSelectionMode.ALL;
-
-        private boolean modeExplicit;
 
         private List<String> includeRules = new ArrayList<>();
 
@@ -537,8 +493,6 @@ public final class StudyValidationParams
         private @Nullable Integer maxErrorsPerRule;
 
         private net.cumba.datatable.report.@Nullable Severity severityThreshold;
-
-        private @Nullable String pickleCacheDir;
 
         private @Nullable String metadataStore;
 
@@ -579,18 +533,6 @@ public final class StudyValidationParams
         public Builder defineXmlPath(@Nullable String aDefineXmlPath)
         {
             defineXmlPath = aDefineXmlPath;
-            return this;
-        }
-
-
-        /**
-         * Optional direct Define-XML provider (the ODM-backed direct-access path). When set, the
-         * engine reads {@code define_*} operands from it rather than the datatable metadata model.
-         */
-        public Builder defineXmlProvider(
-                net.cumba.corej.core.gen.@Nullable DefineXMLProvider aDefineXmlProvider)
-        {
-            defineXmlProvider = aDefineXmlProvider;
             return this;
         }
 
@@ -653,19 +595,6 @@ public final class StudyValidationParams
 
 
         /**
-         * Sets the rule-selection mode explicitly. Once set, {@link #includeRules(List)} /
-         * {@link #excludeRules(List)} will not override it (so callers can force {@code NONE} even
-         * with an empty include list, or {@code ALL} while ignoring stray filters).
-         */
-        public Builder ruleSelectionMode(RuleSelectionMode aMode)
-        {
-            ruleSelectionMode = aMode != null ? aMode : RuleSelectionMode.ALL;
-            modeExplicit = true;
-            return this;
-        }
-
-
-        /**
          * Include CORE-id filter ({@code -r}). A non-empty list implicitly switches the mode to
          * {@link RuleSelectionMode#FILTERED} unless the mode was set explicitly. A {@code null}
          * argument clears the list.
@@ -695,7 +624,7 @@ public final class StudyValidationParams
 
         private void maybeSwitchToFiltered()
         {
-            if (!modeExplicit && (!includeRules.isEmpty() || !excludeRules.isEmpty()))
+            if (!includeRules.isEmpty() || !excludeRules.isEmpty())
             {
                 ruleSelectionMode = RuleSelectionMode.FILTERED;
             }
@@ -771,18 +700,6 @@ public final class StudyValidationParams
                 net.cumba.datatable.report.@Nullable Severity aSeverityThreshold)
         {
             severityThreshold = aSeverityThreshold;
-            return this;
-        }
-
-
-        /**
-         * Python pickle metadata cache directory ({@code --pickle-cache}). ⚠ Unread since cache 8g
-         * — see {@link StudyValidationParams#pickleCacheDir()} (and why it is not
-         * {@code @Deprecated}).
-         */
-        public Builder pickleCacheDir(@Nullable String aPickleCacheDir)
-        {
-            pickleCacheDir = aPickleCacheDir;
             return this;
         }
 

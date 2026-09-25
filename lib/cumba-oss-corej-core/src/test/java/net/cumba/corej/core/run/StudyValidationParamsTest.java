@@ -117,23 +117,6 @@ class StudyValidationParamsTest
 
 
     @Test
-    void explicitModeIsNotOverriddenByFilters()
-    {
-        StudyValidationParams p = base().ruleSelectionMode(RuleSelectionMode.NONE)
-                .includeRules(List.of("CORE-1")).build();
-        assertEquals(RuleSelectionMode.NONE, p.ruleSelectionMode());
-    }
-
-
-    @Test
-    void nullModeFallsBackToAll()
-    {
-        StudyValidationParams p = base().ruleSelectionMode(null).build();
-        assertEquals(RuleSelectionMode.ALL, p.ruleSelectionMode());
-    }
-
-
-    @Test
     void nullCollectionArgsClearLists()
     {
         StudyValidationParams p = base().referenceData(null).controlledTerminologyPackages(null)

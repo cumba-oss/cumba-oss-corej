@@ -254,39 +254,30 @@ public final class StudyValidationService
                     : null;
             // Direct Define-XML access (PLAN-define-item-metadata-parity-929-1081): read the
             // define_* operands straight from the parsed Define-XML, bypassing the lossy
-            // ODM -> IMetadataLibrary conversion that drops the codelist ccode / coded codes. An
-            // explicit caller-supplied provider wins; otherwise parse the define.xml path directly.
-            net.cumba.corej.core.gen.DefineXMLProvider direct = params.defineXmlProvider();
+            // ODM -> IMetadataLibrary conversion that drops the codelist ccode / coded codes. (⚑ A
+            // caller-supplied provider could take precedence here until U10 of
+            // PLAN-retire-dead-multi-match-lookup; no caller ever supplied one.)
+            net.cumba.corej.core.gen.DefineXMLProvider direct = parseDefineXmlDirect(
+                    params.defineXmlPath());
             if (direct == null)
             {
-                direct = parseDefineXmlDirect(params.defineXmlPath());
-                if (direct == null)
-                {
-                    defineMetadataBasis = datatableDefine != null
-                            ? "datatable conversion — the Define-XML at " + params.defineXmlPath()
-                                    + " could not be parsed directly; define metadata degraded to"
-                                    + " the lossy ODM→datatable conversion (codelist C-codes and"
-                                    + " coded codes absent) and value-level (VLM) rules were"
-                                    + " SKIPPED"
-                            : "unavailable — the Define-XML at " + params.defineXmlPath()
-                                    + " could not be parsed and no datatable define metadata is"
-                                    + " available; define-dependent rules were SKIPPED";
-                    LOGGER.log(System.Logger.Level.WARNING, "Define metadata basis: {0}",
-                            defineMetadataBasis);
-                }
+                defineMetadataBasis = datatableDefine != null
+                        ? "datatable conversion — the Define-XML at " + params.defineXmlPath()
+                                + " could not be parsed directly; define metadata degraded to"
+                                + " the lossy ODM→datatable conversion (codelist C-codes and"
+                                + " coded codes absent) and value-level (VLM) rules were"
+                                + " SKIPPED"
+                        : "unavailable — the Define-XML at " + params.defineXmlPath()
+                                + " could not be parsed and no datatable define metadata is"
+                                + " available; define-dependent rules were SKIPPED";
+                LOGGER.log(System.Logger.Level.WARNING, "Define metadata basis: {0}",
+                        defineMetadataBasis);
             }
             directDefine = direct;
             defineProvider = direct != null
                     ? new net.cumba.corej.core.metadata.DefineXmlMetadataProvider(direct,
                             datatableDefine)
                     : datatableDefine;
-        }
-        else if (params.defineXmlProvider() != null)
-        {
-            // No define.xml path but an explicit direct provider supplied (e.g. tests / embedding).
-            directDefine = params.defineXmlProvider();
-            defineProvider = new net.cumba.corej.core.metadata.DefineXmlMetadataProvider(
-                    directDefine);
         }
         // Per-record value-level metadata resolver (Value Check against Define XML VLM). Built from
         // the same parsed model as defineProvider; null when no Define-XML (or no ValueListDef) is
@@ -2010,7 +2001,7 @@ public final class StudyValidationService
         try
         {
             out.addAll(net.cumba.corej.core.metadata.pickle.ProductKeyResolver
-                    .resolveAllConfigured(ids, params.pickleCacheDir(), null));
+                    .resolveAllConfigured(ids, null, null));
         }
         catch (IllegalArgumentException e)
         {
@@ -2207,8 +2198,6 @@ public final class StudyValidationService
     {
         switch (params.ruleSelectionMode())
         {
-        case NONE:
-            return List.of();
         case ALL:
             return rules;
         case FILTERED:

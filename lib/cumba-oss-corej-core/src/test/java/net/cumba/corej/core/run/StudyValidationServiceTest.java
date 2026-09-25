@@ -31,7 +31,6 @@ import net.cumba.corej.core.metadata.AdamSubclassDetector;
 import net.cumba.corej.core.metadata.MetadataKeys;
 import net.cumba.corej.core.report.LibraryValidator;
 import net.cumba.corej.core.report.ValidationReportBuilder;
-import net.cumba.corej.core.run.StudyValidationParams.RuleSelectionMode;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.manager.IDataTableLibraryRef;
 import net.cumba.datatable.manager.IDataTableManager;
@@ -658,20 +657,6 @@ class StudyValidationServiceTest
         assertTrue(ex.getMessage().contains("No rule package selected"), ex.getMessage());
         assertTrue(ex.getMessage().contains(emptyRulesDir.toAbsolutePath().toString()),
                 "the message must name the directory searched: " + ex.getMessage());
-    }
-
-
-    @Test
-    void validate_ruleSelectionModeNone_selectsNoRules() throws IOException
-    {
-        IDataTableManager mgr = managerWith(dmTable());
-        Path rulesDir = writeRules("rules-custom-1-0.json", "CORE-X-003");
-        StudyValidationParams params = StudyValidationParams.builder().manager(mgr)
-                .dataLibrary(tempDir.toString()).rulesDir(rulesDir.toString())
-                .ruleSelectionMode(RuleSelectionMode.NONE).rulesPackages(List.of("custom-1-0"))
-                .metadataProducts(CUSTOM_PRODUCT).build();
-        assertThrows(StudyValidationException.class,
-                () -> new StudyValidationService().validate(params));
     }
 
 
