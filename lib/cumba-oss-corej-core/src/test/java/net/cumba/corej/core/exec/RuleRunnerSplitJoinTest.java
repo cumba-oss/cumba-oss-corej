@@ -304,6 +304,57 @@ class RuleRunnerSplitJoinTest
 
 
     /**
+     * ⭐ {@code PLAN-hashed-join-arm-absent-columns} P7 (option A): a Child entry is joined only
+     * through its pointer, so the dataset its {@code Name} names is never resolved for it. A split,
+     * type-clashing {@code CO} beside a {@code CO} Child entry therefore no longer ERRORs a rule
+     * running on SUPPAE — until 2026-09-25 the direct lookup resolved {@code CO} and raised
+     * {@code InvalidJoinedDomainException} for a dataset the rule never read. The parent-side ERROR
+     * (the test above) is the pre-merge's and is untouched.
+     */
+    @Test
+    void typeClashOnTheEntryNamedDataset_noLongerErrorsAChildRule()
+    {
+        IDataTable suppae = RealTables.of("SUPPAE").str("RDOMAIN", "AE").str("USUBJID", "U1")
+                .str("IDVAR", "AESEQ").str("IDVARVAL", "1").build();
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "U1").lng("AESEQ", 1L).build();
+        IDataTable co1 = RealTables.of("co1").str("DOMAIN", "CO").str("USUBJID", "U1")
+                .lng("COSEQ", 1L).build();
+        IDataTable co2 = RealTables.of("co2").str("DOMAIN", "CO").str("USUBJID", "U2")
+                .str("COSEQ", "x").build();
+        MatchDataset co = new MatchDataset();
+        co.setName("CO");
+        co.setChild(true);
+        co.setKeys(List.of("USUBJID", "IDVAR", "IDVARVAL"));
+
+        Rule rule = new Rule();
+        RuleCore core = new RuleCore();
+        core.setId("TEST-CO-CLASH");
+        rule.setCore(core);
+        rule.setScope(new Scope());
+        rule.setSensitivity(Sensitivity.RECORD);
+        Outcome outcome = new Outcome();
+        outcome.setMessage("orphan SUPP row");
+        outcome.setOutputVariables(List.of("USUBJID"));
+        rule.setOutcome(outcome);
+        rule.setMatchDatasets(List.of(co));
+        rule.setCheck(new CheckConditionAll(List.of(expr("not empty(IDVARVAL)"))));
+        RulePackageLoader.installNativeExpr(rule);
+
+        DatasetResolver.WithInventory inv = RealTables.inventoryOf(suppae, ae, co1, co2);
+        // control: the CO split really is un-unionable
+        assertTrue(org.junit.jupiter.api.Assertions
+                .assertThrows(InvalidJoinedDomainException.class,
+                        () -> SplitDomainResolution.resolveTableOrThrow(inv, "CO", "ctl"))
+                .getMessage().contains("COSEQ"));
+        RuleExecutionResult res = RuleRunnerCalls.execute(rule, suppae, inv, null, null);
+        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(),
+                "ERROR would mean the entry-named CO was resolved for the Child entry again: "
+                        + res.getStatusMessage());
+        assertEquals(1, res.getViolations().size());
+    }
+
+
+    /**
      * The joined single-leaf equality shape — {@code <col> != LB.<col>} over a key-based
      * {@code Match_Datasets} — maps {@code InvalidJoinedDomainException} to that rule's own ERROR,
      * with the same sentinel shape as the Child path above.

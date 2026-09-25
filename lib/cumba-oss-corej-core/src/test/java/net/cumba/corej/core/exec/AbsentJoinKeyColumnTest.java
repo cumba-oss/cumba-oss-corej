@@ -9,9 +9,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import net.cumba.corej.core.exec.GroupKeyPolicy.KeyPart;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -286,6 +288,82 @@ class AbsentJoinKeyColumnTest
                     "IDVAR=\"\" against the joined side's \"\" is a match — unmatched is the"
                             + " pre-fix guard");
             assertEquals("HEADACHE", lk.lookup(suppae, 1L, "AETERM"));
+        }
+
+
+        /**
+         * ⭐ {@code JKM R5} inside R7: the absent numeric side contributes exactly {@code MIS}, so
+         * it pairs the {@code MIS} row and neither a {@code MIS_A} nor a {@code MIS_UNKNOWN} row —
+         * identity is exact with markers too (review round 1, L2).
+         */
+        @Test
+        void anAbsentNumericSidePairsMisAndNoOtherMarker()
+        {
+            IDataTable dm = MockTable.of().col(USUBJID, "P1").col("AGE", "34").name("DM").build();
+            // ⚠ A real DOUBLE buffer: MockTable.colDouble renders a payload NaN as the PRESENT text
+            // "MIS_A", which would make this test measure the mock rather than the key identity.
+            IDataTable ae = RealTables.of(AE).str(USUBJID, "P1", "P1", "P1", "P1")
+                    .dbl(VISIT, 2.0, MissingValue.MIS_A.asDouble(),
+                            MissingValue.MIS_UNKNOWN.asDouble(), MissingValue.MIS.asDouble())
+                    .str("AETERM", "PRESENT", "MIS_A", "MIS_UNKNOWN", "MIS").build();
+            // control: the fixture's markers really are distinct key parts
+            assertEquals(KeyPart.MISSING_MIS,
+                    GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(ae.getColumn(1).getDataValue(3L)),
+                    "row 3 must carry MIS");
+            assertEquals(KeyPart.missing(MissingValue.MIS_A),
+                    GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(ae.getColumn(1).getDataValue(1L)),
+                    "row 1 must carry MIS_A");
+            assertEquals(KeyPart.missing(MissingValue.MIS_UNKNOWN),
+                    GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(ae.getColumn(1).getDataValue(2L)),
+                    "row 2 must carry MIS_UNKNOWN");
+            DatasetLookup lk = lookupOver(ae, List.of(USUBJID, VISIT));
+            assertTrue(lk.matchedRow(dm, 0L));
+            assertEquals("MIS", lk.lookup(dm, 0L, "AETERM"),
+                    "R5: the absent side is MIS and MIS joins neither MIS_A nor MIS_UNKNOWN nor a"
+                            + " present value; MIS_A here would mean the marker identity collapsed");
+        }
+
+
+        /**
+         * Absent on the JOINED side, numeric: a missing primary cell pairs, a present one does not.
+         */
+        @Test
+        void aNumericKeyColumnAbsentOnTheJoinedSidePairsOnlyTheMissingPrimaryCell()
+        {
+            IDataTable dm = MockTable.of().col(USUBJID, "P1", "P1").colLong(VISIT, 2L, null)
+                    .name("DM").build();
+            IDataTable ae = MockTable.of().col(USUBJID, "P1").col("AETERM", "HEADACHE").name(AE)
+                    .build();
+            DatasetLookup lk = lookupOver(ae, List.of(USUBJID, VISIT));
+            assertFalse(lk.matchedRow(dm, 0L), "VISITNUM=2 against the joined side's MIS");
+            assertTrue(lk.matchedRow(dm, 1L), "VISITNUM=MIS against the joined side's MIS");
+        }
+
+
+        /**
+         * ⭐ A date key. There is no {@code DATE} in {@code DataValueType} — a date column is a
+         * {@code STRING} column with a format — so {@code ColumnTypeGate.kindOf} classifies it
+         * CHARACTER and both arms default the absent side to {@code ""}; a blank date cell is
+         * {@code KeyPart.EMPTY} on both. Pinned on BOTH arms so the two cannot drift (L2).
+         */
+        @Test
+        void aDateKeyColumnAbsentOnOneSideAgreesOnBothArms()
+        {
+            IDataTable dm = MockTable.of().col(USUBJID, "P1", "P1").col("AGE", "34", "51")
+                    .name("DM").build();
+            IDataTable ae = MockTable.of().col(USUBJID, "P1", "P1").col("AESTDTC", "2024-01-05", "")
+                    .colMeta("AESTDTC", "Start", 10, "E8601DA").col("AETERM", "HEADACHE", "NAUSEA")
+                    .name(AE).build();
+            assertEquals(KeyPart.EMPTY,
+                    GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(ae.getColumn(1).getDataValue(1L)),
+                    "a blank date cell is EMPTY");
+            // hashed arm
+            DatasetLookup lk = lookupOver(ae, List.of(USUBJID, "AESTDTC"));
+            assertEquals("NAUSEA", lk.lookup(dm, 0L, "AETERM"));
+            // expander arm, the same fixture
+            assertEquals(List.of("0:NAUSEA", "1:NAUSEA"),
+                    rows(expand(dm, ae, List.of(USUBJID, "AESTDTC")), "AETERM"),
+                    "the two arms must agree: the absent date side is \"\" on both");
         }
 
 

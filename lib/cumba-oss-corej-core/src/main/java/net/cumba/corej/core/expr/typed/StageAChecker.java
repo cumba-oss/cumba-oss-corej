@@ -33,6 +33,8 @@ import net.cumba.corej.core.expr.typed.ExprType.Primitive;
 import net.cumba.corej.core.expr.typed.ExprType.Unknown;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Operation;
+import net.cumba.corej.core.model.Outcome;
+import net.cumba.corej.core.model.OutputVariableToken;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.report.Severity;
 import org.jspecify.annotations.Nullable;
@@ -1425,6 +1427,9 @@ public final class StageAChecker
         // ⛔ Before the early return, not after: a rule with NO Match_Datasets at all and a dotted
         // operand is the *typical* shape of the authoring error this check exists for.
         checkDottedRefs(roots, matches);
+        // Its own call, not a tail of checkDottedRefs: that check returns early when the Check
+        // has no dotted operand, and CG0043's shape (bare Check, dotted output) is exactly that.
+        checkDottedOutputVariables(matches == null ? List.of() : matches);
         if (matches == null || matches.isEmpty())
         {
             return;
@@ -1783,24 +1788,48 @@ public final class StageAChecker
      * <p>
      * ⭐ And one refusal that is <b>not</b> deferred: a dotted read whose qualifier resolves ({@link
      * #entryFor}) to a {@code Child: true} entry ({@link StageAErrorKind#DOTTED_REF_CHILD_ENTRY},
-     * armed). Owner ruling 2026-09-25: a Child entry is joined only through its pointer and builds
-     * no direct lookup, so the read has nothing to read — the parent's columns are merged in bare.
+     * armed) — a {@code DOTTED_REF} operand, a {@code WILDCARD_COLUMN} operand with a literal
+     * qualifier ({@link #hasLiteralQualifier}), a {@code Bindings} expression, or an {@code
+     * Output_Variables} entry ({@link #checkDottedOutputVariables}). Owner ruling 2026-09-25: a
+     * Child entry is joined only through its pointer and builds no direct lookup, so the read has
+     * nothing to read — the parent's columns are merged in bare.
      * </p>
      */
     private void checkDottedRefs(java.util.Collection<Expr> roots,
             @Nullable List<MatchDataset> matches)
     {
         Set<String> dotted = new LinkedHashSet<>();
+        Set<String> qualifiedWildcards = new LinkedHashSet<>();
         for (Expr root : roots)
         {
-            collectDottedRefs(root, dotted);
+            collectDottedRefs(root, dotted, qualifiedWildcards);
         }
-        collectBindingDottedRefs(dotted);
+        collectBindingDottedRefs(dotted, qualifiedWildcards);
+        List<MatchDataset> entries = matches == null ? List.of() : matches;
+        // ⭐ A WILDCARD_COLUMN operand with a LITERAL qualifier (`AE.**SMIE`, `AE.${X}`) is judged
+        // by the Child arm only. It is not a DOTTED_REF, so the undeclared arm below keeps its
+        // measured population; but ExprCompiler compiles it to a per-row dotted plan that reads
+        // through the joined lookup, and with no lookup built for a Child entry that read is the
+        // not-supplied default on every row — SILENT (measured 2026-09-25: `AE.**SMIE != "Y"` on
+        // a Child entry EXECUTED and fired every row; `"Y" in AE.**SMIE` EXECUTED with none).
+        // Only the `${*}` list-operand shape (`X in AE.AES${*}`) is loud at run time
+        // (ValueResolver's SubstitutionException) — and it is judged here all the same.
+        for (String ref : qualifiedWildcards)
+        {
+            MatchDataset entry = entryFor(ref.substring(0, ref.indexOf('.')), entries);
+            if (entry != null && Boolean.TRUE.equals(entry.getChild()))
+            {
+                find(StageAErrorKind.DOTTED_REF_CHILD_ENTRY, ref + " reads a Child: true entry"
+                        + " — a Child entry is joined only through its pointer (RDOMAIN / IDVAR /"
+                        + " IDVARVAL) and builds no direct lookup, so a qualified wildcard read of"
+                        + " it answers the not-supplied default on every row; the parent row's"
+                        + " columns are merged into the primary and are read bare");
+            }
+        }
         if (dotted.isEmpty())
         {
             return;
         }
-        List<MatchDataset> entries = matches == null ? List.of() : matches;
         boolean templates = anyTemplateEntryName(matches);
         for (String ref : dotted)
         {
@@ -1840,6 +1869,67 @@ public final class StageAChecker
 
 
     /**
+     * Whether a wildcard operand name is qualified by a LITERAL dataset name — {@code AE.**SMIE},
+     * {@code AE.${X}} — as opposed to a substituted or templated qualifier ({@code ${DS}.X},
+     * {@code --.X}), which is bound at run time and cannot be judged here.
+     *
+     * @param name
+     *            the operand name
+     *
+     * @return whether the text before the first {@code .} is a plain identifier
+     */
+    private static boolean hasLiteralQualifier(String name)
+    {
+        int dot = name.indexOf('.');
+        return dot > 0 && name.substring(0, dot).matches("[A-Za-z][A-Za-z0-9_]*");
+    }
+
+
+    /**
+     * The {@code Outcome.Output_Variables} half of the Child arm ({@code
+     * PLAN-hashed-join-arm-absent-columns} review round 1, M2): a dotted output naming a
+     * {@code Child: true} entry is refused at load like a dotted operand. Without this,
+     * {@code CDISC-CG0043} with {@code Output_Variables: [AE.AESMIE]} loaded clean and
+     * {@code RuleRunner}'s violation builder silently dropped the column — no lookup, no value, no
+     * message. The authored list is read with its {@code !X} exclusions applied, so an excluded
+     * name is not judged. A {@code ${...}} or {@code &TOKEN} <b>qualifier</b> is bound at run time
+     * / expansion and skipped here (documented on the kind); a literal qualifier before such a
+     * suffix ({@code AE.${X}}, {@code AE.**TERM}) is judged.
+     *
+     * @param entries
+     *            the rule's {@code Match_Datasets}, never {@code null}
+     */
+    private void checkDottedOutputVariables(List<MatchDataset> entries)
+    {
+        Outcome outcome = rule.getOutcome();
+        for (String name : OutputVariableToken
+                .applyExclusions(outcome == null ? null : outcome.getOutputVariables()))
+        {
+            int dot = name.indexOf('.');
+            if (dot <= 0)
+            {
+                continue;
+            }
+            String qualifier = name.substring(0, dot);
+            if (qualifier.contains("${") || qualifier.contains("&"))
+            {
+                continue; // the qualifier itself is bound at run time / expansion
+            }
+            MatchDataset entry = entryFor(qualifier, entries);
+            if (entry != null && Boolean.TRUE.equals(entry.getChild()))
+            {
+                find(StageAErrorKind.DOTTED_REF_CHILD_ENTRY, "Output_Variables entry " + name
+                        + " reads a Child: true entry — a Child entry is joined only through its"
+                        + " pointer (RDOMAIN / IDVAR / IDVARVAL) and builds no direct lookup, so"
+                        + " the column would be silently omitted from every finding; the parent"
+                        + " row's columns are merged into the primary and are reported bare,"
+                        + " never as " + qualifier + ".<column>");
+            }
+        }
+    }
+
+
+    /**
      * Adds the dotted references of the rule's {@code Bindings} expressions to {@code dotted}. An
      * unparseable expression is skipped for the same reason {@link #referencedBindings} skips one:
      * the loader has its own channel for that, and a parser failure must not become a qualifier
@@ -1848,7 +1938,7 @@ public final class StageAChecker
      * @param dotted
      *            the accumulating set of dotted operand names
      */
-    private void collectBindingDottedRefs(Set<String> dotted)
+    private void collectBindingDottedRefs(Set<String> dotted, Set<String> qualifiedWildcards)
     {
         List<Operation> operations = rule.getOperations();
         if (operations == null)
@@ -1864,7 +1954,8 @@ public final class StageAChecker
             }
             try
             {
-                collectDottedRefs(CheckExpressionParser.parse(expression), dotted);
+                collectDottedRefs(CheckExpressionParser.parse(expression), dotted,
+                        qualifiedWildcards);
             }
             catch (ExpressionException ex)
             {
@@ -1886,17 +1977,17 @@ public final class StageAChecker
      * @param dotted
      *            the accumulating set of dotted operand names
      */
-    private static void collectDottedRefs(Expr e, Set<String> dotted)
+    private static void collectDottedRefs(Expr e, Set<String> dotted, Set<String> wildcards)
     {
         switch (e)
         {
-        case Expr.And a -> a.parts().forEach(p -> collectDottedRefs(p, dotted));
-        case Expr.Or o -> o.parts().forEach(p -> collectDottedRefs(p, dotted));
-        case Expr.Not n -> collectDottedRefs(n.inner(), dotted);
+        case Expr.And a -> a.parts().forEach(p -> collectDottedRefs(p, dotted, wildcards));
+        case Expr.Or o -> o.parts().forEach(p -> collectDottedRefs(p, dotted, wildcards));
+        case Expr.Not n -> collectDottedRefs(n.inner(), dotted, wildcards);
         case Expr.Binary b ->
         {
-            collectDottedRefs(b.left(), dotted);
-            collectDottedRefs(b.right(), dotted);
+            collectDottedRefs(b.left(), dotted, wildcards);
+            collectDottedRefs(b.right(), dotted, wildcards);
         }
         case Expr.Lit lit ->
         {
@@ -1906,7 +1997,7 @@ public final class StageAChecker
                 {
                     if (item instanceof Expr inner)
                     {
-                        collectDottedRefs(inner, dotted);
+                        collectDottedRefs(inner, dotted, wildcards);
                     }
                 }
             }
@@ -1916,6 +2007,11 @@ public final class StageAChecker
             if (r.kind() == net.cumba.corej.core.expr.OperandKind.DOTTED_REF)
             {
                 dotted.add(r.name());
+            }
+            else if (r.kind() == net.cumba.corej.core.expr.OperandKind.WILDCARD_COLUMN
+                    && hasLiteralQualifier(r.name()))
+            {
+                wildcards.add(r.name());
             }
         }
         case Expr.Call c ->
@@ -1935,8 +2031,8 @@ public final class StageAChecker
                 // walk is per-node, so returning skips exactly this call's subtree.
                 return;
             }
-            c.args().forEach(a -> collectDottedRefs(a, dotted));
-            c.kwargs().values().forEach(a -> collectDottedRefs(a, dotted));
+            c.args().forEach(a -> collectDottedRefs(a, dotted, wildcards));
+            c.kwargs().values().forEach(a -> collectDottedRefs(a, dotted, wildcards));
         }
         }
     }

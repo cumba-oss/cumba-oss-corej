@@ -260,4 +260,108 @@ class ChildEntryDirectJoinTest
         assertFalse(r.getViolations().isEmpty(), "the ERROR carries its sentinel violation");
         assertNotNull(r.getViolations().get(0).getValues().get("__error__"));
     }
+
+
+    /**
+     * M2, end to end: {@code CDISC-CG0043} with {@code Output_Variables: [QNAM, AE.AESMIE]} used to
+     * load clean and report findings WITHOUT the column — the direct lookup was gone, so the
+     * violation builder skipped it silently. It is now the same load error as a dotted operand.
+     */
+    @Test
+    void aDottedOutputVariableOfAChildEntryIsRefusedAtLoad()
+    {
+        RuleExecutionResult r = execute(rule("CDISC-CG0043-dotted-output", List.of(child("AE")),
+                "QNAM == \"AESOSP\" and var_exists(\"AESMIE\") and AESMIE != \"Y\"",
+                List.of("QNAM", "AE.AESMIE")), suppae());
+        assertEquals(RuleExecutionStatus.ERROR, r.getStatus(), r.getStatusMessage());
+        String message = String.valueOf(r.getStatusMessage());
+        assertTrue(message.contains("DOTTED_REF_CHILD_ENTRY"), message);
+        assertTrue(message.contains("Output_Variables entry AE.AESMIE"), message);
+    }
+
+
+    /**
+     * A {@code DS.**X} operand is a {@code WILDCARD_COLUMN}, never a {@code DOTTED_REF}. In VALUE
+     * position {@code ExprCompiler} reads it through a per-row dotted plan, which with no lookup
+     * for the Child entry answers the not-supplied default on every row — SILENT, so stage A's
+     * Child arm now judges a literal-qualified wildcard too (M2). Both shapes are refused at load;
+     * the membership shape's run-time {@code SubstitutionException} is pinned as the backstop
+     * below.
+     */
+    @Test
+    void aQualifiedWildcardReadOfAChildEntryIsRefusedAtLoad()
+    {
+        RuleExecutionResult value = execute(rule("PROBE-ae-wildcard-value", List.of(child("AE")),
+                "QNAM == \"AESOSP\" and AE.**SMIE != \"Y\"", List.of("QNAM")), suppae());
+        assertEquals(RuleExecutionStatus.ERROR, value.getStatus(), value.getStatusMessage());
+        assertTrue(String.valueOf(value.getStatusMessage()).contains("DOTTED_REF_CHILD_ENTRY"),
+                value.getStatusMessage());
+        RuleExecutionResult member = execute(rule("PROBE-ae-wildcard-member", List.of(child("AE")),
+                "QNAM == \"AESOSP\" and \"Y\" in AE.**SMIE", List.of("QNAM")), suppae());
+        assertEquals(RuleExecutionStatus.ERROR, member.getStatus(), member.getStatusMessage());
+        assertTrue(String.valueOf(member.getStatusMessage()).contains("DOTTED_REF_CHILD_ENTRY"),
+                member.getStatusMessage());
+        RuleExecutionResult list = execute(rule("PROBE-ae-wildcard-list", List.of(child("AE")),
+                "QNAM == \"AESOSP\" and \"Y\" in AE.AES${*}", List.of("QNAM")), suppae());
+        assertEquals(RuleExecutionStatus.ERROR, list.getStatus(), list.getStatusMessage());
+        assertTrue(String.valueOf(list.getStatusMessage()).contains("DOTTED_REF_CHILD_ENTRY"),
+                list.getStatusMessage());
+    }
+
+
+    /**
+     * The run-time picture for a package that bypasses the loader (the native expression set
+     * directly, stage A never run), measured 2026-09-25 — the reason the load refusal above judges
+     * a literal-qualified wildcard at all: a {@code **} read of the Child entry is SILENT in both
+     * positions (value: the not-supplied default on every row, a flood; membership: an empty set,
+     * no finding), and only the {@code ${*}} list-operand shape is loud, through
+     * {@code ValueResolver}'s {@code SubstitutionException}. ⚠ Review round 1 had assumed the
+     * {@code **} shape shared that loudness; it does not.
+     */
+    @Test
+    void withoutStageAOnlyTheListWildcardIsLoud()
+    {
+        RuleExecutionResult value = execute(uncheckedRule("PROBE-ae-wildcard-value-raw",
+                "QNAM == \"AESOSP\" and AE.**SMIE != \"Y\""), suppae());
+        assertEquals(RuleExecutionStatus.EXECUTED, value.getStatus(), value.getStatusMessage());
+        assertEquals(3, value.getViolations().size(),
+                "the not-supplied default on every row: \"\" != \"Y\" fires all three SUPPAE"
+                        + " rows — the silent flood only the load refusal prevents");
+
+        RuleExecutionResult member = execute(uncheckedRule("PROBE-ae-wildcard-member-raw",
+                "QNAM == \"AESOSP\" and \"Y\" in AE.**SMIE"), suppae());
+        assertEquals(RuleExecutionStatus.EXECUTED, member.getStatus(), member.getStatusMessage());
+        assertEquals(0, member.getViolations().size(),
+                "membership over a ** read of the Child entry is an empty set on every row — a"
+                        + " silent no-finding, not a SubstitutionException");
+
+        Rule list = uncheckedRule("PROBE-ae-wildcard-list-raw",
+                "QNAM == \"AESOSP\" and \"Y\" in AE.AES${*}");
+        var thrown = org.junit.jupiter.api.Assertions.assertThrows(
+                OperandSubstitutor.SubstitutionException.class, () -> execute(list, suppae()),
+                "the ${*} list operand is the one shape ValueResolver refuses without a lookup");
+        assertTrue(String.valueOf(thrown.getMessage()).contains("foreign dataset `AE`"),
+                thrown.getMessage());
+    }
+
+
+    /** A Child-entry rule with its native expression set directly, so stage A never runs. */
+    private static Rule uncheckedRule(String id, String check)
+    {
+        Rule rule = new Rule();
+        RuleCore core = new RuleCore();
+        core.setId(id);
+        rule.setCore(core);
+        rule.setScope(new Scope());
+        rule.setSensitivity(Sensitivity.RECORD);
+        Outcome outcome = new Outcome();
+        outcome.setMessage("probe");
+        outcome.setOutputVariables(List.of("QNAM"));
+        rule.setOutcome(outcome);
+        rule.setMatchDatasets(List.of(child("AE")));
+        rule.setCheck(new CheckConditionAll(
+                List.of(new CheckConditionExpression(CheckExpressionParser.parse(check), check))));
+        rule.setCheckExpr(CheckExpressionParser.parse(check));
+        return rule;
+    }
 }

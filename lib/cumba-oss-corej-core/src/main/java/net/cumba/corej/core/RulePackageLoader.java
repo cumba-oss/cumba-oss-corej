@@ -3758,6 +3758,8 @@ public class RulePackageLoader
         checkCheckLevels(rule, errors);
         checkJoinTypes(rule, errors);
         checkJoinAsString(rule, errors);
+        checkKeepMissingsOnUngovernedEntry(rule, errors);
+        checkChildEntryNames(rule, errors);
         checkSidedKeys(rule, errors);
         checkStudySensitivityScope(rule, errors);
         // Gate 3a (the Python one-frame-per-rule compatibility warning) is gone — phase 2 of
@@ -5191,6 +5193,136 @@ public class RulePackageLoader
                     + "' — expected the boolean true or false, unquoted");
         }
         checkJoinAsStringOnExcludedEntry(rule, matches, errors);
+    }
+
+
+    /**
+     * Tags a {@code keep_missings} authored on an entry the ordinary keyed join does not serve —
+     * {@code Child:true} / {@code RELREC} / {@code SUPP--} / {@code SQ*}, a nameless entry, a
+     * keyless one ({@code PLAN-hashed-join-arm-absent-columns} review round 1, M1; the sibling of
+     * {@link #checkJoinAsStringOnExcludedEntry}, on the same predicate).
+     *
+     * <p>
+     * ⭐⭐ <b>A load error, not silence.</b> The flag is read at exactly one site,
+     * {@code KeyMatchRowExpander.keySpec}, reached only through {@code expandableEntries} — i.e.
+     * only for an entry {@link net.cumba.corej.core.exec.JoinKeyTypes#governedByKeyTypeCheck}
+     * admits. The text-carried family's own merge ({@code ChildMatchPreMerger},
+     * {@code RelrecRowExpander}) and the hashed {@code DatasetLookup} the remaining keyed non-Child
+     * shapes reach KEEP a blank key unconditionally ({@code JKM R4}'s default) and never consult
+     * the flag — and since {@code JKM R7}'s one-side rule landed on the hashed arm too, an absent
+     * key column there is present-but-blank on every row, exactly the rows an authored
+     * {@code false} claims to drop. An author who writes the flag there believes they have chosen
+     * DROP and has not.
+     * </p>
+     *
+     * <p>
+     * ⚑ Strictness is free: <b>zero</b> {@code Match_Datasets} entries in either corpus author
+     * {@code keep_missings} (measured 2026-09-25).
+     * </p>
+     *
+     * @param rule
+     *            the rule to check.
+     * @param errors
+     *            the collector to append to.
+     */
+    private static void checkKeepMissingsOnUngovernedEntry(Rule rule, List<String> errors)
+    {
+        List<net.cumba.corej.core.model.MatchDataset> matches = rule.getMatchDatasets();
+        if (matches == null)
+        {
+            return;
+        }
+        for (net.cumba.corej.core.model.MatchDataset md : matches)
+        {
+            if (md == null || md.getKeepMissings() == null
+                    || net.cumba.corej.core.exec.JoinKeyTypes.governedByKeyTypeCheck(md))
+            {
+                continue;
+            }
+            errors.add("[" + ruleId(rule)
+                    + "] keep_missings has no effect on Match_Datasets entry '" + md.getName()
+                    + "' — " + ungovernedWhy(md) + "; only the ordinary keyed join"
+                    + " reads it, and every other join path keeps a blank key (JKM R4). Remove it.");
+        }
+    }
+
+
+    /**
+     * Why an entry is outside the ordinary keyed join — shared by the two "has no effect" gates so
+     * their messages blame the same half of the entry. ⚠ THREE reasons, not two: a NAMELESS entry
+     * also satisfies {@code excludedFromKeyTypeCheck} (its {@code name == null} clause), so a
+     * two-way ternary blamed the Child/RELREC/SUPP family for an entry that is none of them.
+     *
+     * @param md
+     *            an entry {@code governedByKeyTypeCheck} rejects.
+     * @return the reason, as a clause.
+     */
+    private static String ungovernedWhy(net.cumba.corej.core.model.MatchDataset md)
+    {
+        if (md.getName() == null)
+        {
+            return "the entry has no Name, so nothing resolves a joined dataset for it";
+        }
+        if (net.cumba.corej.core.exec.JoinKeyTypes.excludedFromKeyTypeCheck(md))
+        {
+            return "Child / RELREC / SUPP-- entries match a text-carried foreign key against a"
+                    + " typed column by design and are not subject to join-key type identity";
+        }
+        return "the entry declares no Keys, so it builds no key comparison at all";
+    }
+
+
+    /**
+     * Tags a {@code Child: true} entry whose {@code Name} is not a concrete dataset name and not a
+     * {@code --}-affixed template such as {@code SUPP--} — a {@code *}, {@code ${...}} or
+     * {@code &TOKEN} name, or a bare {@code --} ({@code PLAN-hashed-join-arm-absent-columns} review
+     * round 1, L1).
+     *
+     * <p>
+     * A Child entry's name is never resolved to a joined dataset — the pointer join finds the
+     * parent per row from {@code RDOMAIN} or the {@code SUPP} prefix. The name is read by exactly
+     * two consumers, and neither can bind those shapes: {@code ChildMatchPreMerger} selects the
+     * entry whose name equals the primary's, and {@code StageAChecker.entryFor} resolves a dotted
+     * qualifier to it exactly or as an instance of its {@code --} template. Any other spelling is
+     * an entry no check can ever name and no merge can ever select by name — a load error, so the
+     * author learns it now rather than from a silently unselected entry. Zero carriers in either
+     * corpus (the 11 Child entries are {@code AE}, {@code CO}, {@code RELREC}, {@code SUPP--}).
+     * </p>
+     *
+     * @param rule
+     *            the rule to check.
+     * @param errors
+     *            the collector to append to.
+     */
+    private static void checkChildEntryNames(Rule rule, List<String> errors)
+    {
+        List<net.cumba.corej.core.model.MatchDataset> matches = rule.getMatchDatasets();
+        if (matches == null)
+        {
+            return;
+        }
+        for (net.cumba.corej.core.model.MatchDataset md : matches)
+        {
+            if (md == null || !Boolean.TRUE.equals(md.getChild()))
+            {
+                continue;
+            }
+            String name = md.getName();
+            if (name == null)
+            {
+                continue; // a nameless entry is the nameless-entry gate's business, not this one's
+            }
+            boolean bareTemplate = "--".equals(name);
+            if (bareTemplate || name.contains("*") || name.contains("${") || name.contains("&"))
+            {
+                errors.add("[" + ruleId(rule) + "] Child: true Match_Datasets entry '" + name
+                        + "' must name a concrete dataset or a --affixed template such as SUPP--"
+                        + " — a Child entry is joined only through its pointer (RDOMAIN / IDVAR /"
+                        + " IDVARVAL); its name selects the child-side keys and answers the"
+                        + " stage-A qualifier checks, and neither can bind a `*`, `${}`, `&` or"
+                        + " bare `--` name");
+            }
+        }
     }
 
 

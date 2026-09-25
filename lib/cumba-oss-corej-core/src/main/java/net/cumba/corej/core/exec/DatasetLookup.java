@@ -429,8 +429,12 @@ public class DatasetLookup implements JoinLookup
      * omission here with <i>"caught by the expander's KeySpec, which runs first for every entry the
      * expander accepts"</i>. That argument is <b>false</b>: {@code expandableEntries}
      * <em>excludes</em> {@code Child:true}, {@code RELREC}, {@code SUPP*}, {@code SQ*} and
-     * {@code --} names, which is exactly the population that reaches this class — so <b>none</b> of
-     * those entries was protected. Found by the plan's non-harm review pass.
+     * {@code --} names, which was exactly the population that reached this class — so <b>none</b>
+     * of those entries was protected. Found by the plan's non-harm review pass. ⚑ Since 2026-09-25
+     * ({@code PLAN-hashed-join-arm-absent-columns}, option A) a {@code Child: true} entry builds no
+     * lookup at all, so the population here is the keyed {@code RELREC} / {@code --} /
+     * {@code SUPP*} / {@code SQ*} entries — none in either shipped corpus, reachable by a user
+     * package.
      * </p>
      */
     private void requireUsableKey(int[] primaryKeyColIds)

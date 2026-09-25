@@ -100,8 +100,8 @@ class JoinCacheConcurrencyTest
         RuleExecutionResult baseline = RuleRunnerCalls.execute(rule, primary, resolver, "AD", null,
                 baselineCache);
         // Guard against a vacuous comparison: the baseline must actually run and fire.
-        assertTrue(baseline.getViolationCount() > 0, "the fixture must fire for SUBJ02: "
-                + baseline.getStatus() + " " + baseline.getStatusMessage());
+        assertEquals(1024 / 4, baseline.getViolationCount(), "the fixture fires once per SUBJ02"
+                + " row: " + baseline.getStatus() + " " + baseline.getStatusMessage());
 
         // Concurrent: many threads, one shared JoinCache, one shared rule.
         JoinCache.SharedIndexCache shared = new JoinCache.SharedIndexCache();
@@ -168,7 +168,7 @@ class JoinCacheConcurrencyTest
 
         RuleExecutionResult baseline = RuleRunnerCalls.execute(buildJoinRule(), primary, resolver,
                 "AD", null, new JoinCache(new JoinCache.SharedIndexCache()));
-        assertTrue(baseline.getViolationCount() > 0, "the fixture must fire for SUBJ02");
+        assertEquals(64 / 4, baseline.getViolationCount(), "the fixture fires once per SUBJ02 row");
 
         // Run both in parallel a few times so any cache-rebuild race surfaces.
         for (int i = 0; i < 16; i++)
@@ -210,8 +210,8 @@ class JoinCacheConcurrencyTest
         JoinCache baselineCache = new JoinCache(new JoinCache.SharedIndexCache());
         RuleExecutionResult baseline = RuleRunnerCalls.execute(rule, primary, resolver, "AD", null,
                 baselineCache);
-        assertTrue(baseline.getViolationCount() > 0, "the fixture must fire for SUBJ02: "
-                + baseline.getStatus() + " " + baseline.getStatusMessage());
+        assertEquals(2048 / 4, baseline.getViolationCount(), "the fixture fires once per SUBJ02"
+                + " row: " + baseline.getStatus() + " " + baseline.getStatusMessage());
         // Non-vacuity of the path itself: had the entry gone to the key-match expander instead,
         // this cache would be empty.
         assertNotNull(baselineCache.get(ADSL_LOOKUP_KEY),
@@ -260,7 +260,7 @@ class JoinCacheConcurrencyTest
 
         RuleExecutionResult baseline = RuleRunnerCalls.execute(buildCachedJoinRule(), primary,
                 resolver, "AD", null, new JoinCache(new JoinCache.SharedIndexCache()));
-        assertTrue(baseline.getViolationCount() > 0, "the fixture must fire for SUBJ02");
+        assertEquals(64 / 4, baseline.getViolationCount(), "the fixture fires once per SUBJ02 row");
 
         JoinLookup first = null;
         for (int i = 0; i < 16; i++)
@@ -336,6 +336,9 @@ class JoinCacheConcurrencyTest
         RuleCore core = new RuleCore();
         core.setId("CORE-JOIN");
         rule.setCore(core);
+        // Record sensitivity, explicitly: unset, the run reports ONE finding per dataset, and the
+        // "fires once per SUBJ02 row" assertions below would be measuring the fold, not the join.
+        rule.setSensitivity(net.cumba.corej.core.model.Sensitivity.RECORD);
         Outcome outcome = new Outcome();
         outcome.setMessage("TRTP ≠ ADSL.TRT01P");
         outcome.setOutputVariables(List.of("USUBJID", "TRTP", "ADSL.TRT01P"));
@@ -373,8 +376,11 @@ class JoinCacheConcurrencyTest
     {
         Rule rule = buildJoinRule();
         rule.getMatchDatasets().get(0).setName(CACHED_JOIN_DATASET);
-        rule.setCheckExpr(net.cumba.corej.core.expr.CheckExpressionParser
-                .parse("TRTP != " + CACHED_JOIN_DATASET + ".TRT01P"));
+        String check = "TRTP != " + CACHED_JOIN_DATASET + ".TRT01P";
+        rule.setCheck(new CheckConditionAll(List.of(expr(check))));
+        rule.setCheckExpr(net.cumba.corej.core.expr.CheckExpressionParser.parse(check));
+        rule.getOutcome()
+                .setOutputVariables(List.of("USUBJID", "TRTP", CACHED_JOIN_DATASET + ".TRT01P"));
         return rule;
     }
 

@@ -11,8 +11,10 @@ import net.cumba.datatable.values.DataValueType;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Shared key-hashing primitives for the CDISC engine — used by {@link DatasetLookup} (cross-dataset
- * joins) and {@code KeyMatchRowExpander}.
+ * Shared key-hashing primitives for the CDISC engine — used by {@link DatasetLookup} (the hashed
+ * join arm, and the {@code DegenerateJoinKeyException} it raises). ⚠ Corrected 2026-09-25: this
+ * used to name {@code KeyMatchRowExpander} as a consumer; it has its own key path and calls nothing
+ * here.
  *
  * <p>
  * ⚠ This heading said <b>"zero-allocation"</b> and named <i>"the set-uniqueness operators in
@@ -92,9 +94,11 @@ final class KeyHashing
      *
      * <p>
      * ⚠ Cost: one {@link net.cumba.datatable.values.IDataValue} and one {@code KeyPart} per
-     * component per row, where the raw form allocated neither. The population is the
-     * {@code Child:true} entries — the expander's own key path does not come through here — and
-     * correctness on a join key is not tradeable for an allocation.
+     * component per row, where the raw form allocated neither. The population is the keyed entries
+     * the expander refuses by NAME ({@code RELREC}, {@code --}, {@code SUPP*} / {@code SQ*} — none
+     * shipped, reachable by a user package); since 2026-09-25 a {@code Child: true} entry builds no
+     * lookup and never comes through here either. Correctness on a join key is not tradeable for an
+     * allocation.
      * </p>
      */
     static int computeKeyHashSafe(IDataTable table, long row, int[] colIds)

@@ -533,6 +533,71 @@ class StageACheckerTest
 
 
     @Test
+    void aDottedOutputVariableOfAChildEntryIsAnArmedStageAError()
+    {
+        // M2: CG0043 with Output_Variables: [AE.AESMIE] loaded clean and RuleRunner silently
+        // dropped the column from every finding (no lookup, no value, no message).
+        Rule rule = ruleJoining("AE", null, "USUBJID", "IDVAR", "IDVARVAL");
+        rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
+        net.cumba.corej.core.model.Outcome outcome = new net.cumba.corej.core.model.Outcome();
+        outcome.setOutputVariables(List.of("QNAM", "AE.AESMIE"));
+        rule.setOutcome(outcome);
+        StageAReport report = check(rule, "QNAM == \"AESOSP\"");
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY), kinds(report),
+                "clean is the pre-fix silent omission");
+        assertEquals(1, report.armedFindings().size());
+        String message = report.findings().get(0).toString();
+        assertTrue(message.contains("Output_Variables entry AE.AESMIE"), message);
+    }
+
+
+    @Test
+    void dottedOutputVariableShapesOnAChildEntry()
+    {
+        Rule rule = ruleJoining("AE", null, "USUBJID", "IDVAR", "IDVARVAL");
+        rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
+        net.cumba.corej.core.model.Outcome outcome = new net.cumba.corej.core.model.Outcome();
+        rule.setOutcome(outcome);
+        // a literal qualifier before a substituted or wildcard suffix is judged
+        outcome.setOutputVariables(List.of("AE.${QNAM}"));
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
+                kinds(check(rule, "QNAM == \"AESOSP\"")), "AE.${QNAM}: the prefix is literal");
+        outcome.setOutputVariables(List.of("AE.**TERM"));
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
+                kinds(check(rule, "QNAM == \"AESOSP\"")), "AE.**TERM: the prefix is literal");
+        // a substituted QUALIFIER is bound at run time and is not judged here (documented on the
+        // kind), and an excluded name is not judged either
+        outcome.setOutputVariables(List.of("${IDVAR}.AESMIE", "!AE.AESMIE"));
+        assertEquals(List.of(), check(rule, "QNAM == \"AESOSP\"").findings());
+        // control: the same output on the same entry WITHOUT Child: true is clean
+        rule.getMatchDatasets().get(0).setChild(Boolean.FALSE);
+        outcome.setOutputVariables(List.of("AE.AESMIE"));
+        assertEquals(List.of(), check(rule, "QNAM == \"AESOSP\"").findings());
+    }
+
+
+    @Test
+    void aBindingExpressionReadingAChildEntryDottedIsAnArmedStageAError()
+    {
+        // L5: the Bindings surface is walked by collectBindingDottedRefs, so a Child entry read
+        // through a binding is the same refusal.
+        Rule rule = ruleJoining("AE", null, "USUBJID", "IDVAR", "IDVARVAL");
+        rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
+        Operation op = new Operation();
+        op.setId("$smie");
+        op.setExpression("AE.AESMIE");
+        rule.setOperations(List.of(op));
+        StageAReport report = check(rule, "$smie != \"Y\"");
+        assertTrue(kinds(report).contains(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
+                "the binding's AE.AESMIE reads the Child entry: " + report.findings());
+        // control: the same binding against an ordinary entry
+        rule.getMatchDatasets().get(0).setChild(Boolean.FALSE);
+        assertFalse(kinds(check(rule, "$smie != \"Y\""))
+                .contains(StageAErrorKind.DOTTED_REF_CHILD_ENTRY));
+    }
+
+
+    @Test
     void theLoaderParksADottedReadOfAChildEntry() throws Exception
     {
         RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"X-1\":{\"Core\":{\"Id\":"

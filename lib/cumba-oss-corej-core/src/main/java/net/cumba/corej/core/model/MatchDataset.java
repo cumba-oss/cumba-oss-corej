@@ -123,6 +123,16 @@ public class MatchDataset
      * drops blanks) and is not a separate rule. JSON key {@code "keep_missings"} — the same
      * spelling the two grouping surfaces use.
      * </p>
+     *
+     * <p>
+     * ⛔ <b>Read by the ordinary keyed join only</b> ({@code KeyMatchRowExpander.keySpec}, through
+     * {@code expandableEntries}). The text-carried family — {@code Child: true}, {@code RELREC},
+     * {@code SUPP--} / {@code SQ*} — and the hashed {@code DatasetLookup} those keyed non-Child
+     * shapes reach keep a blank key unconditionally and never consult the flag, so authoring it on
+     * such an entry (or on a nameless or keyless one) is a <b>load error</b> saying it has no
+     * effect ({@code RulePackageLoader.checkKeepMissingsOnUngovernedEntry}, the sibling of the
+     * {@code Join_As_String} gate on the same predicate). Zero corpus entries author the flag.
+     * </p>
      */
     @JsonProperty("keep_missings")
     private @Nullable Boolean keepMissings;

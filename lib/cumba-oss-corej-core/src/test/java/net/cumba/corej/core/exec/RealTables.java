@@ -63,6 +63,21 @@ final class RealTables
     }
 
 
+    /**
+     * A real {@code DOUBLE} column. A {@code NaN} carrying a {@code MissingValue} payload
+     * ({@code MissingValue.MIS_A.asDouble()}) is stored as such, so the cell decodes to that marker
+     * — the way a real numeric buffer carries a SAS special missing, and the one fixture shape that
+     * can put a {@code MIS_A} into a key column ({@code MockTable} has no such column).
+     */
+    RealTables dbl(String aName, Double... aValues)
+    {
+        colNames.add(aName);
+        colTypes.add(DataValueType.DOUBLE);
+        colData.add(aValues);
+        return this;
+    }
+
+
     IDataTable build()
     {
         int colCount = colNames.size();
