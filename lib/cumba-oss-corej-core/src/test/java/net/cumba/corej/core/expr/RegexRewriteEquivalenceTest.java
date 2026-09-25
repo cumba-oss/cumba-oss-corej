@@ -14,8 +14,8 @@ import org.junit.jupiter.api.Test;
  * (PLAN-regex-rule-optimization). For each recognition key the legacy {@code =~}/{@code !~} regex
  * form and the rewritten scalar form are evaluated over the <em>same</em> {@link MockTable}, and
  * their violating-row {@link BitSet}s are asserted equal — except for the explicitly documented
- * widenings (each of which also has a {@code known_divergences} entry in
- * {@code documentation/parity-diff-baseline.json}).
+ * widenings (each of which once also had a {@code known_divergences} entry in the retired
+ * Python-parity baseline, removed 2026-09-25).
  *
  * <p>
  * The parity harness builds rules from spec YAML and the corpus test only checks converter

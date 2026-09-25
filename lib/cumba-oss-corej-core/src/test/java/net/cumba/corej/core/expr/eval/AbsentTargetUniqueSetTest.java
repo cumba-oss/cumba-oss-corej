@@ -66,10 +66,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * {@code is_(not_)unique_set} in {@code ABSENT_TARGET_AWARE_OPERATORS} and returns
  * all-{@code False} for both polarities. Filed as a {@code known_divergences} entry with
  * {@code lane: "python"} and {@code fix_ref: "EC-53 java-only-accepted"}; entry
- * {@code CORE-000144-absent-taetord}. ⚑ That name is a key in
- * {@code documentation/parity-diff-baseline.json}, a <b>frozen record of a retired lane</b> (Python
- * parity was retired 2026-09-17), so it is left exactly as filed — it is not a spec file and not a
- * live rule reference.
+ * {@code CORE-000144-absent-taetord}. ⚑ That name was a key in {@code parity-diff-baseline.json},
+ * the record of the retired Python lane (parity retired 2026-09-17; the file removed 2026-09-25,
+ * kept in git history), so it is left exactly as filed — it is not a spec file and not a live rule
+ * reference.
  * </p>
  */
 @ExtendWith(MockitoExtension.class)

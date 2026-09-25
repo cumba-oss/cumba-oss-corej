@@ -47,11 +47,10 @@ output.
   `expected_violations` (which violations), `expected_status` (whether
   the rule ran at all — `EXECUTED` / `SKIPPED` / `ERROR`, absent meaning
   `EXECUTED`) **and** `expected_errors` (*why* it failed, as classified
-  reason tokens rather than engine prose). Known divergences are listed
-  in that repository's `rulespec/parity-diff-baseline.json` and inverted
-  to XFAIL by the harness, per channel (`channels: ["violations",
-  "status", "errors"]`); every channel an entry claims must still
-  diverge, or the entry is reported as rotted.
+  reason tokens rather than engine prose). Every spec asserts normally: the
+  baseline XFAIL inversion was removed with Python parity (2026-09-17), and
+  the baseline file (`parity-diff-baseline.json`) itself on 2026-09-20 — it is
+  in git history.
 - The spec suite (`RuleExecutionSpecTest`; named `RuleExecutionParityTest`
   until the wave-41 rename) runs in `cumba-oss-corej-rules`' default
   build. The Python lane it was once compared against was removed in
@@ -78,7 +77,5 @@ the rule corpus its specs resolve against.
   `v0.16.0-hf3-19-g195c7172`). Its `resources/cache` used to be one
   source of the pickle metadata cache above; that cache must now be
   provisioned, as described above
-- `rulespec/parity-diff-baseline.json` — lane-aware XFAIL list;
-  `lane: python` entries are historical (see the file's own `_comment`)
 
 See the root [README](../../README.md) for project-wide context.
