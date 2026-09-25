@@ -166,13 +166,6 @@ public final class Condition
     }
 
 
-    /** Evaluates this condition from the given context node (no deref support). */
-    public boolean matches(ElementNode aContext)
-    {
-        return matches(aContext, null);
-    }
-
-
     /**
      * Deref-aware evaluation: with a resolver, clause paths may use the {@code @Attr->Element@Key}
      * dereference segment (plan §3.35 — e.g. a guard on the referenced {@code def:Standard}'s

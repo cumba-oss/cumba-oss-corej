@@ -19,8 +19,6 @@ public final class DocumentContext
     /** Synthetic scope name for document-level rules ({@code Element: "Document"}). */
     public static final String DOCUMENT_SCOPE = "Document";
 
-    private final ElementNode root;
-
     private final ElementNode documentNode;
 
     private final List<ElementNode> allNodes;
@@ -80,7 +78,6 @@ public final class DocumentContext
             @Nullable CtProvider aCtProvider, @Nullable Path aSubmissionFolder,
             List<String> aStylesheetHrefs, @Nullable LibraryProvider aLibraryProvider)
     {
-        root = aRoot;
         // A synthetic node above the root so document-level rules (e.g. "Element ODM must be
         // provided") have a scope to anchor an exists-check on.
         documentNode = SyntheticNodes.document(aRoot);
@@ -91,12 +88,6 @@ public final class DocumentContext
         submissionFolder = aSubmissionFolder;
         stylesheetHrefs = List.copyOf(aStylesheetHrefs);
         libraryProvider = aLibraryProvider;
-    }
-
-
-    public ElementNode root()
-    {
-        return root;
     }
 
 

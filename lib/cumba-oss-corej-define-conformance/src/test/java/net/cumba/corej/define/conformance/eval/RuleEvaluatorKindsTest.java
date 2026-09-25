@@ -168,8 +168,8 @@ class RuleEvaluatorKindsTest
                 """;
         // Existing file passes, '#fragment' is stripped before the lookup, a fragment-only href
         // is skipped, only the genuinely missing file fires.
-        RuleResult result = new RuleEvaluator().evaluate(rule(ruleYaml),
-                new DocumentContext(context.root(), "2.1", null, aFolder));
+        RuleResult result = new RuleEvaluator().evaluate(rule(ruleYaml), new DocumentContext(
+                context.documentNode().children().get(0), "2.1", null, aFolder));
         assertEquals(ExecutionStatus.EXECUTED, result.status());
         assertEquals(1, result.findings().size());
         ConformanceFinding finding = result.findings().get(0);
@@ -180,7 +180,7 @@ class RuleEvaluatorKindsTest
 
         // Without a submission folder the Requires gate skips the rule.
         RuleResult skipped = new RuleEvaluator().evaluate(rule(ruleYaml),
-                new DocumentContext(context.root(), "2.1", null, null));
+                new DocumentContext(context.documentNode().children().get(0), "2.1", null, null));
         assertEquals(ExecutionStatus.SKIPPED_MISSING_FOLDER, skipped.status());
         assertEquals(List.of(), skipped.findings());
     }

@@ -61,14 +61,6 @@ class ElementNodeBuilderTest
 
 
     @Test
-    void namespaceUriIsKeptSeparately()
-    {
-        ElementNode root = parse(XML);
-        assertEquals("http://www.cdisc.org/ns/odm/v1.3", root.namespaceUri().orElseThrow());
-    }
-
-
-    @Test
     void childrenAreInDocumentOrderIncludingDuplicates()
     {
         ElementNode study = parse(XML).children().get(0);
@@ -145,7 +137,6 @@ class ElementNodeBuilderTest
         ElementNode root = parse(XML);
         ElementNode document = ElementNodeBuilder.synthetic("Document", root);
         assertEquals("Document", document.localName());
-        assertTrue(document.namespaceUri().isEmpty());
         assertEquals(List.of(root), document.children());
         // The child keeps its original (empty) parent, so xpaths never carry the synthetic node.
         assertTrue(root.parent().isEmpty());

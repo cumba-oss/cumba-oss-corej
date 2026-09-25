@@ -167,11 +167,11 @@ class ConditionTest
         assertTrue(condition("""
                 path: "Origin/@Type"
                 equals: "Collected"
-                """).matches(node));
+                """).matches(node, null));
         assertFalse(condition("""
                 path: "Origin/@Type"
                 equals: "Derived"
-                """).matches(node));
+                """).matches(node, null));
     }
 
 
@@ -182,11 +182,11 @@ class ConditionTest
         assertTrue(condition("""
                 path: "@DataType"
                 oneOf: ["text", "integer"]
-                """).matches(node));
+                """).matches(node, null));
         assertFalse(condition("""
                 path: "@DataType"
                 oneOf: ["float", "integer"]
-                """).matches(node));
+                """).matches(node, null));
     }
 
 
@@ -197,11 +197,11 @@ class ConditionTest
         assertTrue(condition("""
                 path: "@OID"
                 exists: true
-                """).matches(node));
+                """).matches(node, null));
         assertFalse(condition("""
                 path: "@Missing"
                 exists: true
-                """).matches(node));
+                """).matches(node, null));
     }
 
 
@@ -212,11 +212,11 @@ class ConditionTest
         assertTrue(condition("""
                 path: "@Missing"
                 exists: false
-                """).matches(node));
+                """).matches(node, null));
         assertFalse(condition("""
                 path: "@OID"
                 exists: false
-                """).matches(node));
+                """).matches(node, null));
     }
 
 
@@ -227,15 +227,15 @@ class ConditionTest
         assertTrue(condition("""
                 path: "Origin"
                 exists: true
-                """).matches(node));
+                """).matches(node, null));
         assertFalse(condition("""
                 path: "CodeListRef"
                 exists: true
-                """).matches(node));
+                """).matches(node, null));
         assertTrue(condition("""
                 path: "CodeListRef"
                 exists: false
-                """).matches(node));
+                """).matches(node, null));
     }
 
 
@@ -249,14 +249,14 @@ class ConditionTest
                     equals: "text"
                   - path: "Origin/@Type"
                     equals: "Collected"
-                """).matches(node));
+                """).matches(node, null));
         assertFalse(condition("""
                 all:
                   - path: "@DataType"
                     equals: "text"
                   - path: "Origin/@Type"
                     equals: "Derived"
-                """).matches(node));
+                """).matches(node, null));
     }
 
 
@@ -270,14 +270,14 @@ class ConditionTest
                     equals: "float"
                   - path: "Origin/@Type"
                     equals: "Collected"
-                """).matches(node));
+                """).matches(node, null));
         assertFalse(condition("""
                 any:
                   - path: "@DataType"
                     equals: "float"
                   - path: "Origin/@Type"
                     equals: "Derived"
-                """).matches(node));
+                """).matches(node, null));
     }
 
 
@@ -289,12 +289,12 @@ class ConditionTest
                 not:
                   path: "@DataType"
                   equals: "float"
-                """).matches(node));
+                """).matches(node, null));
         assertFalse(condition("""
                 not:
                   path: "@DataType"
                   equals: "text"
-                """).matches(node));
+                """).matches(node, null));
     }
 
 }

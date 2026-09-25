@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.nio.file.Path;
 import net.cumba.corej.define.conformance.report.ConformanceFinding;
 import net.cumba.corej.define.conformance.report.RuleExecution;
@@ -47,28 +46,6 @@ public final class JsonReportWriter
     public static void write(DefineConformanceReport aReport, Path aOutput) throws IOException
     {
         MAPPER.writerWithDefaultPrettyPrinter().writeValue(aOutput.toFile(), toTree(aReport));
-    }
-
-
-    /** Writes the report as pretty JSON to a stream (the stream is not closed). */
-    public static void write(DefineConformanceReport aReport, OutputStream aOut) throws IOException
-    {
-        MAPPER.writerWithDefaultPrettyPrinter().writeValue(aOut, toTree(aReport));
-    }
-
-
-    /** Renders the report as a pretty JSON string. */
-    public static String toJson(DefineConformanceReport aReport)
-    {
-        try
-        {
-            return MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(toTree(aReport));
-        }
-        catch (IOException e)
-        {
-            // Serialising an in-memory node tree cannot perform IO; rethrow defensively.
-            throw new IllegalStateException("cannot serialise report", e);
-        }
     }
 
 

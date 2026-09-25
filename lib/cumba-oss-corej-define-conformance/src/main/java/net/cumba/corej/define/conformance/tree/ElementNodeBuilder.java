@@ -27,12 +27,13 @@ import org.w3c.dom.ProcessingInstruction;
  * child elements (cardinality rules would be blind), bean field order is schema order rather than
  * source order (ordering rules would be no-ops), and namespaces are stripped (namespace rules would
  * be inexpressible). Walking the DOM removes the entire completeness problem: every element,
- * attribute, duplicate, and namespace in the file is visible, in true document order.
+ * attribute and duplicate in the file is visible, in true document order (the namespace is visible
+ * to the walk too, but the tree does not carry it — see below).
  * </p>
  *
  * <p>
  * Normalisation: element and attribute names are keyed by <b>bare local name</b> (the {@code def:}
- * prefix is a namespace matter, kept in {@link ElementNode#namespaceUri()}); {@code xmlns}
+ * prefix is a namespace matter and is dropped — no rule reads a namespace); {@code xmlns}
  * declarations are not attributes; an element's text content is captured from its direct text
  * children (trimmed, {@code null} when blank).
  * </p>
@@ -84,8 +85,8 @@ public final class ElementNodeBuilder
             }
         }
         String trimmed = text.toString().trim();
-        return new ElementNode(DefineDomUtil.localNameOf(aElement), aElement.getNamespaceURI(),
-                attributes, children, trimmed.isEmpty() ? null : trimmed);
+        return new ElementNode(DefineDomUtil.localNameOf(aElement), attributes, children,
+                trimmed.isEmpty() ? null : trimmed);
     }
 
 

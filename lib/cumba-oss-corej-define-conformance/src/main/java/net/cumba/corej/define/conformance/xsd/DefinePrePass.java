@@ -2,8 +2,6 @@ package net.cumba.corej.define.conformance.xsd;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import javax.xml.parsers.ParserConfigurationException;
@@ -54,13 +52,6 @@ public final class DefinePrePass
         }
 
     }
-
-    /** Runs the pre-pass on a define.xml file. */
-    public static Result run(Path aDefineXml) throws IOException
-    {
-        return run(Files.readAllBytes(aDefineXml));
-    }
-
 
     /** Runs the pre-pass on an in-memory define.xml document. */
     public static Result run(byte[] aDocumentBytes)

@@ -66,17 +66,9 @@ class JsonReportWriterTest
 
 
     @Test
-    void omitsNullOptionalFieldsAndKeepsPresentOnes()
+    void omitsNullOptionalFieldsAndKeepsPresentOnes(@TempDir Path dir) throws IOException
     {
-        JsonNode root;
-        try
-        {
-            root = MAPPER.readTree(JsonReportWriter.toJson(sampleReport()));
-        }
-        catch (IOException e)
-        {
-            throw new AssertionError(e);
-        }
+        JsonNode root = written(sampleReport(), dir);
 
         JsonNode schema = root.get("findings").get(0);
         assertTrue(schema.has("element"));
@@ -93,21 +85,22 @@ class JsonReportWriterTest
 
 
     @Test
-    void ruleExecutionRowsCarryStatusAndCount()
+    void ruleExecutionRowsCarryStatusAndCount(@TempDir Path dir) throws IOException
     {
-        JsonNode root;
-        try
-        {
-            root = MAPPER.readTree(JsonReportWriter.toJson(sampleReport()));
-        }
-        catch (IOException e)
-        {
-            throw new AssertionError(e);
-        }
+        JsonNode root = written(sampleReport(), dir);
         JsonNode first = root.get("ruleExecutions").get(0);
         assertEquals("DEFINE-XML-0004", first.get("ruleId").asText());
         assertEquals("EXECUTED", first.get("status").asText());
         assertEquals(1, first.get("findingCount").asInt());
+    }
+
+
+    /** The report as the file writer renders it, read back — the only writer left (U7). */
+    private static JsonNode written(DefineConformanceReport aReport, Path aDir) throws IOException
+    {
+        Path out = aDir.resolve("report.json");
+        JsonReportWriter.write(aReport, out);
+        return MAPPER.readTree(out.toFile());
     }
 
 }

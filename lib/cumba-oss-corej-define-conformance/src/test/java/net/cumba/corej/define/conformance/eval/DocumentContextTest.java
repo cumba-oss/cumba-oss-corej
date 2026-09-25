@@ -49,7 +49,6 @@ class DocumentContextTest
     {
         ElementNode root = root();
         DocumentContext context = new DocumentContext(root, "2.1", null, null);
-        assertEquals(root, context.root());
         assertEquals(DocumentContext.DOCUMENT_SCOPE, context.documentNode().localName());
         assertEquals(List.of(root), context.documentNode().children());
         assertTrue(root.parent().isEmpty());

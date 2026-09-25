@@ -14,17 +14,15 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>
  * Element and attribute names are <b>bare local names</b> ("Standard", not "def:Standard"); the
- * namespace URI is kept separately in {@link #namespaceUri()} for the rules that need it (e.g. PMDA
- * DD0002). {@link #children()} is true <b>source-document order</b>, duplicates included.
+ * namespace URI is not carried — no rule reads it (⚑ an accessor kept it "for the rules that need
+ * it, e.g. PMDA DD0002" until PLAN-retire-dead-multi-match-lookup U7, 2026-09-25, and nothing ever
+ * called it). {@link #children()} is true <b>source-document order</b>, duplicates included.
  * </p>
  */
 public final class ElementNode
 {
 
     private final String localName;
-
-    @Nullable
-    private final String namespaceUri;
 
     private final Map<String, String> attributes;
 
@@ -36,19 +34,17 @@ public final class ElementNode
     @Nullable
     private ElementNode parent;
 
-    ElementNode(String aLocalName, @Nullable String aNamespaceUri, Map<String, String> aAttributes,
-            List<ElementNode> aChildren, @Nullable String aText)
+    ElementNode(String aLocalName, Map<String, String> aAttributes, List<ElementNode> aChildren,
+            @Nullable String aText)
     {
-        this(aLocalName, aNamespaceUri, aAttributes, aChildren, aText, true);
+        this(aLocalName, aAttributes, aChildren, aText, true);
     }
 
 
-    private ElementNode(String aLocalName, @Nullable String aNamespaceUri,
-            Map<String, String> aAttributes, List<ElementNode> aChildren, @Nullable String aText,
-            boolean aAdoptChildren)
+    private ElementNode(String aLocalName, Map<String, String> aAttributes,
+            List<ElementNode> aChildren, @Nullable String aText, boolean aAdoptChildren)
     {
         localName = aLocalName;
-        namespaceUri = aNamespaceUri;
         attributes = Collections.unmodifiableMap(new LinkedHashMap<>(aAttributes));
         children = List.copyOf(aChildren);
         text = aText;
@@ -69,7 +65,7 @@ public final class ElementNode
      */
     static ElementNode syntheticParent(String aLocalName, List<ElementNode> aChildren)
     {
-        return new ElementNode(aLocalName, null, Map.of(), aChildren, null, false);
+        return new ElementNode(aLocalName, Map.of(), aChildren, null, false);
     }
 
 
@@ -77,13 +73,6 @@ public final class ElementNode
     public String localName()
     {
         return localName;
-    }
-
-
-    /** The element's namespace URI, or empty for unqualified/synthetic elements. */
-    public Optional<String> namespaceUri()
-    {
-        return Optional.ofNullable(namespaceUri);
     }
 
 
