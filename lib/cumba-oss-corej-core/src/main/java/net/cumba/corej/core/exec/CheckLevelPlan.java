@@ -6,7 +6,6 @@ import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.eval.Domain;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.datatable.report.Severity;
-import org.jspecify.annotations.Nullable;
 
 /**
  * One rung of a <b>multi-level</b> rule's evaluation (Plan C &#167;3.4): everything
@@ -41,12 +40,9 @@ import org.jspecify.annotations.Nullable;
  *            the projected {@code Output_Variables}, computed once over the join of the levels'
  *            conditions: &#167;3.3 makes {@code Outcome.Output_Variables} shared across levels, so
  *            a finding must carry the same columns whichever level claimed it
- * @param message
- *            the level's own {@code Message}, or {@code null} to fall back to the rule's
- *            {@code Outcome.Message} at report time (&#167;3.6)
  */
 public record CheckLevelPlan(Severity level, CheckCondition condition, Expr expr, boolean collapsed,
-        Domain domain, List<String> outputVariables, @Nullable String message)
+        Domain domain, List<String> outputVariables)
 {
 
     /**

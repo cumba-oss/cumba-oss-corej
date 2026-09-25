@@ -85,10 +85,10 @@ class RuleRunnerCarryOverWiringTest
                 .thenReturn(Map.of("name", "STUDYID", "label", "Study Identifier"));
         when(library.getPublishedVariablesByName(anyString())).thenReturn(List.of());
         when(library.getPublishedVariablesByName("RFSTDTC")).thenReturn(
-                List.of(new PublishedVariable("DM", "Subject Reference Start Date/Time", "Char")));
+                List.of(new PublishedVariable("Subject Reference Start Date/Time", "Char")));
         when(library.getPublishedVariablesByName("SREL"))
-                .thenReturn(List.of(new PublishedVariable("RELREC", "Related Subject", "Char"),
-                        new PublishedVariable("APRELSUB", "Relationship of Subject", "Char")));
+                .thenReturn(List.of(new PublishedVariable("Related Subject", "Char"),
+                        new PublishedVariable("Relationship of Subject", "Char")));
 
         IDataTable adsl = MockTable.of().name("ADSL").col("RFSTDTC", "2024-01-01")
                 .colMeta("RFSTDTC", "Totally Different", 0, null).col("SREL", "x")

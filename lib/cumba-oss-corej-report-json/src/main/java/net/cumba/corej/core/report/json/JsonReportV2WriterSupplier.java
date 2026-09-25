@@ -27,9 +27,7 @@ import net.cumba.datatable.io.Property;
 public final class JsonReportV2WriterSupplier implements ReportWriterSupplier
 {
 
-    private static final ReportFormat FORMAT = new ReportFormat("json-2",
-            "Combined-finding JSON validation report (v2; one object per finding)", "json",
-            ".v2.json");
+    private static final ReportFormat FORMAT = new ReportFormat("json-2", ".v2.json");
 
     @Override
     public ReportFormat getReportFormat()

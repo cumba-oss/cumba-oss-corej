@@ -337,8 +337,7 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
             Map<String, String> meta = domain.getValue().get(key);
             if (meta != null && !meta.isEmpty())
             {
-                out.add(new PublishedVariable(domain.getKey(), meta.get("label"),
-                        meta.get("simpleDatatype")));
+                out.add(new PublishedVariable(meta.get("label"), meta.get("simpleDatatype")));
             }
         }
         return List.copyOf(out);

@@ -590,8 +590,7 @@ public class DatasetRuleResolver
             }
 
             kept.add(exp);
-            report.addGenerated(new GeneratedRuleInfo(expCoreId, RuleCategory.WILDCARD_EXPANSION,
-                    primaryCol, exp.getDescription(), "Expanded from " + origCoreId));
+            report.addGenerated(new GeneratedRuleInfo(expCoreId, RuleCategory.WILDCARD_EXPANSION));
         }
         return kept;
     }
@@ -653,10 +652,7 @@ public class DatasetRuleResolver
                 // (base-rule-first, no per-domain suffix) so the IDs match the Python CORE engine
                 // and per-domain rows roll up onto the one base id in the report.
                 report.addGenerated(new GeneratedRuleInfo(specialised.effectiveId(),
-                        RuleCategory.SDTM_PREFIX_EXPANSION, null,
-                        specialised.getDescription() != null ? specialised.getDescription()
-                                : specialised.effectiveId(),
-                        "Specialised from " + staticRule.effectiveId() + " for domain " + domain));
+                        RuleCategory.SDTM_PREFIX_EXPANSION));
             }
         }
     }

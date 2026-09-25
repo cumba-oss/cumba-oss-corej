@@ -484,13 +484,11 @@ public final class RuleClassifier
      *            the first operand's name, or {@code null}
      * @param value
      *            the second operand's text, or {@code null}
-     * @param valueIsReference
-     *            whether the value side names an operand (an {@link Expr.Ref})
      * @param valueIsLiteral
      *            whether the value side is a literal (an {@link Expr.Lit})
      */
     private record Atom(@Nullable String operator, @Nullable String name, @Nullable String value,
-            boolean valueIsReference, boolean valueIsLiteral)
+            boolean valueIsLiteral)
     {
     }
 
@@ -632,7 +630,6 @@ public final class RuleClassifier
         String operator = null;
         String name = null;
         String value = null;
-        boolean valueIsReference = false;
         boolean valueIsLiteral = false;
         switch (expr)
         {
@@ -680,9 +677,6 @@ public final class RuleClassifier
             if (args.size() > 1)
             {
                 value = operandText(args.get(1), ops, usages, operationAware);
-                // a call's second operand is a genuine operand, never the legacy var-or-literal
-                // fallback, so it is safe to read as a reference when it names one
-                valueIsReference = args.get(1) instanceof Expr.Ref;
                 valueIsLiteral = args.get(1) instanceof Expr.Lit;
             }
         }
@@ -691,7 +685,6 @@ public final class RuleClassifier
             operator = BIN_OPERATORS.get(binary.op());
             name = operandText(binary.left(), ops, usages, operationAware);
             value = operandText(binary.right(), ops, usages, operationAware);
-            valueIsReference = binary.right() instanceof Expr.Ref;
             valueIsLiteral = binary.right() instanceof Expr.Lit;
         }
         case Expr.Ref ref ->
@@ -710,8 +703,8 @@ public final class RuleClassifier
             // no operand surface
         }
         }
-        return new Positioned(new Atom(operator, name, value, valueIsReference, valueIsLiteral),
-                negated, entailed, usages);
+        return new Positioned(new Atom(operator, name, value, valueIsLiteral), negated, entailed,
+                usages);
     }
 
 

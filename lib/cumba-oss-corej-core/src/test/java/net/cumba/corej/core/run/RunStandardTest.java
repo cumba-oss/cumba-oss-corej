@@ -36,7 +36,6 @@ class RunStandardTest
         assertEquals("sdtmig", r.group());
         assertEquals("sdtmig", r.standard());
         assertEquals("3-4", r.version());
-        assertEquals("standards/sdtmig/3-4", r.key());
     }
 
 

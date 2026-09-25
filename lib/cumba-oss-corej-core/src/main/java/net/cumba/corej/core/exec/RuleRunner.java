@@ -1470,8 +1470,7 @@ public final class RuleRunner
                     Objects.requireNonNull(conditions.get(level), "resolved condition"),
                     Objects.requireNonNull(effective.get(level), "effective expression"),
                     decisionOf(skips, level).collapsed(),
-                    Objects.requireNonNull(domain, "at least one runnable level"), outputVars,
-                    levelOf(declared, level).message()));
+                    Objects.requireNonNull(domain, "at least one runnable level"), outputVars));
         }
         return plans;
     }

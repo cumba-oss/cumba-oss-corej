@@ -169,9 +169,9 @@ public final class DictionaryStore
                             + "holds {2} — it was NOT loaded and its rules will SKIP. Install the "
                             + "requested release into a versioned store, or drop the request.",
                     type, requested, declared != null ? declared : "a file declaring no version");
-            unavailable.put(type, new RuntimeDictionaryProvider.Unavailability(
-                    RuntimeDictionaryProvider.UnavailabilityReason.VERSION_NOT_INSTALLED,
-                    "version " + requested + " (from requested) is not installed — the flat "
+            unavailable.put(type,
+                    new RuntimeDictionaryProvider.Unavailability("version " + requested
+                            + " (from requested) is not installed — the flat "
                             + "(unversioned) store holds "
                             + (declared != null ? declared : "a file declaring no version")
                             + "; install the requested release or select the present one"));
@@ -214,7 +214,6 @@ public final class DictionaryStore
                             + "supply a define.xml that declares it.",
                     type, installed, versionOptionName(type), MANIFEST);
             aUnavailable.put(type, new RuntimeDictionaryProvider.Unavailability(
-                    RuntimeDictionaryProvider.UnavailabilityReason.NO_VERSION_SELECTED,
                     "is installed but no version is selected (installed: " + installedList
                             + ") — select one with " + versionOptionName(type) + ", add it to "
                             + MANIFEST + ", or supply a define.xml that declares it"));
@@ -235,7 +234,6 @@ public final class DictionaryStore
                     type, requested, source, installed);
             aUnavailable.put(type,
                     new RuntimeDictionaryProvider.Unavailability(
-                            RuntimeDictionaryProvider.UnavailabilityReason.VERSION_NOT_INSTALLED,
                             "version '" + requested + "' (from " + source
                                     + ") is not a usable store version token (installed: "
                                     + installedList + ") — select an installed version"));
@@ -249,11 +247,9 @@ public final class DictionaryStore
                             + "and its rules will SKIP. Installed: {3}.",
                     type, requested, source, installed);
             aUnavailable.put(type,
-                    new RuntimeDictionaryProvider.Unavailability(
-                            RuntimeDictionaryProvider.UnavailabilityReason.VERSION_NOT_INSTALLED,
-                            "version " + requested + " (from " + source
-                                    + ") is not installed (installed: " + installedList
-                                    + ") — install it or select an installed version"));
+                    new RuntimeDictionaryProvider.Unavailability("version " + requested + " (from "
+                            + source + ") is not installed (installed: " + installedList
+                            + ") — install it or select an installed version"));
             return;
         }
         RuntimeDictionaryProvider one;
@@ -273,7 +269,6 @@ public final class DictionaryStore
                     type, requested, e.getMessage(), versionDir);
             aUnavailable.put(type,
                     new RuntimeDictionaryProvider.Unavailability(
-                            RuntimeDictionaryProvider.UnavailabilityReason.NO_USABLE_CONTENT,
                             "is installed but version " + requested + " could not be read ("
                                     + e.getMessage() + ") — reinstall it"));
             return;
@@ -290,11 +285,9 @@ public final class DictionaryStore
             // with no <type>.json at all. Either way the install is unusable.
             RuntimeDictionaryProvider.Unavailability recorded = one.unavailabilityOf(type);
             aUnavailable.put(type, recorded != null ? recorded
-                    : new RuntimeDictionaryProvider.Unavailability(
-                            RuntimeDictionaryProvider.UnavailabilityReason.NO_USABLE_CONTENT,
-                            "is installed but version " + requested
-                                    + " carries no usable terms (empty or malformed) — reinstall "
-                                    + "it"));
+                    : new RuntimeDictionaryProvider.Unavailability("is installed but version "
+                            + requested
+                            + " carries no usable terms (empty or malformed) — reinstall " + "it"));
             return;
         }
         aLoaded.put(type, dict);

@@ -1171,8 +1171,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
             Map<String, String> meta = getVariableMetadata(domain, variableName);
             if (meta != null && !meta.isEmpty())
             {
-                out.add(new PublishedVariable(domain, meta.get("label"),
-                        meta.get("simpleDatatype")));
+                out.add(new PublishedVariable(meta.get("label"), meta.get("simpleDatatype")));
             }
         }
         return List.copyOf(out);

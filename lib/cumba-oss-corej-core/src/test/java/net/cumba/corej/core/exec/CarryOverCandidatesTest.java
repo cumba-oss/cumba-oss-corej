@@ -62,9 +62,9 @@ class CarryOverCandidatesTest
     void manyDomainsOneLabelIsOneCandidate()
     {
         Map<String, Object> meta = candidatesFor(
-                new PublishedVariable("DM", "Unique Subject Identifier", "Char"),
-                new PublishedVariable("AE", "Unique Subject Identifier", "Char"),
-                new PublishedVariable("LB", "Unique Subject Identifier", "Char"));
+                new PublishedVariable("Unique Subject Identifier", "Char"),
+                new PublishedVariable("Unique Subject Identifier", "Char"),
+                new PublishedVariable("Unique Subject Identifier", "Char"));
 
         // ⚑ Labels are published CASE-FOLDED (review finding R-4): CDISC's own SDTMIG 3.4 has
         // case-only label variants, so folding is what makes candidate identity correct. Types are
@@ -80,9 +80,9 @@ class CarryOverCandidatesTest
     void genuinelyDifferentLabelsAreSeveralCandidates()
     {
         Map<String, Object> meta = candidatesFor(
-                new PublishedVariable("IS", "Non-host Organism ID", "Char"),
-                new PublishedVariable("GF", "Non-Host Organism Identifier", "Char"),
-                new PublishedVariable("OI", "Non-host Organism Identifier", "Char"));
+                new PublishedVariable("Non-host Organism ID", "Char"),
+                new PublishedVariable("Non-Host Organism Identifier", "Char"),
+                new PublishedVariable("Non-host Organism Identifier", "Char"));
 
         // ⭐ TWO, not three — and that IS the R-4 fix. NHOID publishes "Non-Host Organism
         // Identifier" and "Non-host Organism Identifier", which differ ONLY in case; before case
@@ -102,8 +102,8 @@ class CarryOverCandidatesTest
     void trailingWhitespaceIsNormalisedSoCmtrtIsOneCandidate()
     {
         Map<String, Object> meta = candidatesFor(
-                new PublishedVariable("CM", "Reported Name of Drug, Med, or Therapy ", "Char"),
-                new PublishedVariable("AE", "Reported Name of Drug, Med, or Therapy", "Char"));
+                new PublishedVariable("Reported Name of Drug, Med, or Therapy ", "Char"),
+                new PublishedVariable("Reported Name of Drug, Med, or Therapy", "Char"));
 
         assertEquals(List.of("REPORTED NAME OF DRUG, MED, OR THERAPY"),
                 meta.get("library_variable_label_values"),
@@ -115,9 +115,8 @@ class CarryOverCandidatesTest
     @Test
     void internalWhitespaceRunsCollapse()
     {
-        Map<String, Object> meta = candidatesFor(
-                new PublishedVariable("AE", "Reported  Term", "Char"),
-                new PublishedVariable("CM", "Reported Term", "Char"));
+        Map<String, Object> meta = candidatesFor(new PublishedVariable("Reported  Term", "Char"),
+                new PublishedVariable("Reported Term", "Char"));
 
         assertEquals(1, ((List<?>) meta.get("library_variable_label_values")).size());
     }
@@ -127,8 +126,8 @@ class CarryOverCandidatesTest
     @Test
     void thePairIsTheKeyNotTheLabelAlone()
     {
-        Map<String, Object> meta = candidatesFor(new PublishedVariable("AE", "Sequence", "Num"),
-                new PublishedVariable("CM", "Sequence", "Char"));
+        Map<String, Object> meta = candidatesFor(new PublishedVariable("Sequence", "Num"),
+                new PublishedVariable("Sequence", "Char"));
 
         assertEquals(List.of("SEQUENCE"), meta.get("library_variable_label_values"),
                 "one distinct label...");
@@ -160,7 +159,7 @@ class CarryOverCandidatesTest
     @Test
     void nullAttributesDoNotBecomeEmptyCandidates()
     {
-        Map<String, Object> meta = candidatesFor(new PublishedVariable("AE", null, "Char"));
+        Map<String, Object> meta = candidatesFor(new PublishedVariable(null, "Char"));
 
         assertFalse(meta.containsKey("library_variable_label_values"),
                 "a null label is an ABSENCE, not a candidate whose value is empty");
@@ -178,15 +177,14 @@ class CarryOverCandidatesTest
     @Test
     void theCompanionWrapperAnswersFromTheCompanionNotTheBase()
     {
-        MetadataProvider base = publishing(new PublishedVariable("ADAE", "wrong-source", "Char"));
+        MetadataProvider base = publishing(new PublishedVariable("wrong-source", "Char"));
         MetadataProvider companion = publishing(
-                new PublishedVariable("AE", "Reported Term of the Adverse Event", "Char"));
+                new PublishedVariable("Reported Term of the Adverse Event", "Char"));
 
         MetadataProvider wrapped = new net.cumba.corej.core.metadata.CompanionDomainsProvider(base,
                 companion);
 
-        assertEquals(
-                List.of(new PublishedVariable("AE", "Reported Term of the Adverse Event", "Char")),
+        assertEquals(List.of(new PublishedVariable("Reported Term of the Adverse Event", "Char")),
                 wrapped.getPublishedVariablesByName("AETERM"),
                 "the carry-over lookup must come from the companion SDTM product");
     }

@@ -52,7 +52,7 @@ class DefineCtSelectionServiceTest
     @Test
     void populatedFieldWinsOutright()
     {
-        List<CtStandardRef> declared = List.of(CtStandardRef.of("STD.1", "SDTM", "2023-12-15"));
+        List<CtStandardRef> declared = List.of(CtStandardRef.of("SDTM", "2023-12-15"));
         CtSelection sel = CtSelection.resolve(List.of("sdtmct-2026-03-27"), declared);
         assertEquals(CtSelection.Source.USER, sel.source());
         assertEquals(List.of("sdtmct-2026-03-27"), sel.packageIds(),
@@ -63,9 +63,8 @@ class DefineCtSelectionServiceTest
     @Test
     void blankFieldTakesTheDeclaredSetInDocumentOrder()
     {
-        List<CtStandardRef> declared = List.of(CtStandardRef.of("STD.1", "SDTM", "2024-09-27"),
-                CtStandardRef.of("STD.2", "ADaM", "2024-03-29"),
-                CtStandardRef.of("STD.3", "SDTM", "2024-09-27"));
+        List<CtStandardRef> declared = List.of(CtStandardRef.of("SDTM", "2024-09-27"),
+                CtStandardRef.of("ADaM", "2024-03-29"), CtStandardRef.of("SDTM", "2024-09-27"));
         CtSelection sel = CtSelection.resolve(List.of(), declared);
         assertEquals(CtSelection.Source.DEFINE, sel.source());
         assertEquals(List.of("sdtmct-2024-09-27", "adamct-2024-03-29"), sel.packageIds(),
@@ -98,8 +97,8 @@ class DefineCtSelectionServiceTest
     @Test
     void agreementYieldsNoNote_orderInsensitive()
     {
-        List<CtStandardRef> declared = List.of(CtStandardRef.of("STD.1", "SDTM", "2024-09-27"),
-                CtStandardRef.of("STD.2", "ADaM", "2024-03-29"));
+        List<CtStandardRef> declared = List.of(CtStandardRef.of("SDTM", "2024-09-27"),
+                CtStandardRef.of("ADaM", "2024-03-29"));
         assertNull(StudyValidationService.ctDeclarationMismatch(declared,
                 List.of("adamct-2024-03-29", "sdtmct-2024-09-27")));
     }
@@ -108,7 +107,7 @@ class DefineCtSelectionServiceTest
     @Test
     void divergenceNamesBothSides()
     {
-        List<CtStandardRef> declared = List.of(CtStandardRef.of("STD.1", "SDTM", "2023-12-15"));
+        List<CtStandardRef> declared = List.of(CtStandardRef.of("SDTM", "2023-12-15"));
         assertEquals("define declares sdtmct-2023-12-15; run used sdtmct-2026-03-27",
                 StudyValidationService.ctDeclarationMismatch(declared,
                         List.of("sdtmct-2026-03-27")));

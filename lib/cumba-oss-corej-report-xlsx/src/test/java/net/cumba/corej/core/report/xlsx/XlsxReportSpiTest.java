@@ -71,7 +71,6 @@ class XlsxReportSpiTest
         ServiceReportManager manager = new ServiceReportManager();
         ReportFormat xlsx = manager.findReportFormat("xlsx");
         assertNotNull(xlsx);
-        assertEquals("xlsx", xlsx.fileExtension());
         assertEquals(".xlsx", xlsx.fileSuffix());
 
         List<Property> properties = manager.getWriterProperties(xlsx);
@@ -106,7 +105,7 @@ class XlsxReportSpiTest
     void anUnregisteredFormatStillFailsWithTheNamedError()
     {
         ServiceReportManager manager = new ServiceReportManager();
-        ReportFormat json = new ReportFormat("json", "JSON", "json", ".json");
+        ReportFormat json = new ReportFormat("json", ".json");
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> manager.getReportWriter(json, Map.of()));
         assertTrue(e.getMessage().contains("corej-report-json"), e.getMessage());

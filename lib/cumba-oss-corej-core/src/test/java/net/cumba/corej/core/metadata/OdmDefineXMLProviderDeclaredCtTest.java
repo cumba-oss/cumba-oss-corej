@@ -1,7 +1,6 @@
 package net.cumba.corej.core.metadata;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -58,10 +57,8 @@ class OdmDefineXMLProviderDeclaredCtTest
 
         List<CtStandardRef> declared = p.declaredCtPackages();
         assertEquals(2, declared.size(), "the IG entry must not contribute");
-        assertEquals(new CtStandardRef("STD.2", "SDTM", "2023-12-15", "sdtmct-2023-12-15"),
-                declared.get(0));
-        assertEquals(new CtStandardRef("STD.3", "ADaM", "2024-03-29", "adamct-2024-03-29"),
-                declared.get(1));
+        assertEquals(new CtStandardRef("sdtmct-2023-12-15"), declared.get(0));
+        assertEquals(new CtStandardRef("adamct-2024-03-29"), declared.get(1));
     }
 
 
@@ -116,8 +113,7 @@ class OdmDefineXMLProviderDeclaredCtTest
     @Test
     void packageIdDerivationLowerCasesThePublishingSet()
     {
-        CtStandardRef ref = CtStandardRef.of(null, "ADaM", "2024-03-29");
+        CtStandardRef ref = CtStandardRef.of("ADaM", "2024-03-29");
         assertEquals("adamct-2024-03-29", ref.packageId());
-        assertNull(ref.oid());
     }
 }

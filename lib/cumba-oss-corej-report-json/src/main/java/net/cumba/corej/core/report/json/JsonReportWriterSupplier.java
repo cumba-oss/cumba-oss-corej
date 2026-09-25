@@ -18,8 +18,7 @@ import net.cumba.datatable.io.Property;
 public final class JsonReportWriterSupplier implements ReportWriterSupplier
 {
 
-    private static final ReportFormat FORMAT = new ReportFormat("json",
-            "CORE-parity JSON validation report (v1, frozen schema)", "json", ".json");
+    private static final ReportFormat FORMAT = new ReportFormat("json", ".json");
 
     @Override
     public ReportFormat getReportFormat()

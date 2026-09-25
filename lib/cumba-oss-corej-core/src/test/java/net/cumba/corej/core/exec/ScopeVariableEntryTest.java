@@ -32,7 +32,6 @@ class ScopeVariableEntryTest
             assertFalse(e.isQualified(), raw + " should not be qualified");
             assertNull(e.qualifier(), raw + " qualifier");
             assertEquals(raw, e.variable(), raw + " variable");
-            assertEquals(raw, e.raw(), raw + " raw");
         }
     }
 
@@ -58,7 +57,6 @@ class ScopeVariableEntryTest
         assertTrue(e.isQualified());
         assertEquals("DM", e.qualifier());
         assertEquals("ARM", e.variable());
-        assertEquals("DM.ARM", e.raw(), "raw is preserved verbatim for mismatch messages");
     }
 
 
@@ -157,8 +155,8 @@ class ScopeVariableEntryTest
 
     /**
      * ⭐ Ruling D5's control: an entry with no tag parses byte-for-byte as it did before the feature
-     * existed. Every message the matcher builds comes off {@code variable()} / {@code raw()}, so
-     * this is what makes "the 2 163 authored entries are unchanged" true rather than hoped.
+     * existed. Every message the matcher builds comes off {@code variable()}, so this is what makes
+     * "the 2 163 authored entries are unchanged" true rather than hoped.
      */
     @Test
     void anEntryWithoutATagIsUnchangedAndCarriesNoKind()
@@ -167,7 +165,6 @@ class ScopeVariableEntryTest
         {
             ScopeVariableEntry e = ScopeVariableEntry.parse(raw);
             assertNull(e.requiredKind(), raw + " must demand no type");
-            assertEquals(raw, e.raw(), raw + " raw");
             assertFalse(ScopeVariableEntry.hasTypeSuffix(raw), raw + " has no tag");
             assertNull(ScopeVariableEntry.malformedTypeSuffix(raw), raw + " is well formed");
         }
@@ -182,7 +179,6 @@ class ScopeVariableEntryTest
             ScopeVariableEntry e = ScopeVariableEntry.parse(raw);
             assertEquals(ColumnTypeGate.Kind.NUMERIC, e.requiredKind(), raw);
             assertEquals("AESEQ", e.variable(), raw + " variable half");
-            assertEquals(raw, e.raw(), raw + " raw is preserved verbatim");
         }
         for (String raw : List.of("AETERM:C", "AETERM:c", "AETERM:Char", "AETERM:CHAR"))
         {
@@ -195,8 +191,7 @@ class ScopeVariableEntryTest
 
     /**
      * ⭐ D7 demands the four tags be <b>indistinguishable after the parse</b>, not merely both
-     * accepted: nothing downstream may be able to tell which spelling the author typed. Only
-     * {@code raw()} — deliberately — differs.
+     * accepted: nothing downstream may be able to tell which spelling the author typed.
      */
     @Test
     void shortAndLongTagsAreIndistinguishableApartFromRaw()
@@ -299,7 +294,6 @@ class ScopeVariableEntryTest
         assertEquals("AESEQ", e.variable(),
                 "a space before the colon must not become part of the column name");
         assertEquals(ColumnTypeGate.Kind.NUMERIC, e.requiredKind());
-        assertEquals("AESEQ :N", e.raw(), "the raw entry is still what the author typed");
 
         assertEquals("AESEQ ", ScopeVariableEntry.parse("AESEQ ").variable(),
                 "⛔ D5: an UNTAGGED entry is untouched, spaces and all");

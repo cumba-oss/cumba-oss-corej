@@ -45,10 +45,8 @@ class JsonReportSpiTest
         ReportFormat v2 = manager.findReportFormat("json-2");
         assertNotNull(v1);
         assertNotNull(v2);
-        assertEquals("json", v1.fileExtension());
         assertEquals(".json", v1.fileSuffix());
         // Same extension, different suffix — the v2 double extension is data on the format.
-        assertEquals("json", v2.fileExtension());
         assertEquals(".v2.json", v2.fileSuffix());
         assertTrue(manager.getWriterProperties(v1).isEmpty(), "JSON has no options today");
         assertTrue(manager.getWriterProperties(v2).isEmpty());
@@ -84,7 +82,7 @@ class JsonReportSpiTest
     void anUnknownFormatStillFailsWithTheNamedError()
     {
         ServiceReportManager manager = new ServiceReportManager();
-        ReportFormat xlsx = new ReportFormat("xlsx", "Excel", "xlsx", ".xlsx");
+        ReportFormat xlsx = new ReportFormat("xlsx", ".xlsx");
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> manager.getReportWriter(xlsx, Map.of()));
         assertTrue(e.getMessage().contains("corej-report-xlsx"), e.getMessage());

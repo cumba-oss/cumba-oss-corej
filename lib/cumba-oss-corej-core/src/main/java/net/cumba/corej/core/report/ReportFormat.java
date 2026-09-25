@@ -12,30 +12,24 @@ package net.cumba.corej.core.report;
  * claiming the same name are rejected at registration rather than resolved by iteration order.
  * </p>
  *
- * <h2>Why extension and suffix are separate</h2>
+ * <h2>Suffix, not extension</h2>
  *
  * <p>
- * The v2 JSON report writes {@code <base>.v2.json}: its file <em>extension</em> is still
- * {@code json} (that is what a file filter matches on), but the string appended to the shared
- * output base is {@code .v2.json}. One field cannot serve both. Note that {@code json} and
- * {@code json-2} therefore share an extension — that is expected, not a defect, because nothing
- * selects a format by extension. <b>The format argument is authoritative; never infer v1-vs-v2 from
- * a file name.</b>
+ * The v2 JSON report writes {@code <base>.v2.json}: the string appended to the shared output base
+ * is {@code .v2.json}, so {@code json} and {@code json-2} share a file extension. Nothing selects a
+ * format by extension — <b>the format argument is authoritative; never infer v1-vs-v2 from a file
+ * name.</b> (⚑ The record carried a bare {@code fileExtension} and a {@code description} for CLI
+ * help too; neither was read — PLAN-retire-dead-multi-match-lookup U12, C30.)
  * </p>
  *
  * @param name
  *            the format identity, e.g. {@code json}, {@code json-2}, {@code xlsx}; lower-case by
  *            convention and unique across all registered suppliers
- * @param description
- *            a human-readable one-liner for CLI help and UI pickers
- * @param fileExtension
- *            the bare file extension without a dot, e.g. {@code json} or {@code xlsx}; used for
- *            filtering only
  * @param fileSuffix
  *            the string appended to an output base to name the file, e.g. {@code .json},
  *            {@code .v2.json} or {@code .xlsx}
  */
-public record ReportFormat(String name, String description, String fileExtension, String fileSuffix)
+public record ReportFormat(String name, String fileSuffix)
 {
 
     /**
@@ -46,8 +40,6 @@ public record ReportFormat(String name, String description, String fileExtension
     public ReportFormat
     {
         requireText(name, "name");
-        requireText(description, "description");
-        requireText(fileExtension, "fileExtension");
         requireText(fileSuffix, "fileSuffix");
     }
 

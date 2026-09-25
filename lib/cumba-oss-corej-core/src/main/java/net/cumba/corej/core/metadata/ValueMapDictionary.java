@@ -64,27 +64,24 @@ public final class ValueMapDictionary
      * read back for the report's {@code *_Version} conformance fields.
      *
      * <p>
-     * All three components are {@code null} for a file that declares none (every hand-authored
-     * fixture, and every file predating the installer). Provenance is <b>reported, never
-     * checked</b>: no conformance finding compares a declared define.xml
-     * {@code ExternalCodeList/@Version} against it.
+     * The version is {@code null} for a file that declares none (every hand-authored fixture, and
+     * every file predating the installer). ⚑ The {@code source} / {@code retrieved} components the
+     * installer also writes were never read and left the record with
+     * PLAN-retire-dead-multi-match-lookup U12 (D-B9). Provenance is <b>reported, never checked</b>:
+     * no conformance finding compares a declared define.xml {@code ExternalCodeList/@Version}
+     * against it.
      * </p>
      *
      * @param version
      *            the vendor's own release identifier, verbatim ({@code "27.0"},
      *            {@code "2026.07.06"}, {@code "SEP_2020"}, {@code "4Aug2026"}) — never parsed,
      *            ordered or normalised, only compared for equality
-     * @param source
-     *            the URL or local path the installer read
-     * @param retrieved
-     *            the ISO-8601 date the installer fetched it
      */
-    public record Provenance(@Nullable String version, @Nullable String source,
-            @Nullable String retrieved)
+    public record Provenance(@Nullable String version)
     {
 
         /** The provenance of a file that declares none. */
-        public static final Provenance NONE = new Provenance(null, null, null);
+        public static final Provenance NONE = new Provenance(null);
     }
 
     private final String type;
@@ -131,13 +128,6 @@ public final class ValueMapDictionary
     public String getType()
     {
         return type;
-    }
-
-
-    /** The dictionary's recorded provenance, or {@link Provenance#NONE} when it declares none. */
-    public Provenance getProvenance()
-    {
-        return provenance;
     }
 
 
@@ -228,14 +218,11 @@ public final class ValueMapDictionary
     }
 
 
-    /** Reads the optional {@code version} / {@code source} / {@code retrieved} keys. */
+    /** Reads the optional {@code version} key. */
     private static Provenance readProvenance(JsonNode root)
     {
         String version = text(root, "version");
-        String source = text(root, "source");
-        String retrieved = text(root, "retrieved");
-        return version == null && source == null && retrieved == null ? Provenance.NONE
-                : new Provenance(version, source, retrieved);
+        return version == null ? Provenance.NONE : new Provenance(version);
     }
 
 

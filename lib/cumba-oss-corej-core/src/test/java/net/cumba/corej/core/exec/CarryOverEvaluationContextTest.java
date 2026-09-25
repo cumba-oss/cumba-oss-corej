@@ -75,7 +75,7 @@ class CarryOverEvaluationContextTest
 
         RuleRunner.putCarryOverIfUndefined(perColVars,
                 provider(Map.of(),
-                        new PublishedVariable("DM", "Subject Reference Start Date/Time", "Char")),
+                        new PublishedVariable("Subject Reference Start Date/Time", "Char")),
                 null, "ADSL", "RFSTDTC");
 
         // Labels are published case-folded (R-4); types are not.
@@ -97,7 +97,7 @@ class CarryOverEvaluationContextTest
 
         RuleRunner.putCarryOverIfUndefined(perColVars,
                 provider(Map.of("label", "Reference Start Date", "simpleDatatype", "Char"),
-                        new PublishedVariable("DM", "Subject Reference Start Date/Time", "Char")),
+                        new PublishedVariable("Subject Reference Start Date/Time", "Char")),
                 null, "ADSL", "RFSTDTC");
 
         assertTrue(perColVars.isEmpty(),

@@ -24,10 +24,8 @@ import org.jspecify.annotations.Nullable;
  *            the display standard for the report header, e.g. {@code sdtmig}, {@code adamig}
  * @param version
  *            the display version for the report header, e.g. {@code 3-4}, {@code dart-1-1}
- * @param key
- *            the first primary's resolved {@code standards/...} cache key
  */
-public record RunStandard(String group, String standard, String version, String key)
+public record RunStandard(String group, String standard, String version)
 {
 
     private static final String PREFIX = "standards/";
@@ -171,20 +169,20 @@ public record RunStandard(String group, String standard, String version, String 
         {
         // A TIG key is standards/tig/<version>/<leg>; the version is the first segment.
         case "tig" -> new RunStandard(group, "tig",
-                rest.contains("/") ? rest.substring(0, rest.indexOf('/')) : rest, PREFIX + id);
-        case "adam" -> adamOf(group, rest, id);
+                rest.contains("/") ? rest.substring(0, rest.indexOf('/')) : rest);
+        case "adam" -> adamOf(group, rest);
         // sdtmig / sendig / cdashig and anything else: the remainder IS the version
         // (sendig/dart-1-1 -> version "dart-1-1", which is how the library names it).
-        default -> new RunStandard(group, group, rest, PREFIX + id);
+        default -> new RunStandard(group, group, rest);
         };
     }
 
 
-    private static RunStandard adamOf(String group, String productId, String id)
+    private static RunStandard adamOf(String group, String productId)
     {
         Matcher m = ADAM_ID.matcher(productId);
-        return m.matches() ? new RunStandard(group, m.group(1), m.group(2), PREFIX + id)
-                : new RunStandard(group, group, productId, PREFIX + id);
+        return m.matches() ? new RunStandard(group, m.group(1), m.group(2))
+                : new RunStandard(group, group, productId);
     }
 
 

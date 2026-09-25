@@ -2,7 +2,6 @@ package net.cumba.corej.core.report;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -37,8 +36,7 @@ import org.junit.jupiter.api.io.TempDir;
 class ServiceReportManagerTest
 {
 
-    private static final ReportFormat STUB_FORMAT = new ReportFormat("stub", "A test format",
-            "stub", ".stub");
+    private static final ReportFormat STUB_FORMAT = new ReportFormat("stub", ".stub");
 
     /** A writer that records what it was configured with, so routing can be observed. */
     private record StubWriter(String marker) implements ReportWriter
@@ -131,7 +129,7 @@ class ServiceReportManagerTest
     void anUnregisteredFormatFailsWithANamedError()
     {
         ReportManager manager = new ServiceReportManager();
-        ReportFormat xlsx = new ReportFormat("xlsx", "Excel", "xlsx", ".xlsx");
+        ReportFormat xlsx = new ReportFormat("xlsx", ".xlsx");
 
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> manager.getReportWriter(xlsx, Map.of()));
@@ -172,7 +170,7 @@ class ServiceReportManagerTest
     void aDuplicateThatDiffersOnlyInCaseIsStillADuplicate()
     {
         List<ReportWriterSupplier> clashing = List.of(new StubSupplier(STUB_FORMAT),
-                new OtherStubSupplier(new ReportFormat("STUB", "A test format", "stub", ".stub")));
+                new OtherStubSupplier(new ReportFormat("STUB", ".stub")));
         assertThrows(IllegalStateException.class, () -> new ServiceReportManager(clashing));
     }
 
@@ -204,7 +202,7 @@ class ServiceReportManagerTest
         ServiceReportManager manager = new ServiceReportManager(
                 List.of(new StubSupplier(STUB_FORMAT)));
         assertEquals(List.of(MARKER), manager.getWriterProperties(STUB_FORMAT));
-        assertTrue(manager.getWriterProperties(new ReportFormat("nope", "d", "n", ".n")).isEmpty());
+        assertTrue(manager.getWriterProperties(new ReportFormat("nope", ".n")).isEmpty());
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         manager.getReportWriter(STUB_FORMAT, Map.of(MARKER, "configured")).write(sections(), out);
@@ -260,10 +258,7 @@ class ServiceReportManagerTest
     @Test
     void aFormatComponentMayNotBeBlank()
     {
-        assertNotNull(STUB_FORMAT.description());
-        assertThrows(IllegalArgumentException.class, () -> new ReportFormat(" ", "d", "e", ".s"));
-        assertThrows(IllegalArgumentException.class, () -> new ReportFormat("n", "", "e", ".s"));
-        assertThrows(IllegalArgumentException.class, () -> new ReportFormat("n", "d", "", ".s"));
-        assertThrows(IllegalArgumentException.class, () -> new ReportFormat("n", "d", "e", ""));
+        assertThrows(IllegalArgumentException.class, () -> new ReportFormat(" ", ".s"));
+        assertThrows(IllegalArgumentException.class, () -> new ReportFormat("n", ""));
     }
 }

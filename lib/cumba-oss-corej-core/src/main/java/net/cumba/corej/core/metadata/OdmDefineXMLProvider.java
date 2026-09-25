@@ -181,7 +181,7 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
                         std.getOid());
                 continue;
             }
-            out.add(CtStandardRef.of(std.getOid(), publishingSet, version));
+            out.add(CtStandardRef.of(publishingSet, version));
         }
         return List.copyOf(out);
     }

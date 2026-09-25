@@ -42,8 +42,7 @@ public final class StubCsvReportWriterSupplier implements ReportWriterSupplier
     @Override
     public ReportFormat getReportFormat()
     {
-        return new ReportFormat(NAME, "Test-only CSV stub proving a writer needs only the SPI",
-                "csv", ".csv");
+        return new ReportFormat(NAME, ".csv");
     }
 
 

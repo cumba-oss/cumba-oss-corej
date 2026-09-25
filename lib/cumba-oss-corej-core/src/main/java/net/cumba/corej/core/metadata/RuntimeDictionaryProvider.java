@@ -52,15 +52,16 @@ public final class RuntimeDictionaryProvider
 
 
     /**
-     * One unavailable dictionary type's diagnosis: the {@link UnavailabilityReason} for callers
-     * that branch, and the operator-actionable {@code detail} for callers that report. The detail
-     * is a predicate continuing "external dictionary {@code <type>} …" (e.g. <em>"is installed but
-     * carries no usable terms (empty or malformed) — reinstall it"</em>), composed by whoever
-     * diagnosed the state — {@link #loadDirectory} for the content guard, {@code DictionaryStore}
-     * for the version-selection states — because only they know the specifics (which versions are
+     * One unavailable dictionary type's diagnosis: the operator-actionable {@code detail} for
+     * callers that report (⚑ the {@link UnavailabilityReason} it also carried had no reader that
+     * branched on it — PLAN-retire-dead-multi-match-lookup U12, D-B10). The detail is a predicate
+     * continuing "external dictionary {@code <type>} …" (e.g. <em>"is installed but carries no
+     * usable terms (empty or malformed) — reinstall it"</em>), composed by whoever diagnosed the
+     * state — {@link #loadDirectory} for the content guard, {@code DictionaryStore} for the
+     * version-selection states — because only they know the specifics (which versions are
      * installed, where the selection came from).
      */
-    public record Unavailability(UnavailabilityReason reason, String detail)
+    public record Unavailability(String detail)
     {
     }
 
@@ -168,9 +169,8 @@ public final class RuntimeDictionaryProvider
                                         + "reinstall it; its rules will SKIP ({1})",
                                 file, e.getMessage());
                         unavailable.put(key.toLowerCase(Locale.ROOT),
-                                new Unavailability(UnavailabilityReason.NO_USABLE_CONTENT,
-                                        "is installed but its file could not be read ("
-                                                + e.getMessage() + ") — reinstall it"));
+                                new Unavailability("is installed but its file could not be read ("
+                                        + e.getMessage() + ") — reinstall it"));
                         continue;
                     }
                     String key = !dict.getType().isEmpty() ? dict.getType() : fileStem(file);
@@ -183,7 +183,7 @@ public final class RuntimeDictionaryProvider
                         // D13 item 2 — remember WHY, so the per-rule SKIP can distinguish "you
                         // never installed X" from "your installed X is unusable".
                         unavailable.put(key.toLowerCase(Locale.ROOT),
-                                new Unavailability(UnavailabilityReason.NO_USABLE_CONTENT,
+                                new Unavailability(
                                         "is installed but carries no usable terms (empty or "
                                                 + "malformed) — reinstall it"));
                         continue;

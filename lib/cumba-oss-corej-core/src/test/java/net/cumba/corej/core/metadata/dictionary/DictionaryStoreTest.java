@@ -224,8 +224,6 @@ class DictionaryStoreTest
                 "25.0 was asked for; the flat 27.0 must not stand in for it");
         RuntimeDictionaryProvider.Unavailability u = mismatch.unavailabilityOf("meddra");
         assertNotNull(u, "the drop must be diagnosed, not silent");
-        assertEquals(RuntimeDictionaryProvider.UnavailabilityReason.VERSION_NOT_INSTALLED,
-                u.reason());
         assertTrue(u.detail().contains("25.0"), u.detail());
         assertTrue(u.detail().contains("27.0"), "names what the flat store holds: " + u.detail());
 
@@ -305,7 +303,6 @@ class DictionaryStoreTest
         assertFalse(p.isAvailable("unii"));
         RuntimeDictionaryProvider.Unavailability u = p.unavailabilityOf("unii");
         assertNotNull(u, "the corrupt file must be diagnosed, not folded into 'not installed'");
-        assertEquals(RuntimeDictionaryProvider.UnavailabilityReason.NO_USABLE_CONTENT, u.reason());
         assertTrue(u.detail().contains("could not be read"), u.detail());
         assertTrue(u.detail().contains("reinstall"), u.detail());
     }
@@ -326,8 +323,6 @@ class DictionaryStoreTest
 
         RuntimeDictionaryProvider.Unavailability u = p.unavailabilityOf("meddra");
         assertNotNull(u, "the store must say WHY meddra did not load");
-        assertEquals(RuntimeDictionaryProvider.UnavailabilityReason.NO_VERSION_SELECTED,
-                u.reason());
         assertTrue(u.detail().contains("26.1, 27.0"),
                 "the operator must be told what IS installed: " + u.detail());
         assertTrue(u.detail().contains("--meddra-version"), "…and how to choose: " + u.detail());
@@ -369,8 +364,6 @@ class DictionaryStoreTest
 
         RuntimeDictionaryProvider.Unavailability u = p.unavailabilityOf("meddra");
         assertNotNull(u);
-        assertEquals(RuntimeDictionaryProvider.UnavailabilityReason.VERSION_NOT_INSTALLED,
-                u.reason());
         assertTrue(u.detail().contains("25.0"), "names the version that was asked for");
         assertTrue(u.detail().contains("27.0"), "names what is installed instead: " + u.detail());
     }
@@ -385,7 +378,6 @@ class DictionaryStoreTest
 
         RuntimeDictionaryProvider.Unavailability u = p.unavailabilityOf("meddra");
         assertNotNull(u);
-        assertEquals(RuntimeDictionaryProvider.UnavailabilityReason.NO_USABLE_CONTENT, u.reason());
         assertTrue(u.detail().contains("reinstall"),
                 "the action is a reinstall, not a fresh install: " + u.detail());
     }

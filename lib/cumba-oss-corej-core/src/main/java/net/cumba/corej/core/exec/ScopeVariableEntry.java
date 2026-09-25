@@ -32,10 +32,10 @@ import org.jspecify.annotations.Nullable;
  * </p>
  * <p>
  * ⭐ <b>An entry with no tag parses exactly as it did before the feature existed</b> (ruling D5):
- * {@link #variable()} and {@link #raw()} are byte-for-byte what they were, so every message built
- * from them is unchanged. Only a <em>valid</em> trailing tag is stripped; anything else containing
- * a colon is left whole for {@link #malformedTypeSuffix} and loader gate R9 to reject, so the
- * matcher never silently reads {@code X:Z} as a column named {@code X}.
+ * {@link #variable()} is byte-for-byte what it was, so every message built from them is unchanged.
+ * Only a <em>valid</em> trailing tag is stripped; anything else containing a colon is left whole
+ * for {@link #malformedTypeSuffix} and loader gate R9 to reject, so the matcher never silently
+ * reads {@code X:Z} as a column named {@code X}.
  * </p>
  *
  * <p>
@@ -53,11 +53,9 @@ import org.jspecify.annotations.Nullable;
  *            the variable half — the whole entry when {@code qualifier} is {@code null}
  * @param requiredKind
  *            the type the entry demands, or {@code null} when it carries no tag
- * @param raw
- *            the entry exactly as authored, used verbatim in mismatch messages
  */
 public record ScopeVariableEntry(@Nullable String qualifier, String variable,
-        ColumnTypeGate.@Nullable Kind requiredKind, String raw)
+        ColumnTypeGate.@Nullable Kind requiredKind)
 {
 
     /**
@@ -186,19 +184,19 @@ public record ScopeVariableEntry(@Nullable String qualifier, String variable,
     {
         // ⚠⚠ The tag comes off FIRST. isWholeEntryRegex tests the LAST character, so `/^AE.*/:N`
         // is not a regex until the `:N` is gone — and the dot split would then corrupt it. Every
-        // test below therefore runs on `body`, while `raw` is preserved verbatim for the messages.
+        // test below therefore runs on `body`.
         String body = withoutTypeTag(raw);
         ColumnTypeGate.Kind kind = tagKind(raw);
         if (isWholeEntryRegex(body))
         {
-            return new ScopeVariableEntry(null, body, kind, raw);
+            return new ScopeVariableEntry(null, body, kind);
         }
         int dot = body.indexOf('.');
         if (dot <= 0 || dot >= body.length() - 1)
         {
-            return new ScopeVariableEntry(null, body, kind, raw);
+            return new ScopeVariableEntry(null, body, kind);
         }
-        return new ScopeVariableEntry(body.substring(0, dot), body.substring(dot + 1), kind, raw);
+        return new ScopeVariableEntry(body.substring(0, dot), body.substring(dot + 1), kind);
     }
 
 

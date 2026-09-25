@@ -22,8 +22,7 @@ public final class XlsxReportWriterSupplier implements ReportWriterSupplier
     /** The option name a client looks for when it wants to set the per-sheet row cap. */
     public static final String MAX_ROWS_PER_SHEET = "maxRowsPerSheet";
 
-    private static final ReportFormat FORMAT = new ReportFormat("xlsx",
-            "Excel workbook (Python CORE parity, one sheet per report section)", "xlsx", ".xlsx");
+    private static final ReportFormat FORMAT = new ReportFormat("xlsx", ".xlsx");
 
     /**
      * The per-sheet row cap, declared so a CLI or UI can discover it instead of hard-coding a flag.

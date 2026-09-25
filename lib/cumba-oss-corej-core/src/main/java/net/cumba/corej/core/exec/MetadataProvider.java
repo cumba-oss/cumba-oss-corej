@@ -274,14 +274,12 @@ public interface MetadataProvider
      * variation is the norm there, not an anomaly, so comparing them would be pure noise.
      * </p>
      *
-     * @param domain
-     *            the domain publishing this occurrence, e.g. {@code AE}
      * @param label
      *            the published label
      * @param dataType
      *            the published {@code simpleDatatype}
      */
-    record PublishedVariable(String domain, @Nullable String label, @Nullable String dataType)
+    record PublishedVariable(@Nullable String label, @Nullable String dataType)
     {
     }
 

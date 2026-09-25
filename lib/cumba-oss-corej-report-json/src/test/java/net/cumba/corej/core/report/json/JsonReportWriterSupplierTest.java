@@ -54,7 +54,6 @@ class JsonReportWriterSupplierTest
     {
         JsonReportWriterSupplier supplier = new JsonReportWriterSupplier();
         assertEquals("json", supplier.getReportFormat().name());
-        assertEquals("json", supplier.getReportFormat().fileExtension());
         assertEquals(".json", supplier.getReportFormat().fileSuffix());
         // No writer properties: the v1 schema is frozen, so there is nothing to tune. An empty
         // list is the contract, not an oversight — a future property must be a deliberate edit

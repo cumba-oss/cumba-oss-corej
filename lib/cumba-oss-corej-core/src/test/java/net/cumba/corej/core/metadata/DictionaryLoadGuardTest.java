@@ -130,7 +130,6 @@ class DictionaryLoadGuardTest
         RuntimeDictionaryProvider.Unavailability u = p.unavailabilityOf("unii");
         assertNotNull(u,
                 "the corrupt file must carry a diagnosis, not the catch-all " + "'not installed'");
-        assertEquals(RuntimeDictionaryProvider.UnavailabilityReason.NO_USABLE_CONTENT, u.reason());
         assertTrue(u.detail().contains("could not be read"), u.detail());
         assertTrue(u.detail().contains("reinstall"), u.detail());
         assertNotNull(p.unavailabilityOf("garbage"),
@@ -169,7 +168,6 @@ class DictionaryLoadGuardTest
 
         RuntimeDictionaryProvider.Unavailability u = p.unavailabilityOf("meddra");
         assertNotNull(u, "the content-guard drop must leave a diagnosis behind");
-        assertEquals(RuntimeDictionaryProvider.UnavailabilityReason.NO_USABLE_CONTENT, u.reason());
         assertTrue(u.detail().contains("reinstall"), u.detail());
         assertEquals(u.detail(), p.unavailabilityDetail("meddra"));
         assertNull(p.unavailabilityOf("unii"),
@@ -238,8 +236,6 @@ class DictionaryLoadGuardTest
                 + "\"retrieved\":\"2026-08-30\",\"levels\":{\"MEDRT\":{\"A\":\"A\"}}}");
 
         assertEquals("2026.07.06", d.getVersion());
-        assertEquals("2026-08-30", d.getProvenance().retrieved());
-        assertEquals("https://evs.nci.nih.gov/ftp1/MED-RT/MEDRT.txt", d.getProvenance().source());
     }
 
 
@@ -248,7 +244,6 @@ class DictionaryLoadGuardTest
     void provenanceIsNoneWhenAbsentOrBlank() throws IOException
     {
         ValueMapDictionary absent = parse("{\"type\":\"medrt\",\"levels\":{\"M\":{\"A\":\"A\"}}}");
-        assertEquals(ValueMapDictionary.Provenance.NONE, absent.getProvenance());
         assertNull(absent.getVersion());
 
         ValueMapDictionary blank = parse(

@@ -92,12 +92,12 @@ class WildcardExpansionPostFilterTest
     }
 
 
-    /** What the report says was generated as a wildcard expansion: (id, variable) pairs. */
+    /** What the report says was generated as a wildcard expansion: the rule ids. */
     private static List<String> reportedExpansions(GeneratedRulePackage pkg)
     {
         return pkg.getReport().getGeneratedRules().stream()
                 .filter(info -> info.category() == RuleCategory.WILDCARD_EXPANSION)
-                .map(info -> info.ruleId() + "/" + info.variable()).toList();
+                .map(GeneratedRuleInfo::ruleId).toList();
     }
 
 
@@ -119,7 +119,7 @@ class WildcardExpansionPostFilterTest
 
         assertEquals(List.of("WCP-1-TRT02P"), expansionIds(pkg, "WCP-1"),
                 "TRT01P is Library-defined and must drop; TRT02P is not and must survive");
-        assertEquals(List.of("WCP-1-TRT02P/TRT02P"), reportedExpansions(pkg),
+        assertEquals(List.of("WCP-1-TRT02P"), reportedExpansions(pkg),
                 "the report must announce exactly the surviving expansion — a run whose report "
                         + "omits a rule it executed cannot be audited");
     }
@@ -142,8 +142,7 @@ class WildcardExpansionPostFilterTest
 
         assertEquals(List.of("WCP-2-TRT01P", "WCP-2-TRT02P"), expansionIds(pkg, "WCP-2"),
                 "the filter is opt-in; firing it unasked silently stops checking TRT01P");
-        assertEquals(List.of("WCP-2-TRT01P/TRT01P", "WCP-2-TRT02P/TRT02P"),
-                reportedExpansions(pkg));
+        assertEquals(List.of("WCP-2-TRT01P", "WCP-2-TRT02P"), reportedExpansions(pkg));
     }
 
 
@@ -165,7 +164,7 @@ class WildcardExpansionPostFilterTest
         assertEquals(List.of("WCP-3-SUBJFL"), expansionIds(pkg, "WCP-3"),
                 "AEFL is 'AE' + the template's own suffix 'FL' — the --FL rule already covers it; "
                         + "SUBJFL is not and must survive");
-        assertEquals(List.of("WCP-3-SUBJFL/SUBJFL"), reportedExpansions(pkg));
+        assertEquals(List.of("WCP-3-SUBJFL"), reportedExpansions(pkg));
     }
 
 
@@ -190,7 +189,7 @@ class WildcardExpansionPostFilterTest
         assertEquals(List.of("WCP-4-AE"), expansionIds(pkg, "WCP-4"),
                 "the column IS the domain, so nothing is left after the prefix — an off-by-one "
                         + "boundary here silently deletes the rule's only expansion");
-        assertEquals(List.of("WCP-4-AE/AE"), reportedExpansions(pkg));
+        assertEquals(List.of("WCP-4-AE"), reportedExpansions(pkg));
     }
 
 }
