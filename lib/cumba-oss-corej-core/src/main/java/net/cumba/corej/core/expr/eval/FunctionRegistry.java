@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * The {@code name -> FunctionDescriptor} registry. Built-in providers are discovered via the
  * project SPI ({@link GenericServiceFactory} over {@code META-INF/services/}) on class
- * initialisation; additional functions may be registered programmatically (for tests / embedding).
+ * initialisation; the tests plant probe functions through a package-private seam.
  *
  * <h2>Policies</h2>
  * <ul>
@@ -24,8 +24,8 @@ import org.jspecify.annotations.Nullable;
  * {@link ArgumentBinder} binds arguments <em>before</em> resolution. Two service-loaded providers
  * contributing the same name is a configuration error and throws
  * {@link IllegalStateException}.</li>
- * <li><b>Programmatic registration</b> replaces any existing entry for the name (so embedders /
- * tests can override a built-in), and {@link #unregister(String)} removes one.</li>
+ * <li><b>Programmatic registration</b> (the package-private test seam) replaces any existing entry
+ * for the name, and {@link #unregister(String)} removes one.</li>
  * </ul>
  *
  * <p>
@@ -89,17 +89,21 @@ public final class FunctionRegistry
 
 
     /**
-     * Registers (or replaces) a function descriptor programmatically. Intended for tests and
-     * embedding scenarios that contribute functions without an SPI provider.
+     * Registers (or replaces) a function descriptor programmatically — a <b>test seam</b>, used to
+     * plant probe functions (dispatch-drift and kwarg probes). ⚑ It was a public "embedder"
+     * extension point until 2026-09-25; no embedder existed anywhere in the stack, so the public
+     * surface was retired ({@code PLAN-retire-dead-multi-match-lookup} K3) and the seam kept
+     * package-private for the tests that depend on it. Production functions arrive only through the
+     * {@link FunctionProvider} SPI.
      */
-    public static void register(FunctionDescriptor descriptor)
+    static void register(FunctionDescriptor descriptor)
     {
         REGISTRY.put(descriptor.name(), descriptor);
     }
 
 
-    /** Removes a programmatically-registered descriptor; used by tests to restore isolation. */
-    public static void unregister(String name)
+    /** Removes a programmatically-registered descriptor; a test seam restoring isolation (K3). */
+    static void unregister(String name)
     {
         REGISTRY.remove(name);
     }

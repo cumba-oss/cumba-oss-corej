@@ -765,17 +765,12 @@ public final class BroadcastFold
      * module (the define-conformance module, or an embedder's jar) contributing an implemented
      * BOOLEAN that reads the table per row would be picked up by {@link FunctionRegistry} at
      * runtime and admitted here, with the gate green one module upstream. No such provider exists
-     * anywhere in the stack today (verified round 3); the hazard, when one appears, is the same
-     * multiplicity-not-value one as the embedder residual below.
-     * </p>
-     *
-     * <p>
-     * ⚑ <b>The one residual, deliberately accepted</b>: an embedder calling
-     * {@link FunctionRegistry#register(FunctionDescriptor)} at runtime with a table-reading BOOLEAN
-     * function is reachable by no test, because it exists only in that embedder's process. It is
-     * accepted rather than gated because the residual hazard is <b>multiplicity, not value</b>: a
-     * leaf that folds {@code TRUE} yields one dataset-level finding where the row path yielded N,
-     * and the {@code FALSE} direction is observationally identical either way.
+     * anywhere in the stack today (verified round 3). The hazard, when one appears, is
+     * <b>multiplicity, not value</b>: a leaf that folds {@code TRUE} yields one dataset-level
+     * finding where the row path yielded N, and the {@code FALSE} direction is observationally
+     * identical either way. (A second residual — an embedder registering such a function at run
+     * time — went with the public registration API, K3, 2026-09-25: registration is a
+     * package-private test seam now.)
      * </p>
      */
     public static boolean isDatasetFactBoolCall(Expr.Call c)
