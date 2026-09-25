@@ -291,13 +291,12 @@ public class RulePackageLoader
      *
      * <p>
      * <b>Why the corpus generator ALSO skips these rules, and why that is not duplication.</b>
-     * {@code RuleStorageAssembler} (the {@code rules-src/} → {@code rules-legacy/} → {@code rules/}
-     * regeneration flow) omits a parked rule from the shipped packages entirely — which is what
-     * parks it in the <em>Python fork</em> too, since {@code rules-legacy/} is the fork's corpus
-     * and the fork has no equivalent of this pass. That skip cannot replace this one: the rule
-     * editor, the CDISC-Library API path and any hand-authored package all bypass the generation
-     * tool, so a {@code Not Executable} rule can still reach the engine. Both checks are required;
-     * neither is redundant.
+     * {@code RuleStorageAssembler} (part of the {@code rules-src/} → {@code rules/} generation flow
+     * in {@code cumba-corej-rules}) omits a parked rule from the shipped packages entirely. That
+     * skip cannot replace this one: a package that did not come out of that tool — hand-authored,
+     * or handed to {@link #load(Path)} / {@link #loadFromString(String)} from outside the shipped
+     * corpus — bypasses it, so a {@code Not Executable} rule can still reach the engine. Both
+     * checks are required; neither is redundant.
      * </p>
      *
      * <p>
@@ -305,12 +304,10 @@ public class RulePackageLoader
      * {@code LibraryRuleMapper.mapRulePackage} (retired with the CDISC-Library rules ingestion,
      * cache P4) was exactly that case — it hand-picked the passes that made sense without
      * {@code normalizeOperations} rather than running the whole pipeline — so it called this
-     * explicitly. That is why this method is package-private rather than private. Any future path
-     * that assembles a {@link RulePackage} outside {@code finishLoad} inherits the same obligation,
-     * or a rule sourced through it will declare itself not executable and run anyway. ⚠ The
-     * upstream CDISC-Library corpus is <em>not</em> this repo's corpus and is not under this
-     * project's control, so "zero rules declare the value today" is a fact about {@code rules-src/}
-     * only.
+     * explicitly. No caller outside this class remains; the method is left package-private rather
+     * than private only so that a future same-package path can meet the obligation. Any such path
+     * that assembles a {@link RulePackage} outside {@code finishLoad} inherits it, or a rule
+     * sourced through it will declare itself not executable and run anyway.
      * </p>
      *
      * <p>

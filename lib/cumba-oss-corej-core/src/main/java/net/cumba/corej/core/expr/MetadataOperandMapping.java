@@ -228,13 +228,13 @@ public final class MetadataOperandMapping
             Expr left = canonicalizeMetadataOperands(b.left());
             Expr right = canonicalizeMetadataOperands(b.right());
             // The varname()-literal class (e.g. FDA-SD1322, CDISC-AD0042): in the metadata
-            // families a varname() comparison's textual RHS is
-            // ALWAYS a literal in the legacy per-variable cascade (evaluateLeafAgainstMetadata
-            // resolves the value against the metadata map and otherwise falls back to the literal
-            // string — it never reads a data column). A rule authored without value_is_literal
-            // raises that RHS as a bare COLUMN reference, which would make the expression impure
-            // (and read per-row data if a same-named column existed). Canonicalize it to the
-            // string literal the cascade actually compares against.
+            // families a varname() comparison's textual RHS names a VARIABLE, so it is a literal —
+            // the retired per-variable cascade compared it as the literal string and never read a
+            // data column. A rule authored without value_is_literal raises that RHS as a bare
+            // COLUMN reference, which would make the expression impure (and read per-row data if a
+            // same-named column existed). Canonicalize it to that string literal. The one name
+            // exempted in practice is DOMAIN (see isCascadeResolvableName): it is left a COLUMN
+            // reference and reaches the native compiler as such.
             if (isVarnameCall(left) && right instanceof Expr.Ref r && r.kind() == OperandKind.COLUMN
                     && !isCascadeResolvableName(r.name()))
             {
@@ -279,11 +279,22 @@ public final class MetadataOperandMapping
 
 
     /**
-     * Names the legacy per-variable cascade RESOLVES from the injected metadata map rather than
-     * treating as literals ({@code evaluateLeafAgainstMetadata}'s {@code containsKey} hit:
-     * {@code DOMAIN} via Fix #10, the dataset-level facts). A varname() comparison against one of
-     * these must NOT be rewritten to a string literal (P9 review finding 4) — it stays a reference,
-     * keeping the rule on the legacy cascade where the injected value resolves.
+     * Names a {@code varname()} comparison's COLUMN-kind right-hand side is <em>not</em> rewritten
+     * to a string literal (P9 review finding 4): such a reference is left as written and handed to
+     * the native compiler as an ordinary COLUMN reference. The set is the one the retired
+     * per-variable cascade resolved from its injected metadata map ({@code DOMAIN} via Fix #10, and
+     * the dataset-level facts); that cascade no longer exists — {@code RuleRunner} reports a rule
+     * without a native form as {@code ERROR} — so the exemption now only keeps the reference.
+     *
+     * <p>
+     * ⚠ Only {@code DOMAIN} can ever match. The caller tests {@code kind() == COLUMN}, and
+     * {@code OperandClassifier} classifies every lowercase-leading or underscore-containing token
+     * as {@code BUILTIN} (or rejects it), so {@code record_count}, {@code dataset_name} and
+     * {@code dataset_label} never arrive here as COLUMN references. {@code record_count} as a
+     * {@code BUILTIN} is, moreover, turned into the {@code record_count()} call by
+     * {@link #canonicalizeMetadataOperands} before the comparison is inspected. The three entries
+     * are inert; they are kept as the record of the cascade's set.
+     * </p>
      */
     private static boolean isCascadeResolvableName(String name)
     {
