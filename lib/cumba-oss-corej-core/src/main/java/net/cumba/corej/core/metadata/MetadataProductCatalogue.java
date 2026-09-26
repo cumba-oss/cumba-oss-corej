@@ -96,10 +96,13 @@ public final class MetadataProductCatalogue
             // endpoint, the data browser's product picker, the CLI's -mp resolution — can say
             // "re-seed" instead of "no products" (PLAN-define-ct-evaluation review round 1,
             // engine L4). The run itself aborts on the same store (T1-10 a).
+            // Neutral (review round 3, L2): the direction is named, the remedy is the surface's.
             LOGGER.log(System.Logger.Level.WARNING,
-                    "Metadata store {0} is format {1} and this build reads format {2}; it must be"
-                            + " re-seeded. Only full-form --metadata-products keys will resolve.",
-                    store, e.foundVersion(), e.knownVersion());
+                    "Metadata store {0} is format {1} and this build reads format {2}{3}; the"
+                            + " product catalogue is unavailable, so only full-form"
+                            + " --metadata-products keys will resolve.",
+                    store, e.foundVersion(), e.knownVersion(),
+                    e.writtenByNewerBuild() ? " (written by a newer build)" : "");
             return new MetadataProductCatalogue(Set.of(), e);
         }
         catch (IOException | RuntimeException e)
