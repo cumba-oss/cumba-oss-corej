@@ -29,9 +29,12 @@ import org.junit.jupiter.api.io.TempDir;
  * independently.
  *
  * <p>
- * Lives in a {@code …capture.sdtm} package and uses {@code CORE_…}-named methods because
- * {@code ScenarioCapture.findTestFrame}/{@code pickCategory} derive the scenario family from the
- * calling frame; {@code projectBasedir} is redirected to a temp dir so captures land there.
+ * Its methods are named after the captured rule ({@code CDISC_L304_valid} for {@code CDISC-L304})
+ * because {@code ScenarioCapture.findTestFrame} takes the verdict suffix from the method named
+ * after the rule, and the scenario family ({@code cdisc/}) comes from the id.
+ * {@code projectBasedir} is redirected to a temp dir holding that family directory, so captures
+ * land there. (The {@code …capture.sdtm} package no longer matters: the family was derived from it
+ * until PLAN-dead-code-followups F-1.)
  * </p>
  */
 class ScenarioCaptureGuardTest
@@ -45,12 +48,14 @@ class ScenarioCaptureGuardTest
     private String oldBasedir;
 
     @BeforeEach
-    void enableCaptureIntoTempDir()
+    void enableCaptureIntoTempDir() throws IOException
     {
         oldFlag = System.getProperty(ScenarioCapture.FLAG);
         oldBasedir = System.getProperty("projectBasedir");
         System.setProperty(ScenarioCapture.FLAG, "true");
         System.setProperty("projectBasedir", tempDir.toString());
+        Files.createDirectories(
+                tempDir.resolve("src/test/resources/net/cumba/corej/core/ruletestsuites/cdisc"));
     }
 
 
@@ -111,7 +116,7 @@ class ScenarioCaptureGuardTest
 
 
     @Test
-    void CORE_L304_valid() throws IOException
+    void CDISC_L304_valid() throws IOException
     {
         // The primary's name ("SUPPAE") differs from the scenario domain ("AE"), so capture
         // relabels the emitted dataset -- but it must SNAPSHOT (wrap), never rename the caller's
@@ -123,7 +128,7 @@ class ScenarioCaptureGuardTest
         primary.setValue(0, "USUBJID", "SUBJ-A");
         primary.setValue(0, "QVAL", "x");
 
-        ScenarioCapture.captureWithSiblings("CORE-L304", Verdict.NO_VIOLATION, "AE", primary, null,
+        ScenarioCapture.captureWithSiblings("CDISC-L304", Verdict.NO_VIOLATION, "AE", primary, null,
                 null);
 
         assertEquals("SUPPAE", primary.getMetaData().getName(),
@@ -138,7 +143,7 @@ class ScenarioCaptureGuardTest
 
 
     @Test
-    void CORE_L302_valid() throws IOException
+    void CDISC_L302_valid() throws IOException
     {
         // The primary is representable, but the resolved sibling is a single-column table with
         // an all-null row -- exactly the shape the primary guard refuses because CdtWriter only
@@ -151,7 +156,7 @@ class ScenarioCaptureGuardTest
         // row 1 stays all-null
         DatasetResolver resolver = n -> "SUPPAE".equalsIgnoreCase(n) ? sibling : null;
 
-        ScenarioCapture.captureWithSiblings("CORE-L302", Verdict.NO_VIOLATION, "AE", primaryAe(),
+        ScenarioCapture.captureWithSiblings("CDISC-L302", Verdict.NO_VIOLATION, "AE", primaryAe(),
                 ruleWithSibling("SUPPAE", null), resolver);
 
         assertEquals(List.of(), cdtFiles(),
@@ -163,7 +168,7 @@ class ScenarioCaptureGuardTest
 
 
     @Test
-    void CORE_L303_valid() throws IOException
+    void CDISC_L303_valid() throws IOException
     {
         // Multi-key Match_Datasets: primary tuples are (SUBJ-A,1) and (SUBJ-B,2). The live
         // sibling row (SUBJ-A,2) passes BOTH per-key membership tests -- the Cartesian
@@ -180,7 +185,7 @@ class ScenarioCaptureGuardTest
         sibling.setValue(1, "QVAL", "LEAKME");
         DatasetResolver resolver = n -> "SUPPAE".equalsIgnoreCase(n) ? sibling : null;
 
-        ScenarioCapture.captureWithSiblings("CORE-L303", Verdict.NO_VIOLATION, "AE", primaryAe(),
+        ScenarioCapture.captureWithSiblings("CDISC-L303", Verdict.NO_VIOLATION, "AE", primaryAe(),
                 ruleWithSibling("SUPPAE", List.of("USUBJID", "VISITNUM")), resolver);
 
         List<Path> files = cdtFiles();

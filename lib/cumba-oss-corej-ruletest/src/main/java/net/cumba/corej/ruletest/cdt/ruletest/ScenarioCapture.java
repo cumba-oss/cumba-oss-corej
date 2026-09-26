@@ -13,6 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.cumba.corej.core.exec.DatasetResolver;
@@ -40,7 +41,12 @@ import org.jspecify.annotations.Nullable;
  * Activated only when {@code -Dgenerate.scenarios=true} is passed to the test runner so capture
  * mode is opt-in. Each capture call writes one extended-CDT scenario file under
  * {@code <module>/src/test/resources/net/cumba/corej/core/ruletestsuites/<family>/<coreId>/}, where
- * {@code <family>} is derived from the calling test class's package.
+ * {@code <family>} is the captured rule's family: the leading letter run of its {@code Core.Id},
+ * lower-cased ({@code CDISC-CG0001 -> cdisc}, {@code FDA-SD0007 -> fda},
+ * {@code PMDA-AD0001 -> pmda}, {@code DRAFT-… -> draft}). That is the subtree the family's
+ * {@code RuleTestSuites<Family>FactoryTest} replays, so a captured scenario is picked up by the
+ * factory that owns its rule. A capture whose family directory does not exist is refused loudly
+ * rather than written where nothing replays it.
  *
  * <p>
  * ⚑ <b>Retargeted 2026-09-02.</b> This wrote to
@@ -93,6 +99,9 @@ public final class ScenarioCapture
     }
 
     private static final Pattern VERDICT_SUFFIX = Pattern.compile("(valid|invalid)(\\d*)");
+
+    /** Every scenario file this JVM has captured, so a second capture onto one name is refused. */
+    private static final Set<Path> WRITTEN = ConcurrentHashMap.newKeySet();
 
     private ScenarioCapture()
     {
@@ -155,9 +164,16 @@ public final class ScenarioCapture
         {
             return;
         }
-        StackWalker.StackFrame frame = findTestFrame();
-        String methodName = frame != null ? frame.getMethodName() : null;
-        Class<?> testClass = frame != null ? frame.getDeclaringClass() : null;
+        StackWalker.StackFrame frame = findTestFrame(aCoreId);
+        if (frame == null)
+        {
+            // The method name supplies the file's verdict token (valid-2, invalid-3, ...); without
+            // it two variants of one rule would silently share one file name.
+            throw new IllegalStateException("cannot name the captured scenario for " + aCoreId
+                    + ": no test method on the stack is named after the rule (expected a method"
+                    + " starting with " + methodPrefix(aCoreId) + ")");
+        }
+        String methodName = frame.getMethodName();
 
         // Figure out dropped names (for primary-rename decision + sibling exclusion).
         Set<String> dropped = new HashSet<>();
@@ -228,7 +244,7 @@ public final class ScenarioCapture
         // #expectViolationAt lines match what the factory will later verify on this exact file.
         ViolationLocationCheck.Expectations exp = locationExpectations(aRule, aVerdict,
                 effectivePrimary, effectiveDomain, datasets, aLibrary);
-        Path out = scenarioPath(testClass, aCoreId, aVerdict, effectiveDomain, methodName);
+        Path out = scenarioPath(aCoreId, aVerdict, effectiveDomain, methodName);
         writeScenario(aCoreId, aVerdict, effectiveDomain, null, datasets, libraryToWrite, exp, out,
                 methodName);
     }
@@ -625,68 +641,94 @@ public final class ScenarioCapture
 
 
     /**
-     * Walk up the call stack and return the first frame whose method name uses one of the
-     * established rule-test naming conventions in this module: {@code CORE_…} for SDTM and
-     * {@code CDISC_AD…} for ADaM. The declaring class tells us the test's domain category (sdtm /
-     * adam); the method name tells us the verdict suffix.
+     * The test-method prefix of a rule: its {@code Core.Id} with every {@code -} turned into
+     * {@code _} ({@code CDISC-CG0554-C -> CDISC_CG0554_C}). Every rule-test suite method is named
+     * that way, followed by {@code _valid…} / {@code _invalid…}.
      */
-    private static StackWalker.StackFrame findTestFrame()
+    private static String methodPrefix(String aCoreId)
     {
-        return StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
-                .walk(frames -> frames
-                        .filter(f -> f.getMethodName().startsWith("CORE_")
-                                || f.getMethodName().startsWith("CDISC_AD"))
-                        .findFirst().orElse(null));
-    }
-
-
-    private static Path scenarioPath(@Nullable Class<?> aTestClass, String aCoreId,
-            Verdict aVerdict, String aDomain, @Nullable String aMethodName)
-    {
-        String category = pickCategory(aTestClass);
-        String verdictToken = verdictToken(aVerdict, aMethodName);
-        String fileName = aCoreId + "-" + verdictToken + "-" + aDomain + ".cdt";
-        return resourceRoot().resolve(category).resolve(aCoreId).resolve(fileName);
+        return aCoreId.replace('-', '_');
     }
 
 
     /**
-     * Derive the corpus <b>family</b> directory from a test class's package. The corpus is keyed by
-     * rule family, not by standard, so {@code .sdtm} suites emit into {@code core/<coreId>/} and
-     * {@code .adam} suites into {@code cdisc/<coreId>/} — in each case the directory the same suite
-     * replays from.
+     * Walk up the call stack and return the first frame whose method is named after the captured
+     * rule: its name is {@link #methodPrefix(String)} of {@code aCoreId}, alone or followed by
+     * {@code _}. The method name supplies the verdict suffix of the file name.
+     *
+     * <p>
+     * ⚑ Keyed on the rule id since 2026-09-26 (PLAN-dead-code-followups F-1). This used to accept
+     * only methods starting {@code CORE_} (the retired CORE family) or {@code CDISC_AD}, so a
+     * capture from any SDTM suite of the current corpus ({@code CDISC_CG…}, {@code FDA_SD…}) found
+     * no frame and failed.
+     * </p>
      */
-    private static String pickCategory(@Nullable Class<?> aTestClass)
+    private static StackWalker.@Nullable StackFrame findTestFrame(String aCoreId)
     {
-        if (aTestClass == null)
+        String prefix = methodPrefix(aCoreId);
+        return StackWalker.getInstance().walk(frames -> frames.filter(f ->
         {
-            throw new IllegalStateException(
-                    "cannot derive scenario family: no test class on the stack");
-        }
-        String pkg = aTestClass.getPackageName();
-        int lastDot = pkg.lastIndexOf('.');
-        String leaf = lastDot < 0 ? pkg : pkg.substring(lastDot + 1);
-        // ⚑ The corpus is keyed by rule FAMILY, not by standard. Map each suite package onto the
-        // family directory that same suite replays from, so a captured scenario is picked up by
-        // the factory that owns it:
-        // ...ruletestsuites.adam -> cdisc/ (AbstractAdamRuleTest.loadCdt reads cdisc/,
-        // RuleTestSuitesCdiscFactoryTest replays it)
-        // ...ruletestsuites.sdtm -> core/ — ⚠ STALE TARGET: the core/ root was deleted with the
-        // CORE family in 2026-09 (its RuleTestSuitesCoreFactoryTest with it), and
-        // AbstractSdtmRuleTest.loadCdt now takes a family-qualified path per caller. A capture
-        // from an SDTM suite therefore lands where nothing replays it — a capture-mode
-        // (-Dgenerate.scenarios=true) defect, surfaced here and not fixed by the comment.
-        // Returning "sdtm"/"adam" as this used to do names directories that do not exist.
-        if ("sdtm".equals(leaf))
+            String name = f.getMethodName();
+            return name.equals(prefix) || name.startsWith(prefix + "_");
+        }).findFirst().orElse(null));
+    }
+
+
+    private static Path scenarioPath(String aCoreId, Verdict aVerdict, String aDomain,
+            @Nullable String aMethodName)
+    {
+        Path familyDir = familyDirectory(resourceRoot(), aCoreId);
+        String verdictToken = verdictToken(aVerdict, aMethodName);
+        String fileName = aCoreId + "-" + verdictToken + "-" + aDomain + ".cdt";
+        return familyDir.resolve(aCoreId).resolve(fileName);
+    }
+
+
+    /**
+     * The corpus <b>family</b> directory a scenario of rule {@code aCoreId} belongs in: the leading
+     * run of ASCII letters of the id, lower-cased ({@code CDISC-CG0001 -> cdisc},
+     * {@code FDA-SD0007 -> fda}), resolved under {@code aRoot}. That is the subtree the family's
+     * {@code RuleTestSuites<Family>FactoryTest} replays — the rule's family decides it, not the
+     * package of the suite that happened to capture it.
+     *
+     * <p>
+     * ⚑ PLAN-dead-code-followups F-1 (2026-09-26). This used to derive the directory from the
+     * calling suite's package: {@code .adam -> cdisc/} and {@code .sdtm -> core/}. The
+     * {@code core/} root was deleted with the CORE family in 2026-09, and an SDTM suite now tests
+     * CDISC, FDA and PMDA rules side by side, so no single directory was right for a package.
+     * </p>
+     *
+     * @throws IllegalStateException
+     *             when the id has no leading letters, or when the family directory does not exist —
+     *             a scenario written there would be replayed by nothing
+     */
+    static Path familyDirectory(Path aRoot, String aCoreId)
+    {
+        int i = 0;
+        while (i < aCoreId.length() && isAsciiLetter(aCoreId.charAt(i)))
         {
-            return "core";
+            i++;
         }
-        if ("adam".equals(leaf))
+        if (i == 0)
         {
-            return "cdisc";
+            throw new IllegalStateException("cannot derive the scenario family of '" + aCoreId
+                    + "': a Core.Id starts with its family (CDISC-, FDA-, PMDA-, DRAFT-)");
         }
-        throw new IllegalStateException("cannot derive scenario family from package: " + pkg
-                + " (expected a suite package ending in .sdtm or .adam)");
+        String family = aCoreId.substring(0, i).toLowerCase(Locale.ROOT);
+        Path dir = aRoot.resolve(family);
+        if (!Files.isDirectory(dir))
+        {
+            throw new IllegalStateException("refusing to capture " + aCoreId + ": its family"
+                    + " directory " + dir + " does not exist, so no RuleTestSuites factory would"
+                    + " replay the scenario");
+        }
+        return dir;
+    }
+
+
+    private static boolean isAsciiLetter(char c)
+    {
+        return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
     }
 
 
@@ -761,6 +803,16 @@ public final class ScenarioCapture
             b.expectViolationCount(aExpectations.count()).expectedViolations(aExpectations.ats());
         }
         RuleTestScenario s = b.build();
+        if (!WRITTEN.add(aOut.toAbsolutePath().normalize()))
+        {
+            // Two captures mapping onto one file name (e.g. CDISC_CG0370_invalid and
+            // CDISC_CG0370_invalid_cross_domain_idvar, whose tail is no verdict token) would let
+            // the second silently replace the first.
+            throw new IllegalStateException("scenario capture collision: " + aOut + " was already"
+                    + " written in this run; give "
+                    + (aMethodName != null ? aMethodName : "the capturing method")
+                    + " a distinct _valid<N> / _invalid<N> suffix");
+        }
         try
         {
             Files.createDirectories(aOut.getParent());
