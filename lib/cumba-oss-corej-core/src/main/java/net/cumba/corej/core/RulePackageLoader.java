@@ -3135,9 +3135,13 @@ public class RulePackageLoader
             java.util.Set<String> boundHere, java.util.Collection<String> unknownKeys,
             List<String> errors)
     {
-        java.util.Set<String> present = presentKeys(block);
+        java.util.Set<String> present = null;
         for (String key : unknownKeys)
         {
+            if (present == null)
+            {
+                present = presentKeys(block); // error path only (review P1)
+            }
             errors.add(
                     "[" + ruleId(rule) + "] unknown key '" + key + "' under '" + where
                             + "': it binds to nothing, so whatever it was meant to require is not"
@@ -3394,9 +3398,13 @@ public class RulePackageLoader
     private static void reportUnknown(Rule rule, @Nullable String where, Object block,
             java.util.Collection<String> keys, java.util.Set<String> boundHere, List<String> errors)
     {
-        java.util.Set<String> present = presentKeys(block);
+        java.util.Set<String> present = null;
         for (String key : keys)
         {
+            if (present == null)
+            {
+                present = presentKeys(block); // error path only (review P1)
+            }
             String hint = net.cumba.corej.core.model.KeyHint.nearest(key, boundHere, present,
                     BoundRuleKeys.NEVER_HINTED);
             String advice = where == null && PROVENANCE_KEYS.contains(key)
@@ -5389,8 +5397,13 @@ public class RulePackageLoader
      * property), so the hint never proposes one of them (review E3: {@code {"left": …, "lfet": …}}
      * must not hint {@code left}). A {@link java.util.Set} is taken as the keys themselves (the
      * JSON-node shapes hand their own field names in); a bean is asked through the mapper's
-     * serialisation introspection, so Lombok getters, {@code @JsonGetter}s and aliases all count.
-     * Read only on the error path.
+     * serialisation introspection, so Lombok getters, {@code @JsonGetter}s and aliases all count —
+     * non-public accessors included ({@code MatchDataset.keysNode},
+     * {@code VariableRequirement.writeAny}: review P2, they were read as absent before). ⚠ Read
+     * only on the error path: every caller asks on the FIRST unknown key it reports, never before
+     * (review P1 — computed eagerly it was 69 % of a clean corpus load);
+     * {@link #PRESENT_KEYS_INTROSPECTIONS} counts the bean introspections so a test can pin that a
+     * clean load performs none.
      */
     static java.util.Set<String> presentKeys(Object block)
     {
@@ -5400,6 +5413,7 @@ public class RulePackageLoader
             names.forEach(n -> present.add(String.valueOf(n)));
             return present;
         }
+        PRESENT_KEYS_INTROSPECTIONS.increment();
         // ⚠ The gate runs after normalizeOperations / deriveOmittedFields and the composite after
         // normalizeJoinTypes too: a value those passes STAMP is not one the author wrote, so it
         // must not hide the hint for a misspelt Sensitivity / Join_Type. Exactly the two stamped
@@ -5421,6 +5435,7 @@ public class RulePackageLoader
             }
             try
             {
+                accessor.fixAccess(true);
                 if (accessor.getValue(block) != null && !stamped.contains(p.getName()))
                 {
                     present.add(p.getName());
@@ -5439,6 +5454,11 @@ public class RulePackageLoader
         return present;
     }
 
+    /**
+     * How many bean introspections {@link #presentKeys} has performed in this JVM — the instrument
+     * behind {@code UnknownKeysGateTest.aCleanLoadNeverIntrospectsForHints} (review P1).
+     */
+    static final java.util.concurrent.atomic.LongAdder PRESENT_KEYS_INTROSPECTIONS = new java.util.concurrent.atomic.LongAdder();
 
     /**
      * The nine run-threshold spellings found among a rule's unknown keys, each by name. Shared by

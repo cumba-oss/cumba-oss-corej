@@ -1,6 +1,7 @@
 package net.cumba.corej.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -96,7 +97,7 @@ class BoundKeysRosterTest
                     Map.entry("id", "provenance: the loader's / the rulespec harness's"
                             + " synthetic identity (Rule.effectiveId); file-loaded rules carry none"),
                     Map.entry("Core", r(P + "exec.DatasetRuleResolver", "getCore")),
-                    Map.entry("Description", r(P + "exec.OperationExecutor", "getDescription")),
+                    Map.entry("Description", r(TOKEN_EXPANDER, "getDescription")),
                     Map.entry("ExecutabilityHint", r(LOADER, "getExecutabilityHint")),
                     Map.entry("Authorities", r(REPORT_ASSEMBLER, "getAuthorities")),
                     Map.entry("Scope", r(SCOPE_MATCHER, "getScope")),
@@ -121,13 +122,14 @@ class BoundKeysRosterTest
                                     + " (RulePackageLoader.ruleTypeRejection)"),
                     Map.entry("Sensitivity", r(RUNNER, "getSensitivity")),
                     Map.entry("Severity", r(RUNNER, "effectiveSeverity")),
-                    Map.entry("Executability", r(REPORT_ASSEMBLER, "getExecutability")),
+                    Map.entry("Executability",
+                            r(P + "report.ValidationReportBuilder", "getExecutability")),
                     Map.entry("Variable_Universe", r(RUNNER, "getVariableUniverse")),
                     Map.entry("Operations",
                             "retired: bound only to throw"
                                     + " (Rule.rejectRetiredOperationsKey)"))),
             Map.entry(net.cumba.corej.core.model.RuleCore.class,
-                    Map.of("Id", r(LOADER, "getId"), "Status",
+                    Map.of("Id", r(P + "exec.DatasetRuleResolver", "getId"), "Status",
                             r(P + "report.LibraryValidator", "getStatus"), "Version",
                             NO_READER + "serialised by the corpus generator; the report reads"
                                     + " Authorities")),
@@ -183,7 +185,7 @@ class BoundKeysRosterTest
                     Map.of("Include", r(CLASSIFIER, "getInclude"), "Exclude",
                             r(CLASSIFIER, "getExclude"))),
             Map.entry(net.cumba.corej.core.model.Requirements.class,
-                    Map.of("Variables", r(RUNNER, "getVariables"), "Datasets",
+                    Map.of("Variables", r(WILDCARD_EXPANDER, "getVariables"), "Datasets",
                             r(RUNNER, "getDatasets"), "Library", r(WILDCARD_EXPANDER, "getLibrary"),
                             "Define", r(WILDCARD_EXPANDER, "getDefine"), "Dictionary",
                             r(WILDCARD_EXPANDER, "getDictionary"))),
@@ -207,9 +209,8 @@ class BoundKeysRosterTest
                             r(TOKEN_EXPANDER, "getOver"), "with", r(TOKEN_EXPANDER, "getWith"),
                             "pattern", r(TOKEN_EXPANDER, "getPattern"), "known_domain_only",
                             r(TOKEN_EXPANDER, "getKnownDomainOnly"))),
-            Map.entry(net.cumba.corej.core.model.WildcardFilter.class,
-                    Map.of("min", r(P + "model.WildcardFilter", "accepts"), "max",
-                            r(P + "model.WildcardFilter", "accepts"))));
+            Map.entry(net.cumba.corej.core.model.WildcardFilter.class, Map.of("min",
+                    r(WILDCARD_EXPANDER, "accepts"), "max", r(WILDCARD_EXPANDER, "accepts"))));
 
     /**
      * The JSON names Jackson's built bean deserializer binds on {@code type}, plus the
@@ -306,7 +307,7 @@ class BoundKeysRosterTest
                 assertTrue(hash > 0, "reader entries are fqcn#accessor: " + reader);
                 Class<?> readerClass = Class.forName(reader.substring(0, hash));
                 String accessor = reader.substring(hash + 1);
-                if (!bytecodeMentions(readerClass, accessor))
+                if (!bytecodeMentions(readerClass, e.getKey(), accessor))
                 {
                     unreferenced
                             .add(e.getKey().getSimpleName() + "." + r.getKey() + " -> " + reader);
@@ -315,20 +316,32 @@ class BoundKeysRosterTest
         }
         assertTrue(named >= 60, "named readers: " + named);
         assertTrue(unreferenced.isEmpty(),
-                "readers that never mention the accessor they are said to call: " + unreferenced);
+                "readers whose constant pool holds no reference to the accessor on the roster"
+                        + " class: " + unreferenced);
     }
 
 
-    private static boolean bytecodeMentions(Class<?> type, String symbol) throws Exception
+    /**
+     * Whether {@code reader} (or one of its nested classes — lambdas compile into the class that
+     * declares them) holds a {@code Methodref} / {@code InterfaceMethodref} / {@code Fieldref}
+     * constant whose owner is {@code owner} and whose name is exactly {@code member}. Parsed from
+     * the class file's constant pool (review T1 / T2): an exact name-and-owner match, never a
+     * substring of the file ({@code getInclude} is not {@code getIncludeSplitDatasets}, and
+     * {@code id} is not {@code idByLine}).
+     */
+    private static boolean bytecodeMentions(Class<?> reader, Class<?> owner, String member)
+        throws Exception
     {
-        byte[] needle = symbol.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        java.util.Deque<Class<?>> todo = new java.util.ArrayDeque<>(List.of(type));
+        String ownerInternal = owner.getName().replace('.', '/');
+        java.util.Deque<Class<?>> todo = new java.util.ArrayDeque<>(List.of(reader));
         while (!todo.isEmpty())
         {
             Class<?> c = todo.pop();
-            try (java.io.InputStream in = c.getResourceAsStream(c.getSimpleName() + ".class"))
+            String binary = c.getName().substring(c.getName().lastIndexOf('.') + 1);
+            try (java.io.InputStream in = c.getResourceAsStream(binary + ".class"))
             {
-                if (in != null && indexOf(in.readAllBytes(), needle) >= 0)
+                assertNotNull(in, "class file of " + c.getName());
+                if (memberRefs(in.readAllBytes()).contains(ownerInternal + "#" + member))
                 {
                     return true;
                 }
@@ -339,17 +352,72 @@ class BoundKeysRosterTest
     }
 
 
-    private static int indexOf(byte[] haystack, byte[] needle)
+    /**
+     * Every {@code owner#name} of the Fieldref / Methodref / InterfaceMethodref constants of a
+     * class file (JVMS §4.4: tags 9, 10, 11 → class index + name-and-type index).
+     */
+    private static Set<String> memberRefs(byte[] classFile)
     {
-        int found = -1;
-        for (int i = 0; found < 0 && i <= haystack.length - needle.length; i++)
+        java.nio.ByteBuffer in = java.nio.ByteBuffer.wrap(classFile);
+        assertEquals(0xCAFEBABE, in.getInt(), "class file magic");
+        in.getShort();
+        in.getShort();
+        int count = in.getShort() & 0xFFFF;
+        String[] utf8 = new String[count];
+        int[] classNameIndex = new int[count];
+        int[] natNameIndex = new int[count];
+        int[][] refs = new int[count][];
+        for (int i = 1; i < count; i++)
         {
-            if (java.util.Arrays.equals(haystack, i, i + needle.length, needle, 0, needle.length))
+            int tag = in.get() & 0xFF;
+            switch (tag)
             {
-                found = i;
+            case 1 ->
+            {
+                int len = in.getShort() & 0xFFFF;
+                byte[] bytes = new byte[len];
+                in.get(bytes);
+                utf8[i] = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+            }
+            case 3, 4 -> in.getInt();
+            case 5, 6 ->
+            {
+                in.getLong();
+                i++;
+            }
+            case 7 -> classNameIndex[i] = in.getShort() & 0xFFFF;
+            case 8, 16, 19, 20 -> in.getShort();
+            case 9, 10, 11 -> refs[i] = new int[]
+                {
+                        in.getShort() & 0xFFFF, in.getShort() & 0xFFFF
+                };
+            case 12 ->
+            {
+                natNameIndex[i] = in.getShort() & 0xFFFF;
+                in.getShort();
+            }
+            case 15 ->
+            {
+                in.get();
+                in.getShort();
+            }
+            case 17, 18 ->
+            {
+                in.getShort();
+                in.getShort();
+            }
+            default -> throw new IllegalStateException("constant pool tag " + tag);
             }
         }
-        return found;
+        Set<String> out = new java.util.HashSet<>();
+        for (int[] ref : refs)
+        {
+            if (ref != null)
+            {
+                out.add(utf8[classNameIndex[ref[0]]] + "#" + utf8[natNameIndex[ref[1]]]);
+            }
+        }
+        return out;
     }
 
 
@@ -363,6 +431,11 @@ class BoundKeysRosterTest
         assertEquals("Version", KeyHint.nearest("Versoin", BoundRuleKeys.CORE, none, retired));
         assertEquals("Message", KeyHint.nearest("Mesage", BoundRuleKeys.OUTCOME, none, retired));
         assertEquals("Domains", KeyHint.nearest("domains", BoundRuleKeys.SCOPE, none, retired));
+        // P6: the case-only match wins over the alias one edit away.
+        assertEquals("Data_Structures",
+                KeyHint.nearest("data_structures", BoundRuleKeys.SCOPE, none, retired));
+        assertNull(KeyHint.nearest("data-structures", Set.of("Data_Structures", "Data Structures"),
+                none, none), "equally near (one edit from both spellings): no hint");
         assertNull(KeyHint.nearest("Foo", BoundRuleKeys.RULE, none, retired));
         assertNull(KeyHint.nearest("operations", BoundRuleKeys.RULE, none, retired),
                 "retired, never hinted");

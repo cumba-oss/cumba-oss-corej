@@ -12,9 +12,10 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * A near miss is a bound key with the same spelling ignoring case ({@code outcome} →
  * {@code Outcome}) or one edit away ignoring case — one character dropped, added, changed or
- * transposed ({@code Outcom}, {@code Mesage}, {@code Versoin}). Two candidates give no hint rather
- * than a wrong one, and a candidate the same object <b>already carries</b> is never offered
- * ({@code {"left": …, "lfet": …}} does not hint {@code left}; the author has it).
+ * transposed ({@code Outcom}, {@code Mesage}, {@code Versoin}); the nearer wins, and two candidates
+ * equally near give no hint rather than a wrong one. A candidate the same object <b>already
+ * carries</b> is never offered ({@code {"left": …, "lfet": …}} does not hint {@code left}; the
+ * author has it).
  * </p>
  */
 public final class KeyHint
@@ -41,7 +42,12 @@ public final class KeyHint
     public static @Nullable String nearest(String key, Set<String> bound, Set<String> present,
             Set<String> excluded)
     {
+        // The nearest candidate wins: a case-only match (distance 0) over a one-edit match, and
+        // no hint only when two candidates are EQUALLY near (review P6: `data_structures` hints
+        // `Data_Structures` although the alias `Data Structures` is one edit away as well).
         String found = null;
+        int best = 2;
+        boolean tie = false;
         String lower = key.toLowerCase(Locale.ROOT);
         for (String candidate : bound)
         {
@@ -49,16 +55,19 @@ public final class KeyHint
             {
                 continue;
             }
-            if (editDistance(lower, candidate.toLowerCase(Locale.ROOT)) <= 1)
+            int distance = editDistance(lower, candidate.toLowerCase(Locale.ROOT));
+            if (distance < best)
             {
-                if (found != null)
-                {
-                    return null;
-                }
+                best = distance;
                 found = candidate;
+                tie = false;
+            }
+            else if (distance == best && best < 2)
+            {
+                tie = true;
             }
         }
-        return found;
+        return tie ? null : found;
     }
 
 

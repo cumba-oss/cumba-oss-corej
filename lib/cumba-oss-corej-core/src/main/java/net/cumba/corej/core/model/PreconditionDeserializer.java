@@ -50,7 +50,7 @@ public class PreconditionDeserializer extends StdDeserializer<RuleCheck>
         List<String> stray = CheckConditionDeserializer.strayKeys(node, "Precondition");
         if (!stray.isEmpty())
         {
-            return RuleCheck.invalid(RuleCheckDeserializer.strayKeyMessage(stray));
+            return RuleCheck.invalid(RuleCheckDeserializer.strayKeyMessage(stray, false));
         }
         return RuleCheck.plain(CheckConditionDeserializer.fromNode(node, ctxt));
     }

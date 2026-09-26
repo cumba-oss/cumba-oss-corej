@@ -73,27 +73,51 @@ public class CheckConditionDeserializer extends StdDeserializer<CheckCondition>
      */
     static List<String> strayKeys(@Nullable JsonNode node, String path)
     {
+        return strayKeys(node, path, java.util.Set.of(), java.util.Set.of());
+    }
+
+
+    /**
+     * {@link #strayKeys(JsonNode, String)} for a {@code Check} level entry, whose ROOT node may
+     * also carry {@code Message}: the extra hint candidate and, when the entry carried it (it is
+     * stripped before this walk), the extra present key — so {@code Mesage} beside a stripped
+     * {@code Message} is not hinted, and {@code Mesage} without one is (review P5).
+     *
+     * @param rootCandidates
+     *            keys the root node may carry beside a condition keyword ({@code Message})
+     * @param rootPresent
+     *            such keys the root node did carry
+     */
+    static List<String> strayKeys(@Nullable JsonNode node, String path,
+            java.util.Set<String> rootCandidates, java.util.Set<String> rootPresent)
+    {
         List<String> out = new ArrayList<>();
-        collectStray(node, path, out);
+        collectStray(node, path, out, rootCandidates, rootPresent);
         return out;
     }
 
     /** The condition keywords as a set, for the hints. */
     private static final java.util.Set<String> DISPATCH_KEYS = java.util.Set.copyOf(DISPATCH_ORDER);
 
-    private static void collectStray(@Nullable JsonNode node, String path, List<String> out)
+    private static void collectStray(@Nullable JsonNode node, String path, List<String> out,
+            java.util.Set<String> extraCandidates, java.util.Set<String> extraPresent)
     {
         if (node == null || !node.isObject())
         {
             return;
         }
+        java.util.Set<String> candidates = new java.util.HashSet<>(DISPATCH_KEYS);
+        candidates.addAll(extraCandidates);
+        java.util.Set<String> present = new java.util.HashSet<>(extraPresent);
+        node.fieldNames().forEachRemaining(present::add);
         String dispatch = dispatchKey(node);
         if (dispatch == null)
         {
             // No condition keyword at all. The retired operator-leaf form and a level map bound
             // as a condition keep the binding's own named refusals (deserializeNode); anything
-            // else — `{expresion: …}`, `{}` — is reported here, per rule, with the hint (review
-            // E7): before, the binding refused it for the whole package.
+            // else — `{expresion: …}`, `{}` — is reported here, per rule, with each key's hint
+            // attributed to it (review E7 / P4): before, the binding refused it for the whole
+            // package.
             if (node.has("operator") || !RuleCheckDeserializer.levelNames(node).isEmpty())
             {
                 return;
@@ -104,29 +128,32 @@ public class CheckConditionDeserializer extends StdDeserializer<CheckCondition>
             msg.append(path).append("' — found ").append(keys);
             for (String key : keys)
             {
-                msg.append(KeyHint.clause(key, DISPATCH_KEYS, java.util.Set.copyOf(keys),
-                        java.util.Set.of()));
+                String hint = KeyHint.nearest(key, candidates, present, java.util.Set.of());
+                if (hint != null)
+                {
+                    msg.append("; '").append(key).append("': did you mean '").append(hint)
+                            .append("'?");
+                }
             }
             out.add(msg.toString());
             return;
         }
-        java.util.Set<String> present = new java.util.HashSet<>();
-        node.fieldNames().forEachRemaining(present::add);
         for (String key : ownStrayKeys(node, dispatch))
         {
             out.add("unknown key '" + key + "' under '" + path + "'"
-                    + KeyHint.clause(key, DISPATCH_KEYS, present, java.util.Set.of()));
+                    + KeyHint.clause(key, candidates, present, java.util.Set.of()));
         }
         JsonNode inner = node.get(dispatch);
         if ("not".equals(dispatch))
         {
-            collectStray(inner, path + ".not", out);
+            collectStray(inner, path + ".not", out, java.util.Set.of(), java.util.Set.of());
         }
         else if (inner != null && inner.isArray())
         {
             for (int i = 0; i < inner.size(); i++)
             {
-                collectStray(inner.get(i), path + "." + dispatch + "[" + i + "]", out);
+                collectStray(inner.get(i), path + "." + dispatch + "[" + i + "]", out,
+                        java.util.Set.of(), java.util.Set.of());
             }
         }
     }

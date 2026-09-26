@@ -428,7 +428,7 @@ class UnknownKeysGateTest
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEQ\"]},"
                 + "\"Check\":{\"ERROR\":{\"Message\":\"m\",\"expresion\":\"not empty(AESEQ)\"}}");
         assertTrue(error.contains("[T-UKG] no condition key under 'Check.ERROR'"), error);
-        assertTrue(error.contains("did you mean 'expression'?"), error);
+        assertTrue(error.contains("'expresion': did you mean 'expression'?"), error);
         String plainCase = errorOf(
                 plain("").replace("\"Check\":{\"expression\"", "\"Check\":{\"expresion\""));
         assertTrue(plainCase.contains("no condition key under 'Check'"), plainCase);
@@ -577,6 +577,127 @@ class UnknownKeysGateTest
         assertTrue(error.contains("[my-rule] unknown key 'ID' under 'Core'"), error);
         assertTrue(error.contains("did you mean 'Id'?"), error);
         assertFalse(error.contains("<unknown>"), error);
+    }
+
+    // ---- review round 2 (P1-P6) -----------------------------------------------
+
+
+    @Test
+    void aCleanLoadNeverIntrospectsForHints() throws IOException
+    {
+        // Review P1: presentKeys (a fresh Jackson introspection per block) was 69 % of a clean
+        // corpus load when computed before the loop; it is error-path only now.
+        long before = RulePackageLoader.PRESENT_KEYS_INTROSPECTIONS.sum();
+        RulePackageLoader.loadFromString(FULL_PACKAGE);
+        assertEquals(before, RulePackageLoader.PRESENT_KEYS_INTROSPECTIONS.sum(),
+                "a clean load must not introspect a single bean for hints");
+        loadX(plain("\"Outcom\":1"));
+        assertTrue(RulePackageLoader.PRESENT_KEYS_INTROSPECTIONS.sum() > before,
+                "the error path does introspect (the counter is live)");
+    }
+
+
+    @Test
+    void nonPublicAccessorsCountAsPresent() throws IOException
+    {
+        // Review P2: Keys (keysNode), Join_As_String (joinAsStringNode) and Any / All_Or_None
+        // (writeAny / writeAllOrNone) sit behind non-public accessors and read as absent before —
+        // so {Keys, Key} hinted 'Keys'. Present now: no hint. Absent: hint.
+        String keys = errorOf(plain("\"Match_Datasets\":[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"],"
+                + "\"Key\":[\"X\"]}]"));
+        assertTrue(keys.contains("unknown key 'Key' under 'Match_Datasets[0]'"), keys);
+        assertFalse(keys.contains("did you mean"), keys);
+        String keysAbsent = errorOf(
+                plain("\"Match_Datasets\":[{\"Name\":\"DM\",\"Key\":[\"X\"]}]"));
+        assertTrue(keysAbsent.contains("did you mean 'Keys'?"), keysAbsent);
+        String jas = errorOf(plain("\"Match_Datasets\":[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"],"
+                + "\"Join_As_String\":true,\"Join_as_String\":true}]"));
+        assertTrue(jas.contains("unknown key 'Join_as_String'"), jas);
+        assertFalse(jas.contains("did you mean"), jas);
+        String any = errorOf(
+                plain("\"Requirements\":{\"Variables\":{\"Any\":[\"AETERM\",\"AEDECOD\"],"
+                        + "\"Ayn\":[\"X\"]}}"));
+        assertTrue(any.contains("unknown key 'Ayn' under 'Requirements.Variables'"), any);
+        assertFalse(any.contains("did you mean"), any);
+        String aon = errorOf(plain("\"Requirements\":{\"Variables\":{\"All\":[\"USUBJID\"],"
+                + "\"All_Or_None\":[[\"USUBJID\",\"DM.USUBJID\"]],\"All_or_None\":[]}}"));
+        assertTrue(aon.contains("unknown key 'All_or_None'"), aon);
+        assertFalse(aon.contains("did you mean"), aon);
+    }
+
+
+    @Test
+    void thePreconditionMessageDoesNotMentionMessage() throws IOException
+    {
+        // Review P3: Message is legal beside a Check LEVEL's condition only.
+        String error = errorOf(
+                plain("\"Precondition\":{\"expression\":\"library_available()\",\"X\":1}"));
+        assertTrue(error.contains("unknown key 'X' under 'Precondition'"), error);
+        assertFalse(error.contains("Message"), error);
+        String plainCheck = errorOf(
+                plain("").replace("\"Check\":{\"expression\":\"not empty(AESEQ)\"}",
+                        "\"Check\":{\"expression\":\"not empty(AESEQ)\",\"X\":1}"));
+        assertFalse(plainCheck.contains("may also carry Message"), plainCheck);
+        String level = errorOf("\"Core\":{\"Id\":\"T-UKG\"},\"Sensitivity\":\"Record\","
+                + "\"Severity\":\"Error\",\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEQ\"]},"
+                + "\"Check\":{\"ERROR\":{\"expression\":\"not empty(AESEQ)\",\"X\":1}}");
+        assertTrue(level.contains("may also carry Message"), level);
+    }
+
+
+    @Test
+    void eachHintIsAttributedToItsKey() throws IOException
+    {
+        // Review P4: several keys, none a condition keyword — each hint names its key.
+        String error = errorOf(plain("").replace("\"Check\":{\"expression\":\"not empty(AESEQ)\"}",
+                "\"Check\":{\"expresion\":\"not empty(AESEQ)\",\"nto\":{}}"));
+        assertTrue(error.contains("no condition key under 'Check' — found [expresion, nto]"),
+                error);
+        assertTrue(error.contains("'expresion': did you mean 'expression'?"), error);
+        assertTrue(error.contains("'nto': did you mean 'not'?"), error);
+    }
+
+
+    @Test
+    void aLevelEntryHintsMessage() throws IOException
+    {
+        // Review P5: Message is a candidate at a level entry's root.
+        String beside = errorOf("\"Core\":{\"Id\":\"T-UKG\"},\"Sensitivity\":\"Record\","
+                + "\"Severity\":\"Error\",\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEQ\"]},"
+                + "\"Check\":{\"ERROR\":{\"Mesage\":\"e\",\"expression\":\"not empty(AESEQ)\"}}");
+        assertTrue(
+                beside.contains(
+                        "unknown key 'Mesage' under 'Check.ERROR'; did you mean 'Message'?"),
+                beside);
+        String alone = errorOf("\"Core\":{\"Id\":\"T-UKG\"},\"Sensitivity\":\"Record\","
+                + "\"Severity\":\"Error\",\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEQ\"]},"
+                + "\"Check\":{\"ERROR\":{\"Mesage\":\"e\"}}");
+        assertTrue(alone.contains("no condition key under 'Check.ERROR'"), alone);
+        assertTrue(alone.contains("'Mesage': did you mean 'Message'?"), alone);
+        // ...but not beside a Message the entry already carries.
+        String present = errorOf("\"Core\":{\"Id\":\"T-UKG\"},\"Sensitivity\":\"Record\","
+                + "\"Severity\":\"Error\",\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEQ\"]},"
+                + "\"Check\":{\"ERROR\":{\"Message\":\"e\",\"Mesage\":\"e\",\"expression\":\"not empty(AESEQ)\"}}");
+        assertTrue(present.contains("unknown key 'Mesage' under 'Check.ERROR'"), present);
+        assertFalse(present.contains("did you mean"), present);
+    }
+
+
+    @Test
+    void aCaseOnlyMatchWinsOverTheAliasOneEditAway() throws IOException
+    {
+        // Review P6: data_structures is a case-only miss of Data_Structures and one edit from
+        // the alias "Data Structures"; the nearer wins.
+        String error = errorOf("\"Core\":{\"Id\":\"T-UKG\"},\"Sensitivity\":\"Record\","
+                + "\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]},\"data_structures\":{\"Include\":[\"BASIC DATA STRUCTURE\"]}},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEQ\"]},"
+                + "\"Check\":{\"expression\":\"not empty(AESEQ)\"}");
+        assertTrue(error.contains("unknown key 'data_structures' under 'Scope'"), error);
+        assertTrue(error.contains("did you mean 'Data_Structures'?"), error);
     }
 
     // ---- no double report ----------------------------------------------------

@@ -193,7 +193,7 @@ public class RuleCheckDeserializer extends StdDeserializer<RuleCheck>
             List<String> stray = CheckConditionDeserializer.strayKeys(node, "Check");
             if (!stray.isEmpty())
             {
-                return RuleCheck.invalid(strayKeyMessage(stray));
+                return RuleCheck.invalid(strayKeyMessage(stray, false));
             }
             return RuleCheck.plain(CheckConditionDeserializer.fromNode(node, ctxt));
         }
@@ -201,11 +201,18 @@ public class RuleCheckDeserializer extends StdDeserializer<RuleCheck>
     }
 
 
-    /** The carried grammar error for stray condition keys; the loader prefixes the rule id. */
-    static String strayKeyMessage(List<String> stray)
+    /**
+     * The carried grammar error for stray condition keys; the loader prefixes the rule id.
+     *
+     * @param levelEntry
+     *            whether the walked node is a {@code Check} level entry — the only place
+     *            {@code Message} is legal beside the condition, so the only place the message says
+     *            so (review P3)
+     */
+    static String strayKeyMessage(List<String> stray, boolean levelEntry)
     {
         return String.join("; ", stray) + " — " + CheckConditionDeserializer.CONDITION_SHAPE
-                + " (a Check level entry may also carry " + MESSAGE_KEY + ")";
+                + (levelEntry ? " (a Check level entry may also carry " + MESSAGE_KEY + ")" : "");
     }
 
 
@@ -251,11 +258,12 @@ public class RuleCheckDeserializer extends StdDeserializer<RuleCheck>
                                 : ""));
             }
             // Same stray-key walk as the plain branch, pathed by level (Message already stripped).
-            List<String> stray = CheckConditionDeserializer.strayKeys(conditionNode,
-                    "Check." + key);
+            List<String> stray = CheckConditionDeserializer.strayKeys(conditionNode, "Check." + key,
+                    java.util.Set.of(MESSAGE_KEY),
+                    message != null ? java.util.Set.of(MESSAGE_KEY) : java.util.Set.of());
             if (!stray.isEmpty())
             {
-                return RuleCheck.invalid(strayKeyMessage(stray));
+                return RuleCheck.invalid(strayKeyMessage(stray, true));
             }
             // requireNonNull: the guards above have established that conditionNode is a NON-EMPTY
             // OBJECT, and fromNode answers null only for a JSON null — the invariant the
