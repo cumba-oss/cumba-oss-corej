@@ -329,8 +329,10 @@ class PrimitivesSurvivorPinsTest
     void listMembershipNonListOperandContainsNothing()
     {
         ConstVector scalar = ConstVector.of("Y");
-        assertEquals(bits(), Primitives.listMembership(scalar, Set.of("Y"), 2, false, false));
-        assertEquals(bits(0, 1), Primitives.listMembership(scalar, Set.of("Y"), 2, true, false));
+        assertEquals(bits(), Primitives.listMembership(scalar,
+                Primitives.MemberSet.ofStrings(Set.of("Y")), 2, false, false));
+        assertEquals(bits(0, 1), Primitives.listMembership(scalar,
+                Primitives.MemberSet.ofStrings(Set.of("Y")), 2, true, false));
     }
 
 
@@ -342,12 +344,16 @@ class PrimitivesSurvivorPinsTest
     void listMembershipSkipsNullElementsAndMatchesTheRest()
     {
         ConstVector list = ConstVector.of(Arrays.asList(null, "Y"));
-        assertEquals(bits(0), Primitives.listMembership(list, Set.of("Y"), 1, false, false));
-        assertEquals(bits(), Primitives.listMembership(list, Set.of("N"), 1, false, false));
+        assertEquals(bits(0), Primitives.listMembership(list,
+                Primitives.MemberSet.ofStrings(Set.of("Y")), 1, false, false));
+        assertEquals(bits(), Primitives.listMembership(list,
+                Primitives.MemberSet.ofStrings(Set.of("N")), 1, false, false));
         // Case-insensitive variant folds the element, not the (pre-folded) set.
         ConstVector lower = ConstVector.of(List.of("y"));
-        assertEquals(bits(0), Primitives.listMembership(lower, Set.of("Y"), 1, false, true));
-        assertEquals(bits(), Primitives.listMembership(lower, Set.of("Y"), 1, false, false));
+        assertEquals(bits(0), Primitives.listMembership(lower,
+                Primitives.MemberSet.ofStrings(Set.of("Y")), 1, false, true));
+        assertEquals(bits(), Primitives.listMembership(lower,
+                Primitives.MemberSet.ofStrings(Set.of("Y")), 1, false, false));
     }
 
     // -------------------------------------------------------------------------

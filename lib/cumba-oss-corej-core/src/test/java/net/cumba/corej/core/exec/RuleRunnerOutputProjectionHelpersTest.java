@@ -207,10 +207,10 @@ class RuleRunnerOutputProjectionHelpersTest
 
     /**
      * A dot-qualified joined output variable: present-with-value reports the value;
-     * present-but-missing (lookup null, column exists) reports empty; column absent from the merged
-     * frame is omitted entirely (Python merged-frame parity). All three arms of the
-     * {@code val == null && !hasColumn} gate — a negation of either conjunct swaps "omitted" and
-     * "empty", silently changing what the sponsor sees.
+     * present-but-missing (lookup null, column exists) reports the missing's MARKER (owner
+     * 2026-09-25, {@code PLAN-member-set-identity-hardening} §7 Q1); a column absent from the
+     * merged frame is omitted entirely (§2c of {@code PLAN-joined-value-accessor}). A negation of
+     * the existence test swaps "omitted" and "reported", silently changing what the sponsor sees.
      */
     @Test
     void dotQualifiedJoinedValuePresentMissingAndAbsent()
@@ -244,8 +244,123 @@ class RuleRunnerOutputProjectionHelpersTest
         };
         EvaluationContext presentButMissing = EvaluationContext.builder().table(t)
                 .joinedDatasets(Map.of("DM", nullValueButPresent)).build();
-        assertEquals(Map.of("DM.ARM", ""), extract(t, presentButMissing, List.of("DM.ARM"), 0),
-                "present-but-missing keeps the key with an empty value");
+        // ⚠ This stub overrides only lookup(), so it inherits JoinLookup's type-blind
+        // lookupValue: a null text becomes ScalarSemantics.computedMissing(), i.e. MIS.
+        assertEquals(Map.of("DM.ARM", "."), extract(t, presentButMissing, List.of("DM.ARM"), 0),
+                "present-but-missing keeps the key and prints the MARKER (Q1) — it printed \"\""
+                        + " until 2026-09-25");
+    }
+
+
+    private static JoinLookup lookupValueReturning(net.cumba.datatable.values.IDataValue value)
+    {
+        return new JoinLookup()
+        {
+
+            @Override
+            public String lookup(IDataTable primaryTable, long row, String col)
+            {
+                throw new AssertionError("the output projection must read the TYPED channel");
+            }
+
+
+            @Override
+            public net.cumba.datatable.values.IDataValue lookupValue(IDataTable primaryTable,
+                    long row, String columnName, boolean numericExpected)
+            {
+                return value;
+            }
+
+
+            @Override
+            public String getDatasetName()
+            {
+                return "DM";
+            }
+        };
+    }
+
+
+    private static String reportedAs(net.cumba.datatable.values.IDataValue value)
+    {
+        IDataTable t = MockTable.of().name("AE").col("AETERM", "x").build();
+        EvaluationContext ctx = EvaluationContext.builder().table(t)
+                .joinedDatasets(Map.of("DM", lookupValueReturning(value))).build();
+        Map<String, String> out = extract(t, ctx, List.of("DM.X"), 0);
+        assertTrue(out.containsKey("DM.X"), "an existing joined column is always reported");
+        return out.get("DM.X");
+    }
+
+
+    /**
+     * ⭐⭐ {@code PLAN-member-set-identity-hardening} §7 Q1, owner 2026-09-25: <i>"print the marker.
+     * Accepted that this might look like a literal."</i> A missing joined output prints the
+     * missing's own marker, and each marker its own — a blank stays {@code ""}, so the report keeps
+     * "there and blank" apart from "there and missing".
+     */
+    @Test
+    void aMissingJoinedOutputPrintsItsMarkerAndABlankStaysEmpty()
+    {
+        assertEquals(".",
+                reportedAs(new net.cumba.datatable.values.DataValueMissing(
+                        net.cumba.datatable.values.MissingValue.MIS)),
+                "the generic missing prints '.'");
+        assertEquals(".A",
+                reportedAs(new net.cumba.datatable.values.DataValueMissing(
+                        net.cumba.datatable.values.MissingValue.MIS_A)),
+                "a special missing prints ITS marker, not the generic one");
+        assertEquals("", reportedAs(net.cumba.corej.core.expr.eval.DataValues.of("")),
+                "a present blank is still reported as \"\" — the distinction Q1 exists for");
+        assertEquals("PLACEBO", reportedAs(net.cumba.corej.core.expr.eval.DataValues.of("PLACEBO")),
+                "a present value is reported verbatim");
+    }
+
+
+    /**
+     * ⭐ {@code D72} / {@code NF §9c} — a merged column behaves in EVERY respect like a primary one,
+     * so the primary output column prints a missing exactly as the joined output does, and a
+     * present blank stays {@code ""} on both.
+     */
+    @Test
+    void aMissingPrimaryOutputPrintsItsMarkerLikeAJoinedOne()
+    {
+        IDataTable t = MockTable.of().name("AE").colSasMissing("AEPTCD", "10003041", null)
+                .col("AETERM", "x", "").build();
+        assertEquals(Map.of("AEPTCD", ".", "AETERM", ""),
+                extract(t, EvaluationContext.builder().table(t).build(),
+                        List.of("AEPTCD", "AETERM"), 1),
+                "row 1: the missing code prints '.', the blank term stays \"\"");
+        assertEquals(Map.of("AEPTCD", "10003041", "AETERM", "x"), extract(t,
+                EvaluationContext.builder().table(t).build(), List.of("AEPTCD", "AETERM"), 0),
+                "row 0: present values are unchanged");
+    }
+
+
+    /** The one rendering every output site shares, pinned directly. */
+    @Test
+    void reportedValueRendersAMissingAsItsMarkerAndAPresentValueVerbatim()
+    {
+        assertEquals(".A", RuleRunner.reportedValue(new net.cumba.datatable.values.DataValueMissing(
+                net.cumba.datatable.values.MissingValue.MIS_A)));
+        assertEquals("",
+                RuleRunner.reportedValue(net.cumba.corej.core.expr.eval.DataValues.of("")));
+        assertEquals("abc",
+                RuleRunner.reportedValue(net.cumba.corej.core.expr.eval.DataValues.of("abc")));
+    }
+
+
+    /**
+     * ⚠ A missing carried as a NaN inside a {@code DataValueDouble} prints its marker, never the
+     * double's {@code "NaN"} rendering — why the site reads {@code TypedValue.missingIdentityOf}
+     * and renders the IDENTITY (the accessor plan's terminal review MED-2).
+     */
+    @Test
+    void aNanCarriedMissingPrintsItsMarkerNotNaN()
+    {
+        assertEquals(".B",
+                reportedAs(new net.cumba.datatable.values.DataValueDouble(
+                        net.cumba.datatable.values.MissingValue.MIS_B.asDouble())),
+                "the NaN payload names .B, so .B is printed — never \"NaN\"");
     }
 
 

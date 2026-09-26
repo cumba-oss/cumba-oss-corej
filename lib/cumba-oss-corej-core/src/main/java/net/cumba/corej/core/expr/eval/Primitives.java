@@ -1,5 +1,6 @@
 package net.cumba.corej.core.expr.eval;
 
+import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
 import java.util.List;
@@ -1334,8 +1335,18 @@ public final class Primitives
      * {@code CDISC-SEND-0224/-0333}) — a well-typed operation over a {@code list<T>} left operand,
      * not sugar for {@code ==}.
      * </p>
+     *
+     * <p>
+     * ⭐ <b>The right-hand side is a {@link MemberSet}, never a {@code Set<String>}</b>
+     * ({@code PLAN-member-set-identity-hardening}, owner 2026-09-25: <i>"route all four"</i>). A
+     * string set is a <b>rendering</b>, and a rendering of a {@link MissingValue} member
+     * ({@code "."}) collides with a present {@code "."} cell — the {@code JKM R5} class. Taking a
+     * {@link MemberSet} here makes identity a property of the <b>type</b>: no caller can hand this
+     * method a rendered member set, so "no set can contain a missing today" is no longer the
+     * argument that keeps membership correct.
+     * </p>
      */
-    public static BitSet membership(Vector v, Set<String> set, int rowCount, boolean negate,
+    public static BitSet membership(Vector v, MemberSet set, int rowCount, boolean negate,
             boolean caseInsensitive)
     {
         return scan(v, rowCount, (dv, _) -> negate != isMember(dv, set, caseInsensitive));
@@ -1355,6 +1366,18 @@ public final class Primitives
      * collision class {@code JKM R5} eliminated from join keys; this type keeps it out of member
      * sets for the same reason: a sealed identity <b>cannot</b> collide, a rendering merely is
      * unlikely to.
+     * </p>
+     *
+     * <p>
+     * ⭐ <b>Every membership right-hand side is built through this type</b>
+     * ({@code PLAN-member-set-identity-hardening}, owner 2026-09-25: <i>"route all four"</i>): the
+     * {@code ${*}} wildcard, the list-valued metadata accessor, the per-row VLM accessor, the
+     * per-row {@code GroupedResult}, and the {@code $}-reference / inline-operation result — and
+     * {@link #membership} / {@link #listMembership} accept nothing else. The four non-wildcard
+     * builders used to render {@code item.toString()} and were left so because <i>"none can receive
+     * a missing today"</i> — a reachability argument, which is the shape that hid
+     * {@code isMember}'s blanket early return for months. It is now a property of the type, pinned
+     * per builder by {@code MemberSetBuilderIdentityTest}.
      * </p>
      *
      * <p>
@@ -1421,6 +1444,46 @@ public final class Primitives
                 present.add(caseInsensitive ? s.toUpperCase(java.util.Locale.ROOT) : s);
             }
             return new MemberSet(present, missing);
+        }
+
+
+        /**
+         * As {@link #of}, except that a {@code null} item is <b>skipped</b> instead of folded to
+         * {@code ""} — the contract of the list-valued metadata accessors ({@code var_codelist_*},
+         * {@code vlm_codelist_*}), whose builders never contributed a {@code null} element as a
+         * member.
+         *
+         * @param items
+         *            the raw members
+         * @param caseInsensitive
+         *            whether to upper-case the present members, as the comparison will
+         * @return the classified set
+         */
+        public static MemberSet ofSkippingNulls(Iterable<?> items, boolean caseInsensitive)
+        {
+            List<Object> nonNull = new ArrayList<>();
+            for (Object item : items)
+            {
+                if (item != null)
+                {
+                    nonNull.add(item);
+                }
+            }
+            return of(nonNull, caseInsensitive);
+        }
+
+
+        /**
+         * A member set whose members are all present strings, already folded by the caller — an
+         * authored list literal, which has no spelling for a missing member.
+         *
+         * @param present
+         *            the members
+         * @return the set, with no missing members
+         */
+        public static MemberSet ofStrings(Set<String> present)
+        {
+            return new MemberSet(present, Set.of());
         }
 
     }
@@ -1666,13 +1729,21 @@ public final class Primitives
      * {@code False}). {@code set} must already be upper-cased when {@code caseInsensitive} is
      * {@code true}.
      */
-    public static BitSet listMembership(Vector v, Set<String> set, int rowCount, boolean negate,
+    public static BitSet listMembership(Vector v, MemberSet set, int rowCount, boolean negate,
             boolean caseInsensitive)
     {
+        // ⭐ The member set arrives classified (PLAN-member-set-identity-hardening), and only its
+        // PRESENT members take part: this shape compares the left list's items as strings, and a
+        // string is never the same value as a MissingValue (D13 read from the member side). A
+        // missing member is therefore matched by nothing here — before, it was rendered to "." and
+        // a list item "." matched it. ⛔ anyInSet itself is NOT aligned with ==: collection-LHS
+        // membership is the shape D81d excludes from the desugaring, and that is a separate
+        // question.
+        Set<String> present = set.present();
         BitSet result = new BitSet(rowCount);
         for (int r = 0; r < rowCount; r++)
         {
-            if (negate != anyInSet(v.value(r).resolved(), set, caseInsensitive))
+            if (negate != anyInSet(v.value(r).resolved(), present, caseInsensitive))
             {
                 result.set(r);
             }

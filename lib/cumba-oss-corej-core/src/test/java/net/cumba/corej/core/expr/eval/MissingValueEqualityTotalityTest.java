@@ -263,7 +263,8 @@ class MissingValueEqualityTotalityTest
     @DisplayName("D13: a MissingValue is a member of no list, \"\" included; a blank still is")
     void d13_membership()
     {
-        java.util.Set<String> optOut = java.util.Set.of("", "Y", "N");
+        Primitives.MemberSet optOut = Primitives.MemberSet
+                .ofStrings(java.util.Set.of("", "Y", "N"));
         assertEquals(new BitSet(),
                 Primitives.membership(missingVector(MissingValue.MIS), optOut, 1, false, false),
                 "«missing» in [\"\",\"Y\",\"N\"] is FALSE (D13)");

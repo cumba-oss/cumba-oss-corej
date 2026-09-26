@@ -33,6 +33,7 @@ import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.report.Severity;
 import net.cumba.datatable.values.IDataValue;
+import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
 
 @CustomLog
@@ -2893,7 +2894,7 @@ public final class RuleRunner
                         if (colIdx >= 0)
                         {
                             IDataValue dv = ctx.getTable().getColumn(colIdx).getDataValue(r);
-                            values.put(ov, dv.isMissingOrInvalid() ? "" : dv.getValueAsString());
+                            values.put(ov, reportedValue(dv));
                         }
                     }
                     else if (varMeta.containsKey(ov))
@@ -3368,7 +3369,7 @@ public final class RuleRunner
             {
                 long row = it.nextLong();
                 IDataValue dv = table.getColumn(col).getDataValue(row);
-                distinct.add(dv.isMissingOrInvalid() ? "" : dv.getValueAsString());
+                distinct.add(reportedValue(dv));
             }
             if (distinct.size() > 1)
             {
@@ -3998,6 +3999,44 @@ public final class RuleRunner
     }
 
 
+    /**
+     * The text a finding reports for a cell: a present value verbatim ({@code ""} included), a
+     * missing value its MARKER — {@code "."} for {@code MIS}, {@code ".A"} for {@code MIS_A}, ….
+     *
+     * <p>
+     * ⭐⭐ Owner, 2026-09-25 ({@code PLAN-member-set-identity-hardening} §7 Q1), on a missing joined
+     * output: <i>"print the marker. Accepted that this might look like a literal."</i> ⇒ the report
+     * says what the data says, and "the variable is there and blank" ({@code ""}) no longer prints
+     * like "the variable is there and missing" — the distinction {@code D34 #1}/{@code #3} keep
+     * everywhere else. Every release before printed {@code ""} for both.
+     * </p>
+     *
+     * <p>
+     * ⭐ <b>One rendering for joined AND primary cells — ruled by precedent, not a second
+     * decision.</b> {@code D72}: <i>"A merged column behaves in EVERY respect like a primary
+     * column"</i>; {@code NF §9c}: <i>"Wherever they are used they should behave identically."</i>
+     * A report is a use, so the primary output column, the {@code variable_value} output and the
+     * group finding's distinct set render a missing exactly as the joined output does (the measured
+     * delta is recorded in the plan and in the findings-snapshot rebaseline ledger).
+     * </p>
+     *
+     * <p>
+     * ⚠ {@code TypedValue.missingIdentityOf}, and the IDENTITY's own rendering — never
+     * {@code getValueAsString()}: a NaN-carrying {@code DataValueDouble} is a missing whose
+     * {@code getValueAsString()} is {@code "NaN"} (terminal review MED-2 of
+     * {@code PLAN-joined-value-accessor}), and the canonical predicate hands back its marker. It is
+     * exactly as wide as the {@code isMissingOrInvalid()} test it replaces: that predicate is where
+     * {@code missingIdentityOf} derives a missing from, so no cell reported {@code ""} before is
+     * reported as a present text now.
+     * </p>
+     */
+    static String reportedValue(IDataValue dv)
+    {
+        MissingValue identity = net.cumba.corej.core.expr.eval.TypedValue.missingIdentityOf(dv);
+        return identity != null ? identity.toString() : dv.getValueAsString();
+    }
+
+
     static Map<String, String> extractOutputValues(IDataTable table, EvaluationContext ctx,
             List<String> outputVars, long row)
     {
@@ -4086,28 +4125,12 @@ public final class RuleRunner
                     // gives one (D72: "" for character, a MissingValue for numeric), so no null can
                     // reach this line any more.
                     IDataValue dv = lookup.lookupValue(table, row, colName, false);
-                    // ⛔⛔ A MISSING value keeps rendering as "" in the violation row, deliberately.
-                    // §2c ruled WHICH variables appear ("report an available, omit an absent"); it
-                    // did
-                    // NOT rule what a missing one renders as. Handing back getValueAsString() would
-                    // print the marker ("." for MIS) where every previous release printed "" — a
-                    // change to the CONTENT of every violation row carrying a missing joined
-                    // output,
-                    // which is a reporting decision and nobody's ruling yet.
-                    // ⚠ Recorded as PLAN-joined-value-accessor §7 question 5: is the marker more
-                    // informative than "" in a report, or is it noise? ⇒ until that is answered,
-                    // the
-                    // channel is byte-identical to before and only the ABSENT-column question
-                    // moved.
-                    // ⚠ TypedValue.missingIdentityOf, not `getValue() instanceof MissingValue`: the
-                    // canonical predicate also catches a NaN-carrying DataValueDouble, whose
-                    // getValueAsString() is "NaN" — which the weaker form would have printed into a
-                    // violation row where every previous release printed "" (terminal review,
-                    // MED-2).
-                    values.put(varName,
-                            net.cumba.corej.core.expr.eval.TypedValue.missingIdentityOf(dv) != null
-                                    ? ""
-                                    : dv.getValueAsString());
+                    // ⭐⭐ A MISSING value prints its MARKER — owner, 2026-09-25
+                    // (PLAN-member-set-identity-hardening §7 Q1): "print the marker. Accepted that
+                    // this might look like a literal." Until then every release printed "" here, a
+                    // preservation rather than a decision (PLAN-joined-value-accessor §7 Q5). The
+                    // rendering is reportedValue's, shared with the primary column (D72).
+                    values.put(varName, reportedValue(dv));
                     continue;
                 }
                 // Fix #18 — a rule evaluated per variable with no row cursor (the {VAR}
@@ -4142,7 +4165,7 @@ public final class RuleRunner
                     continue;
                 }
                 IDataValue dv = table.getColumn(colIdx).getDataValue(row);
-                values.put(varName, dv.isMissingOrInvalid() ? "" : dv.getValueAsString());
+                values.put(varName, reportedValue(dv));
                 // ⚠ No `continue` here any more, and Error Prone is what noticed: with the join
                 // fallback below removed there is nothing left to skip, so the statement became
                 // [RedundantControlFlow]. Left as a note because the removal is what made it so.

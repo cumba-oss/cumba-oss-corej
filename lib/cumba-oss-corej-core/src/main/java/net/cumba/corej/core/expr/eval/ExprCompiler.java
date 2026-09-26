@@ -209,6 +209,10 @@ public final class ExprCompiler
      */
     private static final ConstVector ALL_MISSING = ConstVector.of(null);
 
+    /** The empty membership right-hand side: an absent / unresolvable set contains nothing. */
+    private static final Primitives.MemberSet EMPTY_MEMBERS = Primitives.MemberSet
+            .ofStrings(Set.of());
+
     /**
      * EC-43 test hook: when {@code false}, {@link #nameRefPlan} keeps returning {@code null} for an
      * absent column instead of folding it to {@link #ALL_MISSING}, and {@link #valueRefPlan}'s
@@ -970,8 +974,8 @@ public final class ExprCompiler
                 {
                     return new BitSet();
                 }
-                return Primitives.temporalMembership(v, buildSet(run, temporalSet, false),
-                        run.rowCount(), negate);
+                return Primitives.temporalMembership(v,
+                        literalMembers((Expr.Lit) temporalSet, false), run.rowCount(), negate);
             };
         }
         if (temporalLiteralSet && "time".equals(temporalMarker))
@@ -984,8 +988,8 @@ public final class ExprCompiler
                 {
                     return new BitSet();
                 }
-                return Primitives.timeMembership(v, buildSet(run, timeSet, false), run.rowCount(),
-                        negate);
+                return Primitives.timeMembership(v, literalMembers((Expr.Lit) timeSet, false),
+                        run.rowCount(), negate);
             };
         }
         // `${*}` wildcard list operand (Fix #37 / Epic B1): the membership set is row-dependent —
@@ -1033,14 +1037,14 @@ public final class ExprCompiler
                 {
                     return groupedMembership(v, grouped, run, negate, caseInsensitive);
                 }
-                Set<String> inlineSet = toSet(result, caseInsensitive);
+                Primitives.MemberSet inlineSet = toSet(result, caseInsensitive);
                 return listLhs
                         ? Primitives.listMembership(v, inlineSet, run.rowCount(), negate,
                                 caseInsensitive)
                         : Primitives.membership(v, inlineSet, run.rowCount(), negate,
                                 caseInsensitive);
             }
-            Set<String> set = buildSet(run, right, caseInsensitive);
+            Primitives.MemberSet set = buildSet(run, right, caseInsensitive);
             return listLhs
                     ? Primitives.listMembership(v, set, run.rowCount(), negate, caseInsensitive)
                     : Primitives.membership(v, set, run.rowCount(), negate, caseInsensitive);
@@ -1178,9 +1182,12 @@ public final class ExprCompiler
      * codelist {@code List<String>} that applies to that record. A row whose cell is not a list (no
      * matching value-level condition / no Define-XML) or whose probe value is missing makes no
      * decision and never fires — the native analog of Python's VLM builder emitting only rows that
-     * have a matched value-level codelist and a populated value.
+     * have a matched value-level codelist and a populated value. The per-row set is classified
+     * through {@link Primitives.MemberSet}, so a present {@code "."} probe never matches a
+     * {@code MissingValue} member rendered to {@code "."}; package-private for
+     * {@code MemberSetBuilderIdentityTest}.
      */
-    private static BitSet vlmListMembership(Vector probe, @Nullable Vector listVec, int rowCount,
+    static BitSet vlmListMembership(Vector probe, @Nullable Vector listVec, int rowCount,
             boolean negate, boolean caseInsensitive)
     {
         BitSet out = new BitSet();
@@ -1202,14 +1209,9 @@ public final class ExprCompiler
             {
                 continue;
             }
-            Set<String> set = new LinkedHashSet<>();
-            for (Object item : list)
-            {
-                if (item != null)
-                {
-                    set.add(fold(item.toString(), caseInsensitive));
-                }
-            }
+            // ⭐ PLAN-member-set-identity-hardening: classified, never rendered — a MissingValue
+            // member keeps its identity (a null element is skipped, as before).
+            Primitives.MemberSet set = Primitives.MemberSet.ofSkippingNulls(list, caseInsensitive);
             // D81 (phase 6b): the probe is =='s own per-member decision tree.
             if (negate != Primitives.isMember(dv, set, caseInsensitive))
             {
@@ -1226,35 +1228,36 @@ public final class ExprCompiler
      * variable's codelist {@code List<String>} (constant across the column under the per-(variable,
      * row) iteration), so the set is read from row 0. {@code null} / absent / non-list resolves to
      * the empty set — matching Python's {@code is_column_of_iterables} on an empty per-row list.
+     * The members are classified through {@link Primitives.MemberSet}, never rendered, so a
+     * {@code MissingValue} element would keep its identity; package-private for
+     * {@code MemberSetBuilderIdentityTest}.
      */
-    private static Set<String> listAccessorSet(ValuePlan rightP, EvalRun run,
+    static Primitives.MemberSet listAccessorSet(ValuePlan rightP, EvalRun run,
             boolean caseInsensitive)
     {
-        Set<String> set = new LinkedHashSet<>();
         Vector rv = rightP.eval(run);
         if (rv != null && run.rowCount() > 0 && rv.value(0).resolved() instanceof List<?> list)
         {
-            for (Object item : list)
-            {
-                if (item != null)
-                {
-                    set.add(fold(item.toString(), caseInsensitive));
-                }
-            }
+            // ⭐ PLAN-member-set-identity-hardening: classified, never rendered — a MissingValue
+            // member keeps its identity (a null element is skipped, as before).
+            return Primitives.MemberSet.ofSkippingNulls(list, caseInsensitive);
         }
-        return set;
+        return EMPTY_MEMBERS;
     }
 
 
     /**
      * Per-row membership against a {@link GroupedResult}-valued {@code $}-reference — mirrors the
      * row-aware string-list resolution + {@code Primitives.membership} semantics: the row's group
-     * value resolves via {@code getForRow} ({@code null} elements contribute the empty string, a
-     * scalar is a singleton, an absent group is the empty set), a missing probe never fires, and
-     * the probe and set fold case only on the case-insensitive surface.
+     * value resolves via {@code getForRow} and folds through {@link #toSet} ({@code null} elements
+     * contribute the empty string, a scalar is a singleton, an absent group is the empty set), a
+     * missing probe is a member only of a set holding that same missing ({@code D81} +
+     * {@code D34 #5-2}), and the probe and set fold case only on the case-insensitive surface.
+     * Package-private so {@code MemberSetBuilderIdentityTest} can put a missing into the set
+     * directly.
      */
-    private static BitSet groupedMembership(Vector v, GroupedResult grouped, EvalRun run,
-            boolean negate, boolean caseInsensitive)
+    static BitSet groupedMembership(Vector v, GroupedResult grouped, EvalRun run, boolean negate,
+            boolean caseInsensitive)
     {
         EvaluationContext ctx = run.ctx();
         // ⚠ R-P7 review M3 is HISTORY since 2026-09-21: Primitives.scan is no longer
@@ -1262,19 +1265,12 @@ public final class ExprCompiler
         // the legacy forEachJoinedValue ANY-MATCH semantics here too.
         return Primitives.scan(v, run.rowCount(), (dv, r) ->
         {
-            Object groupVal = grouped.getForRow(ctx, r);
-            Set<String> set = new LinkedHashSet<>();
-            if (groupVal instanceof Collection<?> col)
-            {
-                for (Object item : col)
-                {
-                    set.add(fold(item != null ? item.toString() : "", caseInsensitive));
-                }
-            }
-            else if (groupVal != null)
-            {
-                set.add(fold(groupVal.toString(), caseInsensitive));
-            }
+            // ⭐ PLAN-member-set-identity-hardening: the row's group value folds through toSet,
+            // whose contract is exactly the one this loop spelled by hand (a collection
+            // contributes its elements with a null element as "", a scalar is a singleton, null is
+            // the empty set) — except that a MissingValue member now keeps its IDENTITY instead of
+            // rendering to "." and matching a present "." cell.
+            Primitives.MemberSet set = toSet(grouped.getForRow(ctx, r), caseInsensitive);
             // D81 (phase 6b): the probe is =='s own per-member decision tree.
             return negate != Primitives.isMember(dv, set, caseInsensitive);
         });
@@ -2716,8 +2712,13 @@ public final class ExprCompiler
                 {
                     return new BitSet();
                 }
-                return Primitives.notContainsAllTokens(tokens, listAccessorSet(sourceP, run, false),
-                        run.rowCount());
+                // The allowed side is classified (PLAN-member-set-identity-hardening); only its
+                // PRESENT members can satisfy a token, because a token is a string and a string is
+                // never the same value as a MissingValue — the identity W38-A1 keeps for this
+                // operator's distinct-column source by rendering a Missing as a token no string
+                // can equal. Before, a missing member rendered "." and satisfied a "." token.
+                return Primitives.notContainsAllTokens(tokens,
+                        listAccessorSet(sourceP, run, false).present(), run.rowCount());
             };
         }
         if (c.args().isEmpty() || !(c.args().get(0) instanceof Expr.Ref nameRef))
@@ -4760,24 +4761,22 @@ public final class ExprCompiler
      * {@link #buildSet}'s {@code $}-reference branch: a {@link java.util.Collection} contributes
      * its (case-folded) elements, a non-grouped scalar a singleton, and a {@code null} /
      * unresolvable / {@link GroupedResult} result the empty set (a {@link GroupedResult} is handled
-     * per row before this is reached).
+     * per row before this is reached). The members are classified through
+     * {@link Primitives.MemberSet} — a {@code MissingValue} keeps its identity instead of rendering
+     * to {@code "."} (owner 2026-09-25, {@code PLAN-member-set-identity-hardening}); a {@code null}
+     * element still folds to {@code ""}. Package-private for {@code MemberSetBuilderIdentityTest}.
      */
-    private static Set<String> toSet(@Nullable Object result, boolean caseInsensitive)
+    static Primitives.MemberSet toSet(@Nullable Object result, boolean caseInsensitive)
     {
         if (result instanceof Collection<?> col)
         {
-            Set<String> set = LinkedHashSet.newLinkedHashSet(col.size());
-            for (Object o : col)
-            {
-                set.add(fold(o != null ? o.toString() : "", caseInsensitive));
-            }
-            return set;
+            return Primitives.MemberSet.of(col, caseInsensitive);
         }
         if (result != null && !(result instanceof GroupedResult))
         {
-            return Set.of(fold(result.toString(), caseInsensitive));
+            return Primitives.MemberSet.of(List.of(result), caseInsensitive);
         }
-        return Set.of();
+        return EMPTY_MEMBERS;
     }
 
 
@@ -5995,22 +5994,13 @@ public final class ExprCompiler
     }
 
 
-    private static Set<String> buildSet(EvalRun run, Expr right, boolean caseInsensitive)
+    private static Primitives.MemberSet buildSet(EvalRun run, Expr right, boolean caseInsensitive)
     {
         if (right instanceof Expr.Lit lit)
         {
-            if (lit.kind() == Expr.LitKind.LIST)
-            {
-                @SuppressWarnings("unchecked")
-                List<Expr> items = (List<Expr>) lit.value();
-                Set<String> set = LinkedHashSet.newLinkedHashSet(items.size());
-                for (Expr item : items)
-                {
-                    set.add(setTerm(item, caseInsensitive));
-                }
-                return set;
-            }
-            return Set.of(setTerm(lit, caseInsensitive));
+            // An authored literal has no spelling for a missing member, so every member is
+            // present — stated by the factory rather than left to the reader.
+            return Primitives.MemberSet.ofStrings(literalMembers(lit, caseInsensitive));
         }
         if (right instanceof Expr.Ref ref)
         {
@@ -6029,6 +6019,28 @@ public final class ExprCompiler
             return toSet(var, caseInsensitive);
         }
         throw unsupported("membership right-hand side must be a list literal or a $-variable list");
+    }
+
+
+    /**
+     * The members of an authored list literal (or a single literal), folded for case-insensitivity
+     * — the textual member set of {@link #buildSet} and of the temporal arms, which take a list
+     * literal only.
+     */
+    private static Set<String> literalMembers(Expr.Lit lit, boolean caseInsensitive)
+    {
+        if (lit.kind() == Expr.LitKind.LIST)
+        {
+            @SuppressWarnings("unchecked")
+            List<Expr> items = (List<Expr>) lit.value();
+            Set<String> set = LinkedHashSet.newLinkedHashSet(items.size());
+            for (Expr item : items)
+            {
+                set.add(setTerm(item, caseInsensitive));
+            }
+            return set;
+        }
+        return Set.of(setTerm(lit, caseInsensitive));
     }
 
 
