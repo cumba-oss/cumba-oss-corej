@@ -1084,7 +1084,7 @@ public final class ExprCompiler
             {
                 rhs = null;
             }
-            Set<List<String>> tupleSet = toTupleSet(rhs);
+            Set<List<Object>> tupleSet = toTupleSet(rhs);
             Vector lhs = lhsPlan.eval(run);
             BitSet result = new BitSet(run.rowCount());
             if (lhs == null)
@@ -1093,7 +1093,7 @@ public final class ExprCompiler
             }
             for (int r = 0; r < run.rowCount(); r++)
             {
-                List<String> rowTuple = toStringTuple(lhs.value(r).resolved());
+                List<Object> rowTuple = toTupleKey(lhs.value(r).resolved());
                 if (rowTuple != null && negate != tupleSet.contains(rowTuple))
                 {
                     result.set(r);
@@ -1105,21 +1105,22 @@ public final class ExprCompiler
 
 
     /**
-     * Coerces an operation result into a {@code Set<List<String>>} of reference row-tuples (T3): a
-     * {@link Collection} of {@link List} elements, each normalised to a {@code List<String>} (a
-     * {@code null} element folds to {@code ""}). A {@code null} / non-collection / empty result is
-     * the empty set (so {@code not in} fires and {@code in} does not — the single-column contract).
+     * Coerces an operation result into a set of reference row-tuples (T3): a {@link Collection} of
+     * {@link List} elements, each normalised by {@link #toTupleKey} (a {@code null} element folds
+     * to {@code ""}, a missing one keeps its identity). A {@code null} / non-collection / empty
+     * result is the empty set (so {@code not in} fires and {@code in} does not — the single-column
+     * contract).
      */
-    private static Set<List<String>> toTupleSet(@Nullable Object result)
+    private static Set<List<Object>> toTupleSet(@Nullable Object result)
     {
         if (!(result instanceof Collection<?> col))
         {
             return Set.of();
         }
-        Set<List<String>> set = LinkedHashSet.newLinkedHashSet(col.size());
+        Set<List<Object>> set = LinkedHashSet.newLinkedHashSet(col.size());
         for (Object element : col)
         {
-            List<String> tuple = toStringTuple(element);
+            List<Object> tuple = toTupleKey(element);
             if (tuple != null)
             {
                 set.add(tuple);
@@ -1131,23 +1132,21 @@ public final class ExprCompiler
 
     /**
      * Normalises a tuple cell (the {@code tuple} function's {@code List} cell, or a reference-set
-     * {@code List} element) to a {@code List<String>} with {@code null} elements folded to
-     * {@code ""}, or {@code null} when the value is not a {@link List}.
+     * {@code List} element) to a list of {@linkplain Primitives#keyComponent key components} — a
+     * present element as its text, a {@code null} as {@code ""}, a missing element as its
+     * {@link Primitives.MissingMember} identity (D11 / D34 #5-2, never its {@code "."} display
+     * string) — or {@code null} when the value is not a {@link List}.
      */
-    static @Nullable List<String> toStringTuple(@Nullable Object value)
+    static @Nullable List<Object> toTupleKey(@Nullable Object value)
     {
         if (!(value instanceof List<?> list))
         {
             return null;
         }
-        List<String> out = new ArrayList<>(list.size());
+        List<Object> out = new ArrayList<>(list.size());
         for (Object item : list)
         {
-            // A MissingValue element keeps its identity through the same token both key builders
-            // render (D11 / D34 #5-2) — never its "." display string.
-            MissingValue m = Primitives.MemberSet.missingIdentityOfMember(item);
-            out.add(m != null ? GroupKeyPolicy.missingComponentToken(m)
-                    : item == null ? "" : item.toString());
+            out.add(Primitives.keyComponent(item));
         }
         return out;
     }
@@ -2716,13 +2715,12 @@ public final class ExprCompiler
                 {
                     return new BitSet();
                 }
-                // The allowed side is classified (PLAN-member-set-identity-hardening); only its
-                // PRESENT members can satisfy a token, because a token is a string and a string is
-                // never the same value as a MissingValue — the identity W38-A1 keeps for this
-                // operator's distinct-column source by rendering a Missing as a token no string
-                // can equal. Before, a missing member rendered "." and satisfied a "." token.
+                // Both sides compare as key components (PLAN-member-set-identity-hardening, review
+                // rounds 1-2): a missing member is its MissingMember identity, satisfied only by
+                // the same missing token and never by a present "." (D34 #5-2, W38-A1 part 4).
+                // Before, a missing member rendered "." and satisfied a "." token.
                 return Primitives.notContainsAllTokens(tokens,
-                        listAccessorSet(sourceP, run, false).present(), run.rowCount());
+                        listAccessorSet(sourceP, run, false).asComponents(), run.rowCount());
             };
         }
         if (c.args().isEmpty() || !(c.args().get(0) instanceof Expr.Ref nameRef))
@@ -2749,7 +2747,7 @@ public final class ExprCompiler
                 {
                     return new BitSet();
                 }
-                Set<String> allowed = nameIsOperation
+                Set<Object> allowed = nameIsOperation
                         ? GroupSemantics.distinctOperationValues(ctx.resolveVariable(sourceName))
                         : GroupSemantics.distinctColumnValues(ctx.getTable(),
                                 resolveDomainPrefix(sourceName, ctx), run.rowCount());
@@ -2779,11 +2777,11 @@ public final class ExprCompiler
             {
                 return new BitSet();
             }
-            Set<String> distinct = nameIsOperation
+            Set<Object> distinct = nameIsOperation
                     ? GroupSemantics.distinctOperationValues(ctx.resolveVariable(name))
                     : GroupSemantics.distinctColumnValues(ctx.getTable(),
                             resolveDomainPrefix(name, ctx), run.rowCount());
-            List<String> required = requiredRef != null
+            List<?> required = requiredRef != null
                     ? GroupSemantics.operationStringList(ctx.resolveVariable(requiredRef))
                     : resolveDomainPrefixes(requiredCols, ctx);
             return GroupSemantics.notContainsAllVerdict(distinct, required, run.rowCount());
@@ -4733,7 +4731,8 @@ public final class ExprCompiler
                 ctx.getVariableWildcardPrefix());
         return OperationExecutor.executeOne(resolved, ctx.getTable(), ctx.getDatasetResolver(),
                 ctx.getLibraryProvider(), forcedPriors(resolved, ctx), ctx.getRuleId(),
-                ctx.getDictionaryProvider(), ctx.getDefineProvider());
+                ctx.getDictionaryProvider(), ctx.getDefineProvider(),
+                ctx.getNumericExpectedColumns());
     }
 
 

@@ -481,33 +481,6 @@ public record GroupKeyPolicy(boolean keepMissings, Blankness blankness)
 
 
     /**
-     * The composite-key token of a {@code MissingValue} component — its {@link KeyPart.Missing}
-     * {@linkplain KeyPart#reportingForm() reporting form}, a control-character-prefixed token no
-     * real cell text can equal.
-     *
-     * <p>
-     * ⭐ {@code PLAN-member-set-identity-hardening} (review round 1, R2): the composite membership
-     * {@code tuple(A, B) [not] in distinct([A, B], …)} built both sides' keys by folding a missing
-     * component to {@code ""}, so a missing and a present blank were one component identity, and
-     * {@code MIS} and {@code MIS_A} another. {@code D11} (<i>different MissingValues are different
-     * values</i>), {@code D34 #5-2} (<i>two missings are equal iff they are the same missing</i>)
-     * and {@code NVE §4.4} (a missing and {@code ""} never match) rule each component exact. The
-     * three builders ({@code BuiltinFunctions.tupleKey}, {@code OperationExecutor
-     * .evalDistinctTuples}, {@code ExprCompiler.toStringTuple}) render a missing component through
-     * this one method, so the two sides cannot drift apart. Compared whole, never re-parsed.
-     * </p>
-     *
-     * @param marker
-     *            the component's missing identity
-     * @return the component's key text
-     */
-    public static String missingComponentToken(MissingValue marker)
-    {
-        return KeyPart.missing(marker).reportingForm();
-    }
-
-
-    /**
      * <b>The single key-component classification</b> ({@code W38-A1} / Fix #249): the cell's
      * grouping identity as a {@link KeyPart}. A cell this policy's
      * {@link #isBlankKeyComponent(IDataValue)} calls non-blank is {@link KeyPart.Present

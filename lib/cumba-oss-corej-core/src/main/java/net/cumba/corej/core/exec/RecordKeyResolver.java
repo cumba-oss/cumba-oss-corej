@@ -463,10 +463,11 @@ public final class RecordKeyResolver
      *            the spec resolved once for this dataset.
      * @param aRow
      *            the 0-based row index.
-     * @return an ordered name to value map; empty when the spec resolves no columns. A missing cell
-     *         yields its marker ({@code RuleRunner.reportedValue}), matching
-     *         {@code readRowIdentity}'s handling — the report prints what the data says
-     *         ({@code PLAN-member-set-identity-hardening} review round 1, R1).
+     * @return an ordered name to value map ({@link RowKeyValues}); empty when the spec resolves no
+     *         columns. A missing cell yields its marker ({@code RuleRunner.reportedValue}),
+     *         matching {@code readRowIdentity}'s handling — the report prints what the data says
+     *         ({@code PLAN-member-set-identity-hardening} review round 1, R1) — and every key whose
+     *         RAW cell is missing or empty is recorded as unpopulated, for D7.
      */
     public static Map<String, String> readRowKeys(IDataTable aTable, RowKeySpec aSpec, long aRow)
     {
@@ -475,12 +476,108 @@ public final class RecordKeyResolver
             return Map.of();
         }
         Map<String, String> out = LinkedHashMap.newLinkedHashMap(aSpec.columns().size());
+        Set<String> unpopulated = new LinkedHashSet<>();
         for (KeyColumn kc : aSpec.columns())
         {
             IDataValue value = aTable.getColumn(kc.columnIndex()).getDataValue(aRow);
             out.put(kc.name(), RuleRunner.reportedValue(value));
+            if (ScalarSemantics.isMissing(value))
+            {
+                unpopulated.add(kc.name());
+            }
         }
-        return out;
+        return new RowKeyValues(out, unpopulated);
+    }
+
+
+    /**
+     * Whether key {@code aName} of a violation's EC-40 record key is <b>unpopulated</b> — its raw
+     * cell was missing OR empty — the question D7 asks before dropping a key column that is
+     * unpopulated on every row of a finding.
+     *
+     * <p>
+     * ⭐ {@code PLAN-member-set-identity-hardening} review round 2, M2 (a precedent decision, not a
+     * D12 consequence): D7 exists to drop the <i>"declared-but-unpopulated"</i> sponsor keys
+     * ({@code --SPID}, {@code --REFID}), and "unpopulated" is the {@code empty()} notion —
+     * missing-or-empty ({@code D34 #7}). It is decided on the RAW cell, never on the rendered text:
+     * since round 1 a missing cell renders its marker, which is non-empty text, and reading D7 off
+     * the text had started KEEPING all-missing key columns. A key map that did not come from
+     * {@link #readRowKeys} falls back to the text: absent or {@code ""}.
+     * </p>
+     *
+     * @param aKeys
+     *            a violation's record key
+     * @param aName
+     *            the key name
+     * @return whether that key is unpopulated on this violation
+     */
+    public static boolean isUnpopulated(@Nullable Map<String, String> aKeys, String aName)
+    {
+        if (aKeys instanceof RowKeyValues rk)
+        {
+            return !rk.containsKey(aName) || rk.unpopulated.contains(aName);
+        }
+        String value = aKeys == null ? null : aKeys.get(aName);
+        return value == null || value.isEmpty();
+    }
+
+    /**
+     * A record key's rendered values plus, per key, whether its raw cell was unpopulated. A
+     * {@link java.util.AbstractMap} over the rendered values, so equality, hashing and every map
+     * consumer see exactly the name → text map; the unpopulated set rides along for
+     * {@link #isUnpopulated} only.
+     */
+    static final class RowKeyValues extends java.util.AbstractMap<String, String>
+    {
+
+        private final Map<String, String> values;
+
+        private final Set<String> unpopulated;
+
+        RowKeyValues(Map<String, String> aValues, Set<String> aUnpopulated)
+        {
+            this.values = java.util.Collections.unmodifiableMap(aValues);
+            this.unpopulated = Set.copyOf(aUnpopulated);
+        }
+
+
+        @Override
+        public Set<Map.Entry<String, String>> entrySet()
+        {
+            return values.entrySet();
+        }
+
+
+        @Override
+        public @Nullable String get(@Nullable Object aKey)
+        {
+            return values.get(aKey);
+        }
+
+
+        @Override
+        public boolean containsKey(@Nullable Object aKey)
+        {
+            return values.containsKey(aKey);
+        }
+
+
+        /**
+         * ⚠ Deliberately the plain map equality of the rendered entries: the unpopulated set is a
+         * reading aid for D7, not part of the key's value, so two keys that print alike are equal.
+         */
+        @Override
+        public boolean equals(@Nullable Object aOther)
+        {
+            return super.equals(aOther);
+        }
+
+
+        @Override
+        public int hashCode()
+        {
+            return super.hashCode();
+        }
     }
 
 }

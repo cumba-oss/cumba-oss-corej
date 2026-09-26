@@ -750,16 +750,19 @@ public final class BuiltinFunctions implements FunctionProvider
      * {@code OperationExecutor.evalDistinctTuples} so a row tuple and a reference tuple compare
      * {@link List#equals List-equal} in the composite membership branch (T3).
      */
-    private static List<String> tupleKey(List<Vector> args, int row)
+    private static List<Object> tupleKey(List<Vector> args, int row)
     {
-        List<String> key = new ArrayList<>(args.size());
+        List<Object> key = new ArrayList<>(args.size());
         for (Vector arg : args)
         {
-            // A MissingValue component keeps its identity (D11 / D34 #5-2 / NVE §4.4) through the
-            // token evalDistinctTuples renders too; only a present blank folds to "".
+            // A MissingValue component keeps its identity (D11 / D34 #5-2 / NVE §4.4) as a
+            // MissingMember, exactly as evalDistinctTuples builds the reference side; only a
+            // present blank folds to "". An ABSENT column arrives already folded to its type
+            // default by the operand plan ("" for character, the all-missing constant — i.e.
+            // MIS — for a numeric expectation), the same rule evalDistinctTuples applies.
             net.cumba.datatable.values.MissingValue m = TypedValue
                     .missingIdentityOf(arg.value(row).cell());
-            key.add(m != null ? net.cumba.corej.core.exec.GroupKeyPolicy.missingComponentToken(m)
+            key.add(m != null ? new Primitives.MissingMember(m)
                     : arg.isMissing(row) ? "" : arg.asString(row));
         }
         return java.util.Collections.unmodifiableList(key);

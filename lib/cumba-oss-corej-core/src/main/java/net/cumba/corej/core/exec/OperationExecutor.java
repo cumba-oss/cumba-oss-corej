@@ -131,6 +131,36 @@ public final class OperationExecutor
             @Nullable RuntimeDictionaryProvider dictionaryProvider,
             @Nullable MetadataProvider defineProvider)
     {
+        return executeOne(op, table, resolver, libraryProvider, priorResults, ruleId,
+                dictionaryProvider, defineProvider, Set.of());
+    }
+
+
+    /**
+     * As
+     * {@link #executeOne(Operation, IDataTable, DatasetResolver, MetadataProvider, Map, String, RuntimeDictionaryProvider, MetadataProvider)},
+     * with the rule's numeric-expected column names
+     * ({@code EvaluationContext.getNumericExpectedColumns}).
+     *
+     * <p>
+     * ⭐ Only the composite {@code distinct([A, B], …)} reads them
+     * ({@code PLAN-member-set-identity-hardening} review round 2, L3): a reference column ABSENT
+     * from the reference dataset contributes its type default — {@code ""} for character, the
+     * missing {@code MIS} for a column the rule expects numeric — which is exactly the constant the
+     * {@code tuple(…)} probe side folds an absent column to (NVE: an absent column is a CONSTANT
+     * column of its type's default). Before, the reference side always contributed {@code ""}.
+     * </p>
+     *
+     * @param numericExpectedColumns
+     *            the rule's numeric-expected column names; empty when unknown
+     * @return as the eight-argument form
+     */
+    public static @Nullable Object executeOne(Operation op, IDataTable table,
+            DatasetResolver resolver, @Nullable MetadataProvider libraryProvider,
+            Map<String, Object> priorResults, @Nullable String ruleId,
+            @Nullable RuntimeDictionaryProvider dictionaryProvider,
+            @Nullable MetadataProvider defineProvider, Set<String> numericExpectedColumns)
+    {
         OperationType type = op.getOperationType();
         if (type == null)
         {
@@ -225,7 +255,7 @@ public final class OperationExecutor
         // grouping.
         Operation runOp = expandGroupRefs(effective, priorResults);
         return dispatch(type, runOp, targetTable, resolver, libraryProvider, ruleId,
-                dictionaryProvider, defineProvider);
+                dictionaryProvider, defineProvider, numericExpectedColumns);
     }
 
 
@@ -1118,7 +1148,7 @@ public final class OperationExecutor
     private static @Nullable Object dispatch(OperationType type, Operation op, IDataTable table,
             DatasetResolver resolver, @Nullable MetadataProvider libraryProvider,
             @Nullable String ruleId, @Nullable RuntimeDictionaryProvider dictionaryProvider,
-            @Nullable MetadataProvider defineProvider)
+            @Nullable MetadataProvider defineProvider, Set<String> numericExpectedColumns)
     {
         List<String> groupCols = op.getGroup();
         boolean grouped = groupCols != null && !groupCols.isEmpty();
@@ -1129,7 +1159,8 @@ public final class OperationExecutor
         case VARIABLE_VALUE_COUNT -> evalVariableValueCount(op, table, resolver);
         case RECORD_COUNT -> grouped ? evalRecordCountGrouped(op, table, groupCols, ruleId)
                 : evalRecordCount(op, table);
-        case DISTINCT -> evalDistinctDispatch(op, table, resolver, groupCols, grouped, ruleId);
+        case DISTINCT -> evalDistinctDispatch(op, table, resolver, groupCols, grouped, ruleId,
+                numericExpectedColumns);
         case MAX -> grouped ? evalMaxGrouped(op, table, groupCols, ruleId) : evalMax(op, table);
         case MAX_DATE -> grouped ? evalDateExtremeGrouped(op, table, true, groupCols, ruleId)
                 : evalMaxDate(op, table);
@@ -1726,19 +1757,20 @@ public final class OperationExecutor
      */
     private static @Nullable Object evalDistinctDispatch(Operation op, IDataTable table,
             DatasetResolver resolver, @Nullable List<String> groupCols, boolean grouped,
-            @Nullable String ruleId)
+            @Nullable String ruleId, Set<String> numericExpectedColumns)
     {
         if (Boolean.TRUE.equals(op.getValueIsReference()))
         {
             return evalDistinctVariableNames(op, table, resolver);
         }
-        // T3 composite target: a `names` list yields a Set<List<String>> of the reference dataset's
+        // T3 composite target: a `names` list yields a set of key-component lists (the reference
+        // dataset's
         // distinct row-tuples (ungrouped only — the subject column is carried inside the tuple),
         // the
         // reference set for a `tuple(...) [not] in distinct([...], domain="D")` membership.
         if (op.getNames() != null && !op.getNames().isEmpty())
         {
-            return evalDistinctTuples(op, table);
+            return evalDistinctTuples(op, table, numericExpectedColumns);
         }
         return grouped ? evalDistinctGrouped(op, table, groupCols, ruleId)
                 : evalDistinct(op, table);
@@ -1902,7 +1934,8 @@ public final class OperationExecutor
      * {@code IDVARVAL} is the one column whose contract <i>is</i> the join-token contract (sole
      * corpus carrier today: {@code PMDA-SD1143}).
      */
-    private static Set<List<String>> evalDistinctTuples(Operation op, IDataTable table)
+    static Set<List<Object>> evalDistinctTuples(Operation op, IDataTable table,
+            Set<String> numericExpectedColumns)
     {
         List<String> cols = op.getNames();
         if (cols == null || cols.isEmpty())
@@ -1920,34 +1953,42 @@ public final class OperationExecutor
         Map<String, Object> filter = op.getFilter();
         boolean hasFilter = filter != null && !filter.isEmpty();
         long rowCount = table.getRowCount();
-        Set<List<String>> seen = new LinkedHashSet<>();
+        Set<List<Object>> seen = new LinkedHashSet<>();
         for (long r = 0; r < rowCount; r++)
         {
             if (hasFilter && !rowMatchesFilter(table, meta, filter, r))
             {
                 continue;
             }
-            List<String> tuple = new ArrayList<>(idx.length);
+            List<Object> tuple = new ArrayList<>(idx.length);
             for (int c = 0; c < idx.length; c++)
             {
                 int col = idx[c];
                 if (col < 0)
                 {
-                    tuple.add("");
+                    // NVE: an absent column is a CONSTANT column of its type's default — the same
+                    // rule the tuple(…) probe side's operand plan applies ("" for character, MIS
+                    // for a numeric expectation), so the two sides agree (review round 2, L3).
+                    tuple.add(numericExpectedColumns.contains(cols.get(c))
+                            ? new net.cumba.corej.core.expr.eval.Primitives.MissingMember(
+                                    MissingValue.MIS)
+                            : "");
                     continue;
                 }
                 IDataValue dv = table.getColumn(col).getDataValue(r);
-                // A MissingValue component keeps its identity (D11 / D34 #5-2 / NVE §4.4) through
-                // the token BuiltinFunctions.tupleKey renders too — never "" (the present blank's
-                // key) and never normalised as a join token.
+                // A MissingValue component keeps its identity (D11 / D34 #5-2 / NVE §4.4) as a
+                // MissingMember, exactly as BuiltinFunctions.tupleKey builds the probe side —
+                // never "" (the present blank's key) and never normalised as a join token.
                 MissingValue missing = net.cumba.corej.core.expr.eval.TypedValue
                         .missingIdentityOf(dv);
                 if (missing != null)
                 {
-                    tuple.add(GroupKeyPolicy.missingComponentToken(missing));
+                    tuple.add(new net.cumba.corej.core.expr.eval.Primitives.MissingMember(missing));
                     continue;
                 }
-                String cell = dv.isMissingOrInvalid() ? "" : dv.getValueAsString();
+                // Non-missing here, so the text is the cell's own (the `isMissingOrInvalid() ? ""`
+                // arm that stood here was dead after the branch above — review round 2, L5).
+                String cell = dv.getValueAsString();
                 tuple.add(joinToken[c] ? ChildMatchIndex.normalizeJoinToken(cell, true) : cell);
             }
             seen.add(tuple);

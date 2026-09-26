@@ -1568,13 +1568,15 @@ public final class GroupSemantics
      * treats as "certainly does not contain all").
      *
      * <p>
-     * The set holds each cell's {@link KeyPart#reportingForm()}: consumers compare these against
-     * <em>authored / real string</em> values ({@code not_contains_all}'s required list, per-row
-     * {@code split_by} tokens), and the rendering keeps the ruled identity in that string domain —
-     * {@code ""} satisfies a required {@code ""}, distinct missing markers stay distinct, and a
-     * {@code Missing} renders a token no real string can equal, so a missing cell can never satisfy
-     * a required real value such as {@code "."} ({@code W38-A1} part 4). ⚠ The rendering is
-     * compared for whole-string equality only — never parsed back into an identity.
+     * The set holds each cell as a
+     * {@linkplain net.cumba.corej.core.expr.eval.Primitives#keyComponent key component}: a present
+     * value as its {@link KeyPart#reportingForm()} text, {@code ""} as {@code ""}, and a genuine
+     * missing as its {@link net.cumba.corej.core.expr.eval.Primitives.MissingMember} — an identity
+     * no string can equal. So {@code ""} satisfies a required {@code ""}, distinct missing markers
+     * stay distinct, and a missing cell can never satisfy a required real value such as {@code "."}
+     * ({@code W38-A1} part 4). ⭐ Since {@code PLAN-member-set-identity-hardening} review round 2
+     * (M1) the missing is an object, not the U+0001-prefixed token string it used to be: a token is
+     * still a string, and it leaked into report text wherever such a set was rendered.
      * </p>
      *
      * @param table
@@ -1585,7 +1587,7 @@ public final class GroupSemantics
      *            the row count
      * @return the distinct values, or {@code null} when the column is absent
      */
-    public static @Nullable Set<String> distinctColumnValues(IDataTable table,
+    public static @Nullable Set<Object> distinctColumnValues(IDataTable table,
             @Nullable String colName, int rowCount)
     {
         if (colName == null)
@@ -1598,10 +1600,10 @@ public final class GroupSemantics
             return null;
         }
         IDataTableColumn col = table.getColumn(idx);
-        Set<String> distinctValues = new LinkedHashSet<>();
+        Set<Object> distinctValues = new LinkedHashSet<>();
         for (int r = 0; r < rowCount; r++)
         {
-            distinctValues.add(keyPart(col, r).reportingForm());
+            distinctValues.add(componentOf(keyPart(col, r)));
         }
         return distinctValues;
     }
@@ -1620,8 +1622,8 @@ public final class GroupSemantics
      *            the row count
      * @return the violating absolute rows
      */
-    public static BitSet notContainsAllVerdict(@Nullable Set<String> distinctValues,
-            List<String> requiredValues, int rowCount)
+    public static BitSet notContainsAllVerdict(@Nullable Set<?> distinctValues,
+            List<?> requiredValues, int rowCount)
     {
         if (distinctValues == null || !distinctValues.containsAll(requiredValues))
         {
@@ -1701,23 +1703,23 @@ public final class GroupSemantics
      * {@code not_contains_all} — the {@code $}-branch of the distinct-source-value contract: a
      * {@code Collection} maps per-element {@code toString} (insertion order kept, {@code null}
      * elements skipped); an absent or non-collection value yields the <b>empty</b> set (so any
-     * non-empty requirement flags every row). A {@code MissingValue} element renders as its
-     * {@link GroupKeyPolicy#missingComponentToken component token}, never its {@code "."} display
-     * string — the identity {@link #distinctColumnValues} keeps for the column source
-     * ({@code W38-A1} part 4), so a missing member never satisfies a real {@code "."} token or
-     * required value, and satisfies only the same missing ({@code D13}, {@code D34 #5-2};
-     * {@code PLAN-member-set-identity-hardening} review round 1, R3).
+     * non-empty requirement flags every row). A missing element is its
+     * {@link net.cumba.corej.core.expr.eval.Primitives.MissingMember} identity, never its
+     * {@code "."} display string — the identity {@link #distinctColumnValues} keeps for the column
+     * source ({@code W38-A1} part 4), so a missing member never satisfies a real {@code "."} token
+     * or required value, and satisfies only the same missing ({@code D13}, {@code D34 #5-2};
+     * {@code PLAN-member-set-identity-hardening} review rounds 1–2, R3/M1).
      */
-    public static Set<String> distinctOperationValues(@Nullable Object resolved)
+    public static Set<Object> distinctOperationValues(@Nullable Object resolved)
     {
         if (resolved instanceof java.util.Collection<?> col)
         {
-            Set<String> out = LinkedHashSet.newLinkedHashSet(col.size());
+            Set<Object> out = LinkedHashSet.newLinkedHashSet(col.size());
             for (Object item : col)
             {
                 if (item != null)
                 {
-                    out.add(memberText(item));
+                    out.add(net.cumba.corej.core.expr.eval.Primitives.keyComponent(item));
                 }
             }
             return out;
@@ -1727,15 +1729,15 @@ public final class GroupSemantics
 
 
     /**
-     * A raw operation-result member as text: a missing member (a {@code MissingValue}, or a missing
-     * {@code IDataValue}) as its {@link GroupKeyPolicy#missingComponentToken component token}, any
-     * other member as {@code toString()}.
+     * A {@link KeyPart} as a key component: {@code Missing} as its
+     * {@link net.cumba.corej.core.expr.eval.Primitives.MissingMember}, anything else as its
+     * reporting text ({@code ""} for {@code Empty}).
      */
-    private static String memberText(Object item)
+    private static Object componentOf(KeyPart part)
     {
-        MissingValue missing = net.cumba.corej.core.expr.eval.Primitives.MemberSet
-                .missingIdentityOfMember(item);
-        return missing != null ? GroupKeyPolicy.missingComponentToken(missing) : item.toString();
+        return part instanceof KeyPart.Missing(MissingValue marker)
+                ? new net.cumba.corej.core.expr.eval.Primitives.MissingMember(marker)
+                : part.reportingForm();
     }
 
 
@@ -1743,22 +1745,24 @@ public final class GroupSemantics
      * The string list of a resolved {@code $}-operation value — mirrors the {@code $}-branch of The
      * string-list contract: a {@code Collection} maps per-element {@code toString} with
      * {@code null} elements contributing the EMPTY string; a non-null scalar is a singleton; an
-     * absent value yields the empty list. A missing element renders as its component token, as in
-     * {@link #distinctOperationValues}, so a required missing is satisfied only by the same
+     * absent value yields the empty list. A missing element is its {@code MissingMember} identity,
+     * as in {@link #distinctOperationValues}, so a required missing is satisfied only by the same
      * missing.
      */
-    public static List<String> operationStringList(@Nullable Object resolved)
+    public static List<Object> operationStringList(@Nullable Object resolved)
     {
         if (resolved instanceof java.util.Collection<?> col)
         {
-            List<String> out = new ArrayList<>(col.size());
+            List<Object> out = new ArrayList<>(col.size());
             for (Object item : col)
             {
-                out.add(item != null ? memberText(item) : "");
+                out.add(net.cumba.corej.core.expr.eval.Primitives.keyComponent(item));
             }
             return out;
         }
-        return resolved != null ? List.of(memberText(resolved)) : List.of();
+        return resolved != null
+                ? List.of(net.cumba.corej.core.expr.eval.Primitives.keyComponent(resolved))
+                : List.of();
     }
 
 

@@ -339,17 +339,17 @@ class MemberSetBuilderIdentityTest
 
 
     /**
-     * LOW-2 — the list-accessor source of {@code not_contains_all} hands only its present members
-     * to the token verdict, so a missing source member never satisfies a {@code "."} token. ⚠
-     * Pinned on the two calls the site composes: a real metadata accessor carries codelist strings
-     * and cannot put a missing into the list.
+     * LOW-2 / L3 — the list-accessor source of {@code not_contains_all} and its tokens compare as
+     * key components, so a missing source member never satisfies a {@code "."} token. ⚠ Pinned on
+     * the two calls the site composes: a real metadata accessor carries codelist strings and cannot
+     * put a missing into the list.
      */
     @Test
     void notContainsAllAccessorSourceIsNotSatisfiedByADotToken()
     {
         ExprCompiler.ValuePlan plan = _ -> ConstVector.of(List.of(MissingValue.MIS, "A"));
-        Set<String> allowed = ExprCompiler.listAccessorSet(plan, EvalRun.ofRowCount(1), false)
-                .present();
+        Set<Object> allowed = ExprCompiler.listAccessorSet(plan, EvalRun.ofRowCount(1), false)
+                .asComponents();
         assertEquals(bits(0),
                 Primitives.notContainsAllTokens(ConstVector.of(List.of("A", ".")), allowed, 1),
                 "the '.' token is not allowed: the MIS member is not the text '.'");
@@ -407,17 +407,43 @@ class MemberSetBuilderIdentityTest
     }
 
 
-    /** The tuple normaliser renders a missing element as the component token, marker by marker. */
+    /**
+     * The tuple normaliser keeps a missing element as a {@link Primitives.MissingMember} identity,
+     * marker by marker, and that identity prints as the marker — never a control-character token
+     * (review round 2, M1).
+     */
     @Test
-    void toStringTupleRendersAMissingElementAsItsComponentToken()
+    void toTupleKeyKeepsAMissingElementAsItsIdentity()
     {
-        List<String> mis = ExprCompiler.toStringTuple(List.of("A", MissingValue.MIS));
-        List<String> misA = ExprCompiler.toStringTuple(List.of("A", MissingValue.MIS_A));
-        List<String> dot = ExprCompiler.toStringTuple(List.of("A", "."));
-        List<String> blank = ExprCompiler.toStringTuple(Arrays.asList("A", null));
+        List<Object> mis = ExprCompiler.toTupleKey(List.of("A", MissingValue.MIS));
+        List<Object> misA = ExprCompiler.toTupleKey(List.of("A", MissingValue.MIS_A));
+        List<Object> dot = ExprCompiler.toTupleKey(List.of("A", "."));
+        List<Object> blank = ExprCompiler.toTupleKey(Arrays.asList("A", null));
         assertTrue(mis != null && misA != null && dot != null && blank != null);
         assertEquals(4, Set.of(mis, misA, dot, blank).size(),
                 "MIS, .A, a present '.' and a null (\"\") are four different components");
         assertEquals(List.of("A", ""), blank, "a null element still folds to \"\"");
+        assertEquals("[A, .]", mis.toString(), "the identity prints as the report's marker");
+    }
+
+
+    /**
+     * Review round 2, L3 — a notContainsAllTokens TOKEN that is a missing is compared by identity
+     * (the mirror of R4): allowed only by the same missing, never by a present {@code "."}.
+     */
+    @Test
+    void notContainsAllTokensComparesAMissingTokenByIdentity()
+    {
+        ConstVector tokens = ConstVector.of(List.of("A", MissingValue.MIS));
+        assertEquals(bits(),
+                Primitives.notContainsAllTokens(tokens,
+                        Set.of("A", new Primitives.MissingMember(MissingValue.MIS)), 1),
+                "a MIS token is allowed by a MIS member");
+        assertEquals(bits(0), Primitives.notContainsAllTokens(tokens, Set.of("A", "."), 1),
+                "a MIS token is NOT allowed by a present '.' — it was, rendered, until round 2");
+        assertEquals(bits(0),
+                Primitives.notContainsAllTokens(tokens,
+                        Set.of("A", new Primitives.MissingMember(MissingValue.MIS_A)), 1),
+                "MIS is not .A");
     }
 }

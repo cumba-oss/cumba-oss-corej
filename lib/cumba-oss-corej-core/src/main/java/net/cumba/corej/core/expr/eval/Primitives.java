@@ -1353,6 +1353,56 @@ public final class Primitives
     }
 
     /**
+     * A {@link MissingValue} standing as a <b>component</b> of a composite value — an element of a
+     * {@code tuple(…)} key or its reference set, a {@code not_contains_all} source / required /
+     * token member, a group-unit stamp component — kept as an <b>identity</b>, never as a string.
+     *
+     * <p>
+     * ⭐ {@code PLAN-member-set-identity-hardening} (review round 2, M1). The first identity fix
+     * rendered a missing component as a control-character token string; the string then leaked into
+     * report text when such a set is an {@code Output_Variables} {@code $}-reference, and a token
+     * is still a <b>string</b>, which a present value could in principle spell. This record cannot
+     * collide with any present value (a present component is a {@code String}), compares equal only
+     * to the same marker ({@code D11}, {@code D34 #5-2}; {@code MIS} ≠ {@code MIS_A}), and renders
+     * as the marker the report prints ({@code "."}, {@code ".A"}, …) — so a {@code $}-tuple set
+     * prints {@code [W1, .]}.
+     * </p>
+     *
+     * @param marker
+     *            the component's missing identity
+     */
+    public record MissingMember(MissingValue marker)
+    {
+
+        /** The marker, exactly as a report prints a missing cell. */
+        @Override
+        public String toString()
+        {
+            return marker.toString();
+        }
+    }
+
+    /**
+     * The composite-key component of a raw member: a missing member (see
+     * {@link MemberSet#missingIdentityOfMember}) as its {@link MissingMember}, a {@code null} as
+     * {@code ""} (the raw channel's {@code @Nullable} contract), any other member as
+     * {@code toString()}.
+     *
+     * @param item
+     *            a raw member
+     * @return the component — a {@link MissingMember} or a {@code String}
+     */
+    public static Object keyComponent(@Nullable Object item)
+    {
+        MissingValue missing = MemberSet.missingIdentityOfMember(item);
+        if (missing != null)
+        {
+            return new MissingMember(missing);
+        }
+        return item != null ? item.toString() : "";
+    }
+
+    /**
      * A membership right-hand side that keeps a {@link MissingValue}'s <b>identity</b> instead of
      * rendering it into a string.
      *
@@ -1466,6 +1516,10 @@ public final class Primitives
             {
                 return mv;
             }
+            if (item instanceof MissingMember mm)
+            {
+                return mm.marker();
+            }
             if (item instanceof IDataValue dv)
             {
                 return TypedValue.missingIdentityOf(dv);
@@ -1511,6 +1565,24 @@ public final class Primitives
         public static MemberSet ofStrings(Set<String> present)
         {
             return new MemberSet(present, Set.of());
+        }
+
+
+        /**
+         * This set as {@linkplain #keyComponent key components}: the present members as strings,
+         * each missing member as its {@link MissingMember} — the element domain a
+         * {@code not_contains_all} verdict compares in.
+         *
+         * @return the members as components
+         */
+        public Set<Object> asComponents()
+        {
+            Set<Object> out = new java.util.HashSet<>(present);
+            for (MissingValue m : missing)
+            {
+                out.add(new MissingMember(m));
+            }
+            return out;
         }
 
     }
@@ -1790,9 +1862,11 @@ public final class Primitives
      * single valid token passes, one invalid token fires. A null / non-list / empty-list cell never
      * fires ({@code all([])} is {@code True} ⇒ contained ⇒ no violation). Matching is
      * case-sensitive (CT submission values are exact-case), and {@code null} tokens fold to
-     * {@code ""}.
+     * {@code ""}. Each token is compared as a {@linkplain #keyComponent key component}: a missing
+     * token is its {@link MissingMember} and is allowed only by the same missing, never by a
+     * present {@code "."} ({@code D34 #5-2}; review round 2, L3 — the mirror of R4).
      */
-    public static BitSet notContainsAllTokens(Vector tokens, Set<String> allowed, int rowCount)
+    public static BitSet notContainsAllTokens(Vector tokens, Set<?> allowed, int rowCount)
     {
         BitSet result = new BitSet(rowCount);
         for (int r = 0; r < rowCount; r++)
@@ -1803,7 +1877,7 @@ public final class Primitives
             }
             for (Object item : list)
             {
-                if (!allowed.contains(item == null ? "" : item.toString()))
+                if (!allowed.contains(keyComponent(item)))
                 {
                     result.set(r);
                     break;

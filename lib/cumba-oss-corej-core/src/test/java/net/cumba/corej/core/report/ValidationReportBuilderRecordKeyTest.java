@@ -277,4 +277,59 @@ class ValidationReportBuilderRecordKeyTest
         return new ValidationReportBuilder().add("AE", "ae.xpt", rule, result).build();
     }
 
+
+    /**
+     * {@code PLAN-member-set-identity-hardening} review round 2, M2 — D7 decides "unpopulated" on
+     * the RAW cell (missing OR empty), never on the rendered text: a key column MISSING on every
+     * row of the finding is dropped even though each cell renders its marker, while a column
+     * missing on one row and populated on another is kept and prints the marker.
+     */
+    @Test
+    void anAllMissingKeyColumnIsDroppedAndAMixedOneIsKeptWithItsMarker()
+    {
+        net.cumba.datatable.IDataTable supp = net.cumba.datatable.testkit.MockTable.of()
+                .col("RDOMAIN", "AE", "AE").col("USUBJID", "S1", "S2")
+                .colSasMissing("IDVAR", null, null).colSasMissing("IDVARVAL", null, "4")
+                .col("QNAM", "Q1", "Q2").name("SUPPAE").build();
+        RecordKeyResolver.RowKeySpec spec = RecordKeyResolver.resolve(supp, "SUPPAE",
+                net.cumba.corej.core.exec.FindingKeyMode.DEFINE, null, null, _ -> null, "R1");
+        Map<String, String> k0 = RecordKeyResolver.readRowKeys(supp, spec, 0);
+        Map<String, String> k1 = RecordKeyResolver.readRowKeys(supp, spec, 1);
+        assertEquals(".", k0.get("IDVAR"), "fixture control: a missing key renders its marker");
+
+        ValidationFinding f = firstFinding(build(
+                List.of(ExecCalls.violation(0L, Map.of("QVAL", "Y"), "S1", null, k0),
+                        ExecCalls.violation(1L, Map.of("QVAL", "N"), "S2", null, k1)),
+                RecordKeyResolver.KeySource.STRUCTURAL));
+
+        List<String> names = f.getLocation().getKeyVariableNames();
+        assertFalse(names.contains("IDVAR"),
+                "IDVAR is missing on every row: unpopulated, so D7 drops it — it was KEPT, printing"
+                        + " '.', while D7 read the rendered text");
+        assertTrue(names.contains("IDVARVAL"), "IDVARVAL is populated on row 1, so it stays");
+        assertEquals(".", f.getRowKeys(0).get("IDVARVAL"),
+                "a kept column prints its missing cell's marker");
+        assertEquals("4", f.getRowKeys(1).get("IDVARVAL"));
+    }
+
+
+    /** The raw-cell flag reads missing AND empty as unpopulated, and a present value as not. */
+    @Test
+    void isUnpopulatedReadsTheRawCellNotTheText()
+    {
+        net.cumba.datatable.IDataTable supp = net.cumba.datatable.testkit.MockTable.of()
+                .col("RDOMAIN", "AE").col("USUBJID", "S1").colSasMissing("IDVAR", (String) null)
+                .col("IDVARVAL", "").col("QNAM", ".").name("SUPPAE").build();
+        RecordKeyResolver.RowKeySpec spec = RecordKeyResolver.resolve(supp, "SUPPAE",
+                net.cumba.corej.core.exec.FindingKeyMode.DEFINE, null, null, _ -> null, "R1");
+        Map<String, String> k = RecordKeyResolver.readRowKeys(supp, spec, 0);
+        assertTrue(RecordKeyResolver.isUnpopulated(k, "IDVAR"), "a missing cell is unpopulated");
+        assertTrue(RecordKeyResolver.isUnpopulated(k, "IDVARVAL"), "an empty cell is unpopulated");
+        assertFalse(RecordKeyResolver.isUnpopulated(k, "QNAM"),
+                "a present '.' is populated, although it prints like a missing");
+        assertTrue(RecordKeyResolver.isUnpopulated(Map.of("A", ""), "A"),
+                "a plain map falls back to the text: empty");
+        assertFalse(RecordKeyResolver.isUnpopulated(Map.of("A", "."), "A"),
+                "a plain map falls back to the text: '.' is text");
+    }
 }

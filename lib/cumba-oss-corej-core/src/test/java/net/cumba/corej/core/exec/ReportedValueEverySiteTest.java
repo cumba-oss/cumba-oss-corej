@@ -150,6 +150,23 @@ class ReportedValueEverySiteTest
 
 
     /**
+     * Review round 2, L2 — the group distinct set deduplicates on VALUE IDENTITY, then renders: a
+     * missing and a present {@code "."} are two values although both print {@code "."}.
+     */
+    @Test
+    void aGroupOfAMissingAndAPresentDotIsTwoValues()
+    {
+        IDataTable t = MockTable.of().name("AE").col("USUBJID", "A", "A").col("FLAG", "Y", "Y")
+                .colSasMissing("CODE", null, ".").build();
+        RuleExecutionResult r = RuleRunnerCalls.execute(groupRule(), t);
+        assertEquals(1, r.getViolations().size());
+        assertEquals("[., .]", r.getViolations().get(0).getValues().get("CODE"),
+                "{MIS, present '.'} is a two-value distinct set — deduplicating on the rendered"
+                        + " text collapsed it to one '.' until round 2");
+    }
+
+
+    /**
      * The group-finding KEY is rendered for the report, so a missing key cell prints its marker;
      * the first-claim STAMP is an identity, so it carries the KeyPart token instead.
      */

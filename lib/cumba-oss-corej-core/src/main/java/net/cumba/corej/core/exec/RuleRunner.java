@@ -847,6 +847,10 @@ public final class RuleRunner
             // actually depends on (via expandGroupRefs's $variable refs in op.group). Maintain
             // insertion order so prior-op references resolve consistently.
             Map<String, Object> lazyVars = new LinkedHashMap<>();
+            // The composite distinct([A, B]) folds an absent reference column to its type default,
+            // read off the rule's numeric expectation — the same rule the tuple(…) probe applies
+            // (PLAN-member-set-identity-hardening review round 2, L3).
+            Set<String> opNumericExpected = numericExpectedColumns(rule);
             final IDataTable lazyTable = evalTable;
             final DatasetResolver lazyResolver = resolver;
             final MetadataProvider lazyLibrary = libraryProvider;
@@ -886,7 +890,7 @@ public final class RuleRunner
                     // prior-op $-refs too so set-difference sees their resolved lists.
                     forceOperandRefs(op, opId, lazyVars, resolved);
                     OperationExecutor.executeOne(op, lazyTable, lazyResolver, lazyLibrary, resolved,
-                            ruleId, lazyDict, lazyDefine);
+                            ruleId, lazyDict, lazyDefine, opNumericExpected);
                     continue;
                 }
                 final net.cumba.corej.core.model.Operation finalOp = op;
@@ -922,7 +926,7 @@ public final class RuleRunner
                     // prior-op $-refs too so set-difference sees their resolved lists.
                     forceOperandRefs(finalOp, opId, lazyVars, resolved);
                     return OperationExecutor.executeOne(finalOp, lazyTable, lazyResolver,
-                            lazyLibrary, resolved, ruleId, lazyDict, lazyDefine);
+                            lazyLibrary, resolved, ruleId, lazyDict, lazyDefine, opNumericExpected);
                 });
                 lazyVars.put(opId, lazy);
             }
@@ -3363,15 +3367,23 @@ public final class RuleRunner
             {
                 continue;
             }
-            // First-seen (block) order — stable and matching the data. A LinkedHashSet is the
-            // distinct set D94b's Shape A describes.
-            Set<String> distinct = new LinkedHashSet<>();
+            // First-seen (block) order — stable and matching the data. The keys of this
+            // LinkedHashMap are the distinct set D94b's Shape A describes, deduplicated on VALUE
+            // IDENTITY (a missing as its MissingMember, a present value as its text), and each maps
+            // to its report rendering: a missing and a present "." are two values even though both
+            // print "." (review round 2, L2 — D11 / D34 #5-2).
+            Map<Object, String> distinctByIdentity = new LinkedHashMap<>();
             for (java.util.PrimitiveIterator.OfLong it = flagged.iterator(); it.hasNext();)
             {
                 long row = it.nextLong();
                 IDataValue dv = table.getColumn(col).getDataValue(row);
-                distinct.add(reportedValue(dv));
+                MissingValue missing = net.cumba.corej.core.expr.eval.TypedValue
+                        .missingIdentityOf(dv);
+                distinctByIdentity.putIfAbsent(missing != null
+                        ? new net.cumba.corej.core.expr.eval.Primitives.MissingMember(missing)
+                        : dv.getValueAsString(), reportedValue(dv));
             }
+            List<String> distinct = new ArrayList<>(distinctByIdentity.values());
             if (distinct.size() > 1)
             {
                 // D58 / phase 5b: the distinct-set report shape. A group finding carries only
@@ -3385,7 +3397,7 @@ public final class RuleRunner
             }
             else if (!distinct.isEmpty())
             {
-                entry.setValue(distinct.iterator().next());
+                entry.setValue(distinct.get(0));
             }
         }
         return values;
@@ -3410,15 +3422,16 @@ public final class RuleRunner
         {
             return new Violation.Unit.Group(List.of());
         }
-        List<String> key = new ArrayList<>(keyColIndices.length);
+        List<Object> key = new ArrayList<>(keyColIndices.length);
         for (int c : keyColIndices)
         {
             IDataValue dv = table.getColumn(c).getDataValue(row);
-            // ⭐ An IDENTITY, never rendered (the first-claim stamp): a missing component is its
-            // KeyPart token, so MIS and MIS_A stamp two units exactly as the grouping forms two
-            // blocks (D11), and neither collides with a present "." or "".
+            // ⭐ An IDENTITY (the first-claim stamp): a missing component is its MissingMember,
+            // so MIS and MIS_A stamp two units exactly as the grouping forms two blocks (D11),
+            // and neither can collide with a present "." or "" (a present component is a String).
             MissingValue missing = net.cumba.corej.core.expr.eval.TypedValue.missingIdentityOf(dv);
-            key.add(missing != null ? GroupKeyPolicy.missingComponentToken(missing)
+            key.add(missing != null
+                    ? new net.cumba.corej.core.expr.eval.Primitives.MissingMember(missing)
                     : dv.getValueAsString());
         }
         // Group's compact constructor takes the defensive unmodifiable copy.
@@ -4024,9 +4037,11 @@ public final class RuleRunner
      * A report is a use, so every site that renders a cell into a finding goes through here: the
      * joined and primary output columns, {@code variable_value} (both arms), the group finding's
      * distinct set and grouping key, the row identity ({@code USUBJID} / {@code SEQ}) and the EC-40
-     * record key ({@code RecordKeyResolver.readRowKeys}). Where a value is an IDENTITY rather than
-     * a rendering (the group-unit stamp, composite membership keys) it is the {@code KeyPart} token
-     * instead ({@code GroupKeyPolicy.missingComponentToken}), never this text.
+     * record key ({@code RecordKeyResolver.readRowKeys}). Where a value is an IDENTITY (the
+     * group-unit stamp, composite membership keys, {@code not_contains_all} members) a missing is a
+     * {@code Primitives.MissingMember} object instead — equal only to the same marker, and
+     * rendering as that same marker if it is ever printed (a {@code $}-tuple set in
+     * {@code Output_Variables} prints {@code [W1, .]}).
      * </p>
      *
      * <p>

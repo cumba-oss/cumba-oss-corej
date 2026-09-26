@@ -103,9 +103,9 @@ public class Violation
 
     /**
      * <b>D29 / D66a (phase 5b)</b> — the grouping key of the block this violation reports on:
-     * ordered {@code grouping variable -> block value} ({@code null} values for missing key cells),
-     * <b>empty</b> when the whole dataset is one group (no grouping column present), and
-     * {@code null} on every non-grouped path.
+     * ordered {@code grouping variable -> block value} (a missing key cell reports its marker —
+     * {@code RuleRunner.reportedValue}), <b>empty</b> when the whole dataset is one group (no
+     * grouping column present), and {@code null} on every non-grouped path.
      *
      * <p>
      * D29 rules that a Group-sensitivity finding is <em>located by its group variables</em>, not by
@@ -175,17 +175,19 @@ public class Violation
          * flagged row of the block).
          *
          * @param key
-         *            the block's key values in grouping-column order ({@code null} entries for
-         *            missing key cells); empty when no grouping column is present and the whole
-         *            dataset is one group
+         *            the block's key components in grouping-column order, each an exact identity: a
+         *            present value as its text, a missing key cell as its
+         *            {@code Primitives.MissingMember} (so {@code MIS} and {@code MIS_A} are two
+         *            blocks, as the grouping forms them — D11); empty when no grouping column is
+         *            present and the whole dataset is one group
          */
-        record Group(List<String> key) implements Unit
+        record Group(List<Object> key) implements Unit
         {
 
             /**
-             * Defensive, null-element-tolerant copy ({@code List.copyOf} would reject the
-             * {@code null} missing-key entries), so the stamp is immutable however the caller built
-             * its list.
+             * Defensive, null-element-tolerant copy (a future caller could still hand in a
+             * {@code null}, which {@code List.copyOf} would reject), so the stamp is immutable
+             * however the caller built its list.
              */
             public Group
             {

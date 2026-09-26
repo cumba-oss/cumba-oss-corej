@@ -347,7 +347,7 @@ class GroupKeyCompositeIdentityTest
     void missingNeverSatisfiesARequiredStringValue()
     {
         IDataTable t = table("K", str(""), mis(MissingValue.MIS));
-        Set<String> distinct = GroupSemantics.distinctColumnValues(t, "K", 2);
+        Set<Object> distinct = GroupSemantics.distinctColumnValues(t, "K", 2);
         // Required "" is satisfied by the Empty cell…
         assertTrue(GroupSemantics.notContainsAllVerdict(distinct, List.of(""), 2).isEmpty());
         // …but a required "." is NOT satisfied by Missing(MIS) — part 4: a MissingValue is never

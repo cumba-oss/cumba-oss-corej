@@ -480,7 +480,8 @@ public final class ValidationReportBuilder
 
 
     /**
-     * D7 — drops key columns that are empty (or absent) for <em>every</em> row of the finding.
+     * D7 — drops key columns that are unpopulated (missing, empty, or absent) for <em>every</em>
+     * row of the finding ({@link RecordKeyResolver#isUnpopulated}).
      *
      * <p>
      * The always-append sponsor identifiers ({@code --SPID}, {@code --REFID}) are Permissible and
@@ -501,9 +502,9 @@ public final class ValidationReportBuilder
         {
             for (Violation v : aGroup)
             {
-                Map<String, String> keys = v.getKeys();
-                String value = keys == null ? null : keys.get(name);
-                if (value != null && !value.isEmpty())
+                // Decided on the RAW cell (missing OR empty = unpopulated), never on the rendered
+                // text, which prints a missing's marker (review round 2, M2).
+                if (!RecordKeyResolver.isUnpopulated(v.getKeys(), name))
                 {
                     out.add(name);
                     break;
