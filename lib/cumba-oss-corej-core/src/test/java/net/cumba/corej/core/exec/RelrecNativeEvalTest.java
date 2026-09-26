@@ -123,7 +123,6 @@ class RelrecNativeEvalTest
         rule.setCheck(check);
         MatchDataset md = new MatchDataset();
         md.setName("RELREC");
-        md.setWildcard("FA");
         rule.setMatchDatasets(List.of(md));
         return rule;
     }

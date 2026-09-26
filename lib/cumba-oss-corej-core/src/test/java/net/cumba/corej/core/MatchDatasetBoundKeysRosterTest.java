@@ -1,0 +1,112 @@
+package net.cumba.corej.core;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import net.cumba.corej.core.model.MatchDataset;
+import org.junit.jupiter.api.Test;
+
+/**
+ * A {@code Match_Datasets} key cannot be bound without naming the production class that reads it
+ * ({@code PLAN-match-datasets-wildcard} §4.3).
+ *
+ * <p>
+ * ⭐ Why: {@code Wildcard} was bound on {@link MatchDataset} since the monorepo and read by nothing,
+ * so an author could write it, the loader accepted it, and it did nothing — for years, with every
+ * gate green. Binding a key is what makes the unknown-key gate accept it, so a bound key with no
+ * reader is the same silence the gate exists to stop. ⇒ The bound set must <b>equal</b> this roster
+ * (equality, not a subset: adding a key reds until the roster names its reader), and the loader's
+ * own list — the one its error message quotes — must equal it too.
+ * </p>
+ *
+ * <p>
+ * ⚑ The reader column is checked only for existence. Checking each reader's bytecode for the
+ * accessor was considered and rejected (plan §4.3): {@code getName} is in every class, so it would
+ * be vacuous for exactly the key most likely to be copied. The column's job is to make whoever adds
+ * a key <b>say</b> where it is read, in a place a reviewer sees.
+ * </p>
+ */
+class MatchDatasetBoundKeysRosterTest
+{
+
+    /** Bound JSON key → the production class that reads it. */
+    private static final Map<String, String> READERS = Map.of("Name",
+            "net.cumba.corej.core.exec.RelrecRowExpander", "Keys",
+            "net.cumba.corej.core.exec.KeyMatchRowExpander", "Child",
+            "net.cumba.corej.core.exec.ChildMatchPreMerger", "Join_Type",
+            "net.cumba.corej.core.exec.KeyMatchRowExpander", "Join_As_String",
+            "net.cumba.corej.core.exec.KeyMatchRowExpander", "keep_missings",
+            "net.cumba.corej.core.exec.KeyMatchRowExpander", "Filter",
+            "net.cumba.corej.core.exec.MatchFilter");
+
+    private static Set<String> boundKeys()
+    {
+        Set<String> bound = new TreeSet<>();
+        for (Field f : MatchDataset.class.getDeclaredFields())
+        {
+            JsonProperty p = f.getAnnotation(JsonProperty.class);
+            if (p != null)
+            {
+                bound.add(p.value());
+            }
+        }
+        for (Method m : MatchDataset.class.getDeclaredMethods())
+        {
+            JsonProperty p = m.getAnnotation(JsonProperty.class);
+            if (p != null)
+            {
+                bound.add(p.value());
+            }
+        }
+        return bound;
+    }
+
+
+    @Test
+    void theBoundKeysEqualTheRoster()
+    {
+        assertEquals(new TreeSet<>(READERS.keySet()), boundKeys(),
+                "a Match_Datasets key was bound or unbound without editing this roster — name its"
+                        + " production reader here (a bound key nothing reads is the Wildcard"
+                        + " defect again)");
+    }
+
+
+    @Test
+    void theLoaderListsExactlyTheBoundKeys()
+    {
+        assertEquals(new TreeSet<>(READERS.keySet()),
+                new TreeSet<>(RulePackageLoader.MATCH_DATASET_KEYS),
+                "the unknown-key message lists the bound keys; it must not drift from the model");
+    }
+
+
+    @Test
+    void everyNamedReaderExists() throws ClassNotFoundException
+    {
+        for (String reader : READERS.values())
+        {
+            assertEquals(reader, Class.forName(reader).getName());
+        }
+    }
+
+
+    @Test
+    void theUnknownKeyChannelExists()
+    {
+        // Without the collector the gate has nothing to read and passes every rule — the channel
+        // must not be removable with nothing red.
+        assertTrue(
+                Arrays.stream(MatchDataset.class.getDeclaredMethods())
+                        .anyMatch(m -> m.isAnnotationPresent(JsonAnySetter.class)),
+                "MatchDataset must declare a @JsonAnySetter collecting unbound keys");
+    }
+}

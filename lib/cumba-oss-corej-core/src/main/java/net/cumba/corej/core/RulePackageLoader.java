@@ -3764,6 +3764,7 @@ public class RulePackageLoader
         checkKeepMissingsOnUngovernedEntry(rule, errors);
         checkChildEntryNames(rule, errors);
         checkSidedKeys(rule, errors);
+        checkMatchDatasetKeys(rule, errors);
         checkStudySensitivityScope(rule, errors);
         // Gate 3a (the Python one-frame-per-rule compatibility warning) is gone — phase 2 of
         // PLAN-leaf-scope-domain-inference.md: Java never needed the invariant it validated.
@@ -5085,6 +5086,92 @@ public class RulePackageLoader
             errors.add("[" + ruleId(rule) + "] Invalid Join_Type '" + raw
                     + "' on Match_Datasets entry '" + md.getName() + "' — expected one of: "
                     + JOIN_TYPE_VALUES);
+        }
+    }
+
+    /**
+     * The JSON keys a {@code Match_Datasets} entry binds — the set the unknown-key message quotes.
+     * Pinned against {@code MatchDataset}'s bound fields, and each key against its production
+     * reader, by {@code MatchDatasetBoundKeysRosterTest}: a key bound with no reader is the
+     * {@code Wildcard} defect again.
+     */
+    static final List<String> MATCH_DATASET_KEYS = List.of("Name", "Keys", "Child", "Join_Type",
+            "Join_As_String", "keep_missings", "Filter");
+
+    /**
+     * {@code Match_Datasets.Wildcard}: bound since the monorepo and read by nothing; retired
+     * 2026-09 ({@code PLAN-match-datasets-wildcard}, T1-1 A).
+     */
+    private static final String RETIRED_MATCH_DATASET_WILDCARD = "Wildcard";
+
+    /**
+     * Tags every key under a {@code Match_Datasets} entry that bound to no modelled property
+     * ({@code PLAN-match-datasets-wildcard}, owner 2026-09-25: T1-1 A, T1-2 (b), T1-3 yes).
+     *
+     * <p>
+     * ⭐⭐ <b>A load error, not silence.</b> The mapper runs with {@code FAIL_ON_UNKNOWN_PROPERTIES}
+     * disabled, so before this gate {@code Join_type: "left"} was dropped at parse and
+     * {@link #normalizeJoinTypes} stamped {@code inner} — the rows the author meant to keep were
+     * removed with nothing reported; {@code Keep_Missings: false} kept, {@code filter} filtered
+     * nothing. {@code Scope}, {@code Scope.Datasets}, {@code Requirements} and
+     * {@code Requirements.Variables} already rejected unknown keys (gate R2);
+     * {@code Match_Datasets} was the one authored block that did not. Same shape as R2's message.
+     * </p>
+     *
+     * <p>
+     * ⛔ {@code Wildcard} is reported as <b>retired</b>, once, and never also as unknown. T1-2 was
+     * ruled (b): an ERROR from the start, no warning phase — which is safe only because the engine
+     * carrying this gate is <b>not pushed</b> until the corpus re-released without the key is
+     * pinned in all five bundles (the pinned v0.4.0 carries it 17 times, on three released rules).
+     * The match is case-sensitive, like every key: {@code wildcard} is an ordinary unknown key.
+     * </p>
+     *
+     * <p>
+     * ⚑ Runs in {@link #validateEnumFields(Rule)}, i.e. on the <b>authored</b> entries, before any
+     * copy of a {@code MatchDataset}: {@code TokenExpander}'s JSON round trip (which cannot carry
+     * the {@code @JsonIgnore} collector) and {@code RuleSpecialiser}'s copy both happen at
+     * execution time. Kept a separate method so {@code PLAN-rule-unknown-keys-gate} can compose it
+     * into its one unknown-key walker unchanged.
+     * </p>
+     *
+     * @param rule
+     *            the rule to check.
+     * @param errors
+     *            the collector to append to.
+     */
+    private static void checkMatchDatasetKeys(Rule rule, List<String> errors)
+    {
+        List<net.cumba.corej.core.model.MatchDataset> matches = rule.getMatchDatasets();
+        if (matches == null)
+        {
+            return;
+        }
+        for (int i = 0; i < matches.size(); i++)
+        {
+            net.cumba.corej.core.model.MatchDataset md = matches.get(i);
+            if (md == null)
+            {
+                continue;
+            }
+            String where = "'Match_Datasets[" + i + "]'"
+                    + (md.getName() == null ? "" : " (entry '" + md.getName() + "')");
+            for (String key : md.getUnknownKeys())
+            {
+                if (RETIRED_MATCH_DATASET_WILDCARD.equals(key))
+                {
+                    errors.add("[" + ruleId(rule) + "] retired key 'Wildcard' under " + where
+                            + ": the engine never read it. A RELREC.<column> read takes the bound"
+                            + " related record's column by its literal name, and"
+                            + " RELREC.**<suffix> resolves per related record — delete the key");
+                }
+                else
+                {
+                    errors.add("[" + ruleId(rule) + "] unknown key '" + key + "' under " + where
+                            + ": it binds to nothing, so whatever it was meant to do is not done"
+                            + " — check the spelling (an entry binds "
+                            + String.join(", ", MATCH_DATASET_KEYS) + ")");
+                }
+            }
         }
     }
 

@@ -154,13 +154,11 @@ class RuleModelTest
         MatchDataset md = new MatchDataset();
         md.setName("DS");
         md.setKeys(List.of("USUBJID", "STUDYID"));
-        md.setWildcard("--");
         md.setChild(true);
         md.setJoinType("inner");
 
         assertEquals("DS", md.getName());
         assertEquals(2, md.getKeys().size());
-        assertEquals("--", md.getWildcard());
         assertTrue(md.getChild());
         assertEquals("inner", md.getJoinType());
         // Programmatic same-named keys are not sided.

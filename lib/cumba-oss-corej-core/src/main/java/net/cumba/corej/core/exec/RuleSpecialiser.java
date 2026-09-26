@@ -513,9 +513,9 @@ public final class RuleSpecialiser
      * A reflective shallow copy of a mutable model bean — <b>every</b> non-static field, so a field
      * added to the model later is carried automatically instead of being silently dropped (the
      * documented hazard of the field-by-field clone sites). Final instance fields cannot be
-     * reassigned; the only one on these models is {@code Rule.unknownKeys}, whose <em>content</em>
-     * the caller copies through its accessor — any other final field fails loudly here rather than
-     * being skipped silently.
+     * reassigned; the ones on these models are unknown-key collectors ({@code Rule.unknownKeys},
+     * {@code MatchDataset.unknownKeys}), whose <em>content</em> is copied into the fresh instance —
+     * any other final field fails loudly here rather than being skipped silently.
      */
     private static <T> T shallowCopy(T source, java.util.function.Supplier<T> constructor)
     {
@@ -534,9 +534,10 @@ public final class RuleSpecialiser
                     f.setAccessible(true);
                     if (Modifier.isFinal(mod))
                     {
-                        // A final field cannot be reassigned; the only one on these models is a
-                        // mutable collection (Rule.unknownKeys), whose CONTENT is copied into the
-                        // fresh instance's own collection. Anything else fails loudly rather than
+                        // A final field cannot be reassigned; the ones on these models are
+                        // mutable collections (Rule.unknownKeys, MatchDataset.unknownKeys), whose
+                        // CONTENT is copied into the fresh instance's own collection. Anything else
+                        // fails loudly rather than
                         // being skipped silently.
                         if (f.get(copy) instanceof java.util.Collection<?> target
                                 && f.get(source) instanceof java.util.Collection<?> content)

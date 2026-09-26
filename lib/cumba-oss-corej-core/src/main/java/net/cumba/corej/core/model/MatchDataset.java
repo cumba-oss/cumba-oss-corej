@@ -1,12 +1,16 @@
 package net.cumba.corej.core.model;
 
+import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.SequencedSet;
 import lombok.AccessLevel;
 import lombok.Data;
 import lombok.Getter;
@@ -40,9 +44,6 @@ public class MatchDataset
     @Getter(AccessLevel.NONE)
     @Setter(AccessLevel.NONE)
     private @Nullable JsonNode keysNode;
-
-    @JsonProperty("Wildcard")
-    private @Nullable String wildcard;
 
     @JsonProperty("Child")
     private @Nullable Boolean child;
@@ -400,6 +401,56 @@ public class MatchDataset
             }
         }
         return out;
+    }
+
+    /**
+     * JSON keys under this {@code Match_Datasets} entry that bound to no modelled property
+     * ({@code PLAN-match-datasets-wildcard}, T1-3). The mapper runs with
+     * {@code FAIL_ON_UNKNOWN_PROPERTIES} disabled, so without this collector a misspelled key —
+     * {@code Join_type}, {@code Keep_Missings}, {@code filter} — was dropped at parse and the join
+     * ran on its default. Read by {@code RulePackageLoader.checkMatchDatasetKeys}, which makes
+     * every collected key a load error. Mirrors {@link DatasetScope#getUnknownKeys()}.
+     *
+     * <p>
+     * ⚑ {@code Wildcard} lands here too: it was bound since the monorepo and read by nothing, and
+     * is retired (the gate names it as such). Populated only at parse time, never serialised, and
+     * excluded from {@code equals} / {@code hashCode} / {@code toString}. ⚠ A copy made through a
+     * JSON round trip ({@code TokenExpander.substituteMatchDatasets}) does not carry it, while
+     * {@code RuleSpecialiser}'s reflective copy does (it copies a final collection's content). Both
+     * run after the load gates, at execution time, on rules that have already passed them.
+     * </p>
+     */
+    @JsonIgnore
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
+    private final SequencedSet<String> unknownKeys = new LinkedHashSet<>();
+
+    /**
+     * Jackson's catch-all for unbound JSON keys; records the key name and drops the value.
+     *
+     * @param name
+     *            the unbound JSON key
+     * @param value
+     *            its value — deliberately unread; only the key's presence is diagnostic
+     */
+    @JsonAnySetter
+    void recordUnknownKey(String name, @Nullable Object value)
+    {
+        unknownKeys.add(name);
+    }
+
+
+    /**
+     * The JSON keys of this entry that bound to no modelled property, in encounter order.
+     *
+     * @return an unmodifiable view of the collected unknown keys
+     */
+    @JsonIgnore
+    public SequencedSet<String> getUnknownKeys()
+    {
+        return Collections.unmodifiableSequencedSet(unknownKeys);
     }
 
 }
