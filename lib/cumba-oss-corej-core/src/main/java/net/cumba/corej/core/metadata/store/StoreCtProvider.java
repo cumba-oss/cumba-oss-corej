@@ -73,6 +73,11 @@ public final class StoreCtProvider implements CtProvider
                 {
                     continue; // D-6: unpublished identity or extensibility => unknown to CT
                 }
+                if (byCCode.containsKey(cl.conceptId())
+                        && (cl.name() == null || byName.containsKey(cl.name())))
+                {
+                    continue; // first wins on both indexes: no term map is built for a loser
+                }
                 CtCodelist codelist = toCtCodelist(cl);
                 byCCode.putIfAbsent(cl.conceptId(), codelist);
                 if (cl.name() != null)

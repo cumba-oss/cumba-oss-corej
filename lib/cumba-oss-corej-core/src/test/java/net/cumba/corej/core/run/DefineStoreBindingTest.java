@@ -288,6 +288,21 @@ class DefineStoreBindingTest
     }
 
 
+    /** Engine L2: with a user list the define is not parsed for its declaration at all. */
+    @Test
+    void aUserListSkipsTheDefineParseEntirely() throws IOException
+    {
+        Path broken = define("broken.xml", "<ODM><unclosed>");
+        try (DefineStoreBinding b = DefineStoreBinding.resolve(broken, List.of(SDTM_NEW), store()))
+        {
+            assertEquals(CtSelection.Source.USER, b.selection().source());
+            assertEquals(List.of(SDTM_NEW), b.selection().packageIds());
+            assertTrue(b.ctProvider().isPresent());
+            assertEquals(List.of(), b.missedProducts(), "nothing asked of the library yet");
+        }
+    }
+
+
     @Test
     void anUnparseableDefineDeclaresNothingAndDoesNotThrow() throws IOException
     {

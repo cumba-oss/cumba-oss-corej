@@ -103,6 +103,45 @@ class MetadataStoreCorruptionTest
         assertEquals(99, failure.foundVersion());
         assertEquals(StoreFormat.FORMAT_VERSION, failure.knownVersion());
         assertTrue(failure.getMessage().contains("format 99"), failure.getMessage());
+        // Engine L1 (PLAN-define-ct-evaluation review round 1): a NEWER store says so - the
+        // remedy is to upgrade this tool, not to re-seed the store.
+        assertTrue(failure.writtenByNewerBuild());
+        assertTrue(failure.getMessage().contains("written by a newer build"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("upgrade this tool"), failure.getMessage());
+        assertTrue(!failure.getMessage().contains("must be re-seeded"), failure.getMessage());
+    }
+
+
+    /**
+     * Engine M1 (lazy product binding): a product entry whose embedded key disagrees with its entry
+     * name is a corruption the part hash cannot see (the writer or a hand edit put it there). It
+     * used to refuse at open; since products bind on first access it surfaces on
+     * {@code product(key)} — loudly, as an {@link java.io.UncheckedIOException} naming the entry,
+     * never as an empty answer.
+     */
+    @Test
+    void aProductEntryWithAMismatchingKeyFailsLoudlyOnFirstAccess() throws IOException
+    {
+        Path damaged = rewriteRehashed("mismatch.zip", entries ->
+        {
+            String entry = StoreFormat.productEntry(MetadataStoreFixtures.IG_KEY);
+            String json = new String(entries.get(entry), StandardCharsets.UTF_8).replace(
+                    "\"key\":\"" + MetadataStoreFixtures.IG_KEY + "\"",
+                    "\"key\":\"standards/sdtmig/9-9\"");
+            entries.put(entry, json.getBytes(StandardCharsets.UTF_8));
+            return entries;
+        });
+        // The manifest's hash for the edited entry is rewritten too, so only the KEY is wrong.
+        try (MetadataStore store = MetadataStore.open(damaged))
+        {
+            java.io.UncheckedIOException failure = assertThrows(java.io.UncheckedIOException.class,
+                    () -> store.product(MetadataStoreFixtures.IG_KEY));
+            assertTrue(failure.getMessage().contains("mismatching key"), failure.getMessage());
+            assertTrue(failure.getMessage().contains(MetadataStoreFixtures.IG_KEY),
+                    failure.getMessage());
+            assertTrue(store.product(MetadataStoreFixtures.MODEL_KEY).isPresent(),
+                    "the other products still bind");
+        }
     }
 
 
@@ -151,6 +190,36 @@ class MetadataStoreCorruptionTest
         assertThrows(IllegalArgumentException.class,
                 () -> new MetadataStoreWriter().addProduct(MetadataStoreFixtures.igProduct())
                         .addProduct(MetadataStoreFixtures.igProduct()));
+    }
+
+
+    /**
+     * As {@link #rewrite}, but re-hashes every part in the manifest afterwards, so the mutation is
+     * a CONTENT fault the part hashes cannot see (the shape of a writer bug or a hand edit).
+     */
+    private Path rewriteRehashed(String aName, UnaryOperator<Map<String, byte[]>> aMutation)
+        throws IOException
+    {
+        return rewrite(aName, entries ->
+        {
+            Map<String, byte[]> mutated = aMutation.apply(entries);
+            String manifest = new String(mutated.get(StoreFormat.ENTRY_MANIFEST),
+                    StandardCharsets.UTF_8);
+            for (Map.Entry<String, byte[]> part : mutated.entrySet())
+            {
+                if (part.getKey().equals(StoreFormat.ENTRY_MANIFEST))
+                {
+                    continue;
+                }
+                manifest = manifest.replaceAll(
+                        "\"" + java.util.regex.Pattern.quote(part.getKey())
+                                + "\" : \"[0-9a-f]{64}\"",
+                        "\"" + part.getKey() + "\" : \"" + StoreFormat.sha256(part.getValue())
+                                + "\"");
+            }
+            mutated.put(StoreFormat.ENTRY_MANIFEST, manifest.getBytes(StandardCharsets.UTF_8));
+            return mutated;
+        });
     }
 
 

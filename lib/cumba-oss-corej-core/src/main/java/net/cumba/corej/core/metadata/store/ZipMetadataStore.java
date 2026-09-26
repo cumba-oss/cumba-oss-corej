@@ -12,13 +12,27 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 /**
- * The eager, in-memory {@link MetadataStore} implementation: one pass over the zip at
- * {@link #open(Path)} — manifest first, then hash-verify and parse every part — after which every
- * accessor is a map lookup. See {@link StoreFormat} for the layout.
+ * The in-memory {@link MetadataStore} implementation: one pass over the zip at {@link #open(Path)}
+ * — manifest first, then hash-verify every part and parse the CT parts — after which every accessor
+ * is a map lookup. See {@link StoreFormat} for the layout.
+ *
+ * <p>
+ * ⭐ Products are bound LAZILY (PLAN-define-ct-evaluation review round 1, engine M1): their JSON
+ * entries are hash-verified at open like every other part, but kept as bytes and bound to
+ * {@link StoredProduct} on the first {@link #product(String)} of that key. Measured on a real seed
+ * (206 CT packages, 34 IGs + 14 models), the product entries are ~12 MB of JSON of which the CDASH
+ * levels format 3 added are ~5.6 MB, and a define run or a CT-picker build opens the store several
+ * times and reads at most one or two products — binding all 48 up front cost every open ~20 ms and
+ * ~8 MB of retained heap it never used. The catalogue and the product KEY set are still known at
+ * open; only the binding moves. A product entry whose embedded key disagrees with its name is
+ * therefore reported on first access rather than at open — as an {@link UncheckedIOException}
+ * naming the entry, never as an empty answer.
+ * </p>
  *
  * <p>
  * Opening is strict: an entry the manifest does not hash, a hashed entry that is missing, a hash
@@ -42,15 +56,19 @@ final class ZipMetadataStore implements MetadataStore
 
     private final StoreManifest manifest;
 
-    private final Map<String, StoredProduct> products;
+    /** Verified product entry bytes by key; an entry is removed once bound. */
+    private final Map<String, byte[]> productBytes;
+
+    /** Products bound so far; {@link Optional#empty()} for a key the store does not hold. */
+    private final Map<String, Optional<StoredProduct>> products = new ConcurrentHashMap<>();
 
     private final Map<String, StoredCtPackage> ctPackages;
 
-    private ZipMetadataStore(StoreManifest aManifest, Map<String, StoredProduct> aProducts,
+    private ZipMetadataStore(StoreManifest aManifest, Map<String, byte[]> aProductBytes,
             Map<String, StoredCtPackage> aCtPackages)
     {
         manifest = aManifest;
-        products = aProducts;
+        productBytes = aProductBytes;
         ctPackages = aCtPackages;
     }
 
@@ -83,7 +101,7 @@ final class ZipMetadataStore implements MetadataStore
             StoreManifest manifest = StoreFormat.mapper().readValue(manifestBytes,
                     StoreManifest.class);
             verifyParts(manifest, entries);
-            return new ZipMetadataStore(manifest, readProducts(entries), readCtPackages(entries));
+            return new ZipMetadataStore(manifest, productEntries(entries), readCtPackages(entries));
         }
     }
 
@@ -105,7 +123,40 @@ final class ZipMetadataStore implements MetadataStore
     @Override
     public Optional<StoredProduct> product(String aKey)
     {
-        return aKey == null ? Optional.empty() : Optional.ofNullable(products.get(aKey));
+        if (aKey == null)
+        {
+            return Optional.empty();
+        }
+        return products.computeIfAbsent(aKey, this::bind);
+    }
+
+
+    /** Binds one product entry on first access; see the class note on lazy binding. */
+    private Optional<StoredProduct> bind(String aKey)
+    {
+        byte[] bytes = productBytes.get(aKey);
+        if (bytes == null)
+        {
+            return Optional.empty();
+        }
+        try
+        {
+            StoredProduct product = StoreFormat.mapper().readValue(bytes, StoredProduct.class);
+            if (!aKey.equals(product.key()))
+            {
+                throw new IOException("product entry " + StoreFormat.productEntry(aKey)
+                        + " declares mismatching key " + product.key());
+            }
+            productBytes.remove(aKey);
+            return Optional.of(product);
+        }
+        catch (IOException e)
+        {
+            throw new java.io.UncheckedIOException(
+                    "metadata store product entry " + StoreFormat.productEntry(aKey)
+                            + " cannot be read; the store is corrupt: " + e.getMessage(),
+                    e);
+        }
     }
 
 
@@ -224,11 +275,15 @@ final class ZipMetadataStore implements MetadataStore
     }
 
 
-    /** Parses every {@code products/<key>.json} entry, checking the embedded key. */
-    private static Map<String, StoredProduct> readProducts(Map<String, byte[]> aEntries)
+    /**
+     * Collects every {@code products/<key>.json} entry's (hash-verified) bytes by key, without
+     * binding it — see the class note. A product entry that is not JSON-named is still refused at
+     * open, because that is a layout fault, not a content one.
+     */
+    private static Map<String, byte[]> productEntries(Map<String, byte[]> aEntries)
         throws IOException
     {
-        Map<String, StoredProduct> products = new HashMap<>();
+        Map<String, byte[]> products = new ConcurrentHashMap<>();
         for (Map.Entry<String, byte[]> entry : aEntries.entrySet())
         {
             String name = entry.getKey();
@@ -240,16 +295,8 @@ final class ZipMetadataStore implements MetadataStore
             {
                 throw new IOException("metadata store holds a non-JSON product entry: " + name);
             }
-            String key = name.substring(StoreFormat.PRODUCT_PREFIX.length(),
-                    name.length() - StoreFormat.PRODUCT_SUFFIX.length());
-            StoredProduct product = StoreFormat.mapper().readValue(entry.getValue(),
-                    StoredProduct.class);
-            if (!key.equals(product.key()))
-            {
-                throw new IOException(
-                        "product entry " + name + " declares mismatching key " + product.key());
-            }
-            products.put(key, product);
+            products.put(name.substring(StoreFormat.PRODUCT_PREFIX.length(),
+                    name.length() - StoreFormat.PRODUCT_SUFFIX.length()), entry.getValue());
         }
         return products;
     }

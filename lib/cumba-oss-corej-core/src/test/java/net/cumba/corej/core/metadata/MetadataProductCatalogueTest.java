@@ -79,6 +79,29 @@ class MetadataProductCatalogueTest
     }
 
 
+    /** Engine L4: an old-format store yields an empty catalogue that NAMES its cause. */
+    @Test
+    void anOldFormatStoreContributesNothingButNamesTheFormatProblem(@TempDir Path aTemp)
+        throws IOException
+    {
+        Path old = aTemp.resolve("format-v2.zip");
+        try (java.io.InputStream in = getClass()
+                .getResourceAsStream("/metadata/store/format-v2.zip"))
+        {
+            org.junit.jupiter.api.Assertions.assertNotNull(in);
+            Files.copy(in, old);
+        }
+        System.setProperty(StoreMetadataProviderFactory.STORE_PROPERTY, old.toString());
+
+        MetadataProductCatalogue c = MetadataProductCatalogue.configured();
+
+        assertEquals(Set.of(), c.keys());
+        org.junit.jupiter.api.Assertions.assertNotNull(c.storeFormatProblem(),
+                "the catalogue must say WHY it is empty over an old-format store");
+        assertEquals(2, c.storeFormatProblem().foundVersion());
+    }
+
+
     @Test
     void anUnreadableStoreContributesNothing(@TempDir Path aTemp) throws IOException
     {
@@ -89,6 +112,8 @@ class MetadataProductCatalogueTest
         MetadataProductCatalogue c = MetadataProductCatalogue.configured();
 
         assertEquals(Set.of(), c.keys(), "an unreadable store must degrade to an empty catalogue");
+        org.junit.jupiter.api.Assertions.assertNull(c.storeFormatProblem(),
+                "not a format problem - a garbage file");
     }
 
 

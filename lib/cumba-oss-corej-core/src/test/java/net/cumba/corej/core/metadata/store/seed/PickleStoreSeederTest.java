@@ -50,6 +50,80 @@ class PickleStoreSeederTest
     }
 
 
+    /**
+     * Engine L1 (PLAN-define-ct-evaluation review round 1): a target holding a store of a NEWER
+     * format is refused - a routine re-seed must not silently downgrade a store another
+     * installation relies on. {@code refresh} (the CLI's {@code --seed-overwrite}) replaces it
+     * deliberately; an OLDER store is re-seeded in full without a word of warning (D-17).
+     */
+    @Test
+    void aNewerFormatTargetIsRefusedUnlessRefreshIsExplicit() throws IOException
+    {
+        seeder().seed(StoreSeedOptions.of(target));
+        int current;
+        try (MetadataStore store = MetadataStore.open(target))
+        {
+            current = store.manifest().formatVersion();
+        }
+        relabelFormatVersion(target, current + 1);
+
+        IOException refused = assertThrows(IOException.class,
+                () -> seeder().seed(StoreSeedOptions.of(target)));
+        assertTrue(refused.getMessage().contains("newer build"), refused.getMessage());
+        assertTrue(refused.getMessage().contains("Refusing to overwrite"), refused.getMessage());
+        assertThrows(net.cumba.corej.core.metadata.store.StoreFormatException.class,
+                () -> MetadataStore.open(target), "the newer store is left untouched");
+
+        StoreSeedReport replaced = seeder().seed(StoreSeedOptions.of(target).withRefresh(true));
+        assertEquals(List.of(), replaced.warnings());
+        try (MetadataStore store = MetadataStore.open(target))
+        {
+            assertEquals(current, store.manifest().formatVersion());
+        }
+
+        relabelFormatVersion(target, 1);
+        StoreSeedReport reseeded = seeder().seed(StoreSeedOptions.of(target));
+        assertEquals(List.of(), reseeded.warnings(),
+                "D-17: an OLDER store is re-acquired in full and that is a notice, not a warning");
+        assertEquals(0, reseeded.ctPackagesCarried(), "nothing is carried from an old store");
+        try (MetadataStore store = MetadataStore.open(target))
+        {
+            assertEquals(current, store.manifest().formatVersion());
+        }
+    }
+
+
+    /** The relabel trick {@code MetadataStoreCorruptionTest} uses: rewrite the manifest version. */
+    private static void relabelFormatVersion(Path aStore, int aVersion) throws IOException
+    {
+        java.util.Map<String, byte[]> entries = new java.util.LinkedHashMap<>();
+        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(aStore.toFile()))
+        {
+            java.util.Enumeration<? extends java.util.zip.ZipEntry> names = zip.entries();
+            while (names.hasMoreElements())
+            {
+                java.util.zip.ZipEntry entry = names.nextElement();
+                entries.put(entry.getName(), zip.getInputStream(entry).readAllBytes());
+            }
+        }
+        String manifest = new String(entries.get("manifest.json"), StandardCharsets.UTF_8);
+        String relabelled = manifest.replaceFirst("\"formatVersion\" : \\d+",
+                "\"formatVersion\" : " + aVersion);
+        assertTrue(!relabelled.equals(manifest), "the relabel must change the manifest");
+        entries.put("manifest.json", relabelled.getBytes(StandardCharsets.UTF_8));
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(
+                Files.newOutputStream(aStore)))
+        {
+            for (java.util.Map.Entry<String, byte[]> entry : entries.entrySet())
+            {
+                zip.putNextEntry(new java.util.zip.ZipEntry(entry.getKey()));
+                zip.write(entry.getValue());
+                zip.closeEntry();
+            }
+        }
+    }
+
+
     @Test
     void projectsTheFullVariableFieldUnion() throws IOException
     {

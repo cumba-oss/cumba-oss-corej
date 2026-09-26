@@ -13,8 +13,15 @@ import net.cumba.corej.core.metadata.store.Presence;
  * through {@code DefineStoreBinding}. Called only once the store is actually serving the run — a
  * store that is missing or does not open is the R2 degraded run, never a D3 abort.
  */
-final class CtPresence
+public final class CtPresence
 {
+
+    /**
+     * The escape hatch the DEFINE-source abort names: the phrase every surface can recognise to
+     * append its own spelling of that field (the CLI's {@code -ct}, PLAN-define-ct-evaluation
+     * review round 1 M1).
+     */
+    public static final String CT_FIELD_HATCH = "fill the CT Packages field explicitly";
 
     private CtPresence()
     {
@@ -52,9 +59,8 @@ final class CtPresence
             {
                 throw new StudyValidationException("The Define-XML declares "
                         + "controlled-terminology package '" + id + "' (def:Standards), which "
-                        + problem + ". Seed the store with it, or fill the CT Packages field "
-                        + "explicitly - an explicit selection takes the define's declaration "
-                        + "out of play.");
+                        + problem + ". Seed the store with it, or " + CT_FIELD_HATCH
+                        + " - an explicit selection takes the define's declaration out of play.");
             }
             throw new StudyValidationException("Controlled-terminology package '" + id
                     + "' was requested, but it " + problem + ".");

@@ -113,7 +113,11 @@ public final class DefineStoreBinding implements AutoCloseable
     public static DefineStoreBinding resolve(Path aDefineXml, List<String> aUserIds,
             @Nullable Path aStoreFile)
     {
-        CtSelection selection = CtSelection.resolve(aUserIds, declaredCt(aDefineXml));
+        // D1: a user list takes the declaration out of play entirely — so the define is not even
+        // parsed for it (the conformance engine parses the document itself, once, later).
+        CtSelection selection = aUserIds.isEmpty()
+                ? CtSelection.resolve(List.of(), declaredCt(aDefineXml))
+                : CtSelection.resolve(aUserIds, List.of());
         if (aStoreFile == null)
         {
             String reason = "no metadata store is configured";
@@ -186,6 +190,17 @@ public final class DefineStoreBinding implements AutoCloseable
     public Optional<LibraryProvider> libraryProvider()
     {
         return Optional.ofNullable(libraryProvider);
+    }
+
+
+    /**
+     * The store keys the library half asked for and the store did not hold (D-14), sorted —
+     * meaningful after the engine ran; empty before, when no library is bound, or when every
+     * product was held.
+     */
+    public List<String> missedProducts()
+    {
+        return libraryProvider == null ? List.of() : libraryProvider.missedProducts();
     }
 
 

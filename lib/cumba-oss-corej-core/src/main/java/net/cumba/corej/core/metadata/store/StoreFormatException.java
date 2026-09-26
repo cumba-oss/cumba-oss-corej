@@ -55,8 +55,31 @@ public final class StoreFormatException extends IOException
 
     private static String describe(String aStore, int aFoundVersion, int aKnownVersion)
     {
+        if (aFoundVersion > aKnownVersion)
+        {
+            return "metadata store " + aStore + " is format " + aFoundVersion + "; this build"
+                    + " reads format " + aKnownVersion + "; it was written by a newer build -"
+                    + " upgrade this tool (or re-seed the store with this one to downgrade it)";
+        }
         return "metadata store " + aStore + " is format " + aFoundVersion + "; this build reads"
                 + " format " + aKnownVersion + "; the store must be re-seeded";
+    }
+
+
+    /**
+     * A detached copy — same store and versions, its own stack — for a holder that hands the
+     * problem out without exposing the instance it keeps ({@code MetadataProductCatalogue}).
+     */
+    public StoreFormatException copy()
+    {
+        return new StoreFormatException(Path.of(store), foundVersion, knownVersion);
+    }
+
+
+    /** {@code true} when the store was written by a build NEWER than this one. */
+    public boolean writtenByNewerBuild()
+    {
+        return foundVersion > knownVersion;
     }
 
 

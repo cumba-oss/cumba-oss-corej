@@ -43,6 +43,7 @@ import org.jspecify.annotations.Nullable;
  * concurrent reader keeps its old file.</li>
  * </ul>
  */
+@lombok.CustomLog
 final class SeedRun
 {
 
@@ -79,7 +80,7 @@ final class SeedRun
 
     private int productsCarried;
 
-    SeedRun(StoreSeedOptions aOptions)
+    SeedRun(StoreSeedOptions aOptions) throws IOException
     {
         options = aOptions;
         existing = openBaseline(aOptions);
@@ -316,9 +317,16 @@ final class SeedRun
      * Opens the re-seed baseline: the existing store at the target, unless {@code refresh} asked to
      * ignore it. A file that exists but fails to open is warned about and treated as absent —
      * everything is then re-acquired from the source, and the atomic replace overwrites the
-     * unreadable file.
+     * unreadable file. Two format cases differ: an OLDER store is re-acquired in full and only
+     * logged (D-17 — expected after a format bump, not a warning that should fail a seed); a NEWER
+     * store (written by a newer build) is REFUSED unless {@code refresh} asked to replace it —
+     * silently downgrading a store another installation relies on is the one thing a seed must not
+     * do by accident.
+     *
+     * @throws IOException
+     *             when the target holds a store of a newer format and {@code refresh} is off
      */
-    private @Nullable MetadataStore openBaseline(StoreSeedOptions aOptions)
+    private @Nullable MetadataStore openBaseline(StoreSeedOptions aOptions) throws IOException
     {
         if (aOptions.refresh() || !Files.isRegularFile(aOptions.target()))
         {
@@ -330,11 +338,19 @@ final class SeedRun
         }
         catch (net.cumba.corej.core.metadata.store.StoreFormatException e)
         {
+            if (e.writtenByNewerBuild())
+            {
+                throw new IOException(e.getMessage() + ". Refusing to overwrite it; pass refresh"
+                        + " (the CLI's --seed-overwrite) to replace it deliberately.", e);
+            }
             // D-17: an old-format baseline is not carried forward at all — every CT package is
-            // re-fetched, so no name-less codelist can be smuggled into the new store.
-            warn(aOptions.target() + ": existing store is format " + e.foundVersion()
-                    + " (this build writes format " + e.knownVersion()
-                    + "): full re-seed, re-acquiring everything from the source");
+            // re-fetched, so no name-less codelist can be smuggled into the new store. Expected
+            // once after every format bump, so it is a notice, never a warning (a warning fails
+            // the CLI's --seed-cache exit code).
+            LOGGER.log(System.Logger.Level.INFO,
+                    "{0}: existing store is format {1} (this build writes format {2}): full"
+                            + " re-seed, re-acquiring everything from the source",
+                    aOptions.target(), e.foundVersion(), e.knownVersion());
             return null;
         }
         catch (IOException e)

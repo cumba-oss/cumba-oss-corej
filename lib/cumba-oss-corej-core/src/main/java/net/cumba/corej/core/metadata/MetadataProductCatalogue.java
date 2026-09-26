@@ -7,6 +7,7 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 import lombok.CustomLog;
 import net.cumba.corej.core.metadata.store.MetadataStore;
+import net.cumba.corej.core.metadata.store.StoreFormatException;
 import net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory;
 import org.jspecify.annotations.Nullable;
 
@@ -38,9 +39,19 @@ public final class MetadataProductCatalogue
 
     private final Set<String> keys;
 
+    private final @Nullable StoreFormatException storeFormatProblem;
+
     private MetadataProductCatalogue(Set<String> aKeys)
     {
+        this(aKeys, null);
+    }
+
+
+    private MetadataProductCatalogue(Set<String> aKeys,
+            @Nullable StoreFormatException aStoreFormatProblem)
+    {
         keys = Collections.unmodifiableSet(new LinkedHashSet<>(aKeys));
+        storeFormatProblem = aStoreFormatProblem;
     }
 
 
@@ -78,16 +89,18 @@ public final class MetadataProductCatalogue
         {
             return new MetadataProductCatalogue(new LinkedHashSet<>(opened.productCatalogue()));
         }
-        catch (net.cumba.corej.core.metadata.store.StoreFormatException e)
+        catch (StoreFormatException e)
         {
-            // No behaviour change (the run then aborts on the same store in
-            // StudyValidationService, T1-10 a); the WARNING names the re-seed rather than a
-            // generic unavailability.
+            // The catalogue stays empty (S13) but the CAUSE travels with it
+            // (storeFormatProblem), so a surface that offers the catalogue — the REST /meta
+            // endpoint, the data browser's product picker, the CLI's -mp resolution — can say
+            // "re-seed" instead of "no products" (PLAN-define-ct-evaluation review round 1,
+            // engine L4). The run itself aborts on the same store (T1-10 a).
             LOGGER.log(System.Logger.Level.WARNING,
                     "Metadata store {0} is format {1} and this build reads format {2}; it must be"
                             + " re-seeded. Only full-form --metadata-products keys will resolve.",
                     store, e.foundVersion(), e.knownVersion());
-            return new MetadataProductCatalogue(Set.of());
+            return new MetadataProductCatalogue(Set.of(), e);
         }
         catch (IOException | RuntimeException e)
         {
@@ -120,6 +133,17 @@ public final class MetadataProductCatalogue
     public Set<String> keys()
     {
         return keys;
+    }
+
+
+    /**
+     * The typed refusal when the configured store is of another on-disk format — the catalogue is
+     * then empty for a reason a surface must name ("re-seed"), not "no products". {@code null} when
+     * the store opened, or none is configured.
+     */
+    public @Nullable StoreFormatException storeFormatProblem()
+    {
+        return storeFormatProblem == null ? null : storeFormatProblem.copy();
     }
 
 }
