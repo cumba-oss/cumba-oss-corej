@@ -249,6 +249,18 @@ class AbsentDatasetSkipTest
     // ------------------------------------------------ Fix #358 (D7): split domains are PRESENT
 
 
+    /**
+     * {@link #lbJoinRule} reading LB through a dotted reference only — no {@code Match_Datasets}.
+     */
+    private static String lbDottedRule(String id)
+    {
+        return "{\"Core\":{\"Id\":\"" + id + "\"},"
+                + "\"Sensitivity\":\"Record\",\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
+                + "\"Check\":{\"expression\":\"empty(LB.LBORRES)\"},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}";
+    }
+
+
     /** A record rule whose whole Check depends on the joined LB — the SKIP candidate shape. */
     private static String lbJoinRule(String id)
     {
@@ -322,15 +334,23 @@ class AbsentDatasetSkipTest
     }
 
 
-    /** Control: with no LB member at all, the covered dependant still SKIPs exactly as before. */
+    /**
+     * Control: with no LB member at all, the covered dependant still SKIPs exactly as before —
+     * through {@code isPresentAsDomain} answering "absent", which is the branch this control guards
+     * (sabotaged to always-true, the rule RUNS and this reds). ⚑ Dotted-only (review round 4, H3):
+     * the keyed shape now SKIPs by requirement (P8) before the presence test is consulted, so it
+     * could no longer tell a sabotaged presence test from a working one.
+     */
     @Test
     void trulyAbsentDomain_staysSkipped() throws Exception
     {
-        Rule rule = load(lbJoinRule("TEST-SPLIT-ABSENT"));
+        Rule rule = load(lbDottedRule("TEST-SPLIT-ABSENT"));
         IDataTable adlb = RealTables.of("ADLB").str("USUBJID", "U1").str("LBSEQ", "1").build();
         IDataTable dm = RealTables.of("DM").str("DOMAIN", "DM").str("USUBJID", "U1").build();
         RuleExecutionResult res = run(rule, adlb, RealTables.inventoryOf(adlb, dm), Set.of("LB"));
         assertEquals(RuleExecutionStatus.SKIPPED, res.getStatus());
+        assertTrue(res.getStatusMessage() != null && res.getStatusMessage().contains("LB"),
+                String.valueOf(res.getStatusMessage()));
     }
 
     // ------------------------------------------------------------ K5c: the intent opt-out
@@ -464,9 +484,12 @@ class AbsentDatasetSkipTest
     {
         // `not <reads DM>` must suppress to FALSE. Descending into the `not` and folding its
         // operand to false would invert it to TRUE — a fabricated finding on an absent dataset.
+        // ⚑ Dotted-only (review round 4, H1): with a declared keyed join this class's plain-lambda
+        // resolver made the rule SKIP as undecidable before the rewrite ran, and the case proved
+        // nothing (a sabotaged rewrite stayed green). Sabotage control: suppress() descending into
+        // `not` and inverting reds this with 2 fabricated findings.
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},"
                 + "\"Sensitivity\":\"Record\",\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
-                + "\"Match_Datasets\":[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"]}],"
                 + "\"Check\":{\"expression\":\"not empty(DM.RFSTDTC)\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}");
         IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1", "S2").build();
@@ -493,22 +516,27 @@ class AbsentDatasetSkipTest
     @Test
     void declaredButUnreadDatasetsAreNotSuppressed() throws Exception
     {
-        // A Match_Datasets join the Check never dereferences names a dataset but reads nothing
-        // from it — there is no leaf to silence, so the rule must run untouched. ⚑ DM is supplied
-        // here: a declared keyed join (§5.7) SKIPs by requirement when its dataset is absent, so
-        // the "untouched" claim is made where the join is satisfiable.
+        // A Match_Datasets entry the Check never dereferences names a dataset but reads nothing
+        // from it — there is no leaf to silence, so the rule must run untouched even though DM is
+        // absent AND reported. The subject is decide()'s `removeIf(!readsAny)` filter: delete it
+        // and DM is "suppressed", d.applies() turns true and this reds. ⚑ The entry is KEYLESS
+        // (review round 4, H2): a keyed entry would be declared (§5.7) and SKIP by requirement on
+        // the absent DM before the filter is reached, and a present DM would pass on the presence
+        // test instead of the filter. A keyless entry is legal, judged by no declaration gate, and
+        // still makes DM a candidate.
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},"
                 + "\"Sensitivity\":\"Record\",\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
-                + "\"Match_Datasets\":[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"]}],"
+                + "\"Match_Datasets\":[{\"Name\":\"DM\"}],"
                 + "\"Check\":{\"expression\":\"not empty(AGE)\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AGE\"]}}");
         IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("AGE", "31").build();
-        IDataTable dm = MockTable.of().name("DM").col("USUBJID", "S1").build();
-        AbsentDatasetSkip.Decision d = ExecCalls.decide(rule, RealTables.inventoryOf(ae, dm),
+        AbsentDatasetSkip.Decision d = ExecCalls.decide(rule, resolverOf(Map.of("AE", ae)),
                 Set.of("DM"), "AE", "AE");
-        assertFalse(d.applies());
-        assertEquals(1,
-                run(rule, ae, RealTables.inventoryOf(ae, dm), Set.of("DM")).getViolations().size());
+        assertFalse(d.applies(), "DM is named but never read: " + d.suppressedDatasets());
+        RuleExecutionResult r = run(rule, ae, resolverOf(Map.of("AE", ae)), Set.of("DM"));
+        assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus(),
+                String.valueOf(r.getStatusMessage()));
+        assertEquals(1, r.getViolations().size());
     }
 
 

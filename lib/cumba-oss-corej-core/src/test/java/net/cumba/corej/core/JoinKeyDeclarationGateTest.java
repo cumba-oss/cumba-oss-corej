@@ -1,12 +1,18 @@
 package net.cumba.corej.core;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
+import net.cumba.corej.core.model.RulePackage;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -200,5 +206,112 @@ class JoinKeyDeclarationGateTest
                 "\"All\":[\"USUBJID:C\"],\"All_Or_None\":[[\"USUBJID\",\"DM.USUBJID\"]]", md))
                         .getLoadError();
         assertFalse(error != null && error.contains("Match_Datasets"), String.valueOf(error));
+    }
+
+
+    @Test
+    void aNamelessChildEntryIsJudgedLikeANamedOne() throws IOException
+    {
+        // Review round 4, G1: ChildMatchPreMerger.applicableChildKeys falls back to the FIRST
+        // Child entry whatever its name, so a nameless Child entry is joined on and must declare
+        // its keys — the corpus lint judges it (String.valueOf(name)); the loader used to skip it.
+        String md = "{\"Child\":true,\"Keys\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]}";
+        assertClean(rule("T-CHILD-NONAME", "\"All\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]", md));
+        String error = assertRedNaming(
+                rule("T-CHILD-NONAME", "\"All\":[\"USUBJID\",\"IDVAR\"]", md), "T-CHILD-NONAME",
+                "IDVARVAL", "Child key");
+        assertTrue(error.contains("Match_Datasets '<unnamed>'"), error);
+        // An ORDINARY entry without a name stays exempt: it has no NAME.RIGHT side to declare.
+        assertClean(rule("T-NONAME", "\"All\":[\"USUBJID\"]", "{\"Keys\":[\"USUBJID\"]}"));
+    }
+
+
+    @Test
+    void aMisspeltRequirementsFacetIsOneErrorNotTwo() throws IOException
+    {
+        // Review round 4, G3: `All_or_None` is R2's unknown-key error, with its hint. Judging the
+        // declaration against the facet the author misspelt would report the same typo again as
+        // "no All_Or_None group". One typo, one error.
+        String md = "{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"]}";
+        String error = load(rule("T-TYPO",
+                "\"All\":[\"USUBJID\"],\"All_or_None\":[[\"USUBJID\",\"DM.USUBJID\"]]", md))
+                        .getLoadError();
+        assertNotNull(error);
+        assertTrue(error.contains("unknown key 'All_or_None' under 'Requirements.Variables'")
+                && error.contains("did you mean 'All_Or_None'?"), error);
+        assertFalse(error.contains("no Requirements.Variables.All_Or_None group"),
+                "the declaration must not be judged against a misspelt facet: " + error);
+        // ...and one level up: a misspelt `Variables` block is R2's error alone, too.
+        String req = load(rule("T-TYPO-REQ", "\"All\":[\"USUBJID\"]", md)
+                .replace("\"Requirements\":{\"Variables\":", "\"Requirements\":{\"Variabels\":"))
+                        .getLoadError();
+        assertNotNull(req);
+        assertTrue(req.contains("unknown key 'Variabels' under 'Requirements'"), req);
+        assertFalse(req.contains("Match_Datasets 'DM'"), req);
+        // Control: the same shape with the facet spelt right and the group missing IS the §5.7
+        // error — the suppression is keyed on the typo, not on the block.
+        assertRedNaming(rule("T-TYPO-CTRL", "\"All\":[\"USUBJID\"]", md), "T-TYPO-CTRL",
+                "DM.USUBJID", "no Requirements.Variables.All_Or_None group");
+    }
+
+
+    /**
+     * The gate's population floor over the corpus it can see (review round 4, H6). The corpus lint
+     * pins 197 / 11 / 1 keyed entries over the authored corpus, which lives in another repository;
+     * here the same census runs over the engine's own test-resource packages — every keyed entry of
+     * theirs loads with no §5.7 error, and the three counts are pinned so a fixture edit that
+     * removes the last entry of a kind cannot leave that arm untested in silence. The per-arm
+     * sabotage pairs above are what prove each arm fires.
+     */
+    @Test
+    void theResourcePackagesAreDeclaredAndTheirKeyedPopulationIsPinned() throws IOException
+    {
+        Path base = Path.of(System.getProperty("projectBasedir"), "src/test/resources");
+        List<Path> packages = List.of(
+                base.resolve("fixtures/rules/packages/rules-cdisc-adamig-1-2.json"),
+                base.resolve("fixtures/rules/packages/rules-cdisc-adamig-1-3.json"),
+                base.resolve("fixtures/rules/packages/rules-cdisc-sdtmig-3-2.json"),
+                base.resolve("rules/rulepackageloader-fixture.json"));
+        int ordinary = 0;
+        int child = 0;
+        int template = 0;
+        for (Path file : packages)
+        {
+            RulePackage pkg = RulePackageLoader.loadFromString(Files.readString(file));
+            for (Rule rule : pkg.getRules().values())
+            {
+                String error = rule.getLoadError();
+                assertTrue(error == null || !error.contains("Match_Datasets"),
+                        file.getFileName() + ": " + error);
+                if (rule.getMatchDatasets() == null)
+                {
+                    continue;
+                }
+                for (MatchDataset md : rule.getMatchDatasets())
+                {
+                    if (md.getKeys() == null || md.getKeys().isEmpty())
+                    {
+                        continue;
+                    }
+                    boolean token = String.valueOf(md.getName()).startsWith("&")
+                            || md.getKeys().stream().anyMatch(k -> k.startsWith("&"));
+                    if (token)
+                    {
+                        template++;
+                    }
+                    else if (Boolean.TRUE.equals(md.getChild()))
+                    {
+                        child++;
+                    }
+                    else
+                    {
+                        ordinary++;
+                    }
+                }
+            }
+        }
+        assertEquals(31, ordinary, "ordinary keyed entries across the four resource packages");
+        assertEquals(3, child, "Child keyed entries across the four resource packages");
+        assertEquals(0, template, "expansion-template keyed entries (none authored in a fixture)");
     }
 }

@@ -1,5 +1,6 @@
 package net.cumba.corej.core;
 
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -12,6 +13,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import net.cumba.corej.core.model.KeyHint;
 
 /**
  * Adds the join-key declaration the loader demands
@@ -25,7 +27,13 @@ import java.util.Set;
  * {@code Requirements.Variables.All} and one {@code All_Or_None} group per key column holding the
  * bare key and {@code NAME.RIGHT} (one group per bare key across the rule's ordinary entries); a
  * {@code Child} entry gets every key bare in {@code All}; an expansion template its first bare key.
- * Only what is missing is added; nothing the fixture authored is removed.
+ * Only what is missing is added; nothing the fixture authored is removed — and nothing is
+ * overwritten or repaired: a {@code Requirements} / {@code Variables} that is not an object, an
+ * {@code All} / {@code All_Or_None} that is not an array, a duplicate key, or a sibling key in
+ * {@code Variables} that is a near miss of a facet this helper would add ({@code Al}, {@code
+ * All_or_None} — adding the facet would make the loader's hint for the typo disappear) each fail
+ * loudly with an {@link IllegalArgumentException}, so the fixture says what the test thinks it
+ * says.
  * </p>
  *
  * <p>
@@ -42,7 +50,13 @@ import java.util.Set;
 public final class KeyedJoinFixtures
 {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    /** Strict about duplicate keys, as the loader's mapper is — a fixture is not repaired here. */
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+            .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
+
+    private static final String ALL = "All";
+
+    private static final String ALL_OR_NONE = "All_Or_None";
 
     private KeyedJoinFixtures()
     {
@@ -140,15 +154,11 @@ public final class KeyedJoinFixtures
         {
             return;
         }
-        ObjectNode requirements = rule.has("Requirements") && rule.get("Requirements").isObject()
-                ? (ObjectNode) rule.get("Requirements")
-                : rule.putObject("Requirements");
-        ObjectNode vars = requirements.has("Variables") && requirements.get("Variables").isObject()
-                ? (ObjectNode) requirements.get("Variables")
-                : requirements.putObject("Variables");
-        ArrayNode allNode = vars.has("All") && vars.get("All").isArray()
-                ? (ArrayNode) vars.get("All")
-                : vars.putArray("All");
+        ObjectNode requirements = objectAt(rule, "Requirements");
+        ObjectNode vars = objectAt(requirements, "Variables");
+        refuseNearMissSiblings(vars, all.isEmpty() ? null : ALL,
+                groups.isEmpty() ? null : ALL_OR_NONE);
+        ArrayNode allNode = arrayAt(vars, ALL);
         Set<String> have = new LinkedHashSet<>();
         allNode.forEach(n -> have.add(fold(n.asText())));
         for (String key : all)
@@ -160,9 +170,7 @@ public final class KeyedJoinFixtures
         }
         if (!groups.isEmpty())
         {
-            ArrayNode aon = vars.has("All_Or_None") && vars.get("All_Or_None").isArray()
-                    ? (ArrayNode) vars.get("All_Or_None")
-                    : vars.putArray("All_Or_None");
+            ArrayNode aon = arrayAt(vars, ALL_OR_NONE);
             for (Set<String> members : groups.values())
             {
                 Set<String> folded = new LinkedHashSet<>();
@@ -184,6 +192,63 @@ public final class KeyedJoinFixtures
                 }
             }
         }
+    }
+
+
+    /** The object under {@code key}, created when absent; anything else present fails loudly. */
+    private static ObjectNode objectAt(ObjectNode parent, String key)
+    {
+        JsonNode present = parent.get(key);
+        if (present == null || present.isNull())
+        {
+            return parent.putObject(key);
+        }
+        if (!present.isObject())
+        {
+            throw new IllegalArgumentException("fixture's " + key + " is " + present.getNodeType()
+                    + ", not an object — not overwriting it: " + present);
+        }
+        return (ObjectNode) present;
+    }
+
+
+    /** The array under {@code key}, created when absent; anything else present fails loudly. */
+    private static ArrayNode arrayAt(ObjectNode parent, String key)
+    {
+        JsonNode present = parent.get(key);
+        if (present == null || present.isNull())
+        {
+            return parent.putArray(key);
+        }
+        if (!present.isArray())
+        {
+            throw new IllegalArgumentException("fixture's " + key + " is " + present.getNodeType()
+                    + ", not an array — not overwriting it: " + present);
+        }
+        return (ArrayNode) present;
+    }
+
+
+    /**
+     * Refuses to add a facet beside a sibling key that is a near miss of it — the loader hints the
+     * typo only while the object does not already carry the candidate, so adding {@code All} beside
+     * {@code Al} would silence the hint the test may be asserting.
+     */
+    private static void refuseNearMissSiblings(ObjectNode vars, String... facetsToAdd)
+    {
+        vars.fieldNames().forEachRemaining(sibling ->
+        {
+            for (String facet : facetsToAdd)
+            {
+                if (facet != null && !sibling.equals(facet) && (sibling.equalsIgnoreCase(facet)
+                        || KeyHint.editDistance(sibling, facet) <= 1))
+                {
+                    throw new IllegalArgumentException("fixture's Requirements.Variables carries '"
+                            + sibling + "', a near miss of '" + facet + "' — adding the facet"
+                            + " would mask the loader's hint; declare the fixture by hand");
+                }
+            }
+        });
     }
 
 

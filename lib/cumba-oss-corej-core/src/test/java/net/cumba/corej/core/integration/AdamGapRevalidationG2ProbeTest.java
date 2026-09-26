@@ -9,6 +9,7 @@ import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.exec.RuleExecutionResult;
+import net.cumba.corej.core.exec.RuleExecutionStatus;
 import net.cumba.corej.core.exec.RuleRunnerCalls;
 import net.cumba.corej.core.exec.StubMetadataProvider;
 import net.cumba.corej.core.model.Rule;
@@ -56,9 +57,16 @@ class AdamGapRevalidationG2ProbeTest
     }
 
 
+    /**
+     * Inventory-aware (review round 4, H4): every keyed join of the fixture packages is declared
+     * ({@code PLAN-rule-unknown-keys-gate} §5.7), and the declared {@code All_Or_None} group is
+     * decided against the inventory — through a plain lambda it is undecidable, the rule SKIPs, and
+     * a "0 violations" here would document a skip rather than the gap it names.
+     */
     private static DatasetResolver resolverOf(Map<String, IDataTable> tables)
     {
-        return tables::get;
+        return net.cumba.corej.core.exec.RealTables
+                .inventoryOf(tables.values().toArray(IDataTable[]::new));
     }
 
 
@@ -294,13 +302,21 @@ class AdamGapRevalidationG2ProbeTest
         // A deliberate shared-variable mismatch: ADSL and ADAE both carry AGE with
         // different values for S1. A working shared-value check would fire; the
         // unresolved template does not.
-        IDataTable adsl = MockTable.of().col("USUBJID", "S1").col("AGE", "42").name("ADSL").build();
-        IDataTable adae = MockTable.of().col("USUBJID", "S1").col("AGE", "99").name("ADAE").build();
+        // STUDYID on both sides: the fixture rule declares its [STUDYID, USUBJID] join (§5.7).
+        IDataTable adsl = MockTable.of().col("STUDYID", "S").col("USUBJID", "S1").col("AGE", "42")
+                .name("ADSL").build();
+        IDataTable adae = MockTable.of().col("STUDYID", "S").col("USUBJID", "S1").col("AGE", "99")
+                .name("ADAE").build();
         Map<String, IDataTable> tables = new HashMap<>();
         tables.put("ADSL", adsl);
         tables.put("ADAE", adae);
 
-        assertEquals(0, violationsOn(rule, adae, resolverOf(tables)),
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, adae, resolverOf(tables), null,
+                null, null, DEFINE);
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
+                "the gap is a silent no-op of an EXECUTED rule, not a skip: "
+                        + result.getStatusMessage());
+        assertEquals(0, result.getViolationCount(),
                 "CDISC-AD0591 template operands never resolve → silent no-op (genuine T3 gap)");
     }
 

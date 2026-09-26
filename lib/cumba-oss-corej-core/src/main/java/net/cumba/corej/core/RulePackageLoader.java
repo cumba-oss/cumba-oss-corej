@@ -2767,7 +2767,15 @@ public class RulePackageLoader
             // Match_Datasets entry declares its key columns, so a study missing a key SKIPS the
             // rule instead of flooding. The corpus lint JoinKeyDeclarationLintTest is its
             // corpus-side twin; this arm reaches user and external packages too (T1-4 a).
-            validateJoinKeyDeclarations(rule, errors);
+            // ⚠ Not when the Requirements block itself carries an unknown key (review round 4,
+            // G3): `All_or_None:` is R2's error with its hint, and judging the declaration
+            // against a facet the author misspelt would report the same typo a second time as
+            // "no All_Or_None group". One typo, one error; the declaration is judged once the
+            // block binds.
+            if (!requirementsBlockCarriesUnknownKeys(rule))
+            {
+                validateJoinKeyDeclarations(rule, errors);
+            }
             // Gate R8 — an AUTHORED Precondition. Runs here, i.e. BEFORE
             // injectInlineOperationGates (finishLoad), so it judges the authored document and never
             // the loader's own injected availability terms.
@@ -3485,8 +3493,11 @@ public class RulePackageLoader
      * {@code All} when it is not a token; token keys are exempt BY CONSTRUCTION — gate R6 bars an
      * expansion token from {@code Requirements.Variables} (Q5).</li>
      * </ul>
-     * Entries without {@code Keys} (a RELREC entry, a filter-only join) declare nothing. Type
-     * suffixes ({@code :N}) are stripped and names compared case-insensitively, as the lint does.
+     * Entries without {@code Keys} (a RELREC entry, a filter-only join) declare nothing, and so
+     * does an <b>ordinary</b> entry without a {@code Name} (no {@code NAME.RIGHT} side exists) — a
+     * nameless {@code Child} entry is judged like a named one, since the child pre-merger joins on
+     * it. Type suffixes ({@code :N}) are stripped and names compared case-insensitively, as the
+     * lint does.
      */
     static void validateJoinKeyDeclarations(Rule rule, List<String> errors)
     {
@@ -3511,15 +3522,14 @@ public class RulePackageLoader
             }
             List<String> left = md.getKeys();
             List<String> right = md.getRightKeys();
-            if (left == null || right == null || left.isEmpty() || left.size() != right.size()
-                    || md.getName() == null)
+            if (left == null || right == null || left.isEmpty() || left.size() != right.size())
             {
-                // no keys, a malformed sided element (checkSidedKeys reports it), or no dataset
-                // name to declare against (its own gate's business)
+                // no keys, or a malformed sided element (checkSidedKeys reports it)
                 continue;
             }
             String name = md.getName();
-            String where = "[" + ruleId(rule) + "] Match_Datasets '" + name + "'";
+            String where = "[" + ruleId(rule) + "] Match_Datasets '"
+                    + (name == null ? "<unnamed>" : name) + "'";
             if (isExpansionTemplateEntry(md))
             {
                 String first = left.get(0);
@@ -3550,6 +3560,15 @@ public class RulePackageLoader
                                 + JOIN_KEY_GUIDE);
                     }
                 }
+                continue;
+            }
+            if (name == null)
+            {
+                // An ORDINARY entry with no dataset name has no `NAME.RIGHT` side to declare
+                // against — its own gate's business. ⚠ Only ordinary entries are exempt (review
+                // round 4, G1): a nameless `Child: true` entry IS joined on —
+                // ChildMatchPreMerger.applicableChildKeys falls back to the first Child entry
+                // whatever its name — so it was judged above, as the corpus lint judges it.
                 continue;
             }
             if (!all.contains(foldKey(left.get(0))))
@@ -3588,6 +3607,43 @@ public class RulePackageLoader
     }
 
 
+    /**
+     * {@link #validateJoinKeyDeclarations} as a value, for a lane that binds a rule without running
+     * {@code finishLoad} (the corpus's {@code RuleScaffold}) — the sibling of
+     * {@link #unknownKeyErrors(Rule)}. Empty when every keyed join is declared in the ruled shape.
+     *
+     * @param rule
+     *            a bound rule
+     * @return the §5.7 load errors of the rule, in gate order
+     */
+    public static List<String> joinKeyDeclarationErrors(Rule rule)
+    {
+        List<String> errors = new ArrayList<>();
+        validateJoinKeyDeclarations(rule, errors);
+        return errors;
+    }
+
+
+    /**
+     * Whether R2 already reports an unknown key on the rule's {@code Requirements} block or its
+     * {@code Variables} block — the blocks {@link #validateJoinKeyDeclarations} reads.
+     */
+    private static boolean requirementsBlockCarriesUnknownKeys(Rule rule)
+    {
+        Requirements req = rule.getRequirements();
+        if (req == null)
+        {
+            return false;
+        }
+        if (!req.getUnknownKeys().isEmpty())
+        {
+            return true;
+        }
+        VariableRequirement vars = req.getVariables();
+        return vars != null && !vars.getUnknownKeys().isEmpty();
+    }
+
+
     /** An entry named by an expansion token, or keyed on one ({@code &DOM}, {@code &DOMSEQ}). */
     private static boolean isExpansionTemplateEntry(net.cumba.corej.core.model.MatchDataset md)
     {
@@ -3610,7 +3666,8 @@ public class RulePackageLoader
         sides.add(foldKey(bareKey));
         for (net.cumba.corej.core.model.MatchDataset md : joins)
         {
-            if (md == null || Boolean.TRUE.equals(md.getChild()) || isExpansionTemplateEntry(md))
+            if (md == null || md.getName() == null || Boolean.TRUE.equals(md.getChild())
+                    || isExpansionTemplateEntry(md))
             {
                 continue;
             }

@@ -20,10 +20,17 @@ import org.junit.jupiter.api.Test;
 class UnknownKeyErrorsCompositeTest
 {
 
+    /**
+     * Loads the members as authored — deliberately NOT through {@code KeyedJoinFixtures}: the
+     * composite's carrier plants {@code Al} beside a keyed join, and the helper refuses to add
+     * {@code All} beside a near miss of it (it would mask the hint). No declaration is needed: with
+     * a misspelt facet in the block the loader does not judge the join-key declaration at all
+     * (§5.7, review round 4 G3 — one typo, one error), which is exactly what keeps the loader's
+     * message set equal to the composite below.
+     */
     private static Rule load(String members) throws IOException
     {
-        Rule rule = RulePackageLoader
-                .loadFromString(KeyedJoinFixtures.declared("{\"rules\":{\"x\":{" + members + "}}}"))
+        Rule rule = RulePackageLoader.loadFromString("{\"rules\":{\"x\":{" + members + "}}}")
                 .getRules().get("x");
         assertNotNull(rule);
         return rule;
