@@ -37,9 +37,11 @@ import org.jspecify.annotations.Nullable;
  * {@code "1E-999999999"} or {@code "1E2147483647"} in one cell would otherwise build a string of up
  * to {@code 2^31} characters and kill the run. The bound lies past the {@code double} range, so no
  * value the old coercion parsed finitely is affected, and the mapping stays injective on the
- * stripped value ({@code RRK E2}): a plain text never contains {@code E}, and two different
- * stripped values never share a {@code toString}. An exponent {@code BigDecimal} itself cannot hold
- * — while parsing ({@code "1E-2147483648"}) or while stripping the zeros
+ * stripped value ({@code RRK E2}): both arms render the EXACT decimal value — the plain arm always,
+ * the scientific arm as {@code toString}, which is E-free itself when the precision exceeds the
+ * scale by more than about six and is then the same exact decimal — so two different stripped
+ * values never share a text, whichever arm each takes. An exponent {@code BigDecimal} itself cannot
+ * hold — while parsing ({@code "1E-2147483648"}) or while stripping the zeros
  * ({@code "10000E2147483645"}) — is text.
  * </p>
  */
