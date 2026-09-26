@@ -19,10 +19,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import net.cumba.corej.core.metadata.LibraryVariableAttributes;
 import net.cumba.corej.core.metadata.store.MetadataStore;
 import net.cumba.corej.core.metadata.store.MetadataStoreWriter;
+import net.cumba.corej.core.metadata.store.RealCorpusLocator;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -58,11 +60,12 @@ import org.junit.jupiter.api.io.TempDir;
  * </ol>
  *
  * <p>
- * ⚠ What it cannot see: whether the manifest's own {@code reached-by} column is still true (that is
- * the audit's argument, re-measured by hand), whether a field the SOURCE publishes is missing from
- * both the manifest and the records, and whether the real source data matches the declared type —
- * the {@code examples} defect was ultimately a measurement question, and only the audit answers
- * those.
+ * A fifth leg (2026-09-26, PLAN-define-ct-evaluation NS1) closes the gap the first four could not
+ * see: it walks the SOURCE documents and reds on a key that is neither a manifest field nor a
+ * recorded {@code excluded} entry — which is exactly how the codelist {@code name} stayed out of
+ * the store. What remains unseen: whether the manifest's own {@code reached-by} column is still
+ * true (that is the audit's argument, re-measured by hand), and whether the real source data
+ * matches the declared type — the {@code examples} defect was ultimately a measurement question.
  * </p>
  */
 class StoreFieldManifestTest
@@ -220,12 +223,107 @@ class StoreFieldManifestTest
     }
 
 
+    /**
+     * Leg 5 — source coverage (PLAN-define-ct-evaluation NS1, T1-9). The blind spot the class
+     * javadoc used to state — <i>"a field the SOURCE publishes that is missing from both the
+     * manifest and the records"</i> — is exactly how the codelist {@code name} stayed out of the
+     * store for a month. This leg walks the SOURCE documents (the synthetic {@code SeedFixtures},
+     * and the real pickle corpus when {@link RealCorpusLocator} resolves it: the newest package of
+     * every CT family — phase 0b measured all 206 packages carrying one key set per level — plus
+     * every IG and model product) and reds on any key that is neither a manifest {@code field} (by
+     * its {@code source}) nor an {@code excluded} entry with a reason. T1-9 rules the pickle cache
+     * the universe: every key it publishes is stored, unless it is {@code _links} or a Python
+     * cache-builder addition, and that decision is recorded here, not implied by silence.
+     */
+    @Test
+    void everySourceKeyIsEitherAStoredFieldOrADeliberateExclusion()
+    {
+        SourceWalker walker = new SourceWalker();
+        walker.ctPackage(SeedFixtures.ctPackage("sdtmct-2024-09-27", false));
+        walker.ctPackage(SeedFixtures.qsPackage());
+        walker.product(SeedFixtures.igDoc());
+        walker.product(SeedFixtures.tigDoc());
+        walker.product(SeedFixtures.adamDoc());
+        walker.product(SeedFixtures.sdtmModelDoc());
+        walker.product(SeedFixtures.adamModelDoc());
+        RealCorpusLocator.locate().ifPresent(walker::realCorpus);
+
+        // Non-vacuity: the walk reached every level, and each with at least one key.
+        assertTrue(walker.ctPackages >= 1 && walker.codelists >= 1 && walker.terms >= 1,
+                "the walk must reach packages, codelists and terms: " + walker.ctPackages + "/"
+                        + walker.codelists + "/" + walker.terms);
+        for (String level : levels.keySet())
+        {
+            assertFalse(walker.seen.getOrDefault(level, Map.of()).isEmpty(),
+                    "the source walk reached no `" + level + "` document, so this leg proves"
+                            + " nothing about that level");
+        }
+
+        List<String> uncovered = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Integer>> level : walker.seen.entrySet())
+        {
+            Set<String> allowed = allowedSourceKeys(level.getKey());
+            for (Map.Entry<String, Integer> key : level.getValue().entrySet())
+            {
+                if (!allowed.contains(key.getKey()))
+                {
+                    uncovered.add(level.getKey() + "." + key.getKey() + " (" + key.getValue()
+                            + " occurrence(s))");
+                }
+            }
+        }
+        assertEquals(List.of(), uncovered, () -> "the SOURCE publishes these keys and the store"
+                + " neither stores them nor records why not. Under T1-9 every pickle key is"
+                + " stored unless it is _links or a Python cache-builder addition; add a manifest"
+                + " field (and the record component + projection read) or an `excluded` entry"
+                + " with its reason: " + uncovered + FIX);
+    }
+
+
+    /**
+     * The keys the manifest accounts for at one level: field sources (head segment) + exclusions.
+     */
+    private static Set<String> allowedSourceKeys(String aLevel)
+    {
+        JsonNode level = levels.get(aLevel);
+        assertNotNull(level, "the source walk reached level `" + aLevel
+                + "`, which the manifest does not declare" + FIX);
+        Set<String> allowed = new TreeSet<>();
+        for (JsonNode field : level.get("fields"))
+        {
+            if (field.path("sourceless").asBoolean())
+            {
+                continue;
+            }
+            String source = field.path("source").asText(field.get("field").asText());
+            int cut = source.length();
+            for (char c : new char[]
+            {
+                    '.', '['
+            })
+            {
+                int at = source.indexOf(c);
+                if (at >= 0)
+                {
+                    cut = Math.min(cut, at);
+                }
+            }
+            allowed.add(source.substring(0, cut));
+        }
+        for (JsonNode excluded : level.path("excluded"))
+        {
+            allowed.add(excluded.get("source").asText());
+        }
+        return allowed;
+    }
+
+
     /** The manifest itself has to be well formed, or the four legs above quietly check nothing. */
     @Test
     void theManifestRowsAreWellFormed()
     {
         Set<String> types = Set.of("scalar", "boolean", "list", "nested");
-        Set<String> reaches = Set.of("both", "coreJ", "python", "neither");
+        Set<String> reaches = Set.of("both", "coreJ", "python", "neither", "none");
         for (Map.Entry<String, JsonNode> level : levels.entrySet())
         {
             Set<String> seen = new TreeSet<>();
@@ -245,16 +343,172 @@ class StoreFieldManifestTest
                             where + " points at unknown level `" + field.get("element") + "`");
                 }
             }
+            Set<String> excludedSeen = new TreeSet<>();
+            for (JsonNode excluded : level.getValue().path("excluded"))
+            {
+                String source = excluded.path("source").asText("");
+                String where = level.getKey() + " excluded `" + source + "`";
+                assertFalse(source.isBlank(), where + " names no source key");
+                assertTrue(excludedSeen.add(source), where + " is listed twice");
+                assertFalse(excluded.path("reason").asText("").isBlank(),
+                        where + " carries no reason - an exclusion without a reason is a silent"
+                                + " narrowing (T1-9)");
+                assertFalse(seen.contains(source),
+                        where + " is also a stored field of the same level");
+            }
         }
-        assertEquals(9, levels.size(), "a store level was added or removed without the manifest"
+        assertEquals(12, levels.size(), "a store level was added or removed without the manifest"
                 + " saying so; the levels are term, codelist, ctPackage, variable, dataset, class,"
-                + " variableSet, dataStructure and product" + FIX);
+                + " variableSet, dataStructure, product, domain, scenario and field" + FIX);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Leg 5's source walk
+    // -----------------------------------------------------------------------------------------
+
+    /**
+     * Walks source documents in the pickles' shape (which the synthetic {@code SeedFixtures} copy)
+     * and records, per manifest level, every top-level key each document carries. The nesting is
+     * the source's own: which child list belongs to which level is knowledge of the SOURCE, and
+     * stating it here is the point — the manifest can then be checked against it.
+     */
+    private static final class SourceWalker
+    {
+
+        final Map<String, Map<String, Integer>> seen = new TreeMap<>();
+
+        int ctPackages;
+
+        int codelists;
+
+        int terms;
+
+        void ctPackage(Map<String, ?> aPackage)
+        {
+            ctPackages++;
+            record("ctPackage", aPackage);
+            for (Map<String, ?> codelist : children(aPackage, "codelists"))
+            {
+                codelists++;
+                record("codelist", codelist);
+                for (Map<String, ?> term : children(codelist, "terms"))
+                {
+                    terms++;
+                    record("term", term);
+                }
+            }
+        }
+
+
+        void product(Map<String, ?> aProduct)
+        {
+            record("product", aProduct);
+            for (Map<String, ?> clazz : children(aProduct, "classes"))
+            {
+                record("class", clazz);
+                children(clazz, "classVariables").forEach(v -> record("variable", v));
+                children(clazz, "datasets").forEach(this::dataset);
+                children(clazz, "domains").forEach(this::domain);
+                for (Map<String, ?> scenario : children(clazz, "scenarios"))
+                {
+                    record("scenario", scenario);
+                    children(scenario, "fields").forEach(f -> record("field", f));
+                }
+                children(clazz, "cdashModelFields").forEach(f -> record("field", f));
+            }
+            children(aProduct, "datasets").forEach(this::dataset);
+            children(aProduct, "domains").forEach(this::domain);
+            for (Map<String, ?> structure : children(aProduct, "dataStructures"))
+            {
+                record("dataStructure", structure);
+                for (Map<String, ?> set : children(structure, "analysisVariableSets"))
+                {
+                    record("variableSet", set);
+                    children(set, "analysisVariables").forEach(v -> record("variable", v));
+                }
+            }
+        }
+
+
+        /** The newest package of every CT family, and every IG and model product. */
+        void realCorpus(Path aDir)
+        {
+            net.cumba.corej.core.metadata.pickle.PickleCache cache = net.cumba.corej.core.metadata.pickle.PickleCache
+                    .open(aDir);
+            Map<String, String> newestPerFamily = new TreeMap<>();
+            for (String id : cache.publishedCtPackages())
+            {
+                int at = id.indexOf("ct-");
+                if (at > 0)
+                {
+                    newestPerFamily.merge(id.substring(0, at), id,
+                            (a, b) -> a.compareTo(b) >= 0 ? a : b);
+                }
+            }
+            assertFalse(newestPerFamily.isEmpty(), "the real corpus enumerates no CT package");
+            for (String id : newestPerFamily.values())
+            {
+                ctPackage(cache.getCtPackage(id)
+                        .orElseThrow(() -> new AssertionError("enumerated but unreadable: " + id)));
+            }
+            for (String key : cache.standardKeys())
+            {
+                product(cache.get(key).orElseThrow(() -> new AssertionError(key)));
+            }
+            for (String key : cache.modelKeys())
+            {
+                product(cache.get(key).orElseThrow(() -> new AssertionError(key)));
+            }
+        }
+
+
+        private void dataset(Map<String, ?> aDataset)
+        {
+            record("dataset", aDataset);
+            children(aDataset, "datasetVariables").forEach(v -> record("variable", v));
+        }
+
+
+        private void domain(Map<String, ?> aDomain)
+        {
+            record("domain", aDomain);
+            children(aDomain, "fields").forEach(f -> record("field", f));
+        }
+
+
+        private void record(String aLevel, Map<String, ?> aDocument)
+        {
+            Map<String, Integer> keys = seen.computeIfAbsent(aLevel, l -> new TreeMap<>());
+            for (String key : aDocument.keySet())
+            {
+                keys.merge(key, 1, Integer::sum);
+            }
+        }
+
+
+        @SuppressWarnings("unchecked")
+        private static List<Map<String, ?>> children(Map<String, ?> aDocument, String aKey)
+        {
+            Object value = aDocument.get(aKey);
+            if (!(value instanceof List<?> list))
+            {
+                return List.of();
+            }
+            List<Map<String, ?>> out = new ArrayList<>();
+            for (Object element : list)
+            {
+                if (element instanceof Map<?, ?> map)
+                {
+                    out.add((Map<String, ?>) map);
+                }
+            }
+            return out;
+        }
     }
 
     // -----------------------------------------------------------------------------------------
     // Manifest-driven source documents and verification
     // -----------------------------------------------------------------------------------------
-
 
     /**
      * A source document for one level, generated from the manifest: every declared field is

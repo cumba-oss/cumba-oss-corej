@@ -64,7 +64,7 @@ class MetadataStoreWriterOrderTest
 
         List<StoredTerm> terms = readBackTerms(
                 new StoredCtPackage("sdtmct-2020-01-01", List.of(new StoredCodelist("CL", "C0",
-                        "CL", null, null, Boolean.TRUE, List.of(zulu, beta)))));
+                        "CL", "CL", null, null, Boolean.TRUE, List.of(zulu, beta)))));
 
         assertEquals(2, terms.size(),
                 "the synonym lists differ, so the terms are distinct and neither may be dropped");
@@ -88,7 +88,7 @@ class MetadataStoreWriterOrderTest
     void identicalTermsAcrossPackagesCollapseOntoOneRow() throws IOException
     {
         StoredTerm term = new StoredTerm("X", "C1", "X", "d", List.of("alpha", "zulu"));
-        StoredCodelist cl = new StoredCodelist("CL", "C0", "CL", null, List.of("s1", "s2"),
+        StoredCodelist cl = new StoredCodelist("CL", "C0", "CL", "CL", null, List.of("s1", "s2"),
                 Boolean.TRUE, List.of(term));
 
         Path file = tempDir.resolve("dedup.zip");
@@ -130,10 +130,10 @@ class MetadataStoreWriterOrderTest
         StoredTerm onlyV2 = new StoredTerm("C", "C-C", "C", null, List.of("sc"));
 
         // Identical headers; same term COUNT, different term content.
-        StoredCodelist v1 = new StoredCodelist("NY", "C66742", "No Yes Response", "same def",
-                List.of("syn"), Boolean.FALSE, List.of(shared, onlyV1));
-        StoredCodelist v2 = new StoredCodelist("NY", "C66742", "No Yes Response", "same def",
-                List.of("syn"), Boolean.FALSE, List.of(shared, onlyV2));
+        StoredCodelist v1 = new StoredCodelist("NY", "C66742", "No Yes Response", "No Yes Response",
+                "same def", List.of("syn"), Boolean.FALSE, List.of(shared, onlyV1));
+        StoredCodelist v2 = new StoredCodelist("NY", "C66742", "No Yes Response", "No Yes Response",
+                "same def", List.of("syn"), Boolean.FALSE, List.of(shared, onlyV2));
 
         Path file = tempDir.resolve("versions.zip");
         new MetadataStoreWriter()

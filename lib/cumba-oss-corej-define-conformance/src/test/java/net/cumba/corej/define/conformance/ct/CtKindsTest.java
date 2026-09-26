@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.util.List;
+import java.util.Optional;
 import net.cumba.cdisc.define.DefineDomIo;
 import net.cumba.corej.define.conformance.eval.DocumentContext;
 import net.cumba.corej.define.conformance.eval.RuleEvaluator;
@@ -481,8 +482,73 @@ class CtKindsTest
     {
         // Lambda/minimal CtProvider implementations do not override codelistByName; the
         // conservative empty default means name-keyed rules find nothing rather than mis-fire.
-        CtProvider minimal = _ -> java.util.Optional.empty();
+        CtProvider minimal = _ -> Optional.empty();
         assertTrue(minimal.codelistByName("Sex").isEmpty());
     }
 
+    // ------------------------------------------------------------------
+    // Per-rule capability gates (PLAN-define-ct-evaluation D-3 / D-4): a bound CT that cannot
+    // answer a rule must SKIP it visibly, never execute it vacuously.
+    // ------------------------------------------------------------------
+
+
+    /** D-3: a {@code term_in_ct_codelist} rule naming a c-code the bound CT lacks. */
+    @Test
+    void explicitCCodeRuleSkipsWhenTheBoundCtLacksTheCodelist()
+    {
+        String rule = ctRule("CodeList", """
+                kind: "term_in_ct_codelist"
+                attribute: "Name"
+                cCode: "C103329"
+                """);
+        String xml = """
+                <ODM xmlns="http://www.cdisc.org/ns/odm/v1.3"
+                     xmlns:def="http://www.cdisc.org/ns/def/v2.1">
+                  <CodeList OID="CL.A" Name="WEIRD CLASS"/>
+                </ODM>
+                """;
+        // A provider WITHOUT C103329: the D-3 gate skips, naming the missing CT.
+        CtProvider withoutGnrlobsc = aCCode -> Optional.empty();
+        RuleResult skipped = evaluate(rule, context(xml, withoutGnrlobsc));
+        assertEquals(ExecutionStatus.SKIPPED_MISSING_CT, skipped.status(),
+                "a bound CT that cannot serve the named codelist must SKIP the rule (D-3),"
+                        + " never execute it with zero findings");
+        assertEquals(List.of(), skipped.findings());
+
+        // The same rule against a provider that holds C103329 executes and fires on a non-member.
+        RuleResult executed = evaluate(rule, context(xml, new StubCtProvider()));
+        assertEquals(ExecutionStatus.EXECUTED, executed.status());
+        assertEquals(List.of("Offending value [WEIRD CLASS]."), messages(executed));
+    }
+
+
+    /** D-4: a codelist-level {@code nci_alias_required} rule on a provider without name lookup. */
+    @Test
+    void codelistLevelAliasRuleSkipsWhenTheProviderHasNoNameLookup()
+    {
+        String rule = ctRule("CodeList", """
+                kind: "nci_alias_required"
+                level: "codelist"
+                """);
+        String xml = """
+                <ODM xmlns="http://www.cdisc.org/ns/odm/v1.3"
+                     xmlns:def="http://www.cdisc.org/ns/def/v2.1">
+                  <CodeList OID="CL.A" Name="Sex">
+                    <EnumeratedItem CodedValue="F"/>
+                  </CodeList>
+                </ODM>
+                """;
+        // A c-code-only provider (the interface default: hasNameLookup() == false) cannot answer
+        // "is this name a CT codelist", so the rule is out of its reach and SKIPs (D-4).
+        CtProvider cCodeOnly = aCCode -> Optional.empty();
+        RuleResult skipped = evaluate(rule, context(xml, cCodeOnly));
+        assertEquals(ExecutionStatus.SKIPPED_MISSING_CT, skipped.status(),
+                "a provider without name lookup must SKIP the codelist-level alias rule (D-4)");
+        assertEquals(List.of(), skipped.findings());
+
+        // The stub supports name lookup, so the rule executes and fires on the alias-less CT name.
+        RuleResult executed = evaluate(rule, context(xml, new StubCtProvider()));
+        assertEquals(ExecutionStatus.EXECUTED, executed.status());
+        assertEquals(List.of("Offending value [Sex]."), messages(executed));
+    }
 }

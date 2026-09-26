@@ -119,6 +119,16 @@
             <artifactId>cumba-oss-cdisc-define</artifactId>
         </dependency>
 
+        <!-- PLAN-define-ct-evaluation T1-1 (a): the store-backed CtProvider / LibraryProvider
+             and the per-run DefineStoreBinding live here, beside the store they read and the
+             CtSelection they apply, so every surface (CLI, data browser) binds the SAME decision.
+             The define-conformance module ships only the two SPIs and the engine; it has no
+             dependency on this module (measured), so the edge is acyclic. -->
+        <dependency>
+            <groupId>net.cumba</groupId>
+            <artifactId>cumba-oss-corej-define-conformance</artifactId>
+        </dependency>
+
         <!-- TEST ONLY: the Define-XML -> IMetadataLibrary adapter (DefineMetadataLibrary). In
              production this module never constructs one - StudyValidationService obtains it from
              the datatable manager and wraps it with MetadataLibraryProvider.forDefine. The test

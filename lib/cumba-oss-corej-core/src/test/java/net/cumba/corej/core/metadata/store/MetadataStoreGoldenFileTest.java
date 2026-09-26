@@ -35,19 +35,25 @@ class MetadataStoreGoldenFileTest
      * {@code <entry name> <sha256 of uncompressed content>}, sorted by entry name.
      *
      * <p>
+     * Re-pinned 2026-09-26 with {@code FORMAT_VERSION} 2 &rarr; 3 (PLAN-define-ct-evaluation):
+     * {@code ct/codelists.json} gained the codelist {@code name}, the three product entries gained
+     * the T1-9 scalars and the CDASH slots, and {@code manifest.json} carries the new version; the
+     * four fixed CT parts other than the headers are byte-identical to the format-2 pin. Taken from
+     * a run in which the seeder byte-identity and the manifest legs were green, never from a red
+     * run.<br>
      * Re-pinned 2026-09-08 with {@code FORMAT_VERSION} 1 &rarr; 2 (manifest.json and the model
      * product): {@code StoredVariable.examples} became a scalar string. Nothing else moved.
      * </p>
      */
     private static final String GOLDEN = """
             ct/codelists.bin cb574950e33f7dac2a168f8a2cd105e35704c38ac5de39b19c83b56f70afd24c
-            ct/codelists.json 17e8dea9636547a08849109b9fc97e71e9c6f7db3d7303a651b73babf6a0071c
+            ct/codelists.json 442e4c7d1eff80ef404cfe21c89fd9b060288f91c2a70d38d2c95302ba6c4c61
             ct/packages.json 8b0fa180c89e043f6479444720b1731d473ae2e566cc85c26a53a4a5c4f42a43
             ct/terms.bin 426cb169009a087ea1d9208324e53de6a9cde96421791dea446b28ea09ae35ff
-            manifest.json fd9c544978a05a66106a0f8ba8fdbb4cb1dd9bbcfc212a2c99d915d9a5373075
-            products/models/sdtm/2-0.json 68856a63159aca51e70d5e888dbdff9f2abbe06a691aeb3525bfcfe23a438d8e
-            products/standards/adam/adamig-1-3.json 3d8bcb5f4f2de174ae6496b1e5b20c664c6855b22aa059fef8551196765cd92b
-            products/standards/sdtmig/3-4.json f588526eb79b4b8cf814400d0ce4aa8e86099432232fbc0e4ac8ee2a2d049b2c
+            manifest.json 52fcb1183108104feb697491c78eed91f9aaf274b685c013ffc46c17ea46ee41
+            products/models/sdtm/2-0.json 4d1f053c766a809899d2ac2616a4ee557f327e8adb4aec404fd906dbd428c568
+            products/standards/adam/adamig-1-3.json d1802720a182f9670ded6186261486e3c81ae4b9074f583ff4d09ccf4022dbe8
+            products/standards/sdtmig/3-4.json 7f9d3f9a8e7d02a75c9419507e1e93dd9c4153b4ae2cfb181fca5957693e1095
             """;
 
     @TempDir

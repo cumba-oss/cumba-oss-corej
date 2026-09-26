@@ -40,9 +40,14 @@ public final class StubLibraryProvider implements LibraryProvider
             SDTMIG_34 + "|DM|USUBJID", "Unique Subject Identifier", SDTMIG_34 + "|AE|AETERM",
             "Reported Term for the Adverse Event");
 
-    /** Variables the IG assigns a CT codelist, keyed like {@link #VARIABLE_LABELS}. */
-    private static final Map<String, String> VARIABLE_CODELISTS = Map.of(SDTMIG_34 + "|DM|SEX",
-            "C66731", SDTMIG_34 + "|AE|AESEV", "C66769");
+    /**
+     * Variables the IG assigns CT codelists, keyed like {@link #VARIABLE_LABELS}. Most carry one;
+     * {@code DS.DSDECOD} carries two, as SDTMIG 3.3's does ({@code C114118} and {@code C66727}) —
+     * 21 real SDTMIG/SENDIG variables carry two to five refs (PLAN-define-ct-evaluation D-12).
+     */
+    private static final Map<String, List<String>> VARIABLE_CODELISTS = Map.of(
+            SDTMIG_34 + "|DM|SEX", List.of("C66731"), SDTMIG_34 + "|AE|AESEV", List.of("C66769"),
+            SDTMIG_34 + "|DS|DSDECOD", List.of("C114118", "C66727"));
 
     /** SDTM Event/Intervention qualifier fragments, keyed "<standard>|<version>|<fragment>". */
     private static final Map<String, String> QUALIFIERS = Map.of(SDTMIG_34 + "|OCCUR", "Occurrence",
@@ -99,8 +104,18 @@ public final class StubLibraryProvider implements LibraryProvider
     public Optional<String> variableCodelistCCode(String aStandardName, String aStandardVersion,
             String aDatasetName, String aVariableName)
     {
-        return Optional.ofNullable(VARIABLE_CODELISTS
-                .get(key(aStandardName, aStandardVersion, aDatasetName, aVariableName)));
+        List<String> all = VARIABLE_CODELISTS
+                .get(key(aStandardName, aStandardVersion, aDatasetName, aVariableName));
+        return all == null ? Optional.empty() : Optional.of(all.get(0));
+    }
+
+
+    @Override
+    public List<String> variableCodelistCCodes(String aStandardName, String aStandardVersion,
+            String aDatasetName, String aVariableName)
+    {
+        return VARIABLE_CODELISTS.getOrDefault(
+                key(aStandardName, aStandardVersion, aDatasetName, aVariableName), List.of());
     }
 
 

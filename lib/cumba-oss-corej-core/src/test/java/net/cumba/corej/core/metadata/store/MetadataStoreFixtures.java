@@ -77,16 +77,17 @@ final class MetadataStoreFixtures
                 .describedValueDomain("Lab test codes").codelistIds(List.of("C65047", "C67154"))
                 .build();
         StoredDataset dm = new StoredDataset("DM", "Demographics", "1", "One record per subject",
-                List.of(studyid, sex));
+                List.of(studyid, sex), null, null);
         StoredDataset lb = new StoredDataset("LB", "Laboratory Test Results", "2",
-                "One record per lab test per subject", List.of(lbtestcd));
+                "One record per lab test per subject", List.of(lbtestcd), null, null);
         return StoredProduct.builder().key(IG_KEY).name("SDTMIG v3.4")
                 .label("Study Data Tabulation Model Implementation Guide").version("3-4")
                 .modelHref("/mdr/sdtm/2-0")
                 .classes(List.of(
                         new StoredClass("SpecialPurpose", "Special-Purpose", "1", List.of(),
-                                List.of(dm)),
-                        new StoredClass("Findings", "Findings", "2", List.of(), List.of(lb))))
+                                List.of(dm), null, List.of(), List.of(), List.of()),
+                        new StoredClass("Findings", "Findings", "2", List.of(), List.of(lb), null,
+                                List.of(), List.of(), List.of())))
                 .build();
     }
 
@@ -104,9 +105,9 @@ final class MetadataStoreFixtures
         return StoredProduct.builder().key(MODEL_KEY).name("SDTM v2.0")
                 .label("Study Data Tabulation Model").version("2-0")
                 .classes(List.of(new StoredClass("GeneralObservations", "General Observations", "1",
-                        List.of(timing, domain), List.of())))
-                .datasets(List
-                        .of(new StoredDataset("DM", "Demographics", "1", null, List.of(domain))))
+                        List.of(timing, domain), List.of(), null, List.of(), List.of(), List.of())))
+                .datasets(List.of(new StoredDataset("DM", "Demographics", "1", null,
+                        List.of(domain), null, null)))
                 .build();
     }
 
@@ -117,12 +118,12 @@ final class MetadataStoreFixtures
                 .label("Unique Subject Identifier").ordinal("1").core("Req").simpleDatatype("Char")
                 .build();
         return StoredProduct.builder().key(ADAM_KEY).name("ADaMIG v1.3")
-                .label("Analysis Data Model Implementation Guide").version(
-                        "1-3")
+                .label("Analysis Data Model Implementation Guide").version("1-3")
                 .dataStructures(List.of(new StoredDataStructure("ADSL",
                         "Subject-Level Analysis Dataset", "1", "SUBJECT LEVEL ANALYSIS DATASET",
                         "ADSL SUBCLASS", List.of(new StoredVariableSet("Identifier",
-                                "Identifier Variables", "1", List.of(usubjid))))))
+                                "Identifier Variables", "1", List.of(usubjid), null)),
+                        null)))
                 .build();
     }
 
@@ -163,7 +164,7 @@ final class MetadataStoreFixtures
 
     static StoredCodelist codelistNyStable()
     {
-        return new StoredCodelist("NY", "C66742", "No Yes Response",
+        return new StoredCodelist("NY", "C66742", "No Yes Response", "No Yes Response",
                 "A codelist of yes/no responses.", List.of("Yes No"), Boolean.FALSE,
                 List.of(termNo(), termUnknown()));
     }
@@ -171,22 +172,22 @@ final class MetadataStoreFixtures
 
     static StoredCodelist codelistYesV1()
     {
-        return new StoredCodelist("YESONLY", "C99999", "Yes Only", null, null, Boolean.TRUE,
-                List.of(termYes()));
+        return new StoredCodelist("YESONLY", "C99999", "Yes Only", "Yes Only", null, null,
+                Boolean.TRUE, List.of(termYes()));
     }
 
 
     static StoredCodelist codelistYesV2()
     {
-        return new StoredCodelist("YESONLY", "C99999", "Yes Only", null, null, Boolean.TRUE,
-                List.of(termYesRevised(), termNewInSecondPackage()));
+        return new StoredCodelist("YESONLY", "C99999", "Yes Only", "Yes Only", null, null,
+                Boolean.TRUE, List.of(termYesRevised(), termNewInSecondPackage()));
     }
 
 
     static StoredCodelist codelistQs()
     {
-        return new StoredCodelist("QSCAT", "C74559", "Category of Question", null, List.of(), null,
-                List.of(termUnknown(), termNewInSecondPackage()));
+        return new StoredCodelist("QSCAT", "C74559", "Category of Question", "Category of Question",
+                null, List.of(), null, List.of(termUnknown(), termNewInSecondPackage()));
     }
 
 
@@ -223,7 +224,8 @@ final class MetadataStoreFixtures
     static StoredCtPackage canonical(StoredCtPackage aPackage)
     {
         List<StoredCodelist> codelists = aPackage.codelists().stream()
-                .map(c -> new StoredCodelist(c.submissionValue(), c.conceptId(), c.preferredTerm(),
+                .map(c -> new StoredCodelist(
+                        c.submissionValue(), c.conceptId(), c.name(), c.preferredTerm(),
                         c.definition(), c.synonyms(), c.extensible(), c.terms().stream()
                                 .sorted(Comparator.comparing(StoredTerm::toString)).toList()))
                 .toList();

@@ -1,16 +1,19 @@
 {
   "manifest": "metadata store reachable-field manifest",
-  "formatVersion": 2,
-  "frozen": "2026-09-08",
-  "authority": "databrowser-meta plans/AUDIT-metadata-reachable-fields.md sections 2 and 3 (the TABLES, never the prose counts)",
+  "formatVersion": 3,
+  "frozen": "2026-09-26",
+  "authority": "databrowser-meta plans/AUDIT-metadata-reachable-fields.md sections 2 and 3 (the TABLES, never the prose counts), widened by plans/PLAN-define-ct-evaluation.md T1-3 (b) and T1-9 (every field the pickle cache publishes, at every level, except _links and the Python cache builder's additions)",
   "guardedBy": "net.cumba.corej.core.metadata.store.seed.StoreFieldManifestTest",
   "purpose": [
-    "Data only: the argument for every row lives in the audit and is not repeated here.",
-    "This file freezes WHAT the store carries, at every level, with the TYPE of each slot.",
-    "It exists because the store had already been silently narrowed once: `examples` was",
-    "typed List<String> against an array-only reader, so the field was dropped from every",
-    "seeded store while a fixture-fed round-trip test stayed green (fixed in 948647c,",
-    "StoreFormat.FORMAT_VERSION 1 -> 2)."
+    "Data only: the argument for every row lives in the audit and the plan and is not repeated here.",
+    "This file freezes WHAT the store carries, at every level, with the TYPE of each slot - and,",
+    "since format 3, WHAT IT DELIBERATELY DOES NOT CARRY: every level's `excluded` block names each",
+    "source key the projection never reads, with its reason, so silence can no longer mean 'dropped'.",
+    "It exists because the store had already been silently narrowed twice: `examples` was typed",
+    "List<String> against an array-only reader, so the field was dropped from every seeded store while",
+    "a fixture-fed round-trip test stayed green (fixed in 948647c, StoreFormat.FORMAT_VERSION 1 -> 2);",
+    "and the codelist `name` was the one codelist-level field the source publishes that no manifest row",
+    "and no record carried, which no leg could see (fixed by PLAN-define-ct-evaluation, 2 -> 3)."
   ],
   "typeVocabulary": {
     "scalar": "record component String",
@@ -22,7 +25,8 @@
     "both": "read by coreJ and by the Python engine",
     "coreJ": "read by coreJ only",
     "python": "read by the Python engine only",
-    "neither": "read by neither - stored as future-proofing, and a re-seed cannot be pushed to users retroactively"
+    "neither": "read by neither - stored as future-proofing, and a re-seed cannot be pushed to users retroactively",
+    "none": "read by nothing yet - stored under T1-9 (the pickle cache is the universe), for a later need"
   },
   "fieldKeys": {
     "field": "the record component name",
@@ -33,6 +37,10 @@
     "element": "for `nested`: the level the elements belong to",
     "reached-by": "from reachedByVocabulary",
     "note": "a pointer, never an argument"
+  },
+  "excludedKeys": {
+    "source": "a top-level key the SOURCE publishes at this level that the projection deliberately does not read",
+    "reason": "why - T1-9 admits exactly two reasons for a pickle key: it is `_links`, or the Python cache builder added it; an API-only key is recorded for the record"
   },
   "levels": [
     {
@@ -45,7 +53,8 @@
         { "field": "preferredTerm", "type": "scalar", "reached-by": "both" },
         { "field": "definition", "type": "scalar", "reached-by": "neither", "note": "audit section 2.1 - owner ruling: stored though unread" },
         { "field": "synonyms", "type": "list", "reached-by": "neither", "note": "audit section 2.1 - owner ruling: stored though unread" }
-      ]
+      ],
+      "excluded": []
     },
     {
       "level": "codelist",
@@ -54,12 +63,14 @@
       "fields": [
         { "field": "submissionValue", "type": "scalar", "reached-by": "both" },
         { "field": "conceptId", "type": "scalar", "reached-by": "both" },
+        { "field": "name", "type": "scalar", "reached-by": "coreJ", "note": "T1-3 (b), PLAN-define-ct-evaluation - read by StoreCtProvider.codelistByName (PMDA-DD0031); 41 852 / 41 852 source codelists carry it" },
         { "field": "preferredTerm", "type": "scalar", "reached-by": "both", "note": "audit section 2 records coreJ as not reaching it; PLAN-codelist-terms-returntype.md section 4.4 landed the reach (CODELIST_PREFERRED_TERM)" },
         { "field": "definition", "type": "scalar", "reached-by": "neither", "note": "audit section 2.1 - owner ruling: stored though unread" },
         { "field": "synonyms", "type": "list", "reached-by": "neither", "note": "audit section 2.1 - owner ruling: stored though unread" },
         { "field": "extensible", "type": "boolean", "reached-by": "both", "note": "the engine's own Boolean, not the API's string (plan section 5.1)" },
         { "field": "terms", "type": "nested", "element": "term", "reached-by": "both" }
-      ]
+      ],
+      "excluded": []
     },
     {
       "level": "ctPackage",
@@ -69,6 +80,13 @@
       "fields": [
         { "field": "id", "type": "scalar", "sourceless": true, "reached-by": "both", "note": "audit section 6 - four independent run-time paths resolve a package by id" },
         { "field": "codelists", "type": "nested", "element": "codelist", "reached-by": "both" }
+      ],
+      "excluded": [
+        { "source": "package", "reason": "the pickle's echo of its own id; the store keys the package by the enumeration id (the sourceless `id` above), which is the same value" },
+        { "source": "name", "reason": "API-only; the pickles carry the id alone (T1-9: the pickle cache is the universe)" },
+        { "source": "version", "reason": "API-only; measured equal to the id's date in 206 / 206 packages (T1-9)" },
+        { "source": "effectiveDate", "reason": "API-only; measured equal to the id's date in 206 / 206 packages (T1-9)" },
+        { "source": "_links", "reason": "owner 2026-09-25: the _links can stay dropped" }
       ]
     },
     {
@@ -92,7 +110,10 @@
         { "field": "examples", "type": "scalar", "reached-by": "both", "note": "SCALAR. Audit section 3 listed it as list-valued and that error dropped the field from every seeded store - this row is the one this manifest most exists for" },
         { "field": "usageRestrictions", "type": "scalar", "reached-by": "both" },
         { "field": "variableCcode", "type": "scalar", "reached-by": "both" },
-        { "field": "codelistIds", "type": "list", "source": "_links.codelist[].href", "transformed": true, "reached-by": "coreJ", "note": "audit section 3 correction - _links.codelist is an ARRAY; each ref reduced to its trailing id segment" }
+        { "field": "codelistIds", "type": "list", "source": "_links.codelist[].href", "transformed": true, "reached-by": "coreJ", "note": "audit section 3 correction - _links.codelist is an ARRAY; each ref reduced to its trailing id segment. The one _links-derived projection that predates T1-9 and stays" }
+      ],
+      "excluded": [
+        { "source": "_links", "reason": "owner 2026-09-25: the _links can stay dropped - only the pre-existing codelistIds projection of _links.codelist survives" }
       ]
     },
     {
@@ -104,7 +125,12 @@
         { "field": "label", "type": "scalar", "reached-by": "both" },
         { "field": "ordinal", "type": "scalar", "reached-by": "both" },
         { "field": "datasetStructure", "type": "scalar", "reached-by": "both" },
-        { "field": "variables", "type": "nested", "element": "variable", "source": "datasetVariables", "reached-by": "both" }
+        { "field": "variables", "type": "nested", "element": "variable", "source": "datasetVariables", "reached-by": "both" },
+        { "field": "description", "type": "scalar", "reached-by": "none", "note": "T1-9" },
+        { "field": "status", "type": "scalar", "reached-by": "none", "note": "T1-9; published on 105 / 483 IG datasets" }
+      ],
+      "excluded": [
+        { "source": "_links", "reason": "owner 2026-09-25: the _links can stay dropped" }
       ]
     },
     {
@@ -116,7 +142,14 @@
         { "field": "label", "type": "scalar", "reached-by": "both" },
         { "field": "ordinal", "type": "scalar", "reached-by": "both" },
         { "field": "classVariables", "type": "nested", "element": "variable", "reached-by": "both" },
-        { "field": "datasets", "type": "nested", "element": "dataset", "reached-by": "both" }
+        { "field": "datasets", "type": "nested", "element": "dataset", "reached-by": "both" },
+        { "field": "description", "type": "scalar", "reached-by": "none", "note": "T1-9" },
+        { "field": "domains", "type": "nested", "element": "domain", "reached-by": "none", "note": "T1-9 / S18: CDASH IG classes only; empty elsewhere" },
+        { "field": "scenarios", "type": "nested", "element": "scenario", "reached-by": "none", "note": "T1-9 / S18: CDASH IG classes only; empty elsewhere" },
+        { "field": "cdashModelFields", "type": "nested", "element": "field", "reached-by": "none", "note": "T1-9 / S18: CDASH model classes only; empty elsewhere" }
+      ],
+      "excluded": [
+        { "source": "_links", "reason": "owner 2026-09-25: the _links can stay dropped" }
       ]
     },
     {
@@ -127,7 +160,11 @@
         { "field": "name", "type": "scalar", "reached-by": "coreJ", "note": "audit section 3 names analysisVariableSets structurally without listing the set's own name/label/ordinal; coreJ carries all three (ApiModelProjection)" },
         { "field": "label", "type": "scalar", "reached-by": "coreJ" },
         { "field": "ordinal", "type": "scalar", "reached-by": "coreJ" },
-        { "field": "variables", "type": "nested", "element": "variable", "source": "analysisVariables", "reached-by": "both" }
+        { "field": "variables", "type": "nested", "element": "variable", "source": "analysisVariables", "reached-by": "both" },
+        { "field": "description", "type": "scalar", "reached-by": "none", "note": "T1-9; published on 36 / 213 sets" }
+      ],
+      "excluded": [
+        { "source": "_links", "reason": "owner 2026-09-25: the _links can stay dropped" }
       ]
     },
     {
@@ -140,7 +177,64 @@
         { "field": "ordinal", "type": "scalar", "reached-by": "coreJ" },
         { "field": "className", "type": "scalar", "source": "class", "reached-by": "both" },
         { "field": "subClass", "type": "scalar", "reached-by": "both" },
-        { "field": "variableSets", "type": "nested", "element": "variableSet", "source": "analysisVariableSets", "reached-by": "both" }
+        { "field": "variableSets", "type": "nested", "element": "variableSet", "source": "analysisVariableSets", "reached-by": "both" },
+        { "field": "description", "type": "scalar", "reached-by": "none", "note": "T1-9" }
+      ],
+      "excluded": [
+        { "source": "_links", "reason": "owner 2026-09-25: the _links can stay dropped" }
+      ]
+    },
+    {
+      "level": "domain",
+      "record": "net.cumba.corej.core.metadata.store.StoredDomain",
+      "audit": "PLAN-define-ct-evaluation section 4.5.1 (S18)",
+      "fields": [
+        { "field": "name", "type": "scalar", "reached-by": "none" },
+        { "field": "label", "type": "scalar", "reached-by": "none" },
+        { "field": "ordinal", "type": "scalar", "reached-by": "none" },
+        { "field": "description", "type": "scalar", "reached-by": "none", "note": "published on 96 / 169 CDASH IG domains and 11 / 23 CDASH model domains" },
+        { "field": "fields", "type": "nested", "element": "field", "reached-by": "none" }
+      ],
+      "excluded": [
+        { "source": "_links", "reason": "owner 2026-09-25: the _links can stay dropped" }
+      ]
+    },
+    {
+      "level": "scenario",
+      "record": "net.cumba.corej.core.metadata.store.StoredScenario",
+      "audit": "PLAN-define-ct-evaluation section 4.5.1 (S18)",
+      "fields": [
+        { "field": "scenario", "type": "scalar", "reached-by": "none" },
+        { "field": "domain", "type": "scalar", "reached-by": "none" },
+        { "field": "domainName", "type": "scalar", "reached-by": "none" },
+        { "field": "ordinal", "type": "scalar", "reached-by": "none" },
+        { "field": "fields", "type": "nested", "element": "field", "reached-by": "none" }
+      ],
+      "excluded": [
+        { "source": "_links", "reason": "owner 2026-09-25: the _links can stay dropped" }
+      ]
+    },
+    {
+      "level": "field",
+      "record": "net.cumba.corej.core.metadata.store.StoredField",
+      "audit": "PLAN-define-ct-evaluation section 4.5.1 (S18) - the scalar union of domain, scenario and CDASH model-class fields",
+      "fields": [
+        { "field": "name", "type": "scalar", "reached-by": "none" },
+        { "field": "label", "type": "scalar", "reached-by": "none" },
+        { "field": "ordinal", "type": "scalar", "reached-by": "none" },
+        { "field": "core", "type": "scalar", "reached-by": "none", "note": "IG fields only" },
+        { "field": "definition", "type": "scalar", "reached-by": "none" },
+        { "field": "simpleDatatype", "type": "scalar", "reached-by": "none" },
+        { "field": "codelistSubmissionValues", "type": "list", "reached-by": "none" },
+        { "field": "completionInstructions", "type": "scalar", "reached-by": "none", "note": "IG fields only" },
+        { "field": "implementationNotes", "type": "scalar", "reached-by": "none" },
+        { "field": "mappingInstructions", "type": "scalar", "reached-by": "none" },
+        { "field": "prompt", "type": "scalar", "reached-by": "none" },
+        { "field": "questionText", "type": "scalar", "reached-by": "none" },
+        { "field": "domainSpecific", "type": "scalar", "reached-by": "none", "note": "CDASH model domain fields only" }
+      ],
+      "excluded": [
+        { "source": "_links", "reason": "owner 2026-09-25: the _links can stay dropped - and a field's _links.codelist is deliberately NOT projected into a codelist-id list, which would be a new _links-derived value (T1-9)" }
       ]
     },
     {
@@ -154,9 +248,19 @@
         { "field": "label", "type": "scalar", "reached-by": "both" },
         { "field": "version", "type": "scalar", "reached-by": "both" },
         { "field": "modelHref", "type": "scalar", "source": "_links.model.href", "reached-by": "coreJ", "note": "the one surviving product link (audit section 3); everything else under _links is dropped" },
+        { "field": "description", "type": "scalar", "reached-by": "none", "note": "T1-9" },
+        { "field": "effectiveDate", "type": "scalar", "reached-by": "none", "note": "T1-9" },
+        { "field": "registrationStatus", "type": "scalar", "reached-by": "none", "note": "T1-9" },
+        { "field": "source", "type": "scalar", "reached-by": "none", "note": "T1-9" },
         { "field": "classes", "type": "nested", "element": "class", "reached-by": "both" },
         { "field": "datasets", "type": "nested", "element": "dataset", "reached-by": "both", "note": "top-level model datasets - confirmed against standards_models.pkl during P1, implied by neither the audit nor the plan" },
-        { "field": "dataStructures", "type": "nested", "element": "dataStructure", "reached-by": "both" }
+        { "field": "dataStructures", "type": "nested", "element": "dataStructure", "reached-by": "both" },
+        { "field": "domains", "type": "nested", "element": "domain", "reached-by": "none", "note": "T1-9 / S18: CDASH model products only; empty elsewhere" }
+      ],
+      "excluded": [
+        { "source": "_links", "reason": "owner 2026-09-25: the _links can stay dropped - only the pre-existing modelHref projection of _links.model.href survives" },
+        { "source": "dataset_names", "reason": "added by the Python cache builder (a Python set); absent from the real API documents - not library metadata (T1-9)" },
+        { "source": "standard_type", "reason": "added by the Python cache builder; absent from the real API documents - not library metadata (T1-9)" }
       ]
     }
   ]

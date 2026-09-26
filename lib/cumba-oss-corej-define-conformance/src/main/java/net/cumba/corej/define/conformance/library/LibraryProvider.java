@@ -5,9 +5,10 @@ import java.util.Optional;
 
 /**
  * Optional CDISC implementation-guide library lookup backing the {@code Requires: library} rules
- * (plan define-library-provider). This module ships the SPI only — a concrete binding (over the
- * {@code net.cumba.cdisc.library.api} models) belongs to an integration layer, exactly like
- * {@code CtProvider}'s CT binding. When no provider is supplied, library-gated rules SKIP with
+ * (plan define-library-provider). This module ships the SPI only — the product binding is
+ * {@code cumba-corej-core}'s {@code StoreLibraryProvider} over the unified metadata store's IG and
+ * model products, bound on every surface (CLI and data browser) exactly like {@code CtProvider}'s
+ * CT binding. When no provider is supplied, library-gated rules SKIP with
  * {@code SKIPPED_MISSING_LIBRARY}.
  *
  * <p>
@@ -47,6 +48,26 @@ public interface LibraryProvider
      */
     Optional<String> variableCodelistCCode(String aStandardName, String aStandardVersion,
             String aDatasetName, String aVariableName);
+
+
+    /**
+     * EVERY NCI c-code of the CT codelists the IG assigns to a variable, in the IG's order, or an
+     * empty list when it assigns none. 21 real SDTMIG/SENDIG variables carry two to five codelists
+     * (SDTMIG 3.3 {@code DS.DSDECOD}: {@code C114118}, {@code C66727}); PMDA DD0118 compares the
+     * document's c-code against all of them, so a define using the second one is not a mismatch
+     * against the first.
+     *
+     * <p>
+     * A {@code default} method: a single-codelist implementation is served by
+     * {@link #variableCodelistCCode} as a one-element list, and stays valid unchanged.
+     * </p>
+     */
+    default List<String> variableCodelistCCodes(String aStandardName, String aStandardVersion,
+            String aDatasetName, String aVariableName)
+    {
+        return variableCodelistCCode(aStandardName, aStandardVersion, aDatasetName, aVariableName)
+                .map(List::of).orElse(List.of());
+    }
 
 
     /**

@@ -140,8 +140,9 @@ public final class ApiModelProjection
                     term.conceptId().orElse(null), term.preferredTerm().orElse(null), null, null));
         }
         return new StoredCodelist(aCodelist.submissionValue().orElse(null),
-                aCodelist.conceptId().orElse(null), aCodelist.preferredTerm().orElse(null), null,
-                null, aCodelist.extensible().orElse(null), terms);
+                aCodelist.conceptId().orElse(null), aCodelist.name().orElse(null),
+                aCodelist.preferredTerm().orElse(null), null, null,
+                aCodelist.extensible().orElse(null), terms);
     }
 
 
@@ -158,7 +159,8 @@ public final class ApiModelProjection
             datasets.add(sdtmDataset(dataset));
         }
         return new StoredClass(aClass.name().orElse(null), aClass.label().orElse(null),
-                aClass.ordinal().orElse(null), classVariables, datasets);
+                aClass.ordinal().orElse(null), classVariables, datasets, null, List.of(), List.of(),
+                List.of());
     }
 
 
@@ -171,7 +173,7 @@ public final class ApiModelProjection
         }
         return new StoredDataset(aDataset.name().orElse(null), aDataset.label().orElse(null),
                 aDataset.ordinal().orElse(null), aDataset.datasetStructure().orElse(null),
-                variables);
+                variables, null, null);
     }
 
 
@@ -186,11 +188,12 @@ public final class ApiModelProjection
                 variables.add(variable(variable));
             }
             sets.add(new StoredVariableSet(set.name().orElse(null), set.label().orElse(null),
-                    set.ordinal().orElse(null), variables));
+                    set.ordinal().orElse(null), variables, null));
         }
         return new StoredDataStructure(aStructure.name().orElse(null),
                 aStructure.label().orElse(null), aStructure.ordinal().orElse(null),
-                aStructure.className().orElse(null), aStructure.subClass().orElse(null), sets);
+                aStructure.className().orElse(null), aStructure.subClass().orElse(null), sets,
+                null);
     }
 
 

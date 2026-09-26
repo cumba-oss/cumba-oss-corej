@@ -263,8 +263,10 @@ class StudyValidationServiceCompanionSeamTest
         StoredVariable studyid = StoredVariable.builder().name("STUDYID").ordinal("1").core("Req")
                 .simpleDatatype("Char").build();
         StoredProduct ig = StoredProduct.builder().key("standards/sdtmig/3-4").version("3-4")
-                .classes(List.of(new StoredClass("SpecialPurpose", null, "1", List.of(), List
-                        .of(new StoredDataset("DM", "Demographics", "1", null, List.of(studyid))))))
+                .classes(List.of(new StoredClass(
+                        "SpecialPurpose", null, "1", List.of(), List.of(new StoredDataset("DM",
+                                "Demographics", "1", null, List.of(studyid), null, null)),
+                        null, List.of(), List.of(), List.of())))
                 .build();
         new MetadataStoreWriter().addProduct(ig).publishedCtPackages(List.of())
                 .productCatalogue(List.of("standards/sdtmig/3-4")).write(file);

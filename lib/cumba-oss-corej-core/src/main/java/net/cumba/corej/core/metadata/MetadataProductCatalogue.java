@@ -78,6 +78,17 @@ public final class MetadataProductCatalogue
         {
             return new MetadataProductCatalogue(new LinkedHashSet<>(opened.productCatalogue()));
         }
+        catch (net.cumba.corej.core.metadata.store.StoreFormatException e)
+        {
+            // No behaviour change (the run then aborts on the same store in
+            // StudyValidationService, T1-10 a); the WARNING names the re-seed rather than a
+            // generic unavailability.
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "Metadata store {0} is format {1} and this build reads format {2}; it must be"
+                            + " re-seeded. Only full-form --metadata-products keys will resolve.",
+                    store, e.foundVersion(), e.knownVersion());
+            return new MetadataProductCatalogue(Set.of());
+        }
         catch (IOException | RuntimeException e)
         {
             LOGGER.log(System.Logger.Level.WARNING,

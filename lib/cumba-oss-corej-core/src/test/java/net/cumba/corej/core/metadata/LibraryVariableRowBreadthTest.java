@@ -108,8 +108,9 @@ class LibraryVariableRowBreadthTest
         return StoredProduct.builder().key("models/sdtm/2-0").name("SDTM").version("2-0")
                 .classes(List.of(
                         new StoredClass("General Observations", "General Observations", "1", genObs,
-                                List.of()),
-                        new StoredClass("Events", "Events", "2", events, List.of())))
+                                List.of(), null, List.of(), List.of(), List.of()),
+                        new StoredClass("Events", "Events", "2", events, List.of(), null, List.of(),
+                                List.of(), List.of())))
                 .build();
     }
 
@@ -118,15 +119,17 @@ class LibraryVariableRowBreadthTest
     private static StoredProduct igProduct()
     {
         StoredDataset ae = new StoredDataset("AE", "Adverse Events", "1", "",
-                List.of(igVar("AETERM", "Topic", "Req")));
+                List.of(igVar("AETERM", "Topic", "Req")), null, null);
         // A non-detectable class with an EMPTY model class and an IG dataset — the Model walk's
         // tier-3 fallback (buildResolvedSdtmModel) answers this one from the IG dataset.
         StoredDataset ta = new StoredDataset("TA", "Trial Arms", "2", "",
-                List.of(igVar("ARMCD", "Topic", "Req")));
+                List.of(igVar("ARMCD", "Topic", "Req")), null, null);
         return StoredProduct.builder().key("standards/sdtmig/3-4").name("SDTMIG").version("3-4")
-                .classes(List.of(new StoredClass("Events", "Events", "1", List.of(), List.of(ae)),
-                        new StoredClass("Trial Design", "Trial Design", "2", List.of(),
-                                List.of(ta))))
+                .classes(List.of(
+                        new StoredClass("Events", "Events", "1", List.of(), List.of(ae), null,
+                                List.of(), List.of(), List.of()),
+                        new StoredClass("Trial Design", "Trial Design", "2", List.of(), List.of(ta),
+                                null, List.of(), List.of(), List.of())))
                 .build();
     }
 
@@ -138,12 +141,12 @@ class LibraryVariableRowBreadthTest
                 .ordinal("1").simpleDatatype("Char").core("Req").description("ADaM description")
                 .describedValueDomain("Sponsor-defined").build();
         return StoredProduct
-                .builder().key("standards/adam/adamig-1-3").name(
-                        "ADaMIG")
-                .version("1-3")
+                .builder().key("standards/adam/adamig-1-3").name("ADaMIG").version(
+                        "1-3")
                 .dataStructures(List.of(new StoredDataStructure("ADSL", "Subject Level", "1",
                         "ADSL", null, List.of(new StoredVariableSet("Identifiers", "Identifiers",
-                                "1", List.of(trtp))))))
+                                "1", List.of(trtp), null)),
+                        null)))
                 .build();
     }
 

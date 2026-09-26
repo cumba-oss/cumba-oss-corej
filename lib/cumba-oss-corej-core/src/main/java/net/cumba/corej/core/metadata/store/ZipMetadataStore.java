@@ -1,5 +1,6 @@
 package net.cumba.corej.core.metadata.store;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -25,6 +26,16 @@ import java.util.zip.ZipFile;
  * is replaced atomically as a whole file (plan §5.2), so a structurally suspect one is corruption,
  * never a state to limp along with.
  * </p>
+ *
+ * <p>
+ * ⭐ The format VERSION is read first, and alone (PLAN-define-ct-evaluation D-16, owner 2026-09-25):
+ * {@code manifest.json} is opened by name, its {@code formatVersion} is read as a bare tree, and a
+ * store of any other version is refused with {@link StoreFormatException} before any other entry is
+ * decompressed, before the manifest is bound to {@link StoreManifest} and before a single part hash
+ * is checked. So an old store — or a future one whose manifest this {@code StoreManifest} cannot
+ * even bind — always surfaces as "format N", never as a binding error or a hash mismatch, and can
+ * never be read with the fields it lacks silently empty.
+ * </p>
  */
 final class ZipMetadataStore implements MetadataStore
 {
@@ -47,22 +58,47 @@ final class ZipMetadataStore implements MetadataStore
     /** Opens and fully loads the store at {@code aStore}; see {@link MetadataStore#open(Path)}. */
     static ZipMetadataStore open(Path aStore) throws IOException
     {
-        Map<String, byte[]> entries = readEntries(aStore);
-        byte[] manifestBytes = entries.remove(StoreFormat.ENTRY_MANIFEST);
-        if (manifestBytes == null)
+        try (ZipFile zip = new ZipFile(aStore.toFile()))
         {
-            throw new IOException(aStore + " is not a metadata store: no "
-                    + StoreFormat.ENTRY_MANIFEST + " entry");
+            ZipEntry manifestEntry = zip.getEntry(StoreFormat.ENTRY_MANIFEST);
+            if (manifestEntry == null)
+            {
+                throw new IOException(aStore + " is not a metadata store: no "
+                        + StoreFormat.ENTRY_MANIFEST + " entry");
+            }
+            byte[] manifestBytes;
+            try (InputStream in = zip.getInputStream(manifestEntry))
+            {
+                manifestBytes = in.readAllBytes();
+            }
+            // Version first, and alone (D-16): decided on the raw tree, before the manifest is
+            // bound and before any other entry is touched.
+            int found = formatVersionOf(manifestBytes, aStore);
+            if (found != StoreFormat.FORMAT_VERSION)
+            {
+                throw new StoreFormatException(aStore, found, StoreFormat.FORMAT_VERSION);
+            }
+            Map<String, byte[]> entries = readEntries(zip);
+            entries.remove(StoreFormat.ENTRY_MANIFEST);
+            StoreManifest manifest = StoreFormat.mapper().readValue(manifestBytes,
+                    StoreManifest.class);
+            verifyParts(manifest, entries);
+            return new ZipMetadataStore(manifest, readProducts(entries), readCtPackages(entries));
         }
-        StoreManifest manifest = StoreFormat.mapper().readValue(manifestBytes, StoreManifest.class);
-        if (manifest.formatVersion() != StoreFormat.FORMAT_VERSION)
+    }
+
+
+    /** The manifest's {@code formatVersion}, read as a bare tree so no other field is bound. */
+    private static int formatVersionOf(byte[] aManifest, Path aStore) throws IOException
+    {
+        JsonNode version = StoreFormat.mapper().readTree(aManifest)
+                .path(StoreFormat.MANIFEST_FORMAT_VERSION);
+        if (!version.isInt())
         {
-            throw new IOException("unsupported metadata store format version "
-                    + manifest.formatVersion() + " (this reader knows " + StoreFormat.FORMAT_VERSION
-                    + "); re-seed the store");
+            throw new IOException(aStore + " is not a metadata store: " + StoreFormat.ENTRY_MANIFEST
+                    + " carries no integer " + StoreFormat.MANIFEST_FORMAT_VERSION);
         }
-        verifyParts(manifest, entries);
-        return new ZipMetadataStore(manifest, readProducts(entries), readCtPackages(entries));
+        return version.intValue();
     }
 
 
@@ -124,25 +160,22 @@ final class ZipMetadataStore implements MetadataStore
 
 
     /** Reads every zip entry's uncompressed bytes, preserving zip order. */
-    private static Map<String, byte[]> readEntries(Path aStore) throws IOException
+    private static Map<String, byte[]> readEntries(ZipFile aZip) throws IOException
     {
         Map<String, byte[]> entries = new LinkedHashMap<>();
-        try (ZipFile zip = new ZipFile(aStore.toFile()))
+        Enumeration<? extends ZipEntry> names = aZip.entries();
+        while (names.hasMoreElements())
         {
-            Enumeration<? extends ZipEntry> names = zip.entries();
-            while (names.hasMoreElements())
+            ZipEntry entry = names.nextElement();
+            if (entry.isDirectory())
             {
-                ZipEntry entry = names.nextElement();
-                if (entry.isDirectory())
+                continue;
+            }
+            try (InputStream in = aZip.getInputStream(entry))
+            {
+                if (entries.put(entry.getName(), in.readAllBytes()) != null)
                 {
-                    continue;
-                }
-                try (InputStream in = zip.getInputStream(entry))
-                {
-                    if (entries.put(entry.getName(), in.readAllBytes()) != null)
-                    {
-                        throw new IOException("duplicate zip entry: " + entry.getName());
-                    }
+                    throw new IOException("duplicate zip entry: " + entry.getName());
                 }
             }
         }
@@ -342,7 +375,7 @@ final class ZipMetadataStore implements MetadataStore
                 members.add(aTerms[id]);
             }
             codelists[i] = new StoredCodelist(header.submissionValue(), header.conceptId(),
-                    header.preferredTerm(), header.definition(), header.synonyms(),
+                    header.name(), header.preferredTerm(), header.definition(), header.synonyms(),
                     header.extensible(), members);
         }
         expectExhausted(in, StoreFormat.ENTRY_CT_CODELISTS_BIN);

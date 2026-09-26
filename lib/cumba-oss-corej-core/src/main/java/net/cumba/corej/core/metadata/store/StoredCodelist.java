@@ -8,11 +8,15 @@ import org.jspecify.annotations.Nullable;
  * (AUDIT-metadata-reachable-fields.md §2) plus its terms.
  *
  * <p>
- * The source's display {@code name} is deliberately NOT here (audit §2: excluded — the id is
- * threaded at package level). {@code definition} and {@code synonyms} are stored though unread by
- * either engine (owner ruling 2026-09-08). {@code extensible} is a real {@link Boolean}, not the
- * API's string — the store's canonical form is the engine's own model, not the wire format (plan
- * §5.1); {@code null} means the source did not publish it.
+ * The source's display {@code name} ({@code "Sex"} for {@code C66731}) is stored since format 3
+ * (PLAN-define-ct-evaluation T1-3 b, owner 2026-09-25: <i>"add name to StoredCodelist. We are the
+ * store owner and if this is needed for a rule, we should support this"</i>) — PMDA-DD0031 finds a
+ * CT codelist by its name ({@code StoreCtProvider.codelistByName}). It used to be the one
+ * codelist-level field the source publishes that the store dropped. {@code definition} and
+ * {@code synonyms} are stored though unread by either engine (owner ruling 2026-09-08).
+ * {@code extensible} is a real {@link Boolean}, not the API's string — the store's canonical form
+ * is the engine's own model, not the wire format (plan §5.1); {@code null} means the source did not
+ * publish it.
  * </p>
  *
  * <p>
@@ -23,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  * </p>
  */
 public record StoredCodelist(@Nullable String submissionValue, @Nullable String conceptId,
-        @Nullable String preferredTerm, @Nullable String definition,
+        @Nullable String name, @Nullable String preferredTerm, @Nullable String definition,
         @Nullable List<String> synonyms, @Nullable Boolean extensible, List<StoredTerm> terms)
 {
 

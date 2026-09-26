@@ -43,9 +43,16 @@ public final class ScenarioLibraryResolver
 
     /**
      * Resolve {@code aRef} to a real provider, or {@link Optional#empty()} when no metadata store
-     * is configured, it cannot be opened, or it lacks the referenced product. Never throws — an
-     * unreadable store is logged and treated as unavailable (the caller's skip gate), preserving
-     * the no-throw contract of the {@code buildOrDegraded()} call this replaces.
+     * is configured, it cannot be opened, or it lacks the referenced product. An unreadable store
+     * is logged and treated as unavailable (the caller's skip gate), preserving the no-throw
+     * contract of the {@code buildOrDegraded()} call this replaces — with ONE exception: an
+     * OLD-FORMAT store THROWS (PLAN-define-ct-evaluation T1-10 a / S17). Under a stale store
+     * "unavailable" would skip every {@code #library-ref} scenario and leave the corpus gate green
+     * over a store nothing can read; a format bump is a stop, not a skip.
+     *
+     * @throws java.io.UncheckedIOException
+     *             when the configured store is of another format version, naming the store and the
+     *             re-seed
      */
     public static Optional<MetadataProvider> resolve(LibraryRef aRef)
     {
@@ -58,6 +65,12 @@ public final class ScenarioLibraryResolver
         try
         {
             factory = StoreMetadataProviderFactory.open(file);
+        }
+        catch (net.cumba.corej.core.metadata.store.StoreFormatException e)
+        {
+            throw new java.io.UncheckedIOException("Configured metadata store " + file
+                    + " cannot serve #library-ref scenarios: " + e.getMessage()
+                    + " (an old-format store fails the scenario; it never skips it)", e);
         }
         catch (IOException e)
         {

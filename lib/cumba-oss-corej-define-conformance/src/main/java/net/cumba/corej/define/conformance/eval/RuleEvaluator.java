@@ -59,7 +59,8 @@ public final class RuleEvaluator
         {
             return RuleResult.skipped(aRule, ExecutionStatus.NOT_APPLICABLE_VERSION);
         }
-        if (aRule.requires() == Requires.CT && aContext.ctProvider().isEmpty())
+        if (aRule.requires() == Requires.CT && (aContext.ctProvider().isEmpty()
+                || !canServe(aRule.check(), aContext.ctProvider().get())))
         {
             return RuleResult.skipped(aRule, ExecutionStatus.SKIPPED_MISSING_CT);
         }
@@ -604,9 +605,39 @@ public final class RuleEvaluator
 
     // ------------------------------------------------------------------
     // CT-backed kinds (plan §3.3/§3.6) — reached only for rules declaring
-    // Requires: ct, so the provider is present; a kind evaluated without one
-    // is an authoring error and fails loudly (mirrors fileExists' orElseThrow).
+    // Requires: ct that passed the two capability gates in canServe(), so
+    // the provider is present AND can answer this rule; a kind evaluated
+    // without one is an authoring error and fails loudly (mirrors
+    // fileExists' orElseThrow). The per-node `continue`s below stay: they
+    // cover the per-document "this CodeList is sponsor-defined, not CT" case,
+    // which is correctly out of reach and not a skip.
     // ------------------------------------------------------------------
+
+
+    /**
+     * The two per-rule capability gates behind the {@code Requires: ct} skip: a bound CT that
+     * cannot answer THIS rule must skip it visibly, never execute it vacuously.
+     *
+     * <ul>
+     * <li>a {@code term_in_ct_codelist} rule naming an explicit {@code cCode} the provider does not
+     * hold — without the gate {@code termInCtCodelist}'s {@code continue} past an unknown codelist
+     * would green the five explicit-c-code rules whenever the Define-XML CT is not bound;</li>
+     * <li>a codelist-level {@code nci_alias_required} rule on a provider without
+     * {@link CtProvider#hasNameLookup() name lookup} — its empty {@code codelistByName} default
+     * would execute the rule and never let it fire.</li>
+     * </ul>
+     */
+    private static boolean canServe(CheckDefinition aCheck, CtProvider aProvider)
+    {
+        return switch (aCheck)
+        {
+        case CheckDefinition.TermInCtCodelist c when c.cCode() != null -> aProvider
+                .codelistByCCode(c.cCode()).isPresent();
+        case CheckDefinition.NciAliasRequired c when "codelist".equals(c.level()) -> aProvider
+                .hasNameLookup();
+        default -> true;
+        };
+    }
 
 
     private static List<ConformanceFinding> termInCtCodelist(ConformanceRule aRule,
@@ -930,8 +961,10 @@ public final class RuleEvaluator
 
     /**
      * PMDA DD0118: the nci:ExtCodeID c-code of the codelist a variable references must match the
-     * c-code of the codelist the library assigns to that variable. A CodeList without the alias is
-     * DD0031's beat and out of reach here.
+     * c-code of ONE of the codelists the library assigns to that variable — 21 real SDTMIG/SENDIG
+     * variables carry two to five (SDTMIG 3.3 {@code DS.DSDECOD}: {@code C114118}, {@code C66727}),
+     * and a define that uses the second one is conformant. A CodeList without the alias is DD0031's
+     * beat and out of reach here.
      */
     private static List<ConformanceFinding> libraryCodelistCCode(ConformanceRule aRule,
             List<ElementNode> aNodes, DocumentContext aContext)
@@ -945,17 +978,17 @@ public final class RuleEvaluator
             {
                 continue;
             }
-            Optional<String> libraryCode = library.variableCodelistCCode(binding.standard().name(),
+            List<String> libraryCodes = library.variableCodelistCCodes(binding.standard().name(),
                     binding.standard().version(), binding.dataset(), binding.variable());
             Optional<String> documentCode = binding.itemDef().children("CodeListRef").stream()
                     .findFirst().flatMap(ref -> ref.attribute("CodeListOID"))
                     .flatMap(oid -> aContext.oidResolver().resolve("CodeList", "OID", oid))
                     .flatMap(RuleEvaluator::nciCodeOf);
-            if (libraryCode.isPresent() && documentCode.isPresent()
-                    && !documentCode.get().equals(libraryCode.get()))
+            if (!libraryCodes.isEmpty() && documentCode.isPresent()
+                    && !libraryCodes.contains(documentCode.get()))
             {
                 findings.add(finding(aRule, node, binding.variable() + ": " + documentCode.get()
-                        + " vs " + libraryCode.get()));
+                        + " vs " + String.join(", ", libraryCodes)));
             }
         }
         return findings;

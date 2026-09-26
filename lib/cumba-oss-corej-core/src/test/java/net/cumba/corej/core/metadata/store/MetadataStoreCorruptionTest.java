@@ -1,5 +1,6 @@
 package net.cumba.corej.core.metadata.store;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -93,12 +94,15 @@ class MetadataStoreCorruptionTest
             String manifest = new String(entries.get(StoreFormat.ENTRY_MANIFEST),
                     StandardCharsets.UTF_8);
             entries.put(StoreFormat.ENTRY_MANIFEST,
-                    manifest.replace("\"formatVersion\" : 2", "\"formatVersion\" : 99")
+                    manifest.replace("\"formatVersion\" : 3", "\"formatVersion\" : 99")
                             .getBytes(StandardCharsets.UTF_8));
             return entries;
         });
-        IOException failure = assertThrows(IOException.class, () -> MetadataStore.open(damaged));
-        assertTrue(failure.getMessage().contains("format version 99"), failure.getMessage());
+        StoreFormatException failure = assertThrows(StoreFormatException.class,
+                () -> MetadataStore.open(damaged));
+        assertEquals(99, failure.foundVersion());
+        assertEquals(StoreFormat.FORMAT_VERSION, failure.knownVersion());
+        assertTrue(failure.getMessage().contains("format 99"), failure.getMessage());
     }
 
 

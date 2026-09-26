@@ -52,4 +52,11 @@ public final class StubCtProvider implements CtProvider
         return Optional.ofNullable(BY_NAME.get(aName));
     }
 
+
+    @Override
+    public boolean hasNameLookup()
+    {
+        return true;
+    }
+
 }

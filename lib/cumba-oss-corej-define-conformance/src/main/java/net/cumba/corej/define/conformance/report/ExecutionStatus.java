@@ -10,7 +10,11 @@ public enum ExecutionStatus
     /** The rule ran against the document (it may or may not have produced findings). */
     EXECUTED,
 
-    /** The rule declares {@code Requires: ct} and no {@code CtProvider} was supplied. */
+    /**
+     * The rule declares {@code Requires: ct} and either no {@code CtProvider} was supplied, or the
+     * supplied provider cannot serve this rule (it lacks the codelist the rule names explicitly, or
+     * offers no name lookup for a name-keyed rule). The run's CT-basis line says which.
+     */
     SKIPPED_MISSING_CT,
 
     /** The rule declares {@code Requires: folder} and no submission folder was supplied. */

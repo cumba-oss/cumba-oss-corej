@@ -71,6 +71,7 @@ public final class MetadataStoreWriter
     private static final Comparator<CodelistVersion> CODELIST_ORDER = Comparator
             .comparing(CodelistVersion::submissionValue, NULLS_FIRST)
             .thenComparing(CodelistVersion::conceptId, NULLS_FIRST)
+            .thenComparing(CodelistVersion::name, NULLS_FIRST)
             .thenComparing(CodelistVersion::preferredTerm, NULLS_FIRST)
             .thenComparing(CodelistVersion::definition, NULLS_FIRST)
             .thenComparing(CodelistVersion::synonyms, STRING_LIST_ORDER)
@@ -286,8 +287,8 @@ public final class MetadataStoreWriter
                 previous = id;
             }
             headers.add(new StoreFormat.CodelistHeader(version.submissionValue(),
-                    version.conceptId(), version.preferredTerm(), version.definition(),
-                    version.synonyms(), version.extensible(), ids.size()));
+                    version.conceptId(), version.name(), version.preferredTerm(),
+                    version.definition(), version.synonyms(), version.extensible(), ids.size()));
         }
         aParts.put(StoreFormat.ENTRY_CT_CODELISTS_BIN, codelistsBin.toByteArray());
         aParts.put(StoreFormat.ENTRY_CT_CODELISTS_JSON,
@@ -308,12 +309,13 @@ public final class MetadataStoreWriter
     }
 
     /**
-     * A codelist version's dedup identity: the header fields plus the sorted, deduplicated term-id
-     * list. Two codelists with identical content — common, since CT packages are cumulative
+     * A codelist version's dedup identity: the header fields ({@code name} included since format 3
+     * — two codelists differing only by name must not collapse) plus the sorted, deduplicated
+     * term-id list. Two codelists with identical content — common, since CT packages are cumulative
      * snapshots — collapse onto one version id.
      */
     private record CodelistVersion(@Nullable String submissionValue, @Nullable String conceptId,
-            @Nullable String preferredTerm, @Nullable String definition,
+            @Nullable String name, @Nullable String preferredTerm, @Nullable String definition,
             @Nullable List<String> synonyms, @Nullable Boolean extensible, List<Integer> termIds)
     {
 
@@ -322,8 +324,8 @@ public final class MetadataStoreWriter
             List<Integer> ids = aCodelist.terms().stream().map(aTermIds::get).distinct().sorted()
                     .toList();
             return new CodelistVersion(aCodelist.submissionValue(), aCodelist.conceptId(),
-                    aCodelist.preferredTerm(), aCodelist.definition(), aCodelist.synonyms(),
-                    aCodelist.extensible(), ids);
+                    aCodelist.name(), aCodelist.preferredTerm(), aCodelist.definition(),
+                    aCodelist.synonyms(), aCodelist.extensible(), ids);
         }
     }
 }

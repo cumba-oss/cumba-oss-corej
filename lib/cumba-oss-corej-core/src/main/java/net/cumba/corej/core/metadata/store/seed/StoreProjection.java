@@ -11,7 +11,10 @@ import net.cumba.corej.core.metadata.store.StoredCodelist;
 import net.cumba.corej.core.metadata.store.StoredCtPackage;
 import net.cumba.corej.core.metadata.store.StoredDataStructure;
 import net.cumba.corej.core.metadata.store.StoredDataset;
+import net.cumba.corej.core.metadata.store.StoredDomain;
+import net.cumba.corej.core.metadata.store.StoredField;
 import net.cumba.corej.core.metadata.store.StoredProduct;
+import net.cumba.corej.core.metadata.store.StoredScenario;
 import net.cumba.corej.core.metadata.store.StoredTerm;
 import net.cumba.corej.core.metadata.store.StoredVariable;
 import net.cumba.corej.core.metadata.store.StoredVariableSet;
@@ -41,8 +44,12 @@ import org.jspecify.annotations.Nullable;
  * <li>{@code _links.codelist}: an ARRAY of refs (audit §3 correction), each reduced to its trailing
  * id segment;</li>
  * <li>an ADaM structure's {@code class} key lands in {@link StoredDataStructure#className()};</li>
- * <li>Python-only keys ({@code dataset_names}, {@code standard_type}) and all other {@code _links}
- * internals are simply never read.</li>
+ * <li>Python-only keys ({@code dataset_names}, {@code standard_type} — added by the Python cache
+ * builder, absent from the API documents) and all other {@code _links} internals are simply never
+ * read. Everything else the pickles publish IS read, at every level, since format 3
+ * (PLAN-define-ct-evaluation T1-9); the manifest's {@code excluded} blocks record the two
+ * exceptions per level, and {@code StoreFieldManifestTest} leg 5 reds on a source key that is in
+ * neither list.</li>
  * </ul>
  *
  * <p>
@@ -78,8 +85,10 @@ final class StoreProjection
      * @param aId
      *            the package id ({@code sdtmct-2024-09-27})
      * @param aPackage
-     *            the package document; only {@code codelists} is read (audit §2 — every other
-     *            package-level field has zero call sites)
+     *            the package document; only {@code codelists} is read. The pickles carry nothing
+     *            else but the id echo ({@code package}); the API's package-level {@code name},
+     *            {@code version} and {@code effectiveDate} are API-only and stay out
+     *            (PLAN-define-ct-evaluation T1-9: the pickle cache is the universe)
      * @return the stored package
      */
     StoredCtPackage ctPackage(String aId, JsonNode aPackage)
@@ -141,10 +150,19 @@ final class StoreProjection
         {
             structures.add(dataStructure(structure));
         }
+        List<StoredDomain> domains = new ArrayList<>();
+        for (JsonNode domain : array(aProduct, "domains"))
+        {
+            domains.add(domain(domain));
+        }
         return StoredProduct.builder().key(aKey).name(text(aProduct, "name"))
                 .label(text(aProduct, "label")).version(text(aProduct, "version"))
-                .modelHref(text(aProduct.path("_links").path("model"), "href")).classes(classes)
-                .datasets(datasets).dataStructures(structures).build();
+                .modelHref(text(aProduct.path("_links").path("model"), "href"))
+                .description(text(aProduct, "description"))
+                .effectiveDate(text(aProduct, "effectiveDate"))
+                .registrationStatus(text(aProduct, "registrationStatus"))
+                .source(text(aProduct, "source")).classes(classes).datasets(datasets)
+                .dataStructures(structures).domains(domains).build();
     }
 
 
@@ -159,9 +177,9 @@ final class StoreProjection
             terms.add(termPool.computeIfAbsent(projected, t -> t));
         }
         StoredCodelist projected = new StoredCodelist(text(aCodelist, "submissionValue"),
-                text(aCodelist, "conceptId"), text(aCodelist, "preferredTerm"),
-                text(aCodelist, "definition"), stringList(aCodelist, "synonyms"),
-                extensible(aCodelist), terms);
+                text(aCodelist, "conceptId"), text(aCodelist, "name"),
+                text(aCodelist, "preferredTerm"), text(aCodelist, "definition"),
+                stringList(aCodelist, "synonyms"), extensible(aCodelist), terms);
         return codelistPool.computeIfAbsent(projected, c -> c);
     }
 
@@ -178,8 +196,69 @@ final class StoreProjection
         {
             datasets.add(dataset(dataset));
         }
+        List<StoredDomain> domains = new ArrayList<>();
+        for (JsonNode domain : array(aClass, "domains"))
+        {
+            domains.add(domain(domain));
+        }
+        List<StoredScenario> scenarios = new ArrayList<>();
+        for (JsonNode scenario : array(aClass, "scenarios"))
+        {
+            scenarios.add(scenario(scenario));
+        }
+        List<StoredField> modelFields = new ArrayList<>();
+        for (JsonNode field : array(aClass, "cdashModelFields"))
+        {
+            modelFields.add(field(field));
+        }
         return new StoredClass(text(aClass, "name"), text(aClass, "label"), text(aClass, "ordinal"),
-                classVariables, datasets);
+                classVariables, datasets, text(aClass, "description"), domains, scenarios,
+                modelFields);
+    }
+
+
+    /** A CDASH domain (a CDASH IG class's or a CDASH model's {@code domains[]} entry). */
+    private StoredDomain domain(JsonNode aDomain)
+    {
+        List<StoredField> fields = new ArrayList<>();
+        for (JsonNode field : array(aDomain, "fields"))
+        {
+            fields.add(field(field));
+        }
+        return new StoredDomain(text(aDomain, "name"), text(aDomain, "label"),
+                text(aDomain, "ordinal"), text(aDomain, "description"), fields);
+    }
+
+
+    /** A CDASH IG scenario (a class's {@code scenarios[]} entry). */
+    private StoredScenario scenario(JsonNode aScenario)
+    {
+        List<StoredField> fields = new ArrayList<>();
+        for (JsonNode field : array(aScenario, "fields"))
+        {
+            fields.add(field(field));
+        }
+        return new StoredScenario(text(aScenario, "scenario"), text(aScenario, "domain"),
+                text(aScenario, "domainName"), text(aScenario, "ordinal"), fields);
+    }
+
+
+    /**
+     * A CDASH field — the scalar union of domain, scenario and model-class fields. Its
+     * {@code _links.codelist} is deliberately not projected (T1-9 keeps {@code _links} out).
+     */
+    private static StoredField field(JsonNode aField)
+    {
+        return StoredField.builder().name(text(aField, "name")).label(text(aField, "label"))
+                .ordinal(text(aField, "ordinal")).core(text(aField, "core"))
+                .definition(text(aField, "definition"))
+                .simpleDatatype(text(aField, "simpleDatatype"))
+                .codelistSubmissionValues(stringList(aField, "codelistSubmissionValues"))
+                .completionInstructions(text(aField, "completionInstructions"))
+                .implementationNotes(text(aField, "implementationNotes"))
+                .mappingInstructions(text(aField, "mappingInstructions"))
+                .prompt(text(aField, "prompt")).questionText(text(aField, "questionText"))
+                .domainSpecific(text(aField, "domainSpecific")).build();
     }
 
 
@@ -191,7 +270,8 @@ final class StoreProjection
             variables.add(variable(variable));
         }
         return new StoredDataset(text(aDataset, "name"), text(aDataset, "label"),
-                text(aDataset, "ordinal"), text(aDataset, "datasetStructure"), variables);
+                text(aDataset, "ordinal"), text(aDataset, "datasetStructure"), variables,
+                text(aDataset, "description"), text(aDataset, "status"));
     }
 
 
@@ -206,11 +286,11 @@ final class StoreProjection
                 variables.add(variable(variable));
             }
             sets.add(new StoredVariableSet(text(set, "name"), text(set, "label"),
-                    text(set, "ordinal"), variables));
+                    text(set, "ordinal"), variables, text(set, "description")));
         }
         return new StoredDataStructure(text(aStructure, "name"), text(aStructure, "label"),
                 text(aStructure, "ordinal"), text(aStructure, "class"),
-                text(aStructure, "subClass"), sets);
+                text(aStructure, "subClass"), sets, text(aStructure, "description"));
     }
 
 

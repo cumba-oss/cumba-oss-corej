@@ -117,6 +117,39 @@ class StudyValidationServiceStoreProviderTest
     }
 
 
+    /**
+     * T1-10 (a), PLAN-define-ct-evaluation: an OLD-FORMAT store is the one store-open failure that
+     * is NOT the R2 degraded run. A format bump hits every user on the same upgrade, and under R2
+     * every one of them would silently lose the library-dependent rules until they read a log — so
+     * the run ABORTS, naming the file, the format found and "re-seed". The store that is not a zip
+     * (above) still degrades: that is a per-user accident, and R2 is unchanged for it.
+     */
+    @Test
+    void aFormat2StoreAbortsTheRunNamingTheReseed() throws IOException
+    {
+        Path old = temp.resolve("format-v2.zip");
+        try (java.io.InputStream in = getClass()
+                .getResourceAsStream("/metadata/store/format-v2.zip"))
+        {
+            assertNotNull(in, "the committed format-2 fixture is on the test classpath");
+            Files.copy(in, old);
+        }
+        System.setProperty(StoreMetadataProviderFactory.STORE_PROPERTY, old.toString());
+
+        StudyValidationException abort = org.junit.jupiter.api.Assertions.assertThrows(
+                StudyValidationException.class,
+                () -> tryStore(params(), StandardKind.SDTM, List.of(),
+                        RunStandard.of("standards/sdtmig/3-4")),
+                "an old-format store must ABORT the run (T1-10 a), never degrade it (R2)");
+        assertTrue(abort.getMessage().contains(old.toString()), abort.getMessage());
+        assertTrue(abort.getMessage().contains("format 2"), abort.getMessage());
+        assertTrue(abort.getMessage().contains("re-seed"), abort.getMessage());
+        assertTrue(abort
+                .getCause() instanceof net.cumba.corej.core.metadata.store.StoreFormatException,
+                "the typed cause travels, so every surface can append its own remedy");
+    }
+
+
     private StudyValidationParams params()
     {
         return StudyValidationParams.builder().manager(mock(IDataTableManager.class))
@@ -174,22 +207,24 @@ class StudyValidationServiceStoreProviderTest
         StoredVariable studyid = StoredVariable.builder().name("STUDYID").ordinal("1").core("Req")
                 .simpleDatatype("Char").build();
         StoredProduct ig = StoredProduct.builder().key("standards/sdtmig/3-4").version("3-4")
-                .classes(List.of(new StoredClass("SpecialPurpose", null, "1", List.of(), List
-                        .of(new StoredDataset("DM", "Demographics", "1", null, List.of(studyid))))))
+                .classes(List.of(new StoredClass(
+                        "SpecialPurpose", null, "1", List.of(), List.of(new StoredDataset("DM",
+                                "Demographics", "1", null, List.of(studyid), null, null)),
+                        null, List.of(), List.of(), List.of())))
                 .build();
-        StoredProduct adam = StoredProduct
-                .builder().key("standards/adam/adamig-1-3").version(
-                        "1-3")
+        StoredProduct adam = StoredProduct.builder().key("standards/adam/adamig-1-3").version("1-3")
                 .dataStructures(
                         List.of(new StoredDataStructure("ADSL", null, "1",
-                                "SUBJECT LEVEL ANALYSIS DATASET", null, List
-                                        .of(new StoredVariableSet("Identifier", null, "1",
-                                                List.of(StoredVariable.builder().name("USUBJID")
-                                                        .ordinal("1").core("Req").build()))))))
+                                "SUBJECT LEVEL ANALYSIS DATASET", null,
+                                List.of(new StoredVariableSet("Identifier", null, "1",
+                                        List.of(StoredVariable.builder().name("USUBJID")
+                                                .ordinal("1").core("Req").build()),
+                                        null)),
+                                null)))
                 .build();
         StoredCtPackage ct = new StoredCtPackage("sdtmct-2024-09-27",
-                List.of(new StoredCodelist("NY", "C66742", null, null, null, Boolean.FALSE,
-                        List.of(new StoredTerm("N", "C49487", "No", null, null),
+                List.of(new StoredCodelist("NY", "C66742", "No Yes Response", null, null, null,
+                        Boolean.FALSE, List.of(new StoredTerm("N", "C49487", "No", null, null),
                                 new StoredTerm("Y", "C49488", "Yes", null, null)))));
         new MetadataStoreWriter().addProduct(ig).addProduct(adam).addCtPackage(ct)
                 .publishedCtPackages(PUBLISHED)

@@ -37,6 +37,14 @@ final class StoreFormat
      * The current on-disk format version.
      *
      * <p>
+     * <b>3</b> (2026-09-26) — the codelist {@code name}, the product-level scalars
+     * ({@code description}/{@code effectiveDate}/{@code registrationStatus}/{@code source}; class
+     * {@code description}; dataset {@code description}/{@code status}; data-structure and
+     * variable-set {@code description}) and the CDASH domain/scenario/field levels
+     * (PLAN-define-ct-evaluation T1-3 b, T1-9: every pickle field bar {@code _links} and the Python
+     * cache builder's additions). A v2 store holds none of them and is REFUSED with
+     * {@link StoreFormatException} — never read with them empty (T1-10 a). The version is read
+     * FIRST, before any other entry is decompressed or the manifest is bound (D-16).<br>
      * <b>2</b> (2026-09-08) — {@code StoredVariable.examples} became a scalar {@code String}; a
      * version-1 store could hold it as a JSON array, which this reader would refuse to bind. Every
      * v1 store in existence in fact holds {@code null} there (the v1 writer's array-only reader
@@ -45,9 +53,15 @@ final class StoreFormat
      * <b>1</b> — the initial layout.
      * </p>
      */
-    static final int FORMAT_VERSION = 2;
+    static final int FORMAT_VERSION = 3;
 
     static final String ENTRY_MANIFEST = "manifest.json";
+
+    /**
+     * The manifest's version field, the first thing a reader looks at — read as a bare tree so a
+     * manifest of any other shape still yields its version (D-16).
+     */
+    static final String MANIFEST_FORMAT_VERSION = "formatVersion";
 
     static final String ENTRY_CT_TERMS = "ct/terms.bin";
 
@@ -134,7 +148,7 @@ final class StoreFormat
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     record CodelistHeader(@Nullable String submissionValue, @Nullable String conceptId,
-            @Nullable String preferredTerm, @Nullable String definition,
+            @Nullable String name, @Nullable String preferredTerm, @Nullable String definition,
             @Nullable List<String> synonyms, @Nullable Boolean extensible, int termCount)
     {
     }

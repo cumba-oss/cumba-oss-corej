@@ -123,6 +123,77 @@ class StoreSeederRealDataConformanceTest
 
 
     /**
+     * NS3 (PLAN-define-ct-evaluation, T1-3 b / T1-9): the fields the format-3 bump admitted really
+     * arrive from the REAL pickle corpus — asserted on the zip's own JSON, never through the
+     * records, so this compiles against any format and reds by assertion, not by compilation. The
+     * codelist {@code name} was the one field the source publishes at codelist level that the store
+     * dropped (41 852 / 41 852 codelists carry it); the product scalars and the CDASH
+     * domain/scenario/field levels are the T1-9 additions.
+     */
+    @Test
+    void theRealSeedCarriesEveryFieldTheFormatBumpAdmitted() throws IOException
+    {
+        assumeTrue(RealCorpusLocator.locate().isPresent(), RealCorpusLocator.ABSENT_MESSAGE);
+        Path realPickles = RealCorpusLocator.locate().orElseThrow();
+        Path store = temp.resolve("pickles-only.zip");
+        new PickleStoreSeeder(new LocalPickleSource(realPickles))
+                .seed(StoreSeedOptions.of(store).withProvenanceOverride(FIXED_PROVENANCE));
+
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(store.toFile()))
+        {
+            com.fasterxml.jackson.databind.JsonNode headers = mapper
+                    .readTree(zip.getInputStream(zip.getEntry("ct/codelists.json")))
+                    .get("codelists");
+            int nullName = 0;
+            int sexVersions = 0;
+            for (com.fasterxml.jackson.databind.JsonNode header : headers)
+            {
+                if (!header.hasNonNull("name"))
+                {
+                    nullName++;
+                }
+                if ("C66731".equals(header.path("conceptId").asText()))
+                {
+                    sexVersions++;
+                    assertEquals("Sex", header.path("name").asText(),
+                            "the SEX codelist's display name, as sdtmct-2024-03-29.pkl publishes it");
+                }
+            }
+            assertTrue(sexVersions >= 1, "C66731 must be among the codelist versions");
+            assertEquals(0, nullName, "every codelist header carries its name (T1-3 b)");
+
+            com.fasterxml.jackson.databind.JsonNode sdtmig = mapper.readTree(
+                    zip.getInputStream(zip.getEntry("products/standards/sdtmig/3-4.json")));
+            assertTrue(sdtmig.hasNonNull("description") && sdtmig.hasNonNull("effectiveDate"),
+                    "the product scalars the source publishes are stored (T1-9): " + sdtmig);
+
+            com.fasterxml.jackson.databind.JsonNode cdashig = mapper.readTree(
+                    zip.getInputStream(zip.getEntry("products/standards/cdashig/2-3.json")));
+            int domains = 0;
+            int scenarios = 0;
+            int fields = 0;
+            for (com.fasterxml.jackson.databind.JsonNode clazz : cdashig.path("classes"))
+            {
+                for (com.fasterxml.jackson.databind.JsonNode domain : clazz.path("domains"))
+                {
+                    domains++;
+                    fields += domain.path("fields").size();
+                }
+                for (com.fasterxml.jackson.databind.JsonNode scenario : clazz.path("scenarios"))
+                {
+                    scenarios++;
+                    fields += scenario.path("fields").size();
+                }
+            }
+            assertTrue(domains > 0 && scenarios > 0 && fields > 0,
+                    "CDASHIG 2.3 domains/scenarios/fields are stored as levels (T1-9, S18): "
+                            + domains + "/" + scenarios + "/" + fields);
+        }
+    }
+
+
+    /**
      * Locates {@code /mdr/products} in the recorded cache, under either the name the cache uses now
      * or the pre-Q14 name the directory was recorded with.
      *

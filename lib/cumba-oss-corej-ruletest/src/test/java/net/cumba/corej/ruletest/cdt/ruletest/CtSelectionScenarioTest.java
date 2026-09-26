@@ -278,7 +278,8 @@ class CtSelectionScenarioTest
         StoredProduct ig = StoredProduct.builder().key("standards/sdtmig/3-4").version("3-4")
                 .classes(List.of(new StoredClass("Findings", null, "1", List.of(),
                         List.of(new StoredDataset("VS", "Vital Signs", "1", null,
-                                List.of(vsstat, vsageu))))))
+                                List.of(vsstat, vsageu), null, null)),
+                        null, List.of(), List.of(), List.of())))
                 .build();
         MetadataStoreWriter writer = new MetadataStoreWriter().addProduct(ig);
 
@@ -287,10 +288,12 @@ class CtSelectionScenarioTest
         for (int i = 0; i < newestFirst.size(); i++)
         {
             StoredCodelist codelist = i == 0
-                    ? new StoredCodelist("NY", "C66742", null, null, null, Boolean.FALSE,
+                    ? new StoredCodelist("NY", "C66742", "No Yes Response", null, null, null,
+                            Boolean.FALSE,
                             List.of(new StoredTerm("N", "C49487", "No", null, null),
                                     new StoredTerm("Y", "C49488", "Yes", null, null)))
-                    : new StoredCodelist("AGEU", "C66781", null, null, null, Boolean.FALSE,
+                    : new StoredCodelist("AGEU", "C66781", "Age Unit", null, null, null,
+                            Boolean.FALSE,
                             List.of(new StoredTerm("YEARS", "C29848", "Years", null, null),
                                     new StoredTerm("MONTHS", "C29846", "Months", null, null)));
             writer.addCtPackage(new StoredCtPackage(newestFirst.get(i), List.of(codelist)));

@@ -1532,6 +1532,14 @@ public final class StudyValidationService
         {
             factory = net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory.open(file);
         }
+        catch (net.cumba.corej.core.metadata.store.StoreFormatException e)
+        {
+            // T1-10 (a), PLAN-define-ct-evaluation: an OLD-FORMAT store is the one open failure
+            // that is NOT R2. A format bump hits every user on the same upgrade; degrading would
+            // silently take the library-dependent rules away from all of them. The message is the
+            // store's neutral one (m1) — each surface appends its own remedy.
+            throw new StudyValidationException(e.describe(), e);
+        }
         catch (IOException e)
         {
             // A configured store that cannot be opened is worth a loud line, but the disposition
@@ -1619,6 +1627,11 @@ public final class StudyValidationService
                     .forSdtm(c.loaderStandard(), c.loaderVersion(), List.<String> of())
                     .orElse(null);
         }
+        catch (net.cumba.corej.core.metadata.store.StoreFormatException e)
+        {
+            // T1-10 (a): same disposition as tryStoreProvider — abort, never degrade.
+            throw new StudyValidationException(e.describe(), e);
+        }
         catch (IOException e)
         {
             LOGGER.log(System.Logger.Level.WARNING,
@@ -1662,27 +1675,9 @@ public final class StudyValidationService
             net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory aFactory,
             Path aStoreFile, List<String> aNamedCtIds, CtSelection.Source aSource)
     {
-        for (String id : aNamedCtIds)
-        {
-            net.cumba.corej.core.metadata.store.Presence presence = aFactory.presence(id);
-            if (presence == net.cumba.corej.core.metadata.store.Presence.PRESENT)
-            {
-                continue;
-            }
-            String problem = presence == net.cumba.corej.core.metadata.store.Presence.MALFORMED
-                    ? "is not a valid CT package id (expected <family>ct-<yyyy-mm-dd>)"
-                    : "is not held by the metadata store at " + aStoreFile;
-            if (aSource == CtSelection.Source.DEFINE)
-            {
-                throw new StudyValidationException("The Define-XML declares "
-                        + "controlled-terminology package '" + id + "' (def:Standards), which "
-                        + problem + ". Seed the store with it, or fill the CT Packages field "
-                        + "explicitly - an explicit selection takes the define's declaration "
-                        + "out of play.");
-            }
-            throw new StudyValidationException("Controlled-terminology package '" + id
-                    + "' was requested, but it " + problem + ".");
-        }
+        // One loop and one wording for both runs (PLAN-define-ct-evaluation T1-2 a): the
+        // Define-XML conformance run applies D3 through the same helper.
+        CtPresence.requireNamedPresent(aFactory::presence, aStoreFile, aNamedCtIds, aSource);
     }
 
 

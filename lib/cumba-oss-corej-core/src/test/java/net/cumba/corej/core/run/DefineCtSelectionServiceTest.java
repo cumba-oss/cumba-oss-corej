@@ -246,7 +246,8 @@ class DefineCtSelectionServiceTest
                 .classes(List.of(new net.cumba.corej.core.metadata.store.StoredClass(
                         "SpecialPurpose", null, "1", List.of(),
                         List.of(new net.cumba.corej.core.metadata.store.StoredDataset("DM",
-                                "Demographics", "1", null, List.of(studyid))))))
+                                "Demographics", "1", null, List.of(studyid), null, null)),
+                        null, List.of(), List.of(), List.of())))
                 .build();
         net.cumba.corej.core.metadata.store.MetadataStoreWriter writer = new net.cumba.corej.core.metadata.store.MetadataStoreWriter()
                 .addProduct(ig);
@@ -254,7 +255,7 @@ class DefineCtSelectionServiceTest
         {
             writer.addCtPackage(new net.cumba.corej.core.metadata.store.StoredCtPackage(id,
                     List.of(new net.cumba.corej.core.metadata.store.StoredCodelist("NY", "C66742",
-                            null, null, null, Boolean.FALSE,
+                            "No Yes Response", null, null, null, Boolean.FALSE,
                             List.of(new net.cumba.corej.core.metadata.store.StoredTerm("N",
                                     "C49487", "No", null, null),
                                     new net.cumba.corej.core.metadata.store.StoredTerm("Y",

@@ -368,6 +368,48 @@ class LibraryKindsTest
         assertEquals(List.of("SEX: C99999 vs C66731"), values(result));
     }
 
+
+    /**
+     * D-12 (PLAN-define-ct-evaluation): a variable the IG assigns SEVERAL codelists — 21 real
+     * SDTMIG/SENDIG variables do, e.g. SDTMIG 3.3 {@code DS.DSDECOD} → {@code C114118},
+     * {@code C66727} — must be compared against ALL of them. A define that correctly uses the
+     * second one is conformant, not a mismatch against the first.
+     */
+    @Test
+    void codelistCCodeAcceptsAnyOfTheIgsCodelistsForAMultiCodelistVariable()
+    {
+        String rule = rule("ItemGroupDef/ItemRef", """
+                kind: "library_codelist_ccode_matches"
+                """);
+        RuleResult conformant = evaluate(rule, context(dsDecod("C66727")));
+        assertEquals(List.of(), values(conformant),
+                "the document uses the IG's SECOND codelist for DSDECOD - that is conformant");
+
+        RuleResult foreign = evaluate(rule, context(dsDecod("C99999")));
+        assertEquals(List.of("DSDECOD: C99999 vs C114118, C66727"), values(foreign),
+                "a c-code that is none of the IG's codelists fires, and the message lists them all");
+    }
+
+
+    /** A DS dataset whose DSDECOD codelist carries {@code aAlias} as its nci:ExtCodeID. */
+    private static String dsDecod(String aAlias)
+    {
+        return """
+                <def:Standards>
+                  <def:Standard OID="STD.IG" Name="SDTMIG" Type="IG" Version="3.4"/>
+                </def:Standards>
+                <ItemGroupDef OID="IG.DS" Name="DS" Domain="DS" def:StandardOID="STD.IG">
+                  <ItemRef ItemOID="IT.DS.DSDECOD" Mandatory="Yes"/>
+                </ItemGroupDef>
+                <ItemDef OID="IT.DS.DSDECOD" Name="DSDECOD">
+                  <CodeListRef CodeListOID="CL.DSDECOD"/>
+                </ItemDef>
+                <CodeList OID="CL.DSDECOD" Name="Completion/Reason for Non-Completion">
+                  <Alias Context="nci:ExtCodeID" Name="%s"/>
+                </CodeList>
+                """.formatted(aAlias);
+    }
+
     // ------------------------------------------------------------------
     // library_core_mandatory (CDISC 67)
     // ------------------------------------------------------------------

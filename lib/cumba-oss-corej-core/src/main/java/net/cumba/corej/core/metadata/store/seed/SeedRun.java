@@ -328,6 +328,15 @@ final class SeedRun
         {
             return MetadataStore.open(aOptions.target());
         }
+        catch (net.cumba.corej.core.metadata.store.StoreFormatException e)
+        {
+            // D-17: an old-format baseline is not carried forward at all — every CT package is
+            // re-fetched, so no name-less codelist can be smuggled into the new store.
+            warn(aOptions.target() + ": existing store is format " + e.foundVersion()
+                    + " (this build writes format " + e.knownVersion()
+                    + "): full re-seed, re-acquiring everything from the source");
+            return null;
+        }
         catch (IOException e)
         {
             warn(aOptions.target() + ": existing store is unreadable (" + e.getMessage()
