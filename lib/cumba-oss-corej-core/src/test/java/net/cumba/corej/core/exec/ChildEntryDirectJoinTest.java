@@ -284,8 +284,8 @@ class ChildEntryDirectJoinTest
      * A {@code DS.**X} operand is a {@code WILDCARD_COLUMN}, never a {@code DOTTED_REF}. In VALUE
      * position {@code ExprCompiler} reads it through a per-row dotted plan, which with no lookup
      * for the Child entry answers the not-supplied default on every row — SILENT, so stage A's
-     * Child arm now judges a literal-qualified wildcard too (M2). Both shapes are refused at load;
-     * the membership shape's run-time {@code SubstitutionException} is pinned as the backstop
+     * Child arm now judges a judgeably-qualified wildcard too (M2). Every judgeably-qualified
+     * wildcard shape is refused at load; what each does at run time without stage A is pinned
      * below.
      */
     @Test
@@ -312,7 +312,7 @@ class ChildEntryDirectJoinTest
     /**
      * The run-time picture for a package that bypasses the loader (the native expression set
      * directly, stage A never run), measured 2026-09-25 — the reason the load refusal above judges
-     * a literal-qualified wildcard at all: a {@code **} read of the Child entry is SILENT in both
+     * a judgeably-qualified wildcard at all: a {@code **} read of the Child entry is SILENT in both
      * positions (value: the not-supplied default on every row, a flood; membership: an empty set,
      * no finding), and only the {@code ${*}} list-operand shape is loud, through
      * {@code ValueResolver}'s {@code SubstitutionException}. ⚠ Review round 1 had assumed the

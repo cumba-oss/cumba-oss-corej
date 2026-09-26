@@ -590,7 +590,7 @@ class StageACheckerTest
         rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
         net.cumba.corej.core.model.Outcome outcome = new net.cumba.corej.core.model.Outcome();
         rule.setOutcome(outcome);
-        // a literal qualifier before a substituted or wildcard suffix is judged
+        // a judgeable qualifier before a substituted or wildcard suffix is judged
         outcome.setOutputVariables(List.of("AE.${QNAM}"));
         assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
                 kinds(check(rule, "QNAM == \"AESOSP\"")), "AE.${QNAM}: the prefix is literal");

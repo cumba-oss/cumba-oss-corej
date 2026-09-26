@@ -1788,7 +1788,7 @@ public final class StageAChecker
      * <p>
      * ⭐ And one refusal that is <b>not</b> deferred: a dotted read whose qualifier resolves ({@link
      * #entryFor}) to a {@code Child: true} entry ({@link StageAErrorKind#DOTTED_REF_CHILD_ENTRY},
-     * armed) — a {@code DOTTED_REF} operand, a {@code WILDCARD_COLUMN} operand with a literal
+     * armed) — a {@code DOTTED_REF} operand, a {@code WILDCARD_COLUMN} operand with a judgeable
      * qualifier ({@link #hasJudgeableQualifier}), a {@code Bindings} expression, or an {@code
      * Output_Variables} entry ({@link #checkDottedOutputVariables}). Owner ruling 2026-09-25: a
      * Child entry is joined only through its pointer and builds no direct lookup, so the read has
@@ -1806,7 +1806,8 @@ public final class StageAChecker
         }
         collectBindingDottedRefs(dotted, qualifiedWildcards);
         List<MatchDataset> entries = matches == null ? List.of() : matches;
-        // ⭐ A WILDCARD_COLUMN operand with a LITERAL qualifier (`AE.**SMIE`, `AE.${X}`) is judged
+        // ⭐ A WILDCARD_COLUMN operand with a JUDGEABLE qualifier (non-empty, no `${`, no `&`:
+        // `AE.**SMIE`, `AE.${X}`, `SUPP--.QVAL`, even `*.X`) is judged
         // by the Child arm only. It is not a DOTTED_REF, so the undeclared arm below keeps its
         // measured population; but ExprCompiler compiles it to a per-row dotted plan that reads
         // through the joined lookup, and with no lookup built for a Child entry that read is the
@@ -1915,8 +1916,8 @@ public final class StageAChecker
      * message. The authored list is read with its {@code !X} exclusions applied, so an excluded
      * name is not judged. A {@code ${...}} or {@code &TOKEN} <b>qualifier</b> is bound at run time
      * / expansion and is judged nowhere — silent at run time (the not-supplied default), an
-     * accepted gap ({@link #judgeableQualifier}); a literal qualifier before such a suffix
-     * ({@code AE.${X}}, {@code AE.**TERM}) is judged.
+     * accepted gap ({@link #judgeableQualifier}); a judgeable qualifier before such a suffix
+     * ({@code AE.${X}}, {@code AE.**TERM}, {@code SUPP--.QVAL}) is judged.
      *
      * @param entries
      *            the rule's {@code Match_Datasets}, never {@code null}

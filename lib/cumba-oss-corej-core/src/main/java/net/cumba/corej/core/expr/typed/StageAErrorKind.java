@@ -174,21 +174,22 @@ public enum StageAErrorKind
      *
      * <p>
      * Four surfaces are judged: a {@code DOTTED_REF} operand of the Check, a
-     * {@code WILDCARD_COLUMN} operand whose qualifier is a literal dataset name ({@code AE.**SMIE},
-     * {@code AE.${X}}), a {@code Bindings} expression, and an {@code Outcome.Output_Variables}
+     * {@code WILDCARD_COLUMN} operand whose qualifier is judgeable — non-empty, not a
+     * <code>${...}</code> substitution, not an {@code &TOKEN}: {@code AE.**SMIE}, {@code AE.${X}},
+     * {@code SUPP--.QVAL} —, a {@code Bindings} expression, and an {@code Outcome.Output_Variables}
      * entry (review round 1, M2 — a dotted output naming a Child entry was silently omitted from
      * every finding). The qualified wildcard is judged because it is <b>not</b> loud at run time:
      * {@code ExprCompiler} compiles it to a per-row dotted plan that reads through the joined
      * lookup, and with none built for a Child entry it answers the not-supplied default on every
-     * row (measured 2026-09-25 — {@code AE.**SMIE != "Y"} EXECUTED and fired every row, and
-     * {@code "Y" in AE.**SMIE} EXECUTED with no finding). Only the {@code ${*}} list-operand shape
-     * ({@code X in AE.AES${*}}) is loud at run time, through {@code ValueResolver}'s
-     * {@code SubstitutionException}; all three are pinned, and all three are refused here. Not
-     * judged anywhere, deliberately: an operand or output whose <em>qualifier</em> is itself a
-     * {@code ${...}} substitution or an {@code &TOKEN} ({@code ${X}.COL}) is bound at run time /
-     * expansion; on a Child entry it is silent (the not-supplied default on every row) — an
-     * accepted gap, zero carriers (review round 2, L6). A {@code --} qualifier IS judged
-     * ({@code SUPP--.QVAL} names its own Child entry; round 2, M1).
+     * row (measured 2026-09-25 — {@code
+     * AE.**SMIE != "Y"} EXECUTED and fired every row, and {@code "Y" in AE.**SMIE} EXECUTED with no
+     * finding). Only the {@code ${*}} list-operand shape ({@code X in AE.AES${*}}) is loud at run
+     * time, through {@code ValueResolver}'s {@code SubstitutionException}; all three are pinned,
+     * and all three are refused here. Not judged anywhere, deliberately: an operand or output whose
+     * <em>qualifier</em> is itself a {@code ${...}} substitution or an {@code &TOKEN}
+     * ({@code ${X}.COL}) is bound at run time / expansion; on a Child entry it is silent (the
+     * not-supplied default on every row) — an accepted gap, zero carriers (review round 2, L6). A
+     * {@code --} qualifier IS judged ({@code SUPP--.QVAL} names its own Child entry; round 2, M1).
      * </p>
      */
     DOTTED_REF_CHILD_ENTRY(true),
