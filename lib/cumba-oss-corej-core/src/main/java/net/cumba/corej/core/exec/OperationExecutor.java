@@ -1911,12 +1911,15 @@ public final class OperationExecutor
 
     /**
      * T3 composite cross-dataset membership: the set of distinct row-tuples of the {@code names}
-     * columns in the reference {@code table}. Each tuple is a {@code List<String>} whose elements
-     * are the columns' string values in {@code names} order (a missing / invalid cell contributes
-     * the empty string), so it compares equal to the native {@code tuple(...)} value function's
-     * per-row cell (which uses the same missing-to-empty-string convention). An absent column
-     * contributes an empty string for every row. Mirrors the Python reference engine's list-target
-     * {@code distinct} ({@code set(map(tuple, df[target].itertuples(...)))}).
+     * columns in the reference {@code table}. Each tuple is a {@code List<Object>} of key
+     * components in {@code names} order: a present cell as its string value, a missing cell as its
+     * {@link net.cumba.corej.core.expr.eval.Primitives.MissingMember} (D11 / D34 #5-2 — never
+     * {@code ""}, never {@code "."}), and an ABSENT column as the NVE constant of its type's
+     * default — {@code ""} for character, {@code MIS} for a column in
+     * {@code numericExpectedColumns} — so it compares equal to the native {@code tuple(...)} value
+     * function's per-row cell, which builds its components by the same rules
+     * ({@code PLAN-member-set-identity-hardening}). Mirrors the Python reference engine's
+     * list-target {@code distinct} ({@code set(map(tuple, df[target].itertuples(...)))}).
      *
      * <p>
      * Review H1 (ruled 2026-08-19): an {@code IDVARVAL} slot is a SUPP-- / RELREC <b>join token</b>

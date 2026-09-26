@@ -815,8 +815,9 @@ public final class ExprCompiler
         // T3 composite membership: `tuple(c1, c2, …) [not] in distinct([c1, c2, …], domain="D")`.
         // The left operand is the per-row composite key (the `tuple` value function's List cell)
         // and
-        // the right operand a list-target `distinct` operation resolving to a Set<List<String>> of
-        // the reference dataset's row-tuples. Detected from the `tuple(...)` LHS and handled as a
+        // the right operand a list-target `distinct` operation resolving to a Set<List<Object>> of
+        // the reference dataset's row-tuples (key components: text, or a MissingMember identity).
+        // Detected from the `tuple(...)` LHS and handled as a
         // whole-tuple set membership (NOT the element-wise list-membership of listMembership).
         if (b.left() instanceof Expr.Call tupleCall && "tuple".equals(tupleCall.name()))
         {
@@ -1054,14 +1055,15 @@ public final class ExprCompiler
 
     /**
      * Native plan for the T3 composite membership {@code tuple(c1, …) [not] in distinct([c1, …],
-     * domain="D")}. The left operand evaluates per row to a {@code List<String>} composite key (the
-     * {@code tuple} value function); the right operand is a list-target {@code distinct} operation
-     * (or a {@code $}-reference to its result) resolving to a {@code Set<List<String>>} of the
-     * reference dataset's distinct row-tuples. A row fires when its tuple is (for {@code not in})
-     * absent from / (for {@code in}) present in that set — exactly mirroring the single-column
-     * {@code Primitives.membership} contract (an empty/absent reference set contains nothing, so
-     * {@code not in} fires and {@code in} does not). A row whose tuple cell is not a list (never
-     * the case for the {@code tuple} function) makes no membership decision and does not fire.
+     * domain="D")}. The left operand evaluates per row to a {@code List<Object>} composite key of
+     * key components (the {@code tuple} value function); the right operand is a list-target
+     * {@code distinct} operation (or a {@code $}-reference to its result) resolving to a
+     * {@code Set<List<Object>>} of the reference dataset's distinct row-tuples. A row fires when
+     * its tuple is (for {@code not in}) absent from / (for {@code in}) present in that set —
+     * exactly mirroring the single-column {@code Primitives.membership} contract (an empty/absent
+     * reference set contains nothing, so {@code not in} fires and {@code in} does not). A row whose
+     * tuple cell is not a list (never the case for the {@code tuple} function) makes no membership
+     * decision and does not fire.
      */
     private static ExprProgram.BoolPlan compileTupleMembership(Expr.Call tupleCall, Expr right,
             boolean negate)

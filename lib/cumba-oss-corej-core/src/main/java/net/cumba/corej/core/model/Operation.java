@@ -58,12 +58,12 @@ public class Operation
      * Composite (multi-column) target for the {@code distinct} operation (T3): the ordered list of
      * columns whose per-row tuple is collected into the reference tuple set. When set, the
      * {@code name} field is ignored and {@link net.cumba.corej.core.exec.OperationExecutor} builds
-     * a {@code Set<List<String>>} (one {@code List<String>} per distinct row-tuple in the reference
-     * dataset) rather than a single-column {@code List<String>}. Authored as
-     * {@code names: [VISIT, VISITNUM]} and printed as the first positional list argument of the
-     * inline form {@code distinct([VISIT, VISITNUM], domain="TV")}; the composite membership
-     * left-hand side is the native {@code tuple(VISIT, VISITNUM)} value function. JSON key
-     * {@code "names"}.
+     * a {@code Set<List<Object>>} (one list of key components per distinct row-tuple in the
+     * reference dataset: text, or a {@code Primitives.MissingMember} for a missing cell) rather
+     * than a single-column {@code List<String>}. Authored as {@code names: [VISIT, VISITNUM]} and
+     * printed as the first positional list argument of the inline form
+     * {@code distinct([VISIT, VISITNUM], domain="TV")}; the composite membership left-hand side is
+     * the native {@code tuple(VISIT, VISITNUM)} value function. JSON key {@code "names"}.
      */
     private @Nullable List<String> names;
 

@@ -369,8 +369,10 @@ public final class BuiltinFunctions implements FunctionProvider
                 }));
 
         // -- VALUE composite key (T3; native-only) ---------------------------
-        // tuple(c1, c2, ...): the current row's composite key as a List<String> cell (one element
-        // per argument column, a missing cell contributing ""). Used as the left operand of the
+        // tuple(c1, c2, ...): the current row's composite key as a List<Object> cell of key
+        // components (one per argument column: a present cell's text, a missing cell as its
+        // Primitives.MissingMember identity, a present blank as ""). Used as the left operand of
+        // the
         // composite cross-dataset membership `tuple(c1, c2) [not] in distinct([c1, c2],
         // domain="D")`
         // — the row fires when its tuple is (not) a member of the reference dataset's distinct
@@ -378,8 +380,8 @@ public final class BuiltinFunctions implements FunctionProvider
         // per-arity registrations (2..6, with 4..6 never used) are ONE descriptor whose trailing
         // collector parameter is the `list<column-reference>` composite key — `tuple(A, B, …)`
         // stays spellable as §1.5's sugar, and the two-column minimum is the leading required
-        // parameter. The empty-string missing convention matches evalDistinctTuples so a row tuple
-        // and a reference tuple compare List-equal.
+        // parameter. The component rules match evalDistinctTuples so a row tuple and a reference
+        // tuple compare List-equal.
         fns.add(new FunctionDescriptor("tuple",
                 List.of(p("c1", Primitive.COLUMN_REFERENCE), p("c2", Primitive.COLUMN_REFERENCE),
                         Parameter.collector("columns", new ListOf(Primitive.COLUMN_REFERENCE))),
@@ -745,8 +747,9 @@ public final class BuiltinFunctions implements FunctionProvider
 
     /**
      * Per-row {@code tuple(c1, c2, ...)}: the row's composite key as an immutable
-     * {@code List<String>} (one element per argument, a missing cell contributing the empty string,
-     * never {@code null}). The empty-string-for-missing convention matches
+     * {@code List<Object>} of key components (one per argument, never {@code null}): a present
+     * cell's text, a missing cell as its {@link Primitives.MissingMember} identity (D11 / D34
+     * #5-2), a present blank as {@code ""}. The rules match
      * {@code OperationExecutor.evalDistinctTuples} so a row tuple and a reference tuple compare
      * {@link List#equals List-equal} in the composite membership branch (T3).
      */
