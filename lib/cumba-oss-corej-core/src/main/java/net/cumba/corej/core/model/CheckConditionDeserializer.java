@@ -100,8 +100,8 @@ public class CheckConditionDeserializer extends StdDeserializer<CheckCondition>
             }
             List<String> keys = new ArrayList<>();
             node.fieldNames().forEachRemaining(keys::add);
-            StringBuilder msg = new StringBuilder(
-                    "no condition key under '" + path + "' — found " + keys);
+            StringBuilder msg = new StringBuilder("no condition key under '");
+            msg.append(path).append("' — found ").append(keys);
             for (String key : keys)
             {
                 msg.append(KeyHint.clause(key, DISPATCH_KEYS, java.util.Set.copyOf(keys),

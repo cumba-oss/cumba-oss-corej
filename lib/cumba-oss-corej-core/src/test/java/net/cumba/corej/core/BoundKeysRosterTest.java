@@ -341,18 +341,15 @@ class BoundKeysRosterTest
 
     private static int indexOf(byte[] haystack, byte[] needle)
     {
-        outer: for (int i = 0; i <= haystack.length - needle.length; i++)
+        int found = -1;
+        for (int i = 0; found < 0 && i <= haystack.length - needle.length; i++)
         {
-            for (int j = 0; j < needle.length; j++)
+            if (java.util.Arrays.equals(haystack, i, i + needle.length, needle, 0, needle.length))
             {
-                if (haystack[i + j] != needle[j])
-                {
-                    continue outer;
-                }
+                found = i;
             }
-            return i;
         }
-        return -1;
+        return found;
     }
 
 

@@ -343,6 +343,12 @@ public class MatchDataset
      */
     public record StrayElementKey(int index, String key, java.util.Set<String> present)
     {
+
+        /** Defensive, unmodifiable copy — the pattern {@link RuleCheck} uses for its map. */
+        public StrayElementKey
+        {
+            present = Collections.unmodifiableSet(new LinkedHashSet<>(present));
+        }
     }
 
     /**
@@ -368,7 +374,7 @@ public class MatchDataset
         {
             if (n.isObject())
             {
-                java.util.Set<String> present = new java.util.LinkedHashSet<>();
+                java.util.Set<String> present = new LinkedHashSet<>();
                 n.fieldNames().forEachRemaining(present::add);
                 for (String k : present)
                 {

@@ -71,6 +71,12 @@ public class RulePackage
      */
     public record UnknownStandardKey(int index, String key, java.util.Set<String> present)
     {
+
+        /** Defensive, unmodifiable copy — the pattern {@link RuleCheck} uses for its map. */
+        public UnknownStandardKey
+        {
+            present = java.util.Collections.unmodifiableSet(new LinkedHashSet<>(present));
+        }
     }
 
     /**
@@ -107,7 +113,7 @@ public class RulePackage
                         + "] is null — a standards entry is an object {id, role}");
             }
             int index = i;
-            java.util.Set<String> present = new java.util.LinkedHashSet<>();
+            java.util.Set<String> present = new LinkedHashSet<>();
             entry.fieldNames().forEachRemaining(present::add);
             for (String key : present)
             {

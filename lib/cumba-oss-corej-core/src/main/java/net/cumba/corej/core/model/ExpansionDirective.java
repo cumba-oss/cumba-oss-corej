@@ -130,7 +130,7 @@ public class ExpansionDirective
      * </p>
      */
     @JsonIgnore
-    @lombok.Setter(lombok.AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
     @lombok.EqualsAndHashCode.Exclude
     @lombok.ToString.Exclude
     private @Nullable SequencedSet<String> unknownKeys;
