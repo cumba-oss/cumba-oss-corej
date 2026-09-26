@@ -150,6 +150,27 @@ class StudyValidationServiceStoreProviderTest
     }
 
 
+    /**
+     * D-27 (review round 2, L1): a corrupt product entry binds lazily, so it surfaces on the
+     * factory's first access, not at open. Disposition: the R2 degraded run (null, loud), never an
+     * escaping UncheckedIOException — and the companion path degrades the same way.
+     */
+    @Test
+    void aCorruptProductEntryDegradesTheRunInsteadOfEscaping() throws IOException
+    {
+        Path intact = temp.resolve("intact.zip");
+        writeStore(intact);
+        Path damaged = net.cumba.corej.core.metadata.store.CorruptStores.withMismatchingProductKey(
+                intact, temp.resolve("damaged.zip"), "standards/sdtmig/3-4");
+        System.setProperty(StoreMetadataProviderFactory.STORE_PROPERTY, damaged.toString());
+
+        assertNull(tryStore(params(), StandardKind.SDTM, List.of("standards/sdtmig/3-4"),
+                new RunStandard("sdtmig", "sdtmig", "3-4")), "degrade, never throw");
+        assertNull(StudyValidationService.companionFromStore(
+                new CompanionSdtmDefaults.Companion("sdtmig", "3-4", "SDTMIG 3.4"), null));
+    }
+
+
     private StudyValidationParams params()
     {
         return StudyValidationParams.builder().manager(mock(IDataTableManager.class))

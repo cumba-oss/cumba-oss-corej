@@ -104,10 +104,12 @@ class MetadataStoreCorruptionTest
         assertEquals(StoreFormat.FORMAT_VERSION, failure.knownVersion());
         assertTrue(failure.getMessage().contains("format 99"), failure.getMessage());
         // Engine L1 (PLAN-define-ct-evaluation review round 1): a NEWER store says so - the
-        // remedy is to upgrade this tool, not to re-seed the store.
+        // remedy is an upgrade (or a deliberate replacement), which each SURFACE phrases.
         assertTrue(failure.writtenByNewerBuild());
         assertTrue(failure.getMessage().contains("written by a newer build"), failure.getMessage());
-        assertTrue(failure.getMessage().contains("upgrade this tool"), failure.getMessage());
+        assertTrue(!failure.getMessage().contains("upgrade this tool"),
+                "neutral: no surface remedy in the engine (review round 2): "
+                        + failure.getMessage());
         assertTrue(!failure.getMessage().contains("must be re-seeded"), failure.getMessage());
     }
 

@@ -180,7 +180,22 @@ final class SeedRun
         {
             if (!merged.containsKey(key))
             {
-                existing.product(key).ifPresent(product ->
+                Optional<StoredProduct> carried;
+                try
+                {
+                    carried = existing.product(key);
+                }
+                catch (java.io.UncheckedIOException e)
+                {
+                    // D-27 (review round 2, L1): a product entry whose embedded key mismatches
+                    // binds lazily and fails on this first access. Dropped with a warning, so a
+                    // plain re-seed repairs the store instead of dying on the baseline.
+                    warn(key + ": the existing store's copy is corrupt (" + e.getMessage()
+                            + ") - dropped; the next seed from a source that offers it"
+                            + " re-acquires it");
+                    continue;
+                }
+                carried.ifPresent(product ->
                 {
                     merged.put(key, product);
                     productsCarried++;
@@ -340,8 +355,12 @@ final class SeedRun
         {
             if (e.writtenByNewerBuild())
             {
-                throw new IOException(e.getMessage() + ". Refusing to overwrite it; pass refresh"
-                        + " (the CLI's --seed-overwrite) to replace it deliberately.", e);
+                // Review round 2 (M-NEWER d): the refusal is NEUTRAL - each surface appends its
+                // own explicit-refresh switch (CLI --seed-overwrite, GUI "Refresh everything",
+                // REST corej.cache-seed.refresh).
+                throw new IOException(
+                        e.getMessage() + ". Refusing to overwrite it without an explicit refresh.",
+                        e);
             }
             // D-17: an old-format baseline is not carried forward at all — every CT package is
             // re-fetched, so no name-less codelist can be smuggled into the new store. Expected

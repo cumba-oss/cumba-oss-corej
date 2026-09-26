@@ -1555,32 +1555,47 @@ public final class StudyValidationService
         // The CT package ids this run intends to load from the store — the §4.4 "named" set,
         // after root filtering (a root the run does not consume is not named, §4.5.1).
         List<String> namedCtIds;
-        if (kind == StandardKind.SDTM)
+        try
         {
-            MetadataProductKeys.SdtmLoader loader = MetadataProductKeys
-                    .firstSdtmLoader(effectiveProducts);
-            String libStd = loader != null ? loader.standard() : runStandard.standard();
-            String libVersion = loader != null ? loader.version() : runStandard.version();
-            // §4.3 (define-ct plan): ALL matching packages join the merge, newest first — and a
-            // SEND-family run's own CT root (sendct) precedes the sdtmct fallback root.
-            List<String> ctIds = new ArrayList<>();
-            if (runStandard.standard() != null
-                    && runStandard.standard().toLowerCase(Locale.ROOT).startsWith("send"))
+            if (kind == StandardKind.SDTM)
             {
-                ctIds.addAll(ctIdsWithPrefix(ctSelection.packageIds(), "sendct"));
+                MetadataProductKeys.SdtmLoader loader = MetadataProductKeys
+                        .firstSdtmLoader(effectiveProducts);
+                String libStd = loader != null ? loader.standard() : runStandard.standard();
+                String libVersion = loader != null ? loader.version() : runStandard.version();
+                // §4.3 (define-ct plan): ALL matching packages join the merge, newest first — and a
+                // SEND-family run's own CT root (sendct) precedes the sdtmct fallback root.
+                List<String> ctIds = new ArrayList<>();
+                if (runStandard.standard() != null
+                        && runStandard.standard().toLowerCase(Locale.ROOT).startsWith("send"))
+                {
+                    ctIds.addAll(ctIdsWithPrefix(ctSelection.packageIds(), "sendct"));
+                }
+                ctIds.addAll(ctIdsWithPrefix(ctSelection.packageIds(), "sdtmct"));
+                namedCtIds = ctIds;
+                provider = factory.forSdtm(libStd, libVersion, ctIds);
             }
-            ctIds.addAll(ctIdsWithPrefix(ctSelection.packageIds(), "sdtmct"));
-            namedCtIds = ctIds;
-            provider = factory.forSdtm(libStd, libVersion, ctIds);
+            else
+            {
+                List<String> adamCts = ctIdsWithPrefix(ctSelection.packageIds(), "adamct");
+                List<String> sdtmCts = ctIdsWithPrefix(ctSelection.packageIds(), "sdtmct");
+                namedCtIds = new ArrayList<>(adamCts);
+                namedCtIds.addAll(sdtmCts);
+                provider = factory.forAdam(runStandard.standard(), runStandard.version(),
+                        effectiveProducts, adamCts, sdtmCts);
+            }
         }
-        else
+        catch (UncheckedIOException e)
         {
-            List<String> adamCts = ctIdsWithPrefix(ctSelection.packageIds(), "adamct");
-            List<String> sdtmCts = ctIdsWithPrefix(ctSelection.packageIds(), "sdtmct");
-            namedCtIds = new ArrayList<>(adamCts);
-            namedCtIds.addAll(sdtmCts);
-            provider = factory.forAdam(runStandard.standard(), runStandard.version(),
-                    effectiveProducts, adamCts, sdtmCts);
+            // D-27 (review round 2, L1): products bind lazily, so a corrupt product entry (an
+            // embedded key that mismatches its file) surfaces HERE, on first access, not at
+            // open. Same disposition as an unopenable store: R2 degrade, loud, with the remedy.
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "Configured metadata store {0} holds a corrupt product entry ({1}); the run "
+                            + "degrades and the library-dependent rules will SKIP. Re-seed the "
+                            + "store to repair it.",
+                    file, e.getMessage());
+            return null;
         }
         if (provider.isPresent())
         {
@@ -1637,6 +1652,16 @@ public final class StudyValidationService
             LOGGER.log(System.Logger.Level.WARNING,
                     "Configured metadata store {0} cannot be opened for the companion SDTM "
                             + "product ({1}).",
+                    file, e.getMessage());
+            return null;
+        }
+        catch (UncheckedIOException e)
+        {
+            // D-27 (review round 2, L1): a corrupt companion product entry binds lazily and
+            // fails here; degrade loudly, as tryStoreProvider does.
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "Configured metadata store {0} holds a corrupt companion product entry ({1}); "
+                            + "the companion is not served. Re-seed the store to repair it.",
                     file, e.getMessage());
             return null;
         }
@@ -1980,8 +2005,10 @@ public final class StudyValidationService
                 .filter(id -> !id.isEmpty()).distinct().toList();
         try
         {
+            // Review round 2 (M-MP): resolved against the store the RUN reads — the run's own
+            // store parameter outranks the ambient configuration here as everywhere else.
             out.addAll(net.cumba.corej.core.metadata.pickle.ProductKeyResolver
-                    .resolveAllConfigured(ids));
+                    .resolveAllConfigured(ids, params.metadataStore()));
         }
         catch (IllegalArgumentException e)
         {

@@ -1,6 +1,7 @@
 package net.cumba.corej.core.metadata.pickle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -155,6 +156,61 @@ class ProductKeyResolverTest
     void resolveAllConfiguredWithNoTokensIsEmpty()
     {
         assertEquals(List.of(), ProductKeyResolver.resolveAllConfigured(List.of()));
+        assertEquals(List.of(), ProductKeyResolver.resolveAllConfigured(List.of(), "x.zip"));
+    }
+
+
+    /**
+     * Review round 2 (M-MP): the run's EXPLICIT store outranks the ambient configuration for token
+     * resolution exactly as it does for the run — an ambient old-format store must not veto a token
+     * the explicit store resolves, and a short-form token resolves against the explicit store's
+     * catalogue.
+     */
+    @Test
+    void anExplicitStoreOutranksTheAmbientOneForResolution(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path aTmp)
+        throws java.io.IOException
+    {
+        java.nio.file.Path ambient = aTmp.resolve("ambient-old.zip");
+        new net.cumba.corej.core.metadata.store.MetadataStoreWriter().publishedCtPackages(List.of())
+                .productCatalogue(List.of("standards/adam/adamig-1-3")).write(ambient);
+        net.cumba.corej.core.metadata.store.CorruptStores.relabelFormatVersion(ambient, 1);
+        java.nio.file.Path explicit = aTmp.resolve("explicit.zip");
+        new net.cumba.corej.core.metadata.store.MetadataStoreWriter().publishedCtPackages(List.of())
+                .productCatalogue(List.of("standards/sdtmig/3-4")).write(explicit);
+        String saved = System.getProperty(
+                net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory.STORE_PROPERTY);
+        System.setProperty(
+                net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory.STORE_PROPERTY,
+                ambient.toString());
+        try
+        {
+            assertEquals(List.of("standards/sdtmig/3-4"),
+                    ProductKeyResolver.resolveAllConfigured(List.of("3-4"), explicit.toString()));
+            assertEquals(List.of("standards/sdtmig/3-4"), ProductKeyResolver
+                    .resolveAllConfigured(List.of("sdtmig/3-4"), explicit.toString()));
+            // The ambient store alone (old format ⇒ empty catalogue): a short token cannot
+            // resolve, which is the trap M-MP closes for callers that have an explicit store.
+            assertThrows(IllegalArgumentException.class,
+                    () -> ProductKeyResolver.resolveAllConfigured(List.of("3-4")));
+        }
+        finally
+        {
+            if (saved == null)
+            {
+                System.clearProperty(
+                        net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory.STORE_PROPERTY);
+            }
+            else
+            {
+                System.setProperty(
+                        net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory.STORE_PROPERTY,
+                        saved);
+            }
+        }
+        assertTrue(ProductKeyResolver.isShortForm("adamig-1-3"));
+        assertFalse(ProductKeyResolver.isShortForm("adam/adamig-1-3"));
+        assertFalse(ProductKeyResolver.isShortForm("standards/adam/adamig-1-3"));
     }
 
     // ------------------------------------------------------------------

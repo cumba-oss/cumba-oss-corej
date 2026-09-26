@@ -57,9 +57,10 @@ public final class StoreFormatException extends IOException
     {
         if (aFoundVersion > aKnownVersion)
         {
+            // Neutral (review round 2, M-NEWER): each surface appends its own remedy - an
+            // upgrade of THAT tool, or its own explicit-refresh switch to replace the store.
             return "metadata store " + aStore + " is format " + aFoundVersion + "; this build"
-                    + " reads format " + aKnownVersion + "; it was written by a newer build -"
-                    + " upgrade this tool (or re-seed the store with this one to downgrade it)";
+                    + " reads format " + aKnownVersion + "; it was written by a newer build";
         }
         return "metadata store " + aStore + " is format " + aFoundVersion + "; this build reads"
                 + " format " + aKnownVersion + "; the store must be re-seeded";

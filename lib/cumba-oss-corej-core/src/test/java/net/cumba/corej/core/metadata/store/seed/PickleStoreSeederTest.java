@@ -239,6 +239,38 @@ class PickleStoreSeederTest
     }
 
 
+    /**
+     * D-27 (review round 2, L1): a corrupt product entry in the BASELINE (embedded key mismatching
+     * its file, so it binds lazily and fails on access) is dropped with a warning instead of
+     * killing the seed — a plain re-seed repairs the store.
+     */
+    @Test
+    void aCorruptBaselineProductIsDroppedWithAWarningNotCarried() throws IOException
+    {
+        seeder().seed(StoreSeedOptions.of(target));
+        Path damaged = temp.resolve("damaged.zip");
+        net.cumba.corej.core.metadata.store.CorruptStores.withMismatchingProductKey(target, damaged,
+                SeedFixtures.IG_KEY);
+        Files.move(damaged, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        // The source no longer offers any product, so every product would be carried forward.
+        Files.delete(pickleDir.resolve("standards_details.pkl"));
+
+        StoreSeedReport report = seeder().seed(StoreSeedOptions.of(target));
+
+        assertTrue(
+                report.warnings().stream()
+                        .anyMatch(w -> w.startsWith(
+                                SeedFixtures.IG_KEY + ": the existing store's copy is corrupt")),
+                report.warnings().toString());
+        try (MetadataStore store = MetadataStore.open(target))
+        {
+            assertTrue(store.product(SeedFixtures.IG_KEY).isEmpty(), "dropped, not carried");
+            assertTrue(store.product(SeedFixtures.ADAM_KEY).isPresent(),
+                    "the intact products are still carried forward");
+        }
+    }
+
+
     /** Re-seeding (all-carry) and fresh-seeding the same input give byte-identical stores. */
     @Test
     void carriedContentIsByteIdenticalToFreshProjection() throws IOException

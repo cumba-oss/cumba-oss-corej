@@ -187,11 +187,44 @@ public final class ProductKeyResolver
      */
     public static List<String> resolveAllConfigured(List<String> tokens)
     {
+        return resolveAllConfigured(tokens, null);
+    }
+
+
+    /**
+     * As {@link #resolveAllConfigured(List)}, against the catalogue of the store the RUN resolves
+     * (review round 2, M-MP): {@code aExplicitStore} is the run's own store parameter (the CLI's
+     * {@code -ca}, the data browser's field, the REST deployment's target store) and outranks the
+     * ambient {@code CDISC_METADATA_STORE} / {@code cdisc.metadata.store} exactly as it does for
+     * the run itself — so a token is never validated against a store the run will not read.
+     *
+     * @param tokens
+     *            the user tokens, in precedence order
+     * @param aExplicitStore
+     *            the run's explicit store, or {@code null} for the ambient configuration alone
+     * @return the resolved cache keys, in order
+     * @throws IllegalArgumentException
+     *             when any token fails to resolve; the message lists every failure
+     */
+    public static List<String> resolveAllConfigured(List<String> tokens,
+            @org.jspecify.annotations.Nullable String aExplicitStore)
+    {
         if (tokens.isEmpty())
         {
             return List.of();
         }
-        return resolveAll(tokens, MetadataProductCatalogue.configured());
+        return resolveAll(tokens, MetadataProductCatalogue.configuredFrom(aExplicitStore));
+    }
+
+
+    /**
+     * Whether a token is SHORT-FORM — a bare suffix ({@code adamig-1-3}) that needs a catalogue to
+     * resolve — as opposed to a full key ({@code adam/adamig-1-3}, with or without the
+     * {@code standards/} prefix), which resolves verbatim even with no catalogue at all.
+     */
+    public static boolean isShortForm(String token)
+    {
+        return normalise(token).indexOf('/') < 0;
     }
 
 
