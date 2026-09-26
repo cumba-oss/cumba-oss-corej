@@ -1,6 +1,8 @@
 package net.cumba.corej.ruletest.cdt.ruletest;
 
 import java.io.IOException;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -111,13 +113,41 @@ public final class ScenarioCapture
     private static final Set<Path> WRITTEN = ConcurrentHashMap.newKeySet();
 
     /**
-     * Captures so far in this JVM per parameterized test method: the 1-based count is the
-     * invocation index a parameterized method's file name carries (see {@link #fileToken}).
+     * The JUnit invocation index of the test-template invocation (a {@code @ParameterizedTest} or
+     * {@code @RepeatedTest} run) now executing on this thread, set by the suites' JUnit extension
+     * through {@link #setInvocationIndex}; {@code null} outside one. It is JUnit's own 1-based
+     * index, so a skipped or filtered invocation cannot shift the numbers of the others.
      */
-    private static final Map<String, Integer> INVOCATIONS = new ConcurrentHashMap<>();
+    private static final ThreadLocal<@Nullable Integer> INVOCATION_INDEX = new ThreadLocal<>();
+
+    /** The fully qualified name of JUnit's {@code @TestTemplate} (this module has no JUnit). */
+    private static final String TEST_TEMPLATE = "org.junit.jupiter.api.TestTemplate";
 
     private ScenarioCapture()
     {
+    }
+
+
+    /**
+     * Records the JUnit invocation index of the test-template invocation about to run on this
+     * thread, or clears it with {@code null}. Called by the rule-test suites' JUnit extension
+     * ({@code ScenarioInvocationExtension} in the rules repositories) before and after each test;
+     * this module keeps JUnit off its main class path, so the extension lives beside the suites.
+     *
+     * @param aIndex
+     *            JUnit's 1-based invocation index, or {@code null} outside a test-template
+     *            invocation
+     */
+    public static void setInvocationIndex(@Nullable Integer aIndex)
+    {
+        if (aIndex == null)
+        {
+            INVOCATION_INDEX.remove();
+        }
+        else
+        {
+            INVOCATION_INDEX.set(aIndex);
+        }
     }
 
 
@@ -699,21 +729,75 @@ public final class ScenarioCapture
 
     /**
      * The file-name token of a capture from {@code aFrame}: {@link #verdictToken} of the method
-     * name, plus {@code _<n>} for a <b>parameterized</b> method (one with parameters), where
-     * {@code n} is the 1-based count of captures from that method in this JVM — its invocation
-     * index when each invocation captures once. Without it the three invocations of a
-     * {@code @ParameterizedTest} would share one name and all but the first would be refused.
+     * name, plus {@code _<n>} for a <b>test-template</b> method (one annotated, directly or through
+     * a meta-annotation, with JUnit's {@code @TestTemplate}: {@code @ParameterizedTest},
+     * {@code @RepeatedTest}), where {@code n} is JUnit's invocation index. Without it the
+     * invocations of a {@code @ParameterizedTest} would share one name and all but the first would
+     * be refused.
+     *
+     * <p>
+     * A plain {@code @Test} that merely takes parameters ({@code @CdtResource} tables,
+     * {@code @TempDir}, {@code TestInfo}) gets no suffix: it regenerates the one file it stands
+     * for. ⚑ Review round 2 of PLAN-dead-code-followups: the first version keyed on "has
+     * parameters" and counted captures, so such a method gained a {@code _1} and a partial run
+     * renumbered.
+     * </p>
+     *
+     * @throws IllegalStateException
+     *             for a test-template method when no invocation index was recorded (the suite does
+     *             not register the extension that records it)
      */
     private static String fileToken(Verdict aVerdict, String aCoreId, StackWalker.StackFrame aFrame)
     {
         String token = verdictToken(aVerdict, aCoreId, aFrame.getMethodName());
-        if (aFrame.getMethodType().parameterCount() == 0)
+        if (!isTestTemplate(aFrame))
         {
             return token;
         }
-        String key = aFrame.getDeclaringClass().getName() + "#" + aFrame.getMethodName()
-                + aFrame.getMethodType();
-        return token + "_" + INVOCATIONS.merge(key, 1, Integer::sum);
+        Integer index = INVOCATION_INDEX.get();
+        if (index == null)
+        {
+            throw new IllegalStateException("cannot name the scenario captured by the test-template"
+                    + " method " + aFrame.getMethodName() + ": no JUnit invocation index is"
+                    + " recorded — register ScenarioInvocationExtension on its suite");
+        }
+        return token + "_" + index;
+    }
+
+
+    /**
+     * Whether the frame's method carries JUnit's {@code @TestTemplate}, directly or as a
+     * meta-annotation.
+     */
+    private static boolean isTestTemplate(StackWalker.StackFrame aFrame)
+    {
+        Method method;
+        try
+        {
+            method = aFrame.getDeclaringClass().getDeclaredMethod(aFrame.getMethodName(),
+                    aFrame.getMethodType().parameterArray());
+        }
+        catch (NoSuchMethodException e)
+        {
+            throw new IllegalStateException(
+                    "cannot inspect the capturing method " + aFrame.getMethodName(), e);
+        }
+        for (Annotation a : method.getAnnotations())
+        {
+            Class<? extends Annotation> type = a.annotationType();
+            if (TEST_TEMPLATE.equals(type.getName()))
+            {
+                return true;
+            }
+            for (Annotation meta : type.getAnnotations())
+            {
+                if (TEST_TEMPLATE.equals(meta.annotationType().getName()))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
 

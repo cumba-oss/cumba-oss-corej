@@ -3,14 +3,11 @@ package net.cumba.corej.ruletest.cdt.ruletest;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -20,6 +17,11 @@ import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.extension.AfterEachCallback;
+import org.junit.jupiter.api.extension.BeforeEachCallback;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -40,18 +42,11 @@ import org.junit.jupiter.params.provider.ValueSource;
  * suffix from that method.
  * </p>
  */
+@ExtendWith(ScenarioCaptureFamilyTest.InvocationIndex.class)
 class ScenarioCaptureFamilyTest
 {
 
     private static final String SUITES = "src/test/resources/net/cumba/corej/core/ruletestsuites";
-
-    private static final Pattern PARAM_FILE = Pattern
-            .compile("fda/FDA-SD0009/FDA-SD0009-valid_eachValue_(\\d+)-AE\\.cdt");
-
-    /**
-     * Invocation indices seen by {@link #FDA_SD0009_valid_eachValue(String)}, across invocations.
-     */
-    private static final Set<String> PARAM_INDICES = new HashSet<>();
 
     @TempDir
     Path tempDir;
@@ -240,27 +235,75 @@ class ScenarioCaptureFamilyTest
 
 
     @ParameterizedTest
-    @ValueSource(strings =
+    @ValueSource(ints =
     {
-            "Y", "N", ""
+            1, 2, 3
     })
-    void FDA_SD0009_valid_eachValue(String aValue) throws IOException
+    void FDA_SD0009_valid_eachValue(int aExpectedIndex) throws IOException
     {
-        // A parameterized method captures once per invocation; the invocation index keeps the
-        // three files apart.
+        // A parameterized method captures once per invocation, named by JUnit's invocation index
+        // (the @ValueSource values are exactly the indices 1..3), handed over by the extension.
         capture("FDA-SD0009", Verdict.NO_VIOLATION, "AE");
 
-        List<String> files = captured();
-        assertEquals(1, files.size(), "one file for invocation '" + aValue + "': " + files);
-        Matcher m = PARAM_FILE.matcher(files.get(0));
-        if (!m.matches())
-        {
-            fail("unexpected file name: " + files.get(0));
-        }
-        assertTrue(PARAM_INDICES.add(m.group(1)),
-                "each invocation carries its own index, got " + m.group(1) + " twice");
+        assertEquals(
+                List.of("fda/FDA-SD0009/FDA-SD0009-valid_eachValue_" + aExpectedIndex + "-AE.cdt"),
+                captured());
     }
 
+
+    @Test
+    void FDA_SD0010_valid(TestInfo aInfo) throws IOException
+    {
+        // A plain @Test that takes a parameter is not a template: no index, it regenerates the
+        // one file it stands for.
+        capture("FDA-SD0010", Verdict.NO_VIOLATION, "AE");
+
+        assertEquals(List.of("fda/FDA-SD0010/FDA-SD0010-valid-AE.cdt"), captured(),
+                aInfo.getDisplayName());
+    }
+
+
+    @ParameterizedTest
+    @ValueSource(ints =
+    {
+            1
+    })
+    void FDA_SD0011_valid_withoutTheExtension(int aInvocation) throws IOException
+    {
+        // A template invocation whose suite does not record the index is refused, never numbered.
+        ScenarioCapture.setInvocationIndex(null);
+
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> capture("FDA-SD0011", Verdict.NO_VIOLATION, "AE"));
+
+        assertTrue(e.getMessage().contains("invocation index"), e.getMessage());
+        assertEquals(List.of(), captured(), "nothing may be written for invocation " + aInvocation);
+    }
+
+    /**
+     * The same hand-over the rules repositories' {@code ScenarioInvocationExtension} performs:
+     * JUnit's invocation index of a test-template invocation, read from its unique id.
+     */
+    static final class InvocationIndex implements BeforeEachCallback, AfterEachCallback
+    {
+
+        private static final Pattern INVOCATION = Pattern
+                .compile("\\[test-template-invocation:#(\\d+)]$");
+
+        @Override
+        public void beforeEach(ExtensionContext aContext)
+        {
+            Matcher m = INVOCATION.matcher(aContext.getUniqueId());
+            ScenarioCapture.setInvocationIndex(m.find() ? Integer.valueOf(m.group(1)) : null);
+        }
+
+
+        @Override
+        public void afterEach(ExtensionContext aContext)
+        {
+            ScenarioCapture.setInvocationIndex(null);
+        }
+    }
 
     @Test
     void verdictTokenKeepsEverythingAfterTheRuleId()
