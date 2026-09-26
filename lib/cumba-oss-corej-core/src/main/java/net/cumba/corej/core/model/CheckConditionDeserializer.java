@@ -14,9 +14,109 @@ public class CheckConditionDeserializer extends StdDeserializer<CheckCondition>
 
     private static final long serialVersionUID = 1L;
 
+    /**
+     * The condition grammar's keys, in the order {@link #deserializeNode} dispatches on them. The
+     * <b>one</b> list both the binding and {@link #strayKeys} read — a copy would let the two
+     * disagree about what a condition is ({@code PLAN-rule-unknown-keys-gate} &#167;5.2).
+     */
+    static final List<String> DISPATCH_ORDER = List.of("all", "any", "not", "expression");
+
+    /** The wording every stray-key message ends with; the loader's tests pin it. */
+    static final String CONDITION_SHAPE = "a condition carries exactly one of all/any/not/expression";
+
     public CheckConditionDeserializer()
     {
         super(CheckCondition.class);
+    }
+
+
+    /**
+     * The grammar key {@code node} dispatches on — the first of {@link #DISPATCH_ORDER} it carries
+     * — or {@code null} for a node carrying none (which is its own load error).
+     */
+    static @Nullable String dispatchKey(@Nullable JsonNode node)
+    {
+        if (node == null || !node.isObject())
+        {
+            return null;
+        }
+        for (String key : DISPATCH_ORDER)
+        {
+            if (node.has(key))
+            {
+                return key;
+            }
+        }
+        return null;
+    }
+
+
+    /**
+     * Every key in a condition tree that the grammar never reads, each with its dotted path —
+     * {@code unknown key 'Mesage' under 'Check'}, {@code unknown key 'X' under 'Check.all[1]'}.
+     *
+     * <p>
+     * ⭐ Why: {@link #deserializeNode} dispatches on the first grammar key it finds and, before this
+     * walk existed, never looked at the rest of the node — so {@code {expression: …, Mesage: …}}
+     * loaded clean with the typo discarded, and {@code {all: […], expression: …}} silently lost its
+     * {@code expression}. A pure {@link JsonNode} walk, no binding: a node with no dispatch key is
+     * skipped (the binding reports it), and so is a malformed composite (its member list is not an
+     * array — {@link #compositeList} reports it).
+     * </p>
+     *
+     * @param node
+     *            the condition tree (a level's node with {@code Message} already stripped)
+     * @param path
+     *            the dotted path of {@code node} for the messages ({@code Check},
+     *            {@code Check.ERROR}, {@code Precondition})
+     * @return the stray keys' messages, in encounter order; empty when the tree is clean
+     */
+    static List<String> strayKeys(@Nullable JsonNode node, String path)
+    {
+        List<String> out = new ArrayList<>();
+        collectStray(node, path, out);
+        return out;
+    }
+
+
+    private static void collectStray(@Nullable JsonNode node, String path, List<String> out)
+    {
+        String dispatch = dispatchKey(node);
+        if (node == null || dispatch == null)
+        {
+            return;
+        }
+        for (String key : ownStrayKeys(node, dispatch))
+        {
+            out.add("unknown key '" + key + "' under '" + path + "'");
+        }
+        JsonNode inner = node.get(dispatch);
+        if ("not".equals(dispatch))
+        {
+            collectStray(inner, path + ".not", out);
+        }
+        else if (inner != null && inner.isArray())
+        {
+            for (int i = 0; i < inner.size(); i++)
+            {
+                collectStray(inner.get(i), path + "." + dispatch + "[" + i + "]", out);
+            }
+        }
+    }
+
+
+    /** The keys of one node other than its dispatch key, in encounter order. */
+    private static List<String> ownStrayKeys(JsonNode node, String dispatch)
+    {
+        List<String> stray = new ArrayList<>();
+        node.fieldNames().forEachRemaining(key ->
+        {
+            if (!key.equals(dispatch))
+            {
+                stray.add(key);
+            }
+        });
+        return stray;
     }
 
 
@@ -80,15 +180,34 @@ public class CheckConditionDeserializer extends StdDeserializer<CheckCondition>
                             + " CheckCondition; bind each level's own condition instead",
                     levelNames);
         }
-        if (node.has("all"))
+        String dispatch = dispatchKey(node);
+        if (dispatch != null)
+        {
+            // PLAN-rule-unknown-keys-gate §5.2 — a key beside the dispatch key was, until now,
+            // silently discarded. For `Check:` this is unreachable: RuleCheckDeserializer.bind
+            // walks the tree with strayKeys FIRST and parks the finding on the rule (T1-5 a, per
+            // rule). So this arm fires only for `Precondition` (and any other direct binding of a
+            // condition), where no per-rule channel exists — whole package, like the grammar's
+            // other refusals (accepted consequence, review L3).
+            List<String> stray = ownStrayKeys(node, dispatch);
+            if (!stray.isEmpty())
+            {
+                return ctxt.reportInputMismatch(CheckCondition.class,
+                        "unknown key(s) %s beside '%s' in a condition — " + CONDITION_SHAPE,
+                        stray.stream().map(k -> "'" + k + "'")
+                                .collect(java.util.stream.Collectors.joining(", ")),
+                        dispatch);
+            }
+        }
+        if ("all".equals(dispatch))
         {
             return new CheckConditionAll(compositeList("all", node.get("all"), ctxt));
         }
-        if (node.has("any"))
+        if ("any".equals(dispatch))
         {
             return new CheckConditionAny(compositeList("any", node.get("any"), ctxt));
         }
-        if (node.has("not"))
+        if ("not".equals(dispatch))
         {
             // ⛔ D121 — a `not:` with nothing under it is an incorrect rule, and it must die HERE:
             // deserializeNode answers null for a JSON null, and a CheckConditionNot(null) used to
@@ -108,7 +227,7 @@ public class CheckConditionDeserializer extends StdDeserializer<CheckCondition>
             return new CheckConditionNot(
                     java.util.Objects.requireNonNull(deserializeNode(inner, ctxt)));
         }
-        if (node.has("expression"))
+        if ("expression".equals(dispatch))
         {
             // ⭐⭐ Phase 7 of PLAN-typed-expression-engine: an expression Check is kept AS the
             // expression it was written as. What stood here was a round-trip — parse to Expr, lower

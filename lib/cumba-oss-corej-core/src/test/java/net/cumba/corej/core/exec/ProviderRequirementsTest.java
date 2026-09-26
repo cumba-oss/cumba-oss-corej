@@ -234,8 +234,11 @@ class ProviderRequirementsTest
     @DisplayName("the forecast counts dependents and names only what will actually skip")
     void skipForecast() throws IOException
     {
-        Rule libraryOnly = load("\"Check\":{\"Id\":\"x\",\"expression\":"
-                + "\"var_core(\\\"LIBRARY\\\") == \\\"Exp\\\"\"}");
+        // ⚑ This fixture carried a stray `Id` beside `expression` until 2026-09-26; the condition
+        // grammar discarded it. PLAN-rule-unknown-keys-gate makes it a load error (the condition
+        // is dropped), which is what turned this test red and found the typo.
+        Rule libraryOnly = load(
+                "\"Check\":{\"expression\":" + "\"var_core(\\\"LIBRARY\\\") == \\\"Exp\\\"\"}");
         id(libraryOnly, "R-LIB");
         Rule defineOnly = load(
                 "\"Check\":{\"expression\":" + "\"var_has_comment(\\\"DEFINE\\\") == false\"}");

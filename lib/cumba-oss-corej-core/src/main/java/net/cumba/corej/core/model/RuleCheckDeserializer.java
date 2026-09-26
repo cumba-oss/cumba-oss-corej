@@ -185,9 +185,27 @@ public class RuleCheckDeserializer extends StdDeserializer<RuleCheck>
         }
         if (levelKeys.isEmpty())
         {
+            // PLAN-rule-unknown-keys-gate §5.2 (T1-5 a) — a key beside the dispatch key anywhere
+            // in the condition tree is a PER-RULE load error, carried like the grammar errors
+            // above. Placement is load-bearing (review M1): AFTER the mixed-keys and unknown-level
+            // checks, so a level-shaped typo keeps its more specific message; BEFORE fromNode,
+            // whose deserializeNode now refuses a stray key for the whole package.
+            List<String> stray = CheckConditionDeserializer.strayKeys(node, "Check");
+            if (!stray.isEmpty())
+            {
+                return RuleCheck.invalid(strayKeyMessage(stray));
+            }
             return RuleCheck.plain(CheckConditionDeserializer.fromNode(node, ctxt));
         }
         return bindLevels(node, levelKeys, ctxt);
+    }
+
+
+    /** The carried grammar error for stray condition keys; the loader prefixes the rule id. */
+    private static String strayKeyMessage(List<String> stray)
+    {
+        return String.join("; ", stray) + " — " + CheckConditionDeserializer.CONDITION_SHAPE
+                + " (a Check level entry may also carry " + MESSAGE_KEY + ")";
     }
 
 
@@ -231,6 +249,13 @@ public class RuleCheckDeserializer extends StdDeserializer<RuleCheck>
                         + (message != null
                                 ? " — a level must carry a condition, not only a " + MESSAGE_KEY
                                 : ""));
+            }
+            // Same stray-key walk as the plain branch, pathed by level (Message already stripped).
+            List<String> stray = CheckConditionDeserializer.strayKeys(conditionNode,
+                    "Check." + key);
+            if (!stray.isEmpty())
+            {
+                return RuleCheck.invalid(strayKeyMessage(stray));
             }
             // requireNonNull: the guards above have established that conditionNode is a NON-EMPTY
             // OBJECT, and fromNode answers null only for a JSON null — the invariant the

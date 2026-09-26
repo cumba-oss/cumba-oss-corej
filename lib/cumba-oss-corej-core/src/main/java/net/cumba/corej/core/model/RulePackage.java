@@ -34,6 +34,89 @@ public class RulePackage
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
     private @Nullable List<StandardRef> standards;
 
+    /** The keys a {@code standards[]} entry binds — the {@link StandardRef} record's components. */
+    public static final java.util.Set<String> STANDARD_REF_KEYS = java.util.Set.of("id", "role");
+
+    /**
+     * The record's own binding, applied per entry by {@link #setStandardsJson}. Lenient like the
+     * loader's mapper: the extras are already collected, and the record must bind exactly as it did
+     * when Jackson bound the list directly (an unknown {@code role} still throws through
+     * {@link StandardRef.Role#fromWire}).
+     */
+    private static final com.fasterxml.jackson.databind.ObjectMapper STANDARD_REF_READER = new com.fasterxml.jackson.databind.ObjectMapper()
+            .configure(
+                    com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,
+                    false);
+
+    /**
+     * Every key of a {@code standards[i]} entry that is neither {@code id} nor {@code role}, as
+     * {@code standards[i]: 'key'}, in encounter order ({@code PLAN-rule-unknown-keys-gate}, T1-6).
+     *
+     * <p>
+     * ⛔ Collected <b>here</b>, not by a collector on {@link StandardRef}: the record is serialised
+     * into every generated package and into {@code packages.json}, is built at a dozen
+     * {@code new StandardRef(…)} sites and compared by value — a collector field would change its
+     * constructor and {@code equals} and write an {@code unknownKeys} member into every package,
+     * which this very gate would then reject (review H1).
+     * </p>
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
+    private final List<String> unknownStandardKeys = new java.util.ArrayList<>();
+
+    /**
+     * Jackson's binding of {@code standards} — the explicitly named setter wins over the Lombok one
+     * for JSON — reading each entry as a raw object so its unbound keys can be recorded before the
+     * {@link StandardRef} record binds it exactly as before. Programmatic callers keep
+     * {@code setStandards(List)}; serialisation keeps {@code getStandards()} and is unchanged.
+     *
+     * @param raw
+     *            the JSON array's elements, or {@code null} for a JSON null
+     * @throws java.io.IOException
+     *             if an entry does not bind as a {@link StandardRef} (an unknown role, a non-object
+     *             element) — the package load fails, as it did before
+     */
+    // Package-private, not private: invoked reflectively by Jackson, and both PMD and SpotBugs
+    // flag an uncalled private method.
+    @com.fasterxml.jackson.annotation.JsonSetter("standards")
+    void setStandardsJson(@Nullable List<com.fasterxml.jackson.databind.node.ObjectNode> raw)
+        throws java.io.IOException
+    {
+        if (raw == null)
+        {
+            this.standards = null;
+            return;
+        }
+        List<StandardRef> bound = new java.util.ArrayList<>(raw.size());
+        for (int i = 0; i < raw.size(); i++)
+        {
+            com.fasterxml.jackson.databind.node.ObjectNode entry = raw.get(i);
+            int index = i;
+            entry.fieldNames().forEachRemaining(key ->
+            {
+                if (!STANDARD_REF_KEYS.contains(key))
+                {
+                    unknownStandardKeys.add("standards[" + index + "]: '" + key + "'");
+                }
+            });
+            bound.add(STANDARD_REF_READER.treeToValue(entry, StandardRef.class));
+        }
+        this.standards = bound;
+    }
+
+
+    /**
+     * The {@code standards[i]} entry keys that bound to nothing, as {@code standards[i]: 'key'}.
+     *
+     * @return an unmodifiable view, empty for every shipped package
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public List<String> getUnknownStandardKeys()
+    {
+        return java.util.Collections.unmodifiableList(unknownStandardKeys);
+    }
+
     /**
      * Every top-level JSON key of this package that bound to no modelled property, in encounter
      * order.
@@ -41,8 +124,10 @@ public class RulePackage
      * <p>
      * The loader's mapper runs with {@code FAIL_ON_UNKNOWN_PROPERTIES} disabled, so an unknown
      * package key would otherwise vanish without trace. This set only <em>records</em> them; what
-     * rejects is {@code RulePackageLoader.validateNoPackageSeverityThreshold}, which turns a
-     * package-level <b>run severity threshold</b> into a load failure.
+     * rejects is {@code RulePackageLoader.validateNoPackageSeverityThreshold}, which fails the
+     * package load on a package-level <b>run severity threshold</b> (named) and, since
+     * {@code PLAN-rule-unknown-keys-gate} (T1-6), on <b>any</b> other key — a package carries only
+     * {@code rules} and {@code standards}.
      * </p>
      *
      * <p>

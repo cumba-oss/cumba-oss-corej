@@ -119,11 +119,20 @@ class RetiredUnderscoreKeyGuardTest
 
 
     @Test
-    void unknownNonRetiredKeyIsStillSilentlyDropped() throws IOException
+    void unknownNonRetiredKeyIsAGenericLoadErrorNotARetiredOne() throws IOException
     {
+        // Until PLAN-rule-unknown-keys-gate this pinned the hole: "non-retired unknown keys keep
+        // the pre-existing behaviour" (silently dropped). They are load errors now, through the
+        // generic gate (validateUnknownKeys) — and NOT through this guard, whose messages name a
+        // retired spelling's remedy.
         Rule rule = loadOne("\"_category\": \"x\", \"SomethingElse\": 1");
-        assertNull(rule.getLoadError(), "non-retired unknown keys keep the pre-existing behaviour");
-        // The keys are recorded (that is what the guard reads) but nothing is rejected.
+        String error = rule.getLoadError();
+        assertNotNull(error, "an unknown key at the top level is a load error");
+        assertTrue(error.contains("unknown key '_category' at the top level of the rule"), error);
+        assertTrue(error.contains("unknown key 'SomethingElse' at the top level of the rule"),
+                error);
+        assertFalse(error.contains("retired"), "not a retired spelling: " + error);
+        // The keys are recorded (that is what both gates read).
         assertTrue(rule.getUnknownKeys().containsAll(List.of("_category", "SomethingElse")),
                 rule.getUnknownKeys().toString());
     }

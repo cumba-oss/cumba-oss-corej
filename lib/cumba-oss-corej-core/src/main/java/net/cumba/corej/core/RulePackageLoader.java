@@ -259,6 +259,17 @@ public class RulePackageLoader
                         + " CheckRunRequest.severityThreshold / #runLevel), never a package or"
                         + " per-rule field");
             }
+            // PLAN-rule-unknown-keys-gate, T1-6 (a): the same silence one level up. A
+            // package-level key has no rule to attach a loadError to, so — like the threshold
+            // arm beside it — it fails the package load.
+            throw new IOException("rule package declares unknown key '" + key
+                    + "' — a package carries only 'rules' and 'standards'; check the spelling");
+        }
+        for (String extra : pkg.getUnknownStandardKeys())
+        {
+            throw new IOException("rule package declares unknown key "
+                    + extra.replaceFirst("^(standards\\[\\d+\\]): (.*)$", "$2 under '$1'")
+                    + " — a standards entry carries only 'id' and 'role'; check the spelling");
         }
     }
 
@@ -2726,6 +2737,13 @@ public class RulePackageLoader
             // (R1a, "declares both spellings", retired with the Scope.Variables binding: the model
             // can no longer hold both, and the surviving half is R1's.)
             validateRequirementsShape(rule, errors);
+            // PLAN-rule-unknown-keys-gate — owner, 2026-09-25: "unknown keys in a rule should
+            // always result in a load error". Every other block's collector, walked once, in R2's
+            // shape with the key's path. Runs here, on the AUTHORED objects: nothing before this
+            // point replaces a bound object (normalizeOperations / deriveOmittedFields mutate
+            // fields), and the JSON round-trip clones (TokenExpander, RuleSpecialiser) happen at
+            // generation time, after every load gate.
+            validateUnknownKeys(rule, errors);
             // Gate R8 — an AUTHORED Precondition. Runs here, i.e. BEFORE
             // injectInlineOperationGates (finishLoad), so it judges the authored document and never
             // the loader's own injected availability terms.
@@ -2803,7 +2821,9 @@ public class RulePackageLoader
      * </p>
      *
      * <p>
-     * Keys that are not retired stay silently dropped exactly as before.
+     * Keys that are not retired are reported by {@link #validateUnknownKeys}, generically and with
+     * their path ({@code PLAN-rule-unknown-keys-gate}); until 2026-09-26 they stayed silently
+     * dropped. This method keeps the retired spellings because its message names the remedy.
      * </p>
      *
      * @param rule
@@ -3011,6 +3031,47 @@ public class RulePackageLoader
      */
     private static void validateRequirementsShape(Rule rule, List<String> errors)
     {
+        // R2's unknown-key arm first, in its own method, so the public composite
+        // unknownKeyErrors can run exactly it and nothing else of R2/R3/R4 (review L2 / M2,
+        // PLAN-rule-unknown-keys-gate). Same messages, same order as before the split.
+        requirementsUnknownKeys(rule, errors);
+        Requirements req = rule.getRequirements();
+        if (req == null)
+        {
+            return;
+        }
+        VariableRequirement vars = req.getVariables();
+        if (vars != null)
+        {
+            // ⛔ No "declares both spellings" arm any more, and deliberately: since phase 5 dropped
+            // the Scope.Variables binding, a rule declaring both reaches gate R1
+            // (validateRetiredScopeVariables) through Scope's unknown-key collector, which reports
+            // the retired half by name. A second arm here could only fire on a state the model can
+            // no longer represent.
+            checkRequirementEntries(rule, vars.getAll(), "Requirements.Variables.All", errors);
+            // ⚠ anyUnion() preserves every entry verbatim — nulls and blanks included — which is
+            // what lets this R3 arm keep finding them across ALL groups (§D7).
+            checkRequirementEntries(rule, vars.anyUnion(), "Requirements.Variables.Any", errors);
+            checkRequirementEntries(rule, vars.getNone(), "Requirements.Variables.None", errors);
+            checkRequirementEntries(rule, vars.allOrNoneUnion(),
+                    "Requirements.Variables.All_Or_None", errors);
+            checkTypeSuffixes(rule, vars, errors);
+            checkAnyFacetShape(rule, vars, errors);
+            checkAllOrNoneFacetShape(rule, vars, errors);
+        }
+        checkRequirementEntries(rule, req.getDatasets(), "Requirements.Datasets", errors);
+    }
+
+
+    /**
+     * Gate R2's unknown-key arm — {@code Scope}, {@code Scope.Datasets}, {@code Requirements},
+     * {@code Requirements.Variables} — extracted so {@link #unknownKeyErrors} can compose it
+     * without the entry / type-suffix / facet-shape gates {@link #validateRequirementsShape} also
+     * runs. Its requirement-specific wording is deliberately kept: tests pin it, and "is not
+     * required" says more than the generic message can.
+     */
+    private static void requirementsUnknownKeys(Rule rule, List<String> errors)
+    {
         Scope scope = rule.getScope();
         Requirements req = rule.getRequirements();
         if (scope != null)
@@ -3042,23 +3103,7 @@ public class RulePackageLoader
         if (vars != null)
         {
             reportUnknownKeys(rule, "Requirements.Variables", vars.getUnknownKeys(), errors);
-            // ⛔ No "declares both spellings" arm any more, and deliberately: since phase 5 dropped
-            // the Scope.Variables binding, a rule declaring both reaches gate R1
-            // (validateRetiredScopeVariables) through Scope's unknown-key collector, which reports
-            // the retired half by name. A second arm here could only fire on a state the model can
-            // no longer represent.
-            checkRequirementEntries(rule, vars.getAll(), "Requirements.Variables.All", errors);
-            // ⚠ anyUnion() preserves every entry verbatim — nulls and blanks included — which is
-            // what lets this R3 arm keep finding them across ALL groups (§D7).
-            checkRequirementEntries(rule, vars.anyUnion(), "Requirements.Variables.Any", errors);
-            checkRequirementEntries(rule, vars.getNone(), "Requirements.Variables.None", errors);
-            checkRequirementEntries(rule, vars.allOrNoneUnion(),
-                    "Requirements.Variables.All_Or_None", errors);
-            checkTypeSuffixes(rule, vars, errors);
-            checkAnyFacetShape(rule, vars, errors);
-            checkAllOrNoneFacetShape(rule, vars, errors);
         }
-        checkRequirementEntries(rule, req.getDatasets(), "Requirements.Datasets", errors);
     }
 
 
@@ -3072,6 +3117,292 @@ public class RulePackageLoader
                     + "': it binds to nothing, so whatever it was meant to require is not"
                     + " required — check the spelling");
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // PLAN-rule-unknown-keys-gate — every other block, one walker
+    // ---------------------------------------------------------------------
+
+    /** T1-1 (a): the two authoring-provenance keys get a message that names what they are. */
+    private static final java.util.Set<String> PROVENANCE_KEYS = java.util.Set.of("Source",
+            "Source_Proposed");
+
+    /**
+     * Whether a top-level key is already reported <b>by name</b> by another gate — the retired
+     * spellings ({@link #validateRetiredUnderscoreKeys}) and the run-threshold spellings
+     * ({@link #reportThresholdKeys}) — so {@link #validateUnknownKeys} leaves it to them and each
+     * key yields exactly one message. The same report-by-name-then-skip rule R2 applies for R1.
+     */
+    private static boolean isTopLevelKeyReportedByName(String key)
+    {
+        return RETIRED_KEYS_RENAMED.containsKey(key) || RETIRED_KEYS_REMOVED.contains(key)
+                || THRESHOLD_KEYS.contains(key);
+    }
+
+
+    /**
+     * Owner, 2026-09-25 ({@code PLAN-rule-unknown-keys-gate}): <i>"unknown keys in a rule should
+     * always result in a load error"</i> — read as <b>every level</b> of a rule.
+     *
+     * <p>
+     * Walks every bound object of the rule that carries an unknown-key collector and reports each
+     * collected key with its path, in gate R2's shape: {@code unknown key 'Mesage' under
+     * 'Outcome'}, {@code … at the top level of the rule}, {@code … under
+     * 'Authorities[1].Standards[0].References[0].Citations[0]'}. A key that equals one bound key of
+     * that block ignoring case, or is one edit away, gets {@code did you mean 'X'?} (T1-3 a), and
+     * {@code Source} / {@code Source_Proposed} at the top level get the provenance advice (T1-1 a):
+     * they are authored metadata the corpus build strips from every released package.
+     * </p>
+     *
+     * <p>
+     * Keys already reported <b>by name</b> elsewhere are skipped here, so each key yields one
+     * message: the retired and threshold spellings ({@link #isTopLevelKeyReportedByName}),
+     * {@code Scope.Variables} (R1) and the {@code Scope} / {@code Scope.Datasets} /
+     * {@code Requirements} / {@code Requirements.Variables} blocks (R2,
+     * {@link #requirementsUnknownKeys}), and {@code Match_Datasets[]} itself
+     * ({@link #checkMatchDatasetKeys}) — whose sided {@code Keys[]} elements are walked here. The
+     * {@code Check} grammar's stray keys are parked by {@code RuleCheckDeserializer} and reported
+     * by {@link #reportCheckGrammarError}; a stray key beside a {@code Precondition} condition
+     * fails the package at parse (T1-5 a, accepted consequence). Parked rules
+     * ({@code Executability: "Not Executable"}) are removed before any rule gate runs, so their
+     * keys are never reported — Q-1, owner: no (nothing executes them, so nothing is silently
+     * wrong).
+     * </p>
+     *
+     * @param rule
+     *            the bound rule
+     * @param errors
+     *            per-rule error accumulator; joined into {@link Rule#setLoadError} by the caller
+     */
+    static void validateUnknownKeys(Rule rule, List<String> errors)
+    {
+        reportUnknown(
+                rule, null, rule.getUnknownKeys().stream()
+                        .filter(key -> !isTopLevelKeyReportedByName(key)).toList(),
+                BoundRuleKeys.RULE, errors);
+        if (rule.getCore() != null)
+        {
+            reportUnknown(rule, "Core", rule.getCore().getUnknownKeys(), BoundRuleKeys.CORE,
+                    errors);
+        }
+        if (rule.getOutcome() != null)
+        {
+            reportUnknown(rule, "Outcome", rule.getOutcome().getUnknownKeys(),
+                    BoundRuleKeys.OUTCOME, errors);
+        }
+        if (rule.getExecutabilityHint() != null)
+        {
+            reportUnknown(rule, "ExecutabilityHint", rule.getExecutabilityHint().getUnknownKeys(),
+                    BoundRuleKeys.EXECUTABILITY_HINT, errors);
+        }
+        if (rule.getGrouping() != null)
+        {
+            reportUnknown(rule, "Grouping", rule.getGrouping().getUnknownKeys(),
+                    BoundRuleKeys.GROUPING, errors);
+        }
+        List<net.cumba.corej.core.model.ExpansionDirective> expansion = rule.getExpansion();
+        if (expansion != null)
+        {
+            for (int i = 0; i < expansion.size(); i++)
+            {
+                if (expansion.get(i) != null)
+                {
+                    reportUnknown(rule, "Expansion[" + i + "]", expansion.get(i).getUnknownKeys(),
+                            BoundRuleKeys.EXPANSION, errors);
+                }
+            }
+        }
+        Map<String, net.cumba.corej.core.model.WildcardFilter> wildcards = rule.getWildcards();
+        if (wildcards != null)
+        {
+            wildcards.forEach((name, filter) ->
+            {
+                if (filter != null)
+                {
+                    reportUnknown(rule, "wildcards." + name, filter.getUnknownKeys(),
+                            BoundRuleKeys.WILDCARD_FILTER, errors);
+                }
+            });
+        }
+        Scope scope = rule.getScope();
+        if (scope != null)
+        {
+            // Scope itself and Scope.Datasets are R2's (requirementsUnknownKeys).
+            if (scope.getClasses() != null)
+            {
+                reportUnknown(rule, "Scope.Classes", scope.getClasses().getUnknownKeys(),
+                        BoundRuleKeys.CLASS_SCOPE, errors);
+            }
+            if (scope.getDomains() != null)
+            {
+                reportUnknown(rule, "Scope.Domains", scope.getDomains().getUnknownKeys(),
+                        BoundRuleKeys.DOMAIN_SCOPE, errors);
+            }
+            if (scope.getDataStructures() != null)
+            {
+                reportUnknown(rule, "Scope.Data_Structures",
+                        scope.getDataStructures().getUnknownKeys(),
+                        BoundRuleKeys.DATA_STRUCTURE_SCOPE, errors);
+            }
+            if (scope.getSubclasses() != null)
+            {
+                reportUnknown(rule, "Scope.Subclasses", scope.getSubclasses().getUnknownKeys(),
+                        BoundRuleKeys.SUBCLASS_SCOPE, errors);
+            }
+        }
+        reportAuthorityKeys(rule, errors);
+        List<net.cumba.corej.core.model.MatchDataset> matches = rule.getMatchDatasets();
+        if (matches != null)
+        {
+            for (int i = 0; i < matches.size(); i++)
+            {
+                net.cumba.corej.core.model.MatchDataset md = matches.get(i);
+                if (md == null)
+                {
+                    continue;
+                }
+                for (net.cumba.corej.core.model.MatchDataset.StrayElementKey stray : md
+                        .strayElementKeys())
+                {
+                    reportUnknown(rule, "Match_Datasets[" + i + "].Keys[" + stray.index() + "]",
+                            List.of(stray.key()), BoundRuleKeys.MATCH_KEY_ELEMENT, errors);
+                }
+            }
+        }
+    }
+
+
+    /** The {@code Authorities[i].Standards[j].References[k]…} tree, every level indexed. */
+    private static void reportAuthorityKeys(Rule rule, List<String> errors)
+    {
+        List<net.cumba.corej.core.model.Authority> authorities = rule.getAuthorities();
+        if (authorities == null)
+        {
+            return;
+        }
+        for (int i = 0; i < authorities.size(); i++)
+        {
+            net.cumba.corej.core.model.Authority authority = authorities.get(i);
+            if (authority == null)
+            {
+                continue;
+            }
+            String at = "Authorities[" + i + "]";
+            reportUnknown(rule, at, authority.getUnknownKeys(), BoundRuleKeys.AUTHORITY, errors);
+            List<net.cumba.corej.core.model.AuthorityStandard> standards = authority.getStandards();
+            if (standards == null)
+            {
+                continue;
+            }
+            for (int j = 0; j < standards.size(); j++)
+            {
+                net.cumba.corej.core.model.AuthorityStandard standard = standards.get(j);
+                if (standard == null)
+                {
+                    continue;
+                }
+                String atStandard = at + ".Standards[" + j + "]";
+                reportUnknown(rule, atStandard, standard.getUnknownKeys(),
+                        BoundRuleKeys.AUTHORITY_STANDARD, errors);
+                List<net.cumba.corej.core.model.Reference> references = standard.getReferences();
+                if (references == null)
+                {
+                    continue;
+                }
+                for (int k = 0; k < references.size(); k++)
+                {
+                    reportReferenceKeys(rule, atStandard + ".References[" + k + "]",
+                            references.get(k), errors);
+                }
+            }
+        }
+    }
+
+
+    private static void reportReferenceKeys(Rule rule, String at,
+            net.cumba.corej.core.model.@Nullable Reference reference, List<String> errors)
+    {
+        if (reference == null)
+        {
+            return;
+        }
+        reportUnknown(rule, at, reference.getUnknownKeys(), BoundRuleKeys.REFERENCE, errors);
+        if (reference.getRuleIdentifier() != null)
+        {
+            reportUnknown(rule, at + ".Rule_Identifier",
+                    reference.getRuleIdentifier().getUnknownKeys(), BoundRuleKeys.RULE_IDENTIFIER,
+                    errors);
+        }
+        List<net.cumba.corej.core.model.Citation> citations = reference.getCitations();
+        if (citations == null)
+        {
+            return;
+        }
+        for (int m = 0; m < citations.size(); m++)
+        {
+            if (citations.get(m) != null)
+            {
+                reportUnknown(rule, at + ".Citations[" + m + "]", citations.get(m).getUnknownKeys(),
+                        BoundRuleKeys.CITATION, errors);
+            }
+        }
+    }
+
+
+    /**
+     * One message per unknown key, in R2's shape plus the path, the hint and — for the two
+     * provenance keys at the top level — the advice that says what they are.
+     *
+     * @param where
+     *            the dotted, indexed path of the block, or {@code null} for the rule's top level
+     * @param boundHere
+     *            the roster of the block, for the hint
+     */
+    private static void reportUnknown(Rule rule, @Nullable String where,
+            java.util.Collection<String> keys, java.util.Set<String> boundHere, List<String> errors)
+    {
+        for (String key : keys)
+        {
+            String hint = BoundRuleKeys.hint(key, boundHere);
+            String advice = where == null && PROVENANCE_KEYS.contains(key)
+                    ? " — Source / Source_Proposed are authoring provenance and are stripped from"
+                            + " every released package; delete the key"
+                    : " — check the spelling";
+            errors.add("[" + ruleId(rule) + "] unknown key '" + key + "' "
+                    + (where == null ? "at the top level of the rule" : "under '" + where + "'")
+                    + ": it binds to nothing, so whatever it was meant to do is not done"
+                    + (hint == null ? "" : "; did you mean '" + hint + "'?") + advice);
+        }
+    }
+
+
+    /**
+     * The <b>one</b> entry point for "every unknown or stray key of this rule", for a reader of
+     * rule JSON that binds with its own mapper and never runs {@code finishLoad} — the corpus
+     * repos' rulespec {@code RuleScaffold} (review M2, {@code PLAN-rule-unknown-keys-gate}
+     * &#167;5.3). Composes exactly the unknown-key arms and nothing else: R1, R2's unknown-key arm
+     * (not the entry / type-suffix / facet-shape gates {@link #validateRequirementsShape} also
+     * runs), the {@code Match_Datasets[]} gate, the {@code Check} grammar error parked in
+     * {@code Rule.getRawCheckLevels()} (so a stray condition key — which makes the binding drop the
+     * condition — can never be swallowed by a reader that ignores that field), the retired and
+     * threshold spellings, and {@link #validateUnknownKeys}. The loader keeps its own call sites;
+     * this is a composition of the same private methods, not a second implementation.
+     *
+     * @param rule
+     *            a rule bound from JSON (a programmatically built rule has no collected keys)
+     * @return the error messages, one per key, in the loader's own wording; empty when clean
+     */
+    public static List<String> unknownKeyErrors(Rule rule)
+    {
+        List<String> errors = new ArrayList<>();
+        validateRetiredScopeVariables(rule, errors);
+        requirementsUnknownKeys(rule, errors);
+        checkMatchDatasetKeys(rule, errors);
+        reportCheckGrammarError(rule, errors);
+        validateRetiredUnderscoreKeys(rule, errors);
+        reportThresholdKeys(rule, errors);
+        validateUnknownKeys(rule, errors);
+        return errors;
     }
 
 
@@ -4980,11 +5311,7 @@ public class RulePackageLoader
      */
     private static void checkCheckLevels(Rule rule, List<String> errors)
     {
-        String grammar = rule.getRawCheckLevels();
-        if (grammar != null)
-        {
-            errors.add("[" + ruleId(rule) + "] " + grammar);
-        }
+        reportCheckGrammarError(rule, errors);
         var levels = rule.getCheckLevels();
         if (levels != null && !levels.isEmpty())
         {
@@ -4998,6 +5325,32 @@ public class RulePackageLoader
                         + " disagree");
             }
         }
+        reportThresholdKeys(rule, errors);
+    }
+
+
+    /**
+     * The {@code Check:} grammar violation {@code RuleCheckDeserializer} parked on the rule (a
+     * mixed level map, an unknown level, a stray condition key), reported per rule. Shared by
+     * {@link #checkCheckLevels} and {@link #unknownKeyErrors}.
+     */
+    private static void reportCheckGrammarError(Rule rule, List<String> errors)
+    {
+        String grammar = rule.getRawCheckLevels();
+        if (grammar != null)
+        {
+            errors.add("[" + ruleId(rule) + "] " + grammar);
+        }
+    }
+
+
+    /**
+     * The nine run-threshold spellings found among a rule's unknown keys, each by name. Shared by
+     * {@link #checkCheckLevels} and {@link #unknownKeyErrors}; {@link #validateUnknownKeys} skips
+     * them so each is reported once.
+     */
+    private static void reportThresholdKeys(Rule rule, List<String> errors)
+    {
         for (String key : rule.getUnknownKeys())
         {
             if (THRESHOLD_KEYS.contains(key))

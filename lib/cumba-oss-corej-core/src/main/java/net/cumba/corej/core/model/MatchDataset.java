@@ -337,6 +337,48 @@ public class MatchDataset
         return null;
     }
 
+    /** One key a sided {@code Keys} element carries beside {@code left} / {@code right}. */
+    public record StrayElementKey(int index, String key)
+    {
+    }
+
+    /**
+     * Every key of a sided {@code {left, right}} element that is neither side, with the element's
+     * index ({@code PLAN-rule-unknown-keys-gate}). {@link #sidedKeys} reads exactly {@code left}
+     * and {@code right} and ignores the rest, so {@code {"left": "A", "right": "B", "lfet": "C"}}
+     * used to join on {@code A}/{@code B} with the extra key dropped; the loader's
+     * {@code validateUnknownKeys} makes each one a load error. Bare-string elements and malformed
+     * elements ({@link #malformedKeyElement}) contribute nothing here.
+     *
+     * @return the stray keys in element order, empty for a well-formed list
+     */
+    @JsonIgnore
+    public List<StrayElementKey> strayElementKeys()
+    {
+        List<StrayElementKey> out = new ArrayList<>();
+        if (keysNode == null || !keysNode.isArray())
+        {
+            return out;
+        }
+        int index = 0;
+        for (JsonNode n : keysNode)
+        {
+            if (n.isObject())
+            {
+                int here = index;
+                n.fieldNames().forEachRemaining(k ->
+                {
+                    if (!"left".equals(k) && !"right".equals(k))
+                    {
+                        out.add(new StrayElementKey(here, k));
+                    }
+                });
+            }
+            index++;
+        }
+        return out;
+    }
+
 
     /** {@code true} when at least one key entry is a sided {@code {left, right}} object. */
     @JsonIgnore

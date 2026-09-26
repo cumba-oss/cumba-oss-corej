@@ -795,13 +795,14 @@ public class Rule
      *
      * <p>
      * The loader's mapper runs with {@code FAIL_ON_UNKNOWN_PROPERTIES} disabled, so an unknown key
-     * would otherwise vanish without trace. That is still the behaviour for genuinely unknown keys
-     * — this set only <em>records</em> them, it does not reject anything. What rejects is
-     * {@code RulePackageLoader.validateRetiredUnderscoreKeys}, which turns a <em>retired</em>
-     * spelling (the {@code _}-prefixed field names this engine used before
+     * would otherwise vanish without trace. This set only <em>records</em> them, it does not reject
+     * anything. What rejects is the loader: {@code validateRetiredUnderscoreKeys} turns a
+     * <em>retired</em> spelling (the {@code _}-prefixed field names this engine used before
      * {@code PLAN-underscore-field-retirement.md}) into a per-rule {@link #loadError} naming the
-     * replacement — the alternative being a stale {@code _wildcards:} silently dropped and the rule
-     * expanding unfiltered.
+     * replacement, and since {@code PLAN-rule-unknown-keys-gate} (owner, 2026-09-25: "unknown keys
+     * in a rule should always result in a load error") {@code validateUnknownKeys} reports
+     * <b>every</b> other key here — and every collector of every nested block — as a load error
+     * naming the key and its path. Until then a genuinely unknown key stayed silently dropped.
      * </p>
      *
      * <p>
