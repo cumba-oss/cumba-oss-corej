@@ -1,9 +1,7 @@
 package net.cumba.corej.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.util.List;
@@ -34,32 +32,37 @@ class UseCaseLoadGateTest
         return RulePackageLoader.loadFromString(json).getRules().values().iterator().next();
     }
 
+    /** R-4.10 as every message states it. */
+    private static final String RULE = "(R-4.10: upper-case letter codes, comma-separated, each"
+            + " listed once)";
+
+    private static String notWellFormed(String raw)
+    {
+        return "[TEST-UC] Scope.Use_Case '" + raw + "' is not a well-formed value " + RULE;
+    }
+
 
     @Test
     void wellFormedValuesLoadClean() throws IOException
     {
-        for (String ok : List.of("\"INDH\"", "\"INDH, PROD\"", "\"NONCLIN,INDH , PROD\"", "null"))
+        // blanks AROUND a comma are part of R-4.10's shape ("INDH , PROD" included)
+        for (String ok : List.of("\"INDH\"", "\"INDH, PROD\"", "\"NONCLIN,INDH , PROD\"",
+                "\"INDH , PROD\"", "null"))
         {
             assertNull(load(ok).getLoadError(), ok);
         }
     }
 
-
-    @Test
-    void aNonCommaSeparatorIsALoadError() throws IOException
-    {
-        String error = load("\"INDH;PROD\"").getLoadError();
-        assertNotNull(error, "\"INDH;PROD\" is one code that matches no use case");
-        assertTrue(error.contains("[TEST-UC] Scope.Use_Case 'INDH;PROD' is not a comma-separated"
-                + " list of upper-case use-case codes (R-4.10"), error);
-    }
+    // ---- review rounds 1-3: one case per shape, and each message must be TRUE for its input.
+    // A message states what is wrong and the rule; a "write '…'" clause only when a well-formed
+    // suggestion exists and differs; "lists 'C' twice" only when C really repeats. No message
+    // predicts a consequence ("matches no use case"), because such claims were false for some
+    // input in every round.
 
 
     @Test
-    void aValueNamingNoCodeIsALoadError_andSaysSo() throws IOException
+    void noCode_namesNoUseCase() throws IOException
     {
-        // Review round 2 L1: the matcher reads these as "declares no use case" and would run the
-        // rule everywhere — "matches no use case" would be the opposite of the truth.
         for (String[] c : new String[][]
         {
                 {
@@ -73,98 +76,79 @@ class UseCaseLoadGateTest
                 }
         })
         {
-            assertEquals("[TEST-UC] Scope.Use_Case '" + c[1] + "' names no use case (R-4.10) —"
-                    + " the matcher would run the rule under every use case; remove the key or name"
-                    + " a code", load(c[0]).getLoadError(), c[0]);
+            assertEquals("[TEST-UC] Scope.Use_Case '" + c[1] + "' names no use case " + RULE,
+                    load(c[0]).getLoadError(), c[0]);
         }
     }
 
 
     @Test
-    void aStrayCommaIsALoadError_andSaysSo() throws IOException
+    void strayComma_suggestsTheValueWithoutIt() throws IOException
     {
-        for (String[] c : new String[][]
-        {
-                {
-                        "\"INDH,\"", "INDH,"
-                },
-                {
-                        "\"INDH,,PROD\"", "INDH,,PROD"
-                },
-                {
-                        "\"indh,\"", "indh,"
-                }
-        })
-        {
-            assertEquals("[TEST-UC] Scope.Use_Case '" + c[1] + "' holds an empty code (R-4.10) —"
-                    + " remove the stray comma", load(c[0]).getLoadError(), c[0]);
-        }
+        assertEquals(notWellFormed("INDH,") + " — write 'INDH'", load("\"INDH,\"").getLoadError());
+        assertEquals(notWellFormed("INDH,,PROD") + " — write 'INDH, PROD'",
+                load("\"INDH,,PROD\"").getLoadError());
     }
 
 
     @Test
-    void everyOtherMalformedShapeIsALoadError() throws IOException
+    void misCasedOrPadded_suggestsTheCanonicalSpelling() throws IOException
     {
-        // a digit, a space instead of a comma (the separator case is aNonCommaSeparator…): codes
-        // no run value can equal — here "matches no use case" is true.
-        for (String bad : List.of("\"INDH1\"", "\"INDH PROD\"", "\"indh;prod\""))
-        {
-            String error = load(bad).getLoadError();
-            assertNotNull(error, bad);
-            assertTrue(error.contains("R-4.10,") && error.contains("matches no use case"),
-                    bad + " -> " + error);
-        }
+        assertEquals(notWellFormed("indh") + " — write 'INDH'", load("\"indh\"").getLoadError());
+        assertEquals(notWellFormed(" INDH") + " — write 'INDH'", load("\" INDH\"").getLoadError());
+        assertEquals(notWellFormed("indh, Prod ") + " — write 'INDH, PROD'",
+                load("\"indh, Prod \"").getLoadError());
     }
 
 
-    /**
-     * Review L2: a value that is only mis-cased or padded still MATCHES at run time (the matcher is
-     * case-insensitive and strips), so its message must not claim it "matches no use case" — it
-     * names the spelling R-4.10 requires instead.
-     */
+    /** A case-only repeat is NOT an exact repeat, and the advice never proposes "INDH, INDH". */
     @Test
-    void aMisCasedOrPaddedValueIsALoadErrorWithItsOwnMessage() throws IOException
+    void caseOnlyRepeat_suggestsOneCode_andClaimsNoRepeat() throws IOException
     {
-        for (String[] c : new String[][]
-        {
-                {
-                        "\"indh\"", "indh", "INDH"
-                },
-                {
-                        "\" INDH\"", " INDH", "INDH"
-                },
-                {
-                        "\"indh, Prod \"", "indh, Prod ", "INDH, PROD"
-                }
-        })
-        {
-            String error = load(c[0]).getLoadError();
-            assertEquals("[TEST-UC] Scope.Use_Case '" + c[1] + "': R-4.10 requires upper-case codes"
-                    + " without surrounding blanks — write '" + c[2] + "'", error, c[0]);
-        }
-    }
-
-
-    /**
-     * Review round 2 nit: a case-only repeat ({@code "indh, INDH"}) must not be advised to become
-     * {@code "INDH, INDH"}, which R-4.10a rejects — the suggestion is de-duplicated.
-     */
-    @Test
-    void theMisCasedAdviceNeverSuggestsADuplicate() throws IOException
-    {
-        assertEquals(
-                "[TEST-UC] Scope.Use_Case 'indh, INDH': R-4.10 requires upper-case codes"
-                        + " without surrounding blanks, each listed once — write 'INDH'",
+        assertEquals(notWellFormed("indh, INDH") + " — write 'INDH'",
                 load("\"indh, INDH\"").getLoadError());
     }
 
 
     @Test
-    void aDuplicateCodeIsALoadError_R4_10a() throws IOException
+    void exactRepeat_namesTheRepeatedCode_R4_10a() throws IOException
     {
-        String error = load("\"INDH, PROD, INDH\"").getLoadError();
-        assertNotNull(error);
-        assertEquals("[TEST-UC] Scope.Use_Case 'INDH, PROD, INDH' lists INDH twice (R-4.10a) —"
-                + " remove the duplicate", error);
+        assertEquals(notWellFormed("INDH, PROD, INDH") + " — lists 'INDH' twice (R-4.10a) — write"
+                + " 'INDH, PROD'", load("\"INDH, PROD, INDH\"").getLoadError());
+    }
+
+
+    /**
+     * Round 3: a non-ASCII whitespace separator (U+3000). R-4.10's {@code \\s} does not match it,
+     * so the value is not well-formed; the codes, once stripped, are distinct — no repeat may be
+     * claimed (round 2's text said "lists twice").
+     */
+    @Test
+    void ideographicSpaceSeparator_suggestsTheAsciiSpelling_andClaimsNoRepeat() throws IOException
+    {
+        assertEquals(notWellFormed("INDH,\u3000PROD") + " — write 'INDH, PROD'",
+                load("\"INDH,\\u3000PROD\"").getLoadError());
+    }
+
+
+    /**
+     * Round 3: a digit in one code. No well-formed suggestion exists, so none is offered — and the
+     * message does not say the value "matches no use case" (INDH would match).
+     */
+    @Test
+    void digitInACode_isNotWellFormed_withNoSuggestion() throws IOException
+    {
+        assertEquals(notWellFormed("INDH, PR0D"), load("\"INDH, PR0D\"").getLoadError());
+        assertEquals(notWellFormed("INDH1"), load("\"INDH1\"").getLoadError());
+    }
+
+
+    @Test
+    void nonCommaSeparatorOrInnerSpace_isNotWellFormed_withNoSuggestion() throws IOException
+    {
+        for (String raw : List.of("INDH;PROD", "INDH PROD", "IN DH, PROD", "indh;prod"))
+        {
+            assertEquals(notWellFormed(raw), load("\"" + raw + "\"").getLoadError(), raw);
+        }
     }
 }

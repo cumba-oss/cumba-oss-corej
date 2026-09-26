@@ -5843,23 +5843,27 @@ public class RulePackageLoader
         }
         String where = "[" + ruleId(rule) + "] Scope.Use_Case '" + raw + "'";
         List<String> codes = ScopeMatcher.useCaseCodes(raw);
-        // Each shape gets the message that is TRUE for it (review rounds 1 and 2): only a value
-        // whose codes genuinely match no run value may be told it "matches no use case".
+        // ⚠ Review rounds 1-3: a message states only WHAT is wrong and the rule — never a
+        // predicted consequence ("matches no use case", "would run everywhere"), because every such
+        // claim turned out false for some input. Each optional clause is added only when it is
+        // TRUE for this value.
         if (codes.isEmpty())
         {
-            errors.add(where + " names no use case (R-4.10) — the matcher would run the rule under"
-                    + " every use case; remove the key or name a code");
+            errors.add(where + " names no use case (R-4.10: upper-case letter codes,"
+                    + " comma-separated, each listed once)");
             return;
         }
-        boolean emptyCode = false;
-        for (String part : raw.split(",", -1))
+        StringBuilder msg = new StringBuilder(where).append(" is not a well-formed value (R-4.10:"
+                + " upper-case letter codes, comma-separated, each listed once)");
+        List<String> seen = new ArrayList<>();
+        for (String code : codes)
         {
-            emptyCode |= part.isBlank();
-        }
-        if (emptyCode)
-        {
-            errors.add(where + " holds an empty code (R-4.10) — remove the stray comma");
-            return;
+            if (seen.contains(code))
+            {
+                msg.append(" — lists '").append(code).append("' twice (R-4.10a)");
+                break;
+            }
+            seen.add(code);
         }
         List<String> canonical = new ArrayList<>();
         for (String code : codes)
@@ -5871,40 +5875,11 @@ public class RulePackageLoader
             }
         }
         String suggestion = String.join(", ", canonical);
-        if (!ScopeMatcher.isWellFormedUseCaseValue(suggestion))
+        if (ScopeMatcher.isWellFormedUseCaseValue(suggestion) && !suggestion.equals(raw))
         {
-            errors.add(where + " is not a comma-separated list of upper-case use-case codes"
-                    + " (R-4.10, e.g. \"INDH\" or \"INDH, PROD\") — a malformed value matches no"
-                    + " use case, so the rule would be skipped by every run that names one");
-            return;
+            msg.append(" — write '").append(suggestion).append('\'');
         }
-        boolean duplicate = canonical.size() < codes.size();
-        // The upper-cased, de-duplicated value is well-formed, so every code is letters only; the
-        // raw value is SPELLED right exactly when it is unpadded and already upper-case — and then
-        // the only defect left is an exact repeat (R-4.10a). No second copy of the regex here.
-        if (raw.equals(raw.strip())
-                && codes.stream().allMatch(c -> c.equals(c.toUpperCase(java.util.Locale.ROOT))))
-        {
-            List<String> seen = new ArrayList<>();
-            String twice = "";
-            for (String code : codes)
-            {
-                if (seen.contains(code))
-                {
-                    twice = code;
-                    break;
-                }
-                seen.add(code);
-            }
-            errors.add(where + " lists " + twice + " twice (R-4.10a) — remove the duplicate");
-            return;
-        }
-        // A value that only needs upper-casing / trimming (and, for a case-only repeat such as
-        // "indh, INDH", de-duplicating) still MATCHES at run time — the matcher is
-        // case-insensitive and strips — so "matches no use case" would be false for it. The
-        // suggestion is de-duplicated, so it never proposes a value R-4.10a rejects.
-        errors.add(where + ": R-4.10 requires upper-case codes without surrounding blanks"
-                + (duplicate ? ", each listed once" : "") + " — write '" + suggestion + "'");
+        errors.add(msg.toString());
     }
 
 
