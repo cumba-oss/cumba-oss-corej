@@ -163,6 +163,40 @@ class ChildMatchPreMergerTest
         assertEquals("MILD-FIRST", result.getColumn(aesevIdx).getDataValue(0).getValueAsString());
     }
 
+
+    /**
+     * PLAN-relrec-idvar-key-precision T1-1 (a), RRK E2: a LONG parent key above {@code 2^53}
+     * matches the child {@code IDVARVAL} that spells its own digits, not the neighbour that is the
+     * same {@code double}. The neighbour is the FIRST parent row on purpose: under the old double
+     * coercion both parent tokens folded onto one key, first-wins picked the neighbour, and the
+     * merged row carried the wrong parent.
+     */
+    @Test
+    void preMerge_longParentKeyBeyond2p53_matchesItsOwnDigitsNotTheNeighbour()
+    {
+        IDataTable primary = TableFixture.of("SUPPAE")//
+                .str("STUDYID", "S1")//
+                .str("USUBJID", "U1")//
+                .str("IDVAR", "AESEQ")//
+                .str("IDVARVAL", "9007199254740993")//
+                .str("RDOMAIN", "AE")//
+                .build();
+        IDataTable parent = TableFixture.of("AE")//
+                .str("STUDYID", "S1", "S1")//
+                .str("USUBJID", "U1", "U1")//
+                .lng("AESEQ", 9_007_199_254_740_992L, 9_007_199_254_740_993L)//
+                .str("AESEV", "NEIGHBOUR", "MATCH")//
+                .build();
+
+        IDataTable result = ChildMatchPreMerger.preMerge(primary,
+                List.of(md("AE", true, "USUBJID", "IDVAR", "IDVARVAL")), resolver("AE", parent),
+                "CDISC-CG0371", null);
+
+        int aesevIdx = result.getMetaData().getColumnIndex("AESEV");
+        assertEquals("MATCH", result.getColumn(aesevIdx).getDataValue(0).getValueAsString(),
+                "the 16-digit IDVARVAL names the parent row with those digits");
+    }
+
     // ----------------------------------------------------------------------------------------
     // J7 part 2 / Fix #358 (CDISC-CG0371): split parent domain ("LB" → lbch/lbhe/lbur, no
     // standalone "LB"). The pre-merge resolves the parent to the row-stacked UNION of the

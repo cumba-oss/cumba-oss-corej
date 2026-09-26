@@ -9,7 +9,6 @@ import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.impl.view.HashLookup;
-import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
@@ -317,16 +316,17 @@ final class ChildMatchIndex
      * &rarr; {@code "1"}) and the child's {@code IDVARVAL} value (which can carry SAS padding, e.g.
      * {@code "       1"}, or a float rendering such as {@code "1.0"}) compare equal. Mirrors
      * Python's {@code dataset_preprocessor} coercion of the child IDVARVAL to the parent key's
-     * type: a numeric token is canonicalized to {@link DataValueSupport#toPlainNumberText(double)}
-     * — the notation of the parent cell's own text (integral &rarr; {@code "1"}, non-integral
-     * &rarr; {@code "1.5"}, {@code "12345678.5"} stays plain, never {@code "1.23456785E7"}); a
-     * non-numeric token is returned stripped. Applied to BOTH IDVAR-join arrays, so the hash and
-     * every matcher ({@code ProbeMatcher} / {@code scanFallback} / {@code SelfMatcher}) stay
-     * byte-consistent — and, because the coerced token is exposed as the merged {@code IDVARVAL}
-     * and compared as text against the parent cell ({@code str(IDVARVAL) != str(colref(IDVAR))},
-     * CDISC-CG0371 / FDA-SD0077 / PMDA-SD0077), the token must spell exactly like that cell. ⚠ A
-     * LONG beyond {@code 2^53} still coerces through the double (the same class as the RELREC
-     * {@code normKey} fold, filed with PLAN-numeric-cleaning-and-key-text).
+     * type: a numeric token is canonicalized to its exact decimal text ({@link NumericKeyText} —
+     * the one rule shared with the RELREC {@code normKey}, PLAN-relrec-idvar-key-precision T1-1
+     * (a)), which is the notation of the parent cell's own text (integral &rarr; {@code "1"},
+     * non-integral &rarr; {@code "1.5"}, {@code "12345678.5"} stays plain, never
+     * {@code "1.23456785E7"}, and a LONG beyond {@code 2^53} keeps every digit, never its
+     * double's); a non-numeric token is returned stripped. Applied to BOTH IDVAR-join arrays, so
+     * the hash and every matcher ({@code ProbeMatcher} / {@code scanFallback} /
+     * {@code SelfMatcher}) stay byte-consistent — and, because the coerced token is exposed as the
+     * merged {@code IDVARVAL} and compared as text against the parent cell
+     * ({@code str(IDVARVAL) != str(colref(IDVAR))}, CDISC-CG0371 / FDA-SD0077 / PMDA-SD0077), the
+     * token must spell exactly like that cell.
      *
      * @param raw
      *            the raw join token, or {@code null}
@@ -348,14 +348,8 @@ final class ChildMatchIndex
             // type — a string parent keeps the value as a stripped string, so "01" != "1").
             return t;
         }
-        try
-        {
-            return DataValueSupport.toPlainNumberText(Double.parseDouble(t));
-        }
-        catch (NumberFormatException _)
-        {
-            return t;
-        }
+        String canonical = NumericKeyText.canonicalOrNull(t);
+        return canonical != null ? canonical : t;
     }
 
     /**

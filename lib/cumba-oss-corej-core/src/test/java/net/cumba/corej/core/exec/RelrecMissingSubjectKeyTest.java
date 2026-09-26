@@ -350,8 +350,9 @@ class RelrecMissingSubjectKeyTest
         Object l = aCase.left();
         Object r = aCase.right();
         // Where the case sits in RELREC, the domains carry the left value when it is present
-        // (so a subject-scoped link can find them) and a plain "P1" otherwise.
+        // (so a subject-scoped link can find them) and a plain "P1" / "S1" otherwise.
         Object dom = aCase.leftPresent() ? l : "P1";
+        Object study = aCase.leftPresent() ? l : "S1";
         return switch (aSite)
         {
         case RELREC_GROUP_USUBJID -> new IDataTable[]
@@ -365,8 +366,12 @@ class RelrecMissingSubjectKeyTest
             {
                     table("RELREC", RELREC_COLS, row(l, "", "AE", "AELNKID", "", "R1"),
                             row(r, "", "FA", "FALNKGRP", "", "R1")),
-                    table("AE", AE_COLS, row("S1", "U1", "1", "L1")),
-                    table("FA", FA_COLS, row("S1", "U1", "9", "L1"))
+                    // The domains carry the RELREC row's study when it is present: a populated
+                    // RELREC STUDYID names the study the linked rows must be in (T1-2 (c)), so
+                    // the case is decided by the group key alone, as this site intends. A
+                    // missing one names no study (T1-3 (i)) and "S1" = "S1" then holds (b).
+                    table("AE", AE_COLS, row(study, "U1", "1", "L1")),
+                    table("FA", FA_COLS, row(study, "U1", "9", "L1"))
             };
         case RECORD_INDEX_USUBJID -> new IDataTable[]
             {
@@ -379,12 +384,14 @@ class RelrecMissingSubjectKeyTest
             };
         case DATASET_INDEX_USUBJID -> new IDataTable[]
             {
-                    datasetLevelRelrec(""), table("AE", AE_COLS, row("S1", l, "1", "L1")),
+                    datasetLevelRelrec("S1", ""), table("AE", AE_COLS, row("S1", l, "1", "L1")),
                     table("FA", FA_COLS, row("S1", r, "9", "L1"))
             };
         case DATASET_INDEX_STUDYID -> new IDataTable[]
             {
-                    datasetLevelRelrec(""), table("AE", AE_COLS, row(l, "U1", "1", "L1")),
+                    // A BLANK RELREC STUDYID (T1-3 (i)): no study is named, so the two domain
+                    // rows' own STUDYID identity (b) is what decides — the claim of this site.
+                    datasetLevelRelrec("", ""), table("AE", AE_COLS, row(l, "U1", "1", "L1")),
                     table("FA", FA_COLS, row(r, "U1", "9", "L1"))
             };
         case SCAN_USUBJID -> new IDataTable[]
@@ -396,18 +403,22 @@ class RelrecMissingSubjectKeyTest
             };
         case SCAN_STUDYID -> new IDataTable[]
             {
-                    datasetLevelRelrec("U1"), table("AE", AE_COLS, row(l, "U1", "1", "L1")),
+                    // Blank RELREC STUDYID for the same reason as DATASET_INDEX_STUDYID.
+                    datasetLevelRelrec("", "U1"), table("AE", AE_COLS, row(l, "U1", "1", "L1")),
                     table("FA", FA_COLS, row(r, "U1", "9", "L1"))
             };
         };
     }
 
 
-    /** A dataset-level AELNKID &harr; FALNKGRP link; a blank USUBJID takes the indexed path. */
-    private static IDataTable datasetLevelRelrec(String aUsubj)
+    /**
+     * A dataset-level AELNKID &harr; FALNKGRP link; a blank USUBJID takes the indexed path, a blank
+     * STUDYID names no study (T1-3 (i)).
+     */
+    private static IDataTable datasetLevelRelrec(String aStudy, String aUsubj)
     {
-        return table("RELREC", RELREC_COLS, row("S1", aUsubj, "AE", "AELNKID", "", "R1"),
-                row("S1", aUsubj, "FA", "FALNKGRP", "", "R1"));
+        return table("RELREC", RELREC_COLS, row(aStudy, aUsubj, "AE", "AELNKID", "", "R1"),
+                row(aStudy, aUsubj, "FA", "FALNKGRP", "", "R1"));
     }
 
 

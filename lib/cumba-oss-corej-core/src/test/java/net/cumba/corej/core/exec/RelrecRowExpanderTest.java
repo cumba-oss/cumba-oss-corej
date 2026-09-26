@@ -729,11 +729,40 @@ class RelrecRowExpanderTest
         assertEquals(List.of("0:O1"), collect(exp, "FAOBJ"));
     }
 
+    // ---- STUDYID is part of the link identity (PLAN-relrec-studyid-link, T1-1..T1-3) ----
+    //
+    // SDTMIG 3.4 §3.2.1 lists RELREC's keys as STUDYID, RDOMAIN, USUBJID, IDVAR, IDVARVAL, RELID,
+    // and §4.2.3 keeps one USUBJID for one person ACROSS trials — so USUBJID never scopes the
+    // study. Two linked rows must be in ONE study on every path (b), and in the RELREC row's own
+    // study when that STUDYID is populated (c). A blank or missing RELREC STUDYID names no study
+    // (T1-3 (i)): (b) still holds, nothing narrows to a named study.
 
-    @Test
-    void recordLevelRelrecStudyidDiffersFromDataset_stillJoins()
+
+    /** The pooled-package fixture: one CM row in S1, one FA row per study for the same subject. */
+    private static Map<String, IDataTable> pooledFaTables(IDataTable relrec)
     {
-        IDataTable cm = tbl("CM", new String[]
+        IDataTable fa = tbl("FA", new String[]
+        {
+                "STUDYID", "DOMAIN", "USUBJID", "FASEQ", "FAOBJ"
+        }, new String[][]
+        {
+                {
+                        "S1", "FA", "P1", "1", "X"
+                },
+                {
+                        "S2", "FA", "P1", "1", "Y"
+                }
+        });
+        Map<String, IDataTable> t = new HashMap<>();
+        t.put("RELREC", relrec);
+        t.put("FA", fa);
+        return t;
+    }
+
+
+    private static IDataTable cmS1()
+    {
+        return tbl("CM", new String[]
         {
                 "STUDYID", "USUBJID", "CMSEQ", "CMTRT"
         }, new String[][]
@@ -742,6 +771,43 @@ class RelrecRowExpanderTest
                         "S1", "P1", "1", "A"
                 }
         });
+    }
+
+
+    private static IDataTable recordLevelRelrec(String study)
+    {
+        return tbl("RELREC", new String[]
+        {
+                "STUDYID", "RDOMAIN", "USUBJID", "IDVAR", "IDVARVAL", "RELID"
+        }, new String[][]
+        {
+                {
+                        study, "CM", "P1", "CMSEQ", "1", "R1"
+                },
+                {
+                        study, "FA", "P1", "FASEQ", "1", "R1"
+                }
+        });
+    }
+
+
+    @Test
+    void recordLevel_pooledSameUsubjid_linksOnlyTheRelrecStudy()
+    {
+        // S1 and S2 both hold P1 with FASEQ 1 (the §4.2.3 pattern: one person, one USUBJID, two
+        // trials). The S1 RELREC row names the S1 record; the S2 row must not be pulled in.
+        RelrecRowExpander.RelrecExpansion exp = RelrecRowExpander.expand(cmS1(),
+                List.of(forwardRelrec()), resolver(pooledFaTables(recordLevelRelrec("S1"))), "R");
+        assertEquals(List.of("0:X"), collect(exp, "FAOBJ"));
+    }
+
+
+    @Test
+    void recordLevelRelrecStudyidDiffersFromDataset_doesNotJoin()
+    {
+        // RELREC STUDYID names a study the data does not hold: (c) — the RELREC row names its
+        // record by STUDYID too, so no record is named and nothing links. (Until 2026-09-26 this
+        // test asserted the opposite, on Python parity, which is retired.)
         IDataTable fa = tbl("FA", new String[]
         {
                 "STUDYID", "DOMAIN", "USUBJID", "FASEQ", "FAOBJ"
@@ -751,27 +817,311 @@ class RelrecRowExpanderTest
                         "S1", "FA", "P1", "1", "OBJ"
                 }
         });
-        // RELREC STUDYID disagrees with the datasets; the record-level join follows the dataset
-        // (USUBJID, value) keys, not the RELREC STUDYID (legacy/Python parity).
+        Map<String, IDataTable> t = new HashMap<>();
+        t.put("RELREC", recordLevelRelrec("ZZZ"));
+        t.put("FA", fa);
+
+        RelrecRowExpander.RelrecExpansion exp = RelrecRowExpander.expand(cmS1(),
+                List.of(forwardRelrec()), resolver(t), "R");
+        assertNotNull(exp);
+        assertEquals(List.of(), collect(exp, "FAOBJ"));
+    }
+
+
+    @Test
+    void recordLevel_blankRelrecStudyid_stillRequiresOneStudy()
+    {
+        // T1-3 (i): a blank RELREC STUDYID (Req, so the data is already non-conformant) names no
+        // study — (b) alone: the S1 CM row links the S1 FA row, never the S2 one.
+        RelrecRowExpander.RelrecExpansion exp = RelrecRowExpander.expand(cmS1(),
+                List.of(forwardRelrec()), resolver(pooledFaTables(recordLevelRelrec(""))), "R");
+        assertEquals(List.of("0:X"), collect(exp, "FAOBJ"));
+    }
+
+
+    @Test
+    void recordLevel_missingRelrecStudyid_sameAsBlank()
+    {
+        // A SAS-missing RELREC STUDYID is "no study named" exactly like a blank one (T1-3 (i)).
+        IDataTable relrec = MockTable.of().colSasMissing("STUDYID", (String) null, (String) null)
+                .col("RDOMAIN", "CM", "FA").col("USUBJID", "P1", "P1")
+                .col("IDVAR", "CMSEQ", "FASEQ").col("IDVARVAL", "1", "1").col("RELID", "R1", "R1")
+                .name("RELREC").build();
+        RelrecRowExpander.RelrecExpansion exp = RelrecRowExpander.expand(cmS1(),
+                List.of(forwardRelrec()), resolver(pooledFaTables(relrec)), "R");
+        assertEquals(List.of("0:X"), collect(exp, "FAOBJ"));
+    }
+
+
+    /** AE and FA each hold the link value L1 for P1 in S1 AND in S2. */
+    private static Map<String, IDataTable> pooledLinkGroupTables(String relrecStudy)
+    {
+        IDataTable fa = tbl("FA", new String[]
+        {
+                "STUDYID", "DOMAIN", "USUBJID", "FALNKGRP", "FAOBJ"
+        }, new String[][]
+        {
+                {
+                        "S1", "FA", "P1", "L1", "O1"
+                },
+                {
+                        "S2", "FA", "P1", "L1", "O2"
+                }
+        });
         IDataTable relrec = tbl("RELREC", new String[]
         {
                 "STUDYID", "RDOMAIN", "USUBJID", "IDVAR", "IDVARVAL", "RELID"
         }, new String[][]
         {
                 {
-                        "ZZZ", "CM", "P1", "CMSEQ", "1", "R1"
+                        relrecStudy, "AE", "", "AELNKID", "", "G1"
                 },
                 {
-                        "ZZZ", "FA", "P1", "FASEQ", "1", "R1"
+                        relrecStudy, "FA", "", "FALNKGRP", "", "G1"
                 }
         });
         Map<String, IDataTable> t = new HashMap<>();
         t.put("RELREC", relrec);
         t.put("FA", fa);
+        return t;
+    }
 
+
+    private static IDataTable pooledAe()
+    {
+        return tbl("AE", new String[]
+        {
+                "STUDYID", "USUBJID", "AELNKID"
+        }, new String[][]
+        {
+                {
+                        "S1", "P1", "L1"
+                },
+                {
+                        "S2", "P1", "L1"
+                }
+        });
+    }
+
+
+    @Test
+    void datasetLevel_relrecStudy_restrictsToThatStudy()
+    {
+        // Dataset-level (blank USUBJID/IDVARVAL) rows in S1: only the S1 pair, never S2's.
+        RelrecRowExpander.RelrecExpansion exp = RelrecRowExpander.expand(pooledAe(),
+                List.of(forwardRelrec()), resolver(pooledLinkGroupTables("S1")), "R");
+        assertEquals(List.of("0:O1"), collect(exp, "FAOBJ"));
+    }
+
+
+    @Test
+    void datasetLevel_blankRelrecStudy_pairsWithinEachStudy()
+    {
+        // Control (T1-3 (i)): with no study named, each study pairs with itself and never across.
+        RelrecRowExpander.RelrecExpansion exp = RelrecRowExpander.expand(pooledAe(),
+                List.of(forwardRelrec()), resolver(pooledLinkGroupTables("")), "R");
+        assertEquals(List.of("0:O1", "1:O2"), collect(exp, "FAOBJ"));
+    }
+
+
+    private static IDataTable faWithoutStudyid()
+    {
+        return tbl("FA", new String[]
+        {
+                "DOMAIN", "USUBJID", "FASEQ", "FAOBJ"
+        }, new String[][]
+        {
+                {
+                        "FA", "P1", "1", "OBJ"
+                }
+        });
+    }
+
+
+    @Test
+    void fastPath_targetWithoutStudyidColumn_populatedRelrecStudy_noLink()
+    {
+        // JKM R7: an absent STUDYID column is present-but-empty, and "" is not "S1". The
+        // record-level fast path (populated USUBJID) used to key on (USUBJID, value) alone and
+        // linked this.
+        Map<String, IDataTable> t = new HashMap<>();
+        t.put("RELREC", recordLevelRelrec("S1"));
+        t.put("FA", faWithoutStudyid());
+        RelrecRowExpander.RelrecExpansion exp = RelrecRowExpander.expand(cmS1(),
+                List.of(forwardRelrec()), resolver(t), "R");
+        assertEquals(List.of(), collect(exp, "FAOBJ"));
+    }
+
+
+    private static IDataTable cmWithoutStudyid()
+    {
+        return tbl("CM", new String[]
+        {
+                "USUBJID", "CMSEQ", "CMTRT"
+        }, new String[][]
+        {
+                {
+                        "P1", "1", "A"
+                }
+        });
+    }
+
+
+    private static IDataTable scanRelrec(String study)
+    {
+        // Blank RELREC USUBJID on a record-level link: the full-scan path.
+        return tbl("RELREC", new String[]
+        {
+                "STUDYID", "RDOMAIN", "USUBJID", "IDVAR", "IDVARVAL", "RELID"
+        }, new String[][]
+        {
+                {
+                        study, "CM", "", "CMSEQ", "1", "R1"
+                },
+                {
+                        study, "FA", "", "FASEQ", "1", "R1"
+                }
+        });
+    }
+
+
+    @Test
+    void scan_neitherDatasetHasStudyid_populatedRelrecStudy_noLink()
+    {
+        // Both sides read "" (JKM R7), which equals each other (b) but not the named "S1" (c).
+        Map<String, IDataTable> t = new HashMap<>();
+        t.put("RELREC", scanRelrec("S1"));
+        t.put("FA", faWithoutStudyid());
+        RelrecRowExpander.RelrecExpansion exp = RelrecRowExpander.expand(cmWithoutStudyid(),
+                List.of(forwardRelrec()), resolver(t), "R");
+        assertEquals(List.of(), collect(exp, "FAOBJ"));
+    }
+
+
+    @Test
+    void scan_neitherDatasetHasStudyid_blankRelrecStudy_links()
+    {
+        // Control: "" = "" and no study is named, so the link is made (the pre-fix behaviour on
+        // this shape is kept — nothing is manufactured, nothing is lost).
+        Map<String, IDataTable> t = new HashMap<>();
+        t.put("RELREC", scanRelrec(""));
+        t.put("FA", faWithoutStudyid());
+        RelrecRowExpander.RelrecExpansion exp = RelrecRowExpander.expand(cmWithoutStudyid(),
+                List.of(forwardRelrec()), resolver(t), "R");
+        assertEquals(List.of("0:OBJ"), collect(exp, "FAOBJ"));
+    }
+
+    // ---- key text beyond 2^53 (PLAN-relrec-idvar-key-precision, T1-1 (a); RRK E2) ----
+
+
+    private static IDataTable seqTables(String cmSeq, String faSeq, Map<String, IDataTable> into)
+    {
+        IDataTable cm = tbl("CM", new String[]
+        {
+                "STUDYID", "USUBJID", "CMSEQ", "CMTRT"
+        }, new String[][]
+        {
+                {
+                        "S1", "P1", cmSeq, "A"
+                }
+        });
+        into.put("FA", tbl("FA", new String[]
+        {
+                "STUDYID", "DOMAIN", "USUBJID", "FASEQ", "FAOBJ"
+        }, new String[][]
+        {
+                {
+                        "S1", "FA", "P1", faSeq, "OBJ"
+                }
+        }));
+        return cm;
+    }
+
+
+    private static IDataTable idvarvalRelrec(String cmIdvarval, String faIdvarval)
+    {
+        return tbl("RELREC", new String[]
+        {
+                "STUDYID", "RDOMAIN", "USUBJID", "IDVAR", "IDVARVAL", "RELID"
+        }, new String[][]
+        {
+                {
+                        "S1", "CM", "P1", "CMSEQ", cmIdvarval, "R1"
+                },
+                {
+                        "S1", "FA", "P1", "FASEQ", faIdvarval, "R1"
+                }
+        });
+    }
+
+
+    @Test
+    void recordLevel_idvarvalBeyond2p53_isNotItsNeighbour()
+    {
+        // 9007199254740993 and 9007199254740992 are one double. The IDVAR == IDVARVAL filter
+        // compares exact decimal text, so the RELREC value names neither CM nor FA row here.
+        Map<String, IDataTable> t = new HashMap<>();
+        IDataTable cm = seqTables("9007199254740992", "9007199254740992", t);
+        t.put("RELREC", idvarvalRelrec("9007199254740993", "9007199254740993"));
+        RelrecRowExpander.RelrecExpansion exp = RelrecRowExpander.expand(cm,
+                List.of(forwardRelrec()), resolver(t), "R");
+        assertEquals(List.of(), collect(exp, "FAOBJ"));
+    }
+
+
+    @Test
+    void recordLevel_idvarvalBeyond2p53_matchesItsOwnDigits()
+    {
+        // Control: the same 16-digit value on both sides still links, and "…993.0" folds onto it.
+        Map<String, IDataTable> t = new HashMap<>();
+        IDataTable cm = seqTables("9007199254740993", "9007199254740993", t);
+        t.put("RELREC", idvarvalRelrec("9007199254740993", "9007199254740993.0"));
         RelrecRowExpander.RelrecExpansion exp = RelrecRowExpander.expand(cm,
                 List.of(forwardRelrec()), resolver(t), "R");
         assertEquals(List.of("0:OBJ"), collect(exp, "FAOBJ"));
+    }
+
+
+    @Test
+    void datasetLevel_linkValuesBeyond2p53_areTwoKeys()
+    {
+        IDataTable ae = tbl("AE", new String[]
+        {
+                "STUDYID", "USUBJID", "AELNKID"
+        }, new String[][]
+        {
+                {
+                        "S1", "P1", "9007199254740993"
+                }
+        });
+        IDataTable fa = tbl("FA", new String[]
+        {
+                "STUDYID", "DOMAIN", "USUBJID", "FALNKGRP", "FAOBJ"
+        }, new String[][]
+        {
+                {
+                        "S1", "FA", "P1", "9007199254740992", "ERYTHEMA"
+                }
+        });
+        IDataTable relrec = tbl("RELREC", new String[]
+        {
+                "STUDYID", "RDOMAIN", "USUBJID", "IDVAR", "IDVARVAL", "RELID"
+        }, new String[][]
+        {
+                {
+                        "S1", "AE", "", "AELNKID", "", "G1"
+                },
+                {
+                        "S1", "FA", "", "FALNKGRP", "", "G1"
+                }
+        });
+        Map<String, IDataTable> t = new HashMap<>();
+        t.put("RELREC", relrec);
+        t.put("FA", fa);
+        RelrecRowExpander.RelrecExpansion exp = RelrecRowExpander.expand(ae,
+                List.of(forwardRelrec()), resolver(t), "R");
+        assertEquals(List.of(), collect(exp, "FAOBJ"),
+                "two integers that differ beyond 2^53 must not fold onto one key");
     }
 
     // ---- Fix #358 (ruling 2): a forward-RELREC target that ships split resolves the union ----

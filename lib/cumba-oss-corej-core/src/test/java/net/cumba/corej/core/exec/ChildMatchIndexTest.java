@@ -55,6 +55,25 @@ class ChildMatchIndexTest
 
 
     @Test
+    void numericParentKeepsEveryDigitBeyond2p53()
+    {
+        // PLAN-relrec-idvar-key-precision T1-1 (a), RRK E2: the token is canonicalised as an
+        // exact decimal, never through a double — 9007199254740993 and 9007199254740992 are one
+        // double but two keys, and a LONG parent cell spells all 16 digits (Long.toString).
+        assertEquals("9007199254740993",
+                ChildMatchIndex.normalizeJoinToken("9007199254740993", true));
+        assertEquals("9007199254740992",
+                ChildMatchIndex.normalizeJoinToken("9007199254740992", true));
+        assertEquals("9007199254740993",
+                ChildMatchIndex.normalizeJoinToken(" 9007199254740993.00 ", true),
+                "trailing zeros and padding fold; the digits do not");
+        assertEquals("100000000000000000001",
+                ChildMatchIndex.normalizeJoinToken("100000000000000000001", true),
+                "beyond long range too: no saturation, no double");
+    }
+
+
+    @Test
     void numericParentNonNumericTokenIsStrippedOnly()
     {
         assertEquals("ABC", ChildMatchIndex.normalizeJoinToken("  ABC  ", true));
