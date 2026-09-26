@@ -285,6 +285,12 @@ public final class LibraryValidator
      * single-family unfiltered run the two readings coincide exactly. Empty ⇒ the engine behaves
      * exactly as it did before the fix.
      * </p>
+     *
+     * <p>
+     * "Effective" includes the run's use case: a presence rule whose {@code Scope.Use_Case} names
+     * only other use cases is reported {@code SKIPPED} and reports no absence, so it covers nothing
+     * here ({@code PLAN-use-case-scope-filter}, review M1).
+     * </p>
      */
     private final Set<String> presenceReportedDatasets;
 
@@ -324,9 +330,14 @@ public final class LibraryValidator
                 .resolve(aBuilder.maxErrorsPerRule);
         severityThreshold = net.cumba.corej.core.exec.EngineLimits
                 .resolveSeverityThreshold(aBuilder.severityThreshold);
-        presenceReportedDatasets = AbsentDatasetSkip.reportedDatasets(rules);
-        crossStandardDatasets = aBuilder.crossStandardDatasets;
         useCase = aBuilder.useCase;
+        // Derived from the EFFECTIVE rule list (see the field javadoc): a presence rule the run's
+        // use case excludes never runs, so it reports nothing and must not silence its dependants
+        // (PLAN-use-case-scope-filter review M1). A load-error rule stays in, as everywhere else.
+        presenceReportedDatasets = AbsentDatasetSkip.reportedDatasets(rules.stream()
+                .filter(r -> r.getLoadError() != null || ScopeMatcher.matchesUseCase(r, useCase))
+                .toList());
+        crossStandardDatasets = aBuilder.crossStandardDatasets;
         if (!presenceReportedDatasets.isEmpty())
         {
             LOGGER.log(Level.DEBUG,

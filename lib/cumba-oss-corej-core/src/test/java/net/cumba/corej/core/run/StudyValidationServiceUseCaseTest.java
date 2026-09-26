@@ -442,6 +442,61 @@ class StudyValidationServiceUseCaseTest
     }
 
     // ------------------------------------------------------------------
+    // Review M1 — an excluded presence rule does not silence its dependants
+    // ------------------------------------------------------------------
+
+
+    /**
+     * A dependant of dataset {@code XX} (absent from the study): {@code XX.USUBJID} is all-missing,
+     * so both DM rows fire — unless the run reports XX's absence, in which case Fix #222 silences
+     * it ({@code SKIPPED}, "Rule skipped …") in favour of the presence rule.
+     */
+    private static String xxDependant()
+    {
+        return """
+                "UC-DEP": {
+                  "Core": {"Id": "UC-DEP"},
+                  "Match_Datasets": [ { "Name": "XX", "Keys": ["USUBJID"] } ],
+                  "Check": {"expression": "not empty(USUBJID) and USUBJID != XX.USUBJID"},
+                  "Outcome": {"Message": "UC-DEP fired", "Output_Variables": ["USUBJID"]}
+                }""";
+    }
+
+
+    @Test
+    void m1_aPresenceRuleOutsideTheUseCase_doesNotSilenceItsDependants() throws IOException
+    {
+        // UC-STUDY is the bare presence rule on XX, tagged INDH. Under NONCLIN it never runs, so
+        // nothing in this run reports XX's absence — and the dependant must report as it would
+        // without the presence rule, not vanish into a SKIPPED nobody explains.
+        String rules = String.join(",\n", studyRule("UC-STUDY", "INDH"), xxDependant());
+        StudyValidationResult result = run(rules, "NONCLIN");
+
+        assertSkippedOnDm(result, "UC-STUDY", "use case NONCLIN not in Scope.Use_Case [INDH]");
+        assertEquals(2, findings(result, "UC-DEP"),
+                () -> "the dependant must fire on both DM rows: "
+                        + result.sections().skippedRules());
+        assertTrue(skipRows(result, "UC-DEP").isEmpty(),
+                () -> "nothing reports XX's absence, so nothing may silence UC-DEP: "
+                        + result.sections().skippedRules());
+    }
+
+
+    @Test
+    void m1_control_inItsUseCaseThePresenceRuleStillSilencesTheDependant() throws IOException
+    {
+        String rules = String.join(",\n", studyRule("UC-STUDY", "INDH"), xxDependant());
+        StudyValidationResult result = run(rules, "INDH");
+
+        assertFires(result, "UC-STUDY");
+        assertEquals(0, findings(result, "UC-DEP"), "Fix #222: the absence is reported once");
+        List<Map<String, Object>> rows = skipRows(result, "UC-DEP");
+        assertEquals(1, rows.size(), () -> "UC-DEP: " + result.sections().skippedRules());
+        assertTrue(String.valueOf(rows.get(0).get("reason")).startsWith("Rule skipped"),
+                () -> "UC-DEP: " + rows);
+    }
+
+    // ------------------------------------------------------------------
     // Log capture
     // ------------------------------------------------------------------
 

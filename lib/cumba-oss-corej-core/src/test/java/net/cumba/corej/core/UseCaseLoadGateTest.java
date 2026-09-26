@@ -58,14 +58,43 @@ class UseCaseLoadGateTest
     @Test
     void everyOtherMalformedShapeIsALoadError() throws IOException
     {
-        // lower case (R-4.10 says upper-case), empty / blank / comma-only (names nothing), an empty
-        // code between commas, a trailing comma, surrounding blanks, a digit, a list-typed slip.
-        for (String bad : List.of("\"indh\"", "\"\"", "\" \"", "\",\"", "\"INDH,,PROD\"",
-                "\"INDH,\"", "\" INDH\"", "\"INDH1\"", "\"INDH PROD\""))
+        // empty / blank / comma-only (names nothing), an empty code between commas, a trailing
+        // comma, a digit, a space instead of a comma.
+        for (String bad : List.of("\"\"", "\" \"", "\",\"", "\"INDH,,PROD\"", "\"INDH,\"",
+                "\"INDH1\"", "\"INDH PROD\""))
         {
             String error = load(bad).getLoadError();
             assertNotNull(error, bad);
-            assertTrue(error.contains("R-4.10,"), bad + " -> " + error);
+            assertTrue(error.contains("R-4.10,") && error.contains("matches no use case"),
+                    bad + " -> " + error);
+        }
+    }
+
+
+    /**
+     * Review L2: a value that is only mis-cased or padded still MATCHES at run time (the matcher is
+     * case-insensitive and strips), so its message must not claim it "matches no use case" — it
+     * names the spelling R-4.10 requires instead.
+     */
+    @Test
+    void aMisCasedOrPaddedValueIsALoadErrorWithItsOwnMessage() throws IOException
+    {
+        for (String[] c : new String[][]
+        {
+                {
+                        "\"indh\"", "indh", "INDH"
+                },
+                {
+                        "\" INDH\"", " INDH", "INDH"
+                },
+                {
+                        "\"indh, Prod \"", "indh, Prod ", "INDH, PROD"
+                }
+        })
+        {
+            String error = load(c[0]).getLoadError();
+            assertEquals("[TEST-UC] Scope.Use_Case '" + c[1] + "': R-4.10 requires upper-case codes"
+                    + " without surrounding blanks — write '" + c[2] + "'", error, c[0]);
         }
     }
 

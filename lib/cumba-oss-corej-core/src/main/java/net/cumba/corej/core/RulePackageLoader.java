@@ -5849,6 +5849,18 @@ public class RulePackageLoader
         }
         if (!USE_CASE_SHAPE.matcher(raw).matches())
         {
+            // Two different defects, two messages (review L2). A value that only needs upper-casing
+            // or trimming ("indh", " INDH") would still MATCH — the matcher is case-insensitive and
+            // strips — so saying "matches no use case" would be false for it; it is rejected
+            // because R-4.10 fixes the authored spelling.
+            String canonical = raw.strip().toUpperCase(java.util.Locale.ROOT);
+            if (!raw.isBlank() && USE_CASE_SHAPE.matcher(canonical).matches())
+            {
+                errors.add("[" + ruleId(rule) + "] Scope.Use_Case '" + raw + "': R-4.10 requires"
+                        + " upper-case codes without surrounding blanks — write '" + canonical
+                        + "'");
+                return;
+            }
             errors.add("[" + ruleId(rule) + "] Scope.Use_Case '" + raw + "' is not a"
                     + " comma-separated list of upper-case use-case codes (R-4.10, e.g. \"INDH\" or"
                     + " \"INDH, PROD\") — a malformed value matches no use case, so the rule would"
