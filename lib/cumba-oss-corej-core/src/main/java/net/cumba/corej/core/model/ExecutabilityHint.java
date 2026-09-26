@@ -6,7 +6,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.SequencedSet;
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.jspecify.annotations.Nullable;
@@ -42,7 +41,6 @@ import org.jspecify.annotations.Nullable;
  */
 @Data
 @NoArgsConstructor
-@AllArgsConstructor
 public class ExecutabilityHint
 {
 
@@ -61,6 +59,16 @@ public class ExecutabilityHint
     private @Nullable String detail;
 
     /**
+     * The two-field constructor Lombok's {@code @AllArgsConstructor} used to generate — explicit
+     * now, so the lazily allocated unknown-key collector below is never a constructor parameter.
+     */
+    public ExecutabilityHint(@Nullable String category, @Nullable String detail)
+    {
+        this.category = category;
+        this.detail = detail;
+    }
+
+    /**
      * JSON keys under a {@code ExecutabilityHint} block that bound to no modelled property. The
      * mapper runs with {@code FAIL_ON_UNKNOWN_PROPERTIES} disabled, so without this collector a
      * misspelt key ({@code Categroy}) is dropped and the hint is empty. Read by
@@ -75,9 +83,14 @@ public class ExecutabilityHint
      * </p>
      */
     @JsonIgnore
+    @lombok.Setter(lombok.AccessLevel.NONE)
     @lombok.EqualsAndHashCode.Exclude
     @lombok.ToString.Exclude
-    private final SequencedSet<String> unknownKeys = new LinkedHashSet<>();
+    private @Nullable SequencedSet<String> unknownKeys;
+
+    /** The shared empty view every clean instance answers with (review E8: no per-instance set). */
+    private static final SequencedSet<String> NO_UNKNOWN_KEYS = Collections
+            .unmodifiableSequencedSet(new LinkedHashSet<>());
 
     /**
      * Jackson's catch-all for unbound JSON keys; records the key name and drops the value.
@@ -90,6 +103,12 @@ public class ExecutabilityHint
     @JsonAnySetter
     void recordUnknownKey(String name, @Nullable Object value)
     {
+        // Allocated on the first unknown key only: a full corpus load builds tens of thousands
+        // of these blocks and almost none carries one (review E8).
+        if (unknownKeys == null)
+        {
+            unknownKeys = new LinkedHashSet<>();
+        }
         unknownKeys.add(name);
     }
 
@@ -101,7 +120,8 @@ public class ExecutabilityHint
      */
     public SequencedSet<String> getUnknownKeys()
     {
-        return Collections.unmodifiableSequencedSet(unknownKeys);
+        return unknownKeys == null ? NO_UNKNOWN_KEYS
+                : Collections.unmodifiableSequencedSet(unknownKeys);
     }
 
 }

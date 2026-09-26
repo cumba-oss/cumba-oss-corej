@@ -78,17 +78,44 @@ public class CheckConditionDeserializer extends StdDeserializer<CheckCondition>
         return out;
     }
 
+    /** The condition keywords as a set, for the hints. */
+    private static final java.util.Set<String> DISPATCH_KEYS = java.util.Set.copyOf(DISPATCH_ORDER);
 
     private static void collectStray(@Nullable JsonNode node, String path, List<String> out)
     {
-        String dispatch = dispatchKey(node);
-        if (node == null || dispatch == null)
+        if (node == null || !node.isObject())
         {
             return;
         }
+        String dispatch = dispatchKey(node);
+        if (dispatch == null)
+        {
+            // No condition keyword at all. The retired operator-leaf form and a level map bound
+            // as a condition keep the binding's own named refusals (deserializeNode); anything
+            // else — `{expresion: …}`, `{}` — is reported here, per rule, with the hint (review
+            // E7): before, the binding refused it for the whole package.
+            if (node.has("operator") || !RuleCheckDeserializer.levelNames(node).isEmpty())
+            {
+                return;
+            }
+            List<String> keys = new ArrayList<>();
+            node.fieldNames().forEachRemaining(keys::add);
+            StringBuilder msg = new StringBuilder(
+                    "no condition key under '" + path + "' — found " + keys);
+            for (String key : keys)
+            {
+                msg.append(KeyHint.clause(key, DISPATCH_KEYS, java.util.Set.copyOf(keys),
+                        java.util.Set.of()));
+            }
+            out.add(msg.toString());
+            return;
+        }
+        java.util.Set<String> present = new java.util.HashSet<>();
+        node.fieldNames().forEachRemaining(present::add);
         for (String key : ownStrayKeys(node, dispatch))
         {
-            out.add("unknown key '" + key + "' under '" + path + "'");
+            out.add("unknown key '" + key + "' under '" + path + "'"
+                    + KeyHint.clause(key, DISPATCH_KEYS, present, java.util.Set.of()));
         }
         JsonNode inner = node.get(dispatch);
         if ("not".equals(dispatch))
@@ -184,11 +211,10 @@ public class CheckConditionDeserializer extends StdDeserializer<CheckCondition>
         if (dispatch != null)
         {
             // PLAN-rule-unknown-keys-gate §5.2 — a key beside the dispatch key was, until now,
-            // silently discarded. For `Check:` this is unreachable: RuleCheckDeserializer.bind
-            // walks the tree with strayKeys FIRST and parks the finding on the rule (T1-5 a, per
-            // rule). So this arm fires only for `Precondition` (and any other direct binding of a
-            // condition), where no per-rule channel exists — whole package, like the grammar's
-            // other refusals (accepted consequence, review L3).
+            // silently discarded. From a rule this is unreachable: RuleCheckDeserializer.bind and
+            // PreconditionDeserializer walk the tree with strayKeys FIRST and park the finding on
+            // the rule (T1-5 a, per rule). So this arm is the grammar's own defence for a DIRECT
+            // binding of a condition (a test, a tool) — whole package, like its other refusals.
             List<String> stray = ownStrayKeys(node, dispatch);
             if (!stray.isEmpty())
             {

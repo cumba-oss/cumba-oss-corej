@@ -43,9 +43,14 @@ public class Reference
      * </p>
      */
     @JsonIgnore
+    @lombok.Setter(lombok.AccessLevel.NONE)
     @lombok.EqualsAndHashCode.Exclude
     @lombok.ToString.Exclude
-    private final SequencedSet<String> unknownKeys = new LinkedHashSet<>();
+    private @Nullable SequencedSet<String> unknownKeys;
+
+    /** The shared empty view every clean instance answers with (review E8: no per-instance set). */
+    private static final SequencedSet<String> NO_UNKNOWN_KEYS = Collections
+            .unmodifiableSequencedSet(new LinkedHashSet<>());
 
     /**
      * Jackson's catch-all for unbound JSON keys; records the key name and drops the value.
@@ -58,6 +63,12 @@ public class Reference
     @JsonAnySetter
     void recordUnknownKey(String name, @Nullable Object value)
     {
+        // Allocated on the first unknown key only: a full corpus load builds tens of thousands
+        // of these blocks and almost none carries one (review E8).
+        if (unknownKeys == null)
+        {
+            unknownKeys = new LinkedHashSet<>();
+        }
         unknownKeys.add(name);
     }
 
@@ -69,7 +80,8 @@ public class Reference
      */
     public SequencedSet<String> getUnknownKeys()
     {
-        return Collections.unmodifiableSequencedSet(unknownKeys);
+        return unknownKeys == null ? NO_UNKNOWN_KEYS
+                : Collections.unmodifiableSequencedSet(unknownKeys);
     }
 
 }

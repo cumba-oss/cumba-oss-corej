@@ -337,8 +337,11 @@ public class MatchDataset
         return null;
     }
 
-    /** One key a sided {@code Keys} element carries beside {@code left} / {@code right}. */
-    public record StrayElementKey(int index, String key)
+    /**
+     * One key a sided {@code Keys} element carries beside {@code left} / {@code right}, with the
+     * element's own keys (so a hint never proposes a side the element already has).
+     */
+    public record StrayElementKey(int index, String key, java.util.Set<String> present)
     {
     }
 
@@ -365,14 +368,15 @@ public class MatchDataset
         {
             if (n.isObject())
             {
-                int here = index;
-                n.fieldNames().forEachRemaining(k ->
+                java.util.Set<String> present = new java.util.LinkedHashSet<>();
+                n.fieldNames().forEachRemaining(present::add);
+                for (String k : present)
                 {
                     if (!"left".equals(k) && !"right".equals(k))
                     {
-                        out.add(new StrayElementKey(here, k));
+                        out.add(new StrayElementKey(index, k, present));
                     }
-                });
+                }
             }
             index++;
         }

@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
 import org.junit.jupiter.api.Test;
@@ -66,6 +67,18 @@ class UnknownKeysGateTest
     }
 
 
+    /**
+     * {@link #plain} without its {@code Outcome}, for a hint that must not be "already present".
+     */
+    private static String withoutOutcome(String extraMembers)
+    {
+        return "\"Core\":{\"Id\":\"T-UKG\"},\"Sensitivity\":\"Record\","
+                + "\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},"
+                + "\"Check\":{\"expression\":\"not empty(AESEQ)\"}"
+                + (extraMembers.isEmpty() ? "" : "," + extraMembers);
+    }
+
+
     /** A plain rule body: everything a rule needs, plus the given extra members. */
     private static String plain(String extraMembers)
     {
@@ -109,9 +122,13 @@ class UnknownKeysGateTest
     @Test
     void aTopLevelUnknownKeyIsALoadErrorWithACaseHint() throws IOException
     {
-        String error = errorOf(plain("\"Outcom\":{\"Message\":\"typo\"}"));
+        String error = errorOf(withoutOutcome("\"Outcom\":{\"Message\":\"typo\"}"));
         assertUnknownAt(error, "Outcom", "at the top level of the rule");
         assertTrue(error.contains("did you mean 'Outcome'?"), error);
+        // ...and beside a present Outcome the hint would name what the author already has (E3).
+        String beside = errorOf(plain("\"Outcom\":{\"Message\":\"typo\"}"));
+        assertUnknownAt(beside, "Outcom", "at the top level of the rule");
+        assertFalse(beside.contains("did you mean"), beside);
     }
 
 
@@ -119,7 +136,7 @@ class UnknownKeysGateTest
     void aLowerCaseSpellingOfABoundKeyIsUnknownWithTheHint() throws IOException
     {
         // T1-3 (a): case-sensitive, reject, hint — never bind case-insensitively.
-        String error = errorOf(plain("\"outcome\":{\"Message\":\"typo\"}"));
+        String error = errorOf(withoutOutcome("\"outcome\":{\"Message\":\"typo\"}"));
         assertUnknownAt(error, "outcome", "at the top level of the rule");
         assertTrue(error.contains("did you mean 'Outcome'?"), error);
     }
@@ -183,7 +200,7 @@ class UnknownKeysGateTest
     {
         String error = errorOf("\"Core\":{\"Id\":\"T-UKG\"},\"Sensitivity\":\"Record\","
                 + "\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},"
-                + "\"Outcome\":{\"Message\":\"m\",\"Mesage\":\"m2\",\"Output_Variables\":[\"AESEQ\"]},"
+                + "\"Outcome\":{\"Mesage\":\"m2\",\"Output_Variables\":[\"AESEQ\"]},"
                 + "\"Check\":{\"expression\":\"not empty(AESEQ)\"}");
         assertUnknownAt(error, "Mesage", "under 'Outcome'");
         assertTrue(error.contains("did you mean 'Message'?"), error);
@@ -376,15 +393,57 @@ class UnknownKeysGateTest
 
 
     @Test
-    void aKeyBesideAPreconditionConditionFailsTheWholePackage()
+    void aKeyBesideAPreconditionConditionIsAPerRuleLoadError() throws IOException
     {
-        // T1-5 (a), accepted consequence L3: no per-rule channel under Precondition, so the
-        // condition grammar's own whole-package refusal applies — naming the key.
-        IOException ex = assertThrows(IOException.class, () -> loadX(
-                plain("\"Precondition\":{\"expression\":\"library_available()\",\"X\":1}")));
-        assertTrue(ex.getMessage().contains("'X'"), ex.getMessage());
-        assertTrue(ex.getMessage().contains("exactly one of all/any/not/expression"),
-                ex.getMessage());
+        // Review E6 / E7: Precondition binds through PreconditionDeserializer now — the same
+        // carried-error shape as Check — so one typo costs one rule, never the package.
+        String error = errorOf(
+                plain("\"Precondition\":{\"expression\":\"library_available()\",\"X\":1}"));
+        assertTrue(error.contains("[T-UKG] unknown key 'X' under 'Precondition'"), error);
+        assertTrue(error.contains("exactly one of all/any/not/expression"), error);
+    }
+
+
+    @Test
+    void aParkedRuleWithAPreconditionTypoIsDroppedWithTheRule() throws IOException
+    {
+        // Q-1 (owner: no): parked rules are out of the gate. Before E6 the typo failed the whole
+        // package at parse, before removeParkedRules could drop the rule.
+        RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"x\":{"
+                + plain("\"Executability\":\"Not Executable\","
+                        + "\"Precondition\":{\"expression\":\"library_available()\",\"X\":1}")
+                + "}," + CLEAN_SIBLING + "}}");
+        assertNull(pkg.getRules().get("x"), "the parked rule is removed");
+        assertNull(pkg.getRules().get("y").getLoadError(), "the sibling is untouched");
+    }
+
+
+    @Test
+    void aMisspeltDispatchKeyInsideALevelIsAPerRuleError() throws IOException
+    {
+        // Review E7: `expresion` beside Message used to be "not a recognised Check condition"
+        // for the whole package, clean siblings included.
+        String error = errorOf("\"Core\":{\"Id\":\"T-UKG\"},\"Sensitivity\":\"Record\","
+                + "\"Severity\":\"Error\",\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEQ\"]},"
+                + "\"Check\":{\"ERROR\":{\"Message\":\"m\",\"expresion\":\"not empty(AESEQ)\"}}");
+        assertTrue(error.contains("[T-UKG] no condition key under 'Check.ERROR'"), error);
+        assertTrue(error.contains("did you mean 'expression'?"), error);
+        String plainCase = errorOf(
+                plain("").replace("\"Check\":{\"expression\"", "\"Check\":{\"expresion\""));
+        assertTrue(plainCase.contains("no condition key under 'Check'"), plainCase);
+        String nested = errorOf(plain("").replace("\"Check\":{\"expression\":\"not empty(AESEQ)\"}",
+                "\"Check\":{\"all\":[{\"expresion\":\"not empty(AESEQ)\"}]}"));
+        assertTrue(nested.contains("no condition key under 'Check.all[0]'"), nested);
+    }
+
+
+    @Test
+    void aStrayConditionKeyGetsTheHint() throws IOException
+    {
+        String error = errorOf(plain("").replace("\"Check\":{\"expression\":\"not empty(AESEQ)\"}",
+                "\"Check\":{\"all\":[{\"expression\":\"not empty(AESEQ)\"}],\"Any\":[]}"));
+        assertTrue(error.contains("unknown key 'Any' under 'Check'; did you mean 'any'?"), error);
     }
 
     // ---- the package level (T1-6 a) ------------------------------------------
@@ -430,6 +489,96 @@ class UnknownKeysGateTest
                 pkg.getStandards().get(1).role(), "the record's default still applies");
     }
 
+    // ---- the hint everywhere (review E2 / E3) ---------------------------------
+
+
+    @Test
+    void theR2BlocksHintTooScopeDomains() throws IOException
+    {
+        String error = errorOf("\"Core\":{\"Id\":\"T-UKG\"},\"Sensitivity\":\"Record\","
+                + "\"Scope\":{\"domains\":{\"Include\":[\"AE\"]}},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEQ\"]},"
+                + "\"Check\":{\"expression\":\"not empty(AESEQ)\"}");
+        assertTrue(error.contains("unknown key 'domains' under 'Scope'"), error);
+        assertTrue(error.contains("did you mean 'Domains'?"), error);
+        String req = errorOf(plain("\"Requirements\":{\"Variables\":{\"Al\":[\"AESEQ\"]}}"));
+        assertTrue(req.contains("did you mean 'All'?"), req);
+    }
+
+
+    @Test
+    void theMatchDatasetsGateHintsToo() throws IOException
+    {
+        String error = errorOf(plain("\"Match_Datasets\":[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"],"
+                + "\"Join_type\":\"left\"}]"));
+        assertTrue(error.contains("unknown key 'Join_type' under 'Match_Datasets[0]'"), error);
+        assertTrue(error.contains("did you mean 'Join_Type'?"), error);
+    }
+
+
+    @Test
+    void thePackageArmsHintToo()
+    {
+        IOException pkg = assertThrows(IOException.class,
+                () -> RulePackageLoader.loadFromString("{\"Rules\":{" + CLEAN_SIBLING + "}}"));
+        assertTrue(pkg.getMessage().contains("unknown key 'Rules'"), pkg.getMessage());
+        assertTrue(pkg.getMessage().contains("did you mean 'rules'?"), pkg.getMessage());
+        IOException std = assertThrows(IOException.class,
+                () -> RulePackageLoader.loadFromString("{\"standards\":[{\"Id\":\"sdtmig/3-4\"}],"
+                        + "\"rules\":{" + CLEAN_SIBLING + "}}"));
+        assertTrue(std.getMessage().contains("unknown key 'Id' under 'standards[0]'"),
+                std.getMessage());
+        assertTrue(std.getMessage().contains("did you mean 'id'?"), std.getMessage());
+    }
+
+
+    @Test
+    void aHintNeverProposesAKeyTheObjectAlreadyCarries() throws IOException
+    {
+        // Review E3: the sided element has `left`; hinting it would tell the author to write
+        // what is already there.
+        String error = errorOf(plain("\"Match_Datasets\":[{\"Name\":\"DM\","
+                + "\"Keys\":[{\"left\":\"AESEQ\",\"right\":\"DMSEQ\",\"lfet\":\"X\"}]}]"));
+        assertTrue(error.contains("unknown key 'lfet' under 'Match_Datasets[0].Keys[0]'"), error);
+        assertFalse(error.contains("did you mean"), error);
+        // ...and a bean too: Outcome already has Message, so Mesage beside it gets no hint.
+        String bean = errorOf("\"Core\":{\"Id\":\"T-UKG\"},\"Sensitivity\":\"Record\","
+                + "\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Mesage\":\"m2\",\"Output_Variables\":[\"AESEQ\"]},"
+                + "\"Check\":{\"expression\":\"not empty(AESEQ)\"}");
+        assertTrue(bean.contains("unknown key 'Mesage' under 'Outcome'"), bean);
+        assertFalse(bean.contains("did you mean"), bean);
+    }
+
+
+    @Test
+    void aNullStandardsEntryIsAStatedError()
+    {
+        // Review E4: this used to surface as a bare NullPointerException.
+        IOException ex = assertThrows(IOException.class, () -> RulePackageLoader
+                .loadFromString("{\"standards\":[null],\"rules\":{" + CLEAN_SIBLING + "}}"));
+        assertTrue(ex.getMessage().contains("standards[0] is null"), ex.getMessage());
+        assertFalse(ex.getMessage().contains("NullPointerException"), ex.getMessage());
+    }
+
+
+    @Test
+    void aMisspeltCoreIdIsNamedByThePackageKey() throws IOException
+    {
+        // Review E5: the very key that is wrong is the rule's identity — the package map key
+        // names it instead of "<unknown>".
+        RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"my-rule\":{"
+                + "\"Core\":{\"ID\":\"T-UKG\"},\"Sensitivity\":\"Record\","
+                + "\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEQ\"]},"
+                + "\"Check\":{\"expression\":\"not empty(AESEQ)\"}}}}");
+        String error = pkg.getRules().get("my-rule").getLoadError();
+        assertNotNull(error);
+        assertTrue(error.contains("[my-rule] unknown key 'ID' under 'Core'"), error);
+        assertTrue(error.contains("did you mean 'Id'?"), error);
+        assertFalse(error.contains("<unknown>"), error);
+    }
+
     // ---- no double report ----------------------------------------------------
 
 
@@ -464,59 +613,175 @@ class UnknownKeysGateTest
 
     // ---- the positive control ------------------------------------------------
 
+    /**
+     * The positive-control package: three rules that together author every bound key of every class
+     * (the loader forbids some legal combinations on ONE rule — {@code Expansion} with the
+     * {@code wildcard*} directives or with engine-owned wildcard markers, a {@code Grouping} block
+     * with the flat {@code Grouping_Variables}) plus a {@code standards[]} entry. Also the tree the
+     * generic per-class plant of {@link #everyRosterClassIsWalkedByTheGate} plants into.
+     */
+    private static final String FULL_PACKAGE = "{\"standards\":[{\"id\":\"sdtmig/3-4\","
+            + "\"role\":\"primary\"}],\"rules\":{"
+            + """
+
+                    "full":{"Core":{"Id":"T-FULL","Status":"Published","Version":"1"},
+                      "Description":"d","Sensitivity":"Group","Severity":"Error",
+                      "Executability":"Fully Executable","Variable_Universe":"Data",
+                      "ExecutabilityHint":{"Category":"Library","Detail":"d"},
+                      "Authorities":[{"Organization":"CDISC","Rule_Ids":["CG0001"],
+                        "Standards":[{"Name":"SDTMIG","Version":"3.4","Substandard":"s",
+                          "References":[{"Origin":"o","Version":"v",
+                            "Rule_Identifier":{"Id":"CG0001","Version":"1"},
+                            "Citations":[{"Cited_Guidance":"g","Document":"d","Item":"i","Section":"s"}]}]}]}],
+                      "Scope":{"Classes":{"Include":["EVENTS"],"Exclude":["FINDINGS"]},
+                        "Domains":{"Include":["AE"],"Exclude":["DS"],"include_split_datasets":true},
+                        "Datasets":{"Include":["AE"],"Exclude":["AE2"]},
+                        "Data_Structures":{"Include":["BASIC DATA STRUCTURE"],"Exclude":["OCCURRENCE DATA STRUCTURE"]},
+                        "Subclasses":{"Include":["ADVERSE EVENT"],"Exclude":["TIME-TO-EVENT"]},
+                        "Use_Case":"ANALYSIS"},
+                      "Requirements":{"Variables":{"All":["AESEQ","USUBJID"],"Any":["AETERM","AEDECOD"],
+                          "None":["AEFOO"],"All_Or_None":[["USUBJID","DM.USUBJID"]]},
+                        "Datasets":["DM"]},
+                      "Bindings":[{"name":"$n","expression":"record_count(group=[USUBJID])"}],
+                      "Match_Datasets":[{"Name":"DM","Keys":["USUBJID",{"left":"AESEQ","right":"DMSEQ"}],
+                        "Join_Type":"left","Join_As_String":true,"keep_missings":false,"Filter":"not empty(ARM)"}],
+                      "Grouping":{"Variables":["USUBJID"],"keep_missings":true},
+                      "Precondition":{"expression":"library_available()"},
+                      "Outcome":{"Message":"m","Output_Variables":["AESEQ"]},
+                      "Check":{"ERROR":{"expression":"not empty(AESEQ) and $n > 0","Message":"e"},
+                               "WARNING":{"all":[{"any":[{"not":{"expression":"empty(AETERM)"}}]}]}}},
+                    "expansion":{"Core":{"Id":"T-EXP"},"Sensitivity":"Record",
+                      "Scope":{"Domains":{"Include":["ADAE"]}},
+                      "Expansion":[{"token":"&VAR","over":"shared_variables","with":"ADSL"},
+                        {"token":"&DOM","over":"domain_from_variable","pattern":"&DOMSEQ","known_domain_only":true}],
+                      "Outcome":{"Message":"m","Output_Variables":["USUBJID"]},
+                      "Check":{"expression":"not empty(`&VAR`) and not empty(`&DOMSEQ`)"}},
+                    "wild":{"Core":{"Id":"T-WILD"},"Sensitivity":"Group",
+                      "Scope":{"Domains":{"Include":["ADSL"]}},
+                      "wildcards":{"xx":{"min":1,"max":9}},"wildcardExclude":["TRT01P"],
+                      "wildcardPairCatalogue":false,"skipIfLibraryDefined":true,
+                      "Grouping_Variables":["USUBJID"],
+                      "Outcome":{"Message":"m","Output_Variables":["TRTxxP"]},
+                      "Check":{"all":[{"expression":"var_exists(\\"TRTxxP\\")"}]}}
+                    """
+            + "}}";
 
     /**
-     * Every bound key of every class, well formed, loads with no error. Three rules because the
-     * loader forbids some legal combinations on ONE rule ({@code Expansion} with the
-     * {@code wildcard*} directives or with engine-owned wildcard markers; a {@code Grouping} block
-     * with the flat {@code Grouping_Variables}).
+     * Where, in {@link #FULL_PACKAGE}, one instance of each roster class lives — a JSON pointer. ⛔
+     * Exact over {@code BoundRuleKeys.BY_CLASS}: a class added to the model without a plant
+     * location reds {@link #everyRosterClassIsWalkedByTheGate} (review E1).
+     */
+    private static final Map<Class<?>, String> PLANT_AT = Map.ofEntries(
+            Map.entry(RulePackage.class, ""),
+            Map.entry(net.cumba.corej.core.model.StandardRef.class, "/standards/0"),
+            Map.entry(Rule.class, "/rules/full"),
+            Map.entry(net.cumba.corej.core.model.RuleCore.class, "/rules/full/Core"),
+            Map.entry(net.cumba.corej.core.model.Outcome.class, "/rules/full/Outcome"),
+            Map.entry(net.cumba.corej.core.model.ExecutabilityHint.class,
+                    "/rules/full/ExecutabilityHint"),
+            Map.entry(net.cumba.corej.core.model.Authority.class, "/rules/full/Authorities/0"),
+            Map.entry(net.cumba.corej.core.model.AuthorityStandard.class,
+                    "/rules/full/Authorities/0/Standards/0"),
+            Map.entry(net.cumba.corej.core.model.Reference.class,
+                    "/rules/full/Authorities/0/Standards/0/References/0"),
+            Map.entry(net.cumba.corej.core.model.RuleIdentifier.class,
+                    "/rules/full/Authorities/0/Standards/0/References/0/Rule_Identifier"),
+            Map.entry(net.cumba.corej.core.model.Citation.class,
+                    "/rules/full/Authorities/0/Standards/0/References/0/Citations/0"),
+            Map.entry(net.cumba.corej.core.model.Scope.class, "/rules/full/Scope"),
+            Map.entry(net.cumba.corej.core.model.ClassScope.class, "/rules/full/Scope/Classes"),
+            Map.entry(net.cumba.corej.core.model.DomainScope.class, "/rules/full/Scope/Domains"),
+            Map.entry(net.cumba.corej.core.model.DatasetScope.class, "/rules/full/Scope/Datasets"),
+            Map.entry(net.cumba.corej.core.model.DataStructureScope.class,
+                    "/rules/full/Scope/Data_Structures"),
+            Map.entry(net.cumba.corej.core.model.SubclassScope.class,
+                    "/rules/full/Scope/Subclasses"),
+            Map.entry(net.cumba.corej.core.model.Requirements.class, "/rules/full/Requirements"),
+            Map.entry(net.cumba.corej.core.model.VariableRequirement.class,
+                    "/rules/full/Requirements/Variables"),
+            Map.entry(net.cumba.corej.core.model.Binding.class, "/rules/full/Bindings/0"),
+            Map.entry(net.cumba.corej.core.model.MatchDataset.class,
+                    "/rules/full/Match_Datasets/0"),
+            Map.entry(net.cumba.corej.core.model.GroupingSpec.class, "/rules/full/Grouping"),
+            Map.entry(net.cumba.corej.core.model.ExpansionDirective.class,
+                    "/rules/expansion/Expansion/1"),
+            Map.entry(net.cumba.corej.core.model.WildcardFilter.class, "/rules/wild/wildcards/xx"));
+
+    /** The three classes whose plant fails the whole package rather than one rule. */
+    private static final Set<Class<?>> WHOLE_PACKAGE = Set.of(RulePackage.class,
+            net.cumba.corej.core.model.StandardRef.class, net.cumba.corej.core.model.Binding.class);
+
+    /**
+     * ⭐ Review E1 — "always" holds for a class added later: one generic plant per roster class, at
+     * that class's location in the positive-control package, must surface as a load error naming
+     * the plant. A model class with a collector but no walker arm (or no plant location) reds here.
+     */
+    @Test
+    void everyRosterClassIsWalkedByTheGate() throws Exception
+    {
+        assertEquals(BoundRuleKeys.BY_CLASS.keySet(), PLANT_AT.keySet(),
+                "every roster class needs a plant location, and only roster classes have one");
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        List<String> failures = new java.util.ArrayList<>();
+        for (Map.Entry<Class<?>, String> e : PLANT_AT.entrySet())
+        {
+            String plant = "PLANT_" + e.getKey().getSimpleName();
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(FULL_PACKAGE);
+            com.fasterxml.jackson.databind.JsonNode target = root.at(e.getValue());
+            assertTrue(target.isObject(), e.getValue() + " must locate an object");
+            ((com.fasterxml.jackson.databind.node.ObjectNode) target).put(plant, 1);
+            String json = mapper.writeValueAsString(root);
+            if (WHOLE_PACKAGE.contains(e.getKey()))
+            {
+                try
+                {
+                    RulePackageLoader.loadFromString(json);
+                    failures.add(e.getKey().getSimpleName() + ": package loaded despite " + plant);
+                }
+                catch (IOException expected)
+                {
+                    if (!expected.getMessage().contains(plant))
+                    {
+                        failures.add(e.getKey().getSimpleName() + ": refusal does not name " + plant
+                                + ": " + expected.getMessage());
+                    }
+                }
+                continue;
+            }
+            RulePackage pkg = RulePackageLoader.loadFromString(json);
+            String ruleKey = e.getValue().substring("/rules/".length()).split("/", -1)[0];
+            String error = pkg.getRules().get(ruleKey).getLoadError();
+            if (error == null || !error.contains("unknown key '" + plant + "'"))
+            {
+                failures.add(e.getKey().getSimpleName() + " at " + e.getValue()
+                        + ": plant not reported: " + error);
+            }
+            for (Map.Entry<String, Rule> r : pkg.getRules().entrySet())
+            {
+                if (!r.getKey().equals(ruleKey) && r.getValue().getLoadError() != null)
+                {
+                    failures.add(e.getKey().getSimpleName() + ": sibling " + r.getKey()
+                            + " blamed: " + r.getValue().getLoadError());
+                }
+            }
+        }
+        assertTrue(failures.isEmpty(), String.join("\n", failures));
+    }
+
+
+    /**
+     * Every bound key of every class, well formed, loads with no error — the positive control
+     * without which a gate that errors on everything would pass every case above. ⚑ "Every bound
+     * key" as judged by THIS gate: the keys other gates own are exercised in their well-formed
+     * shape only — {@code Requirements.Library} / {@code Define} / {@code Dictionary} (R5, declared
+     * ⟺ derived, so omitted here as the corpus omits them), {@code Match_Datasets[].Child} (its own
+     * name / key gates; the entry here is an ordinary join) and the {@code Scope} alias
+     * {@code Data Structures} (an alias of a key already present).
      */
     @Test
     void everyBoundKeyStillLoads() throws IOException
     {
-        String full = """
-                "full":{"Core":{"Id":"T-FULL","Status":"Published","Version":"1"},
-                  "Description":"d","Sensitivity":"Group","Severity":"Error",
-                  "Executability":"Fully Executable","Variable_Universe":"Data",
-                  "ExecutabilityHint":{"Category":"Library","Detail":"d"},
-                  "Authorities":[{"Organization":"CDISC","Rule_Ids":["CG0001"],
-                    "Standards":[{"Name":"SDTMIG","Version":"3.4","Substandard":"s",
-                      "References":[{"Origin":"o","Version":"v",
-                        "Rule_Identifier":{"Id":"CG0001","Version":"1"},
-                        "Citations":[{"Cited_Guidance":"g","Document":"d","Item":"i","Section":"s"}]}]}]}],
-                  "Scope":{"Classes":{"Include":["EVENTS"],"Exclude":["FINDINGS"]},
-                    "Domains":{"Include":["AE"],"Exclude":["DS"],"include_split_datasets":true},
-                    "Datasets":{"Include":["AE"],"Exclude":["AE2"]},
-                    "Data_Structures":{"Include":["BASIC DATA STRUCTURE"],"Exclude":["OCCURRENCE DATA STRUCTURE"]},
-                    "Subclasses":{"Include":["ADVERSE EVENT"],"Exclude":["TIME-TO-EVENT"]},
-                    "Use_Case":"ANALYSIS"},
-                  "Requirements":{"Variables":{"All":["AESEQ","USUBJID"],"Any":["AETERM","AEDECOD"],
-                      "None":["AEFOO"],"All_Or_None":[["USUBJID","DM.USUBJID"]]},
-                    "Datasets":["DM"]},
-                  "Bindings":[{"name":"$n","expression":"record_count(group=[USUBJID])"}],
-                  "Match_Datasets":[{"Name":"DM","Keys":["USUBJID",{"left":"AESEQ","right":"DMSEQ"}],
-                    "Join_Type":"left","Join_As_String":true,"keep_missings":false,"Filter":"not empty(ARM)"}],
-                  "Grouping":{"Variables":["USUBJID"],"keep_missings":true},
-                  "Precondition":{"expression":"library_available()"},
-                  "Outcome":{"Message":"m","Output_Variables":["AESEQ"]},
-                  "Check":{"ERROR":{"expression":"not empty(AESEQ) and $n > 0","Message":"e"},
-                           "WARNING":{"all":[{"any":[{"not":{"expression":"empty(AETERM)"}}]}]}}},
-                "expansion":{"Core":{"Id":"T-EXP"},"Sensitivity":"Record",
-                  "Scope":{"Domains":{"Include":["ADAE"]}},
-                  "Expansion":[{"token":"&VAR","over":"shared_variables","with":"ADSL"},
-                    {"token":"&DOM","over":"domain_from_variable","pattern":"&DOMSEQ","known_domain_only":true}],
-                  "Outcome":{"Message":"m","Output_Variables":["USUBJID"]},
-                  "Check":{"expression":"not empty(`&VAR`) and not empty(`&DOMSEQ`)"}},
-                "wild":{"Core":{"Id":"T-WILD"},"Sensitivity":"Group",
-                  "Scope":{"Domains":{"Include":["ADSL"]}},
-                  "wildcards":{"xx":{"min":1,"max":9}},"wildcardExclude":["TRT01P"],
-                  "wildcardPairCatalogue":false,"skipIfLibraryDefined":true,
-                  "Grouping_Variables":["USUBJID"],
-                  "Outcome":{"Message":"m","Output_Variables":["TRTxxP"]},
-                  "Check":{"all":[{"expression":"var_exists(\\"TRTxxP\\")"}]}}
-                """;
-        RulePackage pkg = RulePackageLoader.loadFromString("{\"standards\":[{\"id\":\"sdtmig/3-4\","
-                + "\"role\":\"primary\"}],\"rules\":{" + full + "}}");
+        RulePackage pkg = RulePackageLoader.loadFromString(FULL_PACKAGE);
         assertEquals(3, pkg.getRules().size());
         for (Map.Entry<String, Rule> e : pkg.getRules().entrySet())
         {

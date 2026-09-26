@@ -22,6 +22,7 @@ import java.util.Deque;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -117,7 +118,9 @@ class UnknownKeyCollectorCoverageTest
     void everyReachableModelClassCollectsUnknownKeys() throws Exception
     {
         Set<Class<?>> reachable = reachableModelClasses();
-        assertTrue(reachable.size() >= 25, "reachable model classes: " + reachable);
+        // 24 = 22 collector beans + RuleCheck (custom) + the Role enum; StandardRef is bound per
+        // entry by RulePackage.setStandardsJson and CheckCondition only through RuleCheck now.
+        assertTrue(reachable.size() >= 24, "reachable model classes: " + reachable);
         assertTrue(reachable.contains(Outcome.class), reachable.toString());
         assertTrue(reachable.contains(ExpansionDirective.class), reachable.toString());
         List<String> uncovered = new ArrayList<>();
@@ -163,6 +166,93 @@ class UnknownKeyCollectorCoverageTest
     }
 
 
+    /**
+     * ⭐ Review E1 — "always" for a class added later is ENFORCED here: the roster table the
+     * loader's gate and hint read ({@code BoundRuleKeys.BY_CLASS}) must equal the classes the walk
+     * reaches, plus {@link StandardRef} (bound per entry by {@code RulePackage.setStandardsJson},
+     * so the walk never sees it) and minus the two custom-deserialized grammar classes, whose keys
+     * are {@code CheckConditionDeserializer.DISPATCH_ORDER} plus a level's {@code Message}. A new
+     * model class therefore reds twice: here (no roster) and in
+     * {@code UnknownKeysGateTest.everyRosterClassIsWalkedByTheGate} (no walker arm).
+     */
+    @Test
+    void theRosterTableIsExactlyTheReachableBeanClasses() throws Exception
+    {
+        Set<Class<?>> expected = new java.util.HashSet<>(reachableModelClasses());
+        expected.removeIf(c -> c.isEnum() || isCustomDeserialized(c));
+        expected.add(StandardRef.class);
+        assertEquals(expected, net.cumba.corej.core.BoundRuleKeys.BY_CLASS.keySet(),
+                "BoundRuleKeys.BY_CLASS must list exactly the bean classes a rule package"
+                        + " deserializes into (a class the walk reaches but the roster lacks has no"
+                        + " gate; a roster entry nothing reaches is dead)");
+    }
+
+
+    /**
+     * Review E1, second half: a property typed {@code JsonNode} / {@code Object} /
+     * {@code Map<String, Object>} is a hole the collector walk cannot see into. Every such property
+     * is listed here with the code that judges its contents, and the list is exact.
+     */
+    @Test
+    void everyRawTypedPropertyHasANamedJudge() throws Exception
+    {
+        Map<String, String> judged = Map.of("MatchDataset.Keys",
+                "MatchDataset.strayElementKeys / malformedKeyElement (the {left, right} elements)",
+                "MatchDataset.Join_As_String",
+                "MatchDataset.hasMalformedJoinAsString (a boolean or a rejected shape)",
+                "RulePackage.standards",
+                "RulePackage.setStandardsJson (entry extras collected, record bound per entry)",
+                "Rule.Operations", "Rule.rejectRetiredOperationsKey (throws)",
+                "VariableRequirement.Any", "VariableRequirement.readAny (flat or grouped lists)",
+                "VariableRequirement.All_Or_None",
+                "VariableRequirement.readAllOrNone (grouped lists)");
+        ObjectMapper mapper = new ObjectMapper()
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        DeserializationConfig cfg = mapper.getDeserializationConfig();
+        DefaultDeserializationContext ctxt = ((DefaultDeserializationContext) mapper
+                .getDeserializationContext()).createInstance(cfg, null,
+                        mapper.getInjectableValues());
+        Set<String> raw = new java.util.TreeSet<>();
+        for (Class<?> c : reachableModelClasses())
+        {
+            if (c.isEnum() || isCustomDeserialized(c))
+            {
+                continue;
+            }
+            JsonDeserializer<?> deser = ctxt.findRootValueDeserializer(mapper.constructType(c));
+            if (!(deser instanceof BeanDeserializerBase bean))
+            {
+                continue;
+            }
+            for (Iterator<SettableBeanProperty> it = bean.properties(); it.hasNext();)
+            {
+                SettableBeanProperty p = it.next();
+                JavaType t = p.getType();
+                while (t != null && t.isContainerType() && !t.isMapLikeType())
+                {
+                    t = t.getContentType();
+                }
+                if (t == null)
+                {
+                    continue;
+                }
+                Class<?> rc = t.getRawClass();
+                boolean rawShape = com.fasterxml.jackson.databind.JsonNode.class
+                        .isAssignableFrom(rc) || rc == Object.class
+                        || (t.isMapLikeType() && t.getContentType() != null
+                                && t.getContentType().getRawClass() == Object.class);
+                if (rawShape)
+                {
+                    raw.add(c.getSimpleName() + "." + p.getName());
+                }
+            }
+        }
+        assertEquals(new java.util.TreeSet<>(judged.keySet()), raw,
+                "raw-typed properties the collector walk cannot see into — each needs a named"
+                        + " judge in this table: " + raw);
+    }
+
+
     @Test
     void theCustomDeserializedClassesAreExactlyTheCheckGrammar() throws Exception
     {
@@ -174,7 +264,9 @@ class UnknownKeyCollectorCoverageTest
                 custom.add(c.getSimpleName());
             }
         }
-        assertEquals(Set.of("CheckCondition", "RuleCheck"), custom,
+        // CheckCondition is reached only through RuleCheck since Precondition binds like Check
+        // (PreconditionDeserializer): one custom class, whose grammar strayKeys judges.
+        assertEquals(Set.of("RuleCheck"), custom,
                 "a new custom-deserialized class widens the exemption — cover its keys explicitly");
     }
 }

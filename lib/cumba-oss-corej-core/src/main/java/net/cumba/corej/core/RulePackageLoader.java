@@ -182,6 +182,18 @@ public class RulePackageLoader
         // loadErrors; and it must fail rather than be dropped, or an author would believe a
         // threshold was in force when it was not.
         validateNoPackageSeverityThreshold(pkg);
+        // Review E5 (PLAN-rule-unknown-keys-gate): every rule knows the key it was loaded under,
+        // so a load error can name it even when Core.Id itself is the misspelt key.
+        if (pkg.getRules() != null)
+        {
+            pkg.getRules().forEach((key, rule) ->
+            {
+                if (rule != null)
+                {
+                    rule.setLoadKey(key);
+                }
+            });
+        }
         removeParkedRules(pkg);
         // normalizeOperations FIRST: it is the only pass that fills in operator/group/filter/domain
         // for an expression-form (Form B) operation, and the derivation reads exactly those four
@@ -263,13 +275,19 @@ public class RulePackageLoader
             // package-level key has no rule to attach a loadError to, so — like the threshold
             // arm beside it — it fails the package load.
             throw new IOException("rule package declares unknown key '" + key
-                    + "' — a package carries only 'rules' and 'standards'; check the spelling");
+                    + "' — a package carries only 'rules' and 'standards'"
+                    + net.cumba.corej.core.model.KeyHint.clause(key, BoundRuleKeys.RULE_PACKAGE,
+                            presentKeys(pkg), java.util.Set.of())
+                    + "; check the spelling");
         }
-        for (String extra : pkg.getUnknownStandardKeys())
+        for (RulePackage.UnknownStandardKey extra : pkg.getUnknownStandardKeys())
         {
-            throw new IOException("rule package declares unknown key "
-                    + extra.replaceFirst("^(standards\\[\\d+\\]): (.*)$", "$2 under '$1'")
-                    + " — a standards entry carries only 'id' and 'role'; check the spelling");
+            throw new IOException(
+                    "rule package declares unknown key '" + extra.key() + "' under 'standards["
+                            + extra.index() + "]' — a standards entry carries only 'id' and 'role'"
+                            + net.cumba.corej.core.model.KeyHint.clause(extra.key(),
+                                    BoundRuleKeys.STANDARD_REF, extra.present(), java.util.Set.of())
+                            + "; check the spelling");
         }
     }
 
@@ -3084,38 +3102,48 @@ public class RulePackageLoader
             // Dataset. RETIRED_SCOPE_VARIABLES_KEY is skipped here because R1 already reports it,
             // and by name — R1's message tells the author where to move the block, which the
             // generic unknown-key message cannot.
-            reportUnknownKeys(rule, "Scope",
+            reportUnknownKeys(rule, "Scope", scope, BoundRuleKeys.SCOPE,
                     scope.getUnknownKeys().stream()
                             .filter(key -> !RETIRED_SCOPE_VARIABLES_KEY.equals(key)).toList(),
                     errors);
             if (scope.getDatasets() != null)
             {
-                reportUnknownKeys(rule, "Scope.Datasets", scope.getDatasets().getUnknownKeys(),
-                        errors);
+                reportUnknownKeys(rule, "Scope.Datasets", scope.getDatasets(),
+                        BoundRuleKeys.DATASET_SCOPE, scope.getDatasets().getUnknownKeys(), errors);
             }
         }
         if (req == null)
         {
             return;
         }
-        reportUnknownKeys(rule, "Requirements", req.getUnknownKeys(), errors);
+        reportUnknownKeys(rule, "Requirements", req, BoundRuleKeys.REQUIREMENTS,
+                req.getUnknownKeys(), errors);
         VariableRequirement vars = req.getVariables();
         if (vars != null)
         {
-            reportUnknownKeys(rule, "Requirements.Variables", vars.getUnknownKeys(), errors);
+            reportUnknownKeys(rule, "Requirements.Variables", vars,
+                    BoundRuleKeys.VARIABLE_REQUIREMENT, vars.getUnknownKeys(), errors);
         }
     }
 
 
-    /** R2's message, shared by the three blocks that can carry an unbound key. */
-    private static void reportUnknownKeys(Rule rule, String where,
-            java.util.Collection<String> unknownKeys, List<String> errors)
+    /**
+     * R2's message, shared by the four blocks that can carry an unbound key — with the same <i>did
+     * you mean</i> hint as every other unknown-key gate (review E2).
+     */
+    private static void reportUnknownKeys(Rule rule, String where, Object block,
+            java.util.Set<String> boundHere, java.util.Collection<String> unknownKeys,
+            List<String> errors)
     {
+        java.util.Set<String> present = presentKeys(block);
         for (String key : unknownKeys)
         {
-            errors.add("[" + ruleId(rule) + "] unknown key '" + key + "' under '" + where
-                    + "': it binds to nothing, so whatever it was meant to require is not"
-                    + " required — check the spelling");
+            errors.add(
+                    "[" + ruleId(rule) + "] unknown key '" + key + "' under '" + where
+                            + "': it binds to nothing, so whatever it was meant to require is not"
+                            + " required" + net.cumba.corej.core.model.KeyHint.clause(key,
+                                    boundHere, present, BoundRuleKeys.NEVER_HINTED)
+                            + " — check the spelling");
         }
     }
 
@@ -3177,27 +3205,28 @@ public class RulePackageLoader
     static void validateUnknownKeys(Rule rule, List<String> errors)
     {
         reportUnknown(
-                rule, null, rule.getUnknownKeys().stream()
+                rule, null, rule, rule.getUnknownKeys().stream()
                         .filter(key -> !isTopLevelKeyReportedByName(key)).toList(),
                 BoundRuleKeys.RULE, errors);
         if (rule.getCore() != null)
         {
-            reportUnknown(rule, "Core", rule.getCore().getUnknownKeys(), BoundRuleKeys.CORE,
-                    errors);
+            reportUnknown(rule, "Core", rule.getCore(), rule.getCore().getUnknownKeys(),
+                    BoundRuleKeys.CORE, errors);
         }
         if (rule.getOutcome() != null)
         {
-            reportUnknown(rule, "Outcome", rule.getOutcome().getUnknownKeys(),
+            reportUnknown(rule, "Outcome", rule.getOutcome(), rule.getOutcome().getUnknownKeys(),
                     BoundRuleKeys.OUTCOME, errors);
         }
         if (rule.getExecutabilityHint() != null)
         {
-            reportUnknown(rule, "ExecutabilityHint", rule.getExecutabilityHint().getUnknownKeys(),
-                    BoundRuleKeys.EXECUTABILITY_HINT, errors);
+            reportUnknown(rule, "ExecutabilityHint", rule.getExecutabilityHint(),
+                    rule.getExecutabilityHint().getUnknownKeys(), BoundRuleKeys.EXECUTABILITY_HINT,
+                    errors);
         }
         if (rule.getGrouping() != null)
         {
-            reportUnknown(rule, "Grouping", rule.getGrouping().getUnknownKeys(),
+            reportUnknown(rule, "Grouping", rule.getGrouping(), rule.getGrouping().getUnknownKeys(),
                     BoundRuleKeys.GROUPING, errors);
         }
         List<net.cumba.corej.core.model.ExpansionDirective> expansion = rule.getExpansion();
@@ -3207,8 +3236,8 @@ public class RulePackageLoader
             {
                 if (expansion.get(i) != null)
                 {
-                    reportUnknown(rule, "Expansion[" + i + "]", expansion.get(i).getUnknownKeys(),
-                            BoundRuleKeys.EXPANSION, errors);
+                    reportUnknown(rule, "Expansion[" + i + "]", expansion.get(i),
+                            expansion.get(i).getUnknownKeys(), BoundRuleKeys.EXPANSION, errors);
                 }
             }
         }
@@ -3219,7 +3248,7 @@ public class RulePackageLoader
             {
                 if (filter != null)
                 {
-                    reportUnknown(rule, "wildcards." + name, filter.getUnknownKeys(),
+                    reportUnknown(rule, "wildcards." + name, filter, filter.getUnknownKeys(),
                             BoundRuleKeys.WILDCARD_FILTER, errors);
                 }
             });
@@ -3230,24 +3259,25 @@ public class RulePackageLoader
             // Scope itself and Scope.Datasets are R2's (requirementsUnknownKeys).
             if (scope.getClasses() != null)
             {
-                reportUnknown(rule, "Scope.Classes", scope.getClasses().getUnknownKeys(),
-                        BoundRuleKeys.CLASS_SCOPE, errors);
+                reportUnknown(rule, "Scope.Classes", scope.getClasses(),
+                        scope.getClasses().getUnknownKeys(), BoundRuleKeys.CLASS_SCOPE, errors);
             }
             if (scope.getDomains() != null)
             {
-                reportUnknown(rule, "Scope.Domains", scope.getDomains().getUnknownKeys(),
-                        BoundRuleKeys.DOMAIN_SCOPE, errors);
+                reportUnknown(rule, "Scope.Domains", scope.getDomains(),
+                        scope.getDomains().getUnknownKeys(), BoundRuleKeys.DOMAIN_SCOPE, errors);
             }
             if (scope.getDataStructures() != null)
             {
-                reportUnknown(rule, "Scope.Data_Structures",
+                reportUnknown(rule, "Scope.Data_Structures", scope.getDataStructures(),
                         scope.getDataStructures().getUnknownKeys(),
                         BoundRuleKeys.DATA_STRUCTURE_SCOPE, errors);
             }
             if (scope.getSubclasses() != null)
             {
-                reportUnknown(rule, "Scope.Subclasses", scope.getSubclasses().getUnknownKeys(),
-                        BoundRuleKeys.SUBCLASS_SCOPE, errors);
+                reportUnknown(rule, "Scope.Subclasses", scope.getSubclasses(),
+                        scope.getSubclasses().getUnknownKeys(), BoundRuleKeys.SUBCLASS_SCOPE,
+                        errors);
             }
         }
         reportAuthorityKeys(rule, errors);
@@ -3265,7 +3295,8 @@ public class RulePackageLoader
                         .strayElementKeys())
                 {
                     reportUnknown(rule, "Match_Datasets[" + i + "].Keys[" + stray.index() + "]",
-                            List.of(stray.key()), BoundRuleKeys.MATCH_KEY_ELEMENT, errors);
+                            stray.present(), List.of(stray.key()), BoundRuleKeys.MATCH_KEY_ELEMENT,
+                            errors);
                 }
             }
         }
@@ -3288,7 +3319,8 @@ public class RulePackageLoader
                 continue;
             }
             String at = "Authorities[" + i + "]";
-            reportUnknown(rule, at, authority.getUnknownKeys(), BoundRuleKeys.AUTHORITY, errors);
+            reportUnknown(rule, at, authority, authority.getUnknownKeys(), BoundRuleKeys.AUTHORITY,
+                    errors);
             List<net.cumba.corej.core.model.AuthorityStandard> standards = authority.getStandards();
             if (standards == null)
             {
@@ -3302,7 +3334,7 @@ public class RulePackageLoader
                     continue;
                 }
                 String atStandard = at + ".Standards[" + j + "]";
-                reportUnknown(rule, atStandard, standard.getUnknownKeys(),
+                reportUnknown(rule, atStandard, standard, standard.getUnknownKeys(),
                         BoundRuleKeys.AUTHORITY_STANDARD, errors);
                 List<net.cumba.corej.core.model.Reference> references = standard.getReferences();
                 if (references == null)
@@ -3326,10 +3358,11 @@ public class RulePackageLoader
         {
             return;
         }
-        reportUnknown(rule, at, reference.getUnknownKeys(), BoundRuleKeys.REFERENCE, errors);
+        reportUnknown(rule, at, reference, reference.getUnknownKeys(), BoundRuleKeys.REFERENCE,
+                errors);
         if (reference.getRuleIdentifier() != null)
         {
-            reportUnknown(rule, at + ".Rule_Identifier",
+            reportUnknown(rule, at + ".Rule_Identifier", reference.getRuleIdentifier(),
                     reference.getRuleIdentifier().getUnknownKeys(), BoundRuleKeys.RULE_IDENTIFIER,
                     errors);
         }
@@ -3342,8 +3375,8 @@ public class RulePackageLoader
         {
             if (citations.get(m) != null)
             {
-                reportUnknown(rule, at + ".Citations[" + m + "]", citations.get(m).getUnknownKeys(),
-                        BoundRuleKeys.CITATION, errors);
+                reportUnknown(rule, at + ".Citations[" + m + "]", citations.get(m),
+                        citations.get(m).getUnknownKeys(), BoundRuleKeys.CITATION, errors);
             }
         }
     }
@@ -3358,12 +3391,14 @@ public class RulePackageLoader
      * @param boundHere
      *            the roster of the block, for the hint
      */
-    private static void reportUnknown(Rule rule, @Nullable String where,
+    private static void reportUnknown(Rule rule, @Nullable String where, Object block,
             java.util.Collection<String> keys, java.util.Set<String> boundHere, List<String> errors)
     {
+        java.util.Set<String> present = presentKeys(block);
         for (String key : keys)
         {
-            String hint = BoundRuleKeys.hint(key, boundHere);
+            String hint = net.cumba.corej.core.model.KeyHint.nearest(key, boundHere, present,
+                    BoundRuleKeys.NEVER_HINTED);
             String advice = where == null && PROVENANCE_KEYS.contains(key)
                     ? " — Source / Source_Proposed are authoring provenance and are stripped from"
                             + " every released package; delete the key"
@@ -5341,6 +5376,67 @@ public class RulePackageLoader
         {
             errors.add("[" + ruleId(rule) + "] " + grammar);
         }
+        String precondition = rule.getRawPreconditionError();
+        if (precondition != null)
+        {
+            errors.add("[" + ruleId(rule) + "] " + precondition);
+        }
+    }
+
+
+    /**
+     * The bound JSON keys a model object already carries (a non-null value behind a Jackson-known
+     * property), so the hint never proposes one of them (review E3: {@code {"left": …, "lfet": …}}
+     * must not hint {@code left}). A {@link java.util.Set} is taken as the keys themselves (the
+     * JSON-node shapes hand their own field names in); a bean is asked through the mapper's
+     * serialisation introspection, so Lombok getters, {@code @JsonGetter}s and aliases all count.
+     * Read only on the error path.
+     */
+    static java.util.Set<String> presentKeys(Object block)
+    {
+        java.util.Set<String> present = new java.util.HashSet<>();
+        if (block instanceof java.util.Set<?> names)
+        {
+            names.forEach(n -> present.add(String.valueOf(n)));
+            return present;
+        }
+        // ⚠ The gate runs after normalizeOperations / deriveOmittedFields and the composite after
+        // normalizeJoinTypes too: a value those passes STAMP is not one the author wrote, so it
+        // must not hide the hint for a misspelt Sensitivity / Join_Type. Exactly the two stamped
+        // keys are excluded (deriveOmittedFields → Rule.setSensitivity; normalizeJoinTypes →
+        // MatchDataset.setJoinType); every other bound value is authored.
+        java.util.Set<String> stamped = block instanceof Rule ? java.util.Set.of("Sensitivity")
+                : block instanceof net.cumba.corej.core.model.MatchDataset
+                        ? java.util.Set.of("Join_Type")
+                        : java.util.Set.of();
+        com.fasterxml.jackson.databind.BeanDescription bd = MAPPER.getSerializationConfig()
+                .introspect(MAPPER.constructType(block.getClass()));
+        for (com.fasterxml.jackson.databind.introspect.BeanPropertyDefinition p : bd
+                .findProperties())
+        {
+            com.fasterxml.jackson.databind.introspect.AnnotatedMember accessor = p.getAccessor();
+            if (accessor == null)
+            {
+                continue;
+            }
+            try
+            {
+                if (accessor.getValue(block) != null && !stamped.contains(p.getName()))
+                {
+                    present.add(p.getName());
+                    for (com.fasterxml.jackson.databind.PropertyName alias : p.findAliases())
+                    {
+                        present.add(alias.getSimpleName());
+                    }
+                }
+            }
+            catch (IllegalArgumentException | IllegalStateException e)
+            {
+                // an accessor Jackson cannot read on this instance — not a present key
+                LOGGER.log(System.Logger.Level.DEBUG, "presentKeys: {0}", e.toString());
+            }
+        }
+        return present;
     }
 
 
@@ -5522,6 +5618,9 @@ public class RulePackageLoader
                 {
                     errors.add("[" + ruleId(rule) + "] unknown key '" + key + "' under " + where
                             + ": it binds to nothing, so whatever it was meant to do is not done"
+                            + net.cumba.corej.core.model.KeyHint.clause(key,
+                                    BoundRuleKeys.MATCH_DATASET, presentKeys(md),
+                                    java.util.Set.of())
                             + " — check the spelling (an entry binds "
                             + String.join(", ", MATCH_DATASET_KEYS) + ")");
                 }
@@ -6957,7 +7056,12 @@ public class RulePackageLoader
     private static String ruleId(Rule rule)
     {
         String id = rule.effectiveId();
-        return id != null ? id : UNKNOWN_RULE_ID;
+        if (id != null)
+        {
+            return id;
+        }
+        String key = rule.getLoadKey();
+        return key != null ? key : UNKNOWN_RULE_ID;
     }
 
 }

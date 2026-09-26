@@ -711,8 +711,52 @@ public class Rule
      * currently-shipped rules), behaviour is unchanged.
      * </p>
      */
-    @JsonProperty("Precondition")
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private @Nullable CheckCondition precondition;
+
+    /**
+     * A grammar violation in the authored {@code Precondition:} — a stray key beside the condition
+     * keyword, no keyword at all — carried like {@link #rawCheckLevels} until the loader reports it
+     * per rule ({@code PLAN-rule-unknown-keys-gate}, review E6 / E7). Non-null means
+     * {@link #precondition} is {@code null}: nothing bound, nothing evaluates.
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private @Nullable String rawPreconditionError;
+
+    /**
+     * Jackson binding for {@code Precondition}: the condition, or the carried grammar error — the
+     * same shape as {@link #setCheckJson}, so a typo in a precondition costs one rule, not the
+     * package, and a parked rule's typo is dropped with the rule.
+     *
+     * @param binding
+     *            the bound {@code Precondition:} value
+     */
+    @JsonSetter("Precondition")
+    @com.fasterxml.jackson.databind.annotation.JsonDeserialize(
+            using = PreconditionDeserializer.class)
+    public void setPreconditionJson(@Nullable RuleCheck binding)
+    {
+        if (binding == null)
+        {
+            this.precondition = null;
+            this.rawPreconditionError = null;
+            return;
+        }
+        this.rawPreconditionError = binding.grammarError();
+        this.precondition = binding.single();
+    }
+
+
+    /**
+     * Jackson serialization of {@code Precondition}: the condition as before.
+     *
+     * @return the precondition, or {@code null} when the rule declares none
+     */
+    @JsonGetter("Precondition")
+    public @Nullable CheckCondition getPreconditionJson()
+    {
+        return precondition;
+    }
 
     /**
      * The rule's {@code Expansion:} block — declared-token template expansion (see
@@ -841,6 +885,17 @@ public class Rule
     {
         return java.util.Collections.unmodifiableSequencedSet(unknownKeys);
     }
+
+    /**
+     * The key this rule was loaded under in its package's {@code rules} map — stamped by the loader
+     * so a load error can name the rule even when its {@code Core.Id} is the thing that is misspelt
+     * (review E5, {@code PLAN-rule-unknown-keys-gate}). Never authored, never serialised, never
+     * part of identity; read only as the last resort of the loader's messages.
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
+    private @Nullable String loadKey;
 
     /**
      * Fix #37: transient flag set by {@link net.cumba.corej.core.RulePackageLoader} when the rule's

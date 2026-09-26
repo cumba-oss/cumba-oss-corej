@@ -16,9 +16,11 @@ import com.fasterxml.jackson.databind.deser.DefaultDeserializationContext;
 import com.fasterxml.jackson.databind.deser.SettableBeanProperty;
 import com.fasterxml.jackson.databind.introspect.BeanPropertyDefinition;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import net.cumba.corej.core.model.KeyHint;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.StandardRef;
@@ -51,135 +53,163 @@ class BoundKeysRosterTest
     /** Marker for a key with no production reader, followed by why that is legitimate. */
     private static final String NO_READER = "no engine reader: ";
 
-    private static final String LOADER = "net.cumba.corej.core.RulePackageLoader";
+    private static final String P = "net.cumba.corej.core.";
 
-    private static final String SCOPE_MATCHER = "net.cumba.corej.core.exec.ScopeMatcher";
+    private static final String LOADER = P + "RulePackageLoader";
 
-    private static final String REPORT_ASSEMBLER = "net.cumba.corej.core.report.ReportAssembler";
+    private static final String SCOPE_MATCHER = P + "exec.ScopeMatcher";
 
-    private static final String TOKEN_EXPANDER = "net.cumba.corej.core.gen.TokenExpander";
+    private static final String REPORT_ASSEMBLER = P + "report.ReportAssembler";
 
-    private static final String WILDCARD_EXPANDER = "net.cumba.corej.core.gen.WildcardExpander";
+    private static final String TOKEN_EXPANDER = P + "gen.TokenExpander";
 
-    private static final String CLASSIFIER = "net.cumba.corej.core.exec.StudyRuleClassifier";
+    private static final String WILDCARD_EXPANDER = P + "gen.WildcardExpander";
+
+    private static final String CLASSIFIER = P + "exec.StudyRuleClassifier";
+
+    private static final String RUNNER = P + "exec.RuleRunner";
+
+    private static final String KEY_MATCH = P + "exec.KeyMatchRowExpander";
+
+    /** {@code fqcn#accessor}: the production class that reads the key and the accessor it calls. */
+    private static String r(String fqcn, String accessor)
+    {
+        return fqcn + "#" + accessor;
+    }
 
     /**
-     * Bound JSON key → the production class that reads it, per model class. A {@link #NO_READER}
-     * entry is a key the engine binds but never reads: serialised back out by the corpus generator
-     * (the model is also the package writer's shape) or read by the report / tooling only. Each
-     * says why, in a place a reviewer sees.
+     * Bound JSON key → the production reader as {@code fqcn#accessor} (review E11: the reader's
+     * bytecode must name that accessor), per model class. A {@link #NO_READER} entry is a key the
+     * engine binds but never reads: serialised back out by the corpus generator (the model is also
+     * the package writer's shape) or read by the report / tooling only. Each says why, in a place a
+     * reviewer sees. {@code provenance:} / {@code retired:} / {@code alias} entries are not
+     * readers.
      */
     private static final Map<Class<?>, Map<String, String>> READERS = Map.ofEntries(
             Map.entry(net.cumba.corej.core.model.RulePackage.class,
-                    Map.of("rules", LOADER, "standards",
-                            "net.cumba.corej.core.run.StudyValidationService")),
+                    Map.of("rules", r(P + "run.StudyValidationService", "getRules"), "standards",
+                            r(P + "run.StudyValidationService", "getStandards"))),
             Map.entry(StandardRef.class,
-                    Map.of("id", "net.cumba.corej.core.run.RunStandard", "role",
-                            "net.cumba.corej.core.run.RunStandard")),
+                    Map.of("id", r(P + "run.RunStandard", "id"), "role",
+                            r(P + "run.RunStandard", "role"))),
             Map.entry(Rule.class, Map.ofEntries(
                     Map.entry("id", "provenance: the loader's / the rulespec harness's"
                             + " synthetic identity (Rule.effectiveId); file-loaded rules carry none"),
-                    Map.entry("Core", LOADER),
-                    Map.entry("Description", "net.cumba.corej.core.exec.OperationExecutor"),
-                    Map.entry("ExecutabilityHint", LOADER),
-                    Map.entry("Authorities", REPORT_ASSEMBLER), Map.entry("Scope", SCOPE_MATCHER),
-                    Map.entry("Requirements", LOADER),
-                    Map.entry("Outcome", "net.cumba.corej.core.exec.RuleRunner"),
-                    Map.entry("Bindings", LOADER),
-                    Map.entry("Match_Datasets", "net.cumba.corej.core.exec.KeyMatchRowExpander"),
-                    Map.entry("Grouping_Variables", "net.cumba.corej.core.exec.RuleSpecialiser"),
-                    Map.entry("Grouping", "net.cumba.corej.core.exec.RuleSpecialiser"),
-                    Map.entry("Precondition", "net.cumba.corej.core.exec.RuleRunner"),
-                    Map.entry("Expansion", TOKEN_EXPANDER),
+                    Map.entry("Core", r(P + "exec.DatasetRuleResolver", "getCore")),
+                    Map.entry("Description", r(P + "exec.OperationExecutor", "getDescription")),
+                    Map.entry("ExecutabilityHint", r(LOADER, "getExecutabilityHint")),
+                    Map.entry("Authorities", r(REPORT_ASSEMBLER, "getAuthorities")),
+                    Map.entry("Scope", r(SCOPE_MATCHER, "getScope")),
+                    Map.entry("Requirements", r(RUNNER, "getRequirements")),
+                    Map.entry("Outcome", r(RUNNER, "getOutcome")),
+                    Map.entry("Bindings", r(LOADER, "getBindings")),
+                    Map.entry("Match_Datasets", r(RUNNER, "getMatchDatasets")),
+                    Map.entry("Grouping_Variables",
+                            r(P + "exec.RuleSpecialiser", "getGroupingVariables")),
+                    Map.entry("Grouping", r(P + "exec.RuleSpecialiser", "getGrouping")),
+                    Map.entry("Precondition", r(RUNNER, "getPrecondition")),
+                    Map.entry("Expansion", r(TOKEN_EXPANDER, "getExpansion")),
                     Map.entry("skipIfLibraryDefined",
-                            "net.cumba.corej.core.exec.DatasetRuleResolver"),
-                    Map.entry("wildcards", WILDCARD_EXPANDER),
-                    Map.entry("wildcardExclude", WILDCARD_EXPANDER),
-                    Map.entry("wildcardPairCatalogue", WILDCARD_EXPANDER),
-                    Map.entry("Check", "net.cumba.corej.core.exec.RuleRunner"),
+                            r(P + "exec.DatasetRuleResolver", "getSkipIfLibraryDefined")),
+                    Map.entry("wildcards", r(WILDCARD_EXPANDER, "getWildcards")),
+                    Map.entry("wildcardExclude", r(WILDCARD_EXPANDER, "getWildcardExclude")),
+                    Map.entry("wildcardPairCatalogue",
+                            r(WILDCARD_EXPANDER, "getWildcardPairCatalogue")),
+                    Map.entry("Check", r(RUNNER, "getCheck")),
                     Map.entry("Rule_Type",
                             "retired: bound only to be rejected by value"
                                     + " (RulePackageLoader.ruleTypeRejection)"),
-                    Map.entry("Sensitivity", "net.cumba.corej.core.exec.RuleRunner"),
-                    Map.entry("Severity", "net.cumba.corej.core.exec.RuleRunner"),
-                    Map.entry("Executability", LOADER), Map.entry("Variable_Universe", LOADER),
+                    Map.entry("Sensitivity", r(RUNNER, "getSensitivity")),
+                    Map.entry("Severity", r(RUNNER, "effectiveSeverity")),
+                    Map.entry("Executability", r(REPORT_ASSEMBLER, "getExecutability")),
+                    Map.entry("Variable_Universe", r(RUNNER, "getVariableUniverse")),
                     Map.entry("Operations",
                             "retired: bound only to throw"
                                     + " (Rule.rejectRetiredOperationsKey)"))),
             Map.entry(net.cumba.corej.core.model.RuleCore.class,
-                    Map.of("Id", LOADER, "Status", "net.cumba.corej.core.report.LibraryValidator",
-                            "Version",
+                    Map.of("Id", r(LOADER, "getId"), "Status",
+                            r(P + "report.LibraryValidator", "getStatus"), "Version",
                             NO_READER + "serialised by the corpus generator; the report reads"
                                     + " Authorities")),
             Map.entry(net.cumba.corej.core.model.Outcome.class,
-                    Map.of("Message", "net.cumba.corej.core.exec.RuleRunner", "Output_Variables",
-                            "net.cumba.corej.core.exec.OutputVariableDeriver")),
+                    Map.of("Message", r(RUNNER, "getMessage"), "Output_Variables",
+                            r(P + "exec.OutputVariableDeriver", "getOutputVariables"))),
             Map.entry(net.cumba.corej.core.model.ExecutabilityHint.class,
-                    Map.of("Category", LOADER, "Detail", LOADER)),
+                    Map.of("Category", r(LOADER, "getCategory"), "Detail", r(LOADER, "getDetail"))),
             Map.entry(net.cumba.corej.core.model.Authority.class,
-                    Map.of("Organization", REPORT_ASSEMBLER, "Standards", REPORT_ASSEMBLER,
-                            "Rule_Ids", REPORT_ASSEMBLER)),
+                    Map.of("Organization", r(REPORT_ASSEMBLER, "getOrganization"), "Standards",
+                            r(REPORT_ASSEMBLER, "getStandards"), "Rule_Ids",
+                            r(REPORT_ASSEMBLER, "getRuleIds"))),
             Map.entry(net.cumba.corej.core.model.AuthorityStandard.class,
                     Map.of("Name",
                             NO_READER + "release shape collapses Authorities to"
                                     + " {Organization, Rule_Ids}; authored corpus only",
                             "Version", NO_READER + "same", "Substandard", NO_READER + "same",
-                            "References", REPORT_ASSEMBLER)),
+                            "References", r(REPORT_ASSEMBLER, "getReferences"))),
             Map.entry(net.cumba.corej.core.model.Reference.class,
                     Map.of("Origin", NO_READER + "authored corpus only (release shape)", "Version",
-                            NO_READER + "same", "Rule_Identifier", REPORT_ASSEMBLER, "Citations",
+                            NO_READER + "same", "Rule_Identifier",
+                            r(REPORT_ASSEMBLER, "getRuleIdentifier"), "Citations",
                             NO_READER + "same — the corpus docs tooling reads citations")),
             Map.entry(net.cumba.corej.core.model.RuleIdentifier.class,
-                    Map.of("Id", REPORT_ASSEMBLER, "Version",
+                    Map.of("Id", r(REPORT_ASSEMBLER, "getId"), "Version",
                             NO_READER + "authored corpus only (release shape)")),
             Map.entry(net.cumba.corej.core.model.Citation.class,
                     Map.of("Cited_Guidance", NO_READER + "rules-src/docs tooling", "Document",
                             NO_READER + "same", "Item", NO_READER + "same", "Section",
                             NO_READER + "same")),
             Map.entry(net.cumba.corej.core.model.Scope.class,
-                    Map.of("Classes", SCOPE_MATCHER, "Domains", SCOPE_MATCHER, "Datasets",
-                            SCOPE_MATCHER, "Use_Case", SCOPE_MATCHER, "Data_Structures", CLASSIFIER,
-                            "Data Structures",
+                    Map.of("Classes", r(SCOPE_MATCHER, "getClasses"), "Domains",
+                            r(SCOPE_MATCHER, "getDomains"), "Datasets",
+                            r(SCOPE_MATCHER, "getDatasets"), "Use_Case",
+                            r(SCOPE_MATCHER, "getUseCase"), "Data_Structures",
+                            r(CLASSIFIER, "getDataStructures"), "Data Structures",
                             "alias of Data_Structures (the upstream CORE spelling)", "Subclasses",
-                            CLASSIFIER)),
+                            r(CLASSIFIER, "getSubclasses"))),
             Map.entry(net.cumba.corej.core.model.ClassScope.class,
-                    Map.of("Include", SCOPE_MATCHER, "Exclude", SCOPE_MATCHER)),
+                    Map.of("Include", r(SCOPE_MATCHER, "getInclude"), "Exclude",
+                            r(SCOPE_MATCHER, "getExclude"))),
             Map.entry(net.cumba.corej.core.model.DomainScope.class,
-                    Map.of("Include", SCOPE_MATCHER, "Exclude", SCOPE_MATCHER,
-                            "include_split_datasets", SCOPE_MATCHER)),
+                    Map.of("Include", r(SCOPE_MATCHER, "getInclude"), "Exclude",
+                            r(SCOPE_MATCHER, "getExclude"), "include_split_datasets",
+                            r(SCOPE_MATCHER, "getIncludeSplitDatasets"))),
             Map.entry(net.cumba.corej.core.model.DatasetScope.class,
-                    Map.of("Include", SCOPE_MATCHER, "Exclude", SCOPE_MATCHER)),
+                    Map.of("Include", r(SCOPE_MATCHER, "getInclude"), "Exclude",
+                            r(SCOPE_MATCHER, "getExclude"))),
             Map.entry(net.cumba.corej.core.model.DataStructureScope.class,
-                    Map.of("Include", CLASSIFIER, "Exclude", CLASSIFIER)),
+                    Map.of("Include", r(CLASSIFIER, "getInclude"), "Exclude",
+                            r(CLASSIFIER, "getExclude"))),
             Map.entry(net.cumba.corej.core.model.SubclassScope.class,
-                    Map.of("Include", CLASSIFIER, "Exclude", CLASSIFIER)),
+                    Map.of("Include", r(CLASSIFIER, "getInclude"), "Exclude",
+                            r(CLASSIFIER, "getExclude"))),
             Map.entry(net.cumba.corej.core.model.Requirements.class,
-                    Map.of("Variables", "net.cumba.corej.core.exec.RuleRunner", "Datasets",
-                            "net.cumba.corej.core.exec.RuleRunner", "Library", LOADER, "Define",
-                            LOADER, "Dictionary", LOADER)),
+                    Map.of("Variables", r(RUNNER, "getVariables"), "Datasets",
+                            r(RUNNER, "getDatasets"), "Library", r(WILDCARD_EXPANDER, "getLibrary"),
+                            "Define", r(WILDCARD_EXPANDER, "getDefine"), "Dictionary",
+                            r(WILDCARD_EXPANDER, "getDictionary"))),
             Map.entry(net.cumba.corej.core.model.VariableRequirement.class,
-                    Map.of("All", "net.cumba.corej.core.exec.RuleRunner", "Any",
-                            "net.cumba.corej.core.exec.RuleRunner", "None",
-                            "net.cumba.corej.core.exec.RuleRunner", "All_Or_None",
-                            "net.cumba.corej.core.exec.RuleRunner")),
+                    Map.of("All", r(SCOPE_MATCHER, "getAll"), "Any", r(SCOPE_MATCHER, "anyUnion"),
+                            "None", r(SCOPE_MATCHER, "getNone"), "All_Or_None",
+                            r(SCOPE_MATCHER, "allOrNoneUnion"))),
             Map.entry(net.cumba.corej.core.model.Binding.class,
-                    Map.of("name", LOADER, "expression", LOADER)),
-            Map.entry(MatchDataset.class,
-                    Map.of("Name", "net.cumba.corej.core.exec.RelrecRowExpander", "Keys",
-                            "net.cumba.corej.core.exec.KeyMatchRowExpander", "Child",
-                            "net.cumba.corej.core.exec.ChildMatchPreMerger", "Join_Type",
-                            "net.cumba.corej.core.exec.KeyMatchRowExpander", "Join_As_String",
-                            "net.cumba.corej.core.exec.KeyMatchRowExpander", "keep_missings",
-                            "net.cumba.corej.core.exec.KeyMatchRowExpander", "Filter",
-                            "net.cumba.corej.core.exec.MatchFilter")),
+                    Map.of("name", r(LOADER, "getName"), "expression", r(LOADER, "getExpression"))),
+            Map.entry(MatchDataset.class, Map.of("Name", r(P + "exec.RelrecRowExpander", "getName"),
+                    "Keys", r(KEY_MATCH, "getKeys"), "Child",
+                    r(P + "exec.ChildMatchPreMerger", "getChild"), "Join_Type",
+                    r(KEY_MATCH, "getJoinType"), "Join_As_String", r(KEY_MATCH, "joinKeysAsString"),
+                    "keep_missings", r(KEY_MATCH, "keepMissingKeys"), "Filter",
+                    r(P + "exec.MatchFilter", "filterExpr"))),
             Map.entry(net.cumba.corej.core.model.GroupingSpec.class,
-                    Map.of("Variables", "net.cumba.corej.core.exec.RuleRunner", "keep_missings",
-                            "net.cumba.corej.core.exec.OperationExecutor")),
+                    Map.of("Variables", r(P + "model.Rule", "getVariables"), "keep_missings",
+                            r(P + "model.Rule", "getKeepMissings"))),
             Map.entry(net.cumba.corej.core.model.ExpansionDirective.class,
-                    Map.of("token", TOKEN_EXPANDER, "over", TOKEN_EXPANDER, "with", TOKEN_EXPANDER,
-                            "pattern", TOKEN_EXPANDER, "known_domain_only", TOKEN_EXPANDER)),
+                    Map.of("token", r(TOKEN_EXPANDER, "getToken"), "over",
+                            r(TOKEN_EXPANDER, "getOver"), "with", r(TOKEN_EXPANDER, "getWith"),
+                            "pattern", r(TOKEN_EXPANDER, "getPattern"), "known_domain_only",
+                            r(TOKEN_EXPANDER, "getKnownDomainOnly"))),
             Map.entry(net.cumba.corej.core.model.WildcardFilter.class,
-                    Map.of("min", WILDCARD_EXPANDER, "max", WILDCARD_EXPANDER)));
+                    Map.of("min", r(P + "model.WildcardFilter", "accepts"), "max",
+                            r(P + "model.WildcardFilter", "accepts"))));
 
     /**
      * The JSON names Jackson's built bean deserializer binds on {@code type}, plus the
@@ -248,40 +278,111 @@ class BoundKeysRosterTest
     }
 
 
+    /**
+     * Every named reader exists AND its bytecode names the accessor the table says it calls (review
+     * E11). The scan reads the reader class file and its nested classes for the accessor name as a
+     * UTF-8 constant — a proxy for "calls it" that a reader which never mentions the accessor
+     * cannot pass. ⚠ A generic accessor name ({@code getName}, {@code getId}, {@code getVariables})
+     * can be satisfied by an unrelated call in the same class; the column's value is still that
+     * whoever adds a key has to SAY where it is read, in a place a reviewer sees — and name an
+     * accessor that class really contains.
+     */
     @Test
-    void everyNamedReaderExists() throws ClassNotFoundException
+    void everyNamedReaderReferencesTheAccessor() throws Exception
     {
         int named = 0;
-        for (Map<String, String> readers : READERS.values())
+        List<String> unreferenced = new java.util.ArrayList<>();
+        for (Map.Entry<Class<?>, Map<String, String>> e : READERS.entrySet())
         {
-            for (String reader : readers.values())
+            for (Map.Entry<String, String> r : e.getValue().entrySet())
             {
-                if (reader.startsWith("net.cumba."))
+                String reader = r.getValue();
+                if (!reader.startsWith("net.cumba."))
                 {
-                    assertEquals(reader, Class.forName(reader).getName());
-                    named++;
+                    continue;
+                }
+                named++;
+                int hash = reader.indexOf('#');
+                assertTrue(hash > 0, "reader entries are fqcn#accessor: " + reader);
+                Class<?> readerClass = Class.forName(reader.substring(0, hash));
+                String accessor = reader.substring(hash + 1);
+                if (!bytecodeMentions(readerClass, accessor))
+                {
+                    unreferenced
+                            .add(e.getKey().getSimpleName() + "." + r.getKey() + " -> " + reader);
                 }
             }
         }
         assertTrue(named >= 60, "named readers: " + named);
+        assertTrue(unreferenced.isEmpty(),
+                "readers that never mention the accessor they are said to call: " + unreferenced);
+    }
+
+
+    private static boolean bytecodeMentions(Class<?> type, String symbol) throws Exception
+    {
+        byte[] needle = symbol.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        java.util.Deque<Class<?>> todo = new java.util.ArrayDeque<>(List.of(type));
+        while (!todo.isEmpty())
+        {
+            Class<?> c = todo.pop();
+            try (java.io.InputStream in = c.getResourceAsStream(c.getSimpleName() + ".class"))
+            {
+                if (in != null && indexOf(in.readAllBytes(), needle) >= 0)
+                {
+                    return true;
+                }
+            }
+            java.util.Collections.addAll(todo, c.getDeclaredClasses());
+        }
+        return false;
+    }
+
+
+    private static int indexOf(byte[] haystack, byte[] needle)
+    {
+        outer: for (int i = 0; i <= haystack.length - needle.length; i++)
+        {
+            for (int j = 0; j < needle.length; j++)
+            {
+                if (haystack[i + j] != needle[j])
+                {
+                    continue outer;
+                }
+            }
+            return i;
+        }
+        return -1;
     }
 
 
     @Test
-    void theHintOffersOneNearMissAndNeverARetiredKey()
+    void theHintOffersOneNearMissAndNeverARetiredOrPresentKey()
     {
-        assertEquals("Outcome", BoundRuleKeys.hint("outcome", BoundRuleKeys.RULE));
-        assertEquals("Outcome", BoundRuleKeys.hint("Outcom", BoundRuleKeys.RULE));
-        assertEquals("Version", BoundRuleKeys.hint("Versoin", BoundRuleKeys.CORE));
-        assertEquals("Message", BoundRuleKeys.hint("Mesage", BoundRuleKeys.OUTCOME));
-        assertNull(BoundRuleKeys.hint("Foo", BoundRuleKeys.RULE));
-        assertNull(BoundRuleKeys.hint("operations", BoundRuleKeys.RULE), "retired, never hinted");
-        assertNull(BoundRuleKeys.hint("rule_type", BoundRuleKeys.RULE), "retired, never hinted");
-        assertNull(BoundRuleKeys.hint("ID", BoundRuleKeys.RULE),
+        Set<String> none = Set.of();
+        Set<String> retired = BoundRuleKeys.NEVER_HINTED;
+        assertEquals("Outcome", KeyHint.nearest("outcome", BoundRuleKeys.RULE, none, retired));
+        assertEquals("Outcome", KeyHint.nearest("Outcom", BoundRuleKeys.RULE, none, retired));
+        assertEquals("Version", KeyHint.nearest("Versoin", BoundRuleKeys.CORE, none, retired));
+        assertEquals("Message", KeyHint.nearest("Mesage", BoundRuleKeys.OUTCOME, none, retired));
+        assertEquals("Domains", KeyHint.nearest("domains", BoundRuleKeys.SCOPE, none, retired));
+        assertNull(KeyHint.nearest("Foo", BoundRuleKeys.RULE, none, retired));
+        assertNull(KeyHint.nearest("operations", BoundRuleKeys.RULE, none, retired),
+                "retired, never hinted");
+        assertNull(KeyHint.nearest("rule_type", BoundRuleKeys.RULE, none, retired),
+                "retired, never hinted");
+        assertNull(KeyHint.nearest("ID", BoundRuleKeys.RULE, none, retired),
                 "id is the loader's, not the author's");
         // Ambiguity gives no hint rather than a wrong one.
-        assertNull(BoundRuleKeys.hint("Includ", Set.of("Include", "Includx")));
-        assertEquals(2, BoundRuleKeys.editDistance("abc", "xyz"), "capped at 2");
-        assertEquals(1, BoundRuleKeys.editDistance("ab", "ba"), "a transposition is one edit");
+        assertNull(KeyHint.nearest("Includ", Set.of("Include", "Includx"), none, none));
+        // A key the object already carries is never proposed (review E3).
+        assertNull(KeyHint.nearest("lfet", Set.of("left", "right"), Set.of("left", "lfet"), none));
+        assertEquals("left",
+                KeyHint.nearest("lfet", Set.of("left", "right"), Set.of("lfet"), none));
+        assertEquals("; did you mean 'Outcome'?",
+                KeyHint.clause("Outcom", BoundRuleKeys.RULE, none, retired));
+        assertEquals("", KeyHint.clause("Foo", BoundRuleKeys.RULE, none, retired));
+        assertEquals(2, KeyHint.editDistance("abc", "xyz"), "capped at 2");
+        assertEquals(1, KeyHint.editDistance("ab", "ba"), "a transposition is one edit");
     }
 }

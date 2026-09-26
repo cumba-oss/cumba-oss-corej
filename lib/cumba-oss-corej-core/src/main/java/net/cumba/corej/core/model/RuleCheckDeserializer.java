@@ -202,7 +202,7 @@ public class RuleCheckDeserializer extends StdDeserializer<RuleCheck>
 
 
     /** The carried grammar error for stray condition keys; the loader prefixes the rule id. */
-    private static String strayKeyMessage(List<String> stray)
+    static String strayKeyMessage(List<String> stray)
     {
         return String.join("; ", stray) + " — " + CheckConditionDeserializer.CONDITION_SHAPE
                 + " (a Check level entry may also carry " + MESSAGE_KEY + ")";

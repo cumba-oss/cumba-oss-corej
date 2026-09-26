@@ -63,7 +63,15 @@ public class RulePackage
     @com.fasterxml.jackson.annotation.JsonIgnore
     @lombok.EqualsAndHashCode.Exclude
     @lombok.ToString.Exclude
-    private final List<String> unknownStandardKeys = new java.util.ArrayList<>();
+    private final List<UnknownStandardKey> unknownStandardKeys = new java.util.ArrayList<>();
+
+    /**
+     * One key of a {@code standards[index]} entry that is neither {@code id} nor {@code role}, with
+     * the keys that entry does carry (so the hint never proposes one of them).
+     */
+    public record UnknownStandardKey(int index, String key, java.util.Set<String> present)
+    {
+    }
 
     /**
      * Jackson's binding of {@code standards} — the explicitly named setter wins over the Lombok one
@@ -92,14 +100,22 @@ public class RulePackage
         for (int i = 0; i < raw.size(); i++)
         {
             com.fasterxml.jackson.databind.node.ObjectNode entry = raw.get(i);
+            if (entry == null)
+            {
+                // Review E4: a JSON null element used to surface as a bare NullPointerException.
+                throw new java.io.IOException("rule package: standards[" + i
+                        + "] is null — a standards entry is an object {id, role}");
+            }
             int index = i;
-            entry.fieldNames().forEachRemaining(key ->
+            java.util.Set<String> present = new java.util.LinkedHashSet<>();
+            entry.fieldNames().forEachRemaining(present::add);
+            for (String key : present)
             {
                 if (!STANDARD_REF_KEYS.contains(key))
                 {
-                    unknownStandardKeys.add("standards[" + index + "]: '" + key + "'");
+                    unknownStandardKeys.add(new UnknownStandardKey(index, key, present));
                 }
-            });
+            }
             bound.add(STANDARD_REF_READER.treeToValue(entry, StandardRef.class));
         }
         this.standards = bound;
@@ -107,12 +123,12 @@ public class RulePackage
 
 
     /**
-     * The {@code standards[i]} entry keys that bound to nothing, as {@code standards[i]: 'key'}.
+     * The {@code standards[i]} entry keys that bound to nothing, in encounter order.
      *
      * @return an unmodifiable view, empty for every shipped package
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
-    public List<String> getUnknownStandardKeys()
+    public List<UnknownStandardKey> getUnknownStandardKeys()
     {
         return java.util.Collections.unmodifiableList(unknownStandardKeys);
     }

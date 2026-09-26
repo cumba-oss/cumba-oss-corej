@@ -26,8 +26,12 @@ class RulePackageLoaderEdgeCaseTest
     }
 
 
+    /**
+     * Until {@code PLAN-rule-unknown-keys-gate} this pinned the lenient mapper's hole ("unknown
+     * properties ignored"); an unknown key is a per-rule load error now, and the rule still binds.
+     */
     @Test
-    void testLoadFromString_unknownPropertiesIgnored() throws IOException
+    void testLoadFromString_unknownPropertyIsALoadError() throws IOException
     {
         String json = """
                 {
@@ -45,6 +49,10 @@ class RulePackageLoaderEdgeCaseTest
         RulePackage pkg = RulePackageLoader.loadFromString(json);
         assertNotNull(pkg.getRules().get("test-uuid"));
         assertEquals("CORE-TEST", pkg.getRules().get("test-uuid").getCore().getId());
+        String error = pkg.getRules().get("test-uuid").getLoadError();
+        assertNotNull(error, "an unknown key is a load error, not ignored");
+        assertTrue(error.contains("unknown key 'unknown_field' at the top level of the rule"),
+                error);
     }
 
 
