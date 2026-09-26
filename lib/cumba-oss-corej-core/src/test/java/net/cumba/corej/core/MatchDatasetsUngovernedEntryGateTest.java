@@ -59,7 +59,7 @@ class MatchDatasetsUngovernedEntryGateTest
         String error = errorOf(
                 "{\"Name\":\"AE\",\"Child\":true,\"Keys\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"],"
                         + "\"keep_missings\":false}");
-        assertTrue(error.contains("keep_missings has no effect"), error);
+        assertTrue(error.contains("keep_missings: false has no effect"), error);
         assertTrue(error.contains("Child / RELREC / SUPP--"),
                 "the reason names the family: " + error);
     }
@@ -70,10 +70,10 @@ class MatchDatasetsUngovernedEntryGateTest
     {
         // The keyed non-Child shapes the expander refuses by NAME reach the hashed DatasetLookup,
         // which never consults the flag — the M1 gap itself.
-        assertTrue(errorOf("{\"Name\":\"SUPPAE\",\"Keys\":[\"USUBJID\"],\"keep_missings\":true}")
-                .contains("keep_missings has no effect"));
+        assertTrue(errorOf("{\"Name\":\"SUPPAE\",\"Keys\":[\"USUBJID\"],\"keep_missings\":false}")
+                .contains("keep_missings: false has no effect"));
         assertTrue(errorOf("{\"Name\":\"RELREC\",\"Keys\":[\"USUBJID\"],\"keep_missings\":false}")
-                .contains("keep_missings has no effect"));
+                .contains("keep_missings: false has no effect"));
     }
 
 
@@ -81,7 +81,7 @@ class MatchDatasetsUngovernedEntryGateTest
     void keepMissingsOnAKeylessEntryIsALoadError() throws IOException
     {
         String error = errorOf("{\"Name\":\"DM\",\"keep_missings\":false}");
-        assertTrue(error.contains("keep_missings has no effect"), error);
+        assertTrue(error.contains("keep_missings: false has no effect"), error);
         assertTrue(error.contains("declares no Keys"),
                 "the reason names the keyless half: " + error);
     }
@@ -108,6 +108,18 @@ class MatchDatasetsUngovernedEntryGateTest
         assertNull(load("{\"Name\":\"SUPPAE\",\"Keys\":[\"USUBJID\"]}").getLoadError());
     }
 
+
+    @Test
+    void anAuthoredTrueOnAnUngovernedEntryStillLoads() throws IOException
+    {
+        // Round 2 L3 — the sibling precedent refuses only the flag that would change something
+        // and did not: `true` IS what these paths do (JKM R4), so it is harmless.
+        assertNull(load("{\"Name\":\"AE\",\"Child\":true,\"Keys\":[\"USUBJID\",\"IDVAR\","
+                + "\"IDVARVAL\"],\"keep_missings\":true}").getLoadError());
+        assertNull(load("{\"Name\":\"SUPPAE\",\"Keys\":[\"USUBJID\"],\"keep_missings\":true}")
+                .getLoadError());
+    }
+
     // ------------------------------------------------------------- L1: Child entry names
 
 
@@ -116,12 +128,13 @@ class MatchDatasetsUngovernedEntryGateTest
     {
         for (String name : new String[]
         {
-                "*", "AE*", "${DOM}", "&DOM", "--"
+                "*", "AE*", "${DOM}", "&DOM", "--", "--SUPP", "SU--PP"
         })
         {
             String error = errorOf("{\"Name\":\"" + name
                     + "\",\"Child\":true,\"Keys\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]}");
-            assertTrue(error.contains("must name a concrete dataset or a --affixed template"),
+            assertTrue(
+                    error.contains("must name a concrete dataset or a template with a TRAILING --"),
                     "'" + name + "' must be refused: " + error);
         }
     }
@@ -133,7 +146,7 @@ class MatchDatasetsUngovernedEntryGateTest
         // The shipped shapes — every one of the 11 Child entries is one of these.
         for (String name : new String[]
         {
-                "AE", "CO", "RELREC", "SUPP--", "SQ--"
+                "AE", "CO", "RELREC", "SUPP--", "SQ--", "SQAP--"
         })
         {
             assertNull(load("{\"Name\":\"" + name

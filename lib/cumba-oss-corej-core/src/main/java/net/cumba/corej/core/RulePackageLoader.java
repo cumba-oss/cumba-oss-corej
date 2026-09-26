@@ -5197,9 +5197,9 @@ public class RulePackageLoader
 
 
     /**
-     * Tags a {@code keep_missings} authored on an entry the ordinary keyed join does not serve —
-     * {@code Child:true} / {@code RELREC} / {@code SUPP--} / {@code SQ*}, a nameless entry, a
-     * keyless one ({@code PLAN-hashed-join-arm-absent-columns} review round 1, M1; the sibling of
+     * Tags a {@code keep_missings: false} authored on an entry the ordinary keyed join does not
+     * serve — {@code Child:true} / {@code RELREC} / {@code SUPP--} / {@code SQ*}, a nameless entry,
+     * a keyless one ({@code PLAN-hashed-join-arm-absent-columns} review round 1, M1; the sibling of
      * {@link #checkJoinAsStringOnExcludedEntry}, on the same predicate).
      *
      * <p>
@@ -5212,7 +5212,8 @@ public class RulePackageLoader
      * the flag — and since {@code JKM R7}'s one-side rule landed on the hashed arm too, an absent
      * key column there is present-but-blank on every row, exactly the rows an authored
      * {@code false} claims to drop. An author who writes the flag there believes they have chosen
-     * DROP and has not.
+     * DROP and has not. An authored {@code true} is accepted: it states the default those paths
+     * already implement.
      * </p>
      *
      * <p>
@@ -5234,15 +5235,19 @@ public class RulePackageLoader
         }
         for (net.cumba.corej.core.model.MatchDataset md : matches)
         {
-            if (md == null || md.getKeepMissings() == null
+            // Only the NON-default `false` is refused: an authored `true` is what these paths do
+            // anyway (KEEP, JKM R4), so it is harmless — the sibling gate refuses only the flag
+            // that would change something and did not (review round 2, L3).
+            if (md == null || !Boolean.FALSE.equals(md.getKeepMissings())
                     || net.cumba.corej.core.exec.JoinKeyTypes.governedByKeyTypeCheck(md))
             {
                 continue;
             }
             errors.add("[" + ruleId(rule)
-                    + "] keep_missings has no effect on Match_Datasets entry '" + md.getName()
-                    + "' — " + ungovernedWhy(md) + "; only the ordinary keyed join"
-                    + " reads it, and every other join path keeps a blank key (JKM R4). Remove it.");
+                    + "] keep_missings: false has no effect on Match_Datasets entry '"
+                    + md.getName() + "' — " + ungovernedWhy(md) + "; this merge keeps blank keys"
+                    + " unconditionally (JKM R4), so keep_missings: false has no effect here."
+                    + " Remove it.");
         }
     }
 
@@ -5274,9 +5279,9 @@ public class RulePackageLoader
 
     /**
      * Tags a {@code Child: true} entry whose {@code Name} is not a concrete dataset name and not a
-     * {@code --}-affixed template such as {@code SUPP--} — a {@code *}, {@code ${...}} or
-     * {@code &TOKEN} name, or a bare {@code --} ({@code PLAN-hashed-join-arm-absent-columns} review
-     * round 1, L1).
+     * template with a <b>trailing</b> {@code --} such as {@code SUPP--} — a {@code *},
+     * {@code ${...}} or {@code &TOKEN} name, a bare {@code --}, or a {@code --} anywhere but at the
+     * end ({@code PLAN-hashed-join-arm-absent-columns} review rounds 1 L1 and 2 L4).
      *
      * <p>
      * A Child entry's name is never resolved to a joined dataset — the pointer join finds the
@@ -5310,17 +5315,28 @@ public class RulePackageLoader
             String name = md.getName();
             if (name == null)
             {
-                continue; // a nameless entry is the nameless-entry gate's business, not this one's
+                // A nameless Child entry is ACCEPTED, and used: ChildMatchPreMerger takes it as
+                // the firstChild fallback for the child-side keys, and no qualifier can name it —
+                // there is nothing here to bind wrongly.
+                continue;
             }
-            boolean bareTemplate = "--".equals(name);
-            if (bareTemplate || name.contains("*") || name.contains("${") || name.contains("&"))
+            // Both consumers must bind every accepted shape: ChildMatchPreMerger's
+            // childEntryMatchesPrimary binds a template only as `<prefix>--` (a TRAILING `--`),
+            // and StageAChecker.entryFor resolves any `--` — so the loader accepts the narrower
+            // of the two (review round 2, L4).
+            int dashes = name.indexOf("--");
+            boolean trailingTemplate = dashes > 0 && dashes == name.length() - 2;
+            boolean concrete = dashes < 0;
+            if (!(concrete || trailingTemplate) || name.contains("*") || name.contains("${")
+                    || name.contains("&"))
             {
                 errors.add("[" + ruleId(rule) + "] Child: true Match_Datasets entry '" + name
-                        + "' must name a concrete dataset or a --affixed template such as SUPP--"
-                        + " — a Child entry is joined only through its pointer (RDOMAIN / IDVAR /"
-                        + " IDVARVAL); its name selects the child-side keys and answers the"
-                        + " stage-A qualifier checks, and neither can bind a `*`, `${}`, `&` or"
-                        + " bare `--` name");
+                        + "' must name a concrete dataset or a template with a TRAILING -- such"
+                        + " as SUPP-- — a Child entry is joined only through its pointer (RDOMAIN"
+                        + " / IDVAR / IDVARVAL); its name selects the child-side keys"
+                        + " (ChildMatchPreMerger binds `<prefix>--` only) and answers the stage-A"
+                        + " qualifier checks, and a `*`, `${}`, `&`, bare `--` or non-trailing"
+                        + " `--` name binds in neither");
             }
         }
     }
@@ -5362,27 +5378,11 @@ public class RulePackageLoader
             {
                 continue;
             }
-            // ⚠ Two ways to be ungoverned, and the message must say WHICH — "has no effect" with
-            // no reason sends the author looking at the wrong half of the entry.
-            // ⚠ THREE reasons, not two: a NAMELESS entry also satisfies excludedFromKeyTypeCheck
-            // (its `name == null` clause), so a two-way ternary blamed the Child/RELREC/SUPP
-            // family for an entry that is none of them.
-            String why;
-            if (md.getName() == null)
-            {
-                why = "the entry has no Name, so nothing resolves a joined dataset for it";
-            }
-            else if (net.cumba.corej.core.exec.JoinKeyTypes.excludedFromKeyTypeCheck(md))
-            {
-                why = "Child / RELREC / SUPP-- entries match a text-carried foreign key against a"
-                        + " typed column by design and are not subject to join-key type identity";
-            }
-            else
-            {
-                why = "the entry declares no Keys, so it builds no key comparison at all";
-            }
+            // The message must say WHICH way the entry is ungoverned — "has no effect" with no
+            // reason sends the author looking at the wrong half of the entry; the three reasons
+            // are ungovernedWhy's, shared with the keep_missings gate (review round 2, L2).
             errors.add("[" + ruleId(rule) + "] Join_As_String has no effect on Match_Datasets entry"
-                    + " '" + md.getName() + "' — " + why + ". Remove it.");
+                    + " '" + md.getName() + "' — " + ungovernedWhy(md) + ". Remove it.");
         }
     }
 

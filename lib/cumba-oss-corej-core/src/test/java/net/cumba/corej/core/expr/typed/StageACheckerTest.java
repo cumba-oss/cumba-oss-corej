@@ -517,6 +517,38 @@ class StageACheckerTest
     }
 
 
+    /**
+     * Round 2 M1: {@code SUPP--.QVAL} is a {@code WILDCARD_COLUMN} (it contains {@code --}) whose
+     * qualifier names the {@code SUPP--} Child entry <b>exactly</b>; {@code ExprPrefixResolver}
+     * later rewrites it to {@code SUPPAE.QVAL}, a silent not-supplied default. One predicate for
+     * every surface: it is judged in a Check and in a Binding alike.
+     */
+    @Test
+    void aTemplateQualifiedReadOfAChildEntryIsRefused()
+    {
+        Rule rule = ruleJoining("SUPP--", null, "USUBJID", "IDVAR", "IDVARVAL");
+        rule.getMatchDatasets().get(0).setChild(Boolean.TRUE);
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
+                kinds(check(rule, "SUPP--.QVAL == \"x\"")), "SUPP--.QVAL in a Check");
+        assertEquals(List.of(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
+                kinds(check(rule, "SUPP--.**VAL == \"x\"")), "SUPP--.**VAL in a Check");
+        Operation op = new Operation();
+        op.setId("$q");
+        op.setExpression("SUPP--.QVAL");
+        rule.setOperations(List.of(op));
+        assertTrue(
+                kinds(check(rule, "$q == \"x\"")).contains(StageAErrorKind.DOTTED_REF_CHILD_ENTRY),
+                "SUPP--.QVAL in a Binding");
+        // control: the same reads against an ORDINARY SUPP-- entry are not refused
+        rule.getMatchDatasets().get(0).setChild(Boolean.FALSE);
+        assertFalse(
+                kinds(check(rule, "$q == \"x\"")).contains(StageAErrorKind.DOTTED_REF_CHILD_ENTRY));
+        rule.setOperations(null);
+        assertFalse(kinds(check(rule, "SUPP--.QVAL == \"x\""))
+                .contains(StageAErrorKind.DOTTED_REF_CHILD_ENTRY));
+    }
+
+
     @Test
     void aDottedReadOfAnOrdinaryTemplateEntryStaysDeferred()
     {
@@ -567,8 +599,13 @@ class StageACheckerTest
                 kinds(check(rule, "QNAM == \"AESOSP\"")), "AE.**TERM: the prefix is literal");
         // a substituted QUALIFIER is bound at run time and is not judged here (documented on the
         // kind), and an excluded name is not judged either
-        outcome.setOutputVariables(List.of("${IDVAR}.AESMIE", "!AE.AESMIE"));
+        outcome.setOutputVariables(List.of("${IDVAR}.AESMIE"));
         assertEquals(List.of(), check(rule, "QNAM == \"AESOSP\"").findings());
+        // L5: an excluded name is not judged — the exclusion REMOVES AE.AESMIE from the list the
+        // arm reads, so the pair yields nothing (red with applyExclusions removed: control run)
+        outcome.setOutputVariables(List.of("AE.AESMIE", "!AE.AESMIE"));
+        assertEquals(List.of(), check(rule, "QNAM == \"AESOSP\"").findings(),
+                "the exclusion must take AE.AESMIE out before the Child arm sees it");
         // control: the same output on the same entry WITHOUT Child: true is clean
         rule.getMatchDatasets().get(0).setChild(Boolean.FALSE);
         outcome.setOutputVariables(List.of("AE.AESMIE"));

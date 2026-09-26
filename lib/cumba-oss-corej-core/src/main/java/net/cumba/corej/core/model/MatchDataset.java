@@ -129,9 +129,10 @@ public class MatchDataset
      * {@code expandableEntries}). The text-carried family — {@code Child: true}, {@code RELREC},
      * {@code SUPP--} / {@code SQ*} — and the hashed {@code DatasetLookup} those keyed non-Child
      * shapes reach keep a blank key unconditionally and never consult the flag, so authoring it on
-     * such an entry (or on a nameless or keyless one) is a <b>load error</b> saying it has no
-     * effect ({@code RulePackageLoader.checkKeepMissingsOnUngovernedEntry}, the sibling of the
-     * {@code Join_As_String} gate on the same predicate). Zero corpus entries author the flag.
+     * such an entry (or on a nameless or keyless one) with the non-default {@code false} is a
+     * <b>load error</b> saying it has no effect — an authored {@code true} states what they do and
+     * is accepted — ({@code RulePackageLoader.checkKeepMissingsOnUngovernedEntry}, the sibling of
+     * the {@code Join_As_String} gate on the same predicate). Zero corpus entries author the flag.
      * </p>
      */
     @JsonProperty("keep_missings")

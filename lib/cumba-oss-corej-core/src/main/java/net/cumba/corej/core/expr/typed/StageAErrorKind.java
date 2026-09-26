@@ -184,9 +184,11 @@ public enum StageAErrorKind
      * {@code "Y" in AE.**SMIE} EXECUTED with no finding). Only the {@code ${*}} list-operand shape
      * ({@code X in AE.AES${*}}) is loud at run time, through {@code ValueResolver}'s
      * {@code SubstitutionException}; all three are pinned, and all three are refused here. Not
-     * judged at load, deliberately: an operand or output whose <em>qualifier</em> is itself a
+     * judged anywhere, deliberately: an operand or output whose <em>qualifier</em> is itself a
      * {@code ${...}} substitution or an {@code &TOKEN} ({@code ${X}.COL}) is bound at run time /
-     * expansion and can only be judged there.
+     * expansion; on a Child entry it is silent (the not-supplied default on every row) — an
+     * accepted gap, zero carriers (review round 2, L6). A {@code --} qualifier IS judged
+     * ({@code SUPP--.QVAL} names its own Child entry; round 2, M1).
      * </p>
      */
     DOTTED_REF_CHILD_ENTRY(true),

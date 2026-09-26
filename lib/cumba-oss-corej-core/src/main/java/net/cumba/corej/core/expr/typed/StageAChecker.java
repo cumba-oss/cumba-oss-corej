@@ -1789,7 +1789,7 @@ public final class StageAChecker
      * ⭐ And one refusal that is <b>not</b> deferred: a dotted read whose qualifier resolves ({@link
      * #entryFor}) to a {@code Child: true} entry ({@link StageAErrorKind#DOTTED_REF_CHILD_ENTRY},
      * armed) — a {@code DOTTED_REF} operand, a {@code WILDCARD_COLUMN} operand with a literal
-     * qualifier ({@link #hasLiteralQualifier}), a {@code Bindings} expression, or an {@code
+     * qualifier ({@link #hasJudgeableQualifier}), a {@code Bindings} expression, or an {@code
      * Output_Variables} entry ({@link #checkDottedOutputVariables}). Owner ruling 2026-09-25: a
      * Child entry is joined only through its pointer and builds no direct lookup, so the read has
      * nothing to read — the parent's columns are merged in bare.
@@ -1869,19 +1869,40 @@ public final class StageAChecker
 
 
     /**
-     * Whether a wildcard operand name is qualified by a LITERAL dataset name — {@code AE.**SMIE},
-     * {@code AE.${X}} — as opposed to a substituted or templated qualifier ({@code ${DS}.X},
-     * {@code --.X}), which is bound at run time and cannot be judged here.
+     * Whether a wildcard operand name carries a qualifier this checker can judge — the ONE
+     * predicate for every surface of the Child arm ({@link #judgeableQualifier}).
+     * {@code AE.**SMIE}, {@code AE.${X}} and {@code SUPP--.QVAL} / {@code SUPP--.**X} are judged
+     * (the last two because a {@code --} qualifier names its own Child entry exactly, and
+     * {@code ExprPrefixResolver} later rewrites it to {@code SUPPAE.QVAL} — a silent not-supplied
+     * default on a Child entry, review round 2 M1); {@code ${DS}.X} and {@code &DOM.X} are not.
      *
      * @param name
      *            the operand name
      *
-     * @return whether the text before the first {@code .} is a plain identifier
+     * @return whether the text before the first {@code .} is a judgeable qualifier
      */
-    private static boolean hasLiteralQualifier(String name)
+    private static boolean hasJudgeableQualifier(String name)
     {
         int dot = name.indexOf('.');
-        return dot > 0 && name.substring(0, dot).matches("[A-Za-z][A-Za-z0-9_]*");
+        return dot > 0 && judgeableQualifier(name.substring(0, dot));
+    }
+
+
+    /**
+     * The one rule, for a Check operand, a {@code Bindings} expression and an
+     * {@code Output_Variables} entry alike: a qualifier is judged unless it is itself a
+     * {@code ${...}} substitution or an {@code &TOKEN} — those are bound at run time / expansion
+     * and are judged nowhere: on a Child entry the substituted read is silent (the not-supplied
+     * default on every row), an accepted gap with zero carriers (review round 2, L6).
+     *
+     * @param qualifier
+     *            the text before the first {@code .}, non-empty
+     *
+     * @return whether the Child arm judges it
+     */
+    private static boolean judgeableQualifier(String qualifier)
+    {
+        return !qualifier.isEmpty() && !qualifier.contains("${") && !qualifier.contains("&");
     }
 
 
@@ -1893,8 +1914,9 @@ public final class StageAChecker
      * {@code RuleRunner}'s violation builder silently dropped the column — no lookup, no value, no
      * message. The authored list is read with its {@code !X} exclusions applied, so an excluded
      * name is not judged. A {@code ${...}} or {@code &TOKEN} <b>qualifier</b> is bound at run time
-     * / expansion and skipped here (documented on the kind); a literal qualifier before such a
-     * suffix ({@code AE.${X}}, {@code AE.**TERM}) is judged.
+     * / expansion and is judged nowhere — silent at run time (the not-supplied default), an
+     * accepted gap ({@link #judgeableQualifier}); a literal qualifier before such a suffix
+     * ({@code AE.${X}}, {@code AE.**TERM}) is judged.
      *
      * @param entries
      *            the rule's {@code Match_Datasets}, never {@code null}
@@ -1911,9 +1933,9 @@ public final class StageAChecker
                 continue;
             }
             String qualifier = name.substring(0, dot);
-            if (qualifier.contains("${") || qualifier.contains("&"))
+            if (!judgeableQualifier(qualifier))
             {
-                continue; // the qualifier itself is bound at run time / expansion
+                continue; // a ${…} / &TOKEN qualifier: judged nowhere, silent at run time (L6)
             }
             MatchDataset entry = entryFor(qualifier, entries);
             if (entry != null && Boolean.TRUE.equals(entry.getChild()))
@@ -2009,7 +2031,7 @@ public final class StageAChecker
                 dotted.add(r.name());
             }
             else if (r.kind() == net.cumba.corej.core.expr.OperandKind.WILDCARD_COLUMN
-                    && hasLiteralQualifier(r.name()))
+                    && hasJudgeableQualifier(r.name()))
             {
                 wildcards.add(r.name());
             }
