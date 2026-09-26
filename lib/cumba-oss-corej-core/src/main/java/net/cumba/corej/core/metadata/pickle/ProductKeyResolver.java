@@ -7,7 +7,6 @@ import java.util.Locale;
 import java.util.Set;
 import net.cumba.corej.core.metadata.MetadataProductCatalogue;
 import net.cumba.corej.core.metadata.MetadataProductKeys;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves a user-supplied metadata-product token ({@code --metadata-products} / {@code -mp}) onto
@@ -174,19 +173,19 @@ public final class ProductKeyResolver
      * ({@code CDISC_METADATA_STORE} / {@code cdisc.metadata.store}) and nothing else. With no store
      * available only full-form tokens resolve — see the class javadoc.
      *
+     * <p>
+     * ⚑ It took two further parameters until 2026-09-26, a pre-P4 pickle-cache and API-cache
+     * override that the body ignored and every caller passed as {@code null}; removed as dead API
+     * by PLAN-dead-code-followups F-2.
+     * </p>
+     *
      * @param tokens
      *            the user tokens, in precedence order
-     * @param aExplicitPickleDir
-     *            pre-P4 pickle-cache override; <b>ignored</b> (kept so the P4b lane migrates the
-     *            CLI/REST callers deliberately)
-     * @param aExplicitApiCacheDir
-     *            pre-P4 API-cache override; <b>ignored</b> likewise
      * @return the resolved cache keys, in order
      * @throws IllegalArgumentException
      *             when any token fails to resolve; the message lists every failure
      */
-    public static List<String> resolveAllConfigured(List<String> tokens,
-            @Nullable String aExplicitPickleDir, @Nullable String aExplicitApiCacheDir)
+    public static List<String> resolveAllConfigured(List<String> tokens)
     {
         if (tokens.isEmpty())
         {

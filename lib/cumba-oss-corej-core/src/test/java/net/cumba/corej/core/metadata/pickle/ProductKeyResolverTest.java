@@ -154,7 +154,7 @@ class ProductKeyResolverTest
     @Test
     void resolveAllConfiguredWithNoTokensIsEmpty()
     {
-        assertEquals(List.of(), ProductKeyResolver.resolveAllConfigured(List.of(), null, null));
+        assertEquals(List.of(), ProductKeyResolver.resolveAllConfigured(List.of()));
     }
 
     // ------------------------------------------------------------------

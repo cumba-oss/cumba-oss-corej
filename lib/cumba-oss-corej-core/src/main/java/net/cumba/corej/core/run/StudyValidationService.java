@@ -1986,7 +1986,7 @@ public final class StudyValidationService
         try
         {
             out.addAll(net.cumba.corej.core.metadata.pickle.ProductKeyResolver
-                    .resolveAllConfigured(ids, null, null));
+                    .resolveAllConfigured(ids));
         }
         catch (IllegalArgumentException e)
         {
