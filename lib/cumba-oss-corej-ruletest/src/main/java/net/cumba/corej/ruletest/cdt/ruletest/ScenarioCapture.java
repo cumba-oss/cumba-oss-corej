@@ -43,10 +43,14 @@ import org.jspecify.annotations.Nullable;
  * {@code <module>/src/test/resources/net/cumba/corej/core/ruletestsuites/<family>/<coreId>/}, where
  * {@code <family>} is the captured rule's family: the leading letter run of its {@code Core.Id},
  * lower-cased ({@code CDISC-CG0001 -> cdisc}, {@code FDA-SD0007 -> fda},
- * {@code PMDA-AD0001 -> pmda}, {@code DRAFT-… -> draft}). That is the subtree the family's
- * {@code RuleTestSuites<Family>FactoryTest} replays, so a captured scenario is picked up by the
- * factory that owns its rule. A capture whose family directory does not exist is refused loudly
- * rather than written where nothing replays it.
+ * {@code PMDA-AD0001 -> pmda}, {@code DRAFT-… -> draft}). That is the subtree the family's replay
+ * factory reads ({@code RuleTestSuitesCdiscFactoryTest}, {@code RuleTestSuitesFdaFactoryTest},
+ * {@code RuleTestSuitesPmdaFactoryTest}, {@code RuleTestSuitesDraftFactoryTest} in the rules
+ * repository), so a captured scenario is picked up by the factory that owns its rule. A capture
+ * whose family directory does not exist is refused loudly rather than written where nothing replays
+ * it. The file name carries everything after the rule id in the capturing method's name, so every
+ * method of a suite captures into its own file; a capture onto a name this JVM already wrote is
+ * refused.
  *
  * <p>
  * ⚑ <b>Retargeted 2026-09-02.</b> This wrote to
@@ -100,8 +104,17 @@ public final class ScenarioCapture
 
     private static final Pattern VERDICT_SUFFIX = Pattern.compile("(valid|invalid)(\\d*)");
 
-    /** Every scenario file this JVM has captured, so a second capture onto one name is refused. */
+    /**
+     * Every scenario file captured in this JVM, so a second capture onto one name in this JVM is
+     * refused. Per JVM, not per build: a later run may overwrite a file on purpose (regeneration).
+     */
     private static final Set<Path> WRITTEN = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Captures so far in this JVM per parameterized test method: the 1-based count is the
+     * invocation index a parameterized method's file name carries (see {@link #fileToken}).
+     */
+    private static final Map<String, Integer> INVOCATIONS = new ConcurrentHashMap<>();
 
     private ScenarioCapture()
     {
@@ -174,6 +187,7 @@ public final class ScenarioCapture
                     + " starting with " + methodPrefix(aCoreId) + ")");
         }
         String methodName = frame.getMethodName();
+        String fileToken = fileToken(aVerdict, aCoreId, frame);
 
         // Figure out dropped names (for primary-rename decision + sibling exclusion).
         Set<String> dropped = new HashSet<>();
@@ -244,7 +258,7 @@ public final class ScenarioCapture
         // #expectViolationAt lines match what the factory will later verify on this exact file.
         ViolationLocationCheck.Expectations exp = locationExpectations(aRule, aVerdict,
                 effectivePrimary, effectiveDomain, datasets, aLibrary);
-        Path out = scenarioPath(aCoreId, aVerdict, effectiveDomain, methodName);
+        Path out = scenarioPath(aCoreId, fileToken, effectiveDomain);
         writeScenario(aCoreId, aVerdict, effectiveDomain, null, datasets, libraryToWrite, exp, out,
                 methodName);
     }
@@ -666,21 +680,40 @@ public final class ScenarioCapture
     private static StackWalker.@Nullable StackFrame findTestFrame(String aCoreId)
     {
         String prefix = methodPrefix(aCoreId);
-        return StackWalker.getInstance().walk(frames -> frames.filter(f ->
-        {
-            String name = f.getMethodName();
-            return name.equals(prefix) || name.startsWith(prefix + "_");
-        }).findFirst().orElse(null));
+        return StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
+                .walk(frames -> frames.filter(f ->
+                {
+                    String name = f.getMethodName();
+                    return name.equals(prefix) || name.startsWith(prefix + "_");
+                }).findFirst().orElse(null));
     }
 
 
-    private static Path scenarioPath(String aCoreId, Verdict aVerdict, String aDomain,
-            @Nullable String aMethodName)
+    private static Path scenarioPath(String aCoreId, String aFileToken, String aDomain)
     {
         Path familyDir = familyDirectory(resourceRoot(), aCoreId);
-        String verdictToken = verdictToken(aVerdict, aMethodName);
-        String fileName = aCoreId + "-" + verdictToken + "-" + aDomain + ".cdt";
+        String fileName = aCoreId + "-" + aFileToken + "-" + aDomain + ".cdt";
         return familyDir.resolve(aCoreId).resolve(fileName);
+    }
+
+
+    /**
+     * The file-name token of a capture from {@code aFrame}: {@link #verdictToken} of the method
+     * name, plus {@code _<n>} for a <b>parameterized</b> method (one with parameters), where
+     * {@code n} is the 1-based count of captures from that method in this JVM — its invocation
+     * index when each invocation captures once. Without it the three invocations of a
+     * {@code @ParameterizedTest} would share one name and all but the first would be refused.
+     */
+    private static String fileToken(Verdict aVerdict, String aCoreId, StackWalker.StackFrame aFrame)
+    {
+        String token = verdictToken(aVerdict, aCoreId, aFrame.getMethodName());
+        if (aFrame.getMethodType().parameterCount() == 0)
+        {
+            return token;
+        }
+        String key = aFrame.getDeclaringClass().getName() + "#" + aFrame.getMethodName()
+                + aFrame.getMethodType();
+        return token + "_" + INVOCATIONS.merge(key, 1, Integer::sum);
     }
 
 
@@ -688,8 +721,8 @@ public final class ScenarioCapture
      * The corpus <b>family</b> directory a scenario of rule {@code aCoreId} belongs in: the leading
      * run of ASCII letters of the id, lower-cased ({@code CDISC-CG0001 -> cdisc},
      * {@code FDA-SD0007 -> fda}), resolved under {@code aRoot}. That is the subtree the family's
-     * {@code RuleTestSuites<Family>FactoryTest} replays — the rule's family decides it, not the
-     * package of the suite that happened to capture it.
+     * replay factory reads — the rule's family decides it, not the package of the suite that
+     * happened to capture it.
      *
      * <p>
      * ⚑ PLAN-dead-code-followups F-1 (2026-09-26). This used to derive the directory from the
@@ -719,7 +752,7 @@ public final class ScenarioCapture
         if (!Files.isDirectory(dir))
         {
             throw new IllegalStateException("refusing to capture " + aCoreId + ": its family"
-                    + " directory " + dir + " does not exist, so no RuleTestSuites factory would"
+                    + " directory " + dir + " does not exist, so no family replay factory would"
                     + " replay the scenario");
         }
         return dir;
@@ -733,33 +766,45 @@ public final class ScenarioCapture
 
 
     /**
-     * Convert the trailing segment of the test method name into a filename verdict token.
-     * {@code _valid} / {@code _invalid} map to {@code valid} / {@code invalid}; a trailing digit
-     * ({@code _valid2}, {@code _invalid3}) adds a dashed suffix ({@code valid-2},
-     * {@code invalid-3}) so repeated variants produce distinct files. Falls back to the default
-     * verdict word when the method name doesn't match.
+     * The file-name token of a capture from the method {@code aMethodName}, which is named after
+     * the rule ({@link #methodPrefix}): everything after that prefix, with its leading verdict
+     * segment normalised. {@code _valid} / {@code _invalid} give {@code valid} / {@code invalid}; a
+     * digit ({@code _valid2}) gives a dashed suffix ({@code valid-2}); any further segments are
+     * kept ({@code _valid_charDtIgnored -> valid_charDtIgnored}), so two methods of one rule never
+     * map to one file. A suffix that does not start with a verdict word is kept whole behind the
+     * default word of {@code aVerdict}; no suffix at all gives the default word alone.
+     *
+     * <p>
+     * ⚑ Until PLAN-dead-code-followups review round 1 (M1) only the LAST segment was read, so
+     * {@code CDISC_AD0041_valid_charDtIgnored} and {@code …_valid_dtmColumnIgnored} both mapped to
+     * {@code valid} and one silently replaced the other.
+     * </p>
      */
-    private static String verdictToken(Verdict aVerdict, @Nullable String aMethodName)
+    static String verdictToken(Verdict aVerdict, String aCoreId, String aMethodName)
     {
         String defaultToken = aVerdict == Verdict.VIOLATION ? "invalid" : "valid";
-        if (aMethodName == null)
+        String prefix = methodPrefix(aCoreId);
+        String suffix = aMethodName.startsWith(prefix) ? aMethodName.substring(prefix.length())
+                : aMethodName;
+        if (suffix.startsWith("_"))
+        {
+            suffix = suffix.substring(1);
+        }
+        if (suffix.isEmpty())
         {
             return defaultToken;
         }
-        int last = aMethodName.lastIndexOf('_');
-        if (last < 0)
-        {
-            return defaultToken;
-        }
-        String tail = aMethodName.substring(last + 1);
-        Matcher m = VERDICT_SUFFIX.matcher(tail);
+        int cut = suffix.indexOf('_');
+        String head = cut < 0 ? suffix : suffix.substring(0, cut);
+        String rest = cut < 0 ? "" : suffix.substring(cut);
+        Matcher m = VERDICT_SUFFIX.matcher(head);
         if (!m.matches())
         {
-            return defaultToken;
+            return defaultToken + "_" + suffix;
         }
         String word = m.group(1);
         String num = m.group(2);
-        return num.isEmpty() ? word : word + "-" + num;
+        return (num.isEmpty() ? word : word + "-" + num) + rest;
     }
 
 
@@ -805,13 +850,13 @@ public final class ScenarioCapture
         RuleTestScenario s = b.build();
         if (!WRITTEN.add(aOut.toAbsolutePath().normalize()))
         {
-            // Two captures mapping onto one file name (e.g. CDISC_CG0370_invalid and
-            // CDISC_CG0370_invalid_cross_domain_idvar, whose tail is no verdict token) would let
-            // the second silently replace the first.
+            // Two captures in this JVM mapping onto one file name (one test method capturing
+            // twice, or a re-run) would let the second silently replace the first.
             throw new IllegalStateException("scenario capture collision: " + aOut + " was already"
-                    + " written in this run; give "
+                    + " written in this JVM; each capture needs its own test method (or its own"
+                    + " parameterized invocation), and "
                     + (aMethodName != null ? aMethodName : "the capturing method")
-                    + " a distinct _valid<N> / _invalid<N> suffix");
+                    + " captured onto a name already taken");
         }
         try
         {

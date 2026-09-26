@@ -3,11 +3,16 @@ package net.cumba.corej.ruletest.cdt.ruletest;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import net.cumba.corej.ruletest.cdt.ruletest.RuleTestScenario.Verdict;
 import net.cumba.datatable.impl.support.OverlayDataTable;
@@ -16,6 +21,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * PLAN-dead-code-followups F-1 — where capture mode ({@code -Dgenerate.scenarios=true}) writes a
@@ -37,6 +44,14 @@ class ScenarioCaptureFamilyTest
 {
 
     private static final String SUITES = "src/test/resources/net/cumba/corej/core/ruletestsuites";
+
+    private static final Pattern PARAM_FILE = Pattern
+            .compile("fda/FDA-SD0009/FDA-SD0009-valid_eachValue_(\\d+)-AE\\.cdt");
+
+    /**
+     * Invocation indices seen by {@link #FDA_SD0009_valid_eachValue(String)}, across invocations.
+     */
+    private static final Set<String> PARAM_INDICES = new HashSet<>();
 
     @TempDir
     Path tempDir;
@@ -209,5 +224,56 @@ class ScenarioCaptureFamilyTest
                 () -> ScenarioCapture.familyDirectory(root, "0001-CDISC"));
 
         assertTrue(e.getMessage().contains("0001-CDISC"), e.getMessage());
+    }
+
+
+    @Test
+    void CDISC_AD0041_valid_charDtIgnored() throws IOException
+    {
+        // Review round 1 M1: the words after the verdict are part of the name, so this method and
+        // CDISC_AD0041_valid_dtmColumnIgnored no longer share "CDISC-AD0041-valid-ADSL.cdt".
+        capture("CDISC-AD0041", Verdict.NO_VIOLATION, "ADSL");
+
+        assertEquals(List.of("cdisc/CDISC-AD0041/CDISC-AD0041-valid_charDtIgnored-ADSL.cdt"),
+                captured());
+    }
+
+
+    @ParameterizedTest
+    @ValueSource(strings =
+    {
+            "Y", "N", ""
+    })
+    void FDA_SD0009_valid_eachValue(String aValue) throws IOException
+    {
+        // A parameterized method captures once per invocation; the invocation index keeps the
+        // three files apart.
+        capture("FDA-SD0009", Verdict.NO_VIOLATION, "AE");
+
+        List<String> files = captured();
+        assertEquals(1, files.size(), "one file for invocation '" + aValue + "': " + files);
+        Matcher m = PARAM_FILE.matcher(files.get(0));
+        if (!m.matches())
+        {
+            fail("unexpected file name: " + files.get(0));
+        }
+        assertTrue(PARAM_INDICES.add(m.group(1)),
+                "each invocation carries its own index, got " + m.group(1) + " twice");
+    }
+
+
+    @Test
+    void verdictTokenKeepsEverythingAfterTheRuleId()
+    {
+        assertEquals("invalid", ScenarioCapture.verdictToken(Verdict.VIOLATION, "CDISC-CG0370",
+                "CDISC_CG0370_invalid"));
+        assertEquals("invalid_cross_domain_idvar", ScenarioCapture.verdictToken(Verdict.VIOLATION,
+                "CDISC-CG0370", "CDISC_CG0370_invalid_cross_domain_idvar"));
+        assertEquals("valid-2", ScenarioCapture.verdictToken(Verdict.NO_VIOLATION, "FDA-SD0001",
+                "FDA_SD0001_valid2"));
+        assertEquals("valid",
+                ScenarioCapture.verdictToken(Verdict.NO_VIOLATION, "FDA-SD0001", "FDA_SD0001"));
+        assertEquals("invalid_shape",
+                ScenarioCapture.verdictToken(Verdict.VIOLATION, "FDA-SD0001", "FDA_SD0001_shape"));
     }
 }
