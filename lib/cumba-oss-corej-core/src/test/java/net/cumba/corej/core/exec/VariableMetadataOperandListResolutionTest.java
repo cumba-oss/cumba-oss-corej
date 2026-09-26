@@ -19,14 +19,17 @@ import org.junit.jupiter.api.Test;
 /**
  * Fix #64 regression: a {@code varname() not in $allowed_variables} rule must resolve
  * {@code $allowed_variables} as a list (not the literal token) so a variable IN the allowed list
- * does not fire. The rule built below is the shape {@code FDA-SD0058} ships (and its equivalence
- * classmates {@code CDISC-CG0013} / {@code CDISC-CG0351} / {@code PMDA-SD0058}):
+ * does not fire. The rule built below is a single-level, model-only shape — the one the siblings
+ * {@code CDISC-CG0013} / {@code CDISC-CG0351} / {@code PMDA-SD0058} ship, and the one
+ * {@code FDA-SD0058} shipped until {@code PLAN-model-vs-ig-column-order} gave it an ERROR/WARNING
+ * ladder over a second, IG-resolved list (the id below is kept only as the rule's label):
  * {@code $allowed_variables = get_model_column_order()}, checked with
  * {@code varname() not in $allowed_variables}. Because it is a {@code Sensitivity.DATASET} Variable
  * Metadata Check, the engine reports a single dataset-level violation — the FIRST variable not in
- * the allowed list — and zero violations when every variable is allowed. The same single-violation
- * shape is pinned as a corpus drift guard by {@code rulespec/specs/FDA-SD0058.yaml} in the rules
- * repository, whose one {@code expected_violations} entry reports {@code variable_name: AEFOO}.
+ * the allowed list — and zero violations when every variable is allowed. The shipped
+ * {@code FDA-SD0058}'s ERROR level is pinned as a corpus drift guard by
+ * {@code rulespec/specs/FDA-SD0058.yaml} in the rules repository, whose one
+ * {@code expected_violations} entry reports {@code variable_name: AEFOO}.
  *
  * <p>
  * Pre-Fix-#64, the per-variable {@code partialEvaluateVariable} fold called
@@ -208,9 +211,10 @@ class VariableMetadataOperandListResolutionTest
     {
         // Two columns are in the list (STUDYID, USUBJID); two are not (AECUSTOM, AEEXTRA).
         // A Sensitivity.DATASET Variable Metadata Check collapses to exactly ONE violation —
-        // the first failing variable in column order — which is what
-        // rulespec/specs/FDA-SD0058.yaml pins as a drift guard over the shipped rule. The first
-        // disallowed column in iteration order is AECUSTOM.
+        // the first failing variable in column order — the single-level model-only shape the
+        // siblings CG0013/CG0351/PMDA-SD0058 ship (FDA-SD0058's ERROR level is pinned the same way
+        // by rulespec/specs/FDA-SD0058.yaml). The first disallowed column in iteration order is
+        // AECUSTOM.
         IDataTable table = MockTable.of().col("STUDYID", "S001").col("USUBJID", "U001")
                 .col("AECUSTOM", "X").col("AEEXTRA", "Y").build();
 
