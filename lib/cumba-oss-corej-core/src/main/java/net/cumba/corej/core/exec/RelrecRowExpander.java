@@ -478,6 +478,9 @@ final class RelrecRowExpander
         String usubjKey = spec.usubjKey();
         boolean studyScoped = isNonBlank(spec.study());
         String studyKey = spec.studyKey();
+        // Record-level: the IDVAR == IDVARVAL filters; canonicalised once, not per row.
+        String tgtNorm = normKey(spec.tgtIdvarval());
+        String srcNorm = normKey(spec.srcIdvarval());
 
         DataTableMeta tm = target.getMetaData();
         int tStudyIdx = tm.getColumnIndex(STUDYID);
@@ -507,7 +510,7 @@ final class RelrecRowExpander
                 continue;
             }
             String idvNorm = Objects.requireNonNull(normKey(idv));
-            if (recordLevel && !idvNorm.equals(normKey(spec.tgtIdvarval())))
+            if (recordLevel && !idvNorm.equals(tgtNorm))
             {
                 continue;
             }
@@ -543,7 +546,7 @@ final class RelrecRowExpander
                 continue;
             }
             String idvNorm = Objects.requireNonNull(normKey(idv));
-            if (recordLevel && !idvNorm.equals(normKey(spec.srcIdvarval())))
+            if (recordLevel && !idvNorm.equals(srcNorm))
             {
                 continue;
             }

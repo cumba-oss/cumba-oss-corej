@@ -35,7 +35,41 @@ class NumericKeyTextTest
                 Arguments.of("9007199254740993", "9007199254740993"),
                 Arguments.of("9007199254740993.0", "9007199254740993"),
                 Arguments.of("100000000000000000001", "100000000000000000001"),
-                Arguments.of("0.30000000000000001", "0.30000000000000001"));
+                Arguments.of("0.30000000000000001", "0.30000000000000001"),
+                // M1 (review round 1): beyond |scale| 400 the text is scientific, never a 2^31-char
+                // plain string; every one of these used to kill the run (OOM / negative array
+                // size) and gave Infinity under the old double coercion
+                Arguments.of("1E999999999", "1E+999999999"),
+                Arguments.of("1E-999999999", "1E-999999999"),
+                Arguments.of("1E2147483647", "1E+2147483647"),
+                Arguments.of("1000E2147483000", "1E+2147483003"),
+                Arguments.of("1E2147483648", "1E+2147483648"),
+                Arguments.of("1000E2147483645", "1E+2147483648"),
+                Arguments.of("1.5E-500", "1.5E-500"), Arguments.of("1E401", "1E+401"),
+                Arguments.of("1E-401", "1E-401"),
+                // still plain at the bound (401 / 402 characters)
+                Arguments.of("1E400", "1" + "0".repeat(400)),
+                Arguments.of("1E-400", "0." + "0".repeat(399) + "1"));
+    }
+
+
+    @Test
+    void scientificArmIsInjectiveAndAFixedPoint()
+    {
+        // Two different stripped values never share a text, whichever arm renders them, and a
+        // rendered text canonicalises to itself (a re-parse lands on the same arm).
+        assertNotEquals(NumericKeyText.canonicalOrNull("1E999999999"),
+                NumericKeyText.canonicalOrNull("2E999999999"));
+        assertNotEquals(NumericKeyText.canonicalOrNull("1E999999999"),
+                NumericKeyText.canonicalOrNull("1E999999998"));
+        for (String t : new String[]
+        {
+                "1E999999999", "1E-999999999", "1E2147483647", "1.5E-500", "1E400", "1E-400"
+        })
+        {
+            String once = NumericKeyText.canonicalOrNull(t);
+            assertEquals(once, NumericKeyText.canonicalOrNull(once), t);
+        }
     }
 
 
@@ -63,7 +97,12 @@ class NumericKeyTextTest
     @ValueSource(strings =
     {
             "", "ABC", "1d", "1f", "0x1p3", "NaN", "Infinity", "1,5", "1 2", "-", "+", ".", "1e",
-            "L1", "AE-001"
+            "L1", "AE-001",
+            // an exponent BigDecimal cannot hold: while parsing (NumberFormatException) and
+            // while stripping the trailing zeros (ArithmeticException) -- both are text
+            "1E-2147483648", "10000E2147483645",
+            // L3 (review round 1): BigDecimal accepts non-ASCII digits; a key does not
+            "\uFF11\uFF12", "\u0661\u0662", "1\uFF10"
     })
     void aNonDecimalTokenIsNotANumber(String token)
     {
