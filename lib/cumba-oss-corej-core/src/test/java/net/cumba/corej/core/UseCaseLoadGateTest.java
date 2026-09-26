@@ -53,12 +53,11 @@ class UseCaseLoadGateTest
         }
     }
 
-    // ---- review rounds 1-3: one case per shape, and each message must be TRUE for its input.
+    // ---- review rounds 1-4: one case per shape, and each message must be TRUE for its input.
     // A message states what is wrong and the rule; a "write '…'" clause only when a well-formed
     // suggestion exists and differs; "lists 'C' more than once" only when C really repeats. No
-    // message
-    // predicts a consequence ("matches no use case"), because such claims were false for some
-    // input in every round.
+    // message predicts a consequence ("matches no use case"), because such claims were false for
+    // some input in every round.
 
 
     @Test
