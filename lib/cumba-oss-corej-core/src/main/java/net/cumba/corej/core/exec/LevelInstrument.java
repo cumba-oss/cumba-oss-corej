@@ -467,7 +467,7 @@ public final class LevelInstrument
     }
 
     // ------------------------------------------------------------------
-    // The bind-time column-level resolver (D39a + the Fix #10 context scalar)
+    // The bind-time column-level resolver (D39a + a scalar context variable)
     // ------------------------------------------------------------------
 
     /**

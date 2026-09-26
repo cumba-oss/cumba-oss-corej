@@ -1086,9 +1086,10 @@ public final class RuleRunner
         IDataTable evalTable = ctx.getTable();
 
         // Phase 2e: Precondition guard (Fix #13). When present, evaluate against dataset-level
-        // context; false means skip the rule entirely. Scalar $-variables and dataset-level
-        // metadata (dataset_name, record_count, DOMAIN from Fix #10) are all available at this
-        // point. All currently-shipping rules leave Precondition null → no-op.
+        // context; false means skip the rule entirely. Scalar $-variables and the dataset-level
+        // accessors (ds_name, record_count(), ds_domain) are all available at this point; the
+        // injected DOMAIN of Fix #10 is not (deleted, leaf-scope phase 6 — see Phase 2a2 below).
+        // All currently-shipping rules leave Precondition null → no-op.
         // P6b + guard-residual D3: native precondition evaluation. The loader raises a
         // fold-equivalent (broadcast-verdict) Precondition to a transient preconditionExpr; the
         // tri-state BroadcastFold decides the skip: FALSE ⇒ skip; TRUE ⇒ continue; UNKNOWN (a

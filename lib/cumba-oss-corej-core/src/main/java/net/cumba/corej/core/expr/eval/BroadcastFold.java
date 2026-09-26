@@ -361,12 +361,15 @@ public final class BroadcastFold
         boolean shape = switch (e)
         {
         // The VALUE side may additionally be a bare reference resolved from the dataset-level
-        // context variables (e.g. the Fix #10 DOMAIN injection — CDISC-CG0413's
-        // `dataset_name prefix_not_equal_to 2 value "DOMAIN"`): the compiled native operand plans
+        // context variables (a scalar held in the rule's variables): the compiled native operand
+        // plans
         // resolve variables before columns (as the retired legacy fold did, via
         // metadata.containsKey before its literal fallback), so the leaf reads the VARIABLE and is
-        // dataset-constant when the resolved value is a scalar. The NAME side stays
-        // strict: the legacy classifier folds only DATASET-classified names.
+        // dataset-constant when the resolved value is a scalar. ⚑ The example this named, the
+        // Fix #10 DOMAIN injection (CDISC-CG0413's `prefix(dataset_name, 2) != DOMAIN`), is gone
+        // (leaf-scope phase 6): nothing injects DOMAIN any more, so that DOMAIN reads the DOMAIN
+        // column. The NAME side stays strict: the legacy classifier folds only DATASET-classified
+        // names.
         case Expr.Binary b ->
         {
             boolean factPair = isDatasetFactOperand(b.left())
@@ -955,9 +958,10 @@ public final class BroadcastFold
         /** An ordinary per-row column read. */
         ROW,
         /**
-         * The name resolves to a scalar CONTEXT VARIABLE (the Fix #10 {@code DOMAIN} injection):
+         * The name resolves to a scalar CONTEXT VARIABLE (a scalar held in the rule's variables):
          * variables resolve before columns, so the read is a dataset-level fact — the name-based
-         * sibling of {@code isScalarContextVarRef}.
+         * sibling of {@code isScalarContextVarRef}. (The Fix #10 {@code DOMAIN} injection this used
+         * to name as its example is gone; a bare {@code DOMAIN} is an ordinary column now.)
          */
         DATASET_CONTEXT_SCALAR,
         /**

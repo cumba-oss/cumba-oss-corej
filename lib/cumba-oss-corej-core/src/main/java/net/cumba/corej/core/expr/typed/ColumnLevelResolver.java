@@ -9,8 +9,9 @@ import org.jspecify.annotations.Nullable;
  * reference is {@code record}-level by default; at bind time the dataset is known, and D39a makes
  * an <b>absent</b> column a {@code dataset}-level constant (<i>"that is precisely what D34 #3/#4
  * say, so D5 produces D39 with no extra machinery"</i>), while a name that resolves to a scalar
- * <b>context variable</b> (the Fix #10 {@code DOMAIN} injection — variables resolve before columns)
- * reads a dataset-level fact.
+ * <b>context variable</b> (a scalar held in the rule's variables — variables resolve before
+ * columns) reads a dataset-level fact. (The Fix #10 {@code DOMAIN} injection, once the example of
+ * that case, is gone; a bare {@code DOMAIN} is an ordinary column.)
  *
  * <p>
  * Returning {@code null} keeps the stage-A default ({@link Level#RECORD} for a bare column). The
