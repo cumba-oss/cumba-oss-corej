@@ -1232,7 +1232,10 @@ public final class OperationExecutor
             // Fix #42 Phase 2 (final): route through the class-aware resolver
             // (getStandardModelVariables) which walks the SDTM Model hierarchy with custom-
             // domain class detection (Fix #41), GENERAL OBSERVATIONS Identifier/Timing splice,
-            // FINDINGS ABOUT class-vars merge, AP-prefix shimming and the IG-override merge.
+            // FINDINGS ABOUT class-vars merge and AP-prefix shimming. It is the pure MODEL walk
+            // (algorithm A): the IG's dataset variables are never merged in, so a variable the IG
+            // defines but the linked model version does not list is absent here — the IG-resolved
+            // list is algorithm B (get_column_order_from_library / get_dataset_filtered_variables).
             // Returns null when the provider has no products configured (or is in degraded
             // mode); empty list when the resolver couldn't find allowed variables for this
             // domain. Both translate to LIBRARY_NOT_AVAILABLE so RuleRunner Phase 2a.1
