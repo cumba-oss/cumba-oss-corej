@@ -3,6 +3,7 @@ package net.cumba.corej.core.expr;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import java.util.List;
 import net.cumba.corej.core.expr.ast.Expr;
 import org.junit.jupiter.api.Test;
 
@@ -85,5 +86,25 @@ class MetadataOperandMappingTest
         // named dataset (2-arg ds_*) has no operand
         assertNull(MetadataOperandMapping
                 .reverseToOperand(CheckExpressionParser.parse("ds_class(\"AE\", \"DEFINE\")")));
+    }
+
+
+    /**
+     * PLAN-dead-code-followups F-5: a bare name on the right of a {@code varname()} comparison
+     * names a VARIABLE, so it is raised to that string literal — {@code DOMAIN} included. DOMAIN
+     * used to be exempted and left a COLUMN reference, for the retired per-variable cascade's Fix
+     * #10 injection; with that cascade gone the exemption made {@code varname() == DOMAIN} read the
+     * DOMAIN column per row instead.
+     */
+    @Test
+    void aVarnameComparisonRaisesEveryBareNameToALiteralDomainIncluded()
+    {
+        for (String name : List.of("AETERM", "DOMAIN"))
+        {
+            assertEquals(CheckExpressionParser.parse("varname() == \"" + name + "\""),
+                    MetadataOperandMapping.canonicalizeMetadataOperands(
+                            CheckExpressionParser.parse("varname() == " + name)),
+                    name);
+        }
     }
 }

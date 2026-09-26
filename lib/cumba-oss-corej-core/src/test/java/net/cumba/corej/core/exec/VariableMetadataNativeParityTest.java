@@ -114,6 +114,27 @@ class VariableMetadataNativeParityTest
     }
 
 
+    /**
+     * PLAN-dead-code-followups F-5, measured before the fix: {@code varname() == DOMAIN} read the
+     * DOMAIN <em>column</em> (here {@code "DM"}, so no finding) because DOMAIN alone was exempted
+     * from the canonicalizer's literal class, a residue of the retired cascade's Fix #10 injection
+     * (which never reached a Variable Metadata Check). It now names the variable DOMAIN, exactly as
+     * the quoted form and every other bare name do.
+     */
+    @Test
+    void varnameAgainstBareDomainNamesTheVariable() throws Exception
+    {
+        Rule bare = loadVmcRule("{\"all\":[{\"expression\": \"varname() == DOMAIN\"}]}",
+                "variable_name");
+        Rule quoted = loadVmcRule("{\"all\":[{\"expression\": \"varname() == \\\"DOMAIN\\\"\"}]}",
+                "variable_name");
+        IDataTable table = dmTable();
+
+        assertEquals(Set.of("DOMAIN"), findings(bare, table));
+        assertEquals(findings(quoted, table), findings(bare, table));
+    }
+
+
     @Test
     void variableLabelLongerThan_parity() throws Exception
     {

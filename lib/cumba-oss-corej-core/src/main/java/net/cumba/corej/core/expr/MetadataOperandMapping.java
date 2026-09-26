@@ -232,11 +232,14 @@ public final class MetadataOperandMapping
             // the retired per-variable cascade compared it as the literal string and never read a
             // data column. A rule authored without value_is_literal raises that RHS as a bare
             // COLUMN reference, which would make the expression impure (and read per-row data if a
-            // same-named column existed). Canonicalize it to that string literal. The one name
-            // exempted in practice is DOMAIN (see isCascadeResolvableName): it is left a COLUMN
-            // reference and reaches the native compiler as such.
-            if (isVarnameCall(left) && right instanceof Expr.Ref r && r.kind() == OperandKind.COLUMN
-                    && !isCascadeResolvableName(r.name()))
+            // same-named column existed). Canonicalize it to that string literal — every name,
+            // DOMAIN included. ⚑ DOMAIN was exempted until 2026-09-26 and left a COLUMN
+            // reference, for the retired cascade's Fix #10 injection; with nothing injected any
+            // more that made varname() == DOMAIN read the DOMAIN column per row, while the retired
+            // cascade had compared a Variable Metadata Check against the literal (the injection
+            // was gated on the dataset-metadata family). PLAN-dead-code-followups F-5.
+            if (isVarnameCall(left) && right instanceof Expr.Ref r
+                    && r.kind() == OperandKind.COLUMN)
             {
                 right = new Expr.Lit(Expr.LitKind.STRING, r.name());
             }
@@ -275,31 +278,6 @@ public final class MetadataOperandMapping
     private static boolean isVariableNameAnchor(Expr e)
     {
         return (e instanceof Expr.Ref r && VARIABLE_NAME.equals(r.name())) || isVarnameCall(e);
-    }
-
-
-    /**
-     * Names a {@code varname()} comparison's COLUMN-kind right-hand side is <em>not</em> rewritten
-     * to a string literal (P9 review finding 4): such a reference is left as written and handed to
-     * the native compiler as an ordinary COLUMN reference. The set is the one the retired
-     * per-variable cascade resolved from its injected metadata map ({@code DOMAIN} via Fix #10, and
-     * the dataset-level facts); that cascade no longer exists — {@code RuleRunner} reports a rule
-     * without a native form as {@code ERROR} — so the exemption now only keeps the reference.
-     *
-     * <p>
-     * ⚠ Only {@code DOMAIN} can ever match. The caller tests {@code kind() == COLUMN}, and
-     * {@code OperandClassifier} classifies every lowercase-leading or underscore-containing token
-     * as {@code BUILTIN} (or rejects it), so {@code record_count}, {@code dataset_name} and
-     * {@code dataset_label} never arrive here as COLUMN references. {@code record_count} as a
-     * {@code BUILTIN} is, moreover, turned into the {@code record_count()} call by
-     * {@link #canonicalizeMetadataOperands} before the comparison is inspected. The three entries
-     * are inert; they are kept as the record of the cascade's set.
-     * </p>
-     */
-    private static boolean isCascadeResolvableName(String name)
-    {
-        return "DOMAIN".equals(name) || "record_count".equals(name) || "dataset_name".equals(name)
-                || "dataset_label".equals(name);
     }
 
 
