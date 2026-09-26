@@ -5121,9 +5121,10 @@ public class RulePackageLoader
      * <p>
      * ⛔ {@code Wildcard} is reported as <b>retired</b>, once, and never also as unknown. T1-2 was
      * ruled (b): an ERROR from the start, no warning phase — which is safe only because the engine
-     * carrying this gate is <b>not pushed</b> until the corpus re-released without the key is
-     * pinned in all five bundles (the pinned v0.4.0 carries it 17 times, on three released rules).
-     * The match is case-sensitive, like every key: {@code wildcard} is an ordinary unknown key.
+     * carrying this gate is <b>not released</b> (meta-repo tag) until the corpus re-released
+     * without the key is tagged and pinned in all five bundles (the pinned v0.4.0 carries it 17
+     * times, on three released rules). The match is case-sensitive, like every key:
+     * {@code wildcard} is an ordinary unknown key.
      * </p>
      *
      * <p>

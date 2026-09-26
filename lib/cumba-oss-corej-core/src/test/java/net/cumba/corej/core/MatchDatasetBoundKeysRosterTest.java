@@ -7,10 +7,16 @@ import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.databind.BeanDescription;
 import com.fasterxml.jackson.databind.DeserializationConfig;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyName;
+import com.fasterxml.jackson.databind.deser.BeanDeserializerBase;
+import com.fasterxml.jackson.databind.deser.DefaultDeserializationContext;
+import com.fasterxml.jackson.databind.deser.SettableBeanProperty;
 import com.fasterxml.jackson.databind.introspect.BeanPropertyDefinition;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -51,28 +57,44 @@ class MatchDatasetBoundKeysRosterTest
             "net.cumba.corej.core.exec.MatchFilter");
 
     /**
-     * The JSON names Jackson itself binds on {@link MatchDataset} — every introspected property
-     * with a mutator (setter, field or creator parameter), plus each property's {@code @JsonAlias}
-     * spellings. ⚠ Asked of Jackson, not of the annotations: a reflection walk over
-     * {@code @JsonProperty} misses a key bound by a plain Lombok setter (a field added with no
-     * annotation binds under its Java name) and every {@code @JsonAlias}, so either would drift in
-     * with this roster still green (review round 1, M1). Same technique as the census's
-     * {@code BoundKeys} ({@code PLAN-rule-unknown-keys-gate} Appendix A.1).
+     * The JSON names Jackson itself binds on {@link MatchDataset}, taken from the <b>built</b> bean
+     * deserializer — every {@link SettableBeanProperty} it routes a key to (setter, field, creator
+     * parameter, and a <b>setterless</b> getter-as-setter property) — plus the {@code @JsonAlias}
+     * spellings of those properties.
+     *
+     * <p>
+     * ⚠ Asked of the deserializer, not of the annotations or the introspection filter. A reflection
+     * walk over {@code @JsonProperty} misses a key bound by a plain Lombok setter (a field added
+     * with no annotation binds under its Java name) and every {@code @JsonAlias} (review round 1,
+     * M1); an introspection filter on "has a setter, field or creator parameter" still misses a key
+     * bound through a <b>getter</b> — {@code USE_GETTERS_AS_SETTERS} makes a getter-only
+     * {@code Collection} / {@code Map} property writable, so dropping {@code @JsonIgnore} from
+     * {@code getRightKeys()} would silently bind {@code rightKeys} (review round 2, M1). The
+     * deserializer is what actually consumes the JSON, so it is the population.
+     * </p>
      */
-    private static Set<String> boundKeys()
+    private static Set<String> boundKeys() throws JsonMappingException
     {
         ObjectMapper mapper = new ObjectMapper()
                 .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         DeserializationConfig cfg = mapper.getDeserializationConfig();
-        BeanDescription bd = cfg.introspect(mapper.constructType(MatchDataset.class));
+        JavaType type = mapper.constructType(MatchDataset.class);
+        DefaultDeserializationContext ctxt = ((DefaultDeserializationContext) mapper
+                .getDeserializationContext()).createInstance(cfg, null,
+                        mapper.getInjectableValues());
+        BeanDeserializerBase deser = (BeanDeserializerBase) ctxt.findRootValueDeserializer(type);
         Set<String> bound = new TreeSet<>();
+        for (Iterator<SettableBeanProperty> it = deser.properties(); it.hasNext();)
+        {
+            bound.add(it.next().getName());
+        }
+        BeanDescription bd = cfg.introspect(type);
         for (BeanPropertyDefinition p : bd.findProperties())
         {
-            if (!(p.hasSetter() || p.hasField() || p.hasConstructorParameter()))
+            if (!bound.contains(p.getName()))
             {
                 continue;
             }
-            bound.add(p.getName());
             for (PropertyName alias : p.findAliases())
             {
                 bound.add(alias.getSimpleName());
@@ -83,7 +105,7 @@ class MatchDatasetBoundKeysRosterTest
 
 
     @Test
-    void theBoundKeysEqualTheRoster()
+    void theBoundKeysEqualTheRoster() throws JsonMappingException
     {
         assertEquals(new TreeSet<>(READERS.keySet()), boundKeys(),
                 "a Match_Datasets key was bound or unbound without editing this roster — name its"
