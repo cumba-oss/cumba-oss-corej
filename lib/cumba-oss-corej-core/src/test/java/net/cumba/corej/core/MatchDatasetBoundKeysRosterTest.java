@@ -4,9 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
+import com.fasterxml.jackson.databind.BeanDescription;
+import com.fasterxml.jackson.databind.DeserializationConfig;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyName;
+import com.fasterxml.jackson.databind.introspect.BeanPropertyDefinition;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
@@ -47,23 +50,32 @@ class MatchDatasetBoundKeysRosterTest
             "net.cumba.corej.core.exec.KeyMatchRowExpander", "Filter",
             "net.cumba.corej.core.exec.MatchFilter");
 
+    /**
+     * The JSON names Jackson itself binds on {@link MatchDataset} — every introspected property
+     * with a mutator (setter, field or creator parameter), plus each property's {@code @JsonAlias}
+     * spellings. ⚠ Asked of Jackson, not of the annotations: a reflection walk over
+     * {@code @JsonProperty} misses a key bound by a plain Lombok setter (a field added with no
+     * annotation binds under its Java name) and every {@code @JsonAlias}, so either would drift in
+     * with this roster still green (review round 1, M1). Same technique as the census's
+     * {@code BoundKeys} ({@code PLAN-rule-unknown-keys-gate} Appendix A.1).
+     */
     private static Set<String> boundKeys()
     {
+        ObjectMapper mapper = new ObjectMapper()
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        DeserializationConfig cfg = mapper.getDeserializationConfig();
+        BeanDescription bd = cfg.introspect(mapper.constructType(MatchDataset.class));
         Set<String> bound = new TreeSet<>();
-        for (Field f : MatchDataset.class.getDeclaredFields())
+        for (BeanPropertyDefinition p : bd.findProperties())
         {
-            JsonProperty p = f.getAnnotation(JsonProperty.class);
-            if (p != null)
+            if (!(p.hasSetter() || p.hasField() || p.hasConstructorParameter()))
             {
-                bound.add(p.value());
+                continue;
             }
-        }
-        for (Method m : MatchDataset.class.getDeclaredMethods())
-        {
-            JsonProperty p = m.getAnnotation(JsonProperty.class);
-            if (p != null)
+            bound.add(p.getName());
+            for (PropertyName alias : p.findAliases())
             {
-                bound.add(p.value());
+                bound.add(alias.getSimpleName());
             }
         }
         return bound;
