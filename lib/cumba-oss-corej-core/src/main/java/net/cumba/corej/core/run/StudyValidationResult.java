@@ -18,7 +18,8 @@ import net.cumba.datatable.report.ValidationReport;
  *
  * <p>
  * The {@link #conformance()} block already has the standard / version / substandard / use-case /
- * CT-version / define-version / engine-version / runtime fields populated.
+ * CT-version / define-version / engine-version / issue-limit / runtime fields populated — the issue
+ * limit being the per-(rule × dataset) findings cap the run actually applied.
  * </p>
  *
  * <h2>This record does not serialise (Fix #224)</h2>
