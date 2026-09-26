@@ -563,20 +563,21 @@ public final class RecordKeyResolver
 
 
         /**
-         * ⚠ Deliberately the plain map equality of the rendered entries: the unpopulated set is a
-         * reading aid for D7, not part of the key's value, so two keys that print alike are equal.
+         * ⚠ Deliberately the plain map equality of the rendered entries (delegated to the backing
+         * map, which is what any {@code Map} compares by): the unpopulated set is a reading aid for
+         * D7, not part of the key's value, so two keys that print alike are equal.
          */
         @Override
         public boolean equals(@Nullable Object aOther)
         {
-            return super.equals(aOther);
+            return values.equals(aOther);
         }
 
 
         @Override
         public int hashCode()
         {
-            return super.hashCode();
+            return values.hashCode();
         }
     }
 
