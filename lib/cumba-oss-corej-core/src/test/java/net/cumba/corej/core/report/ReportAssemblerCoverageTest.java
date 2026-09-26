@@ -110,8 +110,8 @@ class ReportAssemblerCoverageTest
     {
         Conformance c = Conformance.builder().reportGeneration("2026-05-18T10:00:00")
                 .totalRuntimeSeconds(12.34).coreEngineVersion("0.5.0").issueLimitPerRule(50)
-                .issueLimitPerDataset(true).standard("sdtmig").subStandard("safety").version("3-4")
-                .tigUseCase("INDH").ctVersion("2024-09-26")
+                .standard("sdtmig").subStandard("safety").version("3-4").tigUseCase("INDH")
+                .ctVersion("2024-09-26")
                 .ctDeclarationMismatch("define declares sdtmct-2023-12-15; run used none")
                 .defineXmlVersion("2.0").uniiVersion("2024-01").medRtVersion("2024-02")
                 .meddraVersion("27.0").whodrugVersion("2024 MAR 1").snomedVersion("2024-01-31")
@@ -148,9 +148,44 @@ class ReportAssemblerCoverageTest
         assertEquals("0.5.0", conformanceMap.get("CORE_Engine_Version"));
         // totalRuntimeSeconds formats to "%.2f seconds"
         assertEquals("12.34 seconds", conformanceMap.get("Total_Runtime"));
-        // issueLimitPerRule prints the toString of the value
+        // D2/D3: a finite cap prints its decimal text, and the per-dataset flag is DERIVED from
+        // it — the engine's cap is always per (rule × dataset), so there is no separate setter.
         assertEquals("50", conformanceMap.get("Issue_Limit_Per_Rule"));
         assertEquals("True", conformanceMap.get("Issue_Limit_Per_Dataset"));
+    }
+
+
+    /**
+     * D3: the two spellings of "unlimited" — {@link Integer#MAX_VALUE} (what
+     * {@code EngineLimits.resolve} returns for {@code 0}) and a non-positive cap — both render
+     * {@code "None"} / {@code "None"}, matching the template default and the REST schema text.
+     */
+    @Test
+    void conformanceBuilder_unlimitedCapRendersNone()
+    {
+        for (int unlimited : new int[]
+        {
+                Integer.MAX_VALUE, 0, -1
+        })
+        {
+            Map<String, Object> conformanceMap = conformanceOf(
+                    Conformance.builder().issueLimitPerRule(unlimited).build());
+            assertEquals("None", conformanceMap.get("Issue_Limit_Per_Rule"), "cap " + unlimited);
+            assertEquals("None", conformanceMap.get("Issue_Limit_Per_Dataset"), "cap " + unlimited);
+        }
+    }
+
+
+    private static Map<String, Object> conformanceOf(Conformance c)
+    {
+        ReportAssembler writer = new ReportAssembler()
+                .report(ValidationReport.builder().members(List.of()).build()).conformance(c);
+        Map<String, Object> export = writer.sections().toExportDocument();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> conformanceMap = (Map<String, Object>) export
+                .get("Conformance_Details");
+        assertNotNull(conformanceMap);
+        return conformanceMap;
     }
 
 
@@ -169,7 +204,8 @@ class ReportAssemblerCoverageTest
         assertNotNull(conformanceMap);
         // Report_Generation defaults to "now"-time when null.
         assertNotNull(conformanceMap.get("Report_Generation"));
-        // issueLimitPerRule defaults to "None" when null.
+        // An assembler given NO cap: "None" here is D3's "not stated", not the old defect (the
+        // product builder, StudyValidationService, always states the applied cap — P3/P4).
         assertEquals("None", conformanceMap.get("Issue_Limit_Per_Rule"));
         assertEquals("None", conformanceMap.get("Issue_Limit_Per_Dataset"));
     }

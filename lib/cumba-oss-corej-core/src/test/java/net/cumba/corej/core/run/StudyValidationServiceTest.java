@@ -3,6 +3,7 @@ package net.cumba.corej.core.run;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -18,6 +19,7 @@ import java.nio.file.Path;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -26,6 +28,8 @@ import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
+import net.cumba.corej.core.VersionInfo;
+import net.cumba.corej.core.exec.EngineLimits;
 import net.cumba.corej.core.metadata.AdamDataStructureDetector;
 import net.cumba.corej.core.metadata.AdamSubclassDetector;
 import net.cumba.corej.core.metadata.MetadataKeys;
@@ -1701,5 +1705,160 @@ class StudyValidationServiceTest
                         + effective);
         assertTrue(effective.stream().anyMatch(k -> k.endsWith("adam/adamig-1-3")),
                 "and so must the declared primary: " + effective);
+    }
+
+    // ------------------------------------------------------------------
+    // PLAN-report-conformance-fields — the conformance block tells the truth
+    // ------------------------------------------------------------------
+
+
+    /** A DM table of three subjects, so a cap of 2 has something to cut. */
+    private static IDataTable threeSubjectDm()
+    {
+        return MockTable.of().name("DM").label("Demographics")
+                .col("USUBJID", "SUBJ-001", "SUBJ-002", "SUBJ-003").build();
+    }
+
+
+    /**
+     * A rules dir whose one rule flags EVERY row of DM ({@code USUBJID} is never empty there), so
+     * the per-(rule × dataset) findings cap is the only thing deciding how many rows the report
+     * lists.
+     */
+    private Path writeRowFlaggingRules(String coreId) throws IOException
+    {
+        Path dir = Files.createDirectory(tempDir.resolve("rules-" + System.nanoTime()));
+        String fileName = "rules-custom-1-0.json";
+        Files.writeString(dir.resolve(fileName), """
+                {
+                  "rules": {
+                    "u1": {
+                      "id": "u1",
+                      "Core": {"Id": "%s"},
+                      "Check": {"expression": "not empty(USUBJID)"}
+                    }
+                  }
+                }
+                """.formatted(coreId));
+        new net.cumba.corej.core.RulePackageManifest("test",
+                List.of(new net.cumba.corej.core.RulePackageManifest.Entry(fileName, "CDISC",
+                        "custom", "1-0", 1, List.of()))).writeTo(dir);
+        return dir;
+    }
+
+
+    private StudyValidationParams.Builder cappedRun(IDataTableManager mgr, Path rulesDir)
+    {
+        return StudyValidationParams.builder().manager(mgr).dataLibrary(tempDir.toString())
+                .rulesDir(rulesDir.toString()).rulesPackages(List.of("custom-1-0"))
+                .metadataProducts(CUSTOM_PRODUCT);
+    }
+
+
+    private static long issueDetailRows(StudyValidationResult result, String coreId)
+    {
+        return result.sections().issueDetails().stream()
+                .filter(row -> coreId.equals(row.get("core_id"))).count();
+    }
+
+
+    /**
+     * P2 (D4): the no-argument constructor stamps the engine's OWN version — the
+     * {@code version.properties} packaged beside {@link StudyValidationService} — so REST and the
+     * data browser, which construct the service that way, no longer emit reports without a
+     * {@code CORE_Engine_Version}. Unfixed, the key was absent (the ctor passed {@code null}).
+     */
+    @Test
+    void defaultConstructorStampsTheEngineVersion() throws IOException
+    {
+        IDataTableManager mgr = managerWith(dmTable());
+        Path rulesDir = writeRules("rules-custom-1-0.json", "CORE-X-VER");
+
+        StudyValidationResult result = new StudyValidationService()
+                .validate(cappedRun(mgr, rulesDir).build());
+
+        String expected = VersionInfo.forClass(StudyValidationService.class).version();
+        assertNotEquals("unknown", expected,
+                "CONTROL FAILED: the engine's own version.properties is unfiltered on this "
+                        + "classpath, so the assertion below could not tell a stamp from a miss");
+        assertEquals(expected, result.sections().conformanceDetails().get("CORE_Engine_Version"));
+    }
+
+
+    /**
+     * P3 (D1/D2): the header states the cap the run ACTUALLY applied, not one it merely echoes. A
+     * rule flagging all three DM rows under {@code maxErrorsPerRule(2)} lists exactly two of them,
+     * and the header says {@code Issue_Limit_Per_Rule = "2"}, {@code Issue_Limit_Per_Dataset =
+     * "True"} (the engine's cap is always per rule × dataset). Unfixed: both read {@code "None"}.
+     */
+    @Test
+    void reportStatesTheAppliedIssueLimit() throws IOException
+    {
+        IDataTableManager mgr = managerWith(threeSubjectDm());
+        Path rulesDir = writeRowFlaggingRules("CORE-X-CAP");
+
+        // Sensitivity arm first: without a cap the rule lists all three rows. If this fails, the
+        // rule does not flag every row and the capped assertion below would be vacuous.
+        StudyValidationResult uncapped = new StudyValidationService()
+                .validate(cappedRun(mgr, rulesDir).maxErrorsPerRule(0).build());
+        assertEquals(3, issueDetailRows(uncapped, "CORE-X-CAP"),
+                "the fixture rule must flag every DM row");
+
+        StudyValidationResult capped = new StudyValidationService()
+                .validate(cappedRun(mgr, rulesDir).maxErrorsPerRule(2).build());
+
+        assertEquals(2, issueDetailRows(capped, "CORE-X-CAP"), "the cap really applied");
+        Map<String, @org.jspecify.annotations.Nullable Object> c = capped.sections()
+                .conformanceDetails();
+        assertEquals("2", c.get("Issue_Limit_Per_Rule"));
+        assertEquals("True", c.get("Issue_Limit_Per_Dataset"));
+    }
+
+
+    /** P4a (D3): an explicit unlimited cap ({@code 0}) renders {@code "None"} / {@code "None"}. */
+    @Test
+    void unlimitedCapReportsNone() throws IOException
+    {
+        IDataTableManager mgr = managerWith(threeSubjectDm());
+        Path rulesDir = writeRowFlaggingRules("CORE-X-UNL");
+
+        StudyValidationResult result = new StudyValidationService()
+                .validate(cappedRun(mgr, rulesDir).maxErrorsPerRule(0).build());
+
+        Map<String, @org.jspecify.annotations.Nullable Object> c = result.sections()
+                .conformanceDetails();
+        assertEquals("None", c.get("Issue_Limit_Per_Rule"));
+        assertEquals("None", c.get("Issue_Limit_Per_Dataset"));
+    }
+
+
+    /**
+     * P4b (D1): with no per-run override the header names the engine's resolved default, read from
+     * the same {@link EngineLimits} resolution the validator uses (property, then env, then 1000) —
+     * compared against the LIVE resolution rather than the literal {@code "1000"}, so a CI
+     * {@code MAX_ERRORS_PER_RULE} cannot make this flaky. Unfixed: {@code "None"}.
+     */
+    @Test
+    void defaultCapReportsTheEngineDefault() throws IOException
+    {
+        IDataTableManager mgr = managerWith(dmTable());
+        Path rulesDir = writeRules("rules-custom-1-0.json", "CORE-X-DEF");
+
+        StudyValidationResult result = new StudyValidationService()
+                .validate(cappedRun(mgr, rulesDir).build());
+
+        int live = EngineLimits.maxErrorsPerRule();
+        Map<String, @org.jspecify.annotations.Nullable Object> c = result.sections()
+                .conformanceDetails();
+        if (live == Integer.MAX_VALUE)
+        {
+            assertEquals("None", c.get("Issue_Limit_Per_Rule"));
+            assertEquals("None", c.get("Issue_Limit_Per_Dataset"));
+        }
+        else
+        {
+            assertEquals(String.valueOf(live), c.get("Issue_Limit_Per_Rule"));
+            assertEquals("True", c.get("Issue_Limit_Per_Dataset"));
+        }
     }
 }

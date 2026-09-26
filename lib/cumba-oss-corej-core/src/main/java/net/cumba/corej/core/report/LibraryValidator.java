@@ -334,6 +334,19 @@ public final class LibraryValidator
         }
     }
 
+
+    /**
+     * The resolved per-(rule × dataset) findings cap this run applies — the caller's override, else
+     * {@code -Dcorej.maxErrorsPerRule}, else {@code MAX_ERRORS_PER_RULE}, else the engine default;
+     * {@link Integer#MAX_VALUE} = unlimited. Read by {@code StudyValidationService} so the report's
+     * {@code Issue_Limit_Per_Rule} names the cap that was applied, not a re-resolution of a live
+     * setting that may have moved since (PLAN-report-conformance-fields D1).
+     */
+    public int getMaxErrorsPerRule()
+    {
+        return maxErrorsPerRule;
+    }
+
     // ------------------------------------------------------------------
     // Execution
     // ------------------------------------------------------------------

@@ -173,6 +173,64 @@ class XlsxReportWriterTest
             assertNull(string(c, 20, 1), "Dictionary Basis stays blank on a healthy run");
             assertEquals("not configured", string(c, 21, 1)); // Neoplasm Version default
             assertNull(string(c, 22, 1), "Library Metadata Basis stays blank on a healthy run");
+            // P12: the two rows appended by PLAN-report-conformance-fields stay blank too.
+            assertNull(string(c, 23, 1), "CT Declaration Mismatch stays blank on a healthy run");
+            assertNull(string(c, 24, 1), "Define Metadata Basis stays blank on a healthy run");
+        }
+    }
+
+
+    /**
+     * P12 (PLAN-report-conformance-fields T1-2 a/b): {@code CT_Declaration_Mismatch} and
+     * {@code Define_Metadata_Basis} were JSON-only. They now land in the two rows appended to the
+     * template, 24 and 25, under their display labels — asserted with DISTINCT values so a
+     * transposed mapping would be caught.
+     */
+    @Test
+    void ctDeclarationMismatchAndDefineMetadataBasisLandAtRows24And25() throws Exception
+    {
+        ReportSections degraded = new ReportAssembler()
+                .report(ValidationReport.builder().members(List.of()).build())
+                .conformance(ReportAssembler.Conformance.builder().standard("sdtmig")
+                        .ctDeclarationMismatch("define declares sdtmct-2023-12-15; run used none")
+                        .defineMetadataBasis("degraded — the Define-XML could not be parsed …")
+                        .build())
+                .sections();
+        try (XSSFWorkbook wb = render(degraded, 10_000))
+        {
+            Sheet c = wb.getSheet("Conformance Details");
+            assertEquals("CT Declaration Mismatch", string(c, 23, 0));
+            assertEquals("define declares sdtmct-2023-12-15; run used none", string(c, 23, 1));
+            assertEquals("Define Metadata Basis", string(c, 24, 0));
+            assertEquals("degraded — the Define-XML could not be parsed …", string(c, 24, 1));
+            // Row 25 is the last one the template carries.
+            assertEquals(24, c.getLastRowNum());
+        }
+    }
+
+
+    /**
+     * P7 (PLAN-report-conformance-fields): the writer passes the engine's stated cap and version
+     * straight into rows 5, 6 and 4. The writer was never wrong here — this pins the mapping so the
+     * corrected engine values cannot be silently re-routed.
+     */
+    @Test
+    void appliedIssueLimitAndEngineVersionLandAtRows4To6() throws Exception
+    {
+        ReportSections capped = new ReportAssembler()
+                .report(ValidationReport.builder().members(List.of()).build())
+                .conformance(ReportAssembler.Conformance.builder().standard("sdtmig")
+                        .coreEngineVersion("9.9.9-TEST").issueLimitPerRule(2).build())
+                .sections();
+        try (XSSFWorkbook wb = render(capped, 10_000))
+        {
+            Sheet c = wb.getSheet("Conformance Details");
+            assertEquals("CORE Engine Version", string(c, 3, 0));
+            assertEquals("9.9.9-TEST", string(c, 3, 1));
+            assertEquals("Issue Limit per Rule", string(c, 4, 0));
+            assertEquals("2", string(c, 4, 1));
+            assertEquals("Issue Limit per Dataset", string(c, 5, 0));
+            assertEquals("True", string(c, 5, 1));
         }
     }
 

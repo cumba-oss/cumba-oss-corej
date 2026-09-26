@@ -20,13 +20,11 @@ import java.util.SequencedSet;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
-
 import lombok.CustomLog;
-
 import net.cumba.corej.core.RulePackageLoader;
+import net.cumba.corej.core.VersionInfo;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.metadata.AdamSubclassDetector;
-
 import net.cumba.corej.core.metadata.CompanionDomainsProvider;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
 import net.cumba.corej.core.metadata.MetadataProductKeys;
@@ -107,18 +105,32 @@ public final class StudyValidationService
     private final @Nullable String coreEngineVersion;
 
     /**
-     * Creates a service with no engine-version stamp (the conformance block's
-     * {@code CORE_Engine_Version} will be omitted).
+     * This engine's own version, from the {@code version.properties} packaged beside this class
+     * (PLAN-report-conformance-fields D4). Resolved by code location, not by artifact id, so the
+     * byte-identical OSS twin reports its own version too. {@code "unknown"} when the build did not
+     * filter the resource (an IDE build), which is the existing {@link VersionInfo} contract.
+     */
+    private static final String OWN_VERSION = VersionInfo.forClass(StudyValidationService.class)
+            .version();
+
+    /**
+     * Creates a service that stamps the engine's own version into every result's
+     * {@code CORE_Engine_Version} — the version of the jar (or class directory) containing this
+     * class, {@code "unknown"} when its {@code version.properties} was not filtered. Every product
+     * surface (CLI, REST, data browser) uses this constructor, so no caller has to name the
+     * engine's artifact id — a hard-coded id is how the CLI stamped {@code "unknown"} for weeks.
      */
     public StudyValidationService()
     {
-        this(null);
+        this(OWN_VERSION);
     }
 
 
     /**
-     * Creates a service that stamps {@code aCoreEngineVersion} into the conformance block of every
-     * result. The CLI passes the value it reads from {@code /version.properties}.
+     * Creates a service that stamps an explicit {@code aCoreEngineVersion} into the conformance
+     * block of every result, overriding the self-resolved default of
+     * {@link #StudyValidationService()}. Meant for tests that pin a known value; {@code null} omits
+     * the key altogether.
      *
      * @param aCoreEngineVersion
      *            engine version string, or {@code null} to omit it
@@ -484,6 +496,9 @@ public final class StudyValidationService
                 .snomedVersion(versionOf(dictionaryProvider, "snomed"))
                 .loincVersion(versionOf(dictionaryProvider, "loinc"))
                 .neoplasmVersion(versionOf(dictionaryProvider, "neoplasm"))
+                // The cap the validator actually applied (D1) — read back from it, never
+                // re-resolved here, so the header cannot name a different number.
+                .issueLimitPerRule(validator.getMaxErrorsPerRule())
                 .totalRuntimeSeconds(elapsedSeconds).coreEngineVersion(coreEngineVersion).build();
 
         int findingCount = countFindings(report);

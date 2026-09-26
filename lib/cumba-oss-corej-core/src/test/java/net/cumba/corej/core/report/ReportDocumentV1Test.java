@@ -65,6 +65,8 @@ class ReportDocumentV1Test
         assertEquals("V3.4", conformance.get("Version"));
         assertEquals("0.5.0.0", conformance.get("CORE_Engine_Version"));
         assertEquals("10.10 seconds", conformance.get("Total_Runtime"));
+        // This assembler is given no cap, so "None" is D3's "not stated" — not a pin of the old
+        // always-"None" defect (PLAN-report-conformance-fields P6; the applied cap is P3/P4).
         assertEquals("None", conformance.get("Issue_Limit_Per_Rule"));
         assertEquals("None", conformance.get("Issue_Limit_Per_Dataset"));
         assertTrue(conformance.containsKey("Issue_Limit_Per_Sheet"));

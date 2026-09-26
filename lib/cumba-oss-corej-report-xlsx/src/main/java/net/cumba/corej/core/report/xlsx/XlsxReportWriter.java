@@ -352,7 +352,7 @@ public final class XlsxReportWriter implements ReportWriter
 
     /**
      * ⚠ Package-private rather than private for the same reason as {@link #skippedRulesSheet}: the
-     * shipped template carries Conformance rows 1–23 and {@link #CONFORMANCE_ROWS} maps every key
+     * shipped template carries Conformance rows 1–25 and {@link #CONFORMANCE_ROWS} maps every key
      * into that range, so {@code createRow} — the branch that keeps this method working against a
      * future template with a row missing — is unreachable through the public {@code write} path and
      * measured NO_COVERAGE (2026-09-14). A test drives it with a sheet built without the row.
@@ -518,6 +518,11 @@ public final class XlsxReportWriter implements ReportWriter
         m.put("Dictionary_Basis", 21);
         m.put("Neoplasm_Version", 22);
         m.put("Library_Metadata_Basis", 23);
+        // PLAN-report-conformance-fields T1-2 (a)(b) — the two remaining degradation notes were
+        // JSON-only; rows 24/25 were APPENDED to the template (no fixed index above moved) with
+        // blank B cells, so a healthy run leaves them blank exactly like rows 21 and 23.
+        m.put("CT_Declaration_Mismatch", 24);
+        m.put("Define_Metadata_Basis", 25);
         return Map.copyOf(m);
     }
 }

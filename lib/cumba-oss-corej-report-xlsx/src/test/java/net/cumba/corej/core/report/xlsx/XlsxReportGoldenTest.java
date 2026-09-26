@@ -60,6 +60,15 @@ import org.junit.jupiter.api.io.TempDir;
  * </p>
  *
  * <p>
+ * ⚠ <b>Regenerated a third time, deliberately, for {@code PLAN-report-conformance-fields} (T1-2,
+ * G1)</b>: the template gained Conformance rows 24-25 ({@code CT Declaration Mismatch},
+ * {@code Define Metadata Basis}), appended after row 23 by XML surgery on {@code sheet1.xml} and
+ * {@code sharedStrings.xml} only. Verified cell-by-cell against the previous golden: exactly two
+ * resolved-value differences, the two new column-A labels — the fixture sets neither key, so both B
+ * cells stay blank and every other cell is unchanged. The ratchet resumes from here.
+ * </p>
+ *
+ * <p>
  * ⚠⚠ <b>Compared by per-entry content digest, never by file hash.</b> An XLSX is a zip, and a zip
  * carries a per-entry modification timestamp: two runs of <em>identical</em> code produce files
  * with different bytes and different SHA-256s. A file-hash comparison here would fail every time

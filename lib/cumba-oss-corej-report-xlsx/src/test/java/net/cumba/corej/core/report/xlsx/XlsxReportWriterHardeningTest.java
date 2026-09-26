@@ -265,7 +265,7 @@ class XlsxReportWriterHardeningTest
      * A conformance key whose row is <em>absent</em> from the sheet is written at the right index.
      *
      * <p>
-     * ⚠ The shipped template carries Conformance rows 1–23 and every {@code CONFORMANCE_ROWS} value
+     * ⚠ The shipped template carries Conformance rows 1–25 and every {@code CONFORMANCE_ROWS} value
      * falls inside that range, so through the public {@code write} path {@code getRow} always hits
      * and the {@code createRow} branch beside it is dead — measured NO_COVERAGE. It is not dead
      * code: it is what keeps the writer working if a future template drops a row. Driving it needs

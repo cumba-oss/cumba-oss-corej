@@ -277,9 +277,22 @@ public final class ReportAssembler
         // (review F7). ReportSections.toExportDocument strips it again for the FROZEN v1 schema.
         m.put(ReportSections.NUMERIC_TOLERANCE_DIGITS,
                 net.cumba.corej.core.exec.ScalarSemantics.toleranceDigits());
-        m.put("Issue_Limit_Per_Rule",
-                c.issueLimitPerRule != null ? c.issueLimitPerRule.toString() : "None");
-        m.put("Issue_Limit_Per_Dataset", c.issueLimitPerDataset ? "True" : "None");
+        // PLAN-report-conformance-fields D2/D3: the engine's findings cap is applied per rule
+        // EXECUTION, i.e. per (rule × dataset) (LibraryValidator#executeRule; EngineLimits), so
+        // any finite cap IS a per-dataset cap and the engine has no cumulative mode —
+        // Issue_Limit_Per_Dataset is derived from the cap, never set independently. null means
+        // "not stated" (assembler unit tests only: the product builder always states it);
+        // Integer.MAX_VALUE or <= 0 means unlimited. Both render "None", the template default.
+        Integer cap = c.issueLimitPerRule;
+        String limitPerRule = "None";
+        String limitPerDataset = "None";
+        if (cap != null && cap > 0 && cap != Integer.MAX_VALUE)
+        {
+            limitPerRule = Integer.toString(cap);
+            limitPerDataset = "True";
+        }
+        m.put("Issue_Limit_Per_Rule", limitPerRule);
+        m.put("Issue_Limit_Per_Dataset", limitPerDataset);
         // Python emits this as a placeholder null.
         // v1 is FROZEN (owner ruling, 2026-08-11). Issue_Limit_Per_Sheet is always null here by
         // decision, not by oversight, even though XlsxReportWriter substitutes a real limit into
@@ -1162,7 +1175,15 @@ public final class ReportAssembler
     /**
      * Conformance metadata describing the validation run. All fields are optional; null values are
      * omitted from the output (except {@code Issue_Limit_Per_Sheet} which is always emitted as
-     * null, and {@code CT_Version} which defaults to {@code ""}).
+     * null, {@code CT_Version} which defaults to {@code ""}, and the two issue-limit keys, which
+     * render {@code "None"} when no finite cap is stated).
+     *
+     * <p>
+     * {@link Builder#issueLimitPerRule(Integer)} is the per-(rule × dataset) findings cap the run
+     * applied ({@code LibraryValidator#getMaxErrorsPerRule()}); {@code Issue_Limit_Per_Dataset} is
+     * derived from it ({@code "True"} for any finite cap), because the engine's cap is always per
+     * dataset and a setter that could contradict that would be one more way for the header to lie.
+     * </p>
      */
     public static final class Conformance
     {
@@ -1173,9 +1194,7 @@ public final class ReportAssembler
 
         private final @Nullable String coreEngineVersion;
 
-        private final @Nullable Object issueLimitPerRule;
-
-        private final boolean issueLimitPerDataset;
+        private final @Nullable Integer issueLimitPerRule;
 
         private final @Nullable String standard;
 
@@ -1217,7 +1236,6 @@ public final class ReportAssembler
             totalRuntimeSeconds = b.totalRuntimeSeconds;
             coreEngineVersion = b.coreEngineVersion;
             issueLimitPerRule = b.issueLimitPerRule;
-            issueLimitPerDataset = b.issueLimitPerDataset;
             standard = b.standard;
             subStandard = b.subStandard;
             version = b.version;
@@ -1252,8 +1270,10 @@ public final class ReportAssembler
         /**
          * Define-ct plan §4.2 — the run-level CT declaration mismatch note, or {@code null} (the
          * normal case) when the Define-XML declares no CT packages or declaration and selection
-         * agree. Exposed for the run surfaces (P7: CLI stderr, REST projection) the same way as
-         * {@link #dictionaryBasis()}.
+         * agree. Exposed so the CLI can print the same line to stderr that the report carries as
+         * {@code CT_Declaration_Mismatch}, exactly like {@link #dictionaryBasis()}. The other
+         * surfaces do not read it here: the XLSX writer and the REST projection read the section
+         * map by key (PLAN-report-conformance-fields R2/R4).
          */
         public @Nullable String ctDeclarationMismatch()
         {
@@ -1275,9 +1295,7 @@ public final class ReportAssembler
 
             private @Nullable String coreEngineVersion;
 
-            private @Nullable Object issueLimitPerRule;
-
-            private boolean issueLimitPerDataset;
+            private @Nullable Integer issueLimitPerRule;
 
             private @Nullable String standard;
 
@@ -1334,16 +1352,15 @@ public final class ReportAssembler
             }
 
 
-            public Builder issueLimitPerRule(@Nullable Object o)
+            /**
+             * The per-(rule × dataset) findings cap the run applied. {@code null} = not stated;
+             * {@link Integer#MAX_VALUE} or {@code <= 0} = unlimited. A finite value renders as its
+             * decimal text with {@code Issue_Limit_Per_Dataset = "True"}; anything else renders
+             * both keys as {@code "None"}.
+             */
+            public Builder issueLimitPerRule(@Nullable Integer aCap)
             {
-                issueLimitPerRule = o;
-                return this;
-            }
-
-
-            public Builder issueLimitPerDataset(boolean b)
-            {
-                issueLimitPerDataset = b;
+                issueLimitPerRule = aCap;
                 return this;
             }
 
