@@ -5820,7 +5820,7 @@ public class RulePackageLoader
     /**
      * Gate <b>R-4.10 / R-4.10a</b> ({@code plans/PLAN-use-case-scope-filter.md}, ruling T1-4): a
      * {@code Scope.Use_Case} that is not a comma-separated list of upper-case codes, or that lists
-     * one code twice, is a load error.
+     * one code more than once, is a load error.
      *
      * <p>
      * Since the run's use case filters rules (owner ruling X1), a misspelt value is no longer
@@ -5860,7 +5860,7 @@ public class RulePackageLoader
         {
             if (seen.contains(code))
             {
-                msg.append(" — lists '").append(code).append("' twice (R-4.10a)");
+                msg.append(" — lists '").append(code).append("' more than once (R-4.10a)");
                 break;
             }
             seen.add(code);
