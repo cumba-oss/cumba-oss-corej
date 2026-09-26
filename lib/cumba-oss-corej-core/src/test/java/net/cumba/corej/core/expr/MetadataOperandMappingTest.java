@@ -107,4 +107,26 @@ class MetadataOperandMappingTest
                     name);
         }
     }
+
+
+    /**
+     * Review round 1 L3 (UNIFORMITY): the reversed comparison and each bare name in a varname()
+     * membership list are raised exactly as the left-hand form is; a quoted item and a non-name
+     * item are untouched.
+     */
+    @Test
+    void theReversedAndTheMembershipFormsAreRaisedAlike()
+    {
+        assertEquals(CheckExpressionParser.parse("\"DOMAIN\" == varname()"), MetadataOperandMapping
+                .canonicalizeMetadataOperands(CheckExpressionParser.parse("DOMAIN == varname()")));
+        assertEquals(CheckExpressionParser.parse("varname() in [\"DOMAIN\", \"AETERM\", \"X\"]"),
+                MetadataOperandMapping.canonicalizeMetadataOperands(
+                        CheckExpressionParser.parse("varname() in [DOMAIN, AETERM, \"X\"]")));
+        assertEquals(CheckExpressionParser.parse("varname() not in [\"DOMAIN\"]"),
+                MetadataOperandMapping.canonicalizeMetadataOperands(
+                        CheckExpressionParser.parse("varname() not in [DOMAIN]")));
+        // Not a varname() comparison: a bare name stays a column reference.
+        assertEquals(CheckExpressionParser.parse("AETERM in [DOMAIN]"), MetadataOperandMapping
+                .canonicalizeMetadataOperands(CheckExpressionParser.parse("AETERM in [DOMAIN]")));
+    }
 }

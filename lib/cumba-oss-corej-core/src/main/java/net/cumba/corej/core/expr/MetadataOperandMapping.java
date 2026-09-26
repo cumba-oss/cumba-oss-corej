@@ -238,10 +238,18 @@ public final class MetadataOperandMapping
             // more that made varname() == DOMAIN read the DOMAIN column per row, while the retired
             // cascade had compared a Variable Metadata Check against the literal (the injection
             // was gated on the dataset-metadata family). PLAN-dead-code-followups F-5.
-            if (isVarnameCall(left) && right instanceof Expr.Ref r
-                    && r.kind() == OperandKind.COLUMN)
+            // UNIFORMITY (review round 1 L3): the same holds whichever side varname() is on, and
+            // for each bare name in the list of a varname() membership test.
+            if (isVarnameCall(left))
             {
-                right = new Expr.Lit(Expr.LitKind.STRING, r.name());
+                right = (b.op() == Expr.BinOp.IN || b.op() == Expr.BinOp.NOT_IN)
+                        && right instanceof Expr.Lit list && list.kind() == Expr.LitKind.LIST
+                                ? namesToLiterals(list)
+                                : columnNameToLiteral(right);
+            }
+            else if (isVarnameCall(right))
+            {
+                left = columnNameToLiteral(left);
             }
             yield new Expr.Binary(b.op(), left, right);
         }
@@ -259,6 +267,29 @@ public final class MetadataOperandMapping
             yield lit;
         }
         };
+    }
+
+
+    /** A bare COLUMN reference as the string literal of its name; anything else unchanged. */
+    private static Expr columnNameToLiteral(Expr e)
+    {
+        return e instanceof Expr.Ref r && r.kind() == OperandKind.COLUMN
+                ? new Expr.Lit(Expr.LitKind.STRING, r.name())
+                : e;
+    }
+
+
+    /** A list literal with each bare COLUMN reference item raised to its name's string literal. */
+    private static Expr namesToLiterals(Expr.Lit aList)
+    {
+        @SuppressWarnings("unchecked")
+        List<Expr> items = (List<Expr>) aList.value();
+        List<Expr> out = new ArrayList<>(items.size());
+        for (Expr item : items)
+        {
+            out.add(columnNameToLiteral(item));
+        }
+        return new Expr.Lit(Expr.LitKind.LIST, out);
     }
 
 
