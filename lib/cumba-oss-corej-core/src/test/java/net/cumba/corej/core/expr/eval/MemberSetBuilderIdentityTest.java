@@ -242,8 +242,9 @@ class MemberSetBuilderIdentityTest
 
 
     /**
-     * Collection-LHS membership ({@code D81d}) compares the left list's items as strings, so a
-     * missing member is matched by nothing there — with the present-{@code "."} control.
+     * Collection-LHS membership ({@code D81d}): a present left item is compared against the present
+     * members only, so a missing member is never matched by a string — with the present-{@code "."}
+     * control.
      */
     @Test
     void listMembershipIgnoresAMissingMemberButMatchesAPresentOne()
@@ -256,5 +257,167 @@ class MemberSetBuilderIdentityTest
         assertEquals(bits(0), Primitives.listMembership(lhs,
                 Primitives.MemberSet.ofStrings(Set.of(".")), 1, false, false),
                 "control: the same item matches a present '.' member");
+    }
+
+
+    /**
+     * Review round 1, R4 — a MISSING left item of collection-LHS membership is compared by identity
+     * ({@code D34 #5-2}): a member of a set holding the same missing, of no other, and never of a
+     * present {@code "."} — it used to render to {@code "."} and match exactly that.
+     */
+    @Test
+    void listMembershipComparesAMissingLeftItemByIdentity()
+    {
+        ConstVector lhs = ConstVector.of(List.of(MissingValue.MIS));
+        assertEquals(bits(0),
+                Primitives.listMembership(lhs,
+                        Primitives.MemberSet.of(List.of(MissingValue.MIS), false), 1, false, false),
+                "MIS in {MIS}");
+        assertEquals(bits(), Primitives.listMembership(lhs,
+                Primitives.MemberSet.of(List.of(MissingValue.MIS_A), false), 1, false, false),
+                "MIS is not .A");
+        assertEquals(bits(),
+                Primitives.listMembership(lhs, Primitives.MemberSet.ofStrings(Set.of(".")), 1,
+                        false, false),
+                "a missing left item is not the text '.' — it matched until 2026-09-26");
+        IDataTable t = probeTable();
+        ConstVector cellLhs = ConstVector
+                .of(List.of(t.getColumn(t.getMetaData().getColumnIndex("X")).getDataValue(2L)));
+        assertEquals(bits(0),
+                Primitives.listMembership(cellLhs,
+                        Primitives.MemberSet.of(List.of(MissingValue.MIS), false), 1, false, false),
+                "a missing CELL as a left item is classified the same way");
+    }
+
+
+    /** Review round 1, R5 — an {@code IDataValue} member carrying a missing keeps its identity. */
+    @Test
+    void memberSetClassifiesAMissingDataValueMember()
+    {
+        IDataTable t = probeTable();
+        int x = t.getMetaData().getColumnIndex("X");
+        Primitives.MemberSet set = Primitives.MemberSet
+                .of(List.of(t.getColumn(x).getDataValue(2L), "A"), false);
+        assertEquals(Set.of(MissingValue.MIS), set.missing(),
+                "a missing IDataValue member is classified by its identity");
+        assertEquals(Set.of("A"), set.present(), "and is not rendered among the present members");
+        assertEquals(MissingValue.MIS_A, Primitives.MemberSet.missingIdentityOfMember(
+                new net.cumba.datatable.values.DataValueDouble(MissingValue.MIS_A.asDouble())),
+                "a NaN-carrying numeric cell yields its marker");
+        assertEquals(null, Primitives.MemberSet.missingIdentityOfMember("."),
+                "a present '.' string is not a missing");
+    }
+
+
+    /** The case-insensitive surface keeps a missing member's identity too. */
+    @Test
+    void caseInsensitiveMembershipMatchesAMissingByIdentity()
+    {
+        IDataTable t = probeTable();
+        EvaluationContext c = EvaluationContext.builder().table(t)
+                .variables(Map.of("$ref", List.of(MissingValue.MIS, "a"))).build();
+        assertEquals(bits(1, 2), eval("upper(X) in $ref", c),
+                "row 1 'A' matches the folded 'a'; row 2 MIS matches MIS; row 0 '.' matches"
+                        + " nothing");
+    }
+
+
+    /** The grouped set keeps toSet's null contract: a null element is the member "". */
+    @Test
+    void groupedMembershipFoldsANullElementToTheEmptyString()
+    {
+        IDataTable t = MockTable.of().name("DS").colSasMissing("X", "", "A", null)
+                .col("G", "g1", "g1", "g1").build();
+        GroupedResult grouped = new GroupedResult(List.of("G"),
+                Map.<String, Object> of("g1", Arrays.asList(null, "B")));
+        EvaluationContext c = EvaluationContext.builder().table(t)
+                .variables(Map.of("$grp", grouped)).build();
+        assertEquals(bits(0), eval("X in $grp", c),
+                "the null element is the member \"\", matched by the present blank of row 0 and"
+                        + " NOT by the missing of row 2 (D12)");
+    }
+
+
+    /**
+     * LOW-2 — the list-accessor source of {@code not_contains_all} hands only its present members
+     * to the token verdict, so a missing source member never satisfies a {@code "."} token. ⚠
+     * Pinned on the two calls the site composes: a real metadata accessor carries codelist strings
+     * and cannot put a missing into the list.
+     */
+    @Test
+    void notContainsAllAccessorSourceIsNotSatisfiedByADotToken()
+    {
+        ExprCompiler.ValuePlan plan = _ -> ConstVector.of(List.of(MissingValue.MIS, "A"));
+        Set<String> allowed = ExprCompiler.listAccessorSet(plan, EvalRun.ofRowCount(1), false)
+                .present();
+        assertEquals(bits(0),
+                Primitives.notContainsAllTokens(ConstVector.of(List.of("A", ".")), allowed, 1),
+                "the '.' token is not allowed: the MIS member is not the text '.'");
+        assertEquals(bits(),
+                Primitives.notContainsAllTokens(ConstVector.of(List.of("A")), allowed, 1),
+                "control: a token that IS allowed does not fire");
+    }
+
+
+    /**
+     * Review round 1, R3 — the {@code $}-sources of {@code not_contains_all} render a missing
+     * member as its component token, the identity {@code distinctColumnValues} already keeps: never
+     * satisfied by a {@code "."} token or required value, satisfied only by the same missing.
+     */
+    @Test
+    void notContainsAllDollarSourcesKeepAMissingMembersIdentity()
+    {
+        IDataTable t = MockTable.of().name("DS").col("TOK", "A;.", "A").build();
+        EvaluationContext perRow = EvaluationContext.builder().table(t)
+                .variables(Map.of("$allowed", List.of(MissingValue.MIS, "A"))).build();
+        assertEquals(bits(0), eval("not_contains_all($allowed, split_by(TOK, \";\"))", perRow),
+                "row 0's '.' token is not satisfied by the MIS member — it was until 2026-09-26");
+
+        EvaluationContext broadcast = EvaluationContext.builder().table(t)
+                .variables(Map.of("$src", List.of(MissingValue.MIS, "A"), "$reqMis",
+                        List.of(MissingValue.MIS), "$reqDot", List.of(".")))
+                .build();
+        assertEquals(bits(), eval("not_contains_all($src, $reqMis)", broadcast),
+                "a required MIS IS satisfied by a source MIS (D34 #5-2)");
+        assertEquals(bits(0, 1), eval("not_contains_all($src, $reqDot)", broadcast),
+                "a required '.' is NOT satisfied by a source MIS — every row fires");
+    }
+
+
+    /**
+     * Review round 1, R2 — composite membership keys keep each component's identity on BOTH sides
+     * ({@code D11}, {@code D34 #5-2}, {@code NVE §4.4}): a missing and a present blank are two
+     * different components. Before, both sides folded a missing to {@code ""}, so row 1 and row 3
+     * below matched a reference tuple they are not.
+     */
+    @Test
+    void tupleMembershipKeepsAMissingComponentsIdentity()
+    {
+        IDataTable tv = MockTable.of().name("TV").col("VISIT", "W1", "W2")
+                .colSasMissing("VISITNUM", null, "").build();
+        IDataTable vs = MockTable.of().name("VS").col("VISIT", "W1", "W1", "W2", "W2")
+                .colSasMissing("VISITNUM", null, "", "", null).build();
+        EvaluationContext ctx = EvaluationContext.builder().table(vs).domainPrefix("VS")
+                .datasetResolver(name -> "TV".equals(name) ? tv : null).build();
+        assertEquals(bits(1, 3),
+                eval("tuple(VISIT, VISITNUM) not in distinct([VISIT, VISITNUM], domain=\"TV\")",
+                        ctx),
+                "(W1,MIS) and (W2,\"\") are TV rows; (W1,\"\") and (W2,MIS) are not — both read"
+                        + " as TV rows until 2026-09-26");
+    }
+
+
+    /** The tuple normaliser renders a missing element as the component token, marker by marker. */
+    @Test
+    void toStringTupleRendersAMissingElementAsItsComponentToken()
+    {
+        List<String> mis = ExprCompiler.toStringTuple(List.of("A", MissingValue.MIS));
+        List<String> misA = ExprCompiler.toStringTuple(List.of("A", MissingValue.MIS_A));
+        List<String> dot = ExprCompiler.toStringTuple(List.of("A", "."));
+        List<String> blank = ExprCompiler.toStringTuple(Arrays.asList("A", null));
+        assertTrue(mis != null && misA != null && dot != null && blank != null);
+        assertEquals(4, Set.of(mis, misA, dot, blank).size(),
+                "MIS, .A, a present '.' and a null (\"\") are four different components");
+        assertEquals(List.of("A", ""), blank, "a null element still folds to \"\"");
     }
 }

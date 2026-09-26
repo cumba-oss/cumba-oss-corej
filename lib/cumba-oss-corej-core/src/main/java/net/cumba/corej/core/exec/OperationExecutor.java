@@ -29,6 +29,7 @@ import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.metadata.ICodeList;
 import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.IDataValue;
+import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
 
 @CustomLog
@@ -1936,10 +1937,18 @@ public final class OperationExecutor
                     continue;
                 }
                 IDataValue dv = table.getColumn(col).getDataValue(r);
+                // A MissingValue component keeps its identity (D11 / D34 #5-2 / NVE §4.4) through
+                // the token BuiltinFunctions.tupleKey renders too — never "" (the present blank's
+                // key) and never normalised as a join token.
+                MissingValue missing = net.cumba.corej.core.expr.eval.TypedValue
+                        .missingIdentityOf(dv);
+                if (missing != null)
+                {
+                    tuple.add(GroupKeyPolicy.missingComponentToken(missing));
+                    continue;
+                }
                 String cell = dv.isMissingOrInvalid() ? "" : dv.getValueAsString();
-                tuple.add(joinToken[c] && cell != null
-                        ? ChildMatchIndex.normalizeJoinToken(cell, true)
-                        : cell);
+                tuple.add(joinToken[c] ? ChildMatchIndex.normalizeJoinToken(cell, true) : cell);
             }
             seen.add(tuple);
         }

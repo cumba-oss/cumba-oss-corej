@@ -440,4 +440,36 @@ class ViolationLocationCheckTest
         assertTrue(ViolationLocationCheck.verify(s, List.of(v), 1, false, primary(s)).pass(),
                 "AESER must still resolve from the primary table at the fired row");
     }
+
+
+    /**
+     * {@code PLAN-member-set-identity-hardening} (review round 1, R1): the engine reports a missing
+     * identity cell as its marker, so a back-filled pin for such a row carries {@code "."}. The
+     * table arm matches a missing cell by that marker as well as by the empty pin every existing
+     * fixture uses — and by no other marker.
+     */
+    @Test
+    void tablePin_matchesAMissingCellByItsMarkerOrByEmpty()
+    {
+        String data = """
+                dataset AE
+                col USUBJID type=Char
+                col AESEQ   type=Num
+                ---
+                001 | .
+                ---
+                """;
+        java.util.function.Function<String, Boolean> verify = pin ->
+        {
+            RuleTestScenario s = RuleTestCdt.parse(
+                    "#!RuleTest\n#test CORE-1 expect=violation"
+                            + " domain=AE\n#expectViolationAt row=1 AESEQ=" + pin + "\n" + data,
+                    "t", null);
+            return ViolationLocationCheck.verify(s, List.of(row(0)), 1, false, primary(s)).pass();
+        };
+        assertTrue(verify.apply("."), "the marker the engine now prints matches the missing cell");
+        assertTrue(verify.apply(""), "the empty pin of every existing fixture still matches");
+        assertFalse(verify.apply(".A"), "a different marker does not match (D34 #5-2)");
+        assertFalse(verify.apply("1"), "control: a present value does not match a missing cell");
+    }
 }

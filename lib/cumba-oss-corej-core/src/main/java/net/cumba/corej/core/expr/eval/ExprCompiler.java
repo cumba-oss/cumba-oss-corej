@@ -1134,7 +1134,7 @@ public final class ExprCompiler
      * {@code List} element) to a {@code List<String>} with {@code null} elements folded to
      * {@code ""}, or {@code null} when the value is not a {@link List}.
      */
-    private static @Nullable List<String> toStringTuple(@Nullable Object value)
+    static @Nullable List<String> toStringTuple(@Nullable Object value)
     {
         if (!(value instanceof List<?> list))
         {
@@ -1143,7 +1143,11 @@ public final class ExprCompiler
         List<String> out = new ArrayList<>(list.size());
         for (Object item : list)
         {
-            out.add(item == null ? "" : item.toString());
+            // A MissingValue element keeps its identity through the same token both key builders
+            // render (D11 / D34 #5-2) — never its "." display string.
+            MissingValue m = Primitives.MemberSet.missingIdentityOfMember(item);
+            out.add(m != null ? GroupKeyPolicy.missingComponentToken(m)
+                    : item == null ? "" : item.toString());
         }
         return out;
     }

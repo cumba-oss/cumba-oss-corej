@@ -463,8 +463,10 @@ public final class RecordKeyResolver
      *            the spec resolved once for this dataset.
      * @param aRow
      *            the 0-based row index.
-     * @return an ordered name to value map; empty when the spec resolves no columns. A missing or
-     *         invalid cell yields {@code ""}, matching {@code readRowIdentity}'s handling.
+     * @return an ordered name to value map; empty when the spec resolves no columns. A missing cell
+     *         yields its marker ({@code RuleRunner.reportedValue}), matching
+     *         {@code readRowIdentity}'s handling — the report prints what the data says
+     *         ({@code PLAN-member-set-identity-hardening} review round 1, R1).
      */
     public static Map<String, String> readRowKeys(IDataTable aTable, RowKeySpec aSpec, long aRow)
     {
@@ -476,7 +478,7 @@ public final class RecordKeyResolver
         for (KeyColumn kc : aSpec.columns())
         {
             IDataValue value = aTable.getColumn(kc.columnIndex()).getDataValue(aRow);
-            out.put(kc.name(), value.isMissingOrInvalid() ? "" : value.getValueAsString());
+            out.put(kc.name(), RuleRunner.reportedValue(value));
         }
         return out;
     }

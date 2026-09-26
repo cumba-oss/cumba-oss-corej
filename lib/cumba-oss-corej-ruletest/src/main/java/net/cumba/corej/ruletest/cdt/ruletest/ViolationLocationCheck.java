@@ -221,7 +221,9 @@ public final class ViolationLocationCheck
                 // that name. Pinned by
                 // ViolationLocationCheckTest.nonDollarPin_absentFromPayload_stillFallsBackToTheTableCell.
                 ok = valueMatchesCell(c.getValue(),
-                        tableCell(aPrimary, aMeta, aObserved.getRow(), c.getKey()));
+                        tableCell(aPrimary, aMeta, aObserved.getRow(), c.getKey()))
+                        || matchesMissingMarker(c.getValue(), aPrimary, aMeta, aObserved.getRow(),
+                                c.getKey());
             }
             if (!ok)
             {
@@ -229,6 +231,33 @@ public final class ViolationLocationCheck
             }
         }
         return true;
+    }
+
+
+    /**
+     * Whether the table cell is a genuine missing whose marker ({@code "."}, {@code ".A"}, …) is
+     * exactly {@code aWant}. Since {@code PLAN-member-set-identity-hardening} the engine reports a
+     * missing identity cell ({@code USUBJID} / {@code SEQ}) as its marker, so a back-filled pin for
+     * such a row carries the marker; {@link #tableCell} folds a missing to {@code null}, which
+     * matches only an empty pin. Both spellings therefore match a missing cell — the empty one
+     * every existing fixture uses, and the marker the engine now prints.
+     */
+    private static boolean matchesMissingMarker(String aWant, IDataTable aTable,
+            DataTableMeta aMeta, long aRow, String aCol)
+    {
+        int idx = aMeta.getColumnIndex(aCol);
+        if (idx < 0 || aRow < 0 || aRow >= aTable.getRowCount())
+        {
+            return false;
+        }
+        IDataValue dv = aTable.getDataValue(aRow, idx);
+        if (dv == null)
+        {
+            return false;
+        }
+        net.cumba.datatable.values.MissingValue m = net.cumba.corej.core.expr.eval.TypedValue
+                .missingIdentityOf(dv);
+        return m != null && m.toString().equals(aWant);
     }
 
 

@@ -2922,11 +2922,10 @@ public final class RuleRunner
                 }
                 if (colIdx >= 0)
                 {
+                    // One rendering with the Output_Variables arm above: a missing cell is
+                    // reported as its marker, not omitted (NF §9c; plan review round 1, R1).
                     IDataValue dv = ctx.getTable().getColumn(colIdx).getDataValue(r);
-                    if (!dv.isMissingOrInvalid())
-                    {
-                        values.put("variable_value", dv.getValueAsString());
-                    }
+                    values.put("variable_value", reportedValue(dv));
                 }
                 values.keySet().removeAll(excludedOutputVars); // E-2, as in buildVariableViolation
             }
@@ -3248,12 +3247,12 @@ public final class RuleRunner
 
     /**
      * D29 — the grouping key of the block containing {@code row}, as an ordered
-     * {@code grouping variable -> block value} map ({@code null} values for missing key cells; the
-     * key columns are constant across a block, so any row of the block yields the block's key).
-     * Empty when no grouping column is present and the whole dataset is one group. Stamped on every
-     * grouped violation — unlike {@link #groupUnitOf}, which stamps only on the per-level path —
-     * because the report keys a group finding by its group variables on the shipped single-level
-     * path too (D66a).
+     * {@code grouping variable -> block value} map (a missing key cell reports its marker through
+     * {@link #reportedValue}; the key columns are constant across a block, so any row of the block
+     * yields the block's key). Empty when no grouping column is present and the whole dataset is
+     * one group. Stamped on every grouped violation — unlike {@link #groupUnitOf}, which stamps
+     * only on the per-level path — because the report keys a group finding by its group variables
+     * on the shipped single-level path too (D66a).
      */
     private static Map<String, String> groupKeyOf(IDataTable table, List<String> groupVars,
             int @Nullable [] keyColIndices, long row)
@@ -3266,7 +3265,9 @@ public final class RuleRunner
         for (int i = 0; i < keyColIndices.length; i++)
         {
             IDataValue dv = table.getColumn(keyColIndices[i]).getDataValue(row);
-            key.put(groupVars.get(i), dv.isMissingOrInvalid() ? null : dv.getValueAsString());
+            // Rendered for the report's key slab (its only consumer), so one rendering: a missing
+            // component prints its marker (reportedValue), not null.
+            key.put(groupVars.get(i), reportedValue(dv));
         }
         return key;
     }
@@ -3413,7 +3414,12 @@ public final class RuleRunner
         for (int c : keyColIndices)
         {
             IDataValue dv = table.getColumn(c).getDataValue(row);
-            key.add(dv.isMissingOrInvalid() ? null : dv.getValueAsString());
+            // ⭐ An IDENTITY, never rendered (the first-claim stamp): a missing component is its
+            // KeyPart token, so MIS and MIS_A stamp two units exactly as the grouping forms two
+            // blocks (D11), and neither collides with a present "." or "".
+            MissingValue missing = net.cumba.corej.core.expr.eval.TypedValue.missingIdentityOf(dv);
+            key.add(missing != null ? GroupKeyPolicy.missingComponentToken(missing)
+                    : dv.getValueAsString());
         }
         // Group's compact constructor takes the defensive unmodifiable copy.
         return new Violation.Unit.Group(key);
@@ -4015,9 +4021,12 @@ public final class RuleRunner
      * ⭐ <b>One rendering for joined AND primary cells — ruled by precedent, not a second
      * decision.</b> {@code D72}: <i>"A merged column behaves in EVERY respect like a primary
      * column"</i>; {@code NF §9c}: <i>"Wherever they are used they should behave identically."</i>
-     * A report is a use, so the primary output column, the {@code variable_value} output and the
-     * group finding's distinct set render a missing exactly as the joined output does (the measured
-     * delta is recorded in the plan and in the findings-snapshot rebaseline ledger).
+     * A report is a use, so every site that renders a cell into a finding goes through here: the
+     * joined and primary output columns, {@code variable_value} (both arms), the group finding's
+     * distinct set and grouping key, the row identity ({@code USUBJID} / {@code SEQ}) and the EC-40
+     * record key ({@code RecordKeyResolver.readRowKeys}). Where a value is an IDENTITY rather than
+     * a rendering (the group-unit stamp, composite membership keys) it is the {@code KeyPart} token
+     * instead ({@code GroupKeyPolicy.missingComponentToken}), never this text.
      * </p>
      *
      * <p>
@@ -4203,7 +4212,8 @@ public final class RuleRunner
      * {@link RowIdentity#NONE}. The two fields are gated independently (mirroring Python's separate
      * {@code USUBJID} / {@code _sequence_exists} checks): each is populated when its column is
      * present and left {@code null} otherwise. Returns {@link RowIdentity#NONE} only when neither
-     * column is present on the dataset.
+     * column is present on the dataset. A present column's value is rendered through
+     * {@link #reportedValue}, so a missing identity cell prints its marker.
      * </p>
      */
     static RowIdentity readRowIdentity(IDataTable table, @Nullable String domainName, long row)
@@ -4234,13 +4244,13 @@ public final class RuleRunner
         if (usubjidCol >= 0)
         {
             IDataValue uVal = table.getColumn(usubjidCol).getDataValue(row);
-            usubjid = uVal.isMissingOrInvalid() ? "" : uVal.getValueAsString();
+            usubjid = reportedValue(uVal);
         }
         String seq = null;
         if (seqCol >= 0)
         {
             IDataValue sVal = table.getColumn(seqCol).getDataValue(row);
-            seq = sVal.isMissingOrInvalid() ? "" : sVal.getValueAsString();
+            seq = reportedValue(sVal);
         }
         return new RowIdentity(usubjid, seq);
     }

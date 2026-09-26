@@ -22,6 +22,7 @@ import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.index.DataTableIndexFactory;
 import net.cumba.datatable.index.IDataTableIndex;
 import net.cumba.datatable.values.IDataValue;
+import net.cumba.datatable.values.MissingValue;
 import net.cumba.datatable.view.IDataTableView;
 import org.jspecify.annotations.Nullable;
 
@@ -1700,7 +1701,12 @@ public final class GroupSemantics
      * {@code not_contains_all} — the {@code $}-branch of the distinct-source-value contract: a
      * {@code Collection} maps per-element {@code toString} (insertion order kept, {@code null}
      * elements skipped); an absent or non-collection value yields the <b>empty</b> set (so any
-     * non-empty requirement flags every row).
+     * non-empty requirement flags every row). A {@code MissingValue} element renders as its
+     * {@link GroupKeyPolicy#missingComponentToken component token}, never its {@code "."} display
+     * string — the identity {@link #distinctColumnValues} keeps for the column source
+     * ({@code W38-A1} part 4), so a missing member never satisfies a real {@code "."} token or
+     * required value, and satisfies only the same missing ({@code D13}, {@code D34 #5-2};
+     * {@code PLAN-member-set-identity-hardening} review round 1, R3).
      */
     public static Set<String> distinctOperationValues(@Nullable Object resolved)
     {
@@ -1711,7 +1717,7 @@ public final class GroupSemantics
             {
                 if (item != null)
                 {
-                    out.add(item.toString());
+                    out.add(memberText(item));
                 }
             }
             return out;
@@ -1721,10 +1727,25 @@ public final class GroupSemantics
 
 
     /**
+     * A raw operation-result member as text: a missing member (a {@code MissingValue}, or a missing
+     * {@code IDataValue}) as its {@link GroupKeyPolicy#missingComponentToken component token}, any
+     * other member as {@code toString()}.
+     */
+    private static String memberText(Object item)
+    {
+        MissingValue missing = net.cumba.corej.core.expr.eval.Primitives.MemberSet
+                .missingIdentityOfMember(item);
+        return missing != null ? GroupKeyPolicy.missingComponentToken(missing) : item.toString();
+    }
+
+
+    /**
      * The string list of a resolved {@code $}-operation value — mirrors the {@code $}-branch of The
      * string-list contract: a {@code Collection} maps per-element {@code toString} with
      * {@code null} elements contributing the EMPTY string; a non-null scalar is a singleton; an
-     * absent value yields the empty list.
+     * absent value yields the empty list. A missing element renders as its component token, as in
+     * {@link #distinctOperationValues}, so a required missing is satisfied only by the same
+     * missing.
      */
     public static List<String> operationStringList(@Nullable Object resolved)
     {
@@ -1733,11 +1754,11 @@ public final class GroupSemantics
             List<String> out = new ArrayList<>(col.size());
             for (Object item : col)
             {
-                out.add(item != null ? item.toString() : "");
+                out.add(item != null ? memberText(item) : "");
             }
             return out;
         }
-        return resolved != null ? List.of(resolved.toString()) : List.of();
+        return resolved != null ? List.of(memberText(resolved)) : List.of();
     }
 
 

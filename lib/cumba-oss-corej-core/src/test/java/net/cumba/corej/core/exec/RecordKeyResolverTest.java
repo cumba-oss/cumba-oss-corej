@@ -295,7 +295,7 @@ class RecordKeyResolverTest
 
 
     @Test
-    void readRowKeys_readsTheResolvedColumnsAndBlanksMissingCells()
+    void readRowKeys_readsTheResolvedColumnsAndPrintsAMissingCellsMarker()
     {
         IDataTable table = MockTable.of().col("RDOMAIN", "AE", "AE").col("USUBJID", "S1", "S2")
                 .col("IDVAR", "AESEQ", null).col("IDVARVAL", "3", "4").col("QNAM", "Q1", "Q2")
@@ -305,9 +305,10 @@ class RecordKeyResolverTest
 
         assertEquals(Map.of("RDOMAIN", "AE", "IDVAR", "AESEQ", "IDVARVAL", "3", "QNAM", "Q1"),
                 RecordKeyResolver.readRowKeys(table, spec, 0));
-        // A missing cell reads as "", exactly as readRowIdentity handles USUBJID / SEQ.
+        // A missing cell prints its marker, exactly as readRowIdentity handles USUBJID / SEQ
+        // (PLAN-member-set-identity-hardening review round 1, R1). It read "" until 2026-09-26.
         Map<String, String> row1 = RecordKeyResolver.readRowKeys(table, spec, 1);
-        assertEquals("", row1.get("IDVAR"));
+        assertEquals(".", row1.get("IDVAR"));
         assertEquals("4", row1.get("IDVARVAL"));
     }
 

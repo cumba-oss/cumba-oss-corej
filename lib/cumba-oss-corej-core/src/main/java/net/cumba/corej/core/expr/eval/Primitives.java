@@ -1435,7 +1435,8 @@ public final class Primitives
             Set<MissingValue> missing = new java.util.HashSet<>();
             for (Object item : items)
             {
-                if (item instanceof MissingValue mv)
+                MissingValue mv = missingIdentityOfMember(item);
+                if (mv != null)
                 {
                     missing.add(mv);
                     continue;
@@ -1444,6 +1445,32 @@ public final class Primitives
                 present.add(caseInsensitive ? s.toUpperCase(java.util.Locale.ROOT) : s);
             }
             return new MemberSet(present, missing);
+        }
+
+
+        /**
+         * The missing identity a raw member carries, or {@code null} for a present member — the one
+         * classification every member-set site shares: a {@link MissingValue} itself, or an
+         * {@link IDataValue} that is missing ({@link TypedValue#missingIdentityOf}, so a
+         * NaN-carrying numeric cell yields its marker too). A {@code null} item is not a missing
+         * identity here: the raw channel is {@code @Nullable} by contract and each builder states
+         * what a {@code null} means ({@code ""}, or skipped).
+         *
+         * @param item
+         *            a raw member
+         * @return its missing identity, or {@code null} when it is a present member
+         */
+        public static @Nullable MissingValue missingIdentityOfMember(@Nullable Object item)
+        {
+            if (item instanceof MissingValue mv)
+            {
+                return mv;
+            }
+            if (item instanceof IDataValue dv)
+            {
+                return TypedValue.missingIdentityOf(dv);
+            }
+            return null;
         }
 
 
@@ -1732,18 +1759,17 @@ public final class Primitives
     public static BitSet listMembership(Vector v, MemberSet set, int rowCount, boolean negate,
             boolean caseInsensitive)
     {
-        // ⭐ The member set arrives classified (PLAN-member-set-identity-hardening), and only its
-        // PRESENT members take part: this shape compares the left list's items as strings, and a
-        // string is never the same value as a MissingValue (D13 read from the member side). A
-        // missing member is therefore matched by nothing here — before, it was rendered to "." and
-        // a list item "." matched it. ⛔ anyInSet itself is NOT aligned with ==: collection-LHS
-        // membership is the shape D81d excludes from the desugaring, and that is a separate
-        // question.
-        Set<String> present = set.present();
+        // ⭐ The member set arrives classified (PLAN-member-set-identity-hardening), and anyInSet
+        // compares each left item by the same identity: a present item against the present members
+        // (a string is never the same value as a MissingValue — D13 read from the member side), a
+        // missing item against the missing members (D34 #5-2: two missings are equal iff they are
+        // the same missing). Before, both sides rendered a missing to "." and matched a present
+        // ".". ⚑ D81d still keeps this shape out of the == desugaring (any-of, not per-member ==);
+        // only the identity of each comparison is the ruled one.
         BitSet result = new BitSet(rowCount);
         for (int r = 0; r < rowCount; r++)
         {
-            if (negate != anyInSet(v.value(r).resolved(), present, caseInsensitive))
+            if (negate != anyInSet(v.value(r).resolved(), set, caseInsensitive))
             {
                 result.set(r);
             }
@@ -1788,8 +1814,7 @@ public final class Primitives
     }
 
 
-    private static boolean anyInSet(@Nullable Object value, Set<String> set,
-            boolean caseInsensitive)
+    private static boolean anyInSet(@Nullable Object value, MemberSet set, boolean caseInsensitive)
     {
         if (!(value instanceof List<?> list))
         {
@@ -1801,9 +1826,18 @@ public final class Primitives
             {
                 continue;
             }
+            MissingValue identity = MemberSet.missingIdentityOfMember(item);
+            if (identity != null)
+            {
+                if (set.missing().contains(identity))
+                {
+                    return true;
+                }
+                continue;
+            }
             String s = caseInsensitive ? item.toString().toUpperCase(java.util.Locale.ROOT)
                     : item.toString();
-            if (set.contains(s))
+            if (set.present().contains(s))
             {
                 return true;
             }
