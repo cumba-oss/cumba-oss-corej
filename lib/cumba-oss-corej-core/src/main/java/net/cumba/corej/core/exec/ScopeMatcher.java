@@ -500,6 +500,66 @@ public final class ScopeMatcher
         return List.copyOf(codes);
     }
 
+    /**
+     * The authored shape of a rule's {@code Scope.Use_Case} (R-4.10): one or more upper-case codes
+     * separated by commas, with optional spaces around each comma.
+     */
+    private static final Pattern USE_CASE_VALUE_SHAPE = Pattern
+            .compile("[A-Z]+(?:\\s*,\\s*[A-Z]+)*");
+
+    /**
+     * Whether {@code raw} is a well-formed rule {@code Scope.Use_Case} value: <b>R-4.10</b>
+     * (upper-case codes separated by commas, optional spaces around each comma, no empty code, no
+     * surrounding blanks) and <b>R-4.10a</b> (no code twice). The ONE definition:
+     * {@code RulePackageLoader}'s load gate rejects exactly the values this rejects, and the REST
+     * picker offers codes only from values this accepts, so a code is never offered from a rule
+     * that cannot load.
+     *
+     * @param raw
+     *            the rule's {@code Use_Case} string, or {@code null}
+     * @return {@code true} when well-formed; {@code false} for {@code null}
+     */
+    public static boolean isWellFormedUseCaseValue(@Nullable String raw)
+    {
+        if (raw == null || !USE_CASE_VALUE_SHAPE.matcher(raw).matches())
+        {
+            return false;
+        }
+        List<String> codes = useCaseCodes(raw);
+        return codes.stream().distinct().count() == codes.size();
+    }
+
+
+    /**
+     * The rules the run's use case reaches (owner ruling X1): every rule when no use case was given
+     * ({@code null} or blank), otherwise those {@link #matchesUseCase} admits plus every load-error
+     * rule, which reports its ERROR regardless of scope (Review F4). The ONE definition of "the
+     * effective rule list under a use case", shared by {@code StudyValidationService} (the pre-run
+     * forecasts) and {@code LibraryValidator} (Fix #222's presence coverage).
+     *
+     * @param rules
+     *            the selected rules
+     * @param useCase
+     *            the run's use case, or {@code null}
+     * @return the reachable rules; {@code rules} itself when nothing is excluded
+     */
+    public static List<Rule> rulesInUseCase(List<Rule> rules, @Nullable String useCase)
+    {
+        if (useCase == null || useCase.isBlank())
+        {
+            return rules;
+        }
+        List<Rule> in = new ArrayList<>(rules.size());
+        for (Rule r : rules)
+        {
+            if (r.getLoadError() != null || matchesUseCase(r, useCase))
+            {
+                in.add(r);
+            }
+        }
+        return in.size() == rules.size() ? rules : in;
+    }
+
 
     /**
      * Returns {@code true} if the rule applies to the given use case —

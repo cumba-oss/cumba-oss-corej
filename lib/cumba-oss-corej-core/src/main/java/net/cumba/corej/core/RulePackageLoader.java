@@ -5816,12 +5816,6 @@ public class RulePackageLoader
         }
     }
 
-    /**
-     * The authored shape of {@code Scope.Use_Case} (R-4.10): one or more upper-case codes separated
-     * by commas, with optional spaces around each comma.
-     */
-    private static final java.util.regex.Pattern USE_CASE_SHAPE = java.util.regex.Pattern
-            .compile("[A-Z]+(?:\\s*,\\s*[A-Z]+)*");
 
     /**
      * Gate <b>R-4.10 / R-4.10a</b> ({@code plans/PLAN-use-case-scope-filter.md}, ruling T1-4): a
@@ -5843,41 +5837,74 @@ public class RulePackageLoader
     {
         Scope scope = rule.getScope();
         String raw = scope == null ? null : scope.getUseCase();
-        if (raw == null)
+        if (raw == null || ScopeMatcher.isWellFormedUseCaseValue(raw))
         {
             return;
         }
-        if (!USE_CASE_SHAPE.matcher(raw).matches())
+        String where = "[" + ruleId(rule) + "] Scope.Use_Case '" + raw + "'";
+        List<String> codes = ScopeMatcher.useCaseCodes(raw);
+        // Each shape gets the message that is TRUE for it (review rounds 1 and 2): only a value
+        // whose codes genuinely match no run value may be told it "matches no use case".
+        if (codes.isEmpty())
         {
-            // Two different defects, two messages (review L2). A value that only needs upper-casing
-            // or trimming ("indh", " INDH") would still MATCH — the matcher is case-insensitive and
-            // strips — so saying "matches no use case" would be false for it; it is rejected
-            // because R-4.10 fixes the authored spelling.
-            String canonical = raw.strip().toUpperCase(java.util.Locale.ROOT);
-            if (!raw.isBlank() && USE_CASE_SHAPE.matcher(canonical).matches())
-            {
-                errors.add("[" + ruleId(rule) + "] Scope.Use_Case '" + raw + "': R-4.10 requires"
-                        + " upper-case codes without surrounding blanks — write '" + canonical
-                        + "'");
-                return;
-            }
-            errors.add("[" + ruleId(rule) + "] Scope.Use_Case '" + raw + "' is not a"
-                    + " comma-separated list of upper-case use-case codes (R-4.10, e.g. \"INDH\" or"
-                    + " \"INDH, PROD\") — a malformed value matches no use case, so the rule would"
-                    + " be skipped by every run that names one");
+            errors.add(where + " names no use case (R-4.10) — the matcher would run the rule under"
+                    + " every use case; remove the key or name a code");
             return;
         }
-        List<String> seen = new ArrayList<>();
-        for (String code : ScopeMatcher.useCaseCodes(raw))
+        boolean emptyCode = false;
+        for (String part : raw.split(",", -1))
         {
-            if (seen.contains(code))
-            {
-                errors.add("[" + ruleId(rule) + "] Scope.Use_Case '" + raw + "' lists " + code
-                        + " twice (R-4.10a) — remove the duplicate");
-                return;
-            }
-            seen.add(code);
+            emptyCode |= part.isBlank();
         }
+        if (emptyCode)
+        {
+            errors.add(where + " holds an empty code (R-4.10) — remove the stray comma");
+            return;
+        }
+        List<String> canonical = new ArrayList<>();
+        for (String code : codes)
+        {
+            String upper = code.toUpperCase(java.util.Locale.ROOT);
+            if (!canonical.contains(upper))
+            {
+                canonical.add(upper);
+            }
+        }
+        String suggestion = String.join(", ", canonical);
+        if (!ScopeMatcher.isWellFormedUseCaseValue(suggestion))
+        {
+            errors.add(where + " is not a comma-separated list of upper-case use-case codes"
+                    + " (R-4.10, e.g. \"INDH\" or \"INDH, PROD\") — a malformed value matches no"
+                    + " use case, so the rule would be skipped by every run that names one");
+            return;
+        }
+        boolean duplicate = canonical.size() < codes.size();
+        // The upper-cased, de-duplicated value is well-formed, so every code is letters only; the
+        // raw value is SPELLED right exactly when it is unpadded and already upper-case — and then
+        // the only defect left is an exact repeat (R-4.10a). No second copy of the regex here.
+        if (raw.equals(raw.strip())
+                && codes.stream().allMatch(c -> c.equals(c.toUpperCase(java.util.Locale.ROOT))))
+        {
+            List<String> seen = new ArrayList<>();
+            String twice = "";
+            for (String code : codes)
+            {
+                if (seen.contains(code))
+                {
+                    twice = code;
+                    break;
+                }
+                seen.add(code);
+            }
+            errors.add(where + " lists " + twice + " twice (R-4.10a) — remove the duplicate");
+            return;
+        }
+        // A value that only needs upper-casing / trimming (and, for a case-only repeat such as
+        // "indh, INDH", de-duplicating) still MATCHES at run time — the matcher is
+        // case-insensitive and strips — so "matches no use case" would be false for it. The
+        // suggestion is de-duplicated, so it never proposes a value R-4.10a rejects.
+        errors.add(where + ": R-4.10 requires upper-case codes without surrounding blanks"
+                + (duplicate ? ", each listed once" : "") + " — write '" + suggestion + "'");
     }
 
 

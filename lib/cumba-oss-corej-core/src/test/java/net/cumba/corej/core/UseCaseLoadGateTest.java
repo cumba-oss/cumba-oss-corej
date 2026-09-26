@@ -56,12 +56,58 @@ class UseCaseLoadGateTest
 
 
     @Test
+    void aValueNamingNoCodeIsALoadError_andSaysSo() throws IOException
+    {
+        // Review round 2 L1: the matcher reads these as "declares no use case" and would run the
+        // rule everywhere — "matches no use case" would be the opposite of the truth.
+        for (String[] c : new String[][]
+        {
+                {
+                        "\"\"", ""
+                },
+                {
+                        "\" \"", " "
+                },
+                {
+                        "\",\"", ","
+                }
+        })
+        {
+            assertEquals("[TEST-UC] Scope.Use_Case '" + c[1] + "' names no use case (R-4.10) —"
+                    + " the matcher would run the rule under every use case; remove the key or name"
+                    + " a code", load(c[0]).getLoadError(), c[0]);
+        }
+    }
+
+
+    @Test
+    void aStrayCommaIsALoadError_andSaysSo() throws IOException
+    {
+        for (String[] c : new String[][]
+        {
+                {
+                        "\"INDH,\"", "INDH,"
+                },
+                {
+                        "\"INDH,,PROD\"", "INDH,,PROD"
+                },
+                {
+                        "\"indh,\"", "indh,"
+                }
+        })
+        {
+            assertEquals("[TEST-UC] Scope.Use_Case '" + c[1] + "' holds an empty code (R-4.10) —"
+                    + " remove the stray comma", load(c[0]).getLoadError(), c[0]);
+        }
+    }
+
+
+    @Test
     void everyOtherMalformedShapeIsALoadError() throws IOException
     {
-        // empty / blank / comma-only (names nothing), an empty code between commas, a trailing
-        // comma, a digit, a space instead of a comma.
-        for (String bad : List.of("\"\"", "\" \"", "\",\"", "\"INDH,,PROD\"", "\"INDH,\"",
-                "\"INDH1\"", "\"INDH PROD\""))
+        // a digit, a space instead of a comma (the separator case is aNonCommaSeparator…): codes
+        // no run value can equal — here "matches no use case" is true.
+        for (String bad : List.of("\"INDH1\"", "\"INDH PROD\"", "\"indh;prod\""))
         {
             String error = load(bad).getLoadError();
             assertNotNull(error, bad);
@@ -96,6 +142,20 @@ class UseCaseLoadGateTest
             assertEquals("[TEST-UC] Scope.Use_Case '" + c[1] + "': R-4.10 requires upper-case codes"
                     + " without surrounding blanks — write '" + c[2] + "'", error, c[0]);
         }
+    }
+
+
+    /**
+     * Review round 2 nit: a case-only repeat ({@code "indh, INDH"}) must not be advised to become
+     * {@code "INDH, INDH"}, which R-4.10a rejects — the suggestion is de-duplicated.
+     */
+    @Test
+    void theMisCasedAdviceNeverSuggestsADuplicate() throws IOException
+    {
+        assertEquals(
+                "[TEST-UC] Scope.Use_Case 'indh, INDH': R-4.10 requires upper-case codes"
+                        + " without surrounding blanks, each listed once — write 'INDH'",
+                load("\"indh, INDH\"").getLoadError());
     }
 
 

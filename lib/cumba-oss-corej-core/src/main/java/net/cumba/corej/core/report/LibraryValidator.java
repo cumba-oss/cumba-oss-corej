@@ -333,10 +333,11 @@ public final class LibraryValidator
         useCase = aBuilder.useCase;
         // Derived from the EFFECTIVE rule list (see the field javadoc): a presence rule the run's
         // use case excludes never runs, so it reports nothing and must not silence its dependants
-        // (PLAN-use-case-scope-filter review M1). A load-error rule stays in, as everywhere else.
-        presenceReportedDatasets = AbsentDatasetSkip.reportedDatasets(rules.stream()
-                .filter(r -> r.getLoadError() != null || ScopeMatcher.matchesUseCase(r, useCase))
-                .toList());
+        // (PLAN-use-case-scope-filter review M1). ScopeMatcher.rulesInUseCase keeps load-error
+        // rules too, but that clause has no effect here: barePresenceDataset answers null for a
+        // load-error rule, so it never covers a dataset either way.
+        presenceReportedDatasets = AbsentDatasetSkip
+                .reportedDatasets(ScopeMatcher.rulesInUseCase(rules, useCase));
         crossStandardDatasets = aBuilder.crossStandardDatasets;
         if (!presenceReportedDatasets.isEmpty())
         {

@@ -2210,12 +2210,11 @@ public final class StudyValidationService
 
 
     /**
-     * The selected rules the run's use case reaches (owner ruling X1): every rule when no use case
-     * was given, otherwise those {@link ScopeMatcher#matchesUseCase} admits plus every load-error
-     * rule (which reports its ERROR regardless of scope). Logs one INFO line naming how many
-     * selected rules the use case excludes, or one WARNING when no selected rule declares a
-     * {@code Use_Case} at all — the shipped-corpus case, where the value filters nothing and only
-     * reaches the report header, which the user should be told.
+     * The selected rules the run's use case reaches ({@link ScopeMatcher#rulesInUseCase}, the one
+     * definition), logging one INFO line naming how many selected rules the use case excludes, or
+     * one WARNING when no selected rule declares a {@code Use_Case} at all — the shipped-corpus
+     * case, where the value filters nothing and only reaches the report header, which the user
+     * should be told.
      *
      * @param rules
      *            the selection, after the include/exclude filter
@@ -2229,7 +2228,7 @@ public final class StudyValidationService
         {
             return rules;
         }
-        List<Rule> in = new ArrayList<>(rules.size());
+        List<Rule> in = ScopeMatcher.rulesInUseCase(rules, useCase);
         boolean anyDeclares = false;
         for (Rule r : rules)
         {
@@ -2237,27 +2236,24 @@ public final class StudyValidationService
             if (scope != null && !ScopeMatcher.useCaseCodes(scope.getUseCase()).isEmpty())
             {
                 anyDeclares = true;
-            }
-            if (r.getLoadError() != null || ScopeMatcher.matchesUseCase(r, useCase))
-            {
-                in.add(r);
+                break;
             }
         }
-        if (!anyDeclares)
-        {
-            LOGGER.log(System.Logger.Level.WARNING,
-                    "Use case {0} was given, but no selected rule declares Scope.Use_Case, so it"
-                            + " excludes nothing; it is only echoed as TIG_Use_Case",
-                    useCase);
-        }
-        else
+        if (anyDeclares)
         {
             LOGGER.log(System.Logger.Level.INFO,
                     "Use case {0}: {1} of {2} selected rule(s) declare another use case and will"
                             + " be reported SKIPPED",
                     useCase, rules.size() - in.size(), rules.size());
         }
-        return in.size() == rules.size() ? rules : in;
+        else
+        {
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "Use case {0} was given, but no selected rule declares Scope.Use_Case, so it"
+                            + " excludes nothing; it is only echoed as TIG_Use_Case",
+                    useCase);
+        }
+        return in;
     }
 
 

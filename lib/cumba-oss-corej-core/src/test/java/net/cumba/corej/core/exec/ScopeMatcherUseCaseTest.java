@@ -3,6 +3,7 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -146,6 +147,40 @@ class ScopeMatcherUseCaseTest
         assertEquals(List.of("INDH", "PROD"), ScopeMatcher.useCaseCodes(" INDH,,PROD ,"));
         assertEquals(List.of("INDH;PROD"), ScopeMatcher.useCaseCodes("INDH;PROD"),
                 "a non-comma separator is one code — which is why the loader rejects it");
+    }
+
+
+    @Test
+    void isWellFormedUseCaseValue_isR410AndR410a()
+    {
+        for (String ok : List.of("INDH", "INDH, PROD", "NONCLIN,INDH , PROD"))
+        {
+            assertTrue(ScopeMatcher.isWellFormedUseCaseValue(ok), ok);
+        }
+        for (String bad : java.util.Arrays.asList(null, "", " ", ",", "INDH,", "indh", " INDH",
+                "INDH;PROD", "INDH1", "INDH PROD", "INDH, PROD, INDH"))
+        {
+            assertFalse(ScopeMatcher.isWellFormedUseCaseValue(bad), String.valueOf(bad));
+        }
+    }
+
+
+    @Test
+    void rulesInUseCase_keepsMatchingUndeclaredAndLoadErrorRules()
+    {
+        Rule indh = ruleWithUseCase("INDH");
+        Rule prod = ruleWithUseCase("PROD");
+        Rule none = new Rule();
+        Rule broken = ruleWithUseCase("PROD");
+        broken.setLoadError("synthetic");
+        List<Rule> all = List.of(indh, prod, none, broken);
+
+        assertEquals(List.of(indh, none, broken), ScopeMatcher.rulesInUseCase(all, "indh"));
+        assertSame(all, ScopeMatcher.rulesInUseCase(all, null), "no use case: the same list");
+        assertSame(all, ScopeMatcher.rulesInUseCase(all, "  "), "blank: the same list");
+        List<Rule> nothingExcluded = List.of(indh, none);
+        assertSame(nothingExcluded, ScopeMatcher.rulesInUseCase(nothingExcluded, "INDH"),
+                "nothing excluded: the same list");
     }
 
 
