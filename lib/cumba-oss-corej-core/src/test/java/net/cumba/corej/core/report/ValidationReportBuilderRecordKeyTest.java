@@ -327,6 +327,10 @@ class ValidationReportBuilderRecordKeyTest
         assertTrue(RecordKeyResolver.isUnpopulated(k, "IDVARVAL"), "an empty cell is unpopulated");
         assertFalse(RecordKeyResolver.isUnpopulated(k, "QNAM"),
                 "a present '.' is populated, although it prints like a missing");
+        Map<String, String> plain = new LinkedHashMap<>(k);
+        assertEquals(plain, k, "the flag rides along: equality is the rendered entries only");
+        assertEquals(k, plain, "…symmetrically");
+        assertEquals(plain.hashCode(), k.hashCode(), "…and so is the hash");
         assertTrue(RecordKeyResolver.isUnpopulated(Map.of("A", ""), "A"),
                 "a plain map falls back to the text: empty");
         assertFalse(RecordKeyResolver.isUnpopulated(Map.of("A", "."), "A"),
