@@ -1,7 +1,6 @@
 package net.cumba.corej.core.exec;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.SortedSet;
@@ -422,31 +421,99 @@ public final class ScopeMatcher
 
 
     /**
-     * Returns {@code true} if the rule applies to the given use case.
+     * The {@code Scope.Use_Case} matcher (owner ruling X1, {@code PLAN-use-case-scope-filter}):
+     * returns {@code null} when the rule applies to the run's use case, or the reason it does not
+     * (e.g. {@code "use case NONCLIN not in Scope.Use_Case [INDH]"}).
+     * <ul>
+     * <li>no use case given ({@code null} or blank) — every rule applies;</li>
+     * <li>a rule that declares no use case (no {@code Use_Case}, or one holding no code) applies to
+     * every use case;</li>
+     * <li>a rule that declares use cases applies when <b>any</b> of its codes equals the given one,
+     * case-insensitively (ruling T1-1: {@code "INDH, PROD"} runs under {@code PROD}), and is
+     * excluded only when none does.</li>
+     * </ul>
      * <p>
-     * Rules without a {@code Use_Case} scope apply to all use cases. The {@code Use_Case} field is
-     * a comma-separated string of codes (e.g., {@code "INDH, PROD"}).
+     * Unlike the dataset axes this one is a property of the <em>run</em>, the same for every
+     * dataset. It has two callers, and both are needed:
+     * {@code DatasetRuleResolver.describeScopeSkip} (per dataset, where the reason becomes a
+     * {@code SKIPPED} row) and {@code LibraryValidator.anchorEligibleRules} (the study-anchor pass,
+     * which never reaches the per-dataset gate). A rule's malformed {@code Use_Case} never reaches
+     * here on a loaded rule: the loader turns it into a load error (ruling T1-4).
      * </p>
      *
      * @param rule
      *            the rule to check
      * @param useCase
-     *            the use case code (e.g. "INDH", "PROD", "NONCLIN")
-     * @return true if the rule applies to the given use case
+     *            the run's use case (e.g. {@code "INDH"}, {@code "PROD"}, {@code "NONCLIN"}), or
+     *            {@code null} when none was given
+     * @return {@code null} when the rule applies, otherwise the mismatch description
      */
-    public static boolean matchesUseCase(Rule rule, String useCase)
+    public static @Nullable String describeUseCaseMismatch(Rule rule, @Nullable String useCase)
     {
-        if (useCase == null)
+        if (useCase == null || useCase.isBlank())
         {
-            return true;
+            return null;
         }
         Scope scope = rule.getScope();
-        if (scope == null || scope.getUseCase() == null || scope.getUseCase().isEmpty())
+        List<String> codes = scope == null ? List.of() : useCaseCodes(scope.getUseCase());
+        if (codes.isEmpty())
         {
-            return true;
+            return null;
         }
-        return Arrays.stream(scope.getUseCase().split(",")).map(String::trim)
-                .anyMatch(useCase::equalsIgnoreCase);
+        String given = useCase.strip();
+        for (String code : codes)
+        {
+            if (code.equalsIgnoreCase(given))
+            {
+                return null;
+            }
+        }
+        return "use case " + given + " not in Scope.Use_Case " + codes;
+    }
+
+
+    /**
+     * The codes of a {@code Scope.Use_Case} value: split on {@code ,}, each code stripped, empty
+     * codes dropped. Empty for {@code null} or a value holding no code ({@code ""}, {@code " "},
+     * {@code ","}), which is why such a rule reads as declaring no use case. The loader's R-4.10
+     * gate reads the value through this same method, so gate and matcher agree on what a code is.
+     *
+     * @param raw
+     *            the rule's {@code Use_Case} string, or {@code null}
+     * @return the codes in authored order, never {@code null}
+     */
+    public static List<String> useCaseCodes(@Nullable String raw)
+    {
+        if (raw == null)
+        {
+            return List.of();
+        }
+        List<String> codes = new ArrayList<>();
+        for (String part : raw.split(",", -1))
+        {
+            String code = part.strip();
+            if (!code.isEmpty())
+            {
+                codes.add(code);
+            }
+        }
+        return List.copyOf(codes);
+    }
+
+
+    /**
+     * Returns {@code true} if the rule applies to the given use case —
+     * {@link #describeUseCaseMismatch} answering {@code null}.
+     *
+     * @param rule
+     *            the rule to check
+     * @param useCase
+     *            the run's use case, or {@code null} when none was given
+     * @return true if the rule applies to the given use case
+     */
+    public static boolean matchesUseCase(Rule rule, @Nullable String useCase)
+    {
+        return describeUseCaseMismatch(rule, useCase) == null;
     }
 
 

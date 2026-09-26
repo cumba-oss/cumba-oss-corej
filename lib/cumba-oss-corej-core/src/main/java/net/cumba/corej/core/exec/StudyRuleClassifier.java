@@ -47,7 +47,9 @@ import org.jspecify.annotations.Nullable;
  * principle a rule that declares a dataset scope executes on that dataset and its finding belongs
  * there, so it is not a study rule at all. A {@code Use_Case} facet is deliberately allowed —
  * {@link ScopeMatcher#matchesUseCase} filters per <em>run</em>, not per dataset, so it cannot make
- * the anchor's verdict differ from a per-dataset one.
+ * the anchor's verdict differ from a per-dataset one: {@code LibraryValidator} keeps a rule outside
+ * the run's use case out of the anchor pass, and {@code DatasetRuleResolver} reports it
+ * {@code SKIPPED} per dataset.
  * </p>
  *
  * <p>
@@ -133,7 +135,7 @@ public final class StudyRuleClassifier
      *
      * <p>
      * {@code Use_Case} is intentionally not consulted: it is a per-run filter, not a per-dataset
-     * one.
+     * one ({@code LibraryValidator} applies it before the anchor pass).
      * </p>
      *
      * @param rule

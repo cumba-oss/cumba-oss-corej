@@ -24,6 +24,7 @@ import lombok.CustomLog;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.VersionInfo;
 import net.cumba.corej.core.exec.MetadataProvider;
+import net.cumba.corej.core.exec.ScopeMatcher;
 import net.cumba.corej.core.metadata.AdamSubclassDetector;
 import net.cumba.corej.core.metadata.CompanionDomainsProvider;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
@@ -361,6 +362,12 @@ public final class StudyValidationService
         {
             throw new StudyValidationException("no rules selected for validation.");
         }
+        // Owner ruling X1 (PLAN-use-case-scope-filter): the rules the run's use case can reach.
+        // ⚠ The FULL selection still goes to the validator and into the result — the validator is
+        // what reports each excluded rule SKIPPED per (rule × dataset), and Rules_Report lists
+        // every selected rule. This subset feeds only the pre-run forecasts below, which must not
+        // count rules the run will never try.
+        List<Rule> inUseCase = rulesInUseCase(rules, params.useCase());
 
         // Phase D: run validation. Datasets are validated one after the other so that the
         // per-rule runtime report is unambiguous (no overlapping rule timings between datasets).
@@ -376,7 +383,7 @@ public final class StudyValidationService
         // ⚠ libraryAnswerable, not `provider != null`: a DEGRADED provider is non-null and cannot
         // serve LIBRARY-level reads (Fix #369), which is precisely the run with the most skips.
         net.cumba.corej.core.exec.ProviderRequirements.SkipForecast skipForecast = net.cumba.corej.core.exec.ProviderRequirements
-                .forecast(rules,
+                .forecast(inUseCase,
                         net.cumba.corej.core.exec.OperationExecutor.libraryAnswerable(provider),
                         defineProvider != null);
         logSkipForecast(skipForecast);
@@ -407,7 +414,8 @@ public final class StudyValidationService
                 .dictionaryProvider(dictionaryProvider).rules(rules).sequential(true)
                 .ruleThreads(params.ruleThreads()).maxErrorsPerRule(params.maxErrorsPerRule())
                 .severityThreshold(params.severityThreshold()).runtimeListener(listener)
-                .crossStandardDatasets(crossStandard).taskDecorator(params.taskDecorator());
+                .crossStandardDatasets(crossStandard).useCase(params.useCase())
+                .taskDecorator(params.taskDecorator());
         if (progress != null)
         {
             // Live per-dataset progress: the validator fires this as each dataset finishes (in
@@ -476,7 +484,7 @@ public final class StudyValidationService
         // surface someone could read as "clean" — the JUL log here, the JSON report, the XLSX
         // Conformance Details sheet, the REST projection, and (Phase 6b) the CLI's stderr line
         // via ReportAssembler.Conformance#dictionaryBasis().
-        String dictionaryBasis = dictionaryBasis(dictionaryProvider, rules);
+        String dictionaryBasis = dictionaryBasis(dictionaryProvider, inUseCase);
         if (dictionaryBasis != null)
         {
             LOGGER.log(System.Logger.Level.WARNING, "Dictionary basis: {0}", dictionaryBasis);
@@ -2198,6 +2206,58 @@ public final class StudyValidationService
             sb.append(" Available packages: ").append(String.join(", ", available)).append('.');
         }
         return sb.toString();
+    }
+
+
+    /**
+     * The selected rules the run's use case reaches (owner ruling X1): every rule when no use case
+     * was given, otherwise those {@link ScopeMatcher#matchesUseCase} admits plus every load-error
+     * rule (which reports its ERROR regardless of scope). Logs one INFO line naming how many
+     * selected rules the use case excludes, or one WARNING when no selected rule declares a
+     * {@code Use_Case} at all — the shipped-corpus case, where the value filters nothing and only
+     * reaches the report header, which the user should be told.
+     *
+     * @param rules
+     *            the selection, after the include/exclude filter
+     * @param useCase
+     *            the run's normalised use case, or {@code null}
+     * @return the rules the run can execute; {@code rules} itself when nothing is excluded
+     */
+    static List<Rule> rulesInUseCase(List<Rule> rules, @Nullable String useCase)
+    {
+        if (useCase == null)
+        {
+            return rules;
+        }
+        List<Rule> in = new ArrayList<>(rules.size());
+        boolean anyDeclares = false;
+        for (Rule r : rules)
+        {
+            net.cumba.corej.core.model.Scope scope = r.getScope();
+            if (scope != null && !ScopeMatcher.useCaseCodes(scope.getUseCase()).isEmpty())
+            {
+                anyDeclares = true;
+            }
+            if (r.getLoadError() != null || ScopeMatcher.matchesUseCase(r, useCase))
+            {
+                in.add(r);
+            }
+        }
+        if (!anyDeclares)
+        {
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "Use case {0} was given, but no selected rule declares Scope.Use_Case, so it"
+                            + " excludes nothing; it is only echoed as TIG_Use_Case",
+                    useCase);
+        }
+        else
+        {
+            LOGGER.log(System.Logger.Level.INFO,
+                    "Use case {0}: {1} of {2} selected rule(s) declare another use case and will"
+                            + " be reported SKIPPED",
+                    useCase, rules.size() - in.size(), rules.size());
+        }
+        return in.size() == rules.size() ? rules : in;
     }
 
 

@@ -73,6 +73,10 @@ public final class StudyValidationParams
         FILTERED
     }
 
+    /** A use-case code: letters only (ruling T1-3). */
+    private static final java.util.regex.Pattern USE_CASE_CODE = java.util.regex.Pattern
+            .compile("[A-Za-z]+");
+
     private final IDataTableManager manager;
 
     private final @Nullable String dataLibrary;
@@ -214,7 +218,11 @@ public final class StudyValidationParams
     }
 
 
-    /** TIG use case ({@code -uc}); {@code null} when absent. */
+    /**
+     * The run's use case ({@code -uc}), stripped; {@code null} when none was given (absent or
+     * blank). Owner ruling X1: rules whose {@code Scope.Use_Case} names only other use cases are
+     * reported {@code SKIPPED}; the value is also echoed as the report's {@code TIG_Use_Case}.
+     */
     public @Nullable String useCase()
     {
         return useCase;
@@ -443,6 +451,54 @@ public final class StudyValidationParams
         return new Builder();
     }
 
+
+    /**
+     * The run's use case as the engine reads it: stripped, and {@code null} for {@code null} or
+     * blank — "no use case", which filters nothing (owner ruling X1, T1-3). Shared by the builder
+     * and the client boundaries (CLI, REST) so every surface normalises alike.
+     *
+     * @param aUseCase
+     *            the raw value, possibly {@code null}
+     * @return the stripped value, or {@code null} when none was given
+     */
+    public static @Nullable String normalizeUseCase(@Nullable String aUseCase)
+    {
+        return aUseCase == null || aUseCase.isBlank() ? null : aUseCase.strip();
+    }
+
+
+    /**
+     * Whether {@code aUseCase}, once stripped, is a <b>single</b> use-case code — letters only
+     * ({@code INDH}, {@code PROD}, {@code nonclin}). Ruling T1-3: a comma list, an inner space or
+     * punctuation is rejected loudly at the boundary, because {@code "INDH, PROD"} as one code
+     * would silently exclude every rule that declares a use case. The vocabulary itself is not
+     * checked: the corpus does not define one ({@code R-4.10} is syntax only). {@code null} and
+     * blank are not codes — callers read them as "no use case" ({@link #normalizeUseCase}) before
+     * asking.
+     *
+     * @param aUseCase
+     *            the value to test
+     * @return {@code true} when it is one well-formed code
+     */
+    public static boolean isWellFormedUseCase(@Nullable String aUseCase)
+    {
+        return aUseCase != null && USE_CASE_CODE.matcher(aUseCase.strip()).matches();
+    }
+
+
+    /**
+     * The one message every boundary uses to reject a malformed use case.
+     *
+     * @param aUseCase
+     *            the rejected value
+     * @return the error text, naming the value
+     */
+    public static String useCaseError(String aUseCase)
+    {
+        return "the use case must be a single code of letters, e.g. INDH, NONCLIN or PROD (got '"
+                + aUseCase + "'); a rule may list several use cases, a run names one";
+    }
+
     /**
      * Mutable builder for {@link StudyValidationParams}. Only {@link #manager(IDataTableManager)}
      * is required; everything else has a sensible default (empty collections, {@code null}
@@ -559,10 +615,14 @@ public final class StudyValidationParams
         }
 
 
-        /** TIG use case ({@code -uc}). */
+        /**
+         * The run's use case ({@code -uc}): stripped, and blank read as none
+         * ({@link #normalizeUseCase}). A value that is not a single code is rejected by
+         * {@link #build()} (ruling T1-3).
+         */
         public Builder useCase(@Nullable String aUseCase)
         {
-            useCase = aUseCase;
+            useCase = normalizeUseCase(aUseCase);
             return this;
         }
 
@@ -787,6 +847,10 @@ public final class StudyValidationParams
             {
                 throw new IllegalArgumentException(
                         "ruleThreads must be >= 1 (got " + ruleThreads + ")");
+            }
+            if (useCase != null && !isWellFormedUseCase(useCase))
+            {
+                throw new IllegalArgumentException(useCaseError(useCase));
             }
             return new StudyValidationParams(this);
         }

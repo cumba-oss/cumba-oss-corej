@@ -25,6 +25,7 @@ import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
 import net.cumba.corej.core.exec.RuleRunner;
+import net.cumba.corej.core.exec.ScopeMatcher;
 import net.cumba.corej.core.exec.StudyRuleClassifier;
 import net.cumba.corej.core.gen.GeneratedRuleInfo;
 import net.cumba.corej.core.gen.GeneratedRulePackage;
@@ -297,6 +298,14 @@ public final class LibraryValidator
      */
     private final Set<String> crossStandardDatasets;
 
+    /**
+     * The run's use case (owner ruling X1, {@code PLAN-use-case-scope-filter}); {@code null} when
+     * none was given. A rule whose {@code Scope.Use_Case} names only other use cases is kept out of
+     * the study-anchor pass and reported {@code SKIPPED} on every dataset by the per-dataset
+     * generator.
+     */
+    private final @Nullable String useCase;
+
     private LibraryValidator(Builder aBuilder)
     {
         provider = aBuilder.provider;
@@ -317,6 +326,7 @@ public final class LibraryValidator
                 .resolveSeverityThreshold(aBuilder.severityThreshold);
         presenceReportedDatasets = AbsentDatasetSkip.reportedDatasets(rules);
         crossStandardDatasets = aBuilder.crossStandardDatasets;
+        useCase = aBuilder.useCase;
         if (!presenceReportedDatasets.isEmpty())
         {
             LOGGER.log(Level.DEBUG,
@@ -541,6 +551,14 @@ public final class LibraryValidator
      * A rule carrying a {@code loadError} is deliberately excluded: it must surface its ERROR
      * sentinel through the normal path rather than be quietly evaluated here.
      * </p>
+     *
+     * <p>
+     * So is a rule outside the run's use case (owner ruling X1). It falls through to the
+     * per-dataset path, where {@code DatasetRuleResolver.describeScopeSkip} reports it
+     * {@code SKIPPED} with its reason on every dataset — the same report shape as every other scope
+     * axis. Without this clause an anchor rule would bypass the use-case filter entirely, because
+     * the anchor pass never reaches the per-dataset scope gate.
+     * </p>
      */
     private List<Rule> anchorEligibleRules()
     {
@@ -552,7 +570,9 @@ public final class LibraryValidator
         for (Rule rule : rules)
         {
             if (rule != null && rule.getLoadError() == null
-                    && StudyRuleClassifier.isAnchorEligible(rule))
+                    && StudyRuleClassifier.isAnchorEligible(rule)
+                    // outside the run's use case → per-dataset path, where it is reported SKIPPED
+                    && ScopeMatcher.matchesUseCase(rule, useCase))
             {
                 eligible.add(rule);
             }
@@ -1079,6 +1099,7 @@ public final class LibraryValidator
         generator.setStaticRules(aDatasetRules);
         generator.setDatasetResolver(aResolver);
         generator.setDomainName(cdiscDomain);
+        generator.setUseCase(useCase);
         if (className != null)
         {
             generator.setClassName(className);
@@ -1471,6 +1492,8 @@ public final class LibraryValidator
 
         private Set<String> crossStandardDatasets = Set.of();
 
+        private @Nullable String useCase;
+
         private boolean sequential;
 
         private int ruleThreads = 1;
@@ -1590,6 +1613,23 @@ public final class LibraryValidator
                 }
             }
             crossStandardDatasets = Set.copyOf(out);
+            return this;
+        }
+
+
+        /**
+         * The run's use case (owner ruling X1, {@code PLAN-use-case-scope-filter}): a rule whose
+         * {@code Scope.Use_Case} names only other use cases is not executed and is reported
+         * {@code SKIPPED} per (rule × dataset) with the reason, exactly like a rule outside its
+         * {@code Scope.Classes}. {@code null} or blank (the default) filters nothing.
+         *
+         * @param aUseCase
+         *            the use-case code, e.g. {@code "INDH"}; stripped, blank read as none
+         * @return this builder
+         */
+        public Builder useCase(@Nullable String aUseCase)
+        {
+            useCase = aUseCase == null || aUseCase.isBlank() ? null : aUseCase.strip();
             return this;
         }
 

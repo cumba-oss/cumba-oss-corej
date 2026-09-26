@@ -85,6 +85,12 @@ public class DatasetRuleResolver
     private @Nullable String className;
 
     /**
+     * The run's use case (owner ruling X1): a rule whose {@code Scope.Use_Case} names only other
+     * use cases is skipped with a reason. Null = none given, no filtering.
+     */
+    private @Nullable String useCase;
+
+    /**
      * @param provider
      *            the CDISC Library metadata provider, used for scope resolution and ADaM
      *            data-structure detection
@@ -142,6 +148,19 @@ public class DatasetRuleResolver
     public void setClassName(String className)
     {
         this.className = className;
+    }
+
+
+    /**
+     * Sets the run's use case for the {@code Scope.Use_Case} axis of {@link #describeScopeSkip}. If
+     * {@code null}, no use-case filtering is applied.
+     *
+     * @param aUseCase
+     *            the run's use case (e.g. "INDH"), or {@code null} when none was given
+     */
+    public void setUseCase(@Nullable String aUseCase)
+    {
+        this.useCase = aUseCase;
     }
 
 
@@ -662,15 +681,25 @@ public class DatasetRuleResolver
 
     /**
      * Returns {@code null} if the rule's scope matches this dataset (and is therefore eligible for
-     * execution), or a short human-readable reason string if it should be skipped because of domain
-     * / dataset-name / class / variable mismatch. Executability is not consulted — every
-     * Executability value is treated as eligible, mirroring Python. {@code domainPrefix} (Phase 4)
-     * resolves {@code --} placeholders in variable-requirement entries.
+     * execution), or a short human-readable reason string if it should be skipped because of use
+     * case / domain / dataset-name / class / data-structure / subclass / variable mismatch.
+     * Executability is not consulted — every Executability value is treated as eligible, mirroring
+     * Python. {@code domainPrefix} (Phase 4) resolves {@code --} placeholders in
+     * variable-requirement entries.
      */
     private @Nullable String describeScopeSkip(Rule r, String domName, DataTableMeta meta,
             @Nullable String domainPrefix, String unsplitName, List<String> detectedStructures,
             List<String> detectedSubclasses, @Nullable ScopeVariableSource scopeForeign)
     {
+        // Owner ruling X1 (PLAN-use-case-scope-filter): Scope.Use_Case is a per-RUN axis, checked
+        // first because it is the same for every dataset; order only decides which reason a
+        // multiply-mismatched rule reports. ⚠ The study-anchor pass never reaches this method, so
+        // LibraryValidator.anchorEligibleRules applies the same matcher before it.
+        String useCaseReason = ScopeMatcher.describeUseCaseMismatch(r, this.useCase);
+        if (useCaseReason != null)
+        {
+            return useCaseReason;
+        }
         // ⭐⭐ D125 (PLAN-typed-expression-engine phase 7c): describeDomainMismatch's FIRST argument
         // is the MEMBER name (`FAAE`, `LBCHEM`), its second the dataset's canonical base (`FA`,
         // `LB`) — the matcher derives `isSplit = !domainName.equals(unsplitName)` from exactly that

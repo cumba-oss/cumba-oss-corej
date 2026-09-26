@@ -792,4 +792,94 @@ class DatasetRuleResolverTest
                 pkg.getSkippedSourceRules().getFirst().reason());
     }
 
+    // ---- Scope.Use_Case (owner ruling X1, PLAN-use-case-scope-filter) ----
+
+
+    /** A rule scoped to class {@code FINDINGS} and use case {@code useCase}. */
+    private static Rule useCaseRule(String coreId, String useCase)
+    {
+        Rule rule = variableScopedRule(coreId, "STUDYID");
+        net.cumba.corej.core.model.Scope scope = new net.cumba.corej.core.model.Scope();
+        scope.setUseCase(useCase);
+        net.cumba.corej.core.model.ClassScope classes = new net.cumba.corej.core.model.ClassScope();
+        classes.setInclude(List.of("FINDINGS"));
+        scope.setClasses(classes);
+        rule.setScope(scope);
+        return rule;
+    }
+
+
+    @Test
+    void useCase_outsideTheRunsUseCase_isSkippedWithItsReason()
+    {
+        generator.setStaticRules(List.of(useCaseRule("CORE-UC", "INDH")));
+        generator.setUseCase("NONCLIN");
+        IDataTable table = MockTable.of().name("LB").col("STUDYID", "S001").build();
+
+        GeneratedRulePackage pkg = gen(table, "LB", "FINDINGS");
+
+        assertTrue(pkg.getRules().stream().noneMatch(r -> "CORE-UC".equals(r.getCore().getId())));
+        assertEquals(1, pkg.getSkippedSourceRules().size());
+        assertEquals("use case NONCLIN not in Scope.Use_Case [INDH]",
+                pkg.getSkippedSourceRules().getFirst().reason());
+    }
+
+
+    @Test
+    void useCase_isTheFirstAxis_soAMultiplyMismatchedRuleReportsIt()
+    {
+        // The rule misses on BOTH use case and class (EVENTS vs FINDINGS): the use-case reason
+        // wins, because it is checked first — it is the same for every dataset of the run.
+        generator.setStaticRules(List.of(useCaseRule("CORE-UC", "INDH")));
+        generator.setUseCase("PROD");
+        IDataTable table = MockTable.of().name("AE").col("STUDYID", "S001").build();
+
+        GeneratedRulePackage pkg = gen(table, "AE", "EVENTS");
+
+        assertEquals("use case PROD not in Scope.Use_Case [INDH]",
+                pkg.getSkippedSourceRules().getFirst().reason());
+
+        // Control: in its use case the SAME rule still skips — now on the class axis.
+        generator.setUseCase("INDH");
+        GeneratedRulePackage inUseCase = gen(table, "AE", "EVENTS");
+        assertEquals("class EVENTS not in Scope.Classes.Include [FINDINGS]",
+                inUseCase.getSkippedSourceRules().getFirst().reason());
+    }
+
+
+    @Test
+    void useCase_matchingOrUnset_runsTheRule()
+    {
+        generator.setStaticRules(List.of(useCaseRule("CORE-UC", "INDH, PROD")));
+        IDataTable table = MockTable.of().name("LB").col("STUDYID", "S001").build();
+
+        generator.setUseCase("prod");
+        assertTrue(gen(table, "LB", "FINDINGS").getRules().stream()
+                .anyMatch(r -> "CORE-UC".equals(r.getCore().getId())), "PROD is listed");
+
+        generator.setUseCase(null);
+        GeneratedRulePackage none = gen(table, "LB", "FINDINGS");
+        assertTrue(none.getRules().stream().anyMatch(r -> "CORE-UC".equals(r.getCore().getId())),
+                "no use case filters nothing");
+        assertTrue(none.getSkippedSourceRules().isEmpty());
+    }
+
+
+    @Test
+    void useCase_aLoadErrorRuleStillReachesItsErrorSentinel()
+    {
+        // A load error is checked BEFORE every scope axis (Review F4), use case included: the rule
+        // must surface as an ERROR execution, never as an out-of-use-case skip.
+        Rule bad = useCaseRule("CORE-UC-BAD", "INDH");
+        bad.setLoadError("synthetic load error");
+        generator.setStaticRules(List.of(bad));
+        generator.setUseCase("NONCLIN");
+        IDataTable table = MockTable.of().name("LB").col("STUDYID", "S001").build();
+
+        GeneratedRulePackage pkg = gen(table, "LB", "FINDINGS");
+
+        assertTrue(pkg.getRules().contains(bad));
+        assertTrue(pkg.getSkippedSourceRules().isEmpty());
+    }
+
 }

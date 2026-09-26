@@ -1,15 +1,20 @@
 package net.cumba.corej.core.exec;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.Scope;
 import org.junit.jupiter.api.Test;
 
 /**
- * Tests for {@link ScopeMatcher#matchesUseCase} (its {@code filterByUseCase} sibling went with D121
- * — main-dead after phase 7) and the branches not covered by {@link ScopeMatcherTest}.
+ * Tests for {@link ScopeMatcher#describeUseCaseMismatch} / {@link ScopeMatcher#matchesUseCase} —
+ * the {@code Scope.Use_Case} axis wired into production by {@code PLAN-use-case-scope-filter}
+ * (owner ruling X1; its {@code filterByUseCase} sibling went with D121) — and the branches not
+ * covered by {@link ScopeMatcherTest}.
  */
 class ScopeMatcherUseCaseTest
 {
@@ -67,6 +72,89 @@ class ScopeMatcherUseCaseTest
     {
         Rule rule = ruleWithUseCase("INDH, PROD");
         assertFalse(ScopeMatcher.matchesUseCase(rule, "BLA"));
+    }
+
+    // ---- describeUseCaseMismatch: the reason text the Skipped_Rules row carries ----
+
+
+    @Test
+    void describe_singleCodeMismatch_namesTheRunValueAndTheRuleCodes()
+    {
+        assertEquals("use case NONCLIN not in Scope.Use_Case [INDH]",
+                ScopeMatcher.describeUseCaseMismatch(ruleWithUseCase("INDH"), "NONCLIN"));
+    }
+
+
+    @Test
+    void describe_multiCodeMismatch_listsTheStrippedCodesInAuthoredOrder()
+    {
+        assertEquals("use case INDH not in Scope.Use_Case [NONCLIN, PROD]",
+                ScopeMatcher.describeUseCaseMismatch(ruleWithUseCase(" NONCLIN ,PROD"), "INDH"));
+    }
+
+
+    @Test
+    void describe_anyListedCodeIncludesTheRule_T1_1()
+    {
+        // Ruling T1-1: "INDH, PROD" is not "a different use case" under PROD — it runs.
+        assertNull(ScopeMatcher.describeUseCaseMismatch(ruleWithUseCase("INDH, PROD"), "PROD"));
+        assertNull(ScopeMatcher.describeUseCaseMismatch(ruleWithUseCase("INDH, PROD"), "prod"));
+    }
+
+
+    @Test
+    void describe_runValueIsStrippedAndItsSpellingIsReported()
+    {
+        assertNull(ScopeMatcher.describeUseCaseMismatch(ruleWithUseCase("PROD"), " PROD "));
+        assertEquals("use case indh not in Scope.Use_Case [PROD]",
+                ScopeMatcher.describeUseCaseMismatch(ruleWithUseCase("PROD"), "  indh "));
+    }
+
+
+    @Test
+    void describe_blankRunValue_isNoUseCase()
+    {
+        assertNull(ScopeMatcher.describeUseCaseMismatch(ruleWithUseCase("INDH"), "   "));
+        assertNull(ScopeMatcher.describeUseCaseMismatch(ruleWithUseCase("INDH"), ""));
+    }
+
+
+    /**
+     * The one behaviour change inside the matcher (plan §1): a whitespace-only or comma-only rule
+     * value used to split to {@code [""]}, match no use case and so be excluded under EVERY use
+     * case. It holds no code, so it reads as declaring none. (On a loaded rule it never gets here —
+     * the loader rejects it, ruling T1-4.)
+     */
+    @Test
+    void describe_ruleValueHoldingNoCode_declaresNoUseCase()
+    {
+        for (String blank : List.of(" ", ",", " , ", ""))
+        {
+            assertNull(ScopeMatcher.describeUseCaseMismatch(ruleWithUseCase(blank), "INDH"),
+                    "'" + blank + "'");
+            assertTrue(ScopeMatcher.matchesUseCase(ruleWithUseCase(blank), "INDH"),
+                    "'" + blank + "'");
+        }
+    }
+
+
+    @Test
+    void useCaseCodes_splitsStripsAndDropsEmptyCodes()
+    {
+        assertEquals(List.of(), ScopeMatcher.useCaseCodes(null));
+        assertEquals(List.of(), ScopeMatcher.useCaseCodes(" , "));
+        assertEquals(List.of("INDH", "PROD"), ScopeMatcher.useCaseCodes(" INDH,,PROD ,"));
+        assertEquals(List.of("INDH;PROD"), ScopeMatcher.useCaseCodes("INDH;PROD"),
+                "a non-comma separator is one code — which is why the loader rejects it");
+    }
+
+
+    @Test
+    void matchesUseCase_agreesWithDescribe()
+    {
+        Rule rule = ruleWithUseCase("INDH");
+        assertFalse(ScopeMatcher.matchesUseCase(rule, "NONCLIN"));
+        assertTrue(ScopeMatcher.matchesUseCase(rule, "INDH"));
     }
 
 

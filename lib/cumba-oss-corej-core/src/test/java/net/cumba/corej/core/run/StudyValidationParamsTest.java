@@ -2,6 +2,7 @@ package net.cumba.corej.core.run;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -29,6 +30,56 @@ class StudyValidationParamsTest
     void requiresManager()
     {
         assertThrows(NullPointerException.class, () -> StudyValidationParams.builder().build());
+    }
+
+    // ---- the run's use case (owner ruling X1, T1-3: trim; blank → none; one code only) ----
+
+
+    @Test
+    void useCase_isStripped_andBlankIsNone()
+    {
+        assertEquals("INDH", base().useCase("  INDH ").build().useCase());
+        assertNull(base().useCase("   ").build().useCase());
+        assertNull(base().useCase("").build().useCase());
+        assertNull(base().useCase(null).build().useCase());
+        assertNull(base().build().useCase());
+    }
+
+
+    @Test
+    void useCase_aWellFormedCodeOfAnyCaseIsAccepted_theVocabularyIsNotChecked()
+    {
+        assertEquals("nonclin", base().useCase("nonclin").build().useCase());
+        assertEquals("XYZ", base().useCase("XYZ").build().useCase(),
+                "T1-3: the corpus defines no vocabulary, so an unknown code is not an error");
+    }
+
+
+    @Test
+    void useCase_thatIsNotASingleCode_isRejectedByBuild_namingTheValue()
+    {
+        for (String bad : List.of("INDH, PROD", "INDH,PROD", "IN DH", "INDH;", "INDH-1", "AB1"))
+        {
+            StudyValidationParams.Builder b = base().useCase(bad);
+            IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, b::build,
+                    bad);
+            assertTrue(ex.getMessage().contains("'" + bad.strip() + "'"), ex.getMessage());
+            assertTrue(ex.getMessage().contains("single code"), ex.getMessage());
+        }
+    }
+
+
+    @Test
+    void isWellFormedUseCase_andNormalizeUseCase()
+    {
+        assertTrue(StudyValidationParams.isWellFormedUseCase("INDH"));
+        assertTrue(StudyValidationParams.isWellFormedUseCase(" prod "));
+        assertFalse(StudyValidationParams.isWellFormedUseCase("INDH, PROD"));
+        assertFalse(StudyValidationParams.isWellFormedUseCase(" "), "blank is not a code");
+        assertFalse(StudyValidationParams.isWellFormedUseCase(null), "null is not a code");
+        assertEquals("PROD", StudyValidationParams.normalizeUseCase(" PROD\t"));
+        assertNull(StudyValidationParams.normalizeUseCase(" \t "));
+        assertNull(StudyValidationParams.normalizeUseCase(null));
     }
 
 

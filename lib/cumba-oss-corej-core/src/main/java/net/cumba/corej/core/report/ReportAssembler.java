@@ -72,7 +72,8 @@ import org.jspecify.annotations.Nullable;
  * fields are unchanged, so the Python output remains a subset.</li>
  * <li><b>Additive Java extension</b>: the {@code Skipped_Rules} section lists every skipped (rule ×
  * dataset) pair with its human-readable reason — the failing scope criterion for generation-time
- * skips, the runner's status message for execution-time skips.</li>
+ * skips (including the run's use case, e.g. {@code "use case NONCLIN not in Scope.Use_Case
+ * [INDH]"}), the runner's status message for execution-time skips.</li>
  * </ul>
  *
  * <h2>Usage</h2>
@@ -821,7 +822,8 @@ public final class ReportAssembler
      * report's insertion order. {@code reason} carries the runner's full status message for
      * execution-time skips (e.g. {@code "Rule skipped — no Library access"}) and the scope
      * describer's text verbatim for generation-time skips (e.g. {@code "domain EX not in
-     * Scope.Domains.Include [AE, CM]"}).
+     * Scope.Domains.Include [AE, CM]"}, or the run-level {@code "use case NONCLIN not in
+     * Scope.Use_Case [INDH]"}, one row per target dataset).
      */
     private List<Map<String, Object>> buildSkippedRules()
     {

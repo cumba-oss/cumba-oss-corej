@@ -23,8 +23,9 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * Only {@code standard}, {@code version} and {@code ctPackages} are passed to the store-backed
  * provider factory. {@code useCase} and {@code defineVersion} are deliberately not modelled:
- * neither reaches the library metadata ({@code useCase} filters rules; {@code defineVersion} only
- * labels the report).
+ * neither reaches the library metadata ({@code useCase} filters rules — a rule whose
+ * {@code Scope.Use_Case} names only other use cases is reported SKIPPED, which a {@code .cdt}
+ * scenario cannot request; {@code defineVersion} only labels the report).
  * </p>
  */
 @Value

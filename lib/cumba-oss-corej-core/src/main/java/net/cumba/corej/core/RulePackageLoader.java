@@ -2690,6 +2690,9 @@ public class RulePackageLoader
             // matched every dataset; under exact matching it matches nothing instead — either
             // way it is never what the rule author meant.)
             validateDomainScopeEntries(rule, errors);
+            // R-4.10 / R-4.10a (PLAN-use-case-scope-filter, ruling T1-4): a malformed Use_Case
+            // would silently exclude the rule from every run that names a use case.
+            validateUseCaseShape(rule, errors);
             // Phase 4 (PLAN-extend-expression-engine) — pre-compile glob/regex entries in
             // Scope.Domains and Scope.Variables so an invalid /…/ regex fails loud at load
             // time instead of blowing up scope matching at generation time.
@@ -5810,6 +5813,58 @@ public class RulePackageLoader
                             + " silently skipping the rule for every dataset");
                 }
             }
+        }
+    }
+
+    /**
+     * The authored shape of {@code Scope.Use_Case} (R-4.10): one or more upper-case codes separated
+     * by commas, with optional spaces around each comma.
+     */
+    private static final java.util.regex.Pattern USE_CASE_SHAPE = java.util.regex.Pattern
+            .compile("[A-Z]+(?:\\s*,\\s*[A-Z]+)*");
+
+    /**
+     * Gate <b>R-4.10 / R-4.10a</b> ({@code plans/PLAN-use-case-scope-filter.md}, ruling T1-4): a
+     * {@code Scope.Use_Case} that is not a comma-separated list of upper-case codes, or that lists
+     * one code twice, is a load error.
+     *
+     * <p>
+     * Since the run's use case filters rules (owner ruling X1), a misspelt value is no longer
+     * inert: {@code "INDH;PROD"} is one code that matches no use case, so the rule would be
+     * excluded — reported {@code SKIPPED}, i.e. "not applicable" — from <em>every</em> run that
+     * names one. An empty value ({@code ""}, {@code " "}, {@code ","}) is rejected too, for the
+     * reason {@link #validateDomainScopeEntries} rejects an empty domain entry: it names nothing,
+     * so it can only be an authoring slip (the matcher reads it as "no use case" and would run the
+     * rule everywhere). Codes are read through {@link ScopeMatcher#useCaseCodes}, so gate and
+     * matcher agree on what a code is.
+     * </p>
+     */
+    private static void validateUseCaseShape(Rule rule, List<String> errors)
+    {
+        Scope scope = rule.getScope();
+        String raw = scope == null ? null : scope.getUseCase();
+        if (raw == null)
+        {
+            return;
+        }
+        if (!USE_CASE_SHAPE.matcher(raw).matches())
+        {
+            errors.add("[" + ruleId(rule) + "] Scope.Use_Case '" + raw + "' is not a"
+                    + " comma-separated list of upper-case use-case codes (R-4.10, e.g. \"INDH\" or"
+                    + " \"INDH, PROD\") — a malformed value matches no use case, so the rule would"
+                    + " be skipped by every run that names one");
+            return;
+        }
+        List<String> seen = new ArrayList<>();
+        for (String code : ScopeMatcher.useCaseCodes(raw))
+        {
+            if (seen.contains(code))
+            {
+                errors.add("[" + ruleId(rule) + "] Scope.Use_Case '" + raw + "' lists " + code
+                        + " twice (R-4.10a) — remove the duplicate");
+                return;
+            }
+            seen.add(code);
         }
     }
 
