@@ -135,18 +135,26 @@ class VariableMetadataNativeParityTest
     }
 
 
-    /** Review round 1 L3: the reversed and the membership forms name the variable too. */
+    /**
+     * Review round 1 L3: the reversed and the membership forms name the variable too, exactly as
+     * their quoted spelling does. ({@code NOSUCH} names no variable of the table; a Dataset-level
+     * rule reports its first firing variable, so the list holds one name that can fire.)
+     */
     @Test
     void reversedAndMembershipFormsAgainstBareDomainNameTheVariable() throws Exception
     {
         IDataTable table = dmTable();
         Rule reversed = loadVmcRule("{\"all\":[{\"expression\": \"DOMAIN == varname()\"}]}",
                 "variable_name");
-        Rule member = loadVmcRule("{\"all\":[{\"expression\": \"varname() in [DOMAIN, AGE]\"}]}",
+        Rule member = loadVmcRule("{\"all\":[{\"expression\": \"varname() in [NOSUCH, DOMAIN]\"}]}",
+                "variable_name");
+        Rule quotedMember = loadVmcRule(
+                "{\"all\":[{\"expression\": \"varname() in [\\\"NOSUCH\\\", \\\"DOMAIN\\\"]\"}]}",
                 "variable_name");
 
         assertEquals(Set.of("DOMAIN"), findings(reversed, table));
-        assertEquals(Set.of("AGE", "DOMAIN"), findings(member, table));
+        assertEquals(Set.of("DOMAIN"), findings(member, table));
+        assertEquals(findings(quotedMember, table), findings(member, table));
     }
 
 
