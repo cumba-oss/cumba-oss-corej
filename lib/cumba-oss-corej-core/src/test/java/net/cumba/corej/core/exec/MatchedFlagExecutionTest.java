@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import net.cumba.corej.core.KeyedJoinFixtures;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
@@ -42,7 +43,8 @@ class MatchedFlagExecutionTest
                 + "\",\"Keys\":" + keysJson + ",\"Join_Type\":\"" + joinType + "\"}],"
                 + "\"Check\":{\"expression\":\"" + checkExpression.replace("\"", "\\\"") + "\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}";
-        Rule rule = RulePackageLoader.loadFromString(body).getRules().get("R1");
+        Rule rule = RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(body)).getRules()
+                .get("R1");
         assertNotNull(rule);
         return rule;
     }
@@ -213,7 +215,8 @@ class MatchedFlagExecutionTest
                 + "\"Match_Datasets\":[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"],"
                 + "\"Join_Type\":\"left\"}]," + "\"Check\":{\"expression\":\"not DM._matched_\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}";
-        Rule r = RulePackageLoader.loadFromString(body).getRules().get("R1");
+        Rule r = RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(body)).getRules()
+                .get("R1");
         assertNotNull(r);
         assertNull(r.getLoadError());
         IDataTable primary = adae();

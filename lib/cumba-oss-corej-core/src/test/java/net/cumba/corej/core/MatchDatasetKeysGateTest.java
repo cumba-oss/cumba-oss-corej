@@ -40,7 +40,8 @@ class MatchDatasetKeysGateTest
                 "Match_Datasets":[%s],\
                 "Outcome":{"Message":"m","Output_Variables":["USUBJID"]},\
                 "Check":{"all":[{"expression": "not empty(USUBJID)"}]}}}}""".formatted(entriesJson);
-        Rule rule = RulePackageLoader.loadFromString(json).getRules().get("x");
+        Rule rule = RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(json)).getRules()
+                .get("x");
         assertNotNull(rule, "the fixture must bind, or nothing below is measuring anything");
         return rule;
     }

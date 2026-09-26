@@ -48,7 +48,8 @@ class JoinAsStringValidationTest
 
     private static Rule load(String entryExtra) throws IOException
     {
-        Rule rule = RulePackageLoader.loadFromString(pkg(entryExtra)).getRules().get("x");
+        Rule rule = RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(pkg(entryExtra)))
+                .getRules().get("x");
         assertNotNull(rule, "the fixture must bind, or nothing below is measuring anything");
         return rule;
     }
@@ -74,7 +75,9 @@ class JoinAsStringValidationTest
 
     private static Rule loadChild(String entryExtra) throws IOException
     {
-        Rule rule = RulePackageLoader.loadFromString(childPkg(entryExtra)).getRules().get("x");
+        Rule rule = RulePackageLoader
+                .loadFromString(KeyedJoinFixtures.declared(childPkg(entryExtra))).getRules()
+                .get("x");
         assertNotNull(rule, "the fixture must bind, or nothing below is measuring anything");
         return rule;
     }
@@ -89,7 +92,8 @@ class JoinAsStringValidationTest
     {
         String json = pkg(",\"Join_As_String\":true").replace("\"Name\":\"ADSL\"",
                 "\"Name\":\"" + name + "\"");
-        Rule rule = RulePackageLoader.loadFromString(json).getRules().get("x");
+        Rule rule = RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(json)).getRules()
+                .get("x");
         assertNotNull(rule, "the renamed fixture must still bind");
         return rule;
     }
@@ -104,7 +108,8 @@ class JoinAsStringValidationTest
                 "Match_Datasets":[{"Name":"ADSL","Join_As_String":true}],\
                 "Outcome":{"Message":"m","Output_Variables":["USUBJID","AGE"]},\
                 "Check":{"all":[{"expression": "AGE != ADSL.AGE"}]}}}}""";
-        Rule rule = RulePackageLoader.loadFromString(json).getRules().get("x");
+        Rule rule = RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(json)).getRules()
+                .get("x");
         assertNotNull(rule, "the fixture must bind");
         String error = String.valueOf(rule.getLoadError());
         assertTrue(error.contains("no effect"),
@@ -137,7 +142,8 @@ class JoinAsStringValidationTest
                 "Match_Datasets":[{"Name":"ADSL","Keys":["USUBJID",{"left":"AGE"}]}],\
                 "Outcome":{"Message":"m","Output_Variables":["USUBJID","AGE"]},\
                 "Check":{"all":[{"expression": "AGE != ADSL.AGE"}]}}}}""";
-        Rule rule = RulePackageLoader.loadFromString(json).getRules().get("x");
+        Rule rule = RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(json)).getRules()
+                .get("x");
         assertNotNull(rule, "the fixture must bind");
         String error = String.valueOf(rule.getLoadError());
         assertTrue(error.contains("malformed Keys element"),
@@ -148,7 +154,9 @@ class JoinAsStringValidationTest
                 "Match_Datasets":[{"Name":"ADSL","Keys":["USUBJID",{"left":"AGE","right":"AGEY"}]}],\
                 "Outcome":{"Message":"m","Output_Variables":["USUBJID","AGE"]},\
                 "Check":{"all":[{"expression": "AGE != ADSL.AGE"}]}}}}""";
-        assertNull(RulePackageLoader.loadFromString(ok).getRules().get("x").getLoadError(),
+        assertNull(
+                RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(ok)).getRules().get("x")
+                        .getLoadError(),
                 "⛔ and a WELL-FORMED sided entry must still load — otherwise this check has banned"
                         + " the sided shape rather than guarding it");
     }
@@ -172,24 +180,32 @@ class JoinAsStringValidationTest
     {
         String twoHalves = keysFixture("[{\"left\":\"A\"},{\"right\":\"B\"}]");
         assertTrue(
-                String.valueOf(RulePackageLoader.loadFromString(twoHalves).getRules().get("x")
-                        .getLoadError()).contains("malformed Keys element"),
+                String.valueOf(
+                        RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(twoHalves))
+                                .getRules().get("x").getLoadError())
+                        .contains("malformed Keys element"),
                 "two half-declared elements have EQUAL list sizes (1 and 1) and must still be"
                         + " rejected — this is the hole a size comparison leaves");
         String emptyObject = keysFixture("[\"USUBJID\",{}]");
         assertTrue(
-                String.valueOf(RulePackageLoader.loadFromString(emptyObject).getRules().get("x")
-                        .getLoadError()).contains("malformed Keys element"),
+                String.valueOf(
+                        RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(emptyObject))
+                                .getRules().get("x").getLoadError())
+                        .contains("malformed Keys element"),
                 "an element neither side can read is dropped from BOTH lists, so the sizes still"
                         + " agree while a key component silently leaves the join");
         String nonTextual = keysFixture("[{\"left\":\"A\",\"right\":5}]");
         assertTrue(
-                String.valueOf(RulePackageLoader.loadFromString(nonTextual).getRules().get("x")
-                        .getLoadError()).contains("malformed Keys element"),
+                String.valueOf(
+                        RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(nonTextual))
+                                .getRules().get("x").getLoadError())
+                        .contains("malformed Keys element"),
                 "a non-textual side is unreadable too");
         assertNull(
-                RulePackageLoader.loadFromString(keysFixture("[\"USUBJID\",\"AGE\"]")).getRules()
-                        .get("x").getLoadError(),
+                RulePackageLoader
+                        .loadFromString(
+                                KeyedJoinFixtures.declared(keysFixture("[\"USUBJID\",\"AGE\"]")))
+                        .getRules().get("x").getLoadError(),
                 "⛔ and the ordinary all-bare-string shape -- every one of the 252 shipped key"
                         + " occurrences -- must still load clean");
     }
@@ -212,7 +228,8 @@ class JoinAsStringValidationTest
                 "Outcome":{"Message":"m","Output_Variables":["USUBJID","AGE"]},\
                 "Check":{"all":[{"expression": "not empty(AGE)"}]}}}}""";
         String error = String
-                .valueOf(RulePackageLoader.loadFromString(json).getRules().get("x").getLoadError());
+                .valueOf(RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(json))
+                        .getRules().get("x").getLoadError());
         assertTrue(error.contains("combines sided Keys"),
                 "the element is WELL FORMED, so malformedKeyElement() passes it — this is the"
                         + " separate case: the Child/SUPP pivot reads the left names only; was: "
@@ -223,7 +240,8 @@ class JoinAsStringValidationTest
                 "Outcome":{"Message":"m","Output_Variables":["USUBJID","AGE"]},\
                 "Check":{"all":[{"expression": "not empty(AGE)"}]}}}}""";
         assertNull(
-                RulePackageLoader.loadFromString(ordinaryChild).getRules().get("x").getLoadError(),
+                RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(ordinaryChild))
+                        .getRules().get("x").getLoadError(),
                 "⛔ a Child entry with ORDINARY bare-string keys must still load clean — that is"
                         + " every one of the 11 shipped Child entries, and without this arm the"
                         + " check would have banned the family rather than the combination");
@@ -253,7 +271,8 @@ class JoinAsStringValidationTest
                 "Outcome":{"Message":"m","Output_Variables":["USUBJID","AGE"]},\
                 "Check":{"all":[{"expression": "AGE != ADSL.AGE"}]}}}}""";
         String error = String
-                .valueOf(RulePackageLoader.loadFromString(json).getRules().get("x").getLoadError());
+                .valueOf(RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(json))
+                        .getRules().get("x").getLoadError());
         assertFalse(error.contains("combines sided Keys"),
                 "⛔ the entry has no Name — it is not Child, not RELREC, not SUPP. Blaming that"
                         + " family is both the wrong diagnosis and a NEW load failure on a shape"

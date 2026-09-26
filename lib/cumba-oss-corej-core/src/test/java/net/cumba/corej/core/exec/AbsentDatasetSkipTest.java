@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.cumba.corej.core.KeyedJoinFixtures;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
@@ -57,7 +58,8 @@ class AbsentDatasetSkipTest
     /** Loads one rule body as the sole rule of a package (so {@code checkExpr} is retained). */
     private static Rule load(String ruleBody) throws Exception
     {
-        RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"R1\":" + ruleBody + "}}");
+        RulePackage pkg = RulePackageLoader.loadFromString(
+                KeyedJoinFixtures.declared("{\"rules\":{\"R1\":" + ruleBody + "}}"));
         Rule rule = pkg.getRules().get("R1");
         assertNull(rule.getLoadError(), "rule must load cleanly: " + rule.getLoadError());
         return rule;
@@ -139,8 +141,23 @@ class AbsentDatasetSkipTest
 
     // ------------------------------------------- the headline: SKIPPED, never a silent pass
 
-    /** {@code PMDA-AD0204}'s shape — the unguarded twin that floods on an absent DM. */
+    /**
+     * {@code PMDA-AD0204}'s shape — the unguarded twin that floods on an absent DM.
+     * <p>
+     * ⚑ Dotted-only (no {@code Match_Datasets}) since {@code PLAN-rule-unknown-keys-gate} §5.7: a
+     * keyed join must declare its key, and a declared key makes the requirement gate SKIP the rule
+     * on an absent joined dataset (ruled class P8 of {@code PLAN-join-key-authoring-gate}) before
+     * this mechanism is reached — so the keyed shape can no longer show the flood this test's
+     * subject silences. The dotted read is the legal shape the mechanism still serves.
+     * </p>
+     */
     private static final String DM_DEPENDENT = "{\"Core\":{\"Id\":\"R1\"},"
+            + "\"Sensitivity\":\"Record\"," + "\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
+            + "\"Check\":{\"expression\":\"not empty(AGE) and AGE != DM.AGE\"},"
+            + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AGE\"]}}";
+
+    /** The same dependant as a declared keyed join, for the cases where DM IS present. */
+    private static final String DM_DEPENDENT_KEYED = "{\"Core\":{\"Id\":\"R1\"},"
             + "\"Sensitivity\":\"Record\"," + "\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
             + "\"Match_Datasets\":[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"]}],"
             + "\"Check\":{\"expression\":\"not empty(AGE) and AGE != DM.AGE\"},"
@@ -173,11 +190,13 @@ class AbsentDatasetSkipTest
     @Test
     void presentDataset_isNeverSuppressed() throws Exception
     {
-        Rule rule = load(DM_DEPENDENT);
+        Rule rule = load(DM_DEPENDENT_KEYED);
         IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("AGE", "31").build();
         IDataTable dm = MockTable.of().name("DM").col("USUBJID", "S1").col("AGE", "99").build();
         // DM is covered by a presence rule AND present ⇒ the rule evaluates exactly as before.
-        RuleExecutionResult r = run(rule, ae, resolverOf(Map.of("AE", ae, "DM", dm)), Set.of("DM"));
+        // (An inventory-aware resolver: the declared key's All_Or_None group is decided against
+        // the inventory, which a plain lambda cannot enumerate.)
+        RuleExecutionResult r = run(rule, ae, RealTables.inventoryOf(ae, dm), Set.of("DM"));
         assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus());
         assertEquals(1, r.getViolations().size(), "31 != 99 is a genuine finding");
     }
@@ -192,7 +211,7 @@ class AbsentDatasetSkipTest
      */
     private static final String LOCAL_SIBLING = "{\"Core\":{\"Id\":\"R1\"},"
             + "\"Sensitivity\":\"Record\"," + "\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
-            + "\"Match_Datasets\":[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"]}],"
+            // dotted-only, see DM_DEPENDENT
             + "\"Check\":{\"expression\":"
             + "\"(FLAG == \\\"X\\\" or empty(DM.RFSTDTC)) and not empty(DY)\"},"
             + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"DY\"]}}";
@@ -326,7 +345,7 @@ class AbsentDatasetSkipTest
     {
         return "{\"Core\":{\"Id\":\"" + id + "\"},"
                 + "\"Sensitivity\":\"Record\",\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
-                + "\"Match_Datasets\":[{\"Name\":\"TS\",\"Keys\":[\"STUDYID\"]}],"
+                // dotted-only, see DM_DEPENDENT
                 + "\"Check\":{\"expression\":\"empty(SPECIES) and empty(TS.TSVAL)\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"SPECIES\"]}}";
     }
@@ -403,7 +422,7 @@ class AbsentDatasetSkipTest
         // collapse to SKIPPED on exactly the input it exists to report.
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},"
                 + "\"Sensitivity\":\"Record\",\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
-                + "\"Match_Datasets\":[{\"Name\":\"EX\",\"Keys\":[\"USUBJID\"]}],"
+                // dotted-only, see DM_DEPENDENT
                 + "\"Check\":{\"expression\":"
                 + "\"not ds_exists(\\\"EX\\\") or not empty(EX.EXDOSE)\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}");
@@ -475,18 +494,21 @@ class AbsentDatasetSkipTest
     void declaredButUnreadDatasetsAreNotSuppressed() throws Exception
     {
         // A Match_Datasets join the Check never dereferences names a dataset but reads nothing
-        // from it — there is no leaf to silence, so the rule must run untouched.
+        // from it — there is no leaf to silence, so the rule must run untouched. ⚑ DM is supplied
+        // here: a declared keyed join (§5.7) SKIPs by requirement when its dataset is absent, so
+        // the "untouched" claim is made where the join is satisfiable.
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},"
                 + "\"Sensitivity\":\"Record\",\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
                 + "\"Match_Datasets\":[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"]}],"
                 + "\"Check\":{\"expression\":\"not empty(AGE)\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AGE\"]}}");
         IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("AGE", "31").build();
-        AbsentDatasetSkip.Decision d = ExecCalls.decide(rule, resolverOf(Map.of("AE", ae)),
+        IDataTable dm = MockTable.of().name("DM").col("USUBJID", "S1").build();
+        AbsentDatasetSkip.Decision d = ExecCalls.decide(rule, RealTables.inventoryOf(ae, dm),
                 Set.of("DM"), "AE", "AE");
         assertFalse(d.applies());
         assertEquals(1,
-                run(rule, ae, resolverOf(Map.of("AE", ae)), Set.of("DM")).getViolations().size());
+                run(rule, ae, RealTables.inventoryOf(ae, dm), Set.of("DM")).getViolations().size());
     }
 
 
@@ -495,8 +517,7 @@ class AbsentDatasetSkipTest
     {
         Rule rule = load("{\"Core\":{\"Id\":\"R1\"},"
                 + "\"Sensitivity\":\"Record\",\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
-                + "\"Match_Datasets\":[{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"]},"
-                + "{\"Name\":\"TS\",\"Keys\":[\"STUDYID\"]}],"
+                // dotted-only, see DM_DEPENDENT
                 + "\"Check\":{\"expression\":\"empty(DM.AGE) and empty(TS.TSVAL)\"},"
                 + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}");
         IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").col("STUDYID", "S").build();

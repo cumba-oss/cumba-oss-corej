@@ -22,7 +22,7 @@ import org.jspecify.annotations.Nullable;
  * {@code DataTableColumnMeta} answers {@code null} and NPEs (the same reason
  * {@code ChildMatchPreMergerTest} carries its own real-table fixture).
  */
-final class RealTables
+public final class RealTables
 {
 
     private final String name;
@@ -108,7 +108,7 @@ final class RealTables
      * resolver). {@code resolve} is exact-name (upper-cased lookup), so a split domain code misses
      * and the union fallback engages.
      */
-    static DatasetResolver.WithInventory inventoryOf(IDataTable... tables)
+    public static DatasetResolver.WithInventory inventoryOf(IDataTable... tables)
     {
         Map<String, IDataTable> byName = new LinkedHashMap<>();
         for (IDataTable t : tables)

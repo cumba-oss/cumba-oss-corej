@@ -59,7 +59,13 @@ class RulesReportSkippedStatusChannelsTest
     }
 
 
-    /** Reads DM on every dataset it runs on, so an absent DM skips it everywhere. */
+    /**
+     * Reads DM on every dataset it runs on (a dotted read, no keyed join), so an absent DM skips it
+     * everywhere at EXECUTION time. ⚑ Dotted-only on purpose: a keyed join must declare its key
+     * (PLAN-rule-unknown-keys-gate §5.7), and a declared key makes the classifier SKIP the rule on
+     * an absent joined dataset (ruled class P8) — at classification time, which is not the channel
+     * this test observes.
+     */
     private static Rule dmDependentRule() throws Exception
     {
         return one("""
@@ -67,7 +73,6 @@ class RulesReportSkippedStatusChannelsTest
                   "Core": { "Id": "DEP-1", "Status": "Published" },
                   "Sensitivity": "Record",
                   "Description": "AGE must match DM.AGE",
-                  "Match_Datasets": [ { "Name": "DM", "Keys": ["STUDYID"] } ],
                   "Check": { "expression": "not empty(AGE) and AGE != DM.AGE" },
                   "Outcome": { "Message": "AGE does not match DM.AGE",
                                "Output_Variables": ["AGE"] }

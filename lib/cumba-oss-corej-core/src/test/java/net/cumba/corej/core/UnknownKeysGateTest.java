@@ -409,10 +409,10 @@ class UnknownKeysGateTest
     {
         // Q-1 (owner: no): parked rules are out of the gate. Before E6 the typo failed the whole
         // package at parse, before removeParkedRules could drop the rule.
-        RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"x\":{"
-                + plain("\"Executability\":\"Not Executable\","
+        RulePackage pkg = RulePackageLoader.loadFromString(KeyedJoinFixtures
+                .declared("{\"rules\":{\"x\":{" + plain("\"Executability\":\"Not Executable\","
                         + "\"Precondition\":{\"expression\":\"library_available()\",\"X\":1}")
-                + "}," + CLEAN_SIBLING + "}}");
+                        + "}," + CLEAN_SIBLING + "}}"));
         assertNull(pkg.getRules().get("x"), "the parked rule is removed");
         assertNull(pkg.getRules().get("y").getLoadError(), "the sibling is untouched");
     }
@@ -464,9 +464,10 @@ class UnknownKeysGateTest
     void aStandardsEntryExtraKeyFailsThePackageLoadNamingItsIndex()
     {
         IOException ex = assertThrows(IOException.class,
-                () -> RulePackageLoader.loadFromString("{\"standards\":[{\"id\":\"sdtmig/3-4\","
-                        + "\"role\":\"primary\"},{\"id\":\"adam/adamig-1-3\",\"X\":1}],"
-                        + "\"rules\":{" + CLEAN_SIBLING + "}}"));
+                () -> RulePackageLoader.loadFromString(
+                        KeyedJoinFixtures.declared("{\"standards\":[{\"id\":\"sdtmig/3-4\","
+                                + "\"role\":\"primary\"},{\"id\":\"adam/adamig-1-3\",\"X\":1}],"
+                                + "\"rules\":{" + CLEAN_SIBLING + "}}")));
         assertTrue(ex.getMessage().contains("unknown key 'X'"), ex.getMessage());
         assertTrue(ex.getMessage().contains("standards[1]"), ex.getMessage());
         assertTrue(ex.getMessage().contains("'id'") && ex.getMessage().contains("'role'"),
@@ -477,9 +478,9 @@ class UnknownKeysGateTest
     @Test
     void aWellFormedStandardsListStillBindsThroughTheRecord() throws IOException
     {
-        RulePackage pkg = RulePackageLoader.loadFromString(
+        RulePackage pkg = RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(
                 "{\"standards\":[{\"id\":\"sdtmig/3-4\",\"role\":\"companion\"},{\"id\":\"x\"}],"
-                        + "\"rules\":{" + CLEAN_SIBLING + "}}");
+                        + "\"rules\":{" + CLEAN_SIBLING + "}}"));
         assertNotNull(pkg.getStandards());
         assertEquals(2, pkg.getStandards().size());
         assertEquals("sdtmig/3-4", pkg.getStandards().get(0).id());
@@ -519,13 +520,14 @@ class UnknownKeysGateTest
     @Test
     void thePackageArmsHintToo()
     {
-        IOException pkg = assertThrows(IOException.class,
-                () -> RulePackageLoader.loadFromString("{\"Rules\":{" + CLEAN_SIBLING + "}}"));
+        IOException pkg = assertThrows(IOException.class, () -> RulePackageLoader
+                .loadFromString(KeyedJoinFixtures.declared("{\"Rules\":{" + CLEAN_SIBLING + "}}")));
         assertTrue(pkg.getMessage().contains("unknown key 'Rules'"), pkg.getMessage());
         assertTrue(pkg.getMessage().contains("did you mean 'rules'?"), pkg.getMessage());
         IOException std = assertThrows(IOException.class,
-                () -> RulePackageLoader.loadFromString("{\"standards\":[{\"Id\":\"sdtmig/3-4\"}],"
-                        + "\"rules\":{" + CLEAN_SIBLING + "}}"));
+                () -> RulePackageLoader.loadFromString(
+                        KeyedJoinFixtures.declared("{\"standards\":[{\"Id\":\"sdtmig/3-4\"}],"
+                                + "\"rules\":{" + CLEAN_SIBLING + "}}")));
         assertTrue(std.getMessage().contains("unknown key 'Id' under 'standards[0]'"),
                 std.getMessage());
         assertTrue(std.getMessage().contains("did you mean 'id'?"), std.getMessage());
@@ -567,11 +569,12 @@ class UnknownKeysGateTest
     {
         // Review E5: the very key that is wrong is the rule's identity — the package map key
         // names it instead of "<unknown>".
-        RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"my-rule\":{"
-                + "\"Core\":{\"ID\":\"T-UKG\"},\"Sensitivity\":\"Record\","
-                + "\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},"
-                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEQ\"]},"
-                + "\"Check\":{\"expression\":\"not empty(AESEQ)\"}}}}");
+        RulePackage pkg = RulePackageLoader
+                .loadFromString(KeyedJoinFixtures.declared("{\"rules\":{\"my-rule\":{"
+                        + "\"Core\":{\"ID\":\"T-UKG\"},\"Sensitivity\":\"Record\","
+                        + "\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},"
+                        + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"AESEQ\"]},"
+                        + "\"Check\":{\"expression\":\"not empty(AESEQ)\"}}}}"));
         String error = pkg.getRules().get("my-rule").getLoadError();
         assertNotNull(error);
         assertTrue(error.contains("[my-rule] unknown key 'ID' under 'Core'"), error);
@@ -588,7 +591,7 @@ class UnknownKeysGateTest
         // Review P1: presentKeys (a fresh Jackson introspection per block) was 69 % of a clean
         // corpus load when computed before the loop; it is error-path only now.
         long before = RulePackageLoader.PRESENT_KEYS_INTROSPECTIONS.sum();
-        RulePackageLoader.loadFromString(FULL_PACKAGE);
+        RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(FULL_PACKAGE));
         assertEquals(before, RulePackageLoader.PRESENT_KEYS_INTROSPECTIONS.sum(),
                 "a clean load must not introspect a single bean for hints");
         loadX(plain("\"Outcom\":1"));
@@ -856,7 +859,7 @@ class UnknownKeysGateTest
             {
                 try
                 {
-                    RulePackageLoader.loadFromString(json);
+                    RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(json));
                     failures.add(e.getKey().getSimpleName() + ": package loaded despite " + plant);
                 }
                 catch (IOException expected)
@@ -869,7 +872,7 @@ class UnknownKeysGateTest
                 }
                 continue;
             }
-            RulePackage pkg = RulePackageLoader.loadFromString(json);
+            RulePackage pkg = RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(json));
             String ruleKey = e.getValue().substring("/rules/".length()).split("/", -1)[0];
             String error = pkg.getRules().get(ruleKey).getLoadError();
             if (error == null || !error.contains("unknown key '" + plant + "'"))
@@ -902,7 +905,8 @@ class UnknownKeysGateTest
     @Test
     void everyBoundKeyStillLoads() throws IOException
     {
-        RulePackage pkg = RulePackageLoader.loadFromString(FULL_PACKAGE);
+        RulePackage pkg = RulePackageLoader
+                .loadFromString(KeyedJoinFixtures.declared(FULL_PACKAGE));
         assertEquals(3, pkg.getRules().size());
         for (Map.Entry<String, Rule> e : pkg.getRules().entrySet())
         {

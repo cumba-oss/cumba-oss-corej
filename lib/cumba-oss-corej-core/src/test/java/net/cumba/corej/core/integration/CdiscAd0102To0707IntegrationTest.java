@@ -52,9 +52,16 @@ class CdiscAd0102To0707IntegrationTest
     }
 
 
+    /**
+     * Inventory-aware, since {@code PLAN-rule-unknown-keys-gate} §5.7: every shipped keyed join
+     * declares its key in {@code Requirements.Variables}, and the declared {@code All_Or_None}
+     * group is decided against the inventory — a plain lambda cannot enumerate it and the rule
+     * would SKIP as undecidable instead of running.
+     */
     private static DatasetResolver resolverOf(Map<String, IDataTable> tables)
     {
-        return tables::get;
+        return net.cumba.corej.core.exec.RealTables
+                .inventoryOf(tables.values().toArray(IDataTable[]::new));
     }
 
 

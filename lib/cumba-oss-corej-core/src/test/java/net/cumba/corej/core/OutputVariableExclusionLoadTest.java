@@ -29,7 +29,8 @@ class OutputVariableExclusionLoadTest
 
     private static Rule load(String body) throws Exception
     {
-        RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"R1\":" + body + "}}");
+        RulePackage pkg = RulePackageLoader
+                .loadFromString(KeyedJoinFixtures.declared("{\"rules\":{\"R1\":" + body + "}}"));
         Rule rule = pkg.getRules().get("R1");
         assertNotNull(rule);
         return rule;

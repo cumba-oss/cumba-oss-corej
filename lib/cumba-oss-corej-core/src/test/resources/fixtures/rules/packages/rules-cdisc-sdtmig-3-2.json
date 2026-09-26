@@ -81,7 +81,14 @@
         "Variables": {
           "All": [
             "--DTC",
-            "--DY"
+            "--DY",
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "DM.USUBJID"
+            ]
           ]
         }
       },
@@ -138,7 +145,14 @@
       "Requirements": {
         "Variables": {
           "All": [
-            "--DY"
+            "--DY",
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "DM.USUBJID"
+            ]
           ]
         }
       },

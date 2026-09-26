@@ -2762,6 +2762,12 @@ public class RulePackageLoader
             // fields), and the JSON round-trip clones (TokenExpander, RuleSpecialiser) happen at
             // generation time, after every load gate.
             validateUnknownKeys(rule, errors);
+            // PLAN-rule-unknown-keys-gate §5.7 — the join-key authoring gate the owner ruled for
+            // the LOADER (PLAN-join-key-authoring-gate Q3 "arm the ratchet"): every keyed
+            // Match_Datasets entry declares its key columns, so a study missing a key SKIPS the
+            // rule instead of flooding. The corpus lint JoinKeyDeclarationLintTest is its
+            // corpus-side twin; this arm reaches user and external packages too (T1-4 a).
+            validateJoinKeyDeclarations(rule, errors);
             // Gate R8 — an AUTHORED Precondition. Runs here, i.e. BEFORE
             // injectInlineOperationGates (finishLoad), so it judges the authored document and never
             // the loader's own injected availability terms.
@@ -3446,6 +3452,227 @@ public class RulePackageLoader
         reportThresholdKeys(rule, errors);
         validateUnknownKeys(rule, errors);
         return errors;
+    }
+
+    // ---------------------------------------------------------------------
+    // PLAN-rule-unknown-keys-gate §5.7 — the join-key declaration gate (owner:
+    // PLAN-join-key-authoring-gate Q3)
+    // ---------------------------------------------------------------------
+
+    /** The guide heading the join-key messages point at. */
+    private static final String JOIN_KEY_GUIDE = "rule-guide authoring/joins.md, 'Declare the key"
+            + " — required for every keyed join'";
+
+    /**
+     * Every keyed {@code Match_Datasets} entry declares its key columns in
+     * {@code Requirements.Variables} — the <b>loader</b> half of the join-key authoring gate
+     * ({@code PLAN-join-key-authoring-gate} §6 Q1–Q9, ruled 2026-09-25; carried into
+     * {@code PLAN-rule-unknown-keys-gate} §5.7). Without the declaration a study missing a key on
+     * one side <b>floods</b> (every primary row fails to match) and a study missing every key on
+     * both sides reaches the join's all-absent execution error; with it the rule SKIPS. The shape
+     * rules are the corpus lint's ({@code JoinKeyDeclarationLintTest}), and no named exemption
+     * exists — every exception is a shape:
+     * <ul>
+     * <li><b>ordinary entry</b> ({@code Name: DS}, single- or multi-key, any {@code Join_Type},
+     * self-joins included): per key column an {@code All_Or_None} group holding the bare key and
+     * {@code DS.KEY} (a sided key: {@code LEFT} and {@code DS.RIGHT}) whose every member is a side
+     * of THAT key across the rule's ordinary entries (one group may pair one bare key with several
+     * joined datasets — Q6 / P1); plus the entry's <b>first</b> key bare in {@code All} (Q9);</li>
+     * <li><b>{@code Child: true}</b> (SUPP--, CO, SQ--, RELREC primaries): every key bare in
+     * {@code All}, nothing on the parent side, and no group naming the key — unless an ordinary
+     * entry of the same rule keys on it too (review round 2 M1 of that plan);</li>
+     * <li><b>expansion template</b> ({@code &}-token name or key): the first key bare in
+     * {@code All} when it is not a token; token keys are exempt BY CONSTRUCTION — gate R6 bars an
+     * expansion token from {@code Requirements.Variables} (Q5).</li>
+     * </ul>
+     * Entries without {@code Keys} (a RELREC entry, a filter-only join) declare nothing. Type
+     * suffixes ({@code :N}) are stripped and names compared case-insensitively, as the lint does.
+     */
+    static void validateJoinKeyDeclarations(Rule rule, List<String> errors)
+    {
+        List<net.cumba.corej.core.model.MatchDataset> joins = rule.getMatchDatasets();
+        if (joins == null)
+        {
+            return;
+        }
+        VariableRequirement vars = rule.getRequirements() == null ? null
+                : rule.getRequirements().getVariables();
+        java.util.Set<String> all = foldedEntries(vars == null ? null : vars.getAll());
+        List<java.util.Set<String>> groups = new ArrayList<>();
+        if (vars != null && vars.getAllOrNoneGroups() != null)
+        {
+            vars.getAllOrNoneGroups().forEach(g -> groups.add(foldedEntries(g)));
+        }
+        for (net.cumba.corej.core.model.MatchDataset md : joins)
+        {
+            if (md == null)
+            {
+                continue;
+            }
+            List<String> left = md.getKeys();
+            List<String> right = md.getRightKeys();
+            if (left == null || right == null || left.isEmpty() || left.size() != right.size()
+                    || md.getName() == null)
+            {
+                // no keys, a malformed sided element (checkSidedKeys reports it), or no dataset
+                // name to declare against (its own gate's business)
+                continue;
+            }
+            String name = md.getName();
+            String where = "[" + ruleId(rule) + "] Match_Datasets '" + name + "'";
+            if (isExpansionTemplateEntry(md))
+            {
+                String first = left.get(0);
+                if (!first.startsWith("&") && !all.contains(foldKey(first)))
+                {
+                    errors.add(where + ": first key " + first
+                            + " is not bare in Requirements.Variables.All — " + JOIN_KEY_GUIDE);
+                }
+                continue;
+            }
+            if (Boolean.TRUE.equals(md.getChild()))
+            {
+                for (String k : left)
+                {
+                    if (!all.contains(foldKey(k)))
+                    {
+                        errors.add(where + ": Child key " + k
+                                + " is not bare in Requirements.Variables.All — a Child entry's"
+                                + " parent is resolved per row, so its keys are declared bare —"
+                                + " " + JOIN_KEY_GUIDE);
+                    }
+                    if (groups.stream().anyMatch(g -> g.contains(foldKey(k)))
+                            && !keysAnOrdinaryEntry(joins, k))
+                    {
+                        errors.add(where + ": Child key " + k
+                                + " is named by an All_Or_None group — a Child key is declared"
+                                + " bare in All only (no ordinary entry of this rule joins on it) — "
+                                + JOIN_KEY_GUIDE);
+                    }
+                }
+                continue;
+            }
+            if (!all.contains(foldKey(left.get(0))))
+            {
+                errors.add(where + ": first key " + left.get(0)
+                        + " is not bare in Requirements.Variables.All — " + JOIN_KEY_GUIDE);
+            }
+            for (int i = 0; i < left.size(); i++)
+            {
+                String bare = foldKey(left.get(i));
+                String joined = foldKey(name + "." + right.get(i));
+                java.util.Set<String> sides = joinSidesOf(joins, left.get(i));
+                java.util.Set<String> group = groups.stream()
+                        .filter(g -> g.contains(bare) && g.contains(joined)).findFirst()
+                        .orElse(null);
+                if (group == null)
+                {
+                    errors.add(where + ": key " + left.get(i)
+                            + " has no Requirements.Variables.All_Or_None group holding both "
+                            + left.get(i) + " and " + name + "." + right.get(i)
+                            + " — every keyed join declares its key, so a study missing it SKIPS"
+                            + " the rule instead of flooding — " + JOIN_KEY_GUIDE);
+                    continue;
+                }
+                for (String member : group)
+                {
+                    if (!sides.contains(member))
+                    {
+                        errors.add(where + ": the All_Or_None group of key " + left.get(i)
+                                + " carries " + member + ", which is not a side of key "
+                                + left.get(i) + " — " + JOIN_KEY_GUIDE);
+                    }
+                }
+            }
+        }
+    }
+
+
+    /** An entry named by an expansion token, or keyed on one ({@code &DOM}, {@code &DOMSEQ}). */
+    private static boolean isExpansionTemplateEntry(net.cumba.corej.core.model.MatchDataset md)
+    {
+        List<String> left = md.getKeys();
+        List<String> right = md.getRightKeys();
+        return String.valueOf(md.getName()).startsWith("&")
+                || (left != null && left.stream().anyMatch(k -> k.startsWith("&")))
+                || (right != null && right.stream().anyMatch(k -> k.startsWith("&")));
+    }
+
+
+    /**
+     * The legal members of a key's group: the bare key, and {@code NAME.RIGHT} for every ordinary
+     * entry of the rule that joins on that bare key.
+     */
+    private static java.util.Set<String> joinSidesOf(
+            List<net.cumba.corej.core.model.MatchDataset> joins, String bareKey)
+    {
+        java.util.Set<String> sides = new java.util.LinkedHashSet<>();
+        sides.add(foldKey(bareKey));
+        for (net.cumba.corej.core.model.MatchDataset md : joins)
+        {
+            if (md == null || Boolean.TRUE.equals(md.getChild()) || isExpansionTemplateEntry(md))
+            {
+                continue;
+            }
+            List<String> left = md.getKeys();
+            List<String> right = md.getRightKeys();
+            if (left == null || right == null)
+            {
+                continue;
+            }
+            for (int i = 0; i < Math.min(left.size(), right.size()); i++)
+            {
+                if (foldKey(left.get(i)).equals(foldKey(bareKey)))
+                {
+                    sides.add(foldKey(md.getName() + "." + right.get(i)));
+                }
+            }
+        }
+        return sides;
+    }
+
+
+    /** Whether an ORDINARY entry (neither Child nor template) of the rule joins on the bare key. */
+    private static boolean keysAnOrdinaryEntry(List<net.cumba.corej.core.model.MatchDataset> joins,
+            String bareKey)
+    {
+        for (net.cumba.corej.core.model.MatchDataset md : joins)
+        {
+            if (md == null || Boolean.TRUE.equals(md.getChild()) || isExpansionTemplateEntry(md))
+            {
+                continue;
+            }
+            List<String> left = md.getKeys();
+            if (left != null && left.stream().anyMatch(k -> foldKey(k).equals(foldKey(bareKey))))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    private static java.util.Set<String> foldedEntries(@Nullable List<String> entries)
+    {
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        if (entries != null)
+        {
+            for (String e : entries)
+            {
+                if (e != null)
+                {
+                    out.add(foldKey(e));
+                }
+            }
+        }
+        return out;
+    }
+
+
+    /** The lint's fold: the type suffix stripped, upper-cased. */
+    private static String foldKey(String entry)
+    {
+        return stripTypeSuffix(entry.trim()).toUpperCase(java.util.Locale.ROOT);
     }
 
 

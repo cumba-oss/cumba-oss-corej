@@ -447,16 +447,19 @@ class StudyValidationServiceUseCaseTest
 
 
     /**
-     * A dependant of dataset {@code XX} (absent from the study): {@code XX.USUBJID} is all-missing,
-     * so both DM rows fire — unless the run reports XX's absence, in which case Fix #222 silences
-     * it ({@code SKIPPED}, "Rule skipped …") in favour of the presence rule.
+     * A dependant of dataset {@code XX} (absent from the study), reading it through a dotted
+     * reference only: {@code XX.USUBJID} is all-missing, so both DM rows fire — unless the run
+     * reports XX's absence, in which case Fix #222 silences it ({@code SKIPPED}, "Rule skipped …")
+     * in favour of the presence rule. ⚑ Dotted-only on purpose: a KEYED join must declare its key
+     * (PLAN-rule-unknown-keys-gate §5.7), and a declared key makes the classifier SKIP the rule on
+     * an absent joined dataset before Fix #222 is reached (ruled class P8), so the keyed shape can
+     * no longer show the flood this test's subject silences.
      */
     private static String xxDependant()
     {
         return """
                 "UC-DEP": {
                   "Core": {"Id": "UC-DEP"},
-                  "Match_Datasets": [ { "Name": "XX", "Keys": ["USUBJID"] } ],
                   "Check": {"expression": "not empty(USUBJID) and USUBJID != XX.USUBJID"},
                   "Outcome": {"Message": "UC-DEP fired", "Output_Variables": ["USUBJID"]}
                 }""";

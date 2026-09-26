@@ -22,7 +22,8 @@ class UnknownKeyErrorsCompositeTest
 
     private static Rule load(String members) throws IOException
     {
-        Rule rule = RulePackageLoader.loadFromString("{\"rules\":{\"x\":{" + members + "}}}")
+        Rule rule = RulePackageLoader
+                .loadFromString(KeyedJoinFixtures.declared("{\"rules\":{\"x\":{" + members + "}}}"))
                 .getRules().get("x");
         assertNotNull(rule);
         return rule;

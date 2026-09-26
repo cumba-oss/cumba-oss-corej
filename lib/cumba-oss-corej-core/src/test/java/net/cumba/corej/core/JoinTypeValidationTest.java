@@ -54,8 +54,9 @@ class JoinTypeValidationTest
 
     private static Rule load(String joinTypeJson) throws IOException
     {
-        Rule rule = RulePackageLoader.loadFromString(packageWithJoinType(joinTypeJson)).getRules()
-                .get("x");
+        Rule rule = RulePackageLoader
+                .loadFromString(KeyedJoinFixtures.declared(packageWithJoinType(joinTypeJson)))
+                .getRules().get("x");
         assertNotNull(rule, "the fixture must bind, or nothing below is measuring anything");
         return rule;
     }
@@ -220,7 +221,8 @@ class JoinTypeValidationTest
                 {"Name":"ADAE","Keys":["USUBJID"],"Join_Type":"outer"}],\
                 "Outcome":{"Message":"m","Output_Variables":["USUBJID","AGE"]},\
                 "Check":{"all":[{"expression": "AGE != ADSL.AGE"}]}}}}""";
-        Rule rule = RulePackageLoader.loadFromString(json).getRules().get("x");
+        Rule rule = RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(json)).getRules()
+                .get("x");
         assertNotNull(rule);
         String error = rule.getLoadError();
         assertNotNull(error, "the second entry's value is just as fatal as the first's");

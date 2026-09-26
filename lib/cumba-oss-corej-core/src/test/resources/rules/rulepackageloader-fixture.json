@@ -523,7 +523,20 @@
         }
       },
       "Sensitivity": "Record",
-      "id": "4162b46f-9e19-41ff-ab42-9a26ee5b37f9"
+      "id": "4162b46f-9e19-41ff-ab42-9a26ee5b37f9",
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "STUDYID"
+          ],
+          "All_Or_None": [
+            [
+              "STUDYID",
+              "TS.STUDYID"
+            ]
+          ]
+        }
+      }
     },
     "029342ac-3023-43f2-8d13-444142f50383": {
       "Authorities": [
@@ -729,7 +742,20 @@
         "Use_Case": "INDH"
       },
       "Sensitivity": "Record",
-      "id": "029342ac-3023-43f2-8d13-444142f50383"
+      "id": "029342ac-3023-43f2-8d13-444142f50383",
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "DS.USUBJID"
+            ]
+          ]
+        }
+      }
     },
     "206f189a-42aa-4bce-b2cf-e9d3a6d6651f": {
       "Authorities": [
@@ -1070,7 +1096,16 @@
         "Use_Case": "NONCLIN, INDH, PROD"
       },
       "Sensitivity": "Record",
-      "id": "206f189a-42aa-4bce-b2cf-e9d3a6d6651f"
+      "id": "206f189a-42aa-4bce-b2cf-e9d3a6d6651f",
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "USUBJID",
+            "IDVAR",
+            "IDVARVAL"
+          ]
+        }
+      }
     },
     "18eac328-00a4-419d-a128-764867659acf": {
       "Authorities": [
@@ -1371,7 +1406,21 @@
         }
       },
       "Sensitivity": "Group",
-      "id": "72fc8a45-adcc-423b-b782-ffaabf9535e8"
+      "id": "72fc8a45-adcc-423b-b782-ffaabf9535e8",
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "DM.USUBJID",
+              "AE.USUBJID"
+            ]
+          ]
+        }
+      }
     }
   }
 }

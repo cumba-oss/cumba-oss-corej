@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Map;
 import java.util.Set;
+import net.cumba.corej.core.KeyedJoinFixtures;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
@@ -71,12 +72,15 @@ class AbsentDatasetSkipCrossStandardCollapseTest
     /**
      * {@code CDISC-AD0053} as shipped in {@code rules/rules-cdisc-adamig-1-3.json} (read
      * 2026-08-11). The {@code var_exists} conjunct sits in the <b>top-level</b> {@code and}, so on
-     * an absent {@code DM} the rule really is vacuous.
+     * an absent {@code DM} the rule really is vacuous. ⚑ Read here through a DOTTED reference,
+     * without the shipped keyed join: since {@code PLAN-rule-unknown-keys-gate} §5.7 a keyed join
+     * must declare its key, and a declared key makes the requirement gate SKIP the rule on an
+     * absent DM (ruled class P8) before the collapse arm is reached — the dotted read is the legal
+     * shape that still reaches it.
      */
     private static final String AD0053 = """
             {"Core":{"Id":"CDISC-AD0053"},"Sensitivity":"Record",
              "Scope":{"Domains":{"Include":["ALL"]}},
-             "Match_Datasets":[{"Name":"DM","Keys":["USUBJID"],"Join_Type":"left"}],
              "Check":{"expression":"var_exists(DM.USUBJID) and empty(DM.USUBJID)"},
              "Outcome":{"Message":"m","Output_Variables":["USUBJID"]}}""";
 
@@ -88,7 +92,6 @@ class AbsentDatasetSkipCrossStandardCollapseTest
     private static final String AD0053_UNGUARDED = """
             {"Core":{"Id":"CDISC-AD0053"},"Sensitivity":"Record",
              "Scope":{"Domains":{"Include":["ALL"]}},
-             "Match_Datasets":[{"Name":"DM","Keys":["USUBJID"],"Join_Type":"left"}],
              "Check":{"expression":"empty(DM.USUBJID)"},
              "Outcome":{"Message":"m","Output_Variables":["USUBJID"]}}""";
 
@@ -118,7 +121,8 @@ class AbsentDatasetSkipCrossStandardCollapseTest
 
     private static Rule load(String body) throws Exception
     {
-        RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"R1\":" + body + "}}");
+        RulePackage pkg = RulePackageLoader
+                .loadFromString(KeyedJoinFixtures.declared("{\"rules\":{\"R1\":" + body + "}}"));
         Rule rule = pkg.getRules().get("R1");
         assertNull(rule.getLoadError(), "rule must load cleanly: " + rule.getLoadError());
         assertNotNull(rule.getCheckExpr(), "the native Check expression is what decide() walks");

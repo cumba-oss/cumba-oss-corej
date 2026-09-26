@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.cumba.corej.core.KeyedJoinFixtures;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.metadata.MetadataKeys;
 import net.cumba.corej.core.metadata.MetadataLibraryProvider;
@@ -63,6 +64,21 @@ class AbsentDatasetSkipCrossStandardTest
     private static final String AD0204 = """
             {"Core":{"Id":"CDISC-AD0204"},"Sensitivity":"Record",
              "Scope":{"Domains":{"Include":["ALL"]}},
+             "Check":{"expression":"var_exists(DM.AGE) and AGE != DM.AGE"},
+             "Outcome":{"Message":"m","Output_Variables":["AGE"]}}""";
+
+    /**
+     * ⚑ The constants above read DM through a DOTTED reference only, since
+     * {@code PLAN-rule-unknown-keys-gate} §5.7: a keyed join must declare its key, and a declared
+     * key makes the requirement gate SKIP the rule on an absent joined dataset (ruled class P8 of
+     * {@code PLAN-join-key-authoring-gate}) before this arm is reached. The shipped
+     * {@code CDISC-AD0204} IS keyed and declared — on an absent DM it SKIPs by requirement; the
+     * dotted read is the legal shape the cross-standard arm still serves. {@link #AD0204_KEYED} is
+     * the declared keyed twin for the cases where DM is supplied.
+     */
+    private static final String AD0204_KEYED = """
+            {"Core":{"Id":"CDISC-AD0204"},"Sensitivity":"Record",
+             "Scope":{"Domains":{"Include":["ALL"]}},
              "Match_Datasets":[{"Name":"DM","Keys":["USUBJID"]}],
              "Check":{"expression":"var_exists(DM.AGE) and AGE != DM.AGE"},
              "Outcome":{"Message":"m","Output_Variables":["AGE"]}}""";
@@ -71,7 +87,6 @@ class AbsentDatasetSkipCrossStandardTest
     private static final String AD0640 = """
             {"Core":{"Id":"CDISC-AD0640"},"Sensitivity":"Record",
              "Scope":{"Domains":{"Include":["ALL"]}},
-             "Match_Datasets":[{"Name":"AE","Keys":["USUBJID"]}],
              "Check":{"expression":"var_exists(AE.AETRTEM) and not var_exists(\\"AETRTEM\\")"},
              "Outcome":{"Message":"m","Output_Variables":["USUBJID"]}}""";
 
@@ -84,7 +99,6 @@ class AbsentDatasetSkipCrossStandardTest
     private static final String NON_COLLAPSING = """
             {"Core":{"Id":"R-OR"},"Sensitivity":"Record",
              "Scope":{"Domains":{"Include":["ALL"]}},
-             "Match_Datasets":[{"Name":"DM","Keys":["USUBJID"]}],
              "Check":{"expression":"(FLAG == \\"X\\" or empty(DM.RFSTDTC)) and not empty(DY)"},
              "Outcome":{"Message":"m","Output_Variables":["DY"]}}""";
 
@@ -92,14 +106,13 @@ class AbsentDatasetSkipCrossStandardTest
     private static final String BOTH_KINDS = """
             {"Core":{"Id":"R-BOTH"},"Sensitivity":"Record",
              "Scope":{"Domains":{"Include":["ALL"]}},
-             "Match_Datasets":[{"Name":"DM","Keys":["USUBJID"]},
-                               {"Name":"TS","Keys":["STUDYID"]}],
              "Check":{"expression":"var_exists(DM.AGE) and not empty(TS.TSVAL)"},
              "Outcome":{"Message":"m","Output_Variables":["USUBJID"]}}""";
 
     private static Rule load(String ruleBody) throws Exception
     {
-        RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"R1\":" + ruleBody + "}}");
+        RulePackage pkg = RulePackageLoader.loadFromString(
+                KeyedJoinFixtures.declared("{\"rules\":{\"R1\":" + ruleBody + "}}"));
         Rule rule = pkg.getRules().get("R1");
         assertNull(rule.getLoadError(), "rule must load cleanly: " + rule.getLoadError());
         assertNotNull(rule.getCheckExpr(), "the native Check expression is what decide() walks");
@@ -131,14 +144,14 @@ class AbsentDatasetSkipCrossStandardTest
         // The single-leaf `<col> != DM.<col>` shape — PMDA-AD0204's pre-guard form. Inline rather
         // than a constant: Error Prone's InlineFormatString rejects a single-use format-string
         // constant.
-        Rule rule = load("""
+        // ⚑ Dotted-only since §5.7 (see AD0204): the Join_Type clear this method used to perform
+        // on its keyed entry is moot with no entry to clear — the measurement it reconstructed is
+        // recorded in the javadoc above.
+        return load("""
                 {"Core":{"Id":"%1$s"},"Sensitivity":"Record",
                  "Scope":{"Domains":{"Include":["ALL"]}},
-                 "Match_Datasets":[{"Name":"DM","Keys":["USUBJID"]}],
                  "Check":{"all":[{"expression": "`%2$s` != `DM.%2$s`"}]},
                  "Outcome":{"Message":"m","Output_Variables":["%2$s"]}}""".formatted(id, column));
-        rule.getMatchDatasets().forEach(md -> md.setJoinType(null));
-        return rule;
     }
 
 
@@ -211,15 +224,16 @@ class AbsentDatasetSkipCrossStandardTest
     @Test
     void dmPresentEvaluatesNormally() throws Exception
     {
-        Rule rule = load(AD0204);
+        Rule rule = load(AD0204_KEYED);
         IDataTable adsl = adsl();
         IDataTable dm = MockTable.of().name("DM").col("USUBJID", "S1", "S2").col("AGE", "99", "32")
                 .build();
         // DM IS in the cross-standard catalogue and IS supplied ⇒ the rule really runs, and finds
         // the genuine mismatch on row 0. This is the neuter control for the test above: remove the
-        // `resolve(D) != null` short-circuit and this assertion goes red.
-        RuleExecutionResult r = run(rule, adsl, resolverOf(Map.of("ADSL", adsl, "DM", dm)),
-                Set.of(), Set.of("DM"));
+        // `resolve(D) != null` short-circuit and this assertion goes red. (Inventory-aware
+        // resolver: the declared key's group is decided against the inventory.)
+        RuleExecutionResult r = run(rule, adsl, RealTables.inventoryOf(adsl, dm), Set.of(),
+                Set.of("DM"));
         assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus());
         assertEquals(1, r.getViolations().size(), "31 != 99 on row 0 is a genuine finding");
     }
@@ -249,7 +263,7 @@ class AbsentDatasetSkipCrossStandardTest
         // target-ness test would SKIP precisely the rules this fix exists to run, so the predicate
         // must be "was it loaded at all". Proven here through a real LibraryValidator: DM is a
         // REFERENCE (it never appears as a report member) and the rule still evaluates.
-        Rule rule = load(AD0204);
+        Rule rule = load(AD0204_KEYED);
         IDataTable dm = MockTable.of().name("DM").col("USUBJID", "S1", "S2").col("AGE", "99", "32")
                 .build();
         ValidationReport report = LibraryValidator.builder().provider(adamProvider())

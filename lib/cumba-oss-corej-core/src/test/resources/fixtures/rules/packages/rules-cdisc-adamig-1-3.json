@@ -143,7 +143,14 @@
       "Requirements": {
         "Variables": {
           "All": [
-            "DM.USUBJID"
+            "DM.USUBJID",
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "DM.USUBJID"
+            ]
           ]
         }
       },
@@ -269,7 +276,14 @@
       "Requirements": {
         "Variables": {
           "All": [
-            "APERIOD"
+            "APERIOD",
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "ADSL.USUBJID"
+            ]
           ]
         }
       },
@@ -318,7 +332,14 @@
       "Requirements": {
         "Variables": {
           "All": [
-            "APERIOD"
+            "APERIOD",
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "ADSL.USUBJID"
+            ]
           ]
         }
       },
@@ -367,7 +388,14 @@
       "Requirements": {
         "Variables": {
           "All": [
-            "APERIOD"
+            "APERIOD",
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "ADSL.USUBJID"
+            ]
           ]
         }
       },
@@ -416,7 +444,14 @@
         "Variables": {
           "All": [
             "AGE",
-            "DM.AGE"
+            "DM.AGE",
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "DM.USUBJID"
+            ]
           ]
         }
       },
@@ -466,7 +501,14 @@
         "Variables": {
           "All": [
             "ARM",
-            "DM.ARM"
+            "DM.ARM",
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "DM.USUBJID"
+            ]
           ]
         }
       },
@@ -516,7 +558,14 @@
         "Variables": {
           "All": [
             "ACTARM",
-            "DM.ACTARM"
+            "DM.ACTARM",
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "DM.USUBJID"
+            ]
           ]
         }
       },
@@ -580,6 +629,19 @@
           "APERIOD",
           "ASPER"
         ]
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "ADSL.USUBJID"
+            ]
+          ]
+        }
       }
     },
     "CDISC-AD0500": {
@@ -623,6 +685,19 @@
         "Output_Variables": [
           "APHASE"
         ]
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "ADSL.USUBJID"
+            ]
+          ]
+        }
       }
     },
     "CDISC-AD0591": {
@@ -643,7 +718,7 @@
       "Executability": "Fully Executable",
       "ExecutabilityHint": {
         "Category": "fully executable",
-        "Detail": "Declared-token template. The Expansion block binds &VAR to every variable this dataset shares by name with ADSL, and the engine emits one concrete rule per shared variable, each comparing that variable against ADSL's after an inner join on STUDYID / USUBJID \u2014 the CDISC-CG0218 / PMDA-AD0208 shape. The join keys are not expanded over: compared against themselves after merging on them they are equal by construction. When ADSL is not among the loaded datasets, or the resolver cannot enumerate other datasets, the rule is skipped with a stated reason rather than expanded to nothing. NARROWING, stated so it is not invisible: the two non_empty guards are carried over verbatim from the pre-expansion rule. The ADSL-side guard suppresses rows whose ADSL value is genuinely empty; a subject absent from ADSL is dropped by the inner join and is reported by CDISC-AD0256, the ADSL-membership rule (D-TA-2). The dataset-side guard means a value present in ADSL but missing here is NOT reported, which ADaMIG 2.3.1 arguably does require; logged as SHEET-ISSUES entry 35 for the sheet author rather than changed here."
+        "Detail": "Declared-token template. The Expansion block binds &VAR to every variable this dataset shares by name with ADSL, and the engine emits one concrete rule per shared variable, each comparing that variable against ADSL's after an inner join on STUDYID / USUBJID — the CDISC-CG0218 / PMDA-AD0208 shape. The join keys are not expanded over: compared against themselves after merging on them they are equal by construction. When ADSL is not among the loaded datasets, or the resolver cannot enumerate other datasets, the rule is skipped with a stated reason rather than expanded to nothing. NARROWING, stated so it is not invisible: the two non_empty guards are carried over verbatim from the pre-expansion rule. The ADSL-side guard suppresses rows whose ADSL value is genuinely empty; a subject absent from ADSL is dropped by the inner join and is reported by CDISC-AD0256, the ADSL-membership rule (D-TA-2). The dataset-side guard means a value present in ADSL but missing here is NOT reported, which ADaMIG 2.3.1 arguably does require; logged as SHEET-ISSUES entry 35 for the sheet author rather than changed here."
       },
       "Scope": {
         "Domains": {
@@ -677,7 +752,24 @@
           "over": "shared_variables",
           "with": "ADSL"
         }
-      ]
+      ],
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "STUDYID"
+          ],
+          "All_Or_None": [
+            [
+              "STUDYID",
+              "ADSL.STUDYID"
+            ],
+            [
+              "USUBJID",
+              "ADSL.USUBJID"
+            ]
+          ]
+        }
+      }
     },
     "CDISC-AD0592": {
       "Authorities": [
@@ -721,6 +813,19 @@
           "APERIOD",
           "APERSDT"
         ]
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "ADSL.USUBJID"
+            ]
+          ]
+        }
       }
     },
     "CDISC-AD0598": {
@@ -766,6 +871,19 @@
           "ASPRSDT",
           "ADSL.P${*}S${*}SDT"
         ]
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "ADSL.USUBJID"
+            ]
+          ]
+        }
       }
     },
     "CDISC-AD0604": {
@@ -808,6 +926,19 @@
         "Output_Variables": [
           "PHSDT"
         ]
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "ADSL.USUBJID"
+            ]
+          ]
+        }
       }
     },
     "CDISC-AD0605": {
@@ -852,6 +983,19 @@
           "PHSDT",
           "ADSL.PH${*}SDT"
         ]
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "ADSL.USUBJID"
+            ]
+          ]
+        }
       }
     },
     "CDISC-AD0640": {
@@ -1216,6 +1360,19 @@
           "APERIOD",
           "ASPER"
         ]
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "ADSL.USUBJID"
+            ]
+          ]
+        }
       }
     },
     "CDISC-AD0707": {
@@ -1259,6 +1416,19 @@
           "APERIOD",
           "ASPER"
         ]
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "ADSL.USUBJID"
+            ]
+          ]
+        }
       }
     },
     "CDISC-AD0735": {
@@ -1348,6 +1518,19 @@
         "Output_Variables": [
           "TRTA"
         ]
+      },
+      "Requirements": {
+        "Variables": {
+          "All": [
+            "USUBJID"
+          ],
+          "All_Or_None": [
+            [
+              "USUBJID",
+              "ADSL.USUBJID"
+            ]
+          ]
+        }
       }
     }
   }

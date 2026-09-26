@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import net.cumba.corej.core.KeyedJoinFixtures;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.metadata.MetadataKeys;
@@ -55,7 +56,12 @@ class AbsentDatasetSkipReportTest
     }
 
 
-    /** {@code PMDA-AD0204}'s unguarded shape: floods one finding per row when DM is absent. */
+    /**
+     * {@code PMDA-AD0204}'s unguarded shape: floods one finding per row when DM is absent. ⚑ A
+     * dotted read, no keyed join: since {@code PLAN-rule-unknown-keys-gate} §5.7 a keyed join must
+     * declare its key, and a declared key makes the classifier SKIP the rule on an absent DM (ruled
+     * class P8) before Fix #222 is reached.
+     */
     private static Rule dmDependentRule() throws Exception
     {
         return one("""
@@ -63,7 +69,6 @@ class AbsentDatasetSkipReportTest
                   "Core": { "Id": "DEP-1", "Status": "Published" },
                   "Sensitivity": "Record",
                   "Description": "AGE must match DM.AGE",
-                  "Match_Datasets": [ { "Name": "DM", "Keys": ["STUDYID"] } ],
                   "Check": { "expression": "not empty(AGE) and AGE != DM.AGE" },
                   "Outcome": { "Message": "AGE does not match DM.AGE",
                                "Output_Variables": ["AGE"] }
@@ -74,7 +79,7 @@ class AbsentDatasetSkipReportTest
 
     private static Rule one(String json, String id) throws Exception
     {
-        RulePackage pkg = RulePackageLoader.loadFromString(json);
+        RulePackage pkg = RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(json));
         return pkg.getRules().get(id);
     }
 

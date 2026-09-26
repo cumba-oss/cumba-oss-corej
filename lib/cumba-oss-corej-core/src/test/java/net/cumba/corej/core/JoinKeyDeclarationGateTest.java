@@ -1,0 +1,204 @@
+package net.cumba.corej.core;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.IOException;
+import net.cumba.corej.core.model.Rule;
+import org.junit.jupiter.api.Test;
+
+/**
+ * The join-key declaration gate in the LOADER ({@code PLAN-rule-unknown-keys-gate} §5.7, carrying
+ * {@code PLAN-join-key-authoring-gate}'s owner-ruled Q3 "arm the ratchet"): a keyed
+ * {@code Match_Datasets} entry whose key columns are not declared in {@code Requirements.Variables}
+ * is a per-rule load error naming the rule, the entry and the key. The corpus lint
+ * {@code JoinKeyDeclarationLintTest} pins the same shape rules over the authored corpus; this gate
+ * reaches user and external packages, which the lint cannot see.
+ *
+ * <p>
+ * Each shape has its well-formed twin (the control) and its sabotage — one declaration removed —
+ * which must red naming rule and key: the same pairs the lint runs.
+ * </p>
+ */
+class JoinKeyDeclarationGateTest
+{
+
+    private static Rule load(String members) throws IOException
+    {
+        Rule rule = RulePackageLoader.loadFromString("{\"rules\":{\"x\":{" + members + "}}}")
+                .getRules().get("x");
+        assertNotNull(rule);
+        return rule;
+    }
+
+
+    private static String rule(String id, String requirements, String matchDatasets)
+    {
+        return "\"Core\":{\"Id\":\"" + id + "\"},\"Sensitivity\":\"Record\","
+                + "\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},"
+                + "\"Requirements\":{\"Variables\":{" + requirements + "}},\"Match_Datasets\":["
+                + matchDatasets + "],"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]},"
+                + "\"Check\":{\"expression\":\"not empty(USUBJID)\"}";
+    }
+
+
+    private static void assertClean(String members) throws IOException
+    {
+        Rule rule = load(members);
+        assertNull(rule.getLoadError(), "well-formed declaration flagged: " + rule.getLoadError());
+    }
+
+
+    private static String assertRedNaming(String members, String ruleId, String key, String what)
+        throws IOException
+    {
+        String error = load(members).getLoadError();
+        assertNotNull(error, "sabotage not reported for " + ruleId + " / " + key);
+        assertTrue(
+                error.contains("[" + ruleId + "] Match_Datasets") && error.contains(key)
+                        && error.contains(what),
+                "expected rule " + ruleId + ", key " + key + ", '" + what + "' in: " + error);
+        return error;
+    }
+
+
+    @Test
+    void singleKeyOrdinaryEntry() throws IOException
+    {
+        String md = "{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"]}";
+        assertClean(rule("T-SINGLE",
+                "\"All\":[\"USUBJID\"],\"All_Or_None\":[[\"USUBJID\",\"DM.USUBJID\"]]", md));
+        assertRedNaming(rule("T-SINGLE", "\"All_Or_None\":[[\"USUBJID\",\"DM.USUBJID\"]]", md),
+                "T-SINGLE", "USUBJID", "first key");
+        assertRedNaming(rule("T-SINGLE", "\"All\":[\"USUBJID\"]", md), "T-SINGLE", "DM.USUBJID",
+                "no Requirements.Variables.All_Or_None group");
+    }
+
+
+    @Test
+    void multiKeyEntryNeedsAGroupPerKeyAndOnlySidesInIt() throws IOException
+    {
+        String md = "{\"Name\":\"TV\",\"Keys\":[\"VISITNUM\",\"VISIT\",\"VISITDY\"]}";
+        String good = "\"All\":[\"VISITNUM:N\"],\"All_Or_None\":[[\"VISITNUM\",\"TV.VISITNUM\"],"
+                + "[\"VISIT\",\"TV.VISIT\"],[\"VISITDY\",\"TV.VISITDY\"]]";
+        assertClean(rule("T-MULTI", good, md));
+        assertRedNaming(rule("T-MULTI", good.replace(",[\"VISITDY\",\"TV.VISITDY\"]", ""), md),
+                "T-MULTI", "TV.VISITDY", "no Requirements.Variables.All_Or_None group");
+        assertRedNaming(
+                rule("T-MULTI",
+                        good.replace("[\"VISITNUM\",\"TV.VISITNUM\"]",
+                                "[\"VISITNUM\",\"TV.VISITNUM\",\"SV.EPOCH\"]"),
+                        md),
+                "T-MULTI", "SV.EPOCH", "not a side of key VISITNUM");
+    }
+
+
+    @Test
+    void sidedKeyPairsLeftWithDatasetDotRight() throws IOException
+    {
+        String md = "{\"Name\":\"TV\",\"Keys\":[{\"left\":\"VISITDY\",\"right\":\"TVSTRL\"}]}";
+        assertClean(rule("T-SIDED",
+                "\"All\":[\"VISITDY\"],\"All_Or_None\":[[\"VISITDY\",\"TV.TVSTRL\"]]", md));
+        assertRedNaming(
+                rule("T-SIDED",
+                        "\"All\":[\"VISITDY\"],\"All_Or_None\":[[\"VISITDY\",\"TV.VISITDY\"]]", md),
+                "T-SIDED", "TV.TVSTRL", "no Requirements.Variables.All_Or_None group");
+    }
+
+
+    @Test
+    void oneGroupMayPairOneKeyWithSeveralJoinedDatasets() throws IOException
+    {
+        String md = "{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"]},{\"Name\":\"AE\",\"Keys\":[\"USUBJID\"]}";
+        assertClean(rule("T-TWO",
+                "\"All\":[\"USUBJID\"],\"All_Or_None\":[[\"USUBJID\",\"DM.USUBJID\",\"AE.USUBJID\"]]",
+                md));
+        assertRedNaming(
+                rule("T-TWO",
+                        "\"All\":[\"USUBJID\"],\"All_Or_None\":[[\"USUBJID\",\"DM.USUBJID\"]]", md),
+                "T-TWO", "AE.USUBJID", "no Requirements.Variables.All_Or_None group");
+    }
+
+
+    @Test
+    void childKeysAreBareInAllAndNeverGrouped() throws IOException
+    {
+        String md = "{\"Name\":\"SUPP--\",\"Child\":true,\"Keys\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]}";
+        assertClean(rule("T-CHILD", "\"All\":[\"QNAM\",\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]", md));
+        assertRedNaming(rule("T-CHILD", "\"All\":[\"QNAM\",\"USUBJID\",\"IDVAR\"]", md), "T-CHILD",
+                "IDVARVAL", "Child key");
+        assertRedNaming(rule("T-CHILD",
+                "\"All\":[\"QNAM\",\"USUBJID\",\"IDVAR\",\"IDVARVAL\"],\"All_Or_None\":[[\"IDVAR\",\"AE.IDVAR\"]]",
+                md), "T-CHILD", "IDVAR", "named by an All_Or_None group");
+    }
+
+
+    @Test
+    void aChildKeyAlsoKeyingAnOrdinaryEntryMayBeGrouped() throws IOException
+    {
+        // The exception (that plan's review round 2, M1): the DM entry's group legitimately names
+        // USUBJID; remove the DM entry and the group is illegal again.
+        String both = "{\"Name\":\"SUPP--\",\"Child\":true,\"Keys\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]},"
+                + "{\"Name\":\"DM\",\"Keys\":[\"USUBJID\"]}";
+        String req = "\"All\":[\"QNAM\",\"USUBJID\",\"IDVAR\",\"IDVARVAL\"],\"All_Or_None\":[[\"USUBJID\",\"DM.USUBJID\"]]";
+        assertClean(rule("T-CHILD-DM", req, both));
+        assertRedNaming(rule("T-CHILD-DM", req,
+                "{\"Name\":\"SUPP--\",\"Child\":true,\"Keys\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]}"),
+                "T-CHILD-DM", "USUBJID", "named by an All_Or_None group");
+        // ...and an expansion template sharing the key does NOT license the group (round 3, T1).
+        assertRedNaming(rule("T-CHILD-TPL",
+                "\"All\":[\"QNAM\",\"USUBJID\",\"IDVAR\",\"IDVARVAL\",\"STUDYID\"],\"All_Or_None\":[[\"USUBJID\",\"XX.USUBJID\"]]",
+                "{\"Name\":\"SUPP--\",\"Child\":true,\"Keys\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]},"
+                        + "{\"Name\":\"&DOM\",\"Keys\":[\"STUDYID\",\"USUBJID\",\"&DOMSEQ\"]}"),
+                "T-CHILD-TPL", "USUBJID", "named by an All_Or_None group");
+    }
+
+
+    @Test
+    void anExpansionTemplateDeclaresOnlyItsFirstBareKey() throws IOException
+    {
+        // Q5: token keys and the &DOM. half are exempt by construction (gate R6 bars them).
+        String md = "{\"Name\":\"&DOM\",\"Keys\":[\"STUDYID\",\"USUBJID\",\"&DOMSEQ\"]}";
+        String body = rule("T-TEMPLATE", "\"All\":[\"STUDYID\"]", md).replace(
+                "\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},",
+                "\"Scope\":{\"Domains\":{\"Include\":[\"ADAE\"]}},\"Expansion\":[{\"token\":\"&DOM\","
+                        + "\"over\":\"domain_from_variable\",\"pattern\":\"&DOMSEQ\"}],");
+        Rule rule = load(body.replace("\"Check\":{\"expression\":\"not empty(USUBJID)\"}",
+                "\"Check\":{\"expression\":\"not empty(`&DOMSEQ`)\"}"));
+        String error = rule.getLoadError();
+        assertTrue(error == null || !error.contains("Match_Datasets '&DOM'"),
+                "the template entry declares STUDYID bare and nothing else: " + error);
+        String sabotaged = body.replace("\"All\":[\"STUDYID\"]", "\"All\":[]").replace(
+                "\"Check\":{\"expression\":\"not empty(USUBJID)\"}",
+                "\"Check\":{\"expression\":\"not empty(`&DOMSEQ`)\"}");
+        assertRedNaming(sabotaged, "T-TEMPLATE", "STUDYID", "first key");
+    }
+
+
+    @Test
+    void anEntryWithoutKeysDeclaresNothing() throws IOException
+    {
+        assertClean(rule("T-NOKEYS", "\"All\":[\"USUBJID\"]", "{\"Name\":\"RELREC\"}"));
+        assertClean("\"Core\":{\"Id\":\"T-NOREQ\"},\"Sensitivity\":\"Record\","
+                + "\"Scope\":{\"Domains\":{\"Include\":[\"AE\"]}},"
+                + "\"Match_Datasets\":[{\"Name\":\"RELREC\"}],"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]},"
+                + "\"Check\":{\"expression\":\"not empty(USUBJID)\"}");
+    }
+
+
+    @Test
+    void typeSuffixesAndCaseFoldLikeTheLint() throws IOException
+    {
+        String md = "{\"Name\":\"DM\",\"Keys\":[\"usubjid\"]}";
+        assertClean(rule("T-FOLD",
+                "\"All\":[\"USUBJID:C\"],\"All_Or_None\":[[\"USUBJID\",\"DM.USUBJID\"]]", md));
+        String error = load(rule("T-FOLD",
+                "\"All\":[\"USUBJID:C\"],\"All_Or_None\":[[\"USUBJID\",\"DM.USUBJID\"]]", md))
+                        .getLoadError();
+        assertFalse(error != null && error.contains("Match_Datasets"), String.valueOf(error));
+    }
+}

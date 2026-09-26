@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.SequencedMap;
+import net.cumba.corej.core.KeyedJoinFixtures;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ast.Expr;
@@ -637,10 +638,11 @@ class StageACheckerTest
     @Test
     void theLoaderParksADottedReadOfAChildEntry() throws Exception
     {
-        RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"X-1\":{\"Core\":{\"Id\":"
-                + "\"X-1\"},\"Match_Datasets\":[{\"Name\":\"AE\",\"Child\":true,\"Keys\":"
-                + "[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]}],\"Check\":{\"expression\":"
-                + "\"AE.AESMIE != \\\"Y\\\"\"}}}}");
+        RulePackage pkg = RulePackageLoader
+                .loadFromString(KeyedJoinFixtures.declared("{\"rules\":{\"X-1\":{\"Core\":{\"Id\":"
+                        + "\"X-1\"},\"Match_Datasets\":[{\"Name\":\"AE\",\"Child\":true,\"Keys\":"
+                        + "[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]}],\"Check\":{\"expression\":"
+                        + "\"AE.AESMIE != \\\"Y\\\"\"}}}}"));
         Rule rule = pkg.getRules().get("X-1");
         assertNotNull(rule.getLoadError(), "the armed kind parks the rule");
         assertTrue(rule.getLoadError().contains("DOTTED_REF_CHILD_ENTRY"), rule.getLoadError());
@@ -1084,9 +1086,9 @@ class StageACheckerTest
 
     private static Rule load(String expression) throws Exception
     {
-        RulePackage pkg = RulePackageLoader.loadFromString(
+        RulePackage pkg = RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(
                 "{\"rules\":{\"X-1\":{\"Core\":{\"Id\":\"X-1\"},\"Check\":{\"expression\":\""
-                        + expression.replace("\"", "\\\"") + "\"}}}}");
+                        + expression.replace("\"", "\\\"") + "\"}}}}"));
         return pkg.getRules().get("X-1");
     }
 

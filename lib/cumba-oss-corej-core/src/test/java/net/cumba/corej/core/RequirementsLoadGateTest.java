@@ -43,8 +43,8 @@ class RequirementsLoadGateTest
     /** Loads a one-rule corpus package through the production loader. */
     private static Rule load(String ruleBody) throws IOException
     {
-        return RulePackageLoader.loadFromString(packageOf(ruleBody)).getRules().values().iterator()
-                .next();
+        return RulePackageLoader.loadFromString(KeyedJoinFixtures.declared(packageOf(ruleBody)))
+                .getRules().values().iterator().next();
     }
 
 
