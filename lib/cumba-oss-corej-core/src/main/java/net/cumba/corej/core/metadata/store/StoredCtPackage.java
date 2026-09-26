@@ -10,8 +10,10 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * Every other package-level field the API publishes ({@code name}, {@code label},
  * {@code effectiveDate}, …) is excluded — zero call sites in either engine
- * (AUDIT-metadata-reachable-fields.md §2) — but the id is first-class because four independent
- * run-time selection paths resolve packages by it (audit §6).
+ * (AUDIT-metadata-reachable-fields.md §2), and since format 3 for the stronger reason that the
+ * pickle cache, the store's universe (PLAN-define-ct-evaluation T1-9), carries nothing but the id
+ * at this level — but the id is first-class because four independent run-time selection paths
+ * resolve packages by it (audit §6).
  * </p>
  *
  * <p>
