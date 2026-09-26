@@ -46,7 +46,11 @@ import org.jspecify.annotations.Nullable;
 final class NumericKeyText
 {
 
-    /** Beyond this {@code |scale|} the canonical text is scientific, never plain. */
+    /**
+     * Beyond this {@code |scale|} the canonical text is scientific, never plain — and a canonical
+     * integer longer than this takes the {@link BigDecimal} arm too, so that every spelling of one
+     * value lands in the same arm.
+     */
     static final int MAX_PLAIN_SCALE = 400;
 
     private NumericKeyText()
@@ -63,13 +67,20 @@ final class NumericKeyText
      */
     static @Nullable String canonicalOrNull(String token)
     {
-        if (isCanonicalInteger(token))
+        if (token.length() <= MAX_PLAIN_SCALE && isCanonicalInteger(token))
         {
-            return token; // the common case (--SEQ values): already canonical, no BigDecimal
+            // The common case (--SEQ values): already canonical, no BigDecimal. Bounded by the
+            // plain limit, so an integer with more than MAX_PLAIN_SCALE trailing zeros takes the
+            // scientific arm like every other spelling of its value ("1E401" and "1" followed by
+            // 401 zeros are one key).
+            return token;
         }
         if (!isDecimalSpelling(token))
         {
-            return null; // a text id never reaches the parser (no throw per row; ASCII only)
+            // A text id with any character outside [0-9+-.eE] ("L1", "AE-001") never reaches the
+            // parser; one that is spelt only of those ("1-2") still throws once per row -- an
+            // accepted cost, such ids are rare.
+            return null;
         }
         try
         {

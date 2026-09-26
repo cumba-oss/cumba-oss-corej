@@ -2,8 +2,11 @@ package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import java.util.List;
+import java.util.function.Function;
 import java.util.stream.Stream;
 import net.cumba.datatable.values.DataValueSupport;
 import org.junit.jupiter.api.Test;
@@ -18,6 +21,8 @@ import org.junit.jupiter.params.provider.ValueSource;
  */
 class NumericKeyTextTest
 {
+
+    private static final Function<String, String> CANONICAL = NumericKeyText::canonicalOrNull;
 
     static Stream<Arguments> canonical()
     {
@@ -49,7 +54,48 @@ class NumericKeyTextTest
                 Arguments.of("1E-401", "1E-401"),
                 // still plain at the bound (401 / 402 characters)
                 Arguments.of("1E400", "1" + "0".repeat(400)),
-                Arguments.of("1E-400", "0." + "0".repeat(399) + "1"));
+                Arguments.of("1E-400", "0." + "0".repeat(399) + "1"),
+                // round 2 M1: a canonical integer longer than the bound takes the scientific arm
+                // like every other spelling of its value (the unbounded fast path kept it plain,
+                // so "1E401" and "1" + 401 zeros were equal values with unequal text)
+                Arguments.of("1" + "0".repeat(401), "1E+401"),
+                Arguments.of("-1" + "0".repeat(401), "-1E+401"),
+                Arguments.of("1" + "0".repeat(400), "1" + "0".repeat(400)));
+    }
+
+
+    /**
+     * Equal values have equal text, whichever arm renders them — several spellings of one value in
+     * and around the scientific range all canonicalise to the first spelling's text. The
+     * injectivity test above cannot see this: it only says different values differ.
+     */
+    static Stream<Arguments> spellingsOfOneValue()
+    {
+        return Stream.of(
+                Arguments.of(List.of("1E401", "1" + "0".repeat(401), "10E400", "1.0E401", "0.1E402",
+                        "+1E401", "1" + "0".repeat(401) + ".0", "1000E398")),
+                Arguments.of(List.of("-1E401", "-1" + "0".repeat(401), "-10E400", "-1.0E401")),
+                Arguments.of(List.of("1E-401", "0.1E-400", "10E-402", "0." + "0".repeat(400) + "1",
+                        "1.0E-401")),
+                Arguments.of(List.of("1.5E-500", "15E-501", "0.15E-499", "150E-502")),
+                Arguments.of(List.of("1E999999999", "10E999999998", "0.1E1000000000")),
+                // control at and below the bound: the plain arm agrees with itself
+                Arguments.of(List.of("1E400", "1" + "0".repeat(400), "10E399", "1.0E400")),
+                Arguments.of(List.of("1E-400", "0." + "0".repeat(399) + "1", "10E-401")),
+                Arguments.of(List.of("12", "12.0", "012", "1.2E1", "120E-1", "+12")));
+    }
+
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("spellingsOfOneValue")
+    void equalValuesHaveEqualText(List<String> spellings)
+    {
+        String expected = CANONICAL.apply(spellings.get(0));
+        assertNotNull(expected, spellings.get(0) + " must be a number");
+        for (String spelling : spellings)
+        {
+            assertEquals(expected, CANONICAL.apply(spelling), spelling);
+        }
     }
 
 
