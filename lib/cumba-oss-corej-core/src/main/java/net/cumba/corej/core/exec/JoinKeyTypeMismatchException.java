@@ -1,6 +1,7 @@
 package net.cumba.corej.core.exec;
 
 import java.io.Serial;
+import net.cumba.corej.core.expr.eval.ColumnTypeGate;
 
 /**
  * Thrown when a {@code Match_Datasets} join key is <b>character</b> on one side and <b>numeric</b>
@@ -40,7 +41,7 @@ final class JoinKeyTypeMismatchException extends RuntimeException
     JoinKeyTypeMismatchException(String aDataset, String aKeyColumn, String aJoinedColumn,
             String aPrimaryKind, String aJoinedKind)
     {
-        super("Match_Datasets " + aDataset + ": join key " + aKeyColumn + " is " + aPrimaryKind
+        this("Match_Datasets " + aDataset + ": join key " + aKeyColumn + " is " + aPrimaryKind
                 + " in the primary dataset and "
                 + (aKeyColumn.equals(aJoinedColumn) ? ""
                         : "its joined column " + aJoinedColumn + " is ")
@@ -53,6 +54,57 @@ final class JoinKeyTypeMismatchException extends RuntimeException
                 + " the one this study has: a tag that matches the divergent column is satisfied"
                 + " and does not skip. Or set Join_As_String: true on the entry to compare the keys"
                 + " as text.");
+    }
+
+
+    private JoinKeyTypeMismatchException(String aMessage)
+    {
+        super(aMessage);
+    }
+
+
+    /**
+     * The grouped-lookup arm ({@code PLAN-grouping-key-identity}, owner 2026-09-27, Q2: <i>"Beside
+     * this, I agree to error out."</i>): a grouped operation's result, grouped on one dataset, is
+     * read against another whose key column has the other kind. The lookup keys on the typed
+     * identity, so the two sides would silently never meet — the <i>"silent mismatch"</i>
+     * {@code D4-R2} refuses. Thrown from {@link GroupedResult#requireCompatibleKeys} and caught
+     * where every other {@code JoinKeyTypeMismatchException} is, so the rule ERRORs.
+     *
+     * @param aGroupedColumn
+     *            the key column on the grouped side
+     * @param aGroupedDataset
+     *            the dataset the operation grouped
+     * @param aGroupedKind
+     *            the column's kind there
+     * @param aEvaluatedColumn
+     *            the key column on the side the result is read against (the same name unless the
+     *            keys are sided)
+     * @param aEvaluatedDataset
+     *            the dataset the result is read against
+     * @param aEvaluatedKind
+     *            the column's kind there
+     * @return the exception to throw
+     */
+    static JoinKeyTypeMismatchException forGroupedLookup(String aGroupedColumn,
+            String aGroupedDataset, ColumnTypeGate.Kind aGroupedKind, String aEvaluatedColumn,
+            String aEvaluatedDataset, ColumnTypeGate.Kind aEvaluatedKind)
+    {
+        return new JoinKeyTypeMismatchException("Grouped lookup: key column " + aGroupedColumn
+                + " is " + describe(aGroupedKind) + " in " + aGroupedDataset
+                + ", where the operation grouped, and "
+                + (aGroupedColumn.equals(aEvaluatedColumn) ? ""
+                        : "its counterpart " + aEvaluatedColumn + " is ")
+                + describe(aEvaluatedKind) + " in " + aEvaluatedDataset
+                + ", where the result is read, so no record could find its group. Declare the type"
+                + " this rule REQUIRES on BOTH sides in Requirements.Variables.All so a study that"
+                + " does not meet it SKIPS instead.");
+    }
+
+
+    private static String describe(ColumnTypeGate.Kind aKind)
+    {
+        return aKind == ColumnTypeGate.Kind.NUMERIC ? "Numeric" : "Character";
     }
 
 }

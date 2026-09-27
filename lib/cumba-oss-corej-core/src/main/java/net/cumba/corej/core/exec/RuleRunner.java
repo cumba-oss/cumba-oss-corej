@@ -925,8 +925,17 @@ public final class RuleRunner
                     // minus references its operands via name/subtract (not group); force those
                     // prior-op $-refs too so set-difference sees their resolved lists.
                     forceOperandRefs(finalOp, opId, lazyVars, resolved);
-                    return OperationExecutor.executeOne(finalOp, lazyTable, lazyResolver,
+                    Object value = OperationExecutor.executeOne(finalOp, lazyTable, lazyResolver,
                             lazyLibrary, resolved, ruleId, lazyDict, lazyDefine, opNumericExpected);
+                    if (value instanceof GroupedResult grouped)
+                    {
+                        // Q2 of PLAN-grouping-key-identity: this is where the result is bound to
+                        // the table every reader of this rule's variables evaluates against (the
+                        // Check, the report's Output_Variables), once per result — a Char/Num
+                        // key pair across tables ERRORs the rule instead of never matching.
+                        grouped.requireCompatibleKeys(lazyTable);
+                    }
+                    return value;
                 });
                 lazyVars.put(opId, lazy);
             }
@@ -3429,11 +3438,15 @@ public final class RuleRunner
             IDataValue dv = table.getColumn(c).getDataValue(row);
             // ⭐ An IDENTITY (the first-claim stamp): a missing component is its MissingMember,
             // so MIS and MIS_A stamp two units exactly as the grouping forms two blocks (D11),
-            // and neither can collide with a present "." or "" (a present component is a String).
+            // and neither can collide with a present "." or "". A present component is its KeyPart
+            // identity (PLAN-grouping-key-identity, family U) -- the identity the grouping itself
+            // partitions by -- so two groups whose values merely RENDER alike (4.9999999999994
+            // and 5.0) stamp two units, and a weaker level's finding on one is not dropped as a
+            // re-report of the other.
             MissingValue missing = net.cumba.corej.core.expr.eval.TypedValue.missingIdentityOf(dv);
             key.add(missing != null
                     ? new net.cumba.corej.core.expr.eval.Primitives.MissingMember(missing)
-                    : dv.getValueAsString());
+                    : GroupKeyPolicy.KEEP_MISSING_KEYS.keyIdentity(dv));
         }
         // Group's compact constructor takes the defensive unmodifiable copy.
         return new Violation.Unit.Group(key);

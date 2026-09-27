@@ -1265,6 +1265,9 @@ public final class ExprCompiler
             boolean caseInsensitive)
     {
         EvaluationContext ctx = run.ctx();
+        // Q2 of PLAN-grouping-key-identity: bound to this table once, before the row scan — a
+        // result grouped on another dataset whose key column has the other kind ERRORs the rule.
+        grouped.requireCompatibleKeys(ctx.getTable());
         // ⚠ R-P7 review M3 is HISTORY since 2026-09-21: Primitives.scan is no longer
         // candidate-aware and an unqualified name never reaches a join. Formerly it got
         // the legacy forEachJoinedValue ANY-MATCH semantics here too.
@@ -5894,6 +5897,10 @@ public final class ExprCompiler
     {
         if (var instanceof GroupedResult grouped)
         {
+            // Q2 of PLAN-grouping-key-identity: bound to this table once per vector, never per
+            // row — a result grouped on another dataset whose key column has the other kind ERRORs
+            // the rule instead of silently matching no row.
+            grouped.requireCompatibleKeys(ctx.getTable());
             // getForRowOrDefault (not getForRow): an absent group key resolves to the op-scoped
             // default (0L for record_count -- a subject with zero matching rows is a real 0, so
             // e.g. `$count <= 1` fires -- null otherwise), mirroring the legacy

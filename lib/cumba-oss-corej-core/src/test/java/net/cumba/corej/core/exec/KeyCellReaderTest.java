@@ -154,6 +154,12 @@ class KeyCellReaderTest
         manyLongs.addAll(java.util.Arrays.asList(null, MissingValue.MIS_C, 7, -0.0, (1L << 53) + 1,
                 Long.MAX_VALUE, Long.MIN_VALUE + 1));
         assertExact("LONG unique", table(DataValueType.LONG, manyLongs.toArray()));
+        // PLAN-grouping-key-identity (L1): a LONG no double holds exactly is its own exact part on
+        // the fast reader too -- the fast read answers a double, so such a value takes the old path
+        IDataTable big = table(DataValueType.LONG, (1L << 53) + 1, 1L << 53);
+        KeyCellReader bigReader = KeyCellReader.of(big, 0);
+        assertEquals(new KeyPart.PresentExactLong((1L << 53) + 1), bigReader.read(0));
+        assertEquals(new KeyPart.PresentNumber(0x1p53), bigReader.read(1));
         List<@Nullable Object> fewLongs = new ArrayList<>();
         for (int i = 0; i < 30; i++)
         {

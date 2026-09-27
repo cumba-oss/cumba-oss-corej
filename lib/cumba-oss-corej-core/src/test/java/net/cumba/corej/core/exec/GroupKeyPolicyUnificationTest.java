@@ -15,6 +15,7 @@ import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.values.GroupKeyPolicy;
 import net.cumba.datatable.values.GroupKeyPolicy.Blankness;
 import net.cumba.datatable.values.IDataValue;
+import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -367,8 +368,9 @@ class GroupKeyPolicyUnificationTest
 
 
     /**
-     * {@code GroupedResult.buildKey} is the per-row <b>lookup</b> twin of
-     * {@code IndexHelper.buildGroupKey}'s block-representative key. The plan lists six missing-key
+     * {@code GroupedResult.identityKey} is the per-row <b>lookup</b> twin of
+     * {@code IndexHelper.buildGroupKey}'s block-representative key (since
+     * {@code PLAN-grouping-key-identity} the very same function). The plan lists six missing-key
      * implementations; this is a seventh, and it is the one whose divergence would be hardest to
      * see: if the two disagree about which cells are blank, every lookup on a blank-keyed row
      * silently misses and the operation reads "no value" rather than erroring.
@@ -399,7 +401,7 @@ class GroupKeyPolicyUnificationTest
             for (int row : block.rows())
             {
                 assertEquals(block.key(),
-                        GroupedResult.buildKey(t.getMetaData(), t, List.of("K"), row),
+                        GroupedResult.identityKey(t.getMetaData(), t, List.of("K"), row),
                         "the lookup key must reproduce the block key for EVERY row of the block,"
                                 + " including the block whose key is a genuine missing");
             }
@@ -558,9 +560,9 @@ class GroupKeyPolicyUnificationTest
      * <p>
      * ⚠ Re-pointed by {@code W38-A1} (Fix #249): the original assertion was <i>"the missing-keyed
      * block's reporting key is {@code ""}"</i>. That rendering was the last place a genuinely
-     * missing key and a literal {@code ""} key still shared one name; a missing key now renders its
-     * SOH-prefixed marker token ({@code KeyPart.reportingForm}), which no populated value can
-     * spell.
+     * missing key and a literal {@code ""} key still shared one name; a missing key now keys under
+     * its {@code MissingValue} identity ({@code PLAN-grouping-key-identity}; until then the
+     * SOH-prefixed marker token), which no populated value can equal.
      * </p>
      */
     @Test
@@ -568,17 +570,17 @@ class GroupKeyPolicyUnificationTest
     {
         IDataTable t = numericKeyWithMissing();
         IndexHelper.Grouping grouping = ExecCalls.groupByPresent(t, List.of("K"), "test");
-        Set<String> keys = new HashSet<>();
+        Set<Object> keys = new HashSet<>();
         for (IndexHelper.GroupBlock b : grouping.blocks())
         {
             assertTrue(keys.add(b.key()), "block keys must be distinct: " + b.key());
         }
-        assertTrue(keys.contains(GroupKeyPolicy.KeyPart.MISSING_MIS.reportingForm()),
-                "the missing-keyed block's reporting key is the MIS marker token");
+        assertTrue(keys.contains(MissingValue.MIS),
+                "the missing-keyed block's key is the MIS identity");
         assertFalse(keys.contains(""),
                 "no block is filed under \"\" — the fold to the empty rendering is retired");
-        assertTrue(keys.contains("1"), "a populated key renders its own value");
-        assertTrue(keys.contains("2"));
+        assertTrue(keys.contains(1.0), "a populated key is its own (numeric) identity");
+        assertTrue(keys.contains(2.0));
     }
 
 }

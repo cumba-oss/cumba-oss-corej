@@ -1832,7 +1832,7 @@ public final class OperationExecutor
                 resultsByDomain.put(domain, new ArrayList<>(cols));
             }
         }
-        return declaredGrouped(op, List.of("RDOMAIN"), resultsByDomain);
+        return declaredGroupedText(op, List.of("RDOMAIN"), resultsByDomain);
     }
 
 
@@ -1908,7 +1908,8 @@ public final class OperationExecutor
             return LIBRARY_NOT_AVAILABLE;
         }
         return new GroupedResult(List.of("RDOMAIN"), byDomain,
-                OperationType.emptyValueOf(OperationType.GET_PARENT_MODEL_COLUMN_ORDER));
+                OperationType.emptyValueOf(OperationType.GET_PARENT_MODEL_COLUMN_ORDER),
+                GroupedResult.KeyMode.TEXT, null);
     }
 
 
@@ -2247,7 +2248,7 @@ public final class OperationExecutor
         IDataTableColumn col = table.getColumn(colIdx);
         long rowCount = table.getRowCount();
         List<String> groupCols = List.of(op.getName());
-        Map<String, Object> results = new LinkedHashMap<>();
+        Map<Object, Object> results = new LinkedHashMap<>();
         for (long r = 0; r < rowCount; r++)
         {
             IDataValue dv = col.getDataValue(r);
@@ -2263,13 +2264,14 @@ public final class OperationExecutor
             boolean valid = term.isEmpty()
                     || (caseSensitive ? dictionaryProvider.caseMatches(type, level, term)
                             : dictionaryProvider.isValidTerm(type, level, term));
-            // ⚑ LOCKSTEP (W38-A1 / Fix #249): the map key comes from the same cell-classified
-            // builder getForRow probes with, so a blank-keyed row always finds its own verdict —
-            // keying by the folded term string would strand every missing-cell row on the group
-            // default (a fire) the moment the probe stopped rendering a missing as "".
-            results.computeIfAbsent(GroupedResult.buildKey(meta, table, groupCols, r), _ -> valid);
+            // ⚑ ONE DERIVATION (W38-A1 / Fix #249; PLAN-grouping-key-identity): the map key is
+            // GroupedResult.identityKey, the very function getForRow probes with, so a blank-keyed
+            // row always finds its own verdict — keying by the folded term string would strand
+            // every missing-cell row on the group default (a fire).
+            results.computeIfAbsent(GroupedResult.identityKey(meta, table, groupCols, r),
+                    _ -> valid);
         }
-        return declaredGrouped(op, groupCols, results);
+        return declaredGrouped(op, table, groupCols, results);
     }
 
 
@@ -2308,7 +2310,7 @@ public final class OperationExecutor
         // ignored and the code side compared case-folded while the decode compared verbatim).
         boolean caseSensitive = !Boolean.FALSE.equals(op.getCaseSensitive());
         List<String> groupCols = List.of(op.getName(), termVar);
-        Map<String, Object> results = new LinkedHashMap<>();
+        Map<Object, Object> results = new LinkedHashMap<>();
         for (long r = 0; r < rowCount; r++)
         {
             IDataValue codeDv = codeCol.getDataValue(r);
@@ -2322,11 +2324,12 @@ public final class OperationExecutor
             // `if code is None or code == "" or decode is None or decode == "": return True`.
             boolean paired = codeVal.isEmpty() || termVal.isEmpty() || dictionaryProvider
                     .codeDecodePair(type, type, codeVal, termVal, caseSensitive);
-            // ⚑ LOCKSTEP (W38-A1 / Fix #249): cell-classified key, same builder as the probe —
-            // see evalValidExternalDictionaryValue.
-            results.computeIfAbsent(GroupedResult.buildKey(meta, table, groupCols, r), _ -> paired);
+            // ⚑ ONE DERIVATION: GroupedResult.identityKey, the probe's own key — see
+            // evalValidExternalDictionaryValue.
+            results.computeIfAbsent(GroupedResult.identityKey(meta, table, groupCols, r),
+                    _ -> paired);
         }
-        return declaredGrouped(op, groupCols, results);
+        return declaredGrouped(op, table, groupCols, results);
     }
 
 
@@ -2366,7 +2369,7 @@ public final class OperationExecutor
         // ignored and both operands were case-folded).
         boolean caseSensitive = !Boolean.FALSE.equals(op.getCaseSensitive());
         List<String> groupCols = List.of(op.getName(), parentVar);
-        Map<String, Object> results = new LinkedHashMap<>();
+        Map<Object, Object> results = new LinkedHashMap<>();
         for (long r = 0; r < rowCount; r++)
         {
             IDataValue childDv = childCol.getDataValue(r);
@@ -2380,11 +2383,12 @@ public final class OperationExecutor
             // `if child is None or child == "" or parent is None or parent == "": return True`.
             boolean onPath = childVal.isEmpty() || parentVal.isEmpty()
                     || dictionaryProvider.onHierarchyPath(type, childVal, parentVal, caseSensitive);
-            // ⚑ LOCKSTEP (W38-A1 / Fix #249): cell-classified key, same builder as the probe —
-            // see evalValidExternalDictionaryValue.
-            results.computeIfAbsent(GroupedResult.buildKey(meta, table, groupCols, r), _ -> onPath);
+            // ⚑ ONE DERIVATION: GroupedResult.identityKey, the probe's own key — see
+            // evalValidExternalDictionaryValue.
+            results.computeIfAbsent(GroupedResult.identityKey(meta, table, groupCols, r),
+                    _ -> onPath);
         }
-        return declaredGrouped(op, groupCols, results);
+        return declaredGrouped(op, table, groupCols, results);
     }
 
 
@@ -2422,7 +2426,7 @@ public final class OperationExecutor
                     continue;
                 }
                 String dom = dv.getValueAsString();
-                byRdomain.computeIfAbsent(GroupedResult.buildKey(List.of(dom)), _ ->
+                byRdomain.computeIfAbsent(GroupedResult.textKey(List.of(dom)), _ ->
                 {
                     // Upper-cased so rules can compare against the canonical class tokens
                     // (EVENTS, FINDINGS ABOUT, ...) regardless of the provider tier: the
@@ -2432,7 +2436,7 @@ public final class OperationExecutor
                     return c != null ? c.toUpperCase(Locale.ROOT) : "";
                 });
             }
-            return declaredGrouped(op, List.of(col), byRdomain);
+            return declaredGroupedText(op, List.of(col), byRdomain);
         }, ruleId, LibraryArmAnswer.GROUPED_TEXT);
     }
 
@@ -2465,17 +2469,17 @@ public final class OperationExecutor
         IDataTableColumn col = table.getColumn(idx);
         long rowCount = table.getRowCount();
         List<String> groupCols = List.of(op.getName());
-        Map<String, Object> results = new LinkedHashMap<>();
+        Map<Object, Object> results = new LinkedHashMap<>();
         for (long r = 0; r < rowCount; r++)
         {
             IDataValue dv = col.getDataValue(r);
             String value = dv.isMissingOrInvalid() ? "" : dv.getValueAsString();
-            // ⚑ LOCKSTEP (W38-A1 / Fix #249): cell-classified key, same builder as the probe —
-            // see evalValidExternalDictionaryValue.
-            results.computeIfAbsent(GroupedResult.buildKey(meta, table, groupCols, r),
+            // ⚑ ONE DERIVATION: GroupedResult.identityKey, the probe's own key — see
+            // evalValidExternalDictionaryValue.
+            results.computeIfAbsent(GroupedResult.identityKey(meta, table, groupCols, r),
                     _ -> intervalPrecisionMismatch(value, delimiter));
         }
-        return declaredGrouped(op, groupCols, results);
+        return declaredGrouped(op, table, groupCols, results);
     }
 
 
@@ -2554,20 +2558,20 @@ public final class OperationExecutor
         // ignored and the code lookup was case-folded).
         boolean caseSensitive = !Boolean.FALSE.equals(op.getCaseSensitive());
         List<String> groupCols = List.of(op.getName());
-        Map<String, Object> results = new LinkedHashMap<>();
+        Map<Object, Object> results = new LinkedHashMap<>();
         for (long r = 0; r < rowCount; r++)
         {
             IDataValue dv = col.getDataValue(r);
             String code = dv.isMissingOrInvalid() ? "" : dv.getValueAsString();
             // A blank code holds no decode (no fire). reg defaults to the dictionary type, as in
             // evalValidExternalDictionaryCodeTermPair.
-            // ⚑ LOCKSTEP (W38-A1 / Fix #249): cell-classified key, same builder as the probe —
-            // see evalValidExternalDictionaryValue.
-            results.computeIfAbsent(GroupedResult.buildKey(meta, table, groupCols, r),
+            // ⚑ ONE DERIVATION: GroupedResult.identityKey, the probe's own key — see
+            // evalValidExternalDictionaryValue.
+            results.computeIfAbsent(GroupedResult.identityKey(meta, table, groupCols, r),
                     _ -> !code.isEmpty()
                             && dictionaryProvider.hasDecode(type, type, code, caseSensitive));
         }
-        return declaredGrouped(op, groupCols, results);
+        return declaredGrouped(op, table, groupCols, results);
     }
 
 
@@ -2869,7 +2873,8 @@ public final class OperationExecutor
         // per-parent-row GroupedResult keyed by USUBJID (default false / null) rather than a
         // broadcast scalar, so the "qualifier absent for this record" outcome reads the per-row
         // default on the identical path as a populated join.
-        GroupedResult empty = new GroupedResult(List.of(USUBJID), Map.of(), present ? false : null);
+        GroupedResult empty = new GroupedResult(List.of(USUBJID), Map.of(), present ? false : null,
+                GroupedResult.KeyMode.TEXT, null);
         DataTableMeta sm = supp.getMetaData();
         int qnamIdx = sm.getColumnIndex("QNAM");
         int idvarIdx = sm.getColumnIndex("IDVAR");
@@ -2906,7 +2911,7 @@ public final class OperationExecutor
                 continue;
             }
             String usubjid = usubjidIdx < 0 ? "" : stringAt(supp, usubjidIdx, r);
-            String key = GroupedResult.buildKey(List.of(usubjid == null ? "" : usubjid, idvarval));
+            String key = GroupedResult.textKey(List.of(usubjid == null ? "" : usubjid, idvarval));
             if (present)
             {
                 results.put(key, true);
@@ -2930,8 +2935,10 @@ public final class OperationExecutor
             return empty;
         }
         List<String> groupCols = List.of(USUBJID, anchorIdvar);
-        return present ? new GroupedResult(groupCols, results, false)
-                : new GroupedResult(groupCols, results);
+        // ⚑ TEXT by ruling (D4-R5): the build side is the SUPP rows' USUBJID + IDVARVAL text, and
+        // a numeric --SEQ parent cell must still find its "1" (PLAN-grouping-key-identity).
+        return new GroupedResult(groupCols, results, present ? false : null,
+                GroupedResult.KeyMode.TEXT, null);
     }
 
 
@@ -3403,11 +3410,9 @@ public final class OperationExecutor
             return null; // an unexpanded $-ref in the group list — not a dataset-shape fact
         }
 
-        Map<String, Object> results = new LinkedHashMap<>();
+        Map<Object, Object> results = new LinkedHashMap<>();
         for (IndexHelper.GroupBlock block : grouping.blocks())
         {
-            String key = block.key();
-
             DateExtreme extreme = new DateExtreme(findMax, missingIsIndeterminate(op));
             for (int r : block.rows())
             {
@@ -3423,10 +3428,10 @@ public final class OperationExecutor
             String resolved = extreme.result();
             if (resolved != null)
             {
-                results.put(key, resolved);
+                IndexHelper.putBlock(results, grouping, block, resolved);
             }
         }
-        return declaredGrouped(op, groupCols, results);
+        return declaredGrouped(op, table, groupCols, results);
     }
 
 
@@ -3457,7 +3462,7 @@ public final class OperationExecutor
         }
 
         // Try numeric max first
-        Map<String, Object> results = new LinkedHashMap<>();
+        Map<Object, Object> results = new LinkedHashMap<>();
         boolean anyNumeric = false;
         for (IndexHelper.GroupBlock block : grouping.blocks())
         {
@@ -3482,12 +3487,12 @@ public final class OperationExecutor
             }
             if (!Double.isNaN(max))
             {
-                results.put(block.key(), max);
+                IndexHelper.putBlock(results, grouping, block, max);
             }
         }
         if (anyNumeric)
         {
-            return declaredGrouped(op, groupCols, results);
+            return declaredGrouped(op, table, groupCols, results);
         }
         // Fallback: string comparison (handles date strings like ISO 8601). EC-46 OQ4 — GENERIC
         // semantics, the grouped twin of evalMax's fallback; see genericStringExtreme.
@@ -3510,10 +3515,10 @@ public final class OperationExecutor
             String max = genericStringExtreme(candidates, true);
             if (max != null)
             {
-                results.put(block.key(), max);
+                IndexHelper.putBlock(results, grouping, block, max);
             }
         }
-        return declaredGrouped(op, groupCols, results);
+        return declaredGrouped(op, table, groupCols, results);
     }
 
 
@@ -3550,7 +3555,7 @@ public final class OperationExecutor
             return null; // an unexpanded $-ref in the group list — not a dataset-shape fact
         }
 
-        Map<String, Object> results = new LinkedHashMap<>();
+        Map<Object, Object> results = new LinkedHashMap<>();
         for (IndexHelper.GroupBlock block : grouping.blocks())
         {
             Set<String> seen = new LinkedHashSet<>();
@@ -3573,17 +3578,20 @@ public final class OperationExecutor
             }
             if (!seen.isEmpty())
             {
-                results.put(block.key(), new ArrayList<>(seen));
+                IndexHelper.putBlock(results, grouping, block, new ArrayList<>(seen));
             }
         }
-        return declaredGrouped(op, groupCols, results);
+        return declaredGrouped(op, table, groupCols, results);
     }
 
 
     /**
      * EC-45 §1.4 — builds the grouped result for {@code op} carrying the absent-key default the
      * operator <em>declares</em> ({@link OperationType#emptyValueOf}), rather than whichever
-     * {@link GroupedResult} constructor the neighbouring evaluator happened to use.
+     * {@link GroupedResult} constructor the neighbouring evaluator happened to use. Its keys are
+     * {@link GroupedResult.KeyMode#IDENTITY} keys, and it records the group columns' kinds on
+     * {@code table} — the table it was grouped on — for the cross-table key-type check
+     * ({@link GroupedResult#requireCompatibleKeys}).
      *
      * <p>
      * Hard-coding the default at each construction site is how the pre-EC-45 drift arose — the same
@@ -3603,11 +3611,27 @@ public final class OperationExecutor
      * the classification was derived from.
      * </p>
      */
-    private static GroupedResult declaredGrouped(Operation op, List<String> groupCols,
+    private static GroupedResult declaredGrouped(Operation op, IDataTable table,
+            List<String> groupCols, Map<Object, Object> results)
+    {
+        return new GroupedResult(groupCols, results,
+                OperationType.emptyValueOf(op.getOperationType()), GroupedResult.KeyMode.IDENTITY,
+                GroupedResult.KeyTypes.of(table, groupCols));
+    }
+
+
+    /**
+     * {@link #declaredGrouped} for the <b>text-carried</b> family
+     * ({@code PLAN-grouping-key-identity}, register {@code D4-R5}): a result keyed by the text of a
+     * domain name read from a column value ({@code RDOMAIN}) — {@link GroupedResult.KeyMode#TEXT},
+     * never type-checked across tables.
+     */
+    private static GroupedResult declaredGroupedText(Operation op, List<String> groupCols,
             Map<String, Object> results)
     {
         return new GroupedResult(groupCols, results,
-                OperationType.emptyValueOf(op.getOperationType()));
+                OperationType.emptyValueOf(op.getOperationType()), GroupedResult.KeyMode.TEXT,
+                null);
     }
 
 
@@ -3670,21 +3694,19 @@ public final class OperationExecutor
             return null; // an unexpanded $-ref in the group list — not a dataset-shape fact
         }
 
-        Map<String, Object> results = new LinkedHashMap<>();
+        Map<Object, Object> results = new LinkedHashMap<>();
         for (IndexHelper.GroupBlock block : grouping.blocks())
         {
-            String key = block.key();
             int[] rows = block.rows();
-
+            long count;
             if (!hasFilter)
             {
-                results.put(key, (long) rows.length);
+                count = rows.length;
             }
             else
             {
-                // Pre-populate with 0 so groups with no matching rows still appear
-                results.putIfAbsent(key, 0L);
-                long count = 0;
+                // A group with no matching rows still writes its 0: every formed group has a key.
+                count = 0;
                 for (int r : rows)
                 {
                     if (rowMatchesFilter(table, meta, filter, r))
@@ -3692,11 +3714,11 @@ public final class OperationExecutor
                         count++;
                     }
                 }
-                results.put(key, count);
             }
+            IndexHelper.putBlock(results, grouping, block, count);
         }
         // record_count: an absent group key means zero matching rows -> 0, not "no value".
-        return declaredGrouped(op, groupCols, results);
+        return declaredGrouped(op, table, groupCols, results);
     }
 
 
@@ -3766,7 +3788,7 @@ public final class OperationExecutor
                         .filter(idx -> idx >= 0).toArray();
         boolean hasQualifier = qualifiers != null && !qualifiers.isEmpty();
 
-        Map<String, Object> results = new LinkedHashMap<>();
+        Map<Object, Object> results = new LinkedHashMap<>();
         for (IndexHelper.GroupBlock block : grouping.blocks())
         {
             boolean hasPopulated = false;
@@ -3799,9 +3821,9 @@ public final class OperationExecutor
                     break; // mixed detected — no need to scan further rows in this block
                 }
             }
-            results.put(block.key(), hasPopulated && hasUnpopulated);
+            IndexHelper.putBlock(results, grouping, block, hasPopulated && hasUnpopulated);
         }
-        return declaredGrouped(op, keyCols, results);
+        return declaredGrouped(op, table, keyCols, results);
     }
 
 
@@ -5055,7 +5077,7 @@ public final class OperationExecutor
         int subjIdx = meta.getColumnIndex(USUBJID);
         IDataTableColumn dateCol = table.getColumn(dateColIdx);
         long rowCount = table.getRowCount();
-        Map<String, Object> results = new LinkedHashMap<>();
+        Map<Object, Object> results = new LinkedHashMap<>();
 
         for (long r = 0; r < rowCount; r++)
         {
@@ -5082,11 +5104,10 @@ public final class OperationExecutor
             Long dy = calculateStudyDay(dateStr, rfstdtc);
             if (dy != null)
             {
-                String key = GroupedResult.buildKey(meta, table, groupCols, r);
-                results.put(key, dy);
+                results.put(GroupedResult.identityKey(meta, table, groupCols, r), dy);
             }
         }
-        return declaredGrouped(op, groupCols, results);
+        return declaredGrouped(op, table, groupCols, results);
     }
 
 
@@ -5203,8 +5224,8 @@ public final class OperationExecutor
             // EC-51 Half B / §5.3: the disposition is threaded in explicitly — this helper
             // deliberately takes no Operation, so before Fix #145 the Mode 2 subtrahend was
             // unfilterable by construction.
-            Map<String, String> refByGroup = buildGroupedExtremeDate(resolver, domain,
-                    referenceName, group, useMax, missingIsIndeterminate(op));
+            Map<Object, String> refByGroup = buildGroupedExtremeDate(resolver, domain,
+                    referenceName, group, useMax, missingIsIndeterminate(op), table);
             if (refByGroup == null)
             {
                 // Unresolvable: the domain, the reference column, or every group key is missing.
@@ -5218,7 +5239,7 @@ public final class OperationExecutor
             keyCols.addAll(group);
             subtrahendForRow = r ->
             {
-                String v = refByGroup.get(GroupedResult.buildKey(meta, table, groupCols, r));
+                String v = refByGroup.get(GroupedResult.identityKey(meta, table, groupCols, r));
                 return v != null ? v : "";
             };
         }
@@ -5252,7 +5273,7 @@ public final class OperationExecutor
         // key encoding stays byte-identical.
         keyCols = new ArrayList<>(new LinkedHashSet<>(keyCols));
 
-        Map<String, Object> results = new LinkedHashMap<>();
+        Map<Object, Object> results = new LinkedHashMap<>();
         long rowCount = table.getRowCount();
         for (long r = 0; r < rowCount; r++)
         {
@@ -5286,10 +5307,9 @@ public final class OperationExecutor
                     }
                 }
             }
-            String key = GroupedResult.buildKey(meta, table, keyCols, r);
-            results.put(key, diff + offset);
+            results.put(GroupedResult.identityKey(meta, table, keyCols, r), diff + offset);
         }
-        return declaredGrouped(op, keyCols, results);
+        return declaredGrouped(op, table, keyCols, results);
     }
 
 
@@ -5357,8 +5377,12 @@ public final class OperationExecutor
                 return null;
             }
         }
+        // Q2 (owner 2026-09-27): the minuend map is keyed on the foreign table and probed from the
+        // evaluated one by the typed identity, so a Char/Num key pair would silently never meet —
+        // the rule ERRORs instead (register D4-R2).
+        GroupedResult.requireCompatibleKeyColumns(minuendTable, rightKeys, table, leftKeys);
         IDataTableColumn mDateCol = minuendTable.getColumn(mDateIdx);
-        Map<String, String> minuendByKey = new LinkedHashMap<>();
+        Map<Object, String> minuendByKey = new LinkedHashMap<>();
         long mRows = minuendTable.getRowCount();
         for (long r = 0; r < mRows; r++)
         {
@@ -5376,7 +5400,8 @@ public final class OperationExecutor
             {
                 continue;
             }
-            minuendByKey.putIfAbsent(GroupedResult.buildKey(mMeta, minuendTable, rightKeys, r), v);
+            minuendByKey.putIfAbsent(GroupedResult.identityKey(mMeta, minuendTable, rightKeys, r),
+                    v);
         }
         keyCols.addAll(leftKeys);
         List<String> finalLeftKeys = leftKeys;
@@ -5386,7 +5411,7 @@ public final class OperationExecutor
             {
                 return "";
             }
-            String v = minuendByKey.get(GroupedResult.buildKey(meta, table, finalLeftKeys, r));
+            String v = minuendByKey.get(GroupedResult.identityKey(meta, table, finalLeftKeys, r));
             return v != null ? v : "";
         };
     }
@@ -5424,17 +5449,19 @@ public final class OperationExecutor
 
     /**
      * Builds the per-group extreme value of {@code refCol}, read from the foreign {@code domain}
-     * dataset, keyed with the same encoding
-     * {@link GroupedResult#buildKey(DataTableMeta, IDataTable, List, long)} produces so the map is
-     * joinable to the target rows by the {@code group} key. When {@code useMax} is {@code false}
-     * the earliest ({@code min}) value per group is kept; when {@code true} the latest
-     * ({@code max}) — both by lexicographic ISO-8601 order. Returns {@code null} when the domain is
-     * absent from the study, when the {@code reference} column is absent from it, or when no
-     * {@code group} column is present on the foreign dataset (see below); an empty map (domain
-     * present, no rows) is a valid result. ⚠ {@code null} here does <b>not</b> skip the rule — only
-     * {@link #LIBRARY_NOT_AVAILABLE} does that — it makes the {@code $}-ref resolve to "no value"
-     * for every row, which the comparison folds to {@code ""} and the check fires over (EC-45
-     * §1.1).
+     * dataset, keyed by {@link GroupedResult#identityKey(DataTableMeta, IDataTable, List, long)} —
+     * the very key the target rows probe with — so the map is joinable to them by the {@code group}
+     * key. A {@code group} column that is Char on one side and Num on the other ERRORs the rule
+     * ({@link GroupedResult#requireCompatibleKeyColumns}; owner Q2 of
+     * {@code PLAN-grouping-key-identity}), because the typed keys would silently never meet. When
+     * {@code useMax} is {@code false} the earliest ({@code min}) value per group is kept; when
+     * {@code true} the latest ({@code max}) — both by lexicographic ISO-8601 order. Returns
+     * {@code null} when the domain is absent from the study, when the {@code reference} column is
+     * absent from it, or when no {@code group} column is present on the foreign dataset (see
+     * below); an empty map (domain present, no rows) is a valid result. ⚠ {@code null} here does
+     * <b>not</b> skip the rule — only {@link #LIBRARY_NOT_AVAILABLE} does that — it makes the
+     * {@code $}-ref resolve to "no value" for every row, which the comparison folds to {@code ""}
+     * and the check fires over (EC-45 §1.1).
      *
      * <p>
      * <b>EC-45 §4.2 — the two key bases are coupled by <em>removing</em> code, not by intersecting
@@ -5442,7 +5469,7 @@ public final class OperationExecutor
      * absent from the consumer, widening the join to the surviving keys: the row would receive the
      * study-wide extreme instead of its own group's and {@code !=} would fire with a <em>plausible
      * wrong number</em> instead of a null — worse than the defect. The coupling is already in
-     * {@link GroupedResult#buildKey(DataTableMeta, IDataTable, List, long)}, which renders
+     * {@link GroupedResult#identityKey(DataTableMeta, IDataTable, List, long)}, which keys
      * {@code ""} on whichever side lacks the column, so:
      * </p>
      * <ul>
@@ -5454,13 +5481,13 @@ public final class OperationExecutor
      * row whose own value for it is populated can then never match and reads "no value"; a row
      * whose value is a literal {@code ""} matches the collapsed bucket and receives the aggregate
      * over the whole foreign column. ⚠ That is deliberate and is the EC-43 contract's reachable
-     * half. Since {@code W38-A1} (Fix #249) a <em>marker-missing</em> evaluation cell renders its
-     * own identity token rather than {@code ""}, so it no longer matches the collapsed
-     * absent-column bucket — a {@code MissingValue} equals no string key, ruling part 4 — and
-     * likewise a present-but-all-marker-missing foreign column keys its marker token, not
-     * {@code ""}. The absent-column case therefore behaves exactly as a present-but-all-{@code ""}
-     * column; absence and <em>marker</em> missingness are distinguishable on this join, in the
-     * ruled direction. Pinned by {@code RuleRunnerDateDiffKeyAbsenceTest} (its blanks are literal
+     * half. Since {@code W38-A1} (Fix #249) a <em>marker-missing</em> evaluation cell keys under
+     * its own {@code MissingValue} identity rather than {@code ""}, so it no longer matches the
+     * collapsed absent-column bucket — a {@code MissingValue} equals no string key, ruling part 4 —
+     * and likewise a present-but-all-marker-missing foreign column keys its marker, not {@code ""}.
+     * The absent-column case therefore behaves exactly as a present-but-all-{@code ""} column;
+     * absence and <em>marker</em> missingness are distinguishable on this join, in the ruled
+     * direction. Pinned by {@code RuleRunnerDateDiffKeyAbsenceTest} (its blanks are literal
      * {@code ""}); do not "tighten" it back into the all-or-nothing guard without re-opening
      * Q2;</li>
      * <li><b>absent from the evaluation side only ⇒ unmeetable</b>, since the foreign side keys
@@ -5479,9 +5506,9 @@ public final class OperationExecutor
      * {@code null}, exactly as {@link IndexHelper#groupByPresent} does for the same input.
      * </p>
      */
-    private static @Nullable Map<String, String> buildGroupedExtremeDate(DatasetResolver resolver,
+    private static @Nullable Map<Object, String> buildGroupedExtremeDate(DatasetResolver resolver,
             String domain, String refColName, List<String> group, boolean useMax,
-            boolean missingIsIndeterminate)
+            boolean missingIsIndeterminate, IDataTable evalTable)
     {
         IDataTable ds = resolver.resolve(domain);
         if (ds == null)
@@ -5507,6 +5534,9 @@ public final class OperationExecutor
         {
             return null;
         }
+        // Q2 (owner 2026-09-27): keyed on the foreign dataset, probed from the evaluated one by the
+        // typed identity — a Char/Num key pair ERRORs the rule rather than silently never meeting.
+        GroupedResult.requireCompatibleKeyColumns(ds, group, evalTable, group);
         IDataTableColumn rc = ds.getColumn(refIdx);
         // EC-46: accumulate per group, then resolve. A group whose extreme is indeterminate emits
         // no entry at all — the same shape an all-blank group has always produced.
@@ -5514,15 +5544,15 @@ public final class OperationExecutor
         // missing candidate has to reach its own group's accumulator to make it undeterminable.
         // Under the `skip` default the extra keys are inert — a group with no usable candidate
         // resolves to null and is dropped below, exactly as when it was never created.
-        Map<String, DateExtreme> byGroup = new LinkedHashMap<>();
+        Map<Object, DateExtreme> byGroup = new LinkedHashMap<>();
         long rows = ds.getRowCount();
         for (long r = 0; r < rows; r++)
         {
-            String key = GroupedResult.buildKey(dsMeta, ds, group, r);
+            Object key = GroupedResult.identityKey(dsMeta, ds, group, r);
             byGroup.computeIfAbsent(key, _ -> new DateExtreme(useMax, missingIsIndeterminate))
                     .addCell(rc.getDataValue(r));
         }
-        Map<String, String> extremeByGroup = new LinkedHashMap<>();
+        Map<Object, String> extremeByGroup = new LinkedHashMap<>();
         byGroup.forEach((key, extreme) ->
         {
             String resolved = extreme.result();
@@ -5587,7 +5617,7 @@ public final class OperationExecutor
         }
         // EC-44 (Fix #134): partition() ignores absent group columns, so a PARTIAL drop just
         // groups on the survivors. TOTAL absence is the one case this operator cannot express:
-        // its GroupedResult is keyed by (group… + ordering) and GroupedResult.buildKey renders
+        // its GroupedResult is keyed by (group… + ordering) and GroupedResult.identityKey keys
         // every absent component as "", so two rows sharing an ordering value would collapse to
         // the same key — and exactly one of them is the last row, so the second put() would
         // overwrite the first. Rather than emit a silently wrong verdict, degrade as before.
@@ -5608,7 +5638,7 @@ public final class OperationExecutor
         List<String> keyCols = new ArrayList<>(group);
         keyCols.add(ordering);
 
-        Map<String, Object> results = new LinkedHashMap<>();
+        Map<Object, Object> results = new LinkedHashMap<>();
         for (int[] g : groups)
         {
             if (g.length == 0)
@@ -5630,12 +5660,10 @@ public final class OperationExecutor
             }
             for (int r : g)
             {
-                String key = GroupedResult.buildKey(meta, table, keyCols, r);
-                boolean isLast = r == lastRow;
-                results.put(key, isLast);
+                results.put(GroupedResult.identityKey(meta, table, keyCols, r), r == lastRow);
             }
         }
-        return declaredGrouped(op, keyCols, results);
+        return declaredGrouped(op, table, keyCols, results);
     }
 
 
@@ -5699,7 +5727,7 @@ public final class OperationExecutor
         {
             return null;
         }
-        Map<String, Object> results = new LinkedHashMap<>();
+        Map<Object, Object> results = new LinkedHashMap<>();
         long rowCount = table.getRowCount();
         for (long r = 0; r < rowCount; r++)
         {
@@ -5724,9 +5752,9 @@ public final class OperationExecutor
             {
                 continue;
             }
-            results.putIfAbsent(GroupedResult.buildKey(meta, table, cols, r), extreme);
+            results.putIfAbsent(GroupedResult.identityKey(meta, table, cols, r), extreme);
         }
-        return declaredGrouped(op, cols, results);
+        return declaredGrouped(op, table, cols, results);
     }
 
 

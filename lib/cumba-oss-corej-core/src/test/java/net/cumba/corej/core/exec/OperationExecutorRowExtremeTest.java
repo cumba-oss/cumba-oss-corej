@@ -49,8 +49,8 @@ class OperationExecutorRowExtremeTest
                 .col("OTHER", "x", "y").name("TR").build();
         GroupedResult gr = run(rowOp("row_max", "^TR\\d+N$"), ds);
         assertEquals(List.of("TR01N", "TR02N"), gr.groupColumns());
-        assertEquals("12", gr.results().get("9" + NUL + "12"));
-        assertEquals("20", gr.results().get("3" + NUL + "20"));
+        assertEquals("12", GroupedResultTextView.byText(gr).get("9" + NUL + "12"));
+        assertEquals("20", GroupedResultTextView.byText(gr).get("3" + NUL + "20"));
     }
 
 
@@ -60,8 +60,8 @@ class OperationExecutorRowExtremeTest
         IDataTable ds = MockTable.of().col("TR01N", "9", "3").col("TR02N", "12", "20").name("TR")
                 .build();
         GroupedResult gr = run(rowOp("row_min", "^TR\\d+N$"), ds);
-        assertEquals("9", gr.results().get("9" + NUL + "12"));
-        assertEquals("3", gr.results().get("3" + NUL + "20"));
+        assertEquals("9", GroupedResultTextView.byText(gr).get("9" + NUL + "12"));
+        assertEquals("3", GroupedResultTextView.byText(gr).get("3" + NUL + "20"));
     }
 
 
@@ -73,8 +73,10 @@ class OperationExecutorRowExtremeTest
         IDataTable ds = MockTable.of().col("TR01EDT", "2020-01-10", "2019-12-31")
                 .col("TR02EDT", "2020-03-01", "2020-01-01").name("TR").build();
         GroupedResult gr = run(rowOp("row_max", "^TR\\d+EDT$"), ds);
-        assertEquals("2020-03-01", gr.results().get("2020-01-10" + NUL + "2020-03-01"));
-        assertEquals("2020-01-01", gr.results().get("2019-12-31" + NUL + "2020-01-01"));
+        assertEquals("2020-03-01",
+                GroupedResultTextView.byText(gr).get("2020-01-10" + NUL + "2020-03-01"));
+        assertEquals("2020-01-01",
+                GroupedResultTextView.byText(gr).get("2019-12-31" + NUL + "2020-01-01"));
     }
 
 
@@ -84,8 +86,10 @@ class OperationExecutorRowExtremeTest
         IDataTable ds = MockTable.of().col("TR01EDT", "2020-01-10", "2019-12-31")
                 .col("TR02EDT", "2020-03-01", "2020-01-01").name("TR").build();
         GroupedResult gr = run(rowOp("row_min", "^TR\\d+EDT$"), ds);
-        assertEquals("2020-01-10", gr.results().get("2020-01-10" + NUL + "2020-03-01"));
-        assertEquals("2019-12-31", gr.results().get("2019-12-31" + NUL + "2020-01-01"));
+        assertEquals("2020-01-10",
+                GroupedResultTextView.byText(gr).get("2020-01-10" + NUL + "2020-03-01"));
+        assertEquals("2019-12-31",
+                GroupedResultTextView.byText(gr).get("2019-12-31" + NUL + "2020-01-01"));
     }
 
 
@@ -100,8 +104,9 @@ class OperationExecutorRowExtremeTest
         IDataTable ds = MockTable.of().col("TR01EDT", "2020-01-10", null)
                 .col("TR02EDT", "", "2021-05-05").name("TR").build();
         GroupedResult gr = run(rowOp("row_max", "^TR\\d+EDT$"), ds);
-        assertEquals("2020-01-10", gr.results().get("2020-01-10" + NUL));
-        assertEquals("2021-05-05", gr.results().get("\u0001MIS" + NUL + "2021-05-05"));
+        assertEquals("2020-01-10", GroupedResultTextView.byText(gr).get("2020-01-10" + NUL));
+        assertEquals("2021-05-05",
+                GroupedResultTextView.byText(gr).get("\u0001MIS" + NUL + "2021-05-05"));
     }
 
 
@@ -137,9 +142,9 @@ class OperationExecutorRowExtremeTest
         IDataTable ds = MockTable.of().col("TR01EDT", "2020-01-10", "")
                 .col("TR02EDT", "2020-02-01", null).name("TR").build();
         GroupedResult gr = run(rowOp("row_max", "^TR\\d+EDT$"), ds);
-        assertTrue(gr.results().containsKey("2020-01-10" + NUL + "2020-02-01"));
+        assertTrue(GroupedResultTextView.byText(gr).containsKey("2020-01-10" + NUL + "2020-02-01"));
         // Row 2 (both empty/missing) produced no result entry.
-        assertNull(gr.results().get(NUL));
+        assertNull(GroupedResultTextView.byText(gr).get(NUL));
         assertEquals(1, gr.results().size());
     }
 
@@ -168,7 +173,7 @@ class OperationExecutorRowExtremeTest
                 .build();
         GroupedResult gr = run(rowOp("row_min", "^TR\\d+EDT$"), ds);
         assertEquals(List.of("TR01EDT"), gr.groupColumns());
-        assertEquals("2020-01-10", gr.results().get("2020-01-10"));
-        assertEquals("2019-01-01", gr.results().get("2019-01-01"));
+        assertEquals("2020-01-10", GroupedResultTextView.byText(gr).get("2020-01-10"));
+        assertEquals("2019-01-01", GroupedResultTextView.byText(gr).get("2019-01-01"));
     }
 }

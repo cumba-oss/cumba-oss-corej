@@ -14,7 +14,8 @@ import java.util.stream.Collectors;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
-import net.cumba.datatable.values.GroupKeyPolicy;
+import net.cumba.datatable.values.GroupKey;
+import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -85,10 +86,11 @@ class IndexHelperGroupByPresentTest
      * ⚠ Re-pointed by {@code W38-A1} (Fix #249): the original assertion also required <em>the same
      * keys</em>, because {@code buildGroupKey} rendered both an absent component and a missing
      * component as {@code ""}. The <b>keys</b> now differ — an absent column still contributes
-     * {@code ""} (there is no cell to classify), while a genuinely missing cell renders its marker
-     * token — and that is fine for the contract, whose observable half is verdicts: each side of
-     * every lookup renders the same classification, so a lookup agrees with its own build in both
-     * scenarios and no verdict can tell them apart.
+     * {@code ""} (there is no cell to classify), while a genuinely missing cell keys under its
+     * {@code MissingValue} identity ({@code PLAN-grouping-key-identity}) — and that is fine for the
+     * contract, whose observable half is verdicts: each side of every lookup derives the same key
+     * ({@link GroupedResult#identityKey}), so a lookup agrees with its own build in both scenarios
+     * and no verdict can tell them apart.
      * </p>
      *
      * <p>
@@ -117,16 +119,17 @@ class IndexHelperGroupByPresentTest
         assertEquals(rowSets(fromAbsent), rowSets(fromMissing));
         assertEquals(Set.of(""), keys(fromAbsent),
                 "an absent column has no cell to classify — its key component stays \"\"");
-        assertEquals(Set.of(GroupKeyPolicy.KeyPart.MISSING_MIS.reportingForm()), keys(fromMissing),
+        assertEquals(Set.of(MissingValue.MIS), keys(fromMissing),
                 "a present-but-missing key names its identity — the W38-A1 half of the split");
     }
 
 
     /**
-     * The degenerate key must be the full n-component encoding, not a single empty string: with two
-     * declared columns it is one {@code NUL} separating two empty components. A 1-column test
-     * cannot see the difference, and getting it wrong would make every row miss its group and
-     * silently read {@code missingKeyDefault}.
+     * The degenerate key must be the full n-component key, not a single empty string: with two
+     * declared columns it is {@code GroupKey.of("", "")}. A 1-column test cannot see the
+     * difference, and getting it wrong would make every row miss its group and silently read
+     * {@code missingKeyDefault} — H1 of {@code PLAN-grouping-key-identity}: the all-absent branch
+     * used to build the TEXT key {@code "\0"}, which never met the lookup's identity key.
      */
     @Test
     void degenerateKeyKeepsOneComponentPerDeclaredColumn()
@@ -139,11 +142,10 @@ class IndexHelperGroupByPresentTest
 
         assertNotNull(g);
         assertEquals(1, g.blocks().size());
-        String key = g.blocks().get(0).key();
-        assertEquals("\u0000", key,
-                "expected two empty components joined by NUL, got " + debug(key));
+        Object key = g.blocks().get(0).key();
+        assertEquals(GroupKey.of("", ""), key, "expected two empty components, got " + debug(key));
         // and it must equal what the per-row lookup computes on the same table
-        assertEquals(GroupedResult.buildKey(t.getMetaData(), t, declared, 0), key);
+        assertEquals(GroupedResult.identityKey(t.getMetaData(), t, declared, 0), key);
     }
 
 
@@ -163,10 +165,10 @@ class IndexHelperGroupByPresentTest
         GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$N"));
 
         assertEquals(2, gr.results().size());
-        assertEquals(2L, gr.results()
-                .get(GroupedResult.buildKey(t.getMetaData(), t, List.of("USUBJID", "EPOCH"), 0)));
-        assertEquals(1L, gr.results()
-                .get(GroupedResult.buildKey(t.getMetaData(), t, List.of("USUBJID", "EPOCH"), 2)));
+        assertEquals(2L, gr.results().get(
+                GroupedResult.identityKey(t.getMetaData(), t, List.of("USUBJID", "EPOCH"), 0)));
+        assertEquals(1L, gr.results().get(
+                GroupedResult.identityKey(t.getMetaData(), t, List.of("USUBJID", "EPOCH"), 2)));
     }
 
 
@@ -247,8 +249,8 @@ class IndexHelperGroupByPresentTest
     /**
      * The key built from the index side and the key {@link GroupedResult#getForRow} builds from a
      * row must agree, or every row would miss and read {@code missingKeyDefault}. They agree
-     * because both render an absent column as {@code ""} — this is why {@link GroupedResult} needed
-     * no change.
+     * because both sides are the one derivation {@link GroupedResult#identityKey}, which keys an
+     * absent column as {@code ""}.
      */
     @Test
     void degenerateGroupKey_matchesTheRowSideLookupKey()
@@ -261,7 +263,7 @@ class IndexHelperGroupByPresentTest
         Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$N"));
 
-        String rowKey = GroupedResult.buildKey(t.getMetaData(), t, List.of("TSGRPID"), 0);
+        Object rowKey = GroupedResult.identityKey(t.getMetaData(), t, List.of("TSGRPID"), 0);
         assertTrue(gr.results().containsKey(rowKey),
                 "row-side key " + debug(rowKey) + " not among index-side keys "
                         + gr.results().keySet().stream().map(IndexHelperGroupByPresentTest::debug)
@@ -462,11 +464,11 @@ class IndexHelperGroupByPresentTest
      * </p>
      *
      * <p>
-     * ⚠ Do not "fix" this by widening the join. {@code IndexHelper.buildGroupKey} deliberately
-     * emits the <b>full declared list</b> with {@code ""} for absent columns, so the family-1
-     * cross-table join misses on purpose; a policy that instead dropped the absent column would
-     * hand the row the study-wide aggregate — a plausible wrong number in place of a clean miss,
-     * and two contradictory answers to one fact inside one engine.
+     * ⚠ Do not "fix" this by widening the join. {@code IndexHelper.buildGroupKey} deliberately keys
+     * the <b>full declared list</b> with {@code ""} for absent columns, so the family-1 cross-table
+     * join misses on purpose; a policy that instead dropped the absent column would hand the row
+     * the study-wide aggregate — a plausible wrong number in place of a clean miss, and two
+     * contradictory answers to one fact inside one engine.
      * </p>
      */
     @Test
@@ -485,8 +487,8 @@ class IndexHelperGroupByPresentTest
         GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$N"));
 
         // Grouped on the foreign table, where EPOCH is absent ⇒ keys carry "" for it.
-        String foreignKey = gr.results().keySet().iterator().next();
-        String evalRowKey = GroupedResult.buildKey(eval.getMetaData(), eval,
+        Object foreignKey = gr.results().keySet().iterator().next();
+        Object evalRowKey = GroupedResult.identityKey(eval.getMetaData(), eval,
                 List.of("USUBJID", "EPOCH"), 0);
         assertEquals(2, gr.results().size());
         assertNotEquals(evalRowKey, foreignKey,
@@ -522,15 +524,15 @@ class IndexHelperGroupByPresentTest
     }
 
 
-    private static Set<String> keys(IndexHelper.Grouping g)
+    private static Set<Object> keys(IndexHelper.Grouping g)
     {
         return g.blocks().stream().map(IndexHelper.GroupBlock::key).collect(Collectors.toSet());
     }
 
 
-    private static String debug(String key)
+    private static String debug(Object key)
     {
-        return "[" + key.replace("\0", "\\0") + "]";
+        return "[" + String.valueOf(key).replace("\0", "\\0") + "]";
     }
 
 

@@ -311,6 +311,39 @@ class RuleCheckLevelsExecutionTest
     }
 
 
+    /**
+     * {@code PLAN-grouping-key-identity}, family U: a group finding's unit is the group's key
+     * IDENTITY. Two groups whose values merely render alike ({@code 4.9999999999994} and
+     * {@code 5.0} both print "5") used to stamp one unit, so the weaker rung's finding on the
+     * second group was dropped as a re-report of the stricter rung's finding on the first.
+     */
+    @Test
+    @DisplayName("two noise-distinct groups firing at two levels are both reported")
+    void twoNoiseDistinctGroupsAreTwoUnits() throws IOException
+    {
+        Rule rule = rule("""
+                Grouping_Variables: ["G"]
+                Check:
+                  ERROR:
+                    expression: >-
+                      A == "a"
+                  INFO:
+                    expression: >-
+                      A == "a" or A == "b"
+                """);
+        rule.setSensitivity(Sensitivity.GROUP);
+        IDataTable grouped = RealTables.of("AE").dbl("G", 4.9999999999994, 5.0).str("A", "a", "b")
+                .build();
+        RuleExecutionResult r = run(rule, grouped, Severity.INFO);
+
+        assertEquals(2, r.getViolationCount(), "two groups, two findings: "
+                + r.getViolations().stream().map(v -> v.getLevel() + "@" + v.getRow()).toList());
+        assertEquals(List.of(Severity.ERROR, Severity.INFO),
+                r.getViolations().stream().map(Violation::getLevel).toList());
+        assertEquals(List.of(0L, 1L), r.getViolations().stream().map(Violation::getRow).toList());
+    }
+
+
     @Test
     @DisplayName("a broadcast rung and a row rung do not collide on a USUBJID-less domain")
     void broadcastAndRowRungsDoNotCollide() throws IOException

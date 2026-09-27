@@ -138,6 +138,12 @@ interface KeyCellReader
 
         private final DataValueType type;
 
+        /**
+         * 2^53: below it in magnitude every {@code long} is held exactly by the {@code double} the
+         * fast read answers.
+         */
+        private static final double TWO_53 = 0x1p53;
+
         private long fallbacks;
 
         Direct(CachedDataTableColumn aColumn)
@@ -165,7 +171,10 @@ interface KeyCellReader
             case LONG, DOUBLE ->
             {
                 double v = column.presentNumericValue(aRow);
-                if (!Double.isNaN(v))
+                // A LONG beyond 2^53 may be one no double holds exactly: its part is the exact
+                // PresentExactLong, which only the value itself can decide, so it takes the old
+                // path (PLAN-grouping-key-identity L1 -- the fast and the slow reader must agree).
+                if (!Double.isNaN(v) && (type == DataValueType.DOUBLE || Math.abs(v) < TWO_53))
                 {
                     return new KeyPart.PresentNumber(v);
                 }

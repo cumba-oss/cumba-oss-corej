@@ -49,11 +49,11 @@ class OperationExecutorDateDiffLastInGroupTest
                 null, new java.util.HashMap<>());
         assertEquals(List.of("MYDTC", "REFDTC"), gr.groupColumns());
         // 2020-01-10 - 2020-01-01 = 9 (no +1)
-        assertEquals(9L, gr.results().get("2020-01-10" + NUL + "2020-01-01"));
+        assertEquals(9L, GroupedResultTextView.byText(gr).get("2020-01-10" + NUL + "2020-01-01"));
         // 2020-02-01 - 2020-01-01 = 31
-        assertEquals(31L, gr.results().get("2020-02-01" + NUL + "2020-01-01"));
+        assertEquals(31L, GroupedResultTextView.byText(gr).get("2020-02-01" + NUL + "2020-01-01"));
         // same day = 0 (no +1)
-        assertEquals(0L, gr.results().get("2020-01-01" + NUL + "2020-01-01"));
+        assertEquals(0L, GroupedResultTextView.byText(gr).get("2020-01-01" + NUL + "2020-01-01"));
     }
 
 
@@ -70,7 +70,7 @@ class OperationExecutorDateDiffLastInGroupTest
         GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, ds, NO_RESOLVER,
                 null, new java.util.HashMap<>());
         // 9 + 5 = 14
-        assertEquals(14L, gr.results().get("2020-01-10" + NUL + "2020-01-01"));
+        assertEquals(14L, GroupedResultTextView.byText(gr).get("2020-01-10" + NUL + "2020-01-01"));
     }
 
 
@@ -93,8 +93,10 @@ class OperationExecutorDateDiffLastInGroupTest
                 null, new java.util.HashMap<>());
         assertEquals(List.of("MYDTC", "REFDTC", "OFF"), gr.groupColumns());
         // 9 + 3 and 9 + 10 keyed by (MYDTC, REFDTC, OFF)
-        assertEquals(12L, gr.results().get("2020-01-10" + NUL + "2020-01-01" + NUL + "3"));
-        assertEquals(19L, gr.results().get("2020-01-10" + NUL + "2020-01-01" + NUL + "10"));
+        assertEquals(12L, GroupedResultTextView.byText(gr)
+                .get("2020-01-10" + NUL + "2020-01-01" + NUL + "3"));
+        assertEquals(19L, GroupedResultTextView.byText(gr)
+                .get("2020-01-10" + NUL + "2020-01-01" + NUL + "10"));
     }
 
 
@@ -109,9 +111,9 @@ class OperationExecutorDateDiffLastInGroupTest
 
         GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, ds, NO_RESOLVER,
                 null, new java.util.HashMap<>());
-        assertEquals(9L, gr.results().get("2020-01-10" + NUL + "2020-01-01"));
+        assertEquals(9L, GroupedResultTextView.byText(gr).get("2020-01-10" + NUL + "2020-01-01"));
         // partial "2020" (len 4) and blank are omitted
-        assertNull(gr.results().get("2020" + NUL + "2020-01-01"));
+        assertNull(GroupedResultTextView.byText(gr).get("2020" + NUL + "2020-01-01"));
         assertEquals(1, gr.results().size());
     }
 
@@ -141,11 +143,14 @@ class OperationExecutorDateDiffLastInGroupTest
                 null, new java.util.HashMap<>());
         assertEquals(List.of("MYDTC", "USUBJID", "RPHASE"), gr.groupColumns());
         // S1 earliest SJSTDTC = 2020-01-01; 2020-01-10 - 2020-01-01 = 9
-        assertEquals(9L, gr.results().get("2020-01-10" + NUL + "S1" + NUL + "P1"));
+        assertEquals(9L,
+                GroupedResultTextView.byText(gr).get("2020-01-10" + NUL + "S1" + NUL + "P1"));
         // 2020-01-20 - 2020-01-01 = 19
-        assertEquals(19L, gr.results().get("2020-01-20" + NUL + "S1" + NUL + "P1"));
+        assertEquals(19L,
+                GroupedResultTextView.byText(gr).get("2020-01-20" + NUL + "S1" + NUL + "P1"));
         // S2 earliest SJSTDTC = 2020-02-01; 2020-02-05 - 2020-02-01 = 4
-        assertEquals(4L, gr.results().get("2020-02-05" + NUL + "S2" + NUL + "P1"));
+        assertEquals(4L,
+                GroupedResultTextView.byText(gr).get("2020-02-05" + NUL + "S2" + NUL + "P1"));
     }
 
 
@@ -173,11 +178,14 @@ class OperationExecutorDateDiffLastInGroupTest
         GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, target, resolver,
                 null, new java.util.HashMap<>());
         // S1 LATEST SJENDTC = 2020-01-08; 2020-01-10 - 2020-01-08 = 2
-        assertEquals(2L, gr.results().get("2020-01-10" + NUL + "S1" + NUL + "P1"));
+        assertEquals(2L,
+                GroupedResultTextView.byText(gr).get("2020-01-10" + NUL + "S1" + NUL + "P1"));
         // 2020-01-20 - 2020-01-08 = 12
-        assertEquals(12L, gr.results().get("2020-01-20" + NUL + "S1" + NUL + "P1"));
+        assertEquals(12L,
+                GroupedResultTextView.byText(gr).get("2020-01-20" + NUL + "S1" + NUL + "P1"));
         // S2 LATEST SJENDTC = 2020-02-01; 2020-02-15 - 2020-02-01 = 14
-        assertEquals(14L, gr.results().get("2020-02-15" + NUL + "S2" + NUL + "P1"));
+        assertEquals(14L,
+                GroupedResultTextView.byText(gr).get("2020-02-15" + NUL + "S2" + NUL + "P1"));
     }
 
 
@@ -218,8 +226,8 @@ class OperationExecutorDateDiffLastInGroupTest
         GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, target, resolver,
                 null, new java.util.HashMap<>());
         // earliest EXSTDTC for S1 = 2020-02-01; 2020-03-01 - 2020-02-01 = 29; 2020-03-10 = 38
-        assertEquals(29L, gr.results().get("2020-03-01" + NUL + "S1"));
-        assertEquals(38L, gr.results().get("2020-03-10" + NUL + "S1"));
+        assertEquals(29L, GroupedResultTextView.byText(gr).get("2020-03-01" + NUL + "S1"));
+        assertEquals(38L, GroupedResultTextView.byText(gr).get("2020-03-10" + NUL + "S1"));
     }
 
     // -- E4 is_last_in_group ----------------------------------------------
@@ -238,11 +246,13 @@ class OperationExecutorDateDiffLastInGroupTest
         GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, se, NO_RESOLVER,
                 null, new java.util.HashMap<>());
         assertEquals(List.of("USUBJID", "SESEQ"), gr.groupColumns());
-        assertEquals(false, gr.results().get("S1" + NUL + "1"));
-        assertEquals(false, gr.results().get("S1" + NUL + "2"));
-        assertEquals(true, gr.results().get("S1" + NUL + "3"), "last SESEQ in S1");
-        assertEquals(false, gr.results().get("S2" + NUL + "1"));
-        assertEquals(true, gr.results().get("S2" + NUL + "2"), "last SESEQ in S2");
+        assertEquals(false, GroupedResultTextView.byText(gr).get("S1" + NUL + "1"));
+        assertEquals(false, GroupedResultTextView.byText(gr).get("S1" + NUL + "2"));
+        assertEquals(true, GroupedResultTextView.byText(gr).get("S1" + NUL + "3"),
+                "last SESEQ in S1");
+        assertEquals(false, GroupedResultTextView.byText(gr).get("S2" + NUL + "1"));
+        assertEquals(true, GroupedResultTextView.byText(gr).get("S2" + NUL + "2"),
+                "last SESEQ in S2");
         assertEquals(false, gr.defaultForMissingKey(), "absent group ⇒ default false");
     }
 
@@ -259,9 +269,10 @@ class OperationExecutorDateDiffLastInGroupTest
 
         GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, se, NO_RESOLVER,
                 null, new java.util.HashMap<>());
-        assertEquals(true, gr.results().get("S1" + NUL + "3"), "SESEQ 3 is the max");
-        assertEquals(false, gr.results().get("S1" + NUL + "1"));
-        assertEquals(false, gr.results().get("S1" + NUL + "2"));
+        assertEquals(true, GroupedResultTextView.byText(gr).get("S1" + NUL + "3"),
+                "SESEQ 3 is the max");
+        assertEquals(false, GroupedResultTextView.byText(gr).get("S1" + NUL + "1"));
+        assertEquals(false, GroupedResultTextView.byText(gr).get("S1" + NUL + "2"));
     }
 
 
@@ -371,11 +382,11 @@ class OperationExecutorDateDiffLastInGroupTest
         // TFSPID].
         assertEquals(List.of("USUBJID", "TFSPID"), gr.groupColumns());
         // S1/M1: (2020-01-20 - 2020-01-05) + 1 = 15 + 1 = 16
-        assertEquals(16L, gr.results().get("S1" + NUL + "M1"));
+        assertEquals(16L, GroupedResultTextView.byText(gr).get("S1" + NUL + "M1"));
         // S1/M2: (2020-02-11 - 2020-01-05) + 1 = 37 + 1 = 38
-        assertEquals(38L, gr.results().get("S1" + NUL + "M2"));
+        assertEquals(38L, GroupedResultTextView.byText(gr).get("S1" + NUL + "M2"));
         // S2/M3: (2020-03-06 - 2020-03-01) + 1 = 5 + 1 = 6
-        assertEquals(6L, gr.results().get("S2" + NUL + "M3"));
+        assertEquals(6L, GroupedResultTextView.byText(gr).get("S2" + NUL + "M3"));
     }
 
 
@@ -433,8 +444,9 @@ class OperationExecutorDateDiffLastInGroupTest
         GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, tf, resolver, null,
                 new java.util.HashMap<>());
         // S1/M1 resolves; the blank-SPID S2 row produces no value.
-        assertEquals(16L, gr.results().get("S1" + NUL + "M1"));
-        assertNull(gr.results().get("S2" + NUL), "a blank --SPID row must not join");
+        assertEquals(16L, GroupedResultTextView.byText(gr).get("S1" + NUL + "M1"));
+        assertNull(GroupedResultTextView.byText(gr).get("S2" + NUL),
+                "a blank --SPID row must not join");
     }
 
 
@@ -468,8 +480,8 @@ class OperationExecutorDateDiffLastInGroupTest
         GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, tf, resolver, null,
                 new java.util.HashMap<>());
         assertEquals(List.of("USUBJID"), gr.groupColumns());
-        assertEquals(16L, gr.results().get("S1"));
-        assertEquals(6L, gr.results().get("S2"));
+        assertEquals(16L, GroupedResultTextView.byText(gr).get("S1"));
+        assertEquals(6L, GroupedResultTextView.byText(gr).get("S2"));
     }
 
     // -- EC-46 : the Mode 2 subtrahend is selected by the determinacy rule ---
@@ -502,10 +514,10 @@ class OperationExecutorDateDiffLastInGroupTest
 
         GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, target, resolver,
                 null, new java.util.HashMap<>());
-        assertFalse(gr.results().containsKey("2012-07-10" + NUL + "S1"),
+        assertFalse(GroupedResultTextView.byText(gr).containsKey("2012-07-10" + NUL + "S1"),
                 "S1's earliest reference is indeterminate, so no day count may be published");
         // S2: 2012-07-10 - 2012-06-10 = 30
-        assertEquals(30L, gr.results().get("2012-07-10" + NUL + "S2"));
+        assertEquals(30L, GroupedResultTextView.byText(gr).get("2012-07-10" + NUL + "S2"));
     }
 
 
@@ -533,10 +545,10 @@ class OperationExecutorDateDiffLastInGroupTest
 
         GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, target, resolver,
                 null, new java.util.HashMap<>());
-        assertFalse(gr.results().containsKey("2012-07-10" + NUL + "S1"),
+        assertFalse(GroupedResultTextView.byText(gr).containsKey("2012-07-10" + NUL + "S1"),
                 "2012-06 could be the 30th, later than 2012-06-20");
         // S2: 2012-07-10 - 2012-06-20 = 20
-        assertEquals(20L, gr.results().get("2012-07-10" + NUL + "S2"));
+        assertEquals(20L, GroupedResultTextView.byText(gr).get("2012-07-10" + NUL + "S2"));
     }
 
 
@@ -563,7 +575,7 @@ class OperationExecutorDateDiffLastInGroupTest
                 null, new java.util.HashMap<>());
         // earliest = 2012-06-01 (no completion of 2012-06 precedes it); 2012-07-10 - 2012-06-01 =
         // 39
-        assertEquals(39L, gr.results().get("2012-07-10" + NUL + "S1"));
+        assertEquals(39L, GroupedResultTextView.byText(gr).get("2012-07-10" + NUL + "S1"));
     }
 
     // -- F-corej-L1-04: the tie rule and the non-numeric ordering path ---------
@@ -588,10 +600,12 @@ class OperationExecutorDateDiffLastInGroupTest
 
         GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, se, NO_RESOLVER,
                 null, new java.util.HashMap<>());
-        assertEquals(false, gr.results().get("S1" + NUL + "1"), "below the max");
-        assertEquals(false, gr.results().get("S1" + NUL + "2"),
+        assertEquals(false, GroupedResultTextView.byText(gr).get("S1" + NUL + "1"),
+                "below the max");
+        assertEquals(false, GroupedResultTextView.byText(gr).get("S1" + NUL + "2"),
                 "first-occurrence tie: the max is row 1, so row 2 writes false last");
-        assertEquals(true, gr.results().get("S2" + NUL + "7"), "untied control group");
+        assertEquals(true, GroupedResultTextView.byText(gr).get("S2" + NUL + "7"),
+                "untied control group");
     }
 
 
@@ -610,10 +624,11 @@ class OperationExecutorDateDiffLastInGroupTest
 
         GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, se, NO_RESOLVER,
                 null, new java.util.HashMap<>());
-        assertEquals(true, gr.results().get("S1" + NUL + "C"), "lexicographic max is the last");
-        assertEquals(false, gr.results().get("S1" + NUL + "B"),
+        assertEquals(true, GroupedResultTextView.byText(gr).get("S1" + NUL + "C"),
+                "lexicographic max is the last");
+        assertEquals(false, GroupedResultTextView.byText(gr).get("S1" + NUL + "B"),
                 "the first row is NOT the last under string ordering");
-        assertEquals(false, gr.results().get("S1" + NUL + "A"));
+        assertEquals(false, GroupedResultTextView.byText(gr).get("S1" + NUL + "A"));
     }
 
     // -- F-corej-L1-03: the SDTM "no Day 0" boundary of the dy operation -------
@@ -636,10 +651,10 @@ class OperationExecutorDateDiffLastInGroupTest
         GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, ae, dmResolver,
                 null, new java.util.HashMap<>());
         assertEquals(List.of("USUBJID", "AESTDTC"), gr.groupColumns());
-        assertEquals(1L, gr.results().get("S1" + NUL + "2020-01-15"),
+        assertEquals(1L, GroupedResultTextView.byText(gr).get("S1" + NUL + "2020-01-15"),
                 "a date equal to RFSTDTC is Day 1 -- there is no Day 0");
-        assertEquals(-1L, gr.results().get("S1" + NUL + "2020-01-14"),
+        assertEquals(-1L, GroupedResultTextView.byText(gr).get("S1" + NUL + "2020-01-14"),
                 "the day before the reference date is Day -1");
-        assertEquals(2L, gr.results().get("S1" + NUL + "2020-01-16"));
+        assertEquals(2L, GroupedResultTextView.byText(gr).get("S1" + NUL + "2020-01-16"));
     }
 }

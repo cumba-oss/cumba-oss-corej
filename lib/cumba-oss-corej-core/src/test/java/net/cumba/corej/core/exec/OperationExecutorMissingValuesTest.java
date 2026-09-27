@@ -173,16 +173,16 @@ class OperationExecutorMissingValuesTest
 
         GroupedResult skipped = assertInstanceOf(GroupedResult.class,
                 OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER).get("$min_ex"));
-        assertEquals("2024-03-01", skipped.results().get("S01"),
+        assertEquals("2024-03-01", GroupedResultTextView.byText(skipped).get("S01"),
                 "the default still lets the populated sibling win");
-        assertEquals("2024-05-01", skipped.results().get("S02"));
+        assertEquals("2024-05-01", GroupedResultTextView.byText(skipped).get("S02"));
 
         op.setMissingValues(Operation.MISSING_VALUES_INDETERMINATE);
         GroupedResult declared = assertInstanceOf(GroupedResult.class,
                 OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER).get("$min_ex"));
-        assertFalse(declared.results().containsKey("S01"),
+        assertFalse(GroupedResultTextView.byText(declared).containsKey("S01"),
                 "S01 holds a missing candidate, so its extreme is undeterminable — no key");
-        assertEquals("2024-05-01", declared.results().get("S02"),
+        assertEquals("2024-05-01", GroupedResultTextView.byText(declared).get("S02"),
                 "S02 is fully populated and must be unaffected");
     }
 
@@ -260,16 +260,16 @@ class OperationExecutorMissingValuesTest
 
         GroupedResult skipped = (GroupedResult) OperationExecutorCalls.executeOne(op, target,
                 resolver, null, new HashMap<>());
-        assertEquals(9L, skipped.results().get("2020-01-10" + NUL + "S1"),
+        assertEquals(9L, GroupedResultTextView.byText(skipped).get("2020-01-10" + NUL + "S1"),
                 "the default skips S1's blank reference and uses 2020-01-01");
-        assertEquals(4L, skipped.results().get("2020-02-05" + NUL + "S2"));
+        assertEquals(4L, GroupedResultTextView.byText(skipped).get("2020-02-05" + NUL + "S2"));
 
         op.setMissingValues(Operation.MISSING_VALUES_INDETERMINATE);
         GroupedResult declared = (GroupedResult) OperationExecutorCalls.executeOne(op, target,
                 resolver, null, new HashMap<>());
-        assertFalse(declared.results().containsKey("2020-01-10" + NUL + "S1"),
+        assertFalse(GroupedResultTextView.byText(declared).containsKey("2020-01-10" + NUL + "S1"),
                 "S1's reference group holds a missing candidate ⇒ no subtrahend ⇒ no day count");
-        assertEquals(4L, declared.results().get("2020-02-05" + NUL + "S2"),
+        assertEquals(4L, GroupedResultTextView.byText(declared).get("2020-02-05" + NUL + "S2"),
                 "S2's reference group is fully populated and must be unaffected");
     }
 
@@ -292,7 +292,7 @@ class OperationExecutorMissingValuesTest
 
         GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, table, NO_RESOLVER,
                 null, new HashMap<>());
-        assertEquals(9L, gr.results().get("2020-01-10" + NUL + "2020-01-01"),
+        assertEquals(9L, GroupedResultTextView.byText(gr).get("2020-01-10" + NUL + "2020-01-01"),
                 "the populated row still gets its day count");
     }
 

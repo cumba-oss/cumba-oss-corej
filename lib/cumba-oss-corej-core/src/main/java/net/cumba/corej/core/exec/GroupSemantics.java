@@ -83,6 +83,16 @@ public final class GroupSemantics
      * discarding for a sixth with nothing in the YAML to tell the author which they would get.
      * </p>
      *
+     * <p>
+     * ⭐ <b>The key identity is the datatable index's</b> ({@code PLAN-grouping-key-identity}):
+     * exact, and {@code -0.0}-aware ({@code KeyHashSupport}, shared by both datatable twins) — the
+     * {@code KeyPart} identity on every axis this stack produces. So {@code 4.9999999999994} and
+     * {@code 5.0} are two groups (register {@code D64h}), {@code -0.0} and {@code 0.0} are one
+     * (register {@code D84}, owner Q4), and a {@code LONG} beyond 2^53 is exact. Until that plan
+     * the index split the two zeros, and {@code is_inconsistent_across_dataset} over them flagged
+     * nothing.
+     * </p>
+     *
      * @param table
      *            the dataset
      * @param keyCols

@@ -211,7 +211,7 @@ class OperationExecutorSurvivorPinsTest
         // The expected join: the qualifier lands on (USUBJID=S1, PCSEQ=1) and nowhere else, and
         // the result declares [USUBJID, PCSEQ] as its group columns so the parent lookup uses
         // the anchor IDVAR. Every rotation below must produce EXACTLY this.
-        Map<String, Object> expected = Map.of(GroupedResult.buildKey(List.of("S1", "1")), true);
+        Map<String, Object> expected = Map.of(GroupedResult.textKey(List.of("S1", "1")), true);
         for (String atZero : ALL_SUPP_COLS)
         {
             GroupedResult g = assertInstanceOf(GroupedResult.class,
@@ -234,7 +234,7 @@ class OperationExecutorSurvivorPinsTest
             GroupedResult g = assertInstanceOf(GroupedResult.class,
                     suppJoin("supp_qnam_value", supp(firstAt0(atZero))),
                     atZero + " at column index 0");
-            assertEquals(Map.of(GroupedResult.buildKey(List.of("S1", "1")), "0.5"), g.results(),
+            assertEquals(Map.of(GroupedResult.textKey(List.of("S1", "1")), "0.5"), g.results(),
                     "QVAL is read from its own column, with " + atZero + " at index 0");
         }
     }
@@ -269,8 +269,8 @@ class OperationExecutorSurvivorPinsTest
         GroupedResult kept = assertInstanceOf(GroupedResult.class,
                 suppJoin("supp_qnam_value", sameIdvar));
         assertEquals(
-                Map.of(GroupedResult.buildKey(List.of("S1", "1")), "0.5",
-                        GroupedResult.buildKey(List.of("S1", "2")), "0.9"),
+                Map.of(GroupedResult.textKey(List.of("S1", "1")), "0.5",
+                        GroupedResult.textKey(List.of("S1", "2")), "0.9"),
                 kept.results(), "both rows share the anchor IDVAR ⇒ both join");
 
         // Same shape but the second row references a DIFFERENT IDVAR: the first anchors, the
@@ -282,7 +282,7 @@ class OperationExecutorSurvivorPinsTest
                 suppJoin("supp_qnam_value", divergent));
         assertEquals(List.of("USUBJID", "PCSEQ"), anchored.groupColumns(),
                 "the FIRST-seen IDVAR anchors the join");
-        assertEquals(Map.of(GroupedResult.buildKey(List.of("S1", "1")), "0.5"), anchored.results(),
+        assertEquals(Map.of(GroupedResult.textKey(List.of("S1", "1")), "0.5"), anchored.results(),
                 "the divergent PCGRPID row is dropped, not silently re-keyed");
     }
 
@@ -316,16 +316,16 @@ class OperationExecutorSurvivorPinsTest
         GroupedResult filtered = assertInstanceOf(GroupedResult.class,
                 groupedMax(numericTable(), Map.of("PARAMCD", "X")));
         assertEquals(
-                Map.of(GroupedResult.buildKey(List.of("S1")), 1.0d,
-                        GroupedResult.buildKey(List.of("S2")), 3.0d),
+                Map.of(GroupedResult.textKey(List.of("S1")), 1.0d,
+                        GroupedResult.textKey(List.of("S2")), 3.0d),
                 filtered.results(), "only PARAMCD=X rows are candidates, so S1's max is 1 (not 5)");
         // Negative control — the very same data with no filter yields a DIFFERENT answer, so the
         // assertion above cannot pass by accident.
         GroupedResult unfiltered = assertInstanceOf(GroupedResult.class,
                 groupedMax(numericTable(), null));
         assertEquals(
-                Map.of(GroupedResult.buildKey(List.of("S1")), 5.0d,
-                        GroupedResult.buildKey(List.of("S2")), 3.0d),
+                Map.of(GroupedResult.textKey(List.of("S1")), 5.0d,
+                        GroupedResult.textKey(List.of("S2")), 3.0d),
                 unfiltered.results(), "without a filter S1's max is 5");
         // ... and an EMPTY filter map must behave as no filter, not as "match nothing".
         GroupedResult emptyFilter = assertInstanceOf(GroupedResult.class,
@@ -350,15 +350,15 @@ class OperationExecutorSurvivorPinsTest
         GroupedResult filtered = assertInstanceOf(GroupedResult.class,
                 groupedMax(stringTable(), Map.of("PARAMCD", "X")));
         assertEquals(
-                Map.of(GroupedResult.buildKey(List.of("S1")), "2020-01-01",
-                        GroupedResult.buildKey(List.of("S2")), "2019-05-05"),
+                Map.of(GroupedResult.textKey(List.of("S1")), "2020-01-01",
+                        GroupedResult.textKey(List.of("S2")), "2019-05-05"),
                 filtered.results(),
                 "the string fallback must apply the same filter as the numeric pass");
         GroupedResult unfiltered = assertInstanceOf(GroupedResult.class,
                 groupedMax(stringTable(), null));
         assertEquals(
-                Map.of(GroupedResult.buildKey(List.of("S1")), "2021-01-01",
-                        GroupedResult.buildKey(List.of("S2")), "2019-05-05"),
+                Map.of(GroupedResult.textKey(List.of("S1")), "2021-01-01",
+                        GroupedResult.textKey(List.of("S2")), "2019-05-05"),
                 unfiltered.results(), "without a filter S1's latest date is 2021-01-01");
     }
 
@@ -423,7 +423,7 @@ class OperationExecutorSurvivorPinsTest
                 parentModelColumnOrder(suppAe(), p, toAe));
         assertEquals(List.of("RDOMAIN"), ok.groupColumns());
         assertEquals(
-                Map.of(GroupedResult.buildKey(List.of("AE")),
+                Map.of(GroupedResult.textKey(List.of("AE")),
                         List.of("STUDYID", "DOMAIN", "USUBJID")),
                 ok.results(), "the PARENT domain's model variables, keyed by RDOMAIN");
         assertFalse(ok.results().isEmpty(), "the positive control must actually carry a group");

@@ -1,9 +1,8 @@
 package net.cumba.corej.core.exec;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.StringJoiner;
+import java.util.Map;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.index.DataTableIndexFactory;
@@ -15,15 +14,13 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Shared utilities for using {@link IDataTableIndex} in the CDISC CORE engine. Centralizes index
- * creation, block-to-row extraction, missing-key detection, and GroupedResult-compatible key
- * building.
+ * creation, block-to-row extraction, missing-key detection, GroupedResult-compatible key building,
+ * and the block-keyed result write ({@link #putBlock}) that refuses two blocks with one key.
  */
 final class IndexHelper
 {
 
     private static final System.Logger LOGGER = System.getLogger(IndexHelper.class.getName());
-
-    private static final String KEY_SEPARATOR = "\0";
 
     private IndexHelper()
     {
@@ -48,10 +45,10 @@ final class IndexHelper
     }
 
     /**
-     * One group produced by {@link #groupByPresent}: the group key — built over the <b>full
-     * declared</b> column list, so an absent column contributes {@code ""} exactly as
-     * {@link GroupedResult#buildKey(DataTableMeta, IDataTable, List, long)} does on the per-row
-     * lookup side — and the absolute row indices of the group's members.
+     * One group produced by {@link #groupByPresent}: the group key — the
+     * {@link GroupedResult#identityKey identity key} over the <b>full declared</b> column list, so
+     * an absent column contributes {@code ""} exactly as it does on the per-row lookup side — and
+     * the absolute row indices of the group's members.
      *
      * <p>
      * A class rather than a record because {@code rows} is an {@code int[]}: the row-index arrays
@@ -63,11 +60,11 @@ final class IndexHelper
     static final class GroupBlock
     {
 
-        private final String key;
+        private final Object key;
 
         private final int[] rows;
 
-        GroupBlock(String aKey, int[] aRows)
+        GroupBlock(Object aKey, int[] aRows)
         {
             key = aKey;
             rows = aRows;
@@ -75,9 +72,10 @@ final class IndexHelper
 
 
         /**
-         * The {@code NUL}-joined group key, in {@link GroupedResult}'s encoding.
+         * The group key, in {@link GroupedResult}'s {@link GroupedResult.KeyMode#IDENTITY} encoding
+         * ({@link GroupedResult#identityKey}).
          */
-        String key()
+        Object key()
         {
             return key;
         }
@@ -148,9 +146,9 @@ final class IndexHelper
      * </p>
      *
      * <p>
-     * Keys are built over the <b>full declared</b> {@code groupCols}, so they stay compatible with
-     * {@link GroupedResult#getForRow} without any change to {@link GroupedResult}: both sides
-     * render an absent column as {@code ""}.
+     * Keys are built over the <b>full declared</b> {@code groupCols} by the one derivation the
+     * lookup uses ({@link GroupedResult#identityKey}), so they stay compatible with
+     * {@link GroupedResult#getForRow}: both sides key an absent column as {@code ""}.
      * </p>
      *
      * <p>
@@ -165,8 +163,8 @@ final class IndexHelper
      * <p>
      * Under {@link GroupKeyPolicy#KEEP_MISSING_KEYS} — the shipped behaviour of every
      * {@code Operations[].group:} evaluator except {@code is_last_in_group} — a blank key component
-     * renders its identity in the reporting key ({@code ""} for an empty cell, the marker token for
-     * a genuine missing — {@code W38-A1} / Fix #249) and the group is still formed. With
+     * keys under its own identity ({@code ""} for an empty cell, the {@code MissingValue} constant
+     * for a genuine missing — {@code W38-A1} / Fix #249) and the group is still formed. With
      * {@link GroupKeyPolicy#keepMissings()} {@code false} a block whose representative row carries
      * a blank key component is dropped instead, which is what lets the {@code group:} surface
      * answer an authored {@code keep_missings: false} — the half of the fold/discard asymmetry that
@@ -212,13 +210,13 @@ final class IndexHelper
         if (present.isEmpty())
         {
             // Every declared column is absent ⇒ no row is distinguishable from any other ⇒ one
-            // group over the whole table. Its key is what GroupedResult.buildKey computes for a
-            // row of a table carrying none of the columns: one empty component per declared
-            // column.
+            // group over the whole table. Its key is exactly what the lookup computes for any row
+            // of a table carrying none of the columns — the same derivation, so it cannot differ:
+            // one "" component per declared column, i.e. GroupKey.of("" ×k) (H1 of
+            // PLAN-grouping-key-identity: the TEXT key "\0" this used to build never met the
+            // lookup's GroupKey once k >= 2, and record_count read 0 instead of N).
             List<GroupBlock> blocks = rowCountL == 0 ? List.of()
-                    : List.of(new GroupBlock(
-                            GroupedResult
-                                    .buildKey(Collections.nCopies(groupCols.size(), (String) null)),
+                    : List.of(new GroupBlock(GroupedResult.identityKey(meta, table, groupCols, 0),
                             allRows(rowCountL)));
             grouping = new Grouping(List.copyOf(groupCols), List.of(), blocks);
         }
@@ -240,7 +238,7 @@ final class IndexHelper
                 {
                     continue;
                 }
-                blocks.add(new GroupBlock(buildGroupKey(block, table, meta, groupCols, policy),
+                blocks.add(new GroupBlock(buildGroupKey(block, table, meta, groupCols),
                         blockRows(block, table)));
             }
             grouping = new Grouping(List.copyOf(groupCols), List.copyOf(present), blocks);
@@ -308,14 +306,16 @@ final class IndexHelper
      *
      * <p>
      * ⚑ <b>The representative-row invariant.</b> Reading only the block's <b>first</b> row is exact
-     * <em>only because</em> the default index groups by raw-value equality
-     * ({@code DataTableIndexFactoryImpl} / {@code GroupRepMatcher}), so every row of a block agrees
-     * with the first on every key column. The factory is resolved from a <b>system property</b> and
-     * is pluggable: an alternative implementation keying on {@code getValueAsString()} would fold
+     * <em>only because</em> every row of a block agrees with the first on the key <b>identity</b>
+     * of every key column: the default index partitions by {@code KeyHashSupport}'s exact,
+     * {@code -0.0}-aware equality ({@code DataTableIndexFactoryImpl} /
+     * {@code KeyHashSupport.RepRowMatcher}), which is the {@code KeyPart} identity on every axis
+     * this stack can produce ({@code PLAN-grouping-key-identity} §3a.1), and blankness is a
+     * function of that identity. The factory is resolved from a <b>system property</b> and is
+     * pluggable: an alternative implementation keying on {@code getValueAsString()} would fold
      * distinct missing markers into one block and break this invariant <em>silently</em> — the
      * block would then contain rows that disagree about blankness and the verdict would depend on
-     * physical record order. The coupling is real, correct today, and was undocumented until this
-     * refactor moved the code that depends on it.
+     * physical record order.
      * </p>
      *
      * @param block
@@ -346,50 +346,78 @@ final class IndexHelper
 
 
     /**
-     * Build a {@link GroupedResult}-compatible string key from the representative row (first row)
-     * of a block. Uses the same format as {@link GroupedResult#buildKey} — ⚑ <b>lockstep</b>: this
-     * is the block-side half of the key encoding and {@code GroupedResult.buildKey} the per-row
-     * lookup half; both render each component through
-     * {@link GroupKeyPolicy.KeyPart#reportingForm()} from the same
-     * {@link GroupKeyPolicy#keyPart(IDataValue)} classification, so a blank-keyed row's lookup
-     * always lands on its own block's key.
+     * The {@link GroupedResult}-compatible key of a block: the {@link GroupedResult#identityKey
+     * identity key} of its representative (first) row — ⚑ the very derivation
+     * {@link GroupedResult#getForRow} applies to every probed row, so a row's lookup always lands
+     * on its own block's key ({@code PLAN-grouping-key-identity}). Until that plan the two sides
+     * rendered the key as text, in lockstep, and two blocks that rendered alike shared a key.
      *
      * <p>
-     * Since {@code W38-A1} (Fix #249) a blank component renders its <em>identity</em> — {@code ""}
-     * for an empty cell, the SOH-prefixed marker token for a genuine missing — so two groups the
-     * grouping distinguishes are never reported under one key. ⚠⚠ The rendering is presentation,
-     * derived from the {@code KeyPart}; it must never be re-parsed to recover identity. An
-     * <em>absent</em> column still contributes {@code ""} (the EC-44 contract: absent-column keys
-     * stay compatible with {@code GroupedResult.getForRow}).
+     * A blank component keys under its own identity — {@code ""} for an empty cell, the
+     * {@code MissingValue} constant for a genuine missing ({@code W38-A1} / Fix #249) — so two
+     * groups the grouping distinguishes never share a key. An <em>absent</em> column contributes
+     * {@code ""} (the EC-44 contract: absent-column keys stay compatible with
+     * {@code GroupedResult.getForRow}).
      * </p>
      *
      * <p>
      * ⚠⚠ <b>Not {@link #isBlockKeyMissing}.</b> This <em>keeps</em> the group and only has to name
      * it. See that method's warning; the pair is deliberate.
      * </p>
-     *
-     * @param policy
-     *            supplies the blankness notion via {@link GroupKeyPolicy#keyPart(IDataValue)}
      */
-    static String buildGroupKey(IDataTableView block, IDataTable table, DataTableMeta meta,
-            List<String> groupCols, GroupKeyPolicy policy)
+    static Object buildGroupKey(IDataTableView block, IDataTable table, DataTableMeta meta,
+            List<String> groupCols)
     {
-        long firstRow = block.getRealRow(table, 0);
-        StringJoiner sj = new StringJoiner(KEY_SEPARATOR);
-        for (String col : groupCols)
+        return GroupedResult.identityKey(meta, table, groupCols, block.getRealRow(table, 0));
+    }
+
+
+    /**
+     * ⭐ <b>The tripwire</b> ({@code PLAN-grouping-key-identity} §3a.1): writes {@code value} as
+     * {@code block}'s result and <b>refuses a second block with the same key</b> instead of
+     * overwriting. Two blocks sharing one key is the exact shape of the defect that plan closed —
+     * the later block's value overwrote the earlier one's and the earlier block's rows read it with
+     * nothing logged — so it can never again be silent: the rule ERRORs, naming the key and both
+     * blocks' first rows. It costs nothing on the healthy path ({@link Map#put} already returns the
+     * previous value).
+     *
+     * <p>
+     * ⚠ It sees only blocks that write a value: an evaluator that leaves a block without a result
+     * (no resolvable date, no numeric value, an empty set) cannot collide here, because nothing is
+     * written for it. Every block-keyed evaluator writes through this method.
+     * </p>
+     *
+     * @param results
+     *            the result map under construction
+     * @param grouping
+     *            the grouping the block belongs to (searched for the earlier block on a collision)
+     * @param block
+     *            the block
+     * @param value
+     *            its result, never {@code null}
+     * @throws IllegalStateException
+     *             when another block of {@code grouping} already wrote the same key
+     */
+    static void putBlock(Map<Object, Object> results, Grouping grouping, GroupBlock block,
+            Object value)
+    {
+        Object previous = results.put(block.key(), value);
+        if (previous != null)
         {
-            int idx = meta.getColumnIndex(col);
-            if (idx < 0)
+            int earlierRow = -1;
+            for (GroupBlock other : grouping.blocks())
             {
-                sj.add("");
+                if (other != block && other.key().equals(block.key()))
+                {
+                    earlierRow = other.rows()[0];
+                    break;
+                }
             }
-            else
-            {
-                IDataValue dv = table.getColumn(idx).getDataValue(firstRow);
-                sj.add(policy.keyPart(dv).reportingForm());
-            }
+            throw new IllegalStateException("two groups share the key " + block.key()
+                    + " (the block of row " + earlierRow + " and the block of row "
+                    + block.rows()[0] + "): the grouping index and the key identity disagree, and"
+                    + " one group would silently read the other's value");
         }
-        return sj.toString();
     }
 
 
