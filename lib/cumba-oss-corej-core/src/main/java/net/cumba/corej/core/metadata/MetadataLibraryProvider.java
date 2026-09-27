@@ -17,6 +17,7 @@ import java.util.stream.Stream;
 import lombok.CustomLog;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
+import net.cumba.corej.core.exec.OperationExecutor;
 import net.cumba.corej.core.metadata.store.StoredClass;
 import net.cumba.corej.core.metadata.store.StoredCodelist;
 import net.cumba.corej.core.metadata.store.StoredCtPackage;
@@ -554,7 +555,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
         {
             return columnsOf(aDomain).stream().map(IColumnMetadata::getName).toList();
         }
-        return namesOf(buildResolvedSdtm(aDomain));
+        // Domain-string entry point: no dataset, so no DatasetColumns (CDW-D2 (b)).
+        return namesOf(buildResolvedSdtm(aDomain, null));
     }
 
 
@@ -1091,7 +1093,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
             Predicate<@Nullable String> aCorePredicate)
     {
         List<String> out = new ArrayList<>();
-        for (ResolvedVariable v : buildResolvedSdtm(aDomain))
+        for (ResolvedVariable v : buildResolvedSdtm(aDomain, null))
         {
             if (aCorePredicate.test(v.attributes().get("core")))
             {
@@ -1233,9 +1235,13 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * {@code SUPPQUAL}; AP-prefixed domains strip the {@code AP} prefix and trigger the
      * {@code add_AP} merge of {@code ASSOCIATED PERSONS} identifiers. The {@code originalDomain}
      * (used for wildcard substitution) tracks the pre-strip name.</li>
-     * <li><b>Look up the class.</b> Non-custom domains read the class from the per-table
-     * {@link IMetadataLibrary} view (Define-XML / standard) or via product reverse-walk; custom
-     * domains drop to Fix #41's {@link CustomDomainClassDetector}.</li>
+     * <li><b>Look up the class.</b> A domain the run's IG defines takes its IG class (product
+     * reverse-walk). A domain the IG does <em>not</em> define — a sponsor domain, or a standard one
+     * the IG leaves out — is classified from the dataset's own columns via the scope ladder
+     * ({@link #getDatasetClass(String, String, Set)}: study class, product, curated
+     * {@link DomainClassMap}, then Fix #41's {@link CustomDomainClassDetector}), so the class a
+     * rule is scoped by and the class its walk walks are the same class
+     * ({@code PLAN-custom-domain-model-walk}).</li>
      * <li><b>Walk the product class for variables.</b> Each class's
      * {@link StoredClass#classVariables()} contributes the model-side variable list. For detectable
      * classes ({@code FINDINGS}, {@code FINDINGS ABOUT}, {@code EVENTS}, {@code INTERVENTIONS}),
@@ -1287,7 +1293,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
         }
         if (sdtmProduct != null)
         {
-            return resolveSdtmStandardModelVariables(domain);
+            return resolveSdtmStandardModelVariables(domain, DatasetColumns.of(aTable));
         }
         // ADaM path
         return resolveAdamStandardModelVariables(domain);
@@ -1321,7 +1327,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
         }
         if (sdtmProduct != null)
         {
-            return attributeMapsOf(buildResolvedSdtmModel(domain));
+            return attributeMapsOf(buildResolvedSdtmModel(domain, null, DatasetColumns.of(aTable)));
         }
         return attributeMapsOf(buildResolvedAdam(domain));
     }
@@ -1349,7 +1355,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
         }
         // Normalised exactly once, inside the walk (step 2) — normalise() is not idempotent on the
         // special-purpose aliases, so a second application here would silently re-map the class.
-        List<ResolvedVariable> resolved = buildResolvedSdtmModel(domain, aModelClass);
+        // The class is the caller's, so the dataset's columns never reach step 2 (EC-85 D-1).
+        List<ResolvedVariable> resolved = buildResolvedSdtmModel(domain, aModelClass, null);
         return resolved.isEmpty() ? null : attributeMapsOf(resolved);
     }
 
@@ -1380,7 +1387,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
         }
         if (sdtmProduct != null)
         {
-            return attributeMapsOf(buildResolvedSdtm(domain));
+            return attributeMapsOf(buildResolvedSdtm(domain, DatasetColumns.of(aTable)));
         }
         return attributeMapsOf(buildResolvedAdam(domain));
     }
@@ -1391,9 +1398,64 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * Public callers consuming {@code List<String>} (e.g. {@link #getStandardModelVariables}) go
      * through this method.
      */
-    private List<String> resolveSdtmStandardModelVariables(String aOriginalDomain)
+    private List<String> resolveSdtmStandardModelVariables(String aOriginalDomain,
+            @Nullable DatasetColumns aActual)
     {
-        return namesOf(buildResolvedSdtmModel(aOriginalDomain));
+        return namesOf(buildResolvedSdtmModel(aOriginalDomain, null, aActual));
+    }
+
+    /**
+     * {@code PLAN-custom-domain-model-walk} S2 — the dataset a walk is asked about: its member name
+     * and its own column names. Passed explicitly by the three table-taking entry points
+     * ({@link #getStandardModelVariables}, {@link #getStandardModelVariablesDetailed},
+     * {@link #getStandardVariablesDetailed}); never provider state, because rules run in parallel
+     * on one provider. {@code null} everywhere else — the domain-string entry points
+     * ({@link #getColumnOrder}, the required/expected lookups, {@link #getVariableMetadata}) have
+     * no dataset, and the forced-class walk does not classify.
+     *
+     * @param memberName
+     *            the dataset's member (file) name — keys tier 1 of the scope ladder
+     * @param columns
+     *            the dataset's column names — what tier 3 sniffs
+     */
+    private record DatasetColumns(@Nullable String memberName, Set<String> columns)
+    {
+
+        static DatasetColumns of(IDataTable aTable)
+        {
+            return new DatasetColumns(aTable.getMetaData().getName(),
+                    OperationExecutor.datasetColumnNames(aTable));
+        }
+    }
+
+    /**
+     * {@code PLAN-custom-domain-model-walk} S1 — step 2 of both SDTM walks for a domain the run's
+     * IG does not define. With the dataset in hand the class is the <b>scope ladder's</b>
+     * ({@link #getDatasetClass(String, String, Set)} over the dataset's own columns): the class the
+     * scope matcher gives a rule's dataset is the class its walk walks. Before this the branch
+     * sniffed the provider's metadata library, which on every production path is the IG product's
+     * own table view — it has no table for an IG-absent domain, so the class was {@code null} and
+     * both walks answered {@code []}.
+     *
+     * <p>
+     * The ladder is keyed by {@code aWildcardDomain} (the {@code --} prefix of step 1), so an
+     * {@code AP--} dataset of a custom parent sniffs its parent's topic variable. Without a dataset
+     * (the domain-string entry points) the library-view sniff is kept verbatim.
+     * </p>
+     *
+     * @return the class, or {@code null} when no tier resolves one (a sniffer miss: the walks
+     *         answer {@code []}, as before — {@code CDW-D3} (b))
+     */
+    private @Nullable String customDomainClass(String aOriginalDomain, String aWildcardDomain,
+            @Nullable DatasetColumns aActual)
+    {
+        if (aActual == null)
+        {
+            IDataTableMetadata meta = library.getDataTable(aOriginalDomain).orElse(null);
+            return meta == null ? null
+                    : CustomDomainClassDetector.detectClass(meta, aOriginalDomain);
+        }
+        return getDatasetClass(aActual.memberName(), aWildcardDomain, aActual.columns());
     }
 
 
@@ -1467,7 +1529,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * {@link ResolvedVariable} list (substituted name + full attribute map) so callers can project
      * to either name-only or Python-{@code variables_metadata}-shaped output.
      */
-    private List<ResolvedVariable> buildResolvedSdtm(String aOriginalDomain)
+    private List<ResolvedVariable> buildResolvedSdtm(String aOriginalDomain,
+            @Nullable DatasetColumns aActual)
     {
         // Step 1 — Effective domain: SUPP/SQ → SUPPQUAL, AP* → strip prefix — the one shared
         // ladder (F-corej-L2-06); `canonicalSdtmDomain` is its name-only projection.
@@ -1483,10 +1546,10 @@ public final class MetadataLibraryProvider implements MetadataProvider
         // (steps 3–6) because SUPPQUAL is non-detectable, has no `--`-substituting variable
         // names, and produces a closed allowed-variable list directly.
         // Non-custom: product reverse-walk by domain.
-        // Custom: Fix #41 sniffer (consults the per-table IMetadataLibrary view, not the runtime
-        // DataTableMeta — IDataTableMetadata.getClassName() and the column list are what the
-        // sniffer needs).
-        String className = null;
+        // Custom (a domain the run's IG does not define): the scope ladder over the dataset's own
+        // columns when the caller has the dataset (customDomainClass, PLAN-custom-domain-model-walk
+        // S1); the library-view sniff otherwise.
+        String className;
         if (DOMAIN_SUPPQUAL.equals(effectiveDomain))
         {
             return resolveSuppQualVariables(wildcardDomain, addAP);
@@ -1500,11 +1563,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
             }
             else
             {
-                IDataTableMetadata meta = library.getDataTable(aOriginalDomain).orElse(null);
-                if (meta != null)
-                {
-                    className = CustomDomainClassDetector.detectClass(meta, aOriginalDomain);
-                }
+                className = customDomainClass(aOriginalDomain, wildcardDomain, aActual);
             }
         }
         if (className == null || className.isEmpty())
@@ -1663,8 +1722,9 @@ public final class MetadataLibraryProvider implements MetadataProvider
      *
      * <p>
      * The class <em>name</em> is still resolved from the IG ({@link #sdtmClassForDomain}); only the
-     * variables are sourced from the Model. Custom domains use the custom-class detector and emit
-     * the Model walk. SUPP/SQ domains short-circuit through the shared
+     * variables are sourced from the Model. A domain the IG does not define is classified from the
+     * dataset's own columns via the scope ladder ({@link #customDomainClass}) and emits the Model
+     * walk of that class. SUPP/SQ domains short-circuit through the shared
      * {@link #resolveSuppQualVariables} cascade, identical to algorithm B.
      * </p>
      *
@@ -1672,15 +1732,10 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * Feeds {@link #getStandardModelVariables} (names) and
      * {@link #getStandardModelVariablesDetailed} (attribute maps).
      * </p>
-     */
-    private List<ResolvedVariable> buildResolvedSdtmModel(String aOriginalDomain)
-    {
-        return buildResolvedSdtmModel(aOriginalDomain, null);
-    }
-
-
-    /**
-     * EC-85 — the algorithm-A walk with an optional <b>forced</b> observation class.
+     *
+     * <p>
+     * EC-85 — the walk takes an optional <b>forced</b> observation class.
+     * </p>
      *
      * @param aForcedClass
      *            when non-null, replaces the domain-derived class (step 2) with this normalised
@@ -1690,9 +1745,13 @@ public final class MetadataLibraryProvider implements MetadataProvider
      *            table short-circuits before the class is consulted (D-3). A forced class never
      *            falls to the domain-keyed non-detectable tiers 2/3 (D-2): those are keyed on the
      *            <em>domain</em> and would hand back this dataset's own variables.
+     * @param aActual
+     *            the dataset a table-taking entry point was asked about, or {@code null}; read only
+     *            when the IG does not define the domain and no class is forced
+     *            ({@link #customDomainClass})
      */
     private List<ResolvedVariable> buildResolvedSdtmModel(String aOriginalDomain,
-            @Nullable String aForcedClass)
+            @Nullable String aForcedClass, @Nullable DatasetColumns aActual)
     {
         // Step 1 — Effective domain: SUPP/SQ → SUPPQUAL, AP* → strip prefix — the one shared
         // ladder (F-corej-L2-06), identical to buildResolvedSdtm by construction.
@@ -1701,7 +1760,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
         String effectiveDomain = canon.effectiveDomain();
         String wildcardDomain = canon.wildcardDomain();
 
-        // Step 2 — Class resolution (SUPPQUAL short-circuit, IG class name, custom detector).
+        // Step 2 — Class resolution (SUPPQUAL short-circuit, IG class name, custom-domain ladder).
         // Identical to buildResolvedSdtm.
         String className;
         boolean isCustom;
@@ -1724,9 +1783,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
             }
             else
             {
-                IDataTableMetadata meta = library.getDataTable(aOriginalDomain).orElse(null);
-                className = meta == null ? null
-                        : CustomDomainClassDetector.detectClass(meta, aOriginalDomain);
+                className = customDomainClass(aOriginalDomain, wildcardDomain, aActual);
             }
         }
         if (className == null || className.isEmpty())
@@ -2878,7 +2935,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
         // when an SDTM product is configured (degraded / Define-only runs keep the IG-only lookup).
         if (hasSdtmProduct())
         {
-            for (ResolvedVariable v : buildResolvedSdtm(aDomain))
+            for (ResolvedVariable v : buildResolvedSdtm(aDomain, null))
             {
                 if (aVariable.equals(v.name()))
                 {

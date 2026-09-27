@@ -4685,10 +4685,13 @@ public final class OperationExecutor
 
 
     /**
-     * The dataset's column names in declaration order. Package-private so
-     * {@link StandardVariableSelector} and {@link RecordKeyResolver} share the one implementation.
+     * The dataset's column names in declaration order — the ONE implementation, shared by
+     * {@link StandardVariableSelector}, {@link RecordKeyResolver}, {@code LibraryValidator} (the
+     * scope matcher's tier-3 sniff) and {@code MetadataLibraryProvider} (the SDTM walks' class for
+     * a domain the run's IG does not define, {@code PLAN-custom-domain-model-walk} S2). Public for
+     * the last two, which live outside this package.
      */
-    static Set<String> datasetColumnNames(IDataTable table)
+    public static Set<String> datasetColumnNames(IDataTable table)
     {
         DataTableMeta meta = table.getMetaData();
         int n = meta.getColumnCount();

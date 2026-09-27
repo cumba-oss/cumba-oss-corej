@@ -3,7 +3,6 @@ package net.cumba.corej.core.report;
 import java.lang.System.Logger.Level;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -22,6 +21,7 @@ import net.cumba.corej.core.exec.AbsentDatasetSkip;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.DatasetRuleResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
+import net.cumba.corej.core.exec.OperationExecutor;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
 import net.cumba.corej.core.exec.RuleRunner;
@@ -1416,7 +1416,7 @@ public final class LibraryValidator
     private @Nullable String classNameFor(@Nullable String aMemberName, String aCdiscDomain,
             IDataTable aTable, DatasetResolver aResolver, boolean aApRecursed)
     {
-        Set<String> columns = columnNames(aTable);
+        Set<String> columns = OperationExecutor.datasetColumnNames(aTable);
         String className = provider.getDatasetClass(aMemberName, aCdiscDomain, columns);
         if (className != null)
         {
@@ -1455,21 +1455,6 @@ public final class LibraryValidator
                     aMemberName, parentDomain);
         }
         return className;
-    }
-
-
-    /**
-     * Upper-/mixed-case column names of the loaded dataset, for the tier-3 custom-domain sniffer.
-     */
-    private static Set<String> columnNames(IDataTable aTable)
-    {
-        var meta = aTable.getMetaData();
-        Set<String> names = HashSet.newHashSet(meta.getColumnCount());
-        for (int i = 0; i < meta.getColumnCount(); i++)
-        {
-            names.add(meta.getColumn(i).getName());
-        }
-        return names;
     }
 
     // ------------------------------------------------------------------

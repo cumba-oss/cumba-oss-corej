@@ -10,10 +10,13 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import net.cumba.corej.core.exec.RecordKeyResolver.KeySource;
 import net.cumba.corej.core.exec.RecordKeyResolver.RowKeySpec;
+import net.cumba.corej.core.metadata.CustomDomainWalkFixture;
+import net.cumba.corej.core.model.Operation;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
@@ -175,6 +178,36 @@ class RecordKeyResolverTest
         // Topic is included (unlike natural_key_variables, whose consuming rule adds --TESTCD
         // itself); Identifier USUBJID is not; the `--` wildcard resolves to the LB prefix.
         assertEquals(List.of("LBTESTCD", "VISITNUM", "LBSPEC", "LBMETHOD", "LBSCAT"), names(spec));
+    }
+
+
+    @Test
+    void naturalTier_resolvesForASponsorDomainOverTheIgView()
+    {
+        // PLAN-custom-domain-model-walk §1: the NATURAL tier reads the same walk (algorithm B via
+        // StandardVariableSelector) as natural_key_variables. Over the IG product's own table view
+        // — the production provider — a sponsor Findings domain resolved [] there, so its key was
+        // only the always-appended columns. It now walks the scope class.
+        IDataTable xx = MockTable.of().name("XX").col("STUDYID", "S").col("DOMAIN", "XX")
+                .col("USUBJID", "U1").col("XXSEQ", "1").col("XXTESTCD", "T").col("XXCAT", "C")
+                .col("XXORRES", "1").col("VISITNUM", "1").col("XXDTC", "2020").build();
+        MetadataProvider library = CustomDomainWalkFixture.igViewProvider();
+
+        RowKeySpec spec = RecordKeyResolver.resolve(xx, "XX", FindingKeyMode.FULL, null, library,
+                NO_RESOLVER, "R1");
+
+        assertEquals(KeySource.NATURAL, spec.source());
+        assertEquals(List.of("XXTESTCD", "XXCAT", "XXORRES", "VISITNUM", "XXDTC"), names(spec));
+        // One definition of the natural-key set: the key is the topic plus exactly what the
+        // natural_key_variables operation answers on the same dataset.
+        Operation op = new Operation();
+        op.setId("$nk");
+        op.setOperator("natural_key_variables");
+        List<Object> expected = new ArrayList<>();
+        expected.add("XXTESTCD");
+        expected.addAll((List<?>) OperationExecutorCalls
+                .execute(List.of(op), xx, NO_RESOLVER, library).get("$nk"));
+        assertEquals(expected, names(spec));
     }
 
 

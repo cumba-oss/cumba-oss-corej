@@ -628,9 +628,11 @@ public interface MetadataProvider
      *            cross-domain resolver; may be needed when the model walk consults sibling datasets
      *            (e.g. SUPP/AP/SQ shimming). Implementations that don't need the resolver may
      *            ignore the argument.
-     * @return ordered list of Model-level variable names, an empty list if the class is unknown
-     *         (custom domain, etc.), or {@code null} if the implementation has no product access
-     *         and therefore cannot answer.
+     * @return ordered list of Model-level variable names, an empty list if no observation class
+     *         resolves (a domain the run's IG does not define is classified from the dataset's own
+     *         columns by the scope ladder, {@link #getDatasetClass(String, String, Set)}; empty
+     *         only when no tier places it), or {@code null} if the implementation has no product
+     *         access and therefore cannot answer.
      */
     default @Nullable List<String> getStandardModelVariables(IDataTable aTable,
             DatasetResolver aResolver)
@@ -734,9 +736,11 @@ public interface MetadataProvider
      * {@code get_dataset_filtered_variables}. Mirrors Python's
      * {@code get_variables_metadata_from_standard}: the model-side class walk is overwritten by the
      * IG dataset variables (detectable classes) or replaced by the pure IG dataset variables
-     * (non-detectable, non-custom), with custom domains emitting the model walk. Each entry carries
-     * the variable's full attribute map (Python {@code variables_metadata} shape) — the same key
-     * vocabulary as {@link #getStandardModelVariablesDetailed}, namely
+     * (non-detectable, non-custom), with custom domains — a domain the run's IG does not define,
+     * classified from the dataset's own columns by the scope ladder — emitting the model walk of
+     * that class ({@code PLAN-custom-domain-model-walk}). Each entry carries the variable's full
+     * attribute map (Python {@code variables_metadata} shape) — the same key vocabulary as
+     * {@link #getStandardModelVariablesDetailed}, namely
      * {@link net.cumba.corej.core.metadata.LibraryVariableAttributes#KEYS}. ⚠ It is the <b>same</b>
      * vocabulary and not an IG-only subset: this walk's identifier / class / timing buckets come
      * from the <em>Model</em> product, so a model-only field such as {@code notes} reaches this
