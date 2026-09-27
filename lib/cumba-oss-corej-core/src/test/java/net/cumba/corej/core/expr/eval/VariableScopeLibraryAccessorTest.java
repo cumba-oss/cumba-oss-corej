@@ -6,11 +6,18 @@ import static net.cumba.datatable.testkit.TestMetadataFixtures.table;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import java.util.BitSet;
 import java.util.Map;
+import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.expr.CheckExpressionParser;
@@ -48,6 +55,9 @@ import org.junit.jupiter.api.Test;
  */
 class VariableScopeLibraryAccessorTest
 {
+
+    /** No dataset resolves: none of these shapes is an {@code AP--} dataset of a present parent. */
+    private static final DatasetResolver NO_RESOLVER = _ -> null;
 
     // ------------------------------------------------------------------
     // Fixtures — a Library that publishes DOMAINS and never a member name
@@ -252,7 +262,8 @@ class VariableScopeLibraryAccessorTest
         assertEquals(
                 Map.of("label", "Finding in Original Units", "role", "Result Qualifier", "core",
                         "Exp", "name", "QSORRES", "simpleDatatype", "Char", "ordinal", "5"),
-                ExprCompiler.libraryVariableMetadata(library(), qsco, "qsco", "QSORRES"),
+                ExprCompiler.libraryVariableMetadata(library(), qsco, NO_RESOLVER, "qsco",
+                        "QSORRES"),
                 "the shared helper is what RuleRunner's three LIBRARY sites call");
     }
 
@@ -271,7 +282,7 @@ class VariableScopeLibraryAccessorTest
                 .build();
 
         assertEquals(Map.of("label", "Finding in Original Units"),
-                ExprCompiler.libraryVariableMetadata(partial, qsco, "qsco", "QSORRES"),
+                ExprCompiler.libraryVariableMetadata(partial, qsco, NO_RESOLVER, "qsco", "QSORRES"),
                 "tier 1 answered null; tier 2 must still run");
     }
 
@@ -294,7 +305,7 @@ class VariableScopeLibraryAccessorTest
         IDataTable qs1 = MockTable.of().name("QS1").col("DOMAIN", "QS").col("QSORRES", "5").build();
 
         assertEquals(Map.of("label", "the MEMBER's own answer"),
-                ExprCompiler.libraryVariableMetadata(both, qs1, "QS1", "QSORRES"),
+                ExprCompiler.libraryVariableMetadata(both, qs1, NO_RESOLVER, "QS1", "QSORRES"),
                 "tier 2 must not run when tier 1 answered");
     }
 
@@ -318,7 +329,7 @@ class VariableScopeLibraryAccessorTest
         assertEquals("APMH", ExprCompiler.libraryVariableDomain(apmh1, "APMH1"),
                 "the DOMAIN cell says MH; the Library key must be re-prefixed to APMH");
         assertEquals(Map.of("label", "Related Subject or Pool Identifier", "core", "Req"),
-                ExprCompiler.libraryVariableMetadata(ap, apmh1, "APMH1", "RSUBJID"));
+                ExprCompiler.libraryVariableMetadata(ap, apmh1, NO_RESOLVER, "APMH1", "RSUBJID"));
     }
 
 
@@ -354,7 +365,82 @@ class VariableScopeLibraryAccessorTest
 
         // …and the public contract: never null, even from a null-returning provider.
         MetadataProvider nulls = mock(MetadataProvider.class);
-        assertEquals(Map.of(), ExprCompiler.libraryVariableMetadata(nulls, null, "qsco", "QSORRES"),
+        assertEquals(Map.of(),
+                ExprCompiler.libraryVariableMetadata(nulls, null, NO_RESOLVER, "qsco", "QSORRES"),
                 "declared non-null: a provider's null must not leak through");
+    }
+
+    // ------------------------------------------------------------------
+    // PLAN-library-var-custom-domains — tier 4, the IG-absent tier: LAST, and table-aware
+    // ------------------------------------------------------------------
+
+
+    @Test
+    @DisplayName("tier 4 answers only after tiers 1-3 all missed, with the dataset in hand")
+    void tierFour_answersWhenTheDomainKeyedTiersMiss()
+    {
+        MetadataProvider p = mock(MetadataProvider.class);
+        lenient().when(p.getVariableMetadata(anyString(), anyString())).thenReturn(Map.of());
+        IDataTable xx = MockTable.of().name("XX").col("DOMAIN", "XX").col("XXSEQ", "1").build();
+        lenient().when(
+                p.getIgAbsentVariableMetadata(same(xx), same(NO_RESOLVER), eq("XX"), eq("XXSEQ")))
+                .thenReturn(Map.of("simpleDatatype", "Num"));
+
+        assertEquals(Map.of("simpleDatatype", "Num"),
+                ExprCompiler.libraryVariableMetadata(p, xx, NO_RESOLVER, "XX", "XXSEQ"));
+    }
+
+
+    @Test
+    @DisplayName("⭐ tier 4 never pre-empts tier 1, and is not even asked when tier 1 answers")
+    void tierFour_neverPreemptsTierOne()
+    {
+        // P6 of the plan: the new tier is LAST. Asking it at all when tier 1 answered would also
+        // spend a model walk on every IG variable of every dataset (S5).
+        MetadataProvider p = mock(MetadataProvider.class);
+        lenient().when(p.getVariableMetadata("XX", "XXSEQ"))
+                .thenReturn(Map.of("label", "the MEMBER's own answer"));
+        lenient().when(p.getIgAbsentVariableMetadata(any(), any(), anyString(), anyString()))
+                .thenReturn(Map.of("simpleDatatype", "the tier-4 answer"));
+        IDataTable xx = MockTable.of().name("XX").col("DOMAIN", "XX").col("XXSEQ", "1").build();
+
+        assertEquals(Map.of("label", "the MEMBER's own answer"),
+                ExprCompiler.libraryVariableMetadata(p, xx, NO_RESOLVER, "XX", "XXSEQ"));
+        verify(p, never()).getIgAbsentVariableMetadata(any(), any(), anyString(), anyString());
+    }
+
+
+    @Test
+    @DisplayName("tier 4 is not asked without a table — the class comes from the columns")
+    void tierFour_needsTheTable()
+    {
+        MetadataProvider p = mock(MetadataProvider.class);
+        lenient().when(p.getVariableMetadata(anyString(), anyString())).thenReturn(Map.of());
+
+        assertEquals(Map.of(),
+                ExprCompiler.libraryVariableMetadata(p, null, NO_RESOLVER, "XX", "XXSEQ"));
+        verify(p, never()).getIgAbsentVariableMetadata(any(), any(), anyString(), anyString());
+    }
+
+
+    @Test
+    @DisplayName("⭐ the accessor hands tier 4 the context's resolver and tier 2's key")
+    void tierFour_getsTheContextsResolverAndTheTierTwoKey()
+    {
+        // A split member XX1 of a sponsor domain: its DOMAIN cell XX is tier 2's key, and the key
+        // tier 4 is asked with. The resolver is the context's — an AP-- dataset inherits its
+        // parent's class through it — never a stand-in.
+        IDataTable xx1 = MockTable.of().name("XX1").col("DOMAIN", "XX").col("XXSEQ", "1").build();
+        DatasetResolver resolver = name -> "XX".equals(name) ? xx1 : null;
+        MetadataProvider p = mock(MetadataProvider.class);
+        lenient().when(p.getVariableMetadata(anyString(), anyString())).thenReturn(Map.of());
+        lenient().when(
+                p.getIgAbsentVariableMetadata(same(xx1), same(resolver), eq("XX"), eq("XXSEQ")))
+                .thenReturn(Map.of("simpleDatatype", "Num"));
+        EvaluationContext ctx = EvaluationContext.builder().table(xx1).domainName("XX1")
+                .variables(Map.of("variable_name", "XXSEQ")).libraryProvider(p)
+                .datasetResolver(resolver).build();
+
+        assertTrue(eval("var_type(\"LIBRARY\") == \"Num\"", ctx).get(0));
     }
 }

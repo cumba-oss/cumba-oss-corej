@@ -96,6 +96,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
     private static final String ROLE_RECORD_QUALIFIER = "Record Qualifier";
 
+    private static final String ATTR_NAME = "name";
+
     private static final String ATTR_ROLE = "role";
 
     private static final String ATTR_ORDINAL = "ordinal";
@@ -107,6 +109,16 @@ public final class MetadataLibraryProvider implements MetadataProvider
     private static final String VAR_USUBJID = "USUBJID";
 
     private static final String DOMAIN_SUPPQUAL = "SUPPQUAL";
+
+    /**
+     * {@code PLAN-library-var-custom-domains} {@code LVC-D1} (a) — the only attributes
+     * {@link #getIgAbsentVariableMetadata} serves: what the SDTM model is the authority for on a
+     * domain the run's IG does not define. An allow-list, not "drop the label": the walk row also
+     * carries the class {@code ordinal} and, per product, {@code definition}, {@code description},
+     * …, and the finding enrichment copies every served key into a {@code library_variable_*} cell.
+     */
+    private static final List<String> IG_ABSENT_SERVED_KEYS = List.of(ATTR_NAME,
+            ATTR_SIMPLE_DATATYPE, ATTR_ROLE);
 
     /**
      * <b>Fix #373</b> — the codelist family, i.e. exactly the attributes {@code columnToMap}
@@ -2924,6 +2936,12 @@ public final class MetadataLibraryProvider implements MetadataProvider
     }
 
 
+    /**
+     * The domain-keyed LIBRARY variable read: leg 1 the metadata library's own column (the IG
+     * table), leg 2 algorithm B's merged IG + model row. For a domain the run's IG does not define,
+     * neither leg can answer — this method has no dataset to classify — and the read's last tier,
+     * {@link #getIgAbsentVariableMetadata}, answers instead.
+     */
     @Override
     public Map<String, String> getVariableMetadata(String aDomain, String aVariable)
     {
@@ -2953,6 +2971,69 @@ public final class MetadataLibraryProvider implements MetadataProvider
             }
         }
         return Map.of();
+    }
+
+
+    /**
+     * {@code PLAN-library-var-custom-domains} — the LIBRARY read's last tier, for a dataset whose
+     * domain the run's IG does not define: the model row of the class the scope matcher gives the
+     * dataset (algorithm B's column-aware walk, {@link #buildResolvedSdtm} with the dataset in hand
+     * — for such a domain the model walk, the IG merge skipped), restricted to
+     * {@link #IG_ABSENT_SERVED_KEYS}.
+     *
+     * <p>
+     * Answers {@code {}} — today's answer — when: no SDTM product is loaded (ADaM, Define-only and
+     * degraded providers; S3.1); the domain is a {@code SUPP--} name or one the IG defines (the
+     * domain-keyed tiers own those, and a sponsor variable of an IG-defined domain stays unserved);
+     * no class places the dataset ({@code LVC-D3} (a): a sniffer miss, or an {@code AP--} dataset
+     * whose parent is absent); the class walk is empty (a special-purpose, trial-design or
+     * relationship class — algorithm B has no domain-keyed model tier); or the model has no row for
+     * the variable (a sponsor variable).
+     * </p>
+     *
+     * <p>
+     * ⚑ Uncached: each call walks the class (roughly 90–165 rows) once. It is reached only after
+     * every domain-keyed tier missed, once per (rule, dataset, variable, read) — never per row.
+     * </p>
+     */
+    @Override
+    public Map<String, String> getIgAbsentVariableMetadata(IDataTable aTable,
+            DatasetResolver aResolver, String aDomain, String aVariable)
+    {
+        if (!hasSdtmProduct())
+        {
+            return Map.of();
+        }
+        String effectiveDomain = canonicalSdtmDomain(aDomain);
+        if (DOMAIN_SUPPQUAL.equals(effectiveDomain) || sdtmProductHasDomain(effectiveDomain))
+        {
+            return Map.of();
+        }
+        for (ResolvedVariable v : buildResolvedSdtm(aDomain, DatasetInHand.of(aTable, aResolver)))
+        {
+            if (aVariable.equals(v.name()))
+            {
+                return servedIgAbsentAttributes(v);
+            }
+        }
+        return Map.of();
+    }
+
+
+    /** A walk row restricted to {@link #IG_ABSENT_SERVED_KEYS}, absent or empty values omitted. */
+    private static Map<String, String> servedIgAbsentAttributes(ResolvedVariable aVariable)
+    {
+        Map<String, String> row = aVariable.toAttributeMap();
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String key : IG_ABSENT_SERVED_KEYS)
+        {
+            String value = row.get(key);
+            if (value != null && !value.isEmpty())
+            {
+                out.put(key, value);
+            }
+        }
+        return Collections.unmodifiableMap(out);
     }
 
 

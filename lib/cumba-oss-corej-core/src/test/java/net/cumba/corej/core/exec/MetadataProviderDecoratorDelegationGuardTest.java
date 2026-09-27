@@ -431,7 +431,14 @@ class MetadataProviderDecoratorDelegationGuardTest
             inheritable("getStandardModelVariablesForClass(IDataTable, DatasetResolver, String)",
                     Why.NOT_YET_ENFORCED, "not delegated by DefineXmlMetadataProvider"),
             inheritable("getStandardVariablesDetailed(IDataTable, DatasetResolver)",
-                    Why.NOT_YET_ENFORCED, "not delegated by DefineXmlMetadataProvider"));
+                    Why.NOT_YET_ENFORCED, "not delegated by DefineXmlMetadataProvider"),
+            inheritable("getIgAbsentVariableMetadata(IDataTable, DatasetResolver, String, String)",
+                    Why.NOT_YET_ENFORCED,
+                    "not delegated by DefineXmlMetadataProvider, deliberately: it is only ever the "
+                            + "DEFINE provider and this is the last tier of the LIBRARY variable "
+                            + "read, so a forward to its fallback would be dead code "
+                            + "(PLAN-library-var-custom-domains S4); CompanionDomainsProvider DOES "
+                            + "delegate it"));
 
     /**
      * One capability method, as its human-readable signature plus the pattern that proves a

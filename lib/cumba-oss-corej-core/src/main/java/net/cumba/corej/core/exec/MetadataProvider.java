@@ -440,6 +440,44 @@ public interface MetadataProvider
 
 
     /**
+     * {@code PLAN-library-var-custom-domains} — the <b>last</b> tier of the LIBRARY-level variable
+     * read ({@code ExprCompiler.libraryVariableMetadata}): asked only after every
+     * {@link #getVariableMetadata} tier (member name, CDISC domain, bare domain) answered nothing,
+     * and only with the dataset in hand. It answers for a dataset whose domain the run's IG does
+     * <b>not</b> define (a sponsor domain, or a standard domain the IG leaves out), from the SDTM
+     * model row of the class the scope matcher gives the dataset — and only the attributes the
+     * model is the authority for there: {@code name}, {@code simpleDatatype} and {@code role}.
+     * Never a label (a sponsor may adjust it, and the model's class-level label is not the one the
+     * standard expects), never a codelist or core designation (IG attributes the model does not
+     * carry), never the class ordinal.
+     *
+     * <p>
+     * ⚠ LIBRARY only: a Define-XML declares its own variables per dataset file, so no DEFINE
+     * provider implements this. A decorator delegates it (a decorator that inherited this default
+     * would hide the tier of the provider it wraps).
+     * </p>
+     *
+     * @param aTable
+     *            the dataset whose variable is read — its columns classify it
+     * @param aResolver
+     *            resolves an {@code AP--} dataset's parent domain, whose class it inherits
+     * @param aDomain
+     *            the key the caller's domain tier already used (the dataset's CDISC domain, the
+     *            {@code AP} prefix kept)
+     * @param aVariable
+     *            the variable name
+     * @return the served attributes, or an empty map — the default — when this provider cannot
+     *         answer, the run's IG defines the domain, no class places the dataset, or the model
+     *         has no row for the variable
+     */
+    default Map<String, String> getIgAbsentVariableMetadata(IDataTable aTable,
+            DatasetResolver aResolver, String aDomain, String aVariable)
+    {
+        return Map.of();
+    }
+
+
+    /**
      * Returns metadata for all variables defined in the Library for a domain. Each entry contains
      * keys: name, label, simpleDatatype, core, role, ordinal, codelist (codelist submission value
      * or null).

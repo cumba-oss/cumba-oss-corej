@@ -2200,8 +2200,8 @@ public final class RuleRunner
                             colMeta.getName());
                     if (carryOver && libProvider != null && domainName != null)
                     {
-                        putCarryOverIfUndefined(perColVars, libProvider, ctx.getTable(), domainName,
-                                colMeta.getName());
+                        putCarryOverIfUndefined(perColVars, libProvider, ctx.getTable(),
+                                ctx.getDatasetResolver(), domainName, colMeta.getName());
                     }
                     EvaluationContext colCtx = ctx.toBuilder().variables(perColVars).build();
                     if (net.cumba.corej.core.expr.eval.NativeExprEvaluator
@@ -2210,7 +2210,7 @@ public final class RuleRunner
                         bindings.note(BindingOutcome.fired(colMeta.getName(), 1));
                         Map<String, Object> varMeta = buildVariableMetadata(colMeta,
                                 isMetadataCheck, libProvider, defProvider, domainName,
-                                ctx.getTable());
+                                ctx.getTable(), ctx.getDatasetResolver());
                         violations.add(buildVariableViolation(c, colMeta, varMeta, outputVars,
                                 isMetadataCheck, libProvider, defProvider, domainName,
                                 ctx.getVariables(), datasetSensitivity, ctx, derivedOutputVars,
@@ -2465,10 +2465,11 @@ public final class RuleRunner
      * </p>
      */
     static void putCarryOverIfUndefined(Map<String, Object> target, MetadataProvider libProvider,
-            @Nullable IDataTable libraryTable, String domainName, String variableName)
+            @Nullable IDataTable libraryTable, DatasetResolver libraryResolver, String domainName,
+            String variableName)
     {
         Map<String, String> libMeta = ExprCompiler.libraryVariableMetadata(libProvider,
-                libraryTable, domainName, variableName);
+                libraryTable, libraryResolver, domainName, variableName);
         if (libMeta == null || libMeta.isEmpty())
         {
             putCarryOverCandidates(target, libProvider, variableName);
@@ -2547,7 +2548,7 @@ public final class RuleRunner
     private static Map<String, Object> buildVariableMetadata(DataTableColumnMeta colMeta,
             boolean isMetadataCheck, @Nullable MetadataProvider libProvider,
             @Nullable MetadataProvider defProvider, @Nullable String domainName,
-            @Nullable IDataTable libraryTable)
+            @Nullable IDataTable libraryTable, DatasetResolver libraryResolver)
     {
         Map<String, Object> varMeta = new LinkedHashMap<>();
         varMeta.put(VARIABLE_NAME, colMeta.getName());
@@ -2564,7 +2565,7 @@ public final class RuleRunner
             // split member resolved to nothing. The DEFINE block below deliberately keeps
             // domainName: a Define-XML declares one ItemGroupDef per dataset FILE.
             Map<String, String> libMeta = ExprCompiler.libraryVariableMetadata(libProvider,
-                    libraryTable, domainName, colMeta.getName());
+                    libraryTable, libraryResolver, domainName, colMeta.getName());
             if (libMeta != null && !libMeta.isEmpty())
             {
                 for (Map.Entry<String, String> e : libMeta.entrySet())
@@ -2647,7 +2648,7 @@ public final class RuleRunner
             // Output_Variables PROJECTION: CDISC-CG0010 reports library_variable_role, so leaving
             // it member-keyed would ship a rule that FIRES with an empty reported cell.
             Map<String, String> libMeta = ExprCompiler.libraryVariableMetadata(libProvider,
-                    ctx.getTable(), domainName, colMeta.getName());
+                    ctx.getTable(), ctx.getDatasetResolver(), domainName, colMeta.getName());
             if (libMeta != null)
             {
                 for (Map.Entry<String, String> e : libMeta.entrySet())
@@ -2813,7 +2814,7 @@ public final class RuleRunner
         {
             // Fix #373 — LIBRARY half only; the DEFINE block above keeps the member name.
             Map<String, String> libMeta = ExprCompiler.libraryVariableMetadata(libProvider,
-                    ctx.getTable(), domainName, varName);
+                    ctx.getTable(), ctx.getDatasetResolver(), domainName, varName);
             if (libMeta != null)
             {
                 for (Map.Entry<String, String> e : libMeta.entrySet())
@@ -3046,7 +3047,7 @@ public final class RuleRunner
                 rowBits = first;
             }
             Map<String, Object> varMeta = buildVariableMetadata(colMeta, isMetadataCheck,
-                    libProvider, defProvider, domainName, ctx.getTable());
+                    libProvider, defProvider, domainName, ctx.getTable(), ctx.getDatasetResolver());
             int colIdx = meta.getColumnIndex(colMeta.getName());
             bindings.note(BindingOutcome.fired(colMeta.getName(), rowBits.cardinality()));
             addVariableRowViolations(violations, rowBits, colMeta, colIdx, varMeta, outputVars, ctx,

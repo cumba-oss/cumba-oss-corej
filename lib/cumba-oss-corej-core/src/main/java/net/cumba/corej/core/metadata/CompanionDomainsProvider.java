@@ -234,6 +234,19 @@ public final class CompanionDomainsProvider implements MetadataProvider
     }
 
 
+    /**
+     * Delegated to {@code base}, as {@link #getVariableMetadata} is. Production wraps only an
+     * ADaM-family run, whose base answers {@code {}} here, so the SDTM companion is never consulted
+     * for a variable read ({@code PLAN-library-var-custom-domains} S4).
+     */
+    @Override
+    public Map<String, String> getIgAbsentVariableMetadata(IDataTable aTable,
+            DatasetResolver aResolver, String aDomain, String aVariable)
+    {
+        return base.getIgAbsentVariableMetadata(aTable, aResolver, aDomain, aVariable);
+    }
+
+
     @Override
     public List<Map<String, String>> getDomainVariables(String domain)
     {

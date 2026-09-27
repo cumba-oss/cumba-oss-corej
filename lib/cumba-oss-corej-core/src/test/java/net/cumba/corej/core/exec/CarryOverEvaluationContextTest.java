@@ -76,7 +76,7 @@ class CarryOverEvaluationContextTest
         RuleRunner.putCarryOverIfUndefined(perColVars,
                 provider(Map.of(),
                         new PublishedVariable("Subject Reference Start Date/Time", "Char")),
-                null, "ADSL", "RFSTDTC");
+                null, _ -> null, "ADSL", "RFSTDTC");
 
         // Labels are published case-folded (R-4); types are not.
         assertEquals(List.of("SUBJECT REFERENCE START DATE/TIME"), perColVars.get(LABEL_VALUES));
@@ -98,7 +98,7 @@ class CarryOverEvaluationContextTest
         RuleRunner.putCarryOverIfUndefined(perColVars,
                 provider(Map.of("label", "Reference Start Date", "simpleDatatype", "Char"),
                         new PublishedVariable("Subject Reference Start Date/Time", "Char")),
-                null, "ADSL", "RFSTDTC");
+                null, _ -> null, "ADSL", "RFSTDTC");
 
         assertTrue(perColVars.isEmpty(),
                 "the companion lane must not be consulted for a variable ADaM itself defines");
@@ -111,7 +111,8 @@ class CarryOverEvaluationContextTest
     {
         Map<String, Object> perColVars = new LinkedHashMap<>();
 
-        RuleRunner.putCarryOverIfUndefined(perColVars, provider(Map.of()), null, "ADSL", "PARAMCD");
+        RuleRunner.putCarryOverIfUndefined(perColVars, provider(Map.of()), null, _ -> null, "ADSL",
+                "PARAMCD");
 
         assertTrue(perColVars.isEmpty());
     }

@@ -20,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.cumba.corej.core.exec.ArithmeticSemantics;
+import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.ExpressionResultCache;
 import net.cumba.corej.core.exec.GroupSemantics;
@@ -5428,6 +5429,13 @@ public final class ExprCompiler
             // fires today and goes quiet once the read resolves. `CDISC-SEND-0005` is exactly that
             // shape.
             //
+            // ⭐ PLAN-library-var-custom-domains — the same shape on a dataset whose domain the
+            // run's IG does NOT define (a sponsor domain; SENDIG-AR 1.0's and SENDIG-DART 1.1's
+            // left-out SEND domains): no domain-keyed tier can answer it, so SEND-0005 reported
+            // every Define-declared variable and the type / role rules passed silently. The
+            // helper's last tier (libraryVariableMetadata, tier 4) serves the scope class's model
+            // row there — name, type and role, never a label.
+            //
             // ⚠⚠ LIBRARY ONLY, and enforced by the level check below rather than inside the
             // provider: a Define-XML declares one ItemGroupDef per dataset FILE, split members
             // included, so the member name is the CORRECT key at DEFINE.
@@ -5437,7 +5445,8 @@ public final class ExprCompiler
                 return null;
             }
             meta = level == MetadataLevel.LIBRARY
-                    ? libraryVariableMetadata(provider, ctx.getTable(), domain, name)
+                    ? libraryVariableMetadata(provider, ctx.getTable(), ctx.getDatasetResolver(),
+                            domain, name)
                     : provider.getVariableMetadata(domain, name);
             // F-corej-ct-02 (define-ct plan P1): a variable WITH a bound library codelist whose
             // extensibility did not resolve must not read as absent — `null == false` is false, so
@@ -5502,9 +5511,32 @@ public final class ExprCompiler
      * its {@code DOMAIN} cell says {@code MH} or the name has to be unsplit, and no AP strip is
      * involved. {@code APMH1} is the case a naive fix silently misses.
      * </p>
+     *
+     * <p>
+     * ⭐ <b>Tier 4 — {@code PLAN-library-var-custom-domains}.</b> When tiers 1–3 all miss and the
+     * dataset is in hand, the provider is asked
+     * {@link MetadataProvider#getIgAbsentVariableMetadata} with tier 2's key: for a dataset whose
+     * domain the run's IG does not define it serves the model row of the class the scope matcher
+     * gives the dataset — {@code name}, {@code simpleDatatype} and {@code role} only. It is LAST,
+     * so it never pre-empts an answer tiers 1–3 give, and it is not asked at all when one of them
+     * answered (a class walk per read would otherwise be spent on every IG variable).
+     * </p>
+     *
+     * @param provider
+     *            the LIBRARY provider
+     * @param table
+     *            the dataset, or {@code null} (then tiers 2 and 4 cannot run)
+     * @param resolver
+     *            the run's dataset resolver — tier 4 classifies an {@code AP--} dataset by its
+     *            parent through it, exactly as the scope matcher does
+     * @param member
+     *            the dataset's member name
+     * @param variable
+     *            the variable name
+     * @return the answer of the first tier that has one, else an empty map; never {@code null}
      */
     public static Map<String, String> libraryVariableMetadata(MetadataProvider provider,
-            @Nullable IDataTable table, String member, String variable)
+            @Nullable IDataTable table, DatasetResolver resolver, String member, String variable)
     {
         Map<String, String> byMember = provider.getVariableMetadata(member, variable);
         if (byMember != null && !byMember.isEmpty())
@@ -5532,6 +5564,17 @@ public final class ExprCompiler
                 {
                     return byBare;
                 }
+            }
+        }
+        if (table != null)
+        {
+            // Tier 4 — a domain the run's IG does not define: the scope class's model row
+            // (PLAN-library-var-custom-domains; see the javadoc).
+            Map<String, String> igAbsent = provider.getIgAbsentVariableMetadata(table, resolver,
+                    domain, variable);
+            if (igAbsent != null && !igAbsent.isEmpty())
+            {
+                return igAbsent;
             }
         }
         // ⚑ Never null, although `getVariableMetadata` is contracted to return an empty map and a
