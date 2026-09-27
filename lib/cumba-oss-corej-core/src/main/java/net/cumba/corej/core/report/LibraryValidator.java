@@ -21,7 +21,6 @@ import net.cumba.corej.core.exec.AbsentDatasetSkip;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.DatasetRuleResolver;
 import net.cumba.corej.core.exec.MetadataProvider;
-import net.cumba.corej.core.exec.OperationExecutor;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleExecutionStatus;
 import net.cumba.corej.core.exec.RuleRunner;
@@ -32,6 +31,7 @@ import net.cumba.corej.core.gen.GeneratedRulePackage;
 import net.cumba.corej.core.gen.RuleCategory;
 import net.cumba.corej.core.gen.SkippedSourceRule;
 import net.cumba.corej.core.metadata.RuntimeDictionaryProvider;
+import net.cumba.corej.core.metadata.ScopeClassLadder;
 import net.cumba.corej.core.metadata.VlmResolver;
 import net.cumba.corej.core.model.Executability;
 import net.cumba.corej.core.model.Rule;
@@ -1390,71 +1390,14 @@ public final class LibraryValidator
 
 
     /**
-     * Fix #60: resolves the dataset's observation class via the provider's full 3-tier resolver
-     * (Define-XML → product reverse-walk → custom-domain sniffer). The member name keys tier 1; the
-     * CDISC domain code keys tiers 2/3 — needed for split datasets like {@code LBHE} where the
-     * member name and CDISC code differ. The dataset's actual columns are passed so the tier-3
-     * sniffer can classify datasets the metadata library does not carry (e.g. {@code SUPP--}),
-     * mirroring Python's {@code handle_custom_domains} on the loaded dataset.
-     *
-     * <p>
-     * When the provider cannot resolve a class and the dataset is an Associated Persons domain
-     * ({@code AP--} carrying an {@code APID} column), the class is inherited from the parent domain
-     * (e.g. {@code APLB} → the {@code LB} dataset's class), mirroring Python's
-     * {@code _get_associated_persons_inherit_class}. Unlike Python — which raises on a missing
-     * parent or a nested AP reference — this degrades gracefully to {@code null} (the rule stays
-     * SKIPPED) rather than aborting the dataset.
-     * </p>
+     * Fix #60: the dataset's observation class — {@link ScopeClassLadder#classOf}, the one ladder
+     * the SDTM variable walks share ({@code PLAN-custom-domain-model-walk} S1), including the
+     * {@code AP--} inheritance from the parent domain.
      */
     private @Nullable String classNameFor(@Nullable String aMemberName, String aCdiscDomain,
             IDataTable aTable, DatasetResolver aResolver)
     {
-        return classNameFor(aMemberName, aCdiscDomain, aTable, aResolver, false);
-    }
-
-
-    private @Nullable String classNameFor(@Nullable String aMemberName, String aCdiscDomain,
-            IDataTable aTable, DatasetResolver aResolver, boolean aApRecursed)
-    {
-        Set<String> columns = OperationExecutor.datasetColumnNames(aTable);
-        String className = provider.getDatasetClass(aMemberName, aCdiscDomain, columns);
-        if (className != null)
-        {
-            return className;
-        }
-        // AP-- inherit (Python _get_associated_persons_inherit_class): an Associated Persons domain
-        // carries an APID column; its class is inherited from the parent domain named by the AP
-        // suffix (e.g. APLB -> LB). Applied only after the custom-domain sniff failed, matching
-        // Python's order. Single-level recursion: a nested AP parent returns null via the guard.
-        // The DOMAIN column must be present: Python derives ap_suffix from dataset_metadata.domain
-        // (the DOMAIN value), which is None when the column is absent — so no inherit then. Gating
-        // on the column also guarantees aCdiscDomain here is the DOMAIN value, not a member-name
-        // fallback, so substring(2) is the true AP suffix.
-        //
-        // Sibling predicate: OperationExecutor.apSuffixOf (EC-36) computes the same Python
-        // ap_suffix for `--` variable-name resolution. The two are deliberately NOT shared: this
-        // one gates on the DOMAIN *column* and reads the already-resolved aCdiscDomain, while
-        // apSuffixOf gates on a non-empty row-0 DOMAIN *value*. Unifying them would change which
-        // class an AP dataset inherits — a Scope.Classes-wide blast radius unrelated to EC-36.
-        // If either is edited, re-check the other.
-        if (!aApRecursed && columns.contains("APID") && columns.contains("DOMAIN")
-                && aCdiscDomain != null && aCdiscDomain.length() >= 4
-                && aCdiscDomain.toUpperCase(java.util.Locale.ROOT).startsWith("AP"))
-        {
-            String parentDomain = aCdiscDomain.substring(2);
-            IDataTable parent = aResolver.resolve(parentDomain);
-            if (parent != null)
-            {
-                String parentCdisc = net.cumba.corej.core.metadata.CdiscDomainResolver
-                        .cdiscDomainOf(parent);
-                String parentMember = parent.getMetaData().getName();
-                return classNameFor(parentMember, parentCdisc, parent, aResolver, true);
-            }
-            LOGGER.log(Level.DEBUG,
-                    "AP dataset {0}: parent domain {1} not in study; class left undetermined",
-                    aMemberName, parentDomain);
-        }
-        return className;
+        return ScopeClassLadder.classOf(provider, aMemberName, aCdiscDomain, aTable, aResolver);
     }
 
     // ------------------------------------------------------------------

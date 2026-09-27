@@ -9,16 +9,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import net.cumba.cdisc.library.api.model.adam.AdamProduct;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.GroupedResult;
@@ -36,7 +35,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@code PLAN-custom-domain-model-walk} — both SDTM variable walks place a domain the run's IG does
- * not define in the class the <b>scope matcher</b> gives it, read from the dataset's own columns.
+ * not define in exactly the class the <b>scope matcher</b> gives it
+ * ({@link ScopeClassLadder#classOf}, the one ladder {@code LibraryValidator} and the walks share),
+ * read from the dataset's own columns and, for an {@code AP--} dataset, from its parent.
  *
  * <p>
  * Every provider here is built over the IG product's own table view
@@ -82,39 +83,45 @@ class CustomDomainWalkTest
     }
 
 
-    private static Set<String> columnsOf(IDataTable aTable)
+    /**
+     * The scope class — what the scope matcher gives the dataset ({@link ScopeClassLadder#classOf},
+     * which {@code LibraryValidator} calls) — is {@code aExpectedScopeClass}; the three walk entry
+     * points that take the table all answer the forced-class walk for it, and that walk is not
+     * empty.
+     */
+    private static void assertWalksTheScopeClass(MetadataProvider aProvider, IDataTable aTable,
+            DatasetResolver aResolver, String aExpectedScopeClass)
     {
-        DataTableMeta meta = aTable.getMetaData();
-        Set<String> out = new LinkedHashSet<>();
-        for (int i = 0; i < meta.getColumnCount(); i++)
-        {
-            out.add(meta.getColumn(i).getName());
-        }
-        return out;
+        String member = aTable.getMetaData().getName();
+        String scope = ScopeClassLadder.classOf(aProvider, member,
+                CdiscDomainResolver.cdiscDomainOf(aTable), aTable, aResolver);
+        assertEquals(aExpectedScopeClass, scope, "scope class of " + member);
+        List<Map<String, String>> forced = aProvider.getStandardModelVariablesForClass(aTable,
+                aResolver, scope);
+        assertNotNull(forced, "the forced walk serves " + scope);
+        assertFalse(forced.isEmpty(), "the forced walk serves " + scope);
+        assertEquals(names(forced), aProvider.getStandardModelVariables(aTable, aResolver),
+                "algorithm A (names) walks the scope class for " + member);
+        assertEquals(forced, aProvider.getStandardModelVariablesDetailed(aTable, aResolver),
+                "algorithm A (detailed) walks the scope class for " + member);
+        // An IG-absent domain has no IG dataset to merge, so algorithm B is algorithm A.
+        assertEquals(forced, aProvider.getStandardVariablesDetailed(aTable, aResolver),
+                "algorithm B walks the scope class for " + member);
     }
 
 
-    /**
-     * The three walk entry points that take the table all answer the forced-class walk for the
-     * scope class, and that walk is not empty.
-     */
-    private static void assertWalksTheScopeClass(MetadataProvider aProvider, IDataTable aTable,
-            String aCdiscDomain, String aExpectedScopeClass)
+    /** Neither the scope matcher nor any walk places the dataset. */
+    private static void assertPlacedNowhere(MetadataProvider aProvider, IDataTable aTable,
+            DatasetResolver aResolver)
     {
         String member = aTable.getMetaData().getName();
-        String scope = aProvider.getDatasetClass(member, aCdiscDomain, columnsOf(aTable));
-        assertEquals(aExpectedScopeClass, scope, "scope class of " + member);
-        List<Map<String, String>> forced = aProvider.getStandardModelVariablesForClass(aTable,
-                NO_RESOLVER, scope);
-        assertNotNull(forced, "the forced walk serves " + scope);
-        assertFalse(forced.isEmpty(), "the forced walk serves " + scope);
-        assertEquals(names(forced), aProvider.getStandardModelVariables(aTable, NO_RESOLVER),
-                "algorithm A (names) walks the scope class for " + member);
-        assertEquals(forced, aProvider.getStandardModelVariablesDetailed(aTable, NO_RESOLVER),
-                "algorithm A (detailed) walks the scope class for " + member);
-        // An IG-absent domain has no IG dataset to merge, so algorithm B is algorithm A.
-        assertEquals(forced, aProvider.getStandardVariablesDetailed(aTable, NO_RESOLVER),
-                "algorithm B walks the scope class for " + member);
+        assertNull(
+                ScopeClassLadder.classOf(aProvider, member,
+                        CdiscDomainResolver.cdiscDomainOf(aTable), aTable, aResolver),
+                "scope class of " + member);
+        assertEquals(List.of(), aProvider.getStandardModelVariables(aTable, aResolver));
+        assertEquals(List.of(), aProvider.getStandardModelVariablesDetailed(aTable, aResolver));
+        assertEquals(List.of(), aProvider.getStandardVariablesDetailed(aTable, aResolver));
     }
 
     // ------------------------------------------------------------------
@@ -130,7 +137,7 @@ class CustomDomainWalkTest
         for (Map.Entry<String, List<String>> shape : SHAPES.entrySet())
         {
             IDataTable xx = dataset("XX", "XX", shape.getValue().toArray(String[]::new));
-            assertWalksTheScopeClass(provider, xx, "XX", shape.getKey());
+            assertWalksTheScopeClass(provider, xx, NO_RESOLVER, shape.getKey());
             checked++;
         }
         // The population is the map's, so a shape dropped from it must not pass by vanishing.
@@ -160,7 +167,7 @@ class CustomDomainWalkTest
         // no topic column, so a sniff alone would place it nowhere — the scope ladder does, and the
         // walk must follow the ladder, not the sniff (SENDIG-AR 1.0's LB/CL are this shape).
         IDataTable vs = dataset("VS", "VS", "STUDYID", "USUBJID", "VSSEQ", "VSORRES", "VSDTC");
-        assertWalksTheScopeClass(igViewProvider(), vs, "VS", "FINDINGS");
+        assertWalksTheScopeClass(igViewProvider(), vs, NO_RESOLVER, "FINDINGS");
     }
 
 
@@ -174,11 +181,9 @@ class CustomDomainWalkTest
                         .column(column("DOMAIN", 0, DataValueType.STRING).build())
                         .column(column("XXTESTCD", 1, DataValueType.STRING).build()).build())
                 .build();
-        MetadataLibraryProvider provider = ApiModelLibraries.provider(study,
-                CustomDomainWalkFixture.product(), CustomDomainWalkFixture.STANDARD,
-                CustomDomainWalkFixture.VERSION);
+        MetadataLibraryProvider provider = CustomDomainWalkFixture.studyLibraryProvider(study);
         IDataTable xx = dataset("XX", "XX", "STUDYID", "USUBJID", "XXSEQ", "XXTESTCD");
-        assertWalksTheScopeClass(provider, xx, "XX", "EVENTS");
+        assertWalksTheScopeClass(provider, xx, NO_RESOLVER, "EVENTS");
         assertTrue(provider.getStandardModelVariables(xx, NO_RESOLVER).contains("XXTERM"));
     }
 
@@ -193,9 +198,7 @@ class CustomDomainWalkTest
                 .table(table("MYAE").column(column("DOMAIN", 0, DataValueType.STRING).build())
                         .column(column("MYAETERM", 1, DataValueType.STRING).build()).build())
                 .build();
-        MetadataLibraryProvider provider = ApiModelLibraries.provider(study,
-                CustomDomainWalkFixture.product(), CustomDomainWalkFixture.STANDARD,
-                CustomDomainWalkFixture.VERSION);
+        MetadataLibraryProvider provider = CustomDomainWalkFixture.studyLibraryProvider(study);
         IDataTable noColumns = mock(IDataTable.class);
         DataTableMeta meta = mock(DataTableMeta.class);
         lenient().when(meta.getName()).thenReturn("MYAE");
@@ -209,16 +212,42 @@ class CustomDomainWalkTest
 
 
     @Test
-    void anAssociatedPersonsDatasetOfASponsorParentSniffsWithTheParentPrefix()
+    void anAssociatedPersonsDatasetOfASponsorParentInheritsThePresentParentsClass()
     {
-        // APXX: step 1 strips AP, so the walk's wildcard prefix is XX and the sniff looks for
-        // XXTERM — the parent's topic — which is what LibraryValidator's AP-inherit reaches too.
+        // APXX: no APXXTERM, so the ladder sniffs nothing on the AP dataset's own domain code and
+        // inherits from the parent XX, which the resolver hands back — exactly as scope does.
         IDataTable apxx = dataset("APXX", "APXX", "STUDYID", "APID", "XXSEQ", "XXTERM");
+        IDataTable xx = dataset("XX", "XX", "STUDYID", "USUBJID", "XXSEQ", "XXTERM");
+        DatasetResolver parent = name -> "XX".equals(name) ? xx : null;
         MetadataLibraryProvider provider = igViewProvider();
-        assertWalksTheScopeClass(provider, apxx, "XX", "EVENTS");
-        List<String> a = provider.getStandardModelVariables(apxx, NO_RESOLVER);
+        assertWalksTheScopeClass(provider, apxx, parent, "EVENTS");
+        List<String> a = provider.getStandardModelVariables(apxx, parent);
         assertTrue(a.contains("APID"), "the AP identifiers are merged: " + a);
         assertTrue(a.contains("XXTERM"), "the parent prefix substitutes `--`: " + a);
+    }
+
+
+    @Test
+    void anAssociatedPersonsDatasetTakesItsParentsClassNotItsOwnSniff()
+    {
+        // Review round 1, LOW-2: the class is the parent's, even where the AP dataset's own columns
+        // would sniff another class under the parent prefix (XXTERM -> EVENTS here, while the
+        // parent XX is a FINDINGS dataset). The walk used to take the sniff; scope takes the
+        // parent — the walk must agree with scope.
+        IDataTable apxx = dataset("APXX", "APXX", "STUDYID", "APID", "XXSEQ", "XXTERM");
+        IDataTable xx = dataset("XX", "XX", "STUDYID", "USUBJID", "XXSEQ", "XXTESTCD");
+        assertWalksTheScopeClass(igViewProvider(), apxx, name -> "XX".equals(name) ? xx : null,
+                "FINDINGS");
+    }
+
+
+    @Test
+    void anAssociatedPersonsDatasetWhoseParentIsAbsentIsPlacedNowhere()
+    {
+        // Parent absent: scope places APXX in no class (its class-scoped rules are rejected), so
+        // no walk may place it either — before the review fix the walk sniffed XXTERM -> EVENTS.
+        IDataTable apxx = dataset("APXX", "APXX", "STUDYID", "APID", "XXSEQ", "XXTERM");
+        assertPlacedNowhere(igViewProvider(), apxx, NO_RESOLVER);
     }
 
 
@@ -228,8 +257,26 @@ class CustomDomainWalkTest
         // XX1 carries DOMAIN=XX: the CDISC code keys the walk, the member name only tier 1.
         IDataTable xx1 = dataset("XX1", "XX", "STUDYID", "USUBJID", "XXSEQ", "XXTESTCD");
         MetadataLibraryProvider provider = igViewProvider();
-        assertWalksTheScopeClass(provider, xx1, "XX", "FINDINGS");
+        assertWalksTheScopeClass(provider, xx1, NO_RESOLVER, "FINDINGS");
         assertTrue(provider.getStandardModelVariables(xx1, NO_RESOLVER).contains("XXTESTCD"));
+    }
+
+
+    @Test
+    void aMemberTheIgDefinesCarryingAnotherDomainCodeTakesTheMembersIgClass()
+    {
+        // Review round 1, LOW-1: member LB (an IG table, so tier 1 of the ladder reads its IG class
+        // FINDINGS by member name) whose row-0 DOMAIN is LX, a code the IG does not define. The
+        // walk keys the CDISC code (LX), so it is custom, and now walks FINDINGS under the LX
+        // prefix — scope's class — where it answered [] before. On such inconsistent data the
+        // LB-prefixed columns are then not model variables, so the allowed-variable rules report
+        // them: more findings on bad data, the same verdict scope already implies.
+        IDataTable lx = dataset("LB", "LX", "STUDYID", "USUBJID", "LBSEQ", "LBTESTCD");
+        MetadataLibraryProvider provider = igViewProvider();
+        // Tier 1 answers the IG table's own class spelling; the walk normalises it once.
+        assertWalksTheScopeClass(provider, lx, NO_RESOLVER, "Findings");
+        List<String> a = provider.getStandardModelVariables(lx, NO_RESOLVER);
+        assertTrue(a.contains("LXTESTCD") && !a.contains("LBTESTCD"), "the LX prefix: " + a);
     }
 
     // ------------------------------------------------------------------
@@ -259,9 +306,7 @@ class CustomDomainWalkTest
                 .table(table("MYAE").column(column("DOMAIN", 0, DataValueType.STRING).build())
                         .column(column("MYAETERM", 1, DataValueType.STRING).build()).build())
                 .build();
-        MetadataLibraryProvider provider = ApiModelLibraries.provider(study,
-                CustomDomainWalkFixture.product(), CustomDomainWalkFixture.STANDARD,
-                CustomDomainWalkFixture.VERSION);
+        MetadataLibraryProvider provider = CustomDomainWalkFixture.studyLibraryProvider(study);
         assertEquals(
                 List.of("STUDYID", "DOMAIN", "USUBJID", "MYAESEQ", "MYAETERM", "MYAEDECOD",
                         "MYAECAT", "VISITNUM", "MYAEDTC", "MYAEDY"),
