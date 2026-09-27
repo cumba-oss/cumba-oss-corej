@@ -115,4 +115,20 @@ class RelrecKeyRowsTest
         assertEquals(0, skipped.keyCount());
         assertEquals(KeyRows.NOT_FOUND, skipped.find(new RelrecKey("S1", "SUBJ-1", "1")));
     }
+
+
+    @Test
+    void aKeyIsEqualByItsThreeComponentsOnly()
+    {
+        RelrecKey key = new RelrecKey("S1", MissingValue.MIS_A, "1");
+        RelrecKey same = new RelrecKey(String.valueOf("S1".toCharArray()), MissingValue.MIS_A, "1");
+        assertEquals(key, same);
+        assertEquals(key.hashCode(), same.hashCode());
+        assertNotEquals(key, new RelrecKey("S2", MissingValue.MIS_A, "1"));
+        assertNotEquals(key, new RelrecKey("S1", MissingValue.MIS_B, "1"));
+        assertNotEquals(key, new RelrecKey("S1", "MIS_A", "1"));
+        assertNotEquals(key, new RelrecKey("S1", MissingValue.MIS_A, "2"));
+        assertNotEquals(key, (Object) "S1");
+        assertEquals("(S1, " + MissingValue.MIS_A + ", 1)", key.toString());
+    }
 }

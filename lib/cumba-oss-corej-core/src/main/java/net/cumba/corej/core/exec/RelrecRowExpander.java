@@ -137,9 +137,76 @@ final class RelrecRowExpander
      * replaces only was unlikely to: a {@code MissingValue} never equals a text cell, and no cell
      * text can straddle two components.
      * </p>
+     *
+     * <p>
+     * ⚠ A class and not a record, measured: a record recomputes its hash from the three components
+     * on every call and compares them in {@code equals} straight away, so an index build spent most
+     * of its time in {@code equals} rejecting colliding slots by comparing USUBJIDs that share a
+     * long prefix — slower than the maps it replaced. The hash is computed once and compared first,
+     * as {@code KeyMatchIndex.CompositeKey} does.
+     * </p>
      */
-    record RelrecKey(Object study, Object subject, String value)
+    static final class RelrecKey
     {
+
+        private final Object study;
+
+        private final Object subject;
+
+        private final String value;
+
+        private final int hash;
+
+        RelrecKey(Object study, Object subject, String value)
+        {
+            this.study = study;
+            this.subject = subject;
+            this.value = value;
+            hash = (31 * study.hashCode() + subject.hashCode()) * 31 + value.hashCode();
+        }
+
+
+        /** Returns the {@code STUDYID} key identity. */
+        Object study()
+        {
+            return study;
+        }
+
+
+        /** Returns the {@code USUBJID} key identity. */
+        Object subject()
+        {
+            return subject;
+        }
+
+
+        /** Returns the text component. */
+        String value()
+        {
+            return value;
+        }
+
+
+        @Override
+        public boolean equals(@Nullable Object other)
+        {
+            return other instanceof RelrecKey key && key.hash == hash && key.study.equals(study)
+                    && key.subject.equals(subject) && key.value.equals(value);
+        }
+
+
+        @Override
+        public int hashCode()
+        {
+            return hash;
+        }
+
+
+        @Override
+        public String toString()
+        {
+            return "(" + study + ", " + subject + ", " + value + ")";
+        }
     }
 
     private RelrecRowExpander()
@@ -700,7 +767,7 @@ final class RelrecRowExpander
         /**
          * Builds the index in two passes: the first computes each row's key <b>once</b>, assigns
          * key ids and counts the rows per key; the second lays the rows out by key. The only
-         * temporary is one {@code int} per row.
+         * temporaries are one {@code int} per row and the builder's per-slot hashes.
          *
          * @param aRowCount
          *            the table's row count.
@@ -711,60 +778,18 @@ final class RelrecRowExpander
          */
         static KeyRows build(int aRowCount, IntFunction<@Nullable RelrecKey> aKeyOfRow)
         {
-            @Nullable
-            RelrecKey[] table = new RelrecKey[MIN_CAPACITY];
-            int[] ids = new int[MIN_CAPACITY];
-            RelrecKey[] byId = new RelrecKey[MIN_CAPACITY];
-            int[] counts = new int[MIN_CAPACITY];
-            Set<Object> studies = new LinkedHashSet<>();
-            int size = 0;
+            Builder table = new Builder();
             int[] rowKey = new int[aRowCount];
             for (int r = 0; r < aRowCount; r++)
             {
                 RelrecKey key = aKeyOfRow.apply(r);
-                if (key == null)
-                {
-                    rowKey[r] = NOT_FOUND;
-                    continue;
-                }
-                int mask = table.length - 1;
-                int slot = spread(key.hashCode()) & mask;
-                RelrecKey stored = table[slot];
-                while (stored != null && !stored.equals(key))
-                {
-                    slot = (slot + 1) & mask;
-                    stored = table[slot];
-                }
-                if (stored != null)
-                {
-                    int id = ids[slot];
-                    counts[id]++;
-                    rowKey[r] = id;
-                    continue;
-                }
-                int id = size++;
-                table[slot] = key;
-                ids[slot] = id;
-                if (id == byId.length)
-                {
-                    byId = Arrays.copyOf(byId, id * 2);
-                    counts = Arrays.copyOf(counts, id * 2);
-                }
-                byId[id] = key;
-                counts[id] = 1;
-                studies.add(key.study());
-                rowKey[r] = id;
-                if (size * 2 > table.length)
-                {
-                    int[] grownIds = new int[table.length * 2];
-                    table = grow(table, ids, grownIds);
-                    ids = grownIds;
-                }
+                rowKey[r] = key == null ? NOT_FOUND : table.idOf(key);
             }
+            int size = table.size;
             int[] offsets = new int[size + 1];
             for (int id = 0; id < size; id++)
             {
-                offsets[id + 1] = offsets[id] + counts[id];
+                offsets[id + 1] = offsets[id] + table.counts[id];
             }
             int[] rows = new int[offsets[size]];
             int[] cursor = Arrays.copyOf(offsets, size);
@@ -776,36 +801,8 @@ final class RelrecRowExpander
                     rows[cursor[id]++] = r;
                 }
             }
-            return new KeyRows(table, ids, Arrays.copyOf(byId, size), offsets, rows,
-                    List.copyOf(studies));
-        }
-
-
-        /**
-         * Re-hashes {@code aTable} into one twice its size, writing the ids into {@code aNewIds}.
-         */
-        private static @Nullable RelrecKey[] grow(@Nullable RelrecKey[] aTable, int[] aIds,
-                int[] aNewIds)
-        {
-            @Nullable
-            RelrecKey[] grown = new RelrecKey[aTable.length * 2];
-            int mask = grown.length - 1;
-            for (int i = 0; i < aTable.length; i++)
-            {
-                RelrecKey key = aTable[i];
-                if (key == null)
-                {
-                    continue;
-                }
-                int slot = spread(key.hashCode()) & mask;
-                while (grown[slot] != null)
-                {
-                    slot = (slot + 1) & mask;
-                }
-                grown[slot] = key;
-                aNewIds[slot] = aIds[i];
-            }
-            return grown;
+            return new KeyRows(table.keys, table.ids, Arrays.copyOf(table.byId, size), offsets,
+                    rows, List.copyOf(table.studies));
         }
 
 
@@ -879,6 +876,101 @@ final class RelrecRowExpander
         {
             int h = aHash * 0x9E3779B9;
             return h ^ (h >>> 16);
+        }
+
+        /**
+         * The growing key table used while building; its slot and id arrays become the index's, the
+         * rest is dropped.
+         *
+         * <p>
+         * ⚠ It keeps each slot's hash in a parallel array, <b>only while building</b>, measured: a
+         * probe that must dereference the stored key to read its hash — and a growth step that must
+         * dereference every key to re-place it — cost a cache miss per step, which made the build
+         * slower than the maps this index replaced; with the hashes at hand a colliding slot is
+         * rejected, and a key re-placed, without touching the key. A lookup in the finished index
+         * ({@link KeyRows#find}) keeps no hashes: probes there are per link, not per row.
+         * </p>
+         */
+        private static final class Builder
+        {
+
+            private @Nullable RelrecKey[] keys = new RelrecKey[MIN_CAPACITY];
+
+            private int[] ids = new int[MIN_CAPACITY];
+
+            private int[] hashes = new int[MIN_CAPACITY];
+
+            private RelrecKey[] byId = new RelrecKey[MIN_CAPACITY];
+
+            private int[] counts = new int[MIN_CAPACITY];
+
+            private final Set<Object> studies = new LinkedHashSet<>();
+
+            private int size;
+
+            /** The key's id, assigning the next one on first sight, and counts one row for it. */
+            int idOf(RelrecKey aKey)
+            {
+                int hash = aKey.hashCode();
+                int mask = keys.length - 1;
+                int slot = spread(hash) & mask;
+                for (RelrecKey stored = keys[slot]; stored != null; stored = keys[slot])
+                {
+                    if (hashes[slot] == hash && stored.equals(aKey))
+                    {
+                        counts[ids[slot]]++;
+                        return ids[slot];
+                    }
+                    slot = (slot + 1) & mask;
+                }
+                int id = size++;
+                keys[slot] = aKey;
+                ids[slot] = id;
+                hashes[slot] = hash;
+                if (id == byId.length)
+                {
+                    byId = Arrays.copyOf(byId, id * 2);
+                    counts = Arrays.copyOf(counts, id * 2);
+                }
+                byId[id] = aKey;
+                counts[id] = 1;
+                studies.add(aKey.study());
+                if (size * 2 > keys.length)
+                {
+                    grow();
+                }
+                return id;
+            }
+
+
+            /** Doubles the slot table, keeping the load factor at or below one half. */
+            private void grow()
+            {
+                @Nullable
+                RelrecKey[] oldKeys = keys;
+                int[] oldIds = ids;
+                int[] oldHashes = hashes;
+                keys = new RelrecKey[oldKeys.length * 2];
+                ids = new int[oldKeys.length * 2];
+                hashes = new int[oldKeys.length * 2];
+                int mask = keys.length - 1;
+                for (int i = 0; i < oldKeys.length; i++)
+                {
+                    RelrecKey key = oldKeys[i];
+                    if (key == null)
+                    {
+                        continue;
+                    }
+                    int slot = spread(oldHashes[i]) & mask;
+                    while (keys[slot] != null)
+                    {
+                        slot = (slot + 1) & mask;
+                    }
+                    keys[slot] = key;
+                    ids[slot] = oldIds[i];
+                    hashes[slot] = oldHashes[i];
+                }
+            }
         }
     }
 
