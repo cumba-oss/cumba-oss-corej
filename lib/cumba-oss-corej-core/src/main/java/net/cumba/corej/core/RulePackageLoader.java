@@ -3612,6 +3612,15 @@ public class RulePackageLoader
      * {@code finishLoad} (the corpus's {@code RuleScaffold}) — the sibling of
      * {@link #unknownKeyErrors(Rule)}. Empty when every keyed join is declared in the ruled shape.
      *
+     * <p>
+     * ⚠ It does NOT apply the suppression the loader applies (review round 4, G3: the declaration
+     * is not judged while R2 reports an unknown key on {@code Requirements} /
+     * {@code Requirements.Variables}), so on a rule with a misspelt facet it reports the
+     * declaration as missing. A caller that also runs {@link #unknownKeyErrors(Rule)} should run
+     * that first and stop on its errors — as {@code RuleScaffold} does — so one typo stays one
+     * error.
+     * </p>
+     *
      * @param rule
      *            a bound rule
      * @return the §5.7 load errors of the rule, in gate order
@@ -3689,13 +3698,19 @@ public class RulePackageLoader
     }
 
 
-    /** Whether an ORDINARY entry (neither Child nor template) of the rule joins on the bare key. */
+    /**
+     * Whether an ORDINARY entry (neither Child nor template) of the rule joins on the bare key. A
+     * nameless ordinary entry is exempt from the gate AND inert at run time
+     * ({@code RuleRunner.buildJoinedDatasets} skips it), so it licenses nothing (review round 5,
+     * F1) — the lint's {@code keysAnOrdinaryEntry} reads it the same way.
+     */
     private static boolean keysAnOrdinaryEntry(List<net.cumba.corej.core.model.MatchDataset> joins,
             String bareKey)
     {
         for (net.cumba.corej.core.model.MatchDataset md : joins)
         {
-            if (md == null || Boolean.TRUE.equals(md.getChild()) || isExpansionTemplateEntry(md))
+            if (md == null || md.getName() == null || Boolean.TRUE.equals(md.getChild())
+                    || isExpansionTemplateEntry(md))
             {
                 continue;
             }

@@ -164,6 +164,29 @@ class JoinKeyDeclarationGateTest
 
 
     @Test
+    void anInertEntryLicensesNoGroup() throws IOException
+    {
+        // Review round 5, F1: a NAMELESS ordinary entry is exempt from the gate and inert at run
+        // time (RuleRunner.buildJoinedDatasets skips it), so it must not license a group naming a
+        // Child key — before this, Child USUBJID + {Keys:[USUBJID]} + [USUBJID, FOO.BAR] loaded
+        // clean.
+        String req = "\"All\":[\"QNAM\",\"USUBJID\",\"IDVAR\",\"IDVARVAL\"],\"All_Or_None\":[[\"USUBJID\",\"FOO.BAR\"]]";
+        assertRedNaming(rule("T-CHILD-INERT", req,
+                "{\"Name\":\"SUPP--\",\"Child\":true,\"Keys\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]},"
+                        + "{\"Keys\":[\"USUBJID\"]}"),
+                "T-CHILD-INERT", "USUBJID", "named by an All_Or_None group");
+        // Round 5, F2 (the reviewer's input, agreed with the lint): an entry keyed on a token on
+        // its RIGHT side is an expansion template — isExpansionTemplateEntry reads both sides —
+        // so it licenses nothing either, whatever its name.
+        assertRedNaming(rule("T-CHILD-RTPL",
+                "\"All\":[\"QNAM\",\"USUBJID\",\"IDVAR\",\"IDVARVAL\"],\"All_Or_None\":[[\"USUBJID\",\"DM.USUBJID\"]]",
+                "{\"Name\":\"SUPP--\",\"Child\":true,\"Keys\":[\"USUBJID\",\"IDVAR\",\"IDVARVAL\"]},"
+                        + "{\"Name\":\"DM\",\"Keys\":[{\"left\":\"USUBJID\",\"right\":\"&K\"}]}"),
+                "T-CHILD-RTPL", "USUBJID", "named by an All_Or_None group");
+    }
+
+
+    @Test
     void anExpansionTemplateDeclaresOnlyItsFirstBareKey() throws IOException
     {
         // Q5: token keys and the &DOM. half are exempt by construction (gate R6 bars them).
