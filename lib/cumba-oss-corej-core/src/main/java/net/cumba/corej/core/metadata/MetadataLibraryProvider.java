@@ -1458,9 +1458,21 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * Without a dataset (the domain-string entry points) the library-view sniff is kept verbatim.
      * </p>
      *
+     * <p>
+     * ⚠ With the dataset in hand the ladder is keyed by the dataset's own CDISC domain code
+     * ({@link CdiscDomainResolver#cdiscDomainOf}) — exactly the code the scope matcher classifies
+     * by ({@code LibraryValidator}) — never by {@code aOriginalDomain}. The table-taking walks pass
+     * that very code as {@code aOriginalDomain}, but the LIBRARY read's last tier
+     * ({@link #getIgAbsentVariableMetadata}) passes its domain tier's key, which re-adds an
+     * {@code AP} prefix the {@code DOMAIN} cell lacks (member {@code APXX}, {@code DOMAIN XX}) so
+     * the associated-persons identifiers resolve. Keying the class by that key classified such a
+     * split member by its parent instead of by its own columns, and placed it nowhere where scope
+     * placed it ({@code PLAN-library-var-custom-domains} review round 1, P1).
+     * </p>
+     *
      * @param aOriginalDomain
-     *            the dataset's CDISC domain code ({@link CdiscDomainResolver#cdiscDomainOf}) — the
-     *            same code the scope matcher classifies by
+     *            the domain the walk substitutes {@code --} with and canonicalises; the class key
+     *            only without a dataset (the library-view sniff)
      * @return the class, or {@code null} when nothing places the dataset (a sniffer miss, or an
      *         {@code AP--} dataset whose parent is absent: the walks answer {@code []}, as the
      *         class-scoped rules are rejected by scope — {@code CDW-D3} (b))
@@ -1475,8 +1487,8 @@ public final class MetadataLibraryProvider implements MetadataProvider
                     : CustomDomainClassDetector.detectClass(meta, aOriginalDomain);
         }
         IDataTable table = aActual.table();
-        return ScopeClassLadder.classOf(this, table.getMetaData().getName(), aOriginalDomain, table,
-                aActual.resolver());
+        return ScopeClassLadder.classOf(this, table.getMetaData().getName(),
+                CdiscDomainResolver.cdiscDomainOf(table), table, aActual.resolver());
     }
 
 
@@ -2980,7 +2992,9 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * domain the run's IG does not define: the model row of the class the scope matcher gives the
      * dataset (algorithm B's column-aware walk, {@link #buildResolvedSdtm} with the dataset in hand
      * — for such a domain the model walk, the IG merge skipped), restricted to
-     * {@link #IG_ABSENT_SERVED_KEYS}.
+     * {@link #IG_ABSENT_SERVED_KEYS}. The class is keyed by the dataset's own CDISC domain code, as
+     * scope keys it ({@link #customDomainClass}); {@code aDomain} — the read's domain-tier key —
+     * decides only the {@code --} substitution and the {@code AP--} shim.
      *
      * <p>
      * Answers {@code {}} — today's answer — when: no SDTM product is loaded (ADaM, Define-only and
@@ -2995,6 +3009,13 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * <p>
      * ⚑ Uncached: each call walks the class (roughly 90–165 rows) once. It is reached only after
      * every domain-keyed tier missed, once per (rule, dataset, variable, read) — never per row.
+     * </p>
+     *
+     * <p>
+     * ⚑ The IG-defined early return changes no answer the read gives — the read's domain tier has
+     * already walked the same merged list for that domain and missed — it spends no walk on a
+     * sponsor variable of an IG-defined domain, and keeps this method's own contract ("only a
+     * domain the IG does not define") true for a direct caller.
      * </p>
      */
     @Override

@@ -249,6 +249,35 @@ class IgAbsentVariableMetadataTest
 
 
     @Test
+    void anApMemberWhoseDomainCellNamesTheParentIsClassifiedByItsOwnColumnsAsScopeDoes()
+    {
+        // Review round 1, P1: member APXX whose DOMAIN cell holds XX. The read's domain tier keys
+        // the tier with APXX (the AP prefix re-added, so the associated-persons identifiers
+        // resolve), but the CLASS is keyed by the dataset's own code XX, exactly as scope keys it:
+        // XXTESTCD places it in FINDINGS by its own columns, with or without a parent in the
+        // study, and even when the parent is an EVENTS dataset. Keyed by APXX, the ladder sniffed
+        // APXXTESTCD, missed, and fell through to the absent parent: {} — where scope said
+        // FINDINGS, and SEND-0005 kept reporting every Define-declared variable.
+        IDataTable apxx = dataset("APXX", "XX", "STUDYID", "APID", "XXSEQ", "XXTESTCD", "XXFOO");
+        IDataTable eventsParent = dataset("XX", "XX", "STUDYID", "USUBJID", "XXSEQ", "XXTERM");
+        MetadataLibraryProvider provider = igViewProvider();
+        for (DatasetResolver resolver : List.<DatasetResolver> of(NO_RESOLVER,
+                name -> "XX".equals(name) ? eventsParent : null))
+        {
+            assertEquals("FINDINGS",
+                    ScopeClassLadder.classOf(provider, "APXX", "XX", apxx, resolver),
+                    "scope's class");
+            assertEquals(Map.of("name", "XXTESTCD", "simpleDatatype", "Char", "role", "Topic"),
+                    read(provider, apxx, resolver, "XXTESTCD"));
+            assertEquals(Map.of("name", "APID", "simpleDatatype", "Char", "role", "Identifier"),
+                    read(provider, apxx, resolver, "APID"),
+                    "the AP shim rides the domain tier's AP-prefixed key");
+            assertEquals(Map.of(), read(provider, apxx, resolver, "XXFOO"));
+        }
+    }
+
+
+    @Test
     void anAssociatedPersonsDatasetWhoseParentIsAbsentReadsNothing()
     {
         // Scope places it nowhere, so the tier serves nothing — today's answer.

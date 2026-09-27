@@ -458,12 +458,14 @@ public interface MetadataProvider
      * </p>
      *
      * @param aTable
-     *            the dataset whose variable is read — its columns classify it
+     *            the dataset whose variable is read — its own CDISC domain code and columns
+     *            classify it, exactly as the scope matcher classifies it
      * @param aResolver
      *            resolves an {@code AP--} dataset's parent domain, whose class it inherits
      * @param aDomain
      *            the key the caller's domain tier already used (the dataset's CDISC domain, the
-     *            {@code AP} prefix kept)
+     *            {@code AP} prefix kept) — it decides the {@code --} substitution and the
+     *            {@code AP--} shim, not the class
      * @param aVariable
      *            the variable name
      * @return the served attributes, or an empty map — the default — when this provider cannot
