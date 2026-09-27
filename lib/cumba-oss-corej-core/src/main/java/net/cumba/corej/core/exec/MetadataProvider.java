@@ -740,11 +740,13 @@ public interface MetadataProvider
      * (non-detectable, non-custom). A custom domain — one the run's IG does not define, classified
      * as the scope matcher classifies it ({@code PLAN-custom-domain-model-walk}) — emits the model
      * walk of its class when that class is a general-observation one; placed in a special-purpose,
-     * trial-design or relationship class it answers the empty list here, because this algorithm has
-     * no domain-keyed model tier (algorithm A, {@link #getStandardModelVariablesDetailed}, serves
-     * the linked model's own dataset table for it). Each entry carries the variable's full
-     * attribute map (Python {@code variables_metadata} shape) — the same key vocabulary as
-     * {@link #getStandardModelVariablesDetailed}, namely
+     * trial-design or relationship class it answers only what that class's own class variables and,
+     * for an {@code AP--} dataset, the associated-persons identifiers contribute — in the stored
+     * SDTM models none for those classes, so the empty list for any other dataset — because this
+     * algorithm has no domain-keyed model tier (algorithm A,
+     * {@link #getStandardModelVariablesDetailed}, serves the linked model's own dataset table for
+     * it). Each entry carries the variable's full attribute map (Python {@code variables_metadata}
+     * shape) — the same key vocabulary as {@link #getStandardModelVariablesDetailed}, namely
      * {@link net.cumba.corej.core.metadata.LibraryVariableAttributes#KEYS}. ⚠ It is the <b>same</b>
      * vocabulary and not an IG-only subset: this walk's identifier / class / timing buckets come
      * from the <em>Model</em> product, so a model-only field such as {@code notes} reaches this
