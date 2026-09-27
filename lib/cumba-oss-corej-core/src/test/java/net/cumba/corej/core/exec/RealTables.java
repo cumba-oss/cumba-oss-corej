@@ -11,6 +11,7 @@ import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.CachedDataTableColumn;
 import net.cumba.datatable.impl.ColumnCachedDataTable;
+import net.cumba.datatable.impl.support.OverlayDataTable;
 import net.cumba.datatable.values.DataValueType;
 import org.jspecify.annotations.Nullable;
 
@@ -99,6 +100,35 @@ public final class RealTables
         DataTableMeta meta = DataTableMeta.builder().name(name).label(name).columns(metas)
                 .rowCount(rowCount).totalRowCount(rowCount).build();
         return new ColumnCachedDataTable(meta, cols);
+    }
+
+
+    /**
+     * The same table held <b>raw</b> in an {@link OverlayDataTable}: no DOUBLE buffer sees the
+     * cells, so a {@code -0.0} stays a {@code -0.0}. Since {@code NZL O1}
+     * (PLAN-negative-zero-on-load) a buffer-built table ({@link #build()}) stores a {@code -0.0} as
+     * {@code 0.0}, so a signed-zero test built that way passes with the key-level zero handling
+     * never entered. A raw {@code -0.0} is the shape of a computed key, which that handling is kept
+     * for ({@code NZL Q2}).
+     */
+    IDataTable buildRaw()
+    {
+        int colCount = colNames.size();
+        int rowCount = colData.isEmpty() ? 0 : colData.get(0).length;
+        OverlayDataTable t = OverlayDataTable.empty(name, name, rowCount);
+        for (int c = 0; c < colCount; c++)
+        {
+            t.addColumn(colNames.get(c), colTypes.get(c), colNames.get(c));
+        }
+        for (int c = 0; c < colCount; c++)
+        {
+            Object[] data = colData.get(c);
+            for (int r = 0; r < rowCount; r++)
+            {
+                t.setValue(r, c, data[r]);
+            }
+        }
+        return t;
     }
 
 

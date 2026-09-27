@@ -178,6 +178,8 @@ class KeyCellReaderTest
         {
             manyDoubles.add(i * Math.PI);
         }
+        // the -0.0 members of these DOUBLE grids are stored as 0.0 since NZL O1
+        // (PLAN-negative-zero-on-load): they now exercise the store rule, not a signed zero cell
         manyDoubles.addAll(java.util.Arrays.asList(-0.0, 0.0, Double.POSITIVE_INFINITY,
                 Double.NEGATIVE_INFINITY, Double.NaN, ODD_NAN, MissingValue.MIS_Z.asDouble(),
                 MissingValue.MIS, MissingValue.MIS_D, 1e300, Double.MIN_VALUE));

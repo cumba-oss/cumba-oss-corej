@@ -41,6 +41,12 @@ import org.junit.jupiter.api.parallel.Resources;
  * identity always exact"</i>) and the two zeros are one (register {@code D84}; owner Q4: <i>"-0 and
  * 0 are to be treated as one key everywhere"</i>).
  * </p>
+ *
+ * <p>
+ * ⚠ The tables holding a {@code -0.0} are built raw ({@link RealTables#buildRaw()}): since
+ * {@code NZL O1} (PLAN-negative-zero-on-load) no DOUBLE buffer stores a {@code -0.0}, and the zero
+ * handling stays for computed keys ({@code NZL Q2}), whose shape the raw table is.
+ * </p>
  */
 class GroupedResultKeyIdentityTest
 {
@@ -59,7 +65,7 @@ class GroupedResultKeyIdentityTest
                 .str("VSDTC", "2020-01-01", "2020-01-02", "2020-02-01", "2020-03-01", "2020-03-02",
                         "2020-03-03")
                 .str("VSORRES", "A", "", "B", "C", "", "D")
-                .dbl("VSSEQ", 1.0, 2.0, 1.0, 1.0, 2.0, 3.0).build();
+                .dbl("VSSEQ", 1.0, 2.0, 1.0, 1.0, 2.0, 3.0).buildRaw();
     }
 
 
@@ -134,7 +140,7 @@ class GroupedResultKeyIdentityTest
     void theSignedZerosAloneAreOneGroup()
     {
         IDataTable t = RealTables.of("VS").str("USUBJID", "S1", "S1", "S1")
-                .dbl("VISITNUM", -0.0, 0.0, 0.0).build();
+                .dbl("VISITNUM", -0.0, 0.0, 0.0).buildRaw();
         assertEquals(List.of(3L, 3L, 3L), perRow(run(op("record_count", null, GROUP), t), t));
     }
 
@@ -218,7 +224,7 @@ class GroupedResultKeyIdentityTest
     {
         IDataTable target = RealTables.of("XX").str("USUBJID", "S1", "S1", "S1")
                 .dbl("VISITNUM", 4.9999999999994, 5.0, -0.0)
-                .str("MYDTC", "2020-01-10", "2020-01-10", "2020-01-10").build();
+                .str("MYDTC", "2020-01-10", "2020-01-10", "2020-01-10").buildRaw();
         IDataTable sj = RealTables.of("SJ").str("USUBJID", "S1", "S1", "S1")
                 .dbl("VISITNUM", 4.9999999999994, 5.0, 0.0)
                 .str("SJSTDTC", "2020-01-01", "2020-01-05", "2020-01-08").build();

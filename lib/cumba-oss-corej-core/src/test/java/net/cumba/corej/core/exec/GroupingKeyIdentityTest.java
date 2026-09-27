@@ -25,6 +25,12 @@ import org.junit.jupiter.api.Test;
  * answered the zeros twice over — split by its singleton branch (the index), merged by its coalesce
  * branch ({@code KeyPart}).
  * </p>
+ *
+ * <p>
+ * ⚠ The tables holding a {@code -0.0} are built raw ({@link RealTables#buildRaw()}): since
+ * {@code NZL O1} (PLAN-negative-zero-on-load) no DOUBLE buffer stores a {@code -0.0}, and the zero
+ * handling stays for computed keys ({@code NZL Q2}), whose shape the raw table is.
+ * </p>
  */
 class GroupingKeyIdentityTest
 {
@@ -37,7 +43,7 @@ class GroupingKeyIdentityTest
                 .dbl("VISITNUM", 4.9999999999994, 4.9999999999994, 5.0, -0.0, 0.0, 0.0)
                 .dbl("VSSTRESN", 10.0, 11.0, 99.0, 1.0, 2.0, 3.0)
                 .str("VISIT", "WEEK 5", "WEEK 5", "WEEK 5", "SCREENING X", "SCREENING", "SCREENING")
-                .build();
+                .buildRaw();
     }
 
 
@@ -129,7 +135,7 @@ class GroupingKeyIdentityTest
     {
         IDataTable t = RealTables.of("ADSL").str("USUBJID", "S1", "S1", "S1")
                 .dbl("APERIOD", -0.0, 0.0, 4.9999999999994).str("ASPER", "1", "2", "1")
-                .str("ASPERC", "PERIOD A", "PERIOD A", "PERIOD A").build();
+                .str("ASPERC", "PERIOD A", "PERIOD A", "PERIOD A").buildRaw();
         BitSet fired = NativeExprEvaluator.evaluate(CheckExpressionParser.parse(
                 "has_multiple_values_for(ASPER, ASPERC, keep_missings=true, within=APERIOD)"),
                 EvaluationContext.builder().table(t).build());
