@@ -131,4 +131,69 @@ class RelrecKeyRowsTest
         assertNotEquals(key, (Object) "S1");
         assertEquals("(S1, " + MissingValue.MIS_A + ", 1)", key.toString());
     }
+
+
+    /** Every key id of a study, in id order, read through the index's per-study slice. */
+    private static List<Integer> studyKeys(KeyRows aIndex, int aOrdinal)
+    {
+        List<Integer> ids = new ArrayList<>();
+        for (int pos = aIndex.studyKeyStart(aOrdinal); pos < aIndex.studyKeyEnd(aOrdinal); pos++)
+        {
+            ids.add(aIndex.studyKeyId(pos));
+        }
+        return ids;
+    }
+
+
+    @Test
+    void theStudySlicesHoldEachStudysKeysInIdOrder()
+    {
+        KeyRows index = KeyRows.build(1000, RelrecKeyRowsTest::keyOf);
+        assertEquals(3, index.studies().size());
+        int total = 0;
+        for (int s = 0; s < index.studies().size(); s++)
+        {
+            Object study = index.studies().get(s);
+            assertEquals(s, index.studyOrdinal(study));
+            List<Integer> expected = new ArrayList<>();
+            for (int id = 0; id < index.keyCount(); id++)
+            {
+                if (index.key(id).study().equals(study))
+                {
+                    expected.add(id);
+                }
+            }
+            assertEquals(expected, studyKeys(index, s), () -> "keys of study " + study);
+            total += expected.size();
+        }
+        assertEquals(index.keyCount(), total, "every key sits in exactly one study slice");
+        assertEquals(KeyRows.NOT_FOUND, index.studyOrdinal("S9"));
+        // the text spelling a marker's name is not the marker
+        assertEquals(KeyRows.NOT_FOUND, index.studyOrdinal("MIS_A"));
+    }
+
+
+    @Test
+    void theSparseBuildIsTheDenseBuild()
+    {
+        KeyRows dense = KeyRows.build(1000, RelrecKeyRowsTest::keyOf);
+        KeyRows sparse = KeyRows.buildSparse(1000, RelrecKeyRowsTest::keyOf);
+        assertEquals(dense.keyCount(), sparse.keyCount());
+        assertEquals(dense.studies(), sparse.studies());
+        for (int id = 0; id < dense.keyCount(); id++)
+        {
+            assertEquals(dense.key(id), sparse.key(id));
+            assertEquals(id, sparse.find(dense.key(id)));
+            assertEquals(dense.end(id) - dense.start(id), sparse.end(id) - sparse.start(id));
+            for (int k = 0; k < dense.end(id) - dense.start(id); k++)
+            {
+                assertEquals(dense.row(dense.start(id) + k), sparse.row(sparse.start(id) + k));
+            }
+        }
+        for (int s = 0; s < dense.studies().size(); s++)
+        {
+            assertEquals(studyKeys(dense, s), studyKeys(sparse, s));
+        }
+        assertEquals(0, KeyRows.buildSparse(50, _ -> null).keyCount());
+    }
 }

@@ -8,7 +8,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,7 +39,7 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * The pairing is computed as <b>one hash join per related {@code RDOMAIN}</b>: each table is
  * scanned once to build a per-{@code IDVAR}-column value index keyed by
- * {@code STUDYID → (USUBJID, value)} (record-level and dataset-level alike), and every RELREC link
+ * {@code (STUDYID, USUBJID, value)} (record-level and dataset-level alike), and every RELREC link
  * is resolved by index lookup rather than re-scanning the tables — the same deduplicated set of
  * {@code (primaryRow, targetOrdinal, targetRow)} triples as a per-link nested loop, in
  * {@code O(P + T + |RELREC|)} per related domain. <b>This logic is a deliberate copy of
@@ -157,12 +156,12 @@ final class RelrecRowExpander
 
         private final int hash;
 
-        RelrecKey(Object study, Object subject, String value)
+        RelrecKey(Object aStudy, Object aSubject, String aValue)
         {
-            this.study = study;
-            this.subject = subject;
-            this.value = value;
-            hash = (31 * study.hashCode() + subject.hashCode()) * 31 + value.hashCode();
+            study = aStudy;
+            subject = aSubject;
+            value = aValue;
+            hash = (31 * aStudy.hashCode() + aSubject.hashCode()) * 31 + aValue.hashCode();
         }
 
 
@@ -188,9 +187,9 @@ final class RelrecRowExpander
 
 
         @Override
-        public boolean equals(@Nullable Object other)
+        public boolean equals(@Nullable Object aOther)
         {
-            return other instanceof RelrecKey key && key.hash == hash && key.study.equals(study)
+            return aOther instanceof RelrecKey key && key.hash == hash && key.study.equals(study)
                     && key.subject.equals(subject) && key.value.equals(value);
         }
 
@@ -500,15 +499,27 @@ final class RelrecRowExpander
         }
         KeyRows pIndex = primaryIndex.byColumn(spec.srcIdvar());
         KeyRows tIndex = targetIndex.byColumn(spec.tgtIdvar());
-        boolean studyScoped = isNonBlank(spec.study());
+        if (isNonBlank(spec.study()))
+        {
+            // (c): the named study's keys only, through the index's per-study slice -- the one
+            // study bucket the nested maps read, not every key filtered (review round 1, B1)
+            int study = pIndex.studyOrdinal(spec.studyKey());
+            if (study == KeyRows.NOT_FOUND
+                    || tIndex.studyOrdinal(spec.studyKey()) == KeyRows.NOT_FOUND)
+            {
+                return;
+            }
+            int end = pIndex.studyKeyEnd(study);
+            for (int pos = pIndex.studyKeyStart(study); pos < end; pos++)
+            {
+                int id = pIndex.studyKeyId(pos);
+                emitCross(pIndex, id, tIndex, tIndex.find(pIndex.key(id)), ordinal, out, seen);
+            }
+            return;
+        }
         for (int id = 0; id < pIndex.keyCount(); id++)
         {
-            RelrecKey key = pIndex.key(id);
-            if (studyScoped && !key.study().equals(spec.studyKey()))
-            {
-                continue;
-            }
-            emitCross(pIndex, id, tIndex, tIndex.find(key), ordinal, out, seen);
+            emitCross(pIndex, id, tIndex, tIndex.find(pIndex.key(id)), ordinal, out, seen);
         }
     }
 
@@ -564,7 +575,7 @@ final class RelrecRowExpander
         {
             return;
         }
-        KeyRows targetIndex = KeyRows.build(Math.toIntExact(target.getRowCount()),
+        KeyRows targetIndex = KeyRows.buildSparse(Math.toIntExact(target.getRowCount()),
                 r -> scanKey(spec, target, tStudyIdx, tUsubjIdx, tIdvarIdx, r, tgtNorm));
 
         DataTableMeta pm = primary.getMetaData();
@@ -616,6 +627,19 @@ final class RelrecRowExpander
     private static @Nullable RelrecKey scanKey(LinkSpec spec, IDataTable t, int studyIdx,
             int usubjIdx, int idvarIdx, long row, @Nullable String idvarFilter)
     {
+        // The link value first: on a record-level scan it is the filter that rejects almost every
+        // row, so a rejected row costs one cell read, not three (review round 1, B2). The
+        // conditions are a conjunction, so their order does not change which rows take part.
+        String idv = cell(t, idvarIdx, row);
+        if (idv == null)
+        {
+            return null;
+        }
+        String idvNorm = Objects.requireNonNull(normKey(idv));
+        if (spec.recordLevel() && !idvNorm.equals(idvarFilter))
+        {
+            return null;
+        }
         Object study = keyCell(t, studyIdx, row);
         if (isNonBlank(spec.study()) && !study.equals(spec.studyKey()))
         {
@@ -626,17 +650,7 @@ final class RelrecRowExpander
         {
             return null;
         }
-        String idv = cell(t, idvarIdx, row);
-        if (idv == null)
-        {
-            return null;
-        }
-        String idvNorm = Objects.requireNonNull(normKey(idv));
-        if (spec.recordLevel())
-        {
-            return idvNorm.equals(idvarFilter) ? new RelrecKey(study, usubj, "") : null;
-        }
-        return new RelrecKey(study, usubj, idvNorm);
+        return new RelrecKey(study, usubj, spec.recordLevel() ? "" : idvNorm);
     }
 
     // ---- table index ----
@@ -723,8 +737,10 @@ final class RelrecRowExpander
      * {@code offsets[id] .. offsets[id + 1]} is that key's slice, ascending within it (the order
      * the {@code List<Long>} postings had);</li>
      * <li>the keys are also kept <b>by id</b>, i.e. in first-appearance order, so a dataset-level
-     * join walks them deterministically, and the distinct {@code STUDYID} identities are kept in
-     * first-appearance order for a record-level link that names no study.</li>
+     * join walks them deterministically; the distinct {@code STUDYID} identities are kept in
+     * first-appearance order for a record-level link that names no study; and the key ids are laid
+     * out <b>by study</b> (a second CSR), so a dataset-level link that names a study reads that
+     * study's keys only, as the nested maps' one study bucket did (review round 1, B1).</li>
      * </ul>
      * Key identity is exactly {@link RelrecKey#equals}. Immutable once built; confined to the
      * expansion that built it.
@@ -732,7 +748,7 @@ final class RelrecRowExpander
     static final class KeyRows
     {
 
-        /** Returned by {@link #find} for a key the table does not carry. */
+        /** Returned by {@link #find} and {@link #studyOrdinal} for a key or study not carried. */
         static final int NOT_FOUND = -1;
 
         private static final int MIN_CAPACITY = 16;
@@ -751,8 +767,16 @@ final class RelrecRowExpander
 
         private final List<Object> studies;
 
+        private final Map<Object, Integer> studyOrdinals;
+
+        private final int[] studyOffsets;
+
+        private final int[] studyKeyIds;
+
+        @SuppressWarnings("checkstyle:ParameterNumber")
         private KeyRows(@Nullable RelrecKey[] aSlotKeys, int[] aSlotIds, RelrecKey[] aKeys,
-                int[] aOffsets, int[] aRows, List<Object> aStudies)
+                int[] aOffsets, int[] aRows, Map<Object, Integer> aStudyOrdinals,
+                List<Object> aStudies, int[] aStudyOffsets, int[] aStudyKeyIds)
         {
             slotKeys = aSlotKeys;
             slotIds = aSlotIds;
@@ -760,14 +784,24 @@ final class RelrecRowExpander
             keys = aKeys;
             offsets = aOffsets;
             rows = aRows;
+            studyOrdinals = aStudyOrdinals;
             studies = aStudies;
+            studyOffsets = aStudyOffsets;
+            studyKeyIds = aStudyKeyIds;
         }
 
 
         /**
-         * Builds the index in two passes: the first computes each row's key <b>once</b>, assigns
-         * key ids and counts the rows per key; the second lays the rows out by key. The only
-         * temporaries are one {@code int} per row and the builder's per-slot hashes.
+         * Builds the index over a table most of whose rows take part (a column's value index): the
+         * first pass computes each row's key <b>once</b>, assigns key ids and counts the rows per
+         * key; the second lays the rows out by key.
+         *
+         * <p>
+         * Temporaries, all dropped when the index is built: one {@code int} per table row (the
+         * row's key id), a cursor {@code int} per key, the builder's per-slot hash and per-key
+         * study ordinal, and one {@link RelrecKey} per participating row, of which only a key's
+         * first row's is kept (as the key).
+         * </p>
          *
          * @param aRowCount
          *            the table's row count.
@@ -785,24 +819,48 @@ final class RelrecRowExpander
                 RelrecKey key = aKeyOfRow.apply(r);
                 rowKey[r] = key == null ? NOT_FOUND : table.idOf(key);
             }
-            int size = table.size;
-            int[] offsets = new int[size + 1];
-            for (int id = 0; id < size; id++)
-            {
-                offsets[id + 1] = offsets[id] + table.counts[id];
-            }
-            int[] rows = new int[offsets[size]];
-            int[] cursor = Arrays.copyOf(offsets, size);
+            return table.finish(rowKey, null, aRowCount);
+        }
+
+
+        /**
+         * As {@link #build}, for a table most of whose rows do <b>not</b> take part — the full-scan
+         * fallback, which keeps only one subject's or one link value's rows. Its temporaries are
+         * proportional to the participating rows (a key id and a row number each, in arrays that
+         * double as they fill), never an {@code int} per table row: the scan runs once per link,
+         * and the {@code HashMap} it replaced allocated only for the rows that matched (review
+         * round 1, B2).
+         *
+         * @param aRowCount
+         *            the table's row count.
+         * @param aKeyOfRow
+         *            the key of a row, or {@code null} when the row does not take part; called
+         *            exactly once per row, in ascending row order.
+         * @return the index, never {@code null}.
+         */
+        static KeyRows buildSparse(int aRowCount, IntFunction<@Nullable RelrecKey> aKeyOfRow)
+        {
+            Builder table = new Builder();
+            int[] entryIds = new int[MIN_CAPACITY];
+            int[] entryRows = new int[MIN_CAPACITY];
+            int entries = 0;
             for (int r = 0; r < aRowCount; r++)
             {
-                int id = rowKey[r];
-                if (id != NOT_FOUND)
+                RelrecKey key = aKeyOfRow.apply(r);
+                if (key == null)
                 {
-                    rows[cursor[id]++] = r;
+                    continue;
                 }
+                if (entries == entryIds.length)
+                {
+                    entryIds = Arrays.copyOf(entryIds, entries * 2);
+                    entryRows = Arrays.copyOf(entryRows, entries * 2);
+                }
+                entryIds[entries] = table.idOf(key);
+                entryRows[entries] = r;
+                entries++;
             }
-            return new KeyRows(table.keys, table.ids, Arrays.copyOf(table.byId, size), offsets,
-                    rows, List.copyOf(table.studies));
+            return table.finish(entryIds, entryRows, entries);
         }
 
 
@@ -872,6 +930,44 @@ final class RelrecRowExpander
         }
 
 
+        /**
+         * The ordinal of a {@code STUDYID} key identity — its position in {@link #studies()} — for
+         * {@link #studyKeyStart} / {@link #studyKeyEnd}.
+         *
+         * @param aStudy
+         *            the study's key identity.
+         * @return its ordinal, or {@link #NOT_FOUND} when no key of this index carries it.
+         */
+        int studyOrdinal(Object aStudy)
+        {
+            Integer ordinal = studyOrdinals.get(aStudy);
+            return ordinal == null ? NOT_FOUND : ordinal;
+        }
+
+
+        /**
+         * Returns the first position of study {@code aOrdinal}'s key ids, for {@link #studyKeyId}.
+         */
+        int studyKeyStart(int aOrdinal)
+        {
+            return studyOffsets[aOrdinal];
+        }
+
+
+        /** Returns one past the last position of study {@code aOrdinal}'s key ids. */
+        int studyKeyEnd(int aOrdinal)
+        {
+            return studyOffsets[aOrdinal + 1];
+        }
+
+
+        /** Returns the key id at study-slice position {@code aPos}; ascending within a study. */
+        int studyKeyId(int aPos)
+        {
+            return studyKeyIds[aPos];
+        }
+
+
         private static int spread(int aHash)
         {
             int h = aHash * 0x9E3779B9;
@@ -904,7 +1000,9 @@ final class RelrecRowExpander
 
             private int[] counts = new int[MIN_CAPACITY];
 
-            private final Set<Object> studies = new LinkedHashSet<>();
+            private int[] keyStudy = new int[MIN_CAPACITY];
+
+            private final Map<Object, Integer> studyOrdinals = new LinkedHashMap<>();
 
             private int size;
 
@@ -931,15 +1029,73 @@ final class RelrecRowExpander
                 {
                     byId = Arrays.copyOf(byId, id * 2);
                     counts = Arrays.copyOf(counts, id * 2);
+                    keyStudy = Arrays.copyOf(keyStudy, id * 2);
                 }
                 byId[id] = aKey;
                 counts[id] = 1;
-                studies.add(aKey.study());
+                Integer study = studyOrdinals.get(aKey.study());
+                if (study == null)
+                {
+                    study = studyOrdinals.size();
+                    studyOrdinals.put(aKey.study(), study);
+                }
+                keyStudy[id] = study;
                 if (size * 2 > keys.length)
                 {
                     grow();
                 }
                 return id;
+            }
+
+
+            /**
+             * The finished index: the rows laid out by key id (CSR), and the key ids laid out by
+             * study (a second CSR), so a link that names a study reads that study's keys only.
+             *
+             * @param aEntryIds
+             *            per entry, the key id ({@link #NOT_FOUND} for a row that does not take
+             *            part).
+             * @param aEntryRows
+             *            per entry, its row; {@code null} when entry {@code i} IS row {@code i}.
+             * @param aEntries
+             *            the number of entries.
+             */
+            KeyRows finish(int[] aEntryIds, int @Nullable [] aEntryRows, int aEntries)
+            {
+                int[] offsets = new int[size + 1];
+                for (int id = 0; id < size; id++)
+                {
+                    offsets[id + 1] = offsets[id] + counts[id];
+                }
+                int[] rows = new int[offsets[size]];
+                int[] cursor = Arrays.copyOf(offsets, size);
+                for (int i = 0; i < aEntries; i++)
+                {
+                    int id = aEntryIds[i];
+                    if (id != NOT_FOUND)
+                    {
+                        rows[cursor[id]++] = aEntryRows == null ? i : aEntryRows[i];
+                    }
+                }
+                int studyCount = studyOrdinals.size();
+                int[] studyOffsets = new int[studyCount + 1];
+                for (int id = 0; id < size; id++)
+                {
+                    studyOffsets[keyStudy[id] + 1]++;
+                }
+                for (int s = 0; s < studyCount; s++)
+                {
+                    studyOffsets[s + 1] += studyOffsets[s];
+                }
+                int[] studyKeyIds = new int[size];
+                int[] studyCursor = Arrays.copyOf(studyOffsets, studyCount);
+                for (int id = 0; id < size; id++)
+                {
+                    studyKeyIds[studyCursor[keyStudy[id]]++] = id;
+                }
+                return new KeyRows(keys, ids, Arrays.copyOf(byId, size), offsets, rows,
+                        Map.copyOf(studyOrdinals), List.copyOf(studyOrdinals.keySet()),
+                        studyOffsets, studyKeyIds);
             }
 
 
