@@ -21,6 +21,8 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.ResourceLock;
 import org.junit.jupiter.api.parallel.Resources;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * ⭐ {@code PLAN-grouping-key-identity} — a grouped operation's result is keyed and looked up by ONE
@@ -43,9 +45,12 @@ import org.junit.jupiter.api.parallel.Resources;
  * </p>
  *
  * <p>
- * ⚠ The tables holding a {@code -0.0} are built raw ({@link RealTables#buildRaw()}): since
- * {@code NZL O1} (PLAN-negative-zero-on-load) no DOUBLE buffer stores a {@code -0.0}, and the zero
- * handling stays for computed keys ({@code NZL Q2}), whose shape the raw table is.
+ * ⚠ Every table holding a {@code -0.0} is built BOTH ways ({@code raw=false|true}): since
+ * {@code NZL O1} (PLAN-negative-zero-on-load) no DOUBLE buffer stores a {@code -0.0}, so the
+ * buffer-built table ({@link RealTables#build()}) runs the production read path over a table whose
+ * zeros are all {@code 0.0}, while the raw one ({@link RealTables#buildRaw()}) keeps the
+ * {@code -0.0} and is what enters the key-level zero handling kept for computed keys
+ * ({@code NZL Q2}). Both must answer the same.
  * </p>
  */
 class GroupedResultKeyIdentityTest
@@ -58,14 +63,15 @@ class GroupedResultKeyIdentityTest
             4.9999999999994, 4.9999999999994, 5.0, -0.0, 0.0, 0.0
     };
 
-    private static IDataTable vs()
+    private static IDataTable vs(boolean aRaw)
     {
-        return RealTables.of("VS").str("USUBJID", "S1", "S1", "S1", "S1", "S1", "S1")
+        RealTables b = RealTables.of("VS").str("USUBJID", "S1", "S1", "S1", "S1", "S1", "S1")
                 .dbl("VISITNUM", VISITNUM).dbl("VSSTRESN", 10.0, 11.0, 99.0, 1.0, 2.0, 3.0)
                 .str("VSDTC", "2020-01-01", "2020-01-02", "2020-02-01", "2020-03-01", "2020-03-02",
                         "2020-03-03")
                 .str("VSORRES", "A", "", "B", "C", "", "D")
-                .dbl("VSSEQ", 1.0, 2.0, 1.0, 1.0, 2.0, 3.0).buildRaw();
+                .dbl("VSSEQ", 1.0, 2.0, 1.0, 1.0, 2.0, 3.0);
+        return aRaw ? b.buildRaw() : b.build();
     }
 
 
@@ -111,10 +117,14 @@ class GroupedResultKeyIdentityTest
 
     // ---------------------------------------------------------------- family A (block-keyed)
 
-    @Test
-    void recordCountCountsEachRowsOwnGroup()
+    @ParameterizedTest(name = "raw={0}")
+    @ValueSource(booleans =
     {
-        IDataTable t = vs();
+            false, true
+    })
+    void recordCountCountsEachRowsOwnGroup(boolean aRaw)
+    {
+        IDataTable t = vs(aRaw);
         assertEquals(List.of(2L, 2L, 1L, 3L, 3L, 3L),
                 perRow(run(op("record_count", null, GROUP), t), t));
     }
@@ -136,28 +146,41 @@ class GroupedResultKeyIdentityTest
 
 
     /** The two zeros alone: one group of three. */
-    @Test
-    void theSignedZerosAloneAreOneGroup()
+    @ParameterizedTest(name = "raw={0}")
+    @ValueSource(booleans =
     {
-        IDataTable t = RealTables.of("VS").str("USUBJID", "S1", "S1", "S1")
-                .dbl("VISITNUM", -0.0, 0.0, 0.0).buildRaw();
+            false, true
+    })
+    void theSignedZerosAloneAreOneGroup(boolean aRaw)
+    {
+        RealTables b = RealTables.of("VS").str("USUBJID", "S1", "S1", "S1").dbl("VISITNUM", -0.0,
+                0.0, 0.0);
+        IDataTable t = aRaw ? b.buildRaw() : b.build();
         assertEquals(List.of(3L, 3L, 3L), perRow(run(op("record_count", null, GROUP), t), t));
     }
 
 
-    @Test
-    void maxIsTheMaxOfEachRowsOwnGroup()
+    @ParameterizedTest(name = "raw={0}")
+    @ValueSource(booleans =
     {
-        IDataTable t = vs();
+            false, true
+    })
+    void maxIsTheMaxOfEachRowsOwnGroup(boolean aRaw)
+    {
+        IDataTable t = vs(aRaw);
         assertEquals(List.of(11.0, 11.0, 99.0, 3.0, 3.0, 3.0),
                 perRow(run(op("max", "VSSTRESN", GROUP), t), t));
     }
 
 
-    @Test
-    void distinctIsTheSetOfEachRowsOwnGroup()
+    @ParameterizedTest(name = "raw={0}")
+    @ValueSource(booleans =
     {
-        IDataTable t = vs();
+            false, true
+    })
+    void distinctIsTheSetOfEachRowsOwnGroup(boolean aRaw)
+    {
+        IDataTable t = vs(aRaw);
         List<String> noise = List.of("10", "11");
         List<String> zero = List.of("1", "2", "3");
         assertEquals(List.of(noise, noise, List.of("99"), zero, zero, zero),
@@ -165,10 +188,14 @@ class GroupedResultKeyIdentityTest
     }
 
 
-    @Test
-    void theDateExtremesAreEachRowsOwnGroups()
+    @ParameterizedTest(name = "raw={0}")
+    @ValueSource(booleans =
     {
-        IDataTable t = vs();
+            false, true
+    })
+    void theDateExtremesAreEachRowsOwnGroups(boolean aRaw)
+    {
+        IDataTable t = vs(aRaw);
         assertEquals(List.of("2020-01-02", "2020-01-02", "2020-02-01", "2020-03-03", "2020-03-03",
                 "2020-03-03"), perRow(run(op("max_date", "VSDTC", GROUP), t), t));
         assertEquals(List.of("2020-01-01", "2020-01-01", "2020-02-01", "2020-03-01", "2020-03-01",
@@ -176,10 +203,14 @@ class GroupedResultKeyIdentityTest
     }
 
 
-    @Test
-    void mixedEmptinessIsEachRowsOwnGroups()
+    @ParameterizedTest(name = "raw={0}")
+    @ValueSource(booleans =
     {
-        IDataTable t = vs();
+            false, true
+    })
+    void mixedEmptinessIsEachRowsOwnGroups(boolean aRaw)
+    {
+        IDataTable t = vs(aRaw);
         // the noise group {A, ""} is mixed; {B} is not; the zero group {C, "", D} is
         assertEquals(List.of(true, true, false, true, true, true),
                 perRow(run(op("has_mixed_emptiness_within_group", "VSORRES", GROUP), t), t));
@@ -188,10 +219,14 @@ class GroupedResultKeyIdentityTest
     // ---------------------------------------------------------------- family B (row-keyed)
 
 
-    @Test
-    void isLastInGroupDoesNotLetTwoNoiseGroupsShareAnOrderingKey()
+    @ParameterizedTest(name = "raw={0}")
+    @ValueSource(booleans =
     {
-        IDataTable t = vs();
+            false, true
+    })
+    void isLastInGroupDoesNotLetTwoNoiseGroupsShareAnOrderingKey(boolean aRaw)
+    {
+        IDataTable t = vs(aRaw);
         Operation o = op("is_last_in_group", null, GROUP);
         o.setOrdering("VSSEQ");
         // groups {0,1} (last: row 1), {2} (row 2) and the zeros {3,4,5} (row 5). Rows 0 and 2 share
@@ -201,10 +236,14 @@ class GroupedResultKeyIdentityTest
     }
 
 
-    @Test
-    void studyDayIsEachRowsOwn()
+    @ParameterizedTest(name = "raw={0}")
+    @ValueSource(booleans =
     {
-        IDataTable t = vs();
+            false, true
+    })
+    void studyDayIsEachRowsOwn(boolean aRaw)
+    {
+        IDataTable t = vs(aRaw);
         IDataTable dm = RealTables.of("DM").str("USUBJID", "S1").str("RFSTDTC", "2020-01-01")
                 .build();
         Operation o = op("dy", "VSDTC", GROUP);
@@ -219,12 +258,17 @@ class GroupedResultKeyIdentityTest
      * the row's {@code (USUBJID, VISITNUM)} group in the FOREIGN dataset. Keyed by text, the two
      * foreign noise groups merged into one ("5") and both target rows got the earlier date.
      */
-    @Test
-    void dateDiffDaysJoinsTheForeignGroupByIdentity()
+    @ParameterizedTest(name = "raw={0}")
+    @ValueSource(booleans =
     {
-        IDataTable target = RealTables.of("XX").str("USUBJID", "S1", "S1", "S1")
+            false, true
+    })
+    void dateDiffDaysJoinsTheForeignGroupByIdentity(boolean aRaw)
+    {
+        RealTables b = RealTables.of("XX").str("USUBJID", "S1", "S1", "S1")
                 .dbl("VISITNUM", 4.9999999999994, 5.0, -0.0)
-                .str("MYDTC", "2020-01-10", "2020-01-10", "2020-01-10").buildRaw();
+                .str("MYDTC", "2020-01-10", "2020-01-10", "2020-01-10");
+        IDataTable target = aRaw ? b.buildRaw() : b.build();
         IDataTable sj = RealTables.of("SJ").str("USUBJID", "S1", "S1", "S1")
                 .dbl("VISITNUM", 4.9999999999994, 5.0, 0.0)
                 .str("SJSTDTC", "2020-01-01", "2020-01-05", "2020-01-08").build();

@@ -10,6 +10,8 @@ import net.cumba.corej.core.expr.eval.NativeExprEvaluator;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.values.GroupKeyPolicy;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * ⭐ {@code PLAN-grouping-key-identity}, the grouping paths (family G): {@code GroupSemantics.group}
@@ -27,9 +29,12 @@ import org.junit.jupiter.api.Test;
  * </p>
  *
  * <p>
- * ⚠ The tables holding a {@code -0.0} are built raw ({@link RealTables#buildRaw()}): since
- * {@code NZL O1} (PLAN-negative-zero-on-load) no DOUBLE buffer stores a {@code -0.0}, and the zero
- * handling stays for computed keys ({@code NZL Q2}), whose shape the raw table is.
+ * ⚠ Every table holding a {@code -0.0} is built BOTH ways ({@code raw=false|true}): since
+ * {@code NZL O1} (PLAN-negative-zero-on-load) no DOUBLE buffer stores a {@code -0.0}, so the
+ * buffer-built table ({@link RealTables#build()}) runs the production read path over a table whose
+ * zeros are all {@code 0.0}, while the raw one ({@link RealTables#buildRaw()}) keeps the
+ * {@code -0.0} and is what enters the key-level zero handling kept for computed keys
+ * ({@code NZL Q2}). Both must answer the same.
  * </p>
  */
 class GroupingKeyIdentityTest
@@ -37,13 +42,13 @@ class GroupingKeyIdentityTest
 
     private static final long TWO_53 = 9_007_199_254_740_992L;
 
-    private static IDataTable vs()
+    private static IDataTable vs(boolean aRaw)
     {
-        return RealTables.of("VS").str("USUBJID", "S1", "S1", "S1", "S1", "S1", "S1")
+        RealTables b = RealTables.of("VS").str("USUBJID", "S1", "S1", "S1", "S1", "S1", "S1")
                 .dbl("VISITNUM", 4.9999999999994, 4.9999999999994, 5.0, -0.0, 0.0, 0.0)
-                .dbl("VSSTRESN", 10.0, 11.0, 99.0, 1.0, 2.0, 3.0)
-                .str("VISIT", "WEEK 5", "WEEK 5", "WEEK 5", "SCREENING X", "SCREENING", "SCREENING")
-                .buildRaw();
+                .dbl("VSSTRESN", 10.0, 11.0, 99.0, 1.0, 2.0, 3.0).str("VISIT", "WEEK 5", "WEEK 5",
+                        "WEEK 5", "SCREENING X", "SCREENING", "SCREENING");
+        return aRaw ? b.buildRaw() : b.build();
     }
 
 
@@ -74,14 +79,18 @@ class GroupingKeyIdentityTest
     }
 
 
-    @Test
-    void theGroupingPrimitiveMergesTheZerosAndKeepsTheNoisePairApart()
+    @ParameterizedTest(name = "raw={0}")
+    @ValueSource(booleans =
+    {
+            false, true
+    })
+    void theGroupingPrimitiveMergesTheZerosAndKeepsTheNoisePairApart(boolean aRaw)
     {
         List<List<Integer>> expected = List.of(List.of(0, 1), List.of(2), List.of(3, 4, 5));
-        assertEquals(expected, rows(GroupSemantics.group(vs(), List.of("USUBJID", "VISITNUM"),
+        assertEquals(expected, rows(GroupSemantics.group(vs(aRaw), List.of("USUBJID", "VISITNUM"),
                 GroupKeyPolicy.DROP_MISSING_KEYS)));
-        assertEquals(expected, rows(
-                GroupSemantics.group(vs(), List.of("VISITNUM"), GroupKeyPolicy.KEEP_MISSING_KEYS)));
+        assertEquals(expected, rows(GroupSemantics.group(vs(aRaw), List.of("VISITNUM"),
+                GroupKeyPolicy.KEEP_MISSING_KEYS)));
     }
 
 
@@ -100,10 +109,14 @@ class GroupingKeyIdentityTest
     }
 
 
-    @Test
-    void theSingletonAndTheCoalesceBranchOfAPartitionAgree()
+    @ParameterizedTest(name = "raw={0}")
+    @ValueSource(booleans =
     {
-        IDataTable t = vs();
+            false, true
+    })
+    void theSingletonAndTheCoalesceBranchOfAPartitionAgree(boolean aRaw)
+    {
+        IDataTable t = vs(aRaw);
         List<List<Integer>> singleton = rows(GroupSemantics.partitionCoalesced(t,
                 List.of(List.of("VISITNUM")), GroupKeyPolicy.COALESCE_COMPONENT));
         List<List<Integer>> coalesce = rows(GroupSemantics.partitionCoalesced(t,
@@ -113,10 +126,14 @@ class GroupingKeyIdentityTest
     }
 
 
-    @Test
-    void anInconsistencyAcrossTheTwoZerosIsFlagged()
+    @ParameterizedTest(name = "raw={0}")
+    @ValueSource(booleans =
     {
-        IDataTable t = vs();
+            false, true
+    })
+    void anInconsistencyAcrossTheTwoZerosIsFlagged(boolean aRaw)
+    {
+        IDataTable t = vs(aRaw);
         BitSet flagged = GroupSemantics.inconsistentAcrossDatasetViolations(t, "VISIT",
                 List.of("VISITNUM"), (int) t.getRowCount(), false,
                 GroupKeyPolicy.KEEP_MISSING_KEYS);
@@ -130,12 +147,17 @@ class GroupingKeyIdentityTest
      * {@code has_multiple_values_for(…, within=APERIOD)} — {@code CDISC-AD0325}/{@code AD0326}'s
      * shape, and {@code APERIOD} is ADaM Num — through the compiled Check.
      */
-    @Test
-    void withinANumericPeriodTheTwoZerosAreOnePeriod()
+    @ParameterizedTest(name = "raw={0}")
+    @ValueSource(booleans =
     {
-        IDataTable t = RealTables.of("ADSL").str("USUBJID", "S1", "S1", "S1")
+            false, true
+    })
+    void withinANumericPeriodTheTwoZerosAreOnePeriod(boolean aRaw)
+    {
+        RealTables b = RealTables.of("ADSL").str("USUBJID", "S1", "S1", "S1")
                 .dbl("APERIOD", -0.0, 0.0, 4.9999999999994).str("ASPER", "1", "2", "1")
-                .str("ASPERC", "PERIOD A", "PERIOD A", "PERIOD A").buildRaw();
+                .str("ASPERC", "PERIOD A", "PERIOD A", "PERIOD A");
+        IDataTable t = aRaw ? b.buildRaw() : b.build();
         BitSet fired = NativeExprEvaluator.evaluate(CheckExpressionParser.parse(
                 "has_multiple_values_for(ASPER, ASPERC, keep_missings=true, within=APERIOD)"),
                 EvaluationContext.builder().table(t).build());
