@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.values.GroupKeyPolicy;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;

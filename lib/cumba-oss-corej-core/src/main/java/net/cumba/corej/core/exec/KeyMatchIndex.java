@@ -4,7 +4,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntFunction;
 
-import net.cumba.corej.core.exec.GroupKeyPolicy.KeyPart;
+import net.cumba.datatable.values.GroupKeyPolicy.KeyPart;
 import org.jspecify.annotations.Nullable;
 
 /**

@@ -14,13 +14,13 @@ import java.util.function.IntUnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
-
-import net.cumba.corej.core.exec.GroupKeyPolicy.KeyPart;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.index.DataTableIndexFactory;
 import net.cumba.datatable.index.IDataTableIndex;
+import net.cumba.datatable.values.GroupKeyPolicy;
+import net.cumba.datatable.values.GroupKeyPolicy.KeyPart;
 import net.cumba.datatable.values.IDataValue;
 import net.cumba.datatable.values.MissingValue;
 import net.cumba.datatable.view.IDataTableView;

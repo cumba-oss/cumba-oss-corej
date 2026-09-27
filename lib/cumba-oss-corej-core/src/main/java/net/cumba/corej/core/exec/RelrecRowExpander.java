@@ -3,20 +3,23 @@ package net.cumba.corej.core.exec;
 import java.lang.System.Logger;
 import java.lang.System.Logger.Level;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-
+import java.util.function.IntFunction;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.databuffer.DataBufferFactory;
 import net.cumba.datatable.impl.databuffer.IDataBufferNumeric;
+import net.cumba.datatable.values.GroupKeyPolicy;
 import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
@@ -42,7 +45,21 @@ import org.jspecify.annotations.Nullable;
  * {@code (primaryRow, targetOrdinal, targetRow)} triples as a per-link nested loop, in
  * {@code O(P + T + |RELREC|)} per related domain. <b>This logic is a deliberate copy of
  * {@code net.cumba.datatable.manager.local.RelrecRelationshipResolver} — any change to the join
- * rules in either class must be mirrored in the other.</b>
+ * rules in either class must be mirrored in the other.</b> What is no longer copied is the key
+ * identity: both classes (and the data browser's RELREC dialog) classify a key cell through the one
+ * shared type, {@code cumba-datatable}'s {@link GroupKeyPolicy#textKeyIdentity(IDataValue)}
+ * ({@code PLAN-shared-key-identity}).
+ * </p>
+ *
+ * <p>
+ * ⭐ <b>The indexes are compact</b> ({@code PLAN-shared-key-identity} P-R1, owner 2026-09-27:
+ * <i>"agree to int[] and take in plan 15"</i>): a {@link KeyRows} maps each distinct
+ * {@link RelrecKey} to a dense id through an open-addressing table and holds the rows as
+ * {@code int[]} CSR postings — the {@code KeyMatchIndex} P1/P5 shape. The
+ * {@code Map<String, Map<String, List<Long>>>} it replaces paid an {@code ArrayList}, its array and
+ * a boxed {@code Long} per row: measured in phase 0 on a 1M-row target, the postings were half the
+ * index. Row ids are {@code int} ({@link Math#toIntExact} on the row count, as in
+ * {@code KeyMatchIndex}).
  * </p>
  *
  * <p>
@@ -98,13 +115,30 @@ final class RelrecRowExpander
      * {@code (STUDYID, USUBJID, RELID)} group, classified by join mode. {@code study} and
      * {@code usubj} are the RAW cell texts ({@code null} when missing) that classify the link — is
      * a study named, is it subject-scoped — while {@code studyKey} / {@code usubjKey} are the same
-     * cells in the {@link #keyCell} encoding, which is what every probe compares against the
+     * cells' key identities ({@link #keyCell}), which is what every probe compares against the
      * keyCell-built indexes (E1). The related domain is the {@code byDomain} map key, not carried
      * here.
      */
-    private record LinkSpec(boolean recordLevel, @Nullable String study, String studyKey,
-            @Nullable String usubj, String usubjKey, String srcIdvar, @Nullable String srcIdvarval,
+    private record LinkSpec(boolean recordLevel, @Nullable String study, Object studyKey,
+            @Nullable String usubj, Object usubjKey, String srcIdvar, @Nullable String srcIdvarval,
             String tgtIdvar, @Nullable String tgtIdvarval)
+    {
+    }
+
+
+    /**
+     * One RELREC key: the {@code STUDYID} and {@code USUBJID} key identities ({@link #keyCell} — a
+     * {@code String} or a {@code MissingValue} constant) and one text component — the normalised
+     * link value ({@link #normKey}) in a {@link KeyRows} index, the {@code RELID} in RELREC's own
+     * grouping, {@code ""} in a record-level scan (whose rows all carry the same value).
+     *
+     * <p>
+     * Equality is component-wise, so the key cannot collide where the {@code \0}-joined string it
+     * replaces only was unlikely to: a {@code MissingValue} never equals a text cell, and no cell
+     * text can straddle two components.
+     * </p>
+     */
+    record RelrecKey(Object study, Object subject, String value)
     {
     }
 
@@ -210,8 +244,8 @@ final class RelrecRowExpander
             return; // RELREC missing required columns -> no expansion (empty frame).
         }
 
-        // Group RELREC rows by (STUDYID, USUBJID, RELID).
-        Map<String, List<Long>> groups = new LinkedHashMap<>();
+        // Group RELREC rows by (STUDYID, USUBJID, RELID), each component its key identity.
+        Map<RelrecKey, List<Long>> groups = new LinkedHashMap<>();
         long rrCount = relrec.getRowCount();
         for (long rr = 0; rr < rrCount; rr++)
         {
@@ -220,8 +254,8 @@ final class RelrecRowExpander
             {
                 continue;
             }
-            String key = keyCell(relrec, cStudy, rr) + '\0' + keyCell(relrec, cUsubj, rr) + '\0'
-                    + relid;
+            RelrecKey key = new RelrecKey(keyCell(relrec, cStudy, rr), keyCell(relrec, cUsubj, rr),
+                    relid);
             groups.computeIfAbsent(key, _ -> new ArrayList<>()).add(rr);
         }
 
@@ -276,7 +310,7 @@ final class RelrecRowExpander
         // (STUDYID, USUBJID, RELID) group. USUBJID is blank for dataset-level relationships.
         // Both are carried twice, on purpose (E1): the RAW cell() value classifies the link (a
         // blank RELREC USUBJID marks a dataset-level / cross-subject link, a blank STUDYID names
-        // no study), while the keyCell encoding is what every probe compares against the
+        // no study), while the key identity is what every probe compares against the
         // keyCell-built indexes. Probing with the raw text keyed a present numeric USUBJID one
         // way on the probe side and another on the index side (Long.toString vs the rendering
         // through the double), losing its pairs.
@@ -345,9 +379,9 @@ final class RelrecRowExpander
     /**
      * Record-level link (both IDVARVALs present): each side filtered by {@code IDVAR == IDVARVAL}
      * within the RELREC row's subject, joined on {@code STUDYID}. The probe is
-     * {@code (USUBJID, normKey(IDVARVAL))}, key-encoded exactly like the index it looks up (JKM R5
-     * / keyCell), inside the RELREC row's study bucket when a study is named (c) and inside each
-     * study's own bucket otherwise (b alone, T1-3 (i)). ⛔ Until 2026-09-26 this path keyed on
+     * {@code (STUDYID, USUBJID, normKey(IDVARVAL))}, key-identified exactly like the index it looks
+     * up (JKM R5 / keyCell), in the RELREC row's study when a study is named (c) and in each study
+     * the primary index holds otherwise (b alone, T1-3 (i)). ⛔ Until 2026-09-26 this path keyed on
      * {@code (USUBJID, value)} with no study at all — a regression of the 2026-06-27 hash-join
      * rewrite whose comment claimed the legacy scan never joined on STUDYID; it did. A blank RELREC
      * {@code USUBJID} (or a table lacking {@code USUBJID}) takes the full scan.
@@ -362,31 +396,31 @@ final class RelrecRowExpander
             return;
         }
         // srcIdvarval/tgtIdvarval are non-blank (record-level) so normKey is non-null.
-        String pKey = subjectKey(spec.usubjKey(),
-                Objects.requireNonNull(normKey(spec.srcIdvarval())));
-        String tKey = subjectKey(spec.usubjKey(),
-                Objects.requireNonNull(normKey(spec.tgtIdvarval())));
-        Map<String, Map<String, List<Long>>> pIndex = primaryIndex.byStudy(spec.srcIdvar());
-        Map<String, Map<String, List<Long>>> tIndex = targetIndex.byStudy(spec.tgtIdvar());
+        String pValue = Objects.requireNonNull(normKey(spec.srcIdvarval()));
+        String tValue = Objects.requireNonNull(normKey(spec.tgtIdvarval()));
+        KeyRows pIndex = primaryIndex.byColumn(spec.srcIdvar());
+        KeyRows tIndex = targetIndex.byColumn(spec.tgtIdvar());
         if (isNonBlank(spec.study()))
         {
-            emitCross(rows(pIndex, spec.studyKey(), pKey), rows(tIndex, spec.studyKey(), tKey),
+            emitCross(pIndex, pIndex.find(new RelrecKey(spec.studyKey(), spec.usubjKey(), pValue)),
+                    tIndex, tIndex.find(new RelrecKey(spec.studyKey(), spec.usubjKey(), tValue)),
                     ordinal, out, seen);
             return;
         }
-        for (Map.Entry<String, Map<String, List<Long>>> study : pIndex.entrySet())
+        for (Object study : pIndex.studies())
         {
-            emitCross(study.getValue().get(pKey), rows(tIndex, study.getKey(), tKey), ordinal, out,
-                    seen);
+            emitCross(pIndex, pIndex.find(new RelrecKey(study, spec.usubjKey(), pValue)), tIndex,
+                    tIndex.find(new RelrecKey(study, spec.usubjKey(), tValue)), ordinal, out, seen);
         }
     }
 
 
     /**
      * Dataset-level link (either IDVARVAL blank): equi-join on
-     * {@code (STUDYID, USUBJID, normKey(IDVAR-cell))} — the RELREC row's study bucket only when a
-     * study is named (c), every study against its own bucket otherwise (b). A (rare) subject-scoped
-     * dataset-level link takes the full scan.
+     * {@code (STUDYID, USUBJID, normKey(IDVAR-cell))} — every primary key in the RELREC row's study
+     * when a study is named (c), every primary key otherwise (b: the key carries its own study, so
+     * it finds only the same study on the other side). A (rare) subject-scoped dataset-level link
+     * takes the full scan.
      */
     private static void joinDatasetLevel(LinkSpec spec, int ordinal, IDataTable primary,
             IDataTable target, TableIndex primaryIndex, TableIndex targetIndex, List<long[]> out,
@@ -397,56 +431,37 @@ final class RelrecRowExpander
             joinByScan(spec, ordinal, primary, target, out, seen);
             return;
         }
-        Map<String, Map<String, List<Long>>> pIndex = primaryIndex.byStudy(spec.srcIdvar());
-        Map<String, Map<String, List<Long>>> tIndex = targetIndex.byStudy(spec.tgtIdvar());
-        if (isNonBlank(spec.study()))
+        KeyRows pIndex = primaryIndex.byColumn(spec.srcIdvar());
+        KeyRows tIndex = targetIndex.byColumn(spec.tgtIdvar());
+        boolean studyScoped = isNonBlank(spec.study());
+        for (int id = 0; id < pIndex.keyCount(); id++)
         {
-            joinStudyBucket(pIndex.get(spec.studyKey()), tIndex.get(spec.studyKey()), ordinal, out,
-                    seen);
-            return;
-        }
-        for (Map.Entry<String, Map<String, List<Long>>> study : pIndex.entrySet())
-        {
-            joinStudyBucket(study.getValue(), tIndex.get(study.getKey()), ordinal, out, seen);
-        }
-    }
-
-
-    /** Equi-join of one study's primary bucket with the same study's target bucket. */
-    private static void joinStudyBucket(@Nullable Map<String, List<Long>> primaryBucket,
-            @Nullable Map<String, List<Long>> targetBucket, int ordinal, List<long[]> out,
-            Set<String> seen)
-    {
-        if (primaryBucket == null || targetBucket == null)
-        {
-            return;
-        }
-        for (Map.Entry<String, List<Long>> e : primaryBucket.entrySet())
-        {
-            emitCross(e.getValue(), targetBucket.get(e.getKey()), ordinal, out, seen);
+            RelrecKey key = pIndex.key(id);
+            if (studyScoped && !key.study().equals(spec.studyKey()))
+            {
+                continue;
+            }
+            emitCross(pIndex, id, tIndex, tIndex.find(key), ordinal, out, seen);
         }
     }
 
 
-    private static @Nullable List<Long> rows(Map<String, Map<String, List<Long>>> index,
-            String studyKey, String subjectValueKey)
-    {
-        Map<String, List<Long>> bucket = index.get(studyKey);
-        return bucket == null ? null : bucket.get(subjectValueKey);
-    }
-
-
-    private static void emitCross(@Nullable List<Long> primaryRows, @Nullable List<Long> targetRows,
+    /** Every pairing of key {@code primaryId}'s rows with key {@code targetId}'s rows. */
+    private static void emitCross(KeyRows primary, int primaryId, KeyRows target, int targetId,
             int ordinal, List<long[]> out, Set<String> seen)
     {
-        if (primaryRows == null || targetRows == null)
+        if (primaryId == KeyRows.NOT_FOUND || targetId == KeyRows.NOT_FOUND)
         {
             return;
         }
-        for (long pr : primaryRows)
+        int primaryEnd = primary.end(primaryId);
+        int targetEnd = target.end(targetId);
+        for (int i = primary.start(primaryId); i < primaryEnd; i++)
         {
-            for (long tr : targetRows)
+            long pr = primary.row(i);
+            for (int j = target.start(targetId); j < targetEnd; j++)
             {
+                long tr = target.row(j);
                 if (seen.add(pr + "|" + tr))
                 {
                     out.add(new long[]
@@ -465,19 +480,11 @@ final class RelrecRowExpander
      * link). Record-level: filter each side by {@code IDVAR == IDVARVAL}, join on
      * {@code (STUDYID, USUBJID)}. Dataset-level: join on
      * {@code (STUDYID, USUBJID, normKey(IDVAR-cell))}. When the RELREC row names a study, both
-     * sides are filtered to it (c); the composite key gives (b) either way.
+     * sides are filtered to it (c); the key gives (b) either way.
      */
     private static void joinByScan(LinkSpec spec, int ordinal, IDataTable primary,
             IDataTable target, List<long[]> out, Set<String> seen)
     {
-        boolean recordLevel = spec.recordLevel();
-        // Classified on the RAW values (a blank RELREC USUBJID means "not subject-scoped", a
-        // blank STUDYID "no study named"), then filtered on the key encoding, which is how both
-        // scanned tables' STUDYID and USUBJID are keyed.
-        boolean subjectScoped = isNonBlank(spec.usubj());
-        String usubjKey = spec.usubjKey();
-        boolean studyScoped = isNonBlank(spec.study());
-        String studyKey = spec.studyKey();
         // Record-level: the IDVAR == IDVARVAL filters; canonicalised once, not per row.
         String tgtNorm = normKey(spec.tgtIdvarval());
         String srcNorm = normKey(spec.srcIdvarval());
@@ -490,34 +497,8 @@ final class RelrecRowExpander
         {
             return;
         }
-        Map<String, List<Long>> targetIndex = new HashMap<>();
-        long tRows = target.getRowCount();
-        for (long r = 0; r < tRows; r++)
-        {
-            String study = keyCell(target, tStudyIdx, r);
-            if (studyScoped && !study.equals(studyKey))
-            {
-                continue;
-            }
-            String usubj = keyCell(target, tUsubjIdx, r);
-            if (subjectScoped && !usubj.equals(usubjKey))
-            {
-                continue;
-            }
-            String idv = cell(target, tIdvarIdx, r);
-            if (idv == null)
-            {
-                continue;
-            }
-            String idvNorm = Objects.requireNonNull(normKey(idv));
-            if (recordLevel && !idvNorm.equals(tgtNorm))
-            {
-                continue;
-            }
-            String base = study + '\0' + usubj;
-            String key = recordLevel ? base : base + '\0' + idvNorm;
-            targetIndex.computeIfAbsent(key, _ -> new ArrayList<>()).add(r);
-        }
+        KeyRows targetIndex = KeyRows.build(Math.toIntExact(target.getRowCount()),
+                r -> scanKey(spec, target, tStudyIdx, tUsubjIdx, tIdvarIdx, r, tgtNorm));
 
         DataTableMeta pm = primary.getMetaData();
         int pStudyIdx = pm.getColumnIndex(STUDYID);
@@ -530,35 +511,16 @@ final class RelrecRowExpander
         long pRows = primary.getRowCount();
         for (long r = 0; r < pRows; r++)
         {
-            String study = keyCell(primary, pStudyIdx, r);
-            if (studyScoped && !study.equals(studyKey))
+            RelrecKey key = scanKey(spec, primary, pStudyIdx, pUsubjIdx, pIdvarIdx, r, srcNorm);
+            int id = key == null ? KeyRows.NOT_FOUND : targetIndex.find(key);
+            if (id == KeyRows.NOT_FOUND)
             {
                 continue;
             }
-            String usubj = keyCell(primary, pUsubjIdx, r);
-            if (subjectScoped && !usubj.equals(usubjKey))
+            int end = targetIndex.end(id);
+            for (int pos = targetIndex.start(id); pos < end; pos++)
             {
-                continue;
-            }
-            String idv = cell(primary, pIdvarIdx, r);
-            if (idv == null)
-            {
-                continue;
-            }
-            String idvNorm = Objects.requireNonNull(normKey(idv));
-            if (recordLevel && !idvNorm.equals(srcNorm))
-            {
-                continue;
-            }
-            String base = study + '\0' + usubj;
-            String key = recordLevel ? base : base + '\0' + idvNorm;
-            List<Long> matches = targetIndex.get(key);
-            if (matches == null)
-            {
-                continue;
-            }
-            for (long tr : matches)
-            {
+                long tr = targetIndex.row(pos);
                 if (seen.add(r + "|" + tr))
                 {
                     out.add(new long[]
@@ -570,17 +532,58 @@ final class RelrecRowExpander
         }
     }
 
+
+    /**
+     * One scanned row's key, or {@code null} when the row does not take part: classified on the RAW
+     * RELREC values (a blank RELREC {@code USUBJID} means "not subject-scoped", a blank
+     * {@code STUDYID} "no study named"), then filtered on the key identities, which is how both
+     * scanned tables' {@code STUDYID} and {@code USUBJID} are keyed. A record-level link keys on
+     * {@code (STUDYID, USUBJID)} alone — its value is the {@code IDVAR == IDVARVAL} filter, so the
+     * key's value component is {@code ""} for every row — and a dataset-level link on
+     * {@code (STUDYID, USUBJID, normKey(IDVAR-cell))}.
+     *
+     * @param idvarFilter
+     *            the normalised {@code IDVARVAL} a record-level row must carry; unused
+     *            dataset-level.
+     */
+    private static @Nullable RelrecKey scanKey(LinkSpec spec, IDataTable t, int studyIdx,
+            int usubjIdx, int idvarIdx, long row, @Nullable String idvarFilter)
+    {
+        Object study = keyCell(t, studyIdx, row);
+        if (isNonBlank(spec.study()) && !study.equals(spec.studyKey()))
+        {
+            return null;
+        }
+        Object usubj = keyCell(t, usubjIdx, row);
+        if (isNonBlank(spec.usubj()) && !usubj.equals(spec.usubjKey()))
+        {
+            return null;
+        }
+        String idv = cell(t, idvarIdx, row);
+        if (idv == null)
+        {
+            return null;
+        }
+        String idvNorm = Objects.requireNonNull(normKey(idv));
+        if (spec.recordLevel())
+        {
+            return idvNorm.equals(idvarFilter) ? new RelrecKey(study, usubj, "") : null;
+        }
+        return new RelrecKey(study, usubj, idvNorm);
+    }
+
     // ---- table index ----
 
     /**
-     * Lazily builds, per {@code IDVAR} column, a value index for one table (rows with a
+     * Lazily builds, per {@code IDVAR} column, one {@link KeyRows} index for one table (rows with a
      * {@code null} value cell are skipped), built once and reused across every link of the related
-     * domain. One keying serves both join modes: {@link #byStudy} maps the key-encoded
-     * {@code STUDYID} to a bucket keyed by {@code (USUBJID, normKey)}, so a link that names a study
-     * reads one bucket (c) and a link that names none joins each study's bucket with the same
-     * study's bucket on the other side (b). ⛔ There is no study-less keying any more: the former
-     * {@code bySubject} index, keyed by {@code (USUBJID, normKey)} alone, is what let a pooled
-     * package's second study join (USUBJID does not scope the study — SDTMIG 3.4 §4.2.3).
+     * domain. One keying serves both join modes: the key is
+     * {@code (keyCell(STUDYID), keyCell(USUBJID), normKey(cell))}, so a link that names a study
+     * probes that study's keys (c) and a link that names none probes each study the index holds,
+     * every key finding only its own study on the other side (b). ⛔ There is no study-less keying
+     * any more: the former {@code bySubject} index, keyed by {@code (USUBJID, normKey)} alone, is
+     * what let a pooled package's second study join (USUBJID does not scope the study — SDTMIG 3.4
+     * §4.2.3).
      */
     private static final class TableIndex
     {
@@ -591,7 +594,7 @@ final class RelrecRowExpander
 
         private final int usubjIdx;
 
-        private final Map<String, Map<String, Map<String, List<Long>>>> byStudyCol = new HashMap<>();
+        private final Map<String, KeyRows> byColumn = new HashMap<>();
 
         TableIndex(IDataTable table)
         {
@@ -608,70 +611,288 @@ final class RelrecRowExpander
         }
 
 
-        /** {@code keyCell(STUDYID) → subjectKey(keyCell(USUBJID), normKey(cell)) → rows}. */
-        Map<String, Map<String, List<Long>>> byStudy(String column)
+        /** {@code (keyCell(STUDYID), keyCell(USUBJID), normKey(cell)) → rows}. */
+        KeyRows byColumn(String column)
         {
-            return byStudyCol.computeIfAbsent(column, this::build);
+            return byColumn.computeIfAbsent(column, this::build);
         }
 
 
-        private Map<String, Map<String, List<Long>>> build(String column)
+        private KeyRows build(String column)
         {
-            Map<String, Map<String, List<Long>>> index = new HashMap<>();
             int colIdx = table.getMetaData().getColumnIndex(column);
             if (colIdx < 0 || usubjIdx < 0)
             {
-                return index;
+                return KeyRows.build(0, _ -> null);
             }
-            long rows = table.getRowCount();
-            for (long r = 0; r < rows; r++)
+            // JKM R5: keyCell, not cell — this index is probed with the RELREC row's studyKey and
+            // usubjKey, so the two sides MUST share one identity. With cell()/nz() a row whose
+            // USUBJID is MISSING indexed under "" and conflated with a genuinely empty one.
+            return KeyRows.build(Math.toIntExact(table.getRowCount()), r -> indexKey(colIdx, r));
+        }
+
+
+        private @Nullable RelrecKey indexKey(int colIdx, long row)
+        {
+            String v = cell(table, colIdx, row);
+            if (v == null)
             {
-                String v = cell(table, colIdx, r);
-                if (v == null)
-                {
-                    continue;
-                }
-                // v is non-null, so normKey is non-null.
-                String vn = Objects.requireNonNull(normKey(v));
-                // JKM R5: keyCell, not cell — this index is probed by subjectKey and by the
-                // RELREC row's studyKey, so the two sides MUST share one encoding. With
-                // cell()/nz() a row whose USUBJID is MISSING indexed under "" and conflated with
-                // a genuinely empty one.
-                index.computeIfAbsent(keyCell(table, studyIdx, r), _ -> new HashMap<>())
-                        .computeIfAbsent(subjectKey(keyCell(table, usubjIdx, r), vn),
-                                _ -> new ArrayList<>())
-                        .add(r);
+                return null;
             }
-            return index;
+            // v is non-null, so normKey is non-null.
+            return new RelrecKey(keyCell(table, studyIdx, row), keyCell(table, usubjIdx, row),
+                    Objects.requireNonNull(normKey(v)));
         }
     }
 
+
     /**
-     * The in-study index key and its probe. ⚠ {@code usubj} arrives ALREADY key-encoded by
-     * {@link #keyCell}, from a table row on the index side and from the RELREC row
-     * ({@code LinkSpec.usubjKey}) on the probe side — as does the study bucket's key
-     * ({@code LinkSpec.studyKey}). ⛔ The probe used to pass the raw {@code cell()} text instead, on
-     * the claim that the two are "the same thing for a present value" — false for a numeric
-     * {@code USUBJID}, whose key encoding renders through the double (E1): a LONG beyond
-     * {@code 2^53} keys as its double's text, and until E7 every 13-digit LONG did. ⛔ Do not
-     * re-introduce an {@code nz} collapse (since deleted) here: it is what made a MISSING key equal
-     * an empty one ({@code JKM R5}). The normalised value is kept verbatim to match the scan.
+     * A table's {@link RelrecKey}s and, per key, the rows carrying it, ascending — the
+     * {@code KeyMatchIndex} P1/P5 shape ({@code PLAN-shared-key-identity} P-R1):
+     * <ul>
+     * <li>an <b>open-addressing</b> table maps a key to a dense key id — no entry objects, no
+     * boxing;</li>
+     * <li>the rows are <b>CSR</b>: {@code rows} lists every participating row grouped by key id,
+     * {@code offsets[id] .. offsets[id + 1]} is that key's slice, ascending within it (the order
+     * the {@code List<Long>} postings had);</li>
+     * <li>the keys are also kept <b>by id</b>, i.e. in first-appearance order, so a dataset-level
+     * join walks them deterministically, and the distinct {@code STUDYID} identities are kept in
+     * first-appearance order for a record-level link that names no study.</li>
+     * </ul>
+     * Key identity is exactly {@link RelrecKey#equals}. Immutable once built; confined to the
+     * expansion that built it.
      */
-    private static String subjectKey(String usubj, String valueNorm)
+    static final class KeyRows
     {
-        return usubj + '\0' + valueNorm;
+
+        /** Returned by {@link #find} for a key the table does not carry. */
+        static final int NOT_FOUND = -1;
+
+        private static final int MIN_CAPACITY = 16;
+
+        private final @Nullable RelrecKey[] slotKeys;
+
+        private final int[] slotIds;
+
+        private final int slotMask;
+
+        private final RelrecKey[] keys;
+
+        private final int[] offsets;
+
+        private final int[] rows;
+
+        private final List<Object> studies;
+
+        private KeyRows(@Nullable RelrecKey[] aSlotKeys, int[] aSlotIds, RelrecKey[] aKeys,
+                int[] aOffsets, int[] aRows, List<Object> aStudies)
+        {
+            slotKeys = aSlotKeys;
+            slotIds = aSlotIds;
+            slotMask = aSlotKeys.length - 1;
+            keys = aKeys;
+            offsets = aOffsets;
+            rows = aRows;
+            studies = aStudies;
+        }
+
+
+        /**
+         * Builds the index in two passes: the first computes each row's key <b>once</b>, assigns
+         * key ids and counts the rows per key; the second lays the rows out by key. The only
+         * temporary is one {@code int} per row.
+         *
+         * @param aRowCount
+         *            the table's row count.
+         * @param aKeyOfRow
+         *            the key of a row, or {@code null} when the row does not take part; called
+         *            exactly once per row, in ascending row order.
+         * @return the index, never {@code null}.
+         */
+        static KeyRows build(int aRowCount, IntFunction<@Nullable RelrecKey> aKeyOfRow)
+        {
+            @Nullable
+            RelrecKey[] table = new RelrecKey[MIN_CAPACITY];
+            int[] ids = new int[MIN_CAPACITY];
+            RelrecKey[] byId = new RelrecKey[MIN_CAPACITY];
+            int[] counts = new int[MIN_CAPACITY];
+            Set<Object> studies = new LinkedHashSet<>();
+            int size = 0;
+            int[] rowKey = new int[aRowCount];
+            for (int r = 0; r < aRowCount; r++)
+            {
+                RelrecKey key = aKeyOfRow.apply(r);
+                if (key == null)
+                {
+                    rowKey[r] = NOT_FOUND;
+                    continue;
+                }
+                int mask = table.length - 1;
+                int slot = spread(key.hashCode()) & mask;
+                RelrecKey stored = table[slot];
+                while (stored != null && !stored.equals(key))
+                {
+                    slot = (slot + 1) & mask;
+                    stored = table[slot];
+                }
+                if (stored != null)
+                {
+                    int id = ids[slot];
+                    counts[id]++;
+                    rowKey[r] = id;
+                    continue;
+                }
+                int id = size++;
+                table[slot] = key;
+                ids[slot] = id;
+                if (id == byId.length)
+                {
+                    byId = Arrays.copyOf(byId, id * 2);
+                    counts = Arrays.copyOf(counts, id * 2);
+                }
+                byId[id] = key;
+                counts[id] = 1;
+                studies.add(key.study());
+                rowKey[r] = id;
+                if (size * 2 > table.length)
+                {
+                    int[] grownIds = new int[table.length * 2];
+                    table = grow(table, ids, grownIds);
+                    ids = grownIds;
+                }
+            }
+            int[] offsets = new int[size + 1];
+            for (int id = 0; id < size; id++)
+            {
+                offsets[id + 1] = offsets[id] + counts[id];
+            }
+            int[] rows = new int[offsets[size]];
+            int[] cursor = Arrays.copyOf(offsets, size);
+            for (int r = 0; r < aRowCount; r++)
+            {
+                int id = rowKey[r];
+                if (id != NOT_FOUND)
+                {
+                    rows[cursor[id]++] = r;
+                }
+            }
+            return new KeyRows(table, ids, Arrays.copyOf(byId, size), offsets, rows,
+                    List.copyOf(studies));
+        }
+
+
+        /**
+         * Re-hashes {@code aTable} into one twice its size, writing the ids into {@code aNewIds}.
+         */
+        private static @Nullable RelrecKey[] grow(@Nullable RelrecKey[] aTable, int[] aIds,
+                int[] aNewIds)
+        {
+            @Nullable
+            RelrecKey[] grown = new RelrecKey[aTable.length * 2];
+            int mask = grown.length - 1;
+            for (int i = 0; i < aTable.length; i++)
+            {
+                RelrecKey key = aTable[i];
+                if (key == null)
+                {
+                    continue;
+                }
+                int slot = spread(key.hashCode()) & mask;
+                while (grown[slot] != null)
+                {
+                    slot = (slot + 1) & mask;
+                }
+                grown[slot] = key;
+                aNewIds[slot] = aIds[i];
+            }
+            return grown;
+        }
+
+
+        /**
+         * The id of {@code aKey}.
+         *
+         * @param aKey
+         *            the key.
+         * @return its key id, or {@link #NOT_FOUND}.
+         */
+        int find(RelrecKey aKey)
+        {
+            for (int slot = spread(aKey.hashCode()) & slotMask;; slot = (slot + 1) & slotMask)
+            {
+                RelrecKey stored = slotKeys[slot];
+                if (stored == null)
+                {
+                    return NOT_FOUND;
+                }
+                if (stored.equals(aKey))
+                {
+                    return slotIds[slot];
+                }
+            }
+        }
+
+
+        /** Returns the number of distinct keys; ids run {@code 0 .. keyCount() - 1}. */
+        int keyCount()
+        {
+            return keys.length;
+        }
+
+
+        /** Returns key {@code aId}. */
+        RelrecKey key(int aId)
+        {
+            return keys[aId];
+        }
+
+
+        /** Returns the first position of key {@code aId}'s slice, for {@link #row}. */
+        int start(int aId)
+        {
+            return offsets[aId];
+        }
+
+
+        /** Returns one past the last position of key {@code aId}'s slice. */
+        int end(int aId)
+        {
+            return offsets[aId + 1];
+        }
+
+
+        /** Returns the row at slice position {@code aPos}. */
+        int row(int aPos)
+        {
+            return rows[aPos];
+        }
+
+
+        /** Returns the distinct {@code STUDYID} key identities, in first-appearance order. */
+        List<Object> studies()
+        {
+            return studies;
+        }
+
+
+        private static int spread(int aHash)
+        {
+            int h = aHash * 0x9E3779B9;
+            return h ^ (h >>> 16);
+        }
     }
 
-    // ---- key encoding (JKM R5) -- the manager twin (cumba-datatable-manager-local's
-    // RelrecRelationshipResolver) mirrors keyCell arm by arm but is NOT byte-identical to it ----
+    // ---- key identity (JKM R5) — shared with the manager twin and the data browser's RELREC
+    // dialog through cumba-datatable's GroupKeyPolicy.textKeyIdentity (PLAN-shared-key-identity):
+    // the three sites no longer carry copies of the encoding, and a change to it is one change ----
     // ⭐ `nz` is GONE (2026-09-21, JKM R5): it mapped a missing cell to "", which is exactly
-    // the conflation the ruling forbids. Every key site now goes through keyCell instead. ⚠
+    // the conflation the ruling forbids. Every key site goes through keyCell instead. ⚠
     // Error Prone's UnusedMethod proved only that nz() had no caller left; it could not see a
     // probe that still compared RAW text against a keyCell index (E1) — that took a case table.
 
-
     /**
-     * One join-key component, encoded so that a <b>missing</b> cell is not the empty string.
+     * One join-key component's <b>identity</b>, so that a <b>missing</b> cell is not the empty
+     * string.
      *
      * <p>
      * ⭐⭐ <b>{@code JKM R5} (owner, 2026-09-21): <i>"a MIS will not join a record with an empty
@@ -689,26 +910,23 @@ final class RelrecRowExpander
      * </p>
      *
      * <p>
-     * ⛔⛔ <b>This is the WEAKER of the two identity forms in this engine, deliberately and only
-     * here.</b> {@link GroupKeyPolicy.KeyPart} is a sealed type that <b>cannot</b> collide;
-     * {@code reportingForm()} is a <em>rendering</em>, and its own javadoc says it must never be
-     * re-parsed to recover identity. This path is string-keyed by construction (the keys are
-     * {@code \0}-joined, and a behaviourally identical twin lives in
-     * {@code cumba-datatable-manager-local}), so the strong form is not available without changing
-     * both repos. {@code Missing.reportingForm()} prefixes {@code \u0001}, which no clinical text
-     * cell carries — <i>unlikely</i> to collide rather than <i>unable</i> to. ⇒ if this path is
-     * ever unified with the expander's, take the {@code KeyPart} identity and delete this method;
-     * {@code GroupedResult.buildKey} already makes the same trade for the same reason.
+     * ⭐ <b>The identity is the shared type's</b> ({@code PLAN-shared-key-identity}, owner ruling D2
+     * (c)): {@link GroupKeyPolicy#textKeyIdentity(IDataValue)} under {@code KEEP_MISSING_KEYS} —
+     * the cell's text (a present number's cleaned text: the RELREC link is a text join,
+     * {@code D4-R5}), {@code ""}, or the {@code MissingValue} constant. Until then this method
+     * rendered {@code KeyPart.reportingForm()} and keyed {@code \0}-joined strings on it, the
+     * weaker of the two forms: a {@code "\\u0001" + marker} token is only <i>unlikely</i> to
+     * collide with a text cell, where an enum constant <b>cannot</b>. The manager twin and the data
+     * browser's dialog classify through the same method, so the three sites cannot drift apart.
      * </p>
      */
-    private static String keyCell(IDataTable t, int col, long row)
+    private static Object keyCell(IDataTable t, int col, long row)
     {
         if (col < 0)
         {
             return ""; // JKM R7: absent column -> the character type default
         }
-        return GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(t.getColumn(col).getDataValue(row))
-                .reportingForm();
+        return GroupKeyPolicy.KEEP_MISSING_KEYS.textKeyIdentity(t.getColumn(col).getDataValue(row));
     }
 
 

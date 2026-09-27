@@ -2,12 +2,13 @@ package net.cumba.corej.core.exec;
 
 import java.util.List;
 import java.util.Objects;
-import net.cumba.corej.core.exec.GroupKeyPolicy.KeyPart;
 import net.cumba.corej.core.expr.eval.ColumnTypeGate;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.view.HashLookup;
 import net.cumba.datatable.values.DataValueType;
+import net.cumba.datatable.values.GroupKeyPolicy;
+import net.cumba.datatable.values.GroupKeyPolicy.KeyPart;
 import org.jspecify.annotations.Nullable;
 
 /**

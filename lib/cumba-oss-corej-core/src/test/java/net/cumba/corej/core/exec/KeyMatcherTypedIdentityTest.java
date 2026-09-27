@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * ⭐⭐ {@code JKM R5} on the <b>hashed</b> arm: {@code KeyHashing.KeyMatcher} now compares
- * {@link GroupKeyPolicy.KeyPart}s, not raw column values.
+ * {@link net.cumba.datatable.values.GroupKeyPolicy.KeyPart}s, not raw column values.
  *
  * <p>
  * ⚠⚠ <b>Why this class exists at all: the change passed 5 475 existing tests without moving one of

@@ -4,11 +4,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.StringJoiner;
-
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.index.DataTableIndexFactory;
 import net.cumba.datatable.index.IDataTableIndex;
+import net.cumba.datatable.values.GroupKeyPolicy;
 import net.cumba.datatable.values.IDataValue;
 import net.cumba.datatable.view.IDataTableView;
 import org.jspecify.annotations.Nullable;

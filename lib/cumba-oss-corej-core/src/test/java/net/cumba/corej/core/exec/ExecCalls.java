@@ -7,6 +7,7 @@ import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.report.Severity;
+import net.cumba.datatable.values.GroupKeyPolicy;
 import org.jspecify.annotations.Nullable;
 
 /**

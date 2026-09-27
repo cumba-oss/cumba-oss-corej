@@ -113,7 +113,7 @@ public class MatchDataset
      * they are kept, they are kept as separate identities. a MIS will not join a record with an
      * empty string and a MIS_A will not join a record with a MIS or MIS_B."</i>). Identity is exact
      * with the flag on <b>or</b> off, and it is carried by
-     * {@link net.cumba.corej.core.exec.GroupKeyPolicy.KeyPart} rather than by any rendered key — a
+     * {@link net.cumba.datatable.values.GroupKeyPolicy.KeyPart} rather than by any rendered key — a
      * stringified key would make a participating {@code MIS} collide with a present {@code "."}.
      * </p>
      *

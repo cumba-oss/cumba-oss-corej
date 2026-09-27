@@ -14,7 +14,6 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
-
 import lombok.CustomLog;
 import net.cumba.corej.core.expr.eval.IsoDateBounds;
 import net.cumba.corej.core.gen.WildcardExpander;
@@ -28,6 +27,7 @@ import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.metadata.ICodeList;
 import net.cumba.datatable.values.DataValueSupport;
+import net.cumba.datatable.values.GroupKeyPolicy;
 import net.cumba.datatable.values.IDataValue;
 import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;

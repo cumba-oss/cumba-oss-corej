@@ -612,7 +612,7 @@ public final class ScalarSemantics
      * <p>
      * ⚠ This is <b>not</b> for grouping-key components. There a {@code MissingValue} and a
      * {@code ""} are <em>distinct keys</em> with a shared disposition, so folding them would be
-     * wrong — see {@link GroupKeyPolicy}.
+     * wrong — see {@link net.cumba.datatable.values.GroupKeyPolicy}.
      * </p>
      *
      * @param aColumn

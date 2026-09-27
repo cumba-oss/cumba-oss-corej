@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.function.IntUnaryOperator;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
+import net.cumba.datatable.values.GroupKeyPolicy;
 import org.jspecify.annotations.Nullable;
 
 /**

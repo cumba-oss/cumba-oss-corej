@@ -1,12 +1,13 @@
 package net.cumba.corej.core.exec;
 
-import net.cumba.corej.core.exec.GroupKeyPolicy.KeyPart;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.impl.CachedDataTableColumn;
 import net.cumba.datatable.impl.ColumnCachedDataTable;
 import net.cumba.datatable.impl.view.UnionDataTable;
 import net.cumba.datatable.values.DataValueType;
+import net.cumba.datatable.values.GroupKeyPolicy;
+import net.cumba.datatable.values.GroupKeyPolicy.KeyPart;
 import org.jspecify.annotations.Nullable;
 
 /**

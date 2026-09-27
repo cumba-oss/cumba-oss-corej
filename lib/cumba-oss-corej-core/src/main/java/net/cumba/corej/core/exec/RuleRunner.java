@@ -12,7 +12,6 @@ import java.util.SequencedMap;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
-
 import lombok.CustomLog;
 import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.MetadataNormalizer;
@@ -32,6 +31,7 @@ import net.cumba.datatable.DataTableColumnMeta;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.report.Severity;
+import net.cumba.datatable.values.GroupKeyPolicy;
 import net.cumba.datatable.values.IDataValue;
 import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;

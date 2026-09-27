@@ -9,7 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
-import net.cumba.corej.core.exec.GroupKeyPolicy;
 import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.convert.OperationExpressionParser;
@@ -17,6 +16,7 @@ import net.cumba.corej.core.model.CheckConditionExpression;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
+import net.cumba.datatable.values.GroupKeyPolicy;
 import org.junit.jupiter.api.Test;
 
 /**

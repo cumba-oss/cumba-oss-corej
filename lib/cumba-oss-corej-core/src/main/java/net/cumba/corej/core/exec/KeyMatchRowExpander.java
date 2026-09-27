@@ -7,7 +7,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import net.cumba.corej.core.exec.GroupKeyPolicy.KeyPart;
 import net.cumba.corej.core.expr.eval.ColumnTypeGate;
 import net.cumba.corej.core.model.JoinType;
 import net.cumba.corej.core.model.MatchDataset;
@@ -16,6 +15,8 @@ import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.databuffer.DataBufferFactory;
 import net.cumba.datatable.impl.databuffer.IDataBufferNumeric;
 import net.cumba.datatable.values.DataValueType;
+import net.cumba.datatable.values.GroupKeyPolicy;
+import net.cumba.datatable.values.GroupKeyPolicy.KeyPart;
 import net.cumba.datatable.values.IDataValue;
 import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
@@ -398,14 +399,16 @@ final class KeyMatchRowExpander
 
     /**
      * The key part as it participates in the join: itself, or — under {@code Join_As_String}
-     * ({@code D4-R3}) — its rendered text as a {@link KeyPart.Present}.
+     * ({@code D4-R3}) — its text-join projection {@link KeyPart#asText()}, the one definition of
+     * that projection, shared with the RELREC link identity ({@code PLAN-shared-key-identity}).
      *
      * <p>
      * ⛔⛔ <b>Only a PRESENT part is coerced.</b> {@link KeyPart.Missing} and {@link KeyPart#EMPTY}
      * keep their own classification, because that classification is what stops a
      * {@code MissingValue} colliding with a present {@code "."} — the {@code +9 528-finding} bug
-     * class this file's own javadoc records. ⚑ {@code Present}'s constructor rejects {@code ""}
-     * (GroupKeyPolicy:153), so the coercion cannot manufacture an {@code EMPTY} either.
+     * class this file's own javadoc records. ⚑ {@code Present}'s constructor rejects {@code ""}, so
+     * the coercion cannot manufacture an {@code EMPTY} either; a {@link KeyPart.Present} projects
+     * to itself.
      * </p>
      *
      * <p>
@@ -424,11 +427,7 @@ final class KeyMatchRowExpander
      */
     private static KeyPart coerce(KeyPart aPart, boolean aAsString)
     {
-        if (!aAsString || !aPart.present())
-        {
-            return aPart;
-        }
-        return new KeyPart.Present(aPart.reportingForm());
+        return aAsString ? aPart.asText() : aPart;
     }
 
 

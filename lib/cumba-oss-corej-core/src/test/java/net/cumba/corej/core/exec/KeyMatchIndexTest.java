@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.ArrayList;
 import java.util.List;
-import net.cumba.corej.core.exec.GroupKeyPolicy.KeyPart;
+import net.cumba.datatable.values.GroupKeyPolicy.KeyPart;
 import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
