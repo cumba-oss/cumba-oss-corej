@@ -2937,10 +2937,11 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
 
     /**
-     * The domain-keyed LIBRARY variable read: leg 1 the metadata library's own column (the IG
-     * table), leg 2 algorithm B's merged IG + model row. For a domain the run's IG does not define,
-     * neither leg can answer — this method has no dataset to classify — and the read's last tier,
-     * {@link #getIgAbsentVariableMetadata}, answers instead.
+     * The domain-keyed LIBRARY variable read: leg 1 the metadata library's own column, leg 2
+     * algorithm B's merged IG + model row. For a domain the run's IG does not define, over the IG
+     * product's own table view (every production SDTM / SEND run), neither leg can answer — the
+     * view has no table for it, and this method has no dataset to classify — so the read's last
+     * tier, {@link #getIgAbsentVariableMetadata}, answers instead.
      */
     @Override
     public Map<String, String> getVariableMetadata(String aDomain, String aVariable)
