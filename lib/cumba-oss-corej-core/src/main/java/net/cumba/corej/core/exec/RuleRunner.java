@@ -925,17 +925,8 @@ public final class RuleRunner
                     // minus references its operands via name/subtract (not group); force those
                     // prior-op $-refs too so set-difference sees their resolved lists.
                     forceOperandRefs(finalOp, opId, lazyVars, resolved);
-                    Object value = OperationExecutor.executeOne(finalOp, lazyTable, lazyResolver,
+                    return OperationExecutor.executeOne(finalOp, lazyTable, lazyResolver,
                             lazyLibrary, resolved, ruleId, lazyDict, lazyDefine, opNumericExpected);
-                    if (value instanceof GroupedResult grouped)
-                    {
-                        // Q2 of PLAN-grouping-key-identity: this is where the result is bound to
-                        // the table every reader of this rule's variables evaluates against (the
-                        // Check, the report's Output_Variables), once per result — a Char/Num
-                        // key pair across tables ERRORs the rule instead of never matching.
-                        grouped.requireCompatibleKeys(lazyTable);
-                    }
-                    return value;
                 });
                 lazyVars.put(opId, lazy);
             }
@@ -4099,6 +4090,9 @@ public final class RuleRunner
                 Object val = ctx.resolveVariable(varName);
                 if (val instanceof GroupedResult grouped)
                 {
+                    // Q2 of PLAN-grouping-key-identity: bound to the table this row is read from
+                    // -- once per (result, table), memoised on the context, never per row.
+                    ctx.requireCompatibleGroupedKeys(grouped);
                     // Report the same absent-key default the firing logic used (0 for
                     // record_count, null otherwise) so the rendered $var matches the evaluated
                     // value instead of showing empty for a count that fired as 0.

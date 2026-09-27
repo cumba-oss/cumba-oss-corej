@@ -3410,7 +3410,7 @@ public final class OperationExecutor
             return null; // an unexpanded $-ref in the group list — not a dataset-shape fact
         }
 
-        Map<Object, Object> results = new LinkedHashMap<>();
+        IndexHelper.BlockResults results = new IndexHelper.BlockResults(grouping);
         for (IndexHelper.GroupBlock block : grouping.blocks())
         {
             DateExtreme extreme = new DateExtreme(findMax, missingIsIndeterminate(op));
@@ -3428,10 +3428,14 @@ public final class OperationExecutor
             String resolved = extreme.result();
             if (resolved != null)
             {
-                IndexHelper.putBlock(results, grouping, block, resolved);
+                results.put(block, resolved);
+            }
+            else
+            {
+                results.skip(block);
             }
         }
-        return declaredGrouped(op, table, groupCols, results);
+        return declaredGrouped(op, table, groupCols, results.results());
     }
 
 
@@ -3462,7 +3466,7 @@ public final class OperationExecutor
         }
 
         // Try numeric max first
-        Map<Object, Object> results = new LinkedHashMap<>();
+        IndexHelper.BlockResults results = new IndexHelper.BlockResults(grouping);
         boolean anyNumeric = false;
         for (IndexHelper.GroupBlock block : grouping.blocks())
         {
@@ -3487,16 +3491,20 @@ public final class OperationExecutor
             }
             if (!Double.isNaN(max))
             {
-                IndexHelper.putBlock(results, grouping, block, max);
+                results.put(block, max);
+            }
+            else
+            {
+                results.skip(block);
             }
         }
         if (anyNumeric)
         {
-            return declaredGrouped(op, table, groupCols, results);
+            return declaredGrouped(op, table, groupCols, results.results());
         }
         // Fallback: string comparison (handles date strings like ISO 8601). EC-46 OQ4 — GENERIC
         // semantics, the grouped twin of evalMax's fallback; see genericStringExtreme.
-        results.clear();
+        results = new IndexHelper.BlockResults(grouping);
         for (IndexHelper.GroupBlock block : grouping.blocks())
         {
             List<String> candidates = new ArrayList<>();
@@ -3515,10 +3523,14 @@ public final class OperationExecutor
             String max = genericStringExtreme(candidates, true);
             if (max != null)
             {
-                IndexHelper.putBlock(results, grouping, block, max);
+                results.put(block, max);
+            }
+            else
+            {
+                results.skip(block);
             }
         }
-        return declaredGrouped(op, table, groupCols, results);
+        return declaredGrouped(op, table, groupCols, results.results());
     }
 
 
@@ -3555,7 +3567,7 @@ public final class OperationExecutor
             return null; // an unexpanded $-ref in the group list — not a dataset-shape fact
         }
 
-        Map<Object, Object> results = new LinkedHashMap<>();
+        IndexHelper.BlockResults results = new IndexHelper.BlockResults(grouping);
         for (IndexHelper.GroupBlock block : grouping.blocks())
         {
             Set<String> seen = new LinkedHashSet<>();
@@ -3578,10 +3590,14 @@ public final class OperationExecutor
             }
             if (!seen.isEmpty())
             {
-                IndexHelper.putBlock(results, grouping, block, new ArrayList<>(seen));
+                results.put(block, new ArrayList<>(seen));
+            }
+            else
+            {
+                results.skip(block);
             }
         }
-        return declaredGrouped(op, table, groupCols, results);
+        return declaredGrouped(op, table, groupCols, results.results());
     }
 
 
@@ -3694,7 +3710,7 @@ public final class OperationExecutor
             return null; // an unexpanded $-ref in the group list — not a dataset-shape fact
         }
 
-        Map<Object, Object> results = new LinkedHashMap<>();
+        IndexHelper.BlockResults results = new IndexHelper.BlockResults(grouping);
         for (IndexHelper.GroupBlock block : grouping.blocks())
         {
             int[] rows = block.rows();
@@ -3715,10 +3731,10 @@ public final class OperationExecutor
                     }
                 }
             }
-            IndexHelper.putBlock(results, grouping, block, count);
+            results.put(block, count);
         }
         // record_count: an absent group key means zero matching rows -> 0, not "no value".
-        return declaredGrouped(op, table, groupCols, results);
+        return declaredGrouped(op, table, groupCols, results.results());
     }
 
 
@@ -3788,7 +3804,7 @@ public final class OperationExecutor
                         .filter(idx -> idx >= 0).toArray();
         boolean hasQualifier = qualifiers != null && !qualifiers.isEmpty();
 
-        Map<Object, Object> results = new LinkedHashMap<>();
+        IndexHelper.BlockResults results = new IndexHelper.BlockResults(grouping);
         for (IndexHelper.GroupBlock block : grouping.blocks())
         {
             boolean hasPopulated = false;
@@ -3821,9 +3837,9 @@ public final class OperationExecutor
                     break; // mixed detected — no need to scan further rows in this block
                 }
             }
-            IndexHelper.putBlock(results, grouping, block, hasPopulated && hasUnpopulated);
+            results.put(block, hasPopulated && hasUnpopulated);
         }
-        return declaredGrouped(op, table, keyCols, results);
+        return declaredGrouped(op, table, keyCols, results.results());
     }
 
 

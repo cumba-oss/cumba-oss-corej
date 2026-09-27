@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.impl.view.UnionDataTable;
 import net.cumba.datatable.index.DataTableIndexFactory;
 import net.cumba.datatable.index.IDataTableIndex;
 import net.cumba.datatable.values.GroupKey;
@@ -313,6 +314,24 @@ class GroupedResultKeyIdentityTest
         assertEquals(java.util.Arrays.asList("Y", null), perRow(gr, ae));
     }
 
+
+    /**
+     * A split-domain union (review round 1, M1): a member that lacks {@code VISITNUM} reads as
+     * {@code MIS} on both channels, so its rows form ONE group with a member's stored {@code MIS} —
+     * the partition the key identity makes. The raw read answered {@code null} before, the index
+     * formed a third block under the {@code MIS} key, and the grouped operation hit the tripwire.
+     */
+    @Test
+    void aSplitDomainUnionGroupsAnAbsentMemberColumnWithAStoredMissing()
+    {
+        IDataTable lbc1 = RealTables.of("lbc1").str("USUBJID", "S1", "S1")
+                .dbl("VISITNUM", MissingValue.MIS.asDouble(), 1.0).build();
+        IDataTable lbc2 = RealTables.of("lbc2").str("USUBJID", "S1").build();
+        UnionDataTable union = new UnionDataTable("LB", lbc1, lbc2);
+        assertEquals(List.of(2L, 1L, 2L), perRow(
+                run(op("record_count", null, List.of("USUBJID", "VISITNUM")), union), union));
+    }
+
     // ---------------------------------------------------------------- the tripwire
 
 
@@ -348,6 +367,60 @@ class GroupedResultKeyIdentityTest
                 System.setProperty(property, before);
             }
         }
+    }
+
+
+    /**
+     * The tripwire claims EVERY block, not only those that write a value (review round 1, M1b): a
+     * block without a result (here: no resolvable date) that shares its key with a value-writing
+     * block used to be invisible, and its rows silently read the other block's value.
+     */
+    @Test
+    @ResourceLock(Resources.SYSTEM_PROPERTIES)
+    void aValueLessBlockSharingAKeyIsRefusedToo()
+    {
+        String property = DataTableIndexFactory.class.getName();
+        String before = System.getProperty(property);
+        System.setProperty(property, OneBlockPerRowIndexFactory.class.getName());
+        try
+        {
+            IDataTable t = RealTables.of("VS").str("USUBJID", "S1", "S2", "S1")
+                    .str("VSDTC", "", "2020-01-02", "2020-01-03").build();
+            IllegalStateException ex = assertThrows(IllegalStateException.class,
+                    () -> run(op("max_date", "VSDTC", List.of("USUBJID")), t));
+            assertTrue(ex.getMessage().contains("the block of row 0 and the block of row 2"),
+                    ex.getMessage());
+        }
+        finally
+        {
+            if (before == null)
+            {
+                System.clearProperty(property);
+            }
+            else
+            {
+                System.setProperty(property, before);
+            }
+        }
+    }
+
+
+    /**
+     * A skipped block's placeholder never reaches the result: the group without a value reads the
+     * operator's declared empty result, exactly as before the tripwire claimed it.
+     */
+    @Test
+    void aSkippedBlockReadsTheDeclaredEmptyResult()
+    {
+        IDataTable t = RealTables.of("VS").str("USUBJID", "S1", "S2", "S1")
+                .str("VSDTC", "2020-01-01", "", "2020-01-03").build();
+        GroupedResult gr = run(op("max_date", "VSDTC", List.of("USUBJID")), t);
+        assertEquals(Set.of("S1"), gr.results().keySet());
+        assertEquals(java.util.Arrays.asList("2020-01-03", null, "2020-01-03"), perRow(gr, t));
+        IDataTable n = RealTables.of("VS").str("USUBJID", "S1", "S2").str("VSSTRESC", "X", "")
+                .build();
+        GroupedResult distinct = run(op("distinct", "VSSTRESC", List.of("USUBJID")), n);
+        assertEquals(List.of(List.of("X"), List.of()), perRow(distinct, n));
     }
 
     /**

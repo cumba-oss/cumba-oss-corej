@@ -1,6 +1,7 @@
 package net.cumba.corej.core.exec;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.cumba.datatable.DataTableMeta;
@@ -15,7 +16,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Shared utilities for using {@link IDataTableIndex} in the CDISC CORE engine. Centralizes index
  * creation, block-to-row extraction, missing-key detection, GroupedResult-compatible key building,
- * and the block-keyed result write ({@link #putBlock}) that refuses two blocks with one key.
+ * and the block-keyed result map ({@link BlockResults}) that refuses two blocks with one key.
  */
 final class IndexHelper
 {
@@ -212,9 +213,10 @@ final class IndexHelper
             // Every declared column is absent ⇒ no row is distinguishable from any other ⇒ one
             // group over the whole table. Its key is exactly what the lookup computes for any row
             // of a table carrying none of the columns — the same derivation, so it cannot differ:
-            // one "" component per declared column, i.e. GroupKey.of("" ×k) (H1 of
-            // PLAN-grouping-key-identity: the TEXT key "\0" this used to build never met the
-            // lookup's GroupKey once k >= 2, and record_count read 0 instead of N).
+            // one "" component per declared column, i.e. GroupKey.of("" ×k). ⚠ H1 of
+            // PLAN-grouping-key-identity: this branch used to build the TEXT key "\0" separately;
+            // with the lookup keyed by identity that key would miss every row once k >= 2
+            // (record_count reading 0 instead of N), so it goes through the one derivation.
             List<GroupBlock> blocks = rowCountL == 0 ? List.of()
                     : List.of(new GroupBlock(GroupedResult.identityKey(meta, table, groupCols, 0),
                             allRows(rowCountL)));
@@ -371,55 +373,109 @@ final class IndexHelper
         return GroupedResult.identityKey(meta, table, groupCols, block.getRealRow(table, 0));
     }
 
-
     /**
-     * ⭐ <b>The tripwire</b> ({@code PLAN-grouping-key-identity} §3a.1): writes {@code value} as
-     * {@code block}'s result and <b>refuses a second block with the same key</b> instead of
-     * overwriting. Two blocks sharing one key is the exact shape of the defect that plan closed —
-     * the later block's value overwrote the earlier one's and the earlier block's rows read it with
-     * nothing logged — so it can never again be silent: the rule ERRORs, naming the key and both
-     * blocks' first rows. It costs nothing on the healthy path ({@link Map#put} already returns the
-     * previous value).
+     * ⭐ <b>The tripwire</b> ({@code PLAN-grouping-key-identity} §3a.1): the result map of a
+     * block-keyed evaluator, built block by block, that <b>refuses a second block with the same
+     * key</b> instead of overwriting. Two blocks sharing one key is the exact shape of the defect
+     * that plan closed — the later block's value overwrote the earlier one's and the earlier
+     * block's rows read it with nothing logged — so it can never again be silent: the rule ERRORs,
+     * naming the key and both blocks' first rows.
      *
      * <p>
-     * ⚠ It sees only blocks that write a value: an evaluator that leaves a block without a result
-     * (no resolvable date, no numeric value, an empty set) cannot collide here, because nothing is
-     * written for it. Every block-keyed evaluator writes through this method.
+     * ⭐ <b>Every block is claimed, not only those that write a value</b> (review round 1, M1b). An
+     * evaluator that leaves a block without a result (no resolvable date, no numeric value, an
+     * empty set) still {@link #skip}s it: the key is entered with a private placeholder, so a
+     * value-writing block under the same key collides with it too — otherwise the value-less
+     * block's rows would silently read the other block's value. The placeholders are removed by
+     * {@link #results()}, only when a block was skipped.
      * </p>
      *
-     * @param results
-     *            the result map under construction
-     * @param grouping
-     *            the grouping the block belongs to (searched for the earlier block on a collision)
-     * @param block
-     *            the block
-     * @param value
-     *            its result, never {@code null}
-     * @throws IllegalStateException
-     *             when another block of {@code grouping} already wrote the same key
+     * <p>
+     * Cost on the healthy path: nothing beyond the map the evaluator built anyway ({@link Map#put}
+     * already returns the previous value); a skipped block costs one transient entry.
+     * </p>
      */
-    static void putBlock(Map<Object, Object> results, Grouping grouping, GroupBlock block,
-            Object value)
+    static final class BlockResults
     {
-        Object previous = results.put(block.key(), value);
-        if (previous != null)
+
+        /** The placeholder of a claimed block without a result; never leaves this class. */
+        private static final Object NO_VALUE = new Object();
+
+        private final Grouping grouping;
+
+        private final Map<Object, Object> results = new LinkedHashMap<>();
+
+        private int skipped;
+
+        BlockResults(Grouping aGrouping)
         {
-            int earlierRow = -1;
-            for (GroupBlock other : grouping.blocks())
+            grouping = aGrouping;
+        }
+
+
+        /**
+         * Writes {@code aValue} as {@code aBlock}'s result.
+         *
+         * @throws IllegalStateException
+         *             when another block of the grouping already claimed the same key
+         */
+        void put(GroupBlock aBlock, Object aValue)
+        {
+            claim(aBlock, aValue);
+        }
+
+
+        /**
+         * Claims {@code aBlock}'s key without a result — the block reads the operator's declared
+         * empty result, as it always did.
+         *
+         * @throws IllegalStateException
+         *             when another block of the grouping already claimed the same key
+         */
+        void skip(GroupBlock aBlock)
+        {
+            claim(aBlock, NO_VALUE);
+            skipped++;
+        }
+
+
+        private void claim(GroupBlock aBlock, Object aValue)
+        {
+            Object previous = results.put(aBlock.key(), aValue);
+            if (previous != null)
             {
-                if (other != block && other.key().equals(block.key()))
+                int earlierRow = -1;
+                for (GroupBlock other : grouping.blocks())
                 {
-                    earlierRow = other.rows()[0];
-                    break;
+                    if (other != aBlock && other.key().equals(aBlock.key()))
+                    {
+                        earlierRow = other.rows()[0];
+                        break;
+                    }
                 }
+                throw new IllegalStateException("two groups share the key " + aBlock.key()
+                        + " (the block of row " + earlierRow + " and the block of row "
+                        + aBlock.rows()[0] + "): the grouping index and the key identity disagree,"
+                        + " and one group would silently read the other's value");
             }
-            throw new IllegalStateException("two groups share the key " + block.key()
-                    + " (the block of row " + earlierRow + " and the block of row "
-                    + block.rows()[0] + "): the grouping index and the key identity disagree, and"
-                    + " one group would silently read the other's value");
+        }
+
+
+        /**
+         * The per-block results, placeholders removed.
+         *
+         * @return the result map, in block order
+         */
+        Map<Object, Object> results()
+        {
+            if (skipped > 0)
+            {
+                results.values().removeIf(v -> v == NO_VALUE);
+                skipped = 0;
+            }
+            return results;
         }
     }
-
 
     /**
      * Resolve column names to column indices. Returns {@code null} if any column is not found in

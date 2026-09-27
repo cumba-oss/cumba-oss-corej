@@ -135,6 +135,45 @@ class GroupedLookupKeyTypeTest
     }
 
 
+    /**
+     * The check runs where a result is READ, against the table the lookup reads (review round 1,
+     * L3). A grouped result nothing reads is never checked — it used to be checked eagerly, against
+     * the rule's table, wherever the operation was materialised.
+     */
+    @Test
+    void anUnreadGroupedResultIsNeverChecked()
+    {
+        IDataTable aeTable = RealTables.of("AE").str("USUBJID", "1", "2").build();
+        IDataTable dm = RealTables.of("DM").dbl("USUBJID", 1.0, 2.0).build();
+        RuleExecutionResult res = run(
+                rule("not empty(USUBJID)", List.of("USUBJID"), countIn("DM", "USUBJID")), aeTable,
+                dm);
+        assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(), res.getStatusMessage());
+        assertEquals(2, res.getViolations().size());
+    }
+
+
+    /**
+     * The binding is memoised per (result, TABLE): one context table passing binds nothing else.
+     */
+    @Test
+    void theBindingIsPerTable()
+    {
+        IDataTable numTable = RealTables.of("DM").dbl("USUBJID", 1.0).build();
+        IDataTable charTable = RealTables.of("AE").str("USUBJID", "1").build();
+        GroupedResult grouped = new GroupedResult(List.of("USUBJID"), Map.of(), null,
+                GroupedResult.KeyMode.IDENTITY,
+                GroupedResult.KeyTypes.of(numTable, List.of("USUBJID")));
+        EvaluationContext onNum = EvaluationContext.builder().table(numTable).build();
+        onNum.requireCompatibleGroupedKeys(grouped);
+        onNum.requireCompatibleGroupedKeys(grouped);
+        assertEquals(numTable, onNum.getKeyCheckedGroupedResults().get(grouped));
+        EvaluationContext onChar = onNum.toBuilder().table(charTable).build();
+        assertThrows(JoinKeyTypeMismatchException.class,
+                () -> onChar.requireCompatibleGroupedKeys(grouped));
+    }
+
+
     @Test
     void longAgainstDoubleIsOneKind()
     {

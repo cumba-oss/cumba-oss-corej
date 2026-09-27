@@ -1,5 +1,7 @@
 package net.cumba.corej.core.exec;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -265,6 +267,40 @@ public class EvaluationContext
      */
     @Builder.Default
     Set<String> numericExpectedColumns = Set.of();
+
+    /**
+     * Q2 of {@code PLAN-grouping-key-identity}: the grouped results already bound to a table
+     * through {@link #requireCompatibleGroupedKeys}, each mapped (by identity) to the table it was
+     * checked against — so the check runs once per (result, table), never per row, on the table the
+     * lookup actually reads. Synchronised for the same reason as {@link #absentColumnFolds}.
+     */
+    @Builder.Default
+    Map<GroupedResult, IDataTable> keyCheckedGroupedResults = Collections
+            .synchronizedMap(new IdentityHashMap<>());
+
+    /**
+     * Binds {@code aResult} to this context's {@link #table}: the cross-table key-type check
+     * ({@link GroupedResult#requireCompatibleKeys}) against the table the per-row lookup reads,
+     * once per (result, table). Every reader of a grouped result calls this before its row loop —
+     * the Check's value vectors and membership tests, and the report's {@code Output_Variables}
+     * (review round 1 of {@code PLAN-grouping-key-identity}, L3: the check used to run eagerly
+     * where the operation was materialised, against the rule's table, which is not the table a
+     * computed-target operation reads a prior result against).
+     *
+     * @param aResult
+     *            the grouped result about to be read row by row
+     * @throws JoinKeyTypeMismatchException
+     *             when a group column's kind differs between the two tables
+     */
+    public void requireCompatibleGroupedKeys(GroupedResult aResult)
+    {
+        if (keyCheckedGroupedResults.get(aResult) != table)
+        {
+            aResult.requireCompatibleKeys(table);
+            keyCheckedGroupedResults.put(aResult, table);
+        }
+    }
+
 
     /** Records that {@code column} was absent and evaluated as all-missing (EC-43). */
     public void noteAbsentColumnFold(String column)
