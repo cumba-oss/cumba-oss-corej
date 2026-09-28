@@ -765,8 +765,9 @@ class RequirementsLoadGateTest
 
         /**
          * Review round 2, E-L1: a glob / regex is case-blind, so its spellings fold to one shape; a
-         * marker template is case-sensitive, so it is keyed exactly — and a mis-cased template is a
-         * LITERAL that no dataset carries, which the gate names.
+         * marker template is keyed exactly, because its lowercase markers are what make it a
+         * template (it still matches column names ignoring case, CIT §1) — and a mis-cased template
+         * is a LITERAL that no dataset carries, which the gate names.
          */
         @Test
         @DisplayName("R4 — shapes are keyed by kind: globs fold, templates are exact, a mis-cased"

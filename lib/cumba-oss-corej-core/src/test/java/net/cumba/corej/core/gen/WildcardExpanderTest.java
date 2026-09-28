@@ -112,8 +112,8 @@ class WildcardExpanderTest
     /**
      * Owner ruling 2026-09-28 ({@code PLAN-case-insensitive-templates}, register {@code CIT §1}):
      * column names match case-insensitively on every surface, marker templates included. Before,
-     * this pattern was the one case-sensitive column matcher in the engine — a lowercase
-     * {@code trt01p} left {@code CDISC-AD0581} firing falsely and 65 {@code All}-template rules
+     * this pattern was the one case-sensitive Requirements matcher — a lowercase {@code trt01p}
+     * would have left {@code CDISC-AD0581} firing falsely and 65 {@code All}-template rules
      * silently skipping.
      */
     @Test
