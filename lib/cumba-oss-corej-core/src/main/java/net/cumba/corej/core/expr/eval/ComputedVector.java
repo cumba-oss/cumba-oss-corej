@@ -53,7 +53,13 @@ public final class ComputedVector implements Vector
      * @param declaredType
      *            the statically-declared result type (for operand-homogeneity checks)
      * @param producer
-     *            computes the value for a given 0-based row index.
+     *            computes the value for a given 0-based row index. A row that returns an
+     *            {@link IDataValue} is carried as {@link TypedValue#typedCell} — the cell's own
+     *            missing identity survives ({@code .A} stays {@code .A}, D85c/D86a), which is how a
+     *            string producer hands a missing input's cell through (register D36,
+     *            {@code PLAN-case-fold-missing-d36}); every other payload ({@link String},
+     *            {@link Number}, {@link Boolean}, a list) goes through
+     *            {@link TypedValue#resolved(DataValueType, Object)} unchanged.
      *            <p>
      *            ⚑ TARGET-INVARIANT(null-free-value-channel) — <b>NOT YET ENFORCED ON THIS
      *            CONSTRUCTOR.</b> A row value is owed as a real value or a
@@ -66,8 +72,11 @@ public final class ComputedVector implements Vector
      *            {@code MissingValue.MIS}. It is tolerated only because {@code IntFunction<Object>}
      *            is a GENERIC type argument, whose lambda return NullAway does not check — not
      *            because {@code null} is legitimate. ⛔ Do not add a new {@code null}-returning
-     *            producer here; hand back {@code ScalarSemantics.computedMissing()} instead, so the
-     *            day this channel is hardened is a signature change and not a sweep.
+     *            producer here; hand back {@code ScalarSemantics.computedMissing()} — an
+     *            {@code IDataValue}, so it takes the typed-cell branch above and reads as the
+     *            computed {@code MIS} — or, to carry an input's identity, that input's own
+     *            {@code TypedValue.cell()}, so the day this channel is hardened is a signature
+     *            change and not a sweep.
      *            </p>
      */
     public ComputedVector(int rowCount, DataValueType declaredType, IntFunction<Object> producer)
@@ -167,10 +176,26 @@ public final class ComputedVector implements Vector
         {
             tv = typedProducer != null
                     ? TypedValue.typedCell(declaredType, typedProducer.apply(row))
-                    : TypedValue.resolved(declaredType, producer.apply(row));
+                    : carrier(declaredType, producer.apply(row));
             rowCache[row] = tv;
         }
         return tv;
+    }
+
+
+    /**
+     * The carrier for one untyped-producer row: an {@link IDataValue} payload is a cell handed
+     * through by the producer — a missing input's own cell (identity kept) or the computed
+     * {@code MIS} of {@code ScalarSemantics.computedMissing()} — and is carried as a typed cell;
+     * anything else is the resolved payload it always was. {@link TypedValue#resolved} would have
+     * marked an {@code IDataValue} payload <em>present</em> on {@link TypedValue#missing()} while
+     * {@link TypedValue#cell()} wrapped it as a missing, and the two sides of
+     * {@code Primitives.equality} would have disagreed on one value.
+     */
+    private static TypedValue carrier(DataValueType declaredType, @Nullable Object payload)
+    {
+        return payload instanceof IDataValue cell ? TypedValue.typedCell(declaredType, cell)
+                : TypedValue.resolved(declaredType, payload);
     }
 
 

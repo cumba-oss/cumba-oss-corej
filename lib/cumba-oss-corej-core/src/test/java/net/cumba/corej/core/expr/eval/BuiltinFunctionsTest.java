@@ -11,6 +11,7 @@ import java.util.List;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -84,19 +85,41 @@ class BuiltinFunctionsTest
     @Test
     void lowerUpper()
     {
-        // upper("")="" and upper(«missing»)="": a genuine missing folds to "" (function-examples.md
-        // "Case & whitespace"). Row 2 is "", row 3 is a genuine null.
-        IDataTable t = MockTable.of().col("X", "AbC", "xyz", "", (String) null).build();
-        Vector lo = value("lower", 4, col(t, "X"));
+        // upper("") = "" (D34 #1, a present empty string); upper(«missing») is that missing with
+        // its identity kept (register D36, D85c): row 2 is "", row 3 MIS, row 4 MIS_A. The
+        // fixture is real — MockTable cannot mint a .A (see MissingCellTables).
+        IDataTable t = MissingCellTables.strings("X", "AbC", "xyz", "", MissingValue.MIS,
+                MissingValue.MIS_A);
+        Vector lo = value("lower", 5, col(t, "X"));
         assertEquals("abc", lo.asString(0));
-        // The result VALUE is the literal "" (asString == ""); note Vector.isMissing is true for
-        // any "" cell by the F3 convention, so we assert the value, not the missing flag.
-        assertEquals("", lo.asString(2)); // "" -> "" (literal, no longer collapsed to a value)
-        assertEquals("", lo.asString(3)); // «missing» -> ""
-        Vector up = value("upcase", 4, col(t, "X")); // alias
+        assertPresentEmpty(lo, 2); // lower("") -> "" (present, not missing)
+        assertMissing(lo, 3, MissingValue.MIS); // lower(MIS) -> MIS
+        assertMissing(lo, 4, MissingValue.MIS_A); // lower(.A) -> .A, not a fresh MIS
+        Vector up = value("upcase", 5, col(t, "X")); // alias
         assertEquals("XYZ", up.asString(1));
-        assertEquals("", up.asString(2)); // upper("") -> ""
-        assertEquals("", up.asString(3)); // upper(«missing») -> ""
+        assertPresentEmpty(up, 2); // upper("") -> ""
+        assertMissing(up, 3, MissingValue.MIS);
+        assertMissing(up, 4, MissingValue.MIS_A);
+    }
+
+
+    /**
+     * The row is a present empty string: NOT missing on the typed carrier (D34 #1) and its text is
+     * {@code ""}. Asserted through {@link TypedValue#isMissing()}, never {@code Vector.isMissing},
+     * which is the F3 fold and is true for any {@code ""}.
+     */
+    private static void assertPresentEmpty(Vector v, int row)
+    {
+        TypedValue tv = v.value(row);
+        assertFalse(tv.isMissing(), "row " + row + " is a present \"\", not a missing");
+        assertEquals("", v.asString(row), "row " + row);
+    }
+
+
+    /** The row carries exactly {@code expected} — the identity, not merely "some missing". */
+    private static void assertMissing(Vector v, int row, MissingValue expected)
+    {
+        assertSame(expected, v.value(row).missing(), "row " + row + " carries " + expected);
     }
 
 
@@ -341,24 +364,50 @@ class BuiltinFunctionsTest
     void affixValueFamily()
     {
         // prefix(x, n) / suffix(x, n): first/last n characters; shorter-than-n → WHOLE string
-        // (legacy extractPrefix/extractSuffix). prefix("",n)="" and prefix(«missing»,n)="": a
-        // genuine missing folds to "" (function-examples.md "Affix extraction"). Row 2 is "",
-        // row 3 is a genuine null.
-        IDataTable t = MockTable.of().col("X", "FAKE", "F", "", (String) null).build();
-        Vector p = value("prefix", 4, col(t, "X"), ConstVector.of(2.0));
+        // (legacy extractPrefix/extractSuffix). prefix("", n) = "" (D34 #1); prefix(«missing», n)
+        // is that missing, identity kept (D36). Row 2 is "", row 3 MIS, row 4 MIS_A.
+        IDataTable t = MissingCellTables.strings("X", "FAKE", "F", "", MissingValue.MIS,
+                MissingValue.MIS_A);
+        Vector p = value("prefix", 5, col(t, "X"), ConstVector.of(2.0));
         assertEquals("FA", p.asString(0)); // prefix("ABCD"-like,2) -> "FA"
         assertEquals("F", p.asString(1), "shorter than n → whole string");
-        // result VALUE is the literal "" (asString == ""); isMissing is true for any "" cell.
-        assertEquals("", p.asString(2)); // prefix("",2) -> ""
-        assertEquals("", p.asString(3)); // prefix(«missing»,2) -> ""
-        Vector s = value("suffix", 4, col(t, "X"), ConstVector.of(2.0));
+        assertPresentEmpty(p, 2); // prefix("",2) -> ""
+        assertMissing(p, 3, MissingValue.MIS); // prefix(MIS,2) -> MIS
+        assertMissing(p, 4, MissingValue.MIS_A); // prefix(.A,2) -> .A
+        Vector s = value("suffix", 5, col(t, "X"), ConstVector.of(2.0));
         assertEquals("KE", s.asString(0));
         assertEquals("F", s.asString(1));
-        assertEquals("", s.asString(2)); // suffix("",2) -> ""
-        assertEquals("", s.asString(3)); // suffix(«missing»,2) -> ""
+        assertPresentEmpty(s, 2); // suffix("",2) -> ""
+        assertMissing(s, 3, MissingValue.MIS);
+        assertMissing(s, 4, MissingValue.MIS_A);
         // a non-integral / non-positive n yields the whole string (legacy null-length contract)
-        Vector whole = value("prefix", 4, col(t, "X"), ConstVector.of(0.0));
+        Vector whole = value("prefix", 5, col(t, "X"), ConstVector.of(0.0));
         assertEquals("FAKE", whole.asString(0));
+    }
+
+
+    @Test
+    void affixMissingNIsThatMissingCombinedPerD86a()
+    {
+        // A missing n (not a non-integral or non-positive one, which keep the whole-string rule)
+        // makes the affix missing, the identities of x and n combined per D86a: one distinct
+        // identity ⇒ that identity, two ⇒ MIS.
+        IDataTable t = MissingCellTables.of("T")
+                .str("X", "FAKE", "FAKE", MissingValue.MIS_A, MissingValue.MIS_A, "FAKE")
+                .dbl("N", MissingValue.MIS_A, MissingValue.MIS, MissingValue.MIS,
+                        MissingValue.MIS_A, 2.0)
+                .build();
+        for (String fn : List.of("prefix", "suffix"))
+        {
+            Vector v = value(fn, 5, col(t, "X"), col(t, "N"));
+            assertMissing(v, 0, MissingValue.MIS_A); // fn("FAKE", .A) -> .A
+            assertMissing(v, 1, MissingValue.MIS); // fn("FAKE", MIS) -> MIS
+            assertMissing(v, 2, MissingValue.MIS); // fn(.A, MIS) -> MIS (two identities)
+            assertMissing(v, 3, MissingValue.MIS_A); // fn(.A, .A) -> .A (one identity)
+            assertFalse(v.value(4).isMissing(), fn + " over two present operands is present");
+        }
+        assertEquals("FA", value("prefix", 5, col(t, "X"), col(t, "N")).asString(4));
+        assertEquals("KE", value("suffix", 5, col(t, "X"), col(t, "N")).asString(4));
     }
 
 
@@ -626,8 +675,7 @@ class BuiltinFunctionsTest
 
         TypedValue tv = r.value(0);
         assertTrue(tv.isMissing(), "a numeric-expected absent column is all-MIS (D34 #4)");
-        assertSame(net.cumba.datatable.values.MissingValue.MIS, tv.missing(),
-                "and the computed-missing identity is MIS");
+        assertSame(MissingValue.MIS, tv.missing(), "and the computed-missing identity is MIS");
     }
 
 
@@ -668,25 +716,93 @@ class BuiltinFunctionsTest
     @Test
     void trimConcatCoalesce()
     {
-        // trim(" x ")="x" and trim("")="": a genuine missing folds to "" (function-examples.md
-        // "Case & whitespace"). Row 1 of A is "", row 3 is a genuine null.
-        IDataTable t = MockTable.of().col("A", " x ", "", "x", (String) null)
-                .col("B", "bar", "baz", "q", "w").build();
-        Vector tr = value("trim", 4, col(t, "A"));
+        // trim(" x ") = "x"; trim("") = "" (D34 #1); trim(«missing») is that missing, identity
+        // kept (D36). Row 1 of A is "", row 3 MIS, row 4 MIS_A.
+        IDataTable t = MissingCellTables.of("T")
+                .str("A", " x ", "", "x", MissingValue.MIS, MissingValue.MIS_A)
+                .str("B", "bar", "baz", "q", "w", "v").build();
+        Vector tr = value("trim", 5, col(t, "A"));
         assertEquals("x", tr.asString(0)); // " x " -> "x"
-        // result VALUE is the literal "" (asString == ""); isMissing is true for any "" cell.
-        assertEquals("", tr.asString(1)); // trim("") -> ""
-        assertEquals("", tr.asString(3)); // trim(«missing») -> ""
+        assertPresentEmpty(tr, 1); // trim("") -> ""
+        assertMissing(tr, 3, MissingValue.MIS); // trim(MIS) -> MIS
+        assertMissing(tr, 4, MissingValue.MIS_A); // trim(.A) -> .A
 
-        // concat: a missing operand contributes "" so the result is never missing.
-        Vector cc = value("concat", 4, col(t, "A"), col(t, "B"));
+        // concat: a present "" contributes nothing; a missing operand makes the result that
+        // missing (D36 names concat), identity kept.
+        Vector cc = value("concat", 5, col(t, "A"), col(t, "B"));
         assertEquals(" x bar", cc.asString(0));
-        assertEquals("baz", cc.asString(1)); // A "" treated as not-present -> ""
+        assertEquals("baz", cc.asString(1)); // A "" contributes nothing
+        assertMissing(cc, 3, MissingValue.MIS); // concat(MIS, "w") -> MIS
+        assertMissing(cc, 4, MissingValue.MIS_A); // concat(.A, "v") -> .A
 
         // coalesce: first non-missing; A present at 0/2, "" (not-present) at 1 -> B.
-        Vector co = value("coalesce", 4, col(t, "A"), col(t, "B"));
+        Vector co = value("coalesce", 5, col(t, "A"), col(t, "B"));
         assertEquals(" x ", co.asString(0));
         assertEquals("baz", co.asString(1));
+    }
+
+
+    @Test
+    void concatIdentityCombinesPerD86a()
+    {
+        // One distinct missing identity among the operands ⇒ that identity; two ⇒ MIS; none ⇒ the
+        // ordinary concatenation ("" is present and contributes nothing).
+        IDataTable t = MissingCellTables.of("T")
+                .str("A", MissingValue.MIS_A, "a", MissingValue.MIS_A, MissingValue.MIS_A, "", "a")
+                .str("B", "b", MissingValue.MIS_A, MissingValue.MIS_A, MissingValue.MIS, "", "b")
+                .str("C", "c", "c", "c", "c", "", MissingValue.MIS_A).build();
+        Vector two = value("concat", 6, col(t, "A"), col(t, "B"));
+        assertMissing(two, 0, MissingValue.MIS_A); // concat(.A, "b")
+        assertMissing(two, 1, MissingValue.MIS_A); // concat("a", .A)
+        assertMissing(two, 2, MissingValue.MIS_A); // concat(.A, .A)
+        assertMissing(two, 3, MissingValue.MIS); // concat(.A, MIS)
+        assertPresentEmpty(two, 4); // concat("", "") -> "" (present)
+        assertEquals("ab", two.asString(5));
+        Vector three = value("concat", 6, col(t, "A"), col(t, "B"), col(t, "C"));
+        assertMissing(three, 0, MissingValue.MIS_A); // concat(.A, "b", "c")
+        assertMissing(three, 3, MissingValue.MIS); // concat(.A, MIS, "c")
+        assertPresentEmpty(three, 4); // concat("", "", "")
+        assertMissing(three, 5, MissingValue.MIS_A); // concat("a", "b", .A) — the third operand
+    }
+
+
+    @Test
+    void normalizeSpaceMissingAndEmpty()
+    {
+        // normalize_space(«missing») is that missing (D36, identity kept); normalize_space("") is
+        // "" and PRESENT (D34 #1 — it used to answer MIS through the F3 Vector.isMissing fold).
+        IDataTable t = MissingCellTables.strings("X", " a   b ", "", MissingValue.MIS,
+                MissingValue.MIS_A);
+        Vector v = value("normalize_space", 4, col(t, "X"));
+        assertEquals("a b", v.asString(0));
+        assertPresentEmpty(v, 1);
+        assertMissing(v, 2, MissingValue.MIS);
+        assertMissing(v, 3, MissingValue.MIS_A);
+    }
+
+
+    @Test
+    void substringIdentityCombinesPerD86a()
+    {
+        // A missing x, start or length makes substring that missing, identities combined per
+        // D86a; a present "" x stays under the bounds rule (start 1 is past the end ⇒ the computed
+        // MIS).
+        IDataTable t = MissingCellTables.of("T")
+                .str("X", MissingValue.MIS_A, "ABC", MissingValue.MIS_A, "ABC", MissingValue.MIS_A,
+                        "", "ABC")
+                .dbl("S", 1.0, MissingValue.MIS_A, MissingValue.MIS, 1.0, 1.0, 1.0, 1.0)
+                .dbl("L", 2.0, 2.0, 2.0, MissingValue.MIS_A, MissingValue.MIS, 2.0, 2.0).build();
+        Vector two = value("substring", 7, col(t, "X"), col(t, "S"));
+        assertMissing(two, 0, MissingValue.MIS_A); // substring(.A, 1)
+        assertMissing(two, 1, MissingValue.MIS_A); // substring("ABC", .A)
+        assertMissing(two, 2, MissingValue.MIS); // substring(.A, MIS)
+        assertEquals("ABC", two.asString(3));
+        assertMissing(two, 5, MissingValue.MIS); // substring("", 1): bounds rule, computed MIS
+        Vector three = value("substring", 7, col(t, "X"), col(t, "S"), col(t, "L"));
+        assertMissing(three, 3, MissingValue.MIS_A); // substring("ABC", 1, .A)
+        assertMissing(three, 4, MissingValue.MIS); // substring(.A, 1, MIS)
+        assertMissing(three, 5, MissingValue.MIS); // substring("", 1, 2): computed MIS
+        assertEquals("AB", three.asString(6)); // every operand present
     }
 
 
@@ -695,11 +811,12 @@ class BuiltinFunctionsTest
     {
         IDataTable t = MockTable.of().col("A", "x", "", "").col("B", "y", "q", "")
                 .col("C", "z", "r", "").build();
-        // concat/3: missing operands contribute "".
+        // concat/3: every "" here is a PRESENT empty string (D34 #1) and contributes nothing; a
+        // genuinely missing operand is concatIdentityCombinesPerD86a's subject.
         Vector cc = value("concat", 3, col(t, "A"), col(t, "B"), col(t, "C"));
         assertEquals("xyz", cc.asString(0));
-        assertEquals("qr", cc.asString(1)); // A missing -> ""
-        assertEquals("", cc.asString(2)); // all missing -> "" (never missing)
+        assertEquals("qr", cc.asString(1)); // A "" -> contributes nothing
+        assertPresentEmpty(cc, 2); // all "" -> "" (present)
 
         // coalesce/3: first non-missing operand.
         Vector co = value("coalesce", 3, col(t, "A"), col(t, "B"), col(t, "C"));
@@ -751,15 +868,15 @@ class BuiltinFunctionsTest
         assertTrue(value("substring", 1, col(t, "X"), ConstVector.of(2.0), ConstVector.of(1.5))
                 .isMissing(0));
 
-        // substring("", 1, 1) and substring(«missing», 1, 1): the input is judged literally (no
-        // longer pre-treated as missing), but start=1 is already past the end of a length-0 string
-        // (from index 0 >= length 0), so the bounds rule yields MISSING — the actual observed
-        // behaviour. (The function-examples.md "Substring" "" row is corrected separately.)
-        IDataTable e = MockTable.of().col("X", "", (String) null).build();
-        assertTrue(value("substring", 2, col(e, "X"), ConstVector.of(1.0), ConstVector.of(1.0))
-                .isMissing(0), "substring(\"\",1,1) -> missing");
-        assertTrue(value("substring", 2, col(e, "X"), ConstVector.of(1.0), ConstVector.of(1.0))
-                .isMissing(1), "substring(«missing»,1,1) -> missing");
+        // substring("", 1, 1): "" is present (D34 #1) but start=1 is already past the end of a
+        // length-0 string (from index 0 >= length 0), so the bounds rule yields the COMPUTED
+        // missing, MIS. substring(«missing», 1, 1) is that missing, identity kept (D36): MIS
+        // stays MIS and .A stays .A — carried, not computed.
+        IDataTable e = MissingCellTables.strings("X", "", MissingValue.MIS, MissingValue.MIS_A);
+        Vector v = value("substring", 3, col(e, "X"), ConstVector.of(1.0), ConstVector.of(1.0));
+        assertMissing(v, 0, MissingValue.MIS); // substring("",1,1) -> computed MIS
+        assertMissing(v, 1, MissingValue.MIS); // substring(MIS,1,1) -> MIS
+        assertMissing(v, 2, MissingValue.MIS_A); // substring(.A,1,1) -> .A
     }
 
 

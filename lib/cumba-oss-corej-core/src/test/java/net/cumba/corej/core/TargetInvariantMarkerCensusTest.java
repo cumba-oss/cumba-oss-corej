@@ -64,7 +64,7 @@ class TargetInvariantMarkerCensusTest
      * were removed, which is the erosion this test exists to catch. ⚡ It never moves alone:
      * {@link #EXPECTED_FILES} carries the same measurement per file and must be updated with it.
      */
-    private static final int EXPECTED_IN_THIS_REPO = 16;
+    private static final int EXPECTED_IN_THIS_REPO = 15;
 
     /** ⚠ Assembled, not written out — see the class javadoc. */
     private static final String MARKER = "TARGET-" + "INVARIANT" + "(null-free-value-channel)";
@@ -75,8 +75,12 @@ class TargetInvariantMarkerCensusTest
 
     /**
      * ⭐ The exact set of files allowed to carry {@link #MARKER}, each with its own occurrence
-     * count, sorted and repository-relative. Re-derived 2026-09-19: 16 occurrences across these 12
-     * files, all of them {@code .java}, all under this module.
+     * count, sorted and repository-relative. Re-derived 2026-09-19: 16 occurrences across 12 files,
+     * all of them {@code .java}, all under this module. 2026-09-28
+     * ({@code PLAN-case-fold-missing-d36}): 15 across 11 — the {@code BuiltinFunctions} banner
+     * described the string producers' missing-to-{@code ""} fold as the violation under repair, and
+     * that fold is repaired, so the statement went with it rather than being flipped to the target
+     * answer over unchanged code.
      *
      * <p>
      * ⛔ Exact equality against this list — see the class javadoc for why neither a floor nor a
@@ -103,8 +107,6 @@ class TargetInvariantMarkerCensusTest
                     + "/exec/ScalarSemantics.java ×4",
             "lib/cumba-oss-corej-core/src/main/java/net/cumba/corej/core"
                     + "/expr/eval/ComputedVector.java ×1",
-            "lib/cumba-oss-corej-core/src/main/java/net/cumba/corej/core"
-                    + "/expr/eval/spi/BuiltinFunctions.java ×1",
             "lib/cumba-oss-corej-core/src/main/java/net/cumba/corej/core"
                     + "/expr/typed/TypeExpectations.java ×1",
             "lib/cumba-oss-corej-core/src/test/java/net/cumba/corej/core"

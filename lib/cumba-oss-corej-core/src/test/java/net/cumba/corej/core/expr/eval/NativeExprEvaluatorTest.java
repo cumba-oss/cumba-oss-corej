@@ -829,7 +829,9 @@ class NativeExprEvaluatorTest
         assertParity(eq, t);
         assertEquals(bits(0), NativeExprEvaluator.evaluate(px(eq), ctx(t)), "prefix(X,2) == FA");
         // prefix_not_equal_to with prefix:2: fires where the first 2 chars differ from "FA",
-        // INCLUDING the missing row 3 — a missing cell folds to "" and "" differs from "FA".
+        // INCLUDING row 3 — a present "" (D34 #1), whose prefix is "" and differs from "FA". (A
+        // genuinely missing cell would fire too: prefix(«missing», 2) is that missing (D36), and
+        // a missing != a string.)
         //
         // ⚠ This assertion was inverted by EC-49 / Fix #148 (2026-08-04). Until then the native
         // compile intersected the affix-NEQ result with Primitives.nonEmpty(lv), so row 3 was
@@ -842,15 +844,15 @@ class NativeExprEvaluatorTest
         String neq = "prefix(X, 2) != \"FA\"";
         assertParity(neq, t);
         assertEquals(bits(1, 2, 3), NativeExprEvaluator.evaluate(px(neq), ctx(t)),
-                "prefix(X,2) != FA — the missing row 3 folds to \"\" and fires, like every other "
-                        + "negative leaf (Fix #148)");
-        // prefix_is_not_contained_by (NOT_IN surface): empty-string literal fix (A.1 affix) — a
-        // missing cell folds to "" (extracted prefix ""), which is not in the list, so it now
-        // fires; legacy and native move together (parity preserved).
+                "prefix(X,2) != FA — the present \"\" of row 3 has prefix \"\" and fires, like "
+                        + "every other negative leaf (Fix #148)");
+        // prefix_is_not_contained_by (NOT_IN surface): empty-string literal fix (A.1 affix) — the
+        // present "" of row 3 has the extracted prefix "", which is not in the list, so it fires;
+        // legacy and native move together (parity preserved).
         String notIn = "prefix(X, 2) not in [\"FA\", \"AP\"]";
         assertParity(notIn, t);
         assertEquals(bits(2, 3), NativeExprEvaluator.evaluate(px(notIn), ctx(t)),
-                "prefix(X,2) not in [FA, AP] — 'F' fires, '' (missing) folds to '' and fires");
+                "prefix(X,2) not in [FA, AP] — 'F' fires, the present '' has prefix '' and fires");
     }
 
 

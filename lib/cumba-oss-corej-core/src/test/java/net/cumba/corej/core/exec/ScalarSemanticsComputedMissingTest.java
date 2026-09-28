@@ -599,8 +599,20 @@ class ScalarSemanticsComputedMissingTest
      * form. The four-argument default and the three overrides stay, so the channel lost a
      * delegating wrapper and no producer of its own.
      * </p>
+     *
+     * <p>
+     * ⚑ <b>17 → 18 on 2026-09-28, READ:</b> {@code BuiltinFunctions.carrierCell}
+     * ({@code PLAN-case-fold-missing-d36}) — the cell an n-ary string producer ({@code concat},
+     * {@code substring}, {@code prefix}/{@code suffix}) hands through for the D86a-combined
+     * identity of its missing operands: the operand whose own missing it is (the input cell
+     * verbatim, D85c), else {@code ScalarSemantics.computedMissing()} for two collapsed identities.
+     * Never {@code null}; its {@code @Nullable} half is a {@code MissingValue}
+     * ({@code combinedMissing}, {@code null} = every operand present), which is outside this
+     * population by type. The unary producers return the input's {@code TypedValue.cell()} directly
+     * and declare no {@code IDataValue} of their own.
+     * </p>
      */
-    private static final int EXPECTED_VALUE_PRODUCERS = 17;
+    private static final int EXPECTED_VALUE_PRODUCERS = 18;
 
     private static Method declared(Class<?> owner, String name)
     {

@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
+import net.cumba.corej.core.exec.ArithmeticSemantics;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.OperationExecutor;
 import net.cumba.corej.core.exec.ScalarSemantics;
@@ -29,6 +30,8 @@ import net.cumba.corej.core.expr.typed.ExprType.Primitive;
 import net.cumba.corej.core.expr.typed.ExprType.Unknown;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.values.DataValueType;
+import net.cumba.datatable.values.IDataValue;
+import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -70,15 +73,15 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * ⚑ TARGET-INVARIANT(null-free-value-channel) — <b>the per-operator notes below saying "a genuine
- * missing folds to {@code ""}" describe TODAY'S engine truthfully, and each is an instance of the
- * violation under repair.</b> The rule they violate, the three claims it must not be collapsed
- * into, and the condition for promoting it to fact are stated <b>once</b>, in
- * {@link net.cumba.corej.core.exec.ScalarSemantics#computedMissing()} — read it there rather than
- * re-deriving it per function. ⛔ <b>Do not "correct" those notes to the target answer:</b> a
- * comment claiming the rule over code that folds is exactly the shape that let this defect live for
- * weeks, and flipping twenty descriptions is how a target silently becomes a false statement of
- * fact. Change the fold, or leave the note.
+ * <b>A missing input to a string transform is handed through as its own cell</b> (register D36,
+ * {@code PLAN-case-fold-missing-d36}): {@code upper}/{@code lower}, {@code trim},
+ * {@code normalize_space}, {@code prefix}/{@code suffix}, {@code substring} and {@code concat}
+ * answer the input's {@link MissingValue} — identity kept ({@code .A} stays {@code .A}), several
+ * distinct identities collapsing to {@code MIS} per D86a ({@link #combinedMissing} /
+ * {@link #carrierCell}) — never {@code ""}. An empty string is a present value and stays {@code ""}
+ * (D34 #1); the boundary is {@link TypedValue#missing()}, never the F3 {@code Vector.isMissing}
+ * fold. The untyped {@link ComputedVector} carries an {@code IDataValue} row as a typed cell, which
+ * is what lets a producer return the cell.
  * </p>
  */
 public final class BuiltinFunctions implements FunctionProvider
@@ -159,9 +162,15 @@ public final class BuiltinFunctions implements FunctionProvider
         value(fns, "normalize_space", (run, args) ->
         {
             Vector x = args.get(0);
-            return new ComputedVector(run.rowCount(), DataValueType.STRING,
-                    row -> x.isMissing(row) ? null
-                            : x.asString(row).strip().replaceAll("\\s+", " "));
+            // normalize_space(«missing») is that missing (D36, identity kept);
+            // normalize_space("") = "" (D34 #1 — the boundary is TypedValue.missing(), not the F3
+            // Vector.isMissing fold, which used to turn "" into MIS here).
+            return new ComputedVector(run.rowCount(), DataValueType.STRING, row ->
+            {
+                TypedValue tv = x.value(row);
+                return tv.missing() != null ? tv.cell()
+                        : tv.cell().getValueAsString().strip().replaceAll("\\s+", " ");
+            });
         });
         // char(x): the Unicode code point of the first character of x, as a LONG. A missing/"" cell
         // ⇒ missing, so char(value()) <= 32 (the leading-space test) does not fire on a blank on
@@ -285,13 +294,18 @@ public final class BuiltinFunctions implements FunctionProvider
         value(fns, "trim", (run, args) ->
         {
             Vector x = args.get(0);
-            // trim("") = "" and trim(«missing») = "": a genuine missing folds to "" and is
-            // stripped literally (see function-examples.md "Case & whitespace").
-            return new ComputedVector(run.rowCount(), DataValueType.STRING,
-                    row -> (x.isMissing(row) ? "" : x.asString(row)).strip());
+            // trim(«missing») is that missing (D36, identity kept); trim("") = "" (D34 #1).
+            return new ComputedVector(run.rowCount(), DataValueType.STRING, row ->
+            {
+                TypedValue tv = x.value(row);
+                return tv.missing() != null ? tv.cell() : tv.cell().getValueAsString().strip();
+            });
         });
-        // concat(a, b[, c]): string concatenation; a missing operand contributes the empty string,
-        // so the result is never missing (empty when all are). coalesce(a, b[, c]): the first
+        // concat(a, b[, c]): string concatenation. A missing operand makes the result missing
+        // (register D36 names concat: one missing part poisons the result), with the identity
+        // combined per D86a — one distinct identity ⇒ that identity, two or more ⇒ MIS. A present
+        // "" contributes nothing, and an ABSENT char column is "" (D34 #3), so an absent operand
+        // still contributes nothing. coalesce(a, b[, c]): the first
         // operand that is neither missing nor "" — resolved — else missing. ⚠ Vector.isMissing is
         // empty()'s scalar predicate (DataValueSupport.isEmptyOrMissing), so an absent char
         // column, which folds to "" (D34 #3), is skipped and the next operand is consulted; a
@@ -305,9 +319,19 @@ public final class BuiltinFunctions implements FunctionProvider
                     Vector a = args.get(0);
                     Vector b = args.get(1);
                     Vector c = args.get(2);
-                    return new ComputedVector(run.rowCount(), DataValueType.STRING,
-                            row -> orEmpty(a, row) + orEmpty(b, row)
-                                    + (c == null ? "" : orEmpty(c, row)));
+                    return new ComputedVector(run.rowCount(), DataValueType.STRING, row ->
+                    {
+                        TypedValue ta = a.value(row);
+                        TypedValue tb = b.value(row);
+                        TypedValue tc = c == null ? null : c.value(row);
+                        MissingValue missing = combinedMissing(ta, tb, tc);
+                        if (missing != null)
+                        {
+                            return carrierCell(missing, ta, tb, tc);
+                        }
+                        String s = ta.cell().getValueAsString() + tb.cell().getValueAsString();
+                        return tc == null ? s : s + tc.cell().getValueAsString();
+                    });
                 }));
         fns.add(new FunctionDescriptor("coalesce",
                 List.of(p("a"), p("b"), opt("c", Unknown.UNKNOWN)), FunctionKind.VALUE,
@@ -332,11 +356,12 @@ public final class BuiltinFunctions implements FunctionProvider
 
         // -- VALUE substring (native-only; 1-based start, SAS/CDISC convention) ---
         // substring(x, start): the suffix of x beginning at the 1-based character position `start`.
-        // substring(x, start, length): at most `length` characters from that position. A missing x
-        // folds to "" and is judged literally; a missing/non-integral start (or length), a
-        // start < 1, or a start beyond x's length all
-        // yield a MISSING result. A length <= 0 yields the empty string; a length running past the
-        // end of x is clamped to x's end (no exception).
+        // substring(x, start, length): at most `length` characters from that position. A missing
+        // operand (x, start or length) makes the result that missing, identity combined per D86a
+        // (D36; one distinct identity ⇒ that identity, two or more ⇒ MIS); a non-integral start
+        // (or length), a start < 1, or a start beyond x's length yield the computed missing MIS.
+        // A length <= 0 yields the empty string; a length running past the end of x is clamped
+        // to x's end (no exception).
         fns.add(new FunctionDescriptor("substring",
                 List.of(p("x"), p("start", Primitive.NUMBER), opt("length", Primitive.NUMBER)),
                 FunctionKind.VALUE, (run, args) ->
@@ -519,10 +544,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // -- VALUE affix substrings (prefix / suffix) -------------------------
         // prefix(x, n) / suffix(x, n): the first/last n characters of x, raised from the legacy
         // prefix_/suffix_(not_)equal_to / _is_(not_)contained_by comparison leaves. Semantics
-        // affix extraction: a value shorter than n (or a null /
-        // non-positive / non-integral n) yields the WHOLE string; a missing x folds to "" (see
-        // affixValue) — matching the legacy missing→"" fold so an affix compare agrees across
-        // lanes.
+        // affix extraction: a value shorter than n (or a non-positive / non-integral n) yields
+        // the WHOLE string; a missing x or a missing n yields that missing, identity combined per
+        // D86a (D36; see affixValue).
         fns.add(new FunctionDescriptor("prefix", List.of(p("x"), p("n", Primitive.NUMBER)),
                 FunctionKind.VALUE,
                 (run, args) -> affixValue(run.rowCount(), args.get(0), args.get(1), true)));
@@ -727,13 +751,6 @@ public final class BuiltinFunctions implements FunctionProvider
     }
 
 
-    /** The string form of {@code x} at {@code row}, or the empty string when missing. */
-    private static String orEmpty(Vector x, int row)
-    {
-        return x.isMissing(row) ? "" : x.asString(row);
-    }
-
-
     /**
      * Per-row {@code split_by(x, delimiter)}: the token list from splitting {@code x} on the
      * <em>literal</em> {@code delimiter} (quoted so it is never a regex), keeping trailing empty
@@ -775,8 +792,7 @@ public final class BuiltinFunctions implements FunctionProvider
             // present blank folds to "". An ABSENT column arrives already folded to its type
             // default by the operand plan ("" for character, the all-missing constant — i.e.
             // MIS — for a numeric expectation), the same rule evalDistinctTuples applies.
-            net.cumba.datatable.values.MissingValue m = TypedValue
-                    .missingIdentityOf(arg.value(row).cell());
+            MissingValue m = TypedValue.missingIdentityOf(arg.value(row).cell());
             key.add(m != null ? new Primitives.MissingMember(m)
                     : arg.isMissing(row) ? "" : arg.asString(row));
         }
@@ -805,17 +821,24 @@ public final class BuiltinFunctions implements FunctionProvider
 
     /**
      * Per-row {@code prefix(x, n)} / {@code suffix(x, n)}: the first/last {@code n} characters of
-     * {@code x}, with the affix-extraction edge semantics (shorter-than-n / null / non-positive /
-     * non-integral n ⇒ whole string). Missing ⇒ missing.
+     * {@code x}, with the affix-extraction edge semantics (shorter-than-n / non-positive /
+     * non-integral n ⇒ whole string). A missing {@code x} or a missing {@code n} ⇒ that missing,
+     * the operand's own cell handed through (D36, identity combined per D86a);
+     * {@code prefix("", n)} is {@code ""} (D34 #1).
      */
     private static ComputedVector affixValue(int rowCount, Vector x, Vector n, boolean isPrefix)
     {
         return new ComputedVector(rowCount, DataValueType.STRING, row ->
         {
-            // prefix("", n) = "" and prefix(«missing», n) = "": a genuine missing folds to "",
-            // then the affix is extracted literally (see function-examples.md "Affix extraction").
+            TypedValue tx = x.value(row);
+            TypedValue tn = n.value(row);
+            MissingValue missing = combinedMissing(tx, tn, null);
+            if (missing != null)
+            {
+                return carrierCell(missing, tx, tn, null);
+            }
             Integer len = integral(n, row);
-            String s = x.isMissing(row) ? "" : x.asString(row);
+            String s = tx.cell().getValueAsString();
             return isPrefix ? Primitives.extractPrefix(s, len) : Primitives.extractSuffix(s, len);
         });
     }
@@ -823,24 +846,32 @@ public final class BuiltinFunctions implements FunctionProvider
 
     /**
      * Per-row {@code substring} with a 1-based {@code start} (SAS/CDISC convention) and an optional
-     * {@code length}. A missing {@code x} folds to {@code ""} and is judged literally. Returns
-     * {@code null} (missing) when {@code start} is missing / non-integral / {@code < 1} / past the
-     * end of {@code x}, or (when present) {@code length} is missing / non-integral. A
-     * {@code length <= 0} yields the empty string; a {@code length} running past the end of
-     * {@code x} is clamped.
+     * {@code length}. A missing operand — {@code x}, {@code start} or {@code length} — yields the
+     * cell of {@link #carrierCell} for its {@link #combinedMissing} identity (D36 with the D86a
+     * identity rule), as the operand's own cell. Returns {@code null} (the computed missing,
+     * {@code MIS}) when a present {@code start} is non-integral / {@code < 1} / past the end of
+     * {@code x}, or a present {@code length} is non-integral. A {@code length <= 0} yields the
+     * empty string; a {@code length} running past the end of {@code x} is clamped.
+     * {@code substring("", 1)} is a start past the end of a length-0 string, so it stays the
+     * computed missing (the documented bounds rule, unchanged).
      */
-    private static @Nullable String substring(Vector x, Vector start, @Nullable Vector length,
+    private static @Nullable Object substring(Vector x, Vector start, @Nullable Vector length,
             int row)
     {
+        TypedValue tx = x.value(row);
+        TypedValue tstart = start.value(row);
+        TypedValue tlen = length == null ? null : length.value(row);
+        MissingValue missing = combinedMissing(tx, tstart, tlen);
+        if (missing != null)
+        {
+            return carrierCell(missing, tx, tstart, tlen);
+        }
         Integer startIdx = integral(start, row);
         if (startIdx == null || startIdx < 1)
         {
             return null;
         }
-        // substring("", …) and substring(«missing», …): a genuine missing folds to "" and is then
-        // subject to the unchanged bounds rules below (start past the end ⇒ missing). See
-        // function-examples.md "Substring".
-        String s = x.isMissing(row) ? "" : x.asString(row);
+        String s = tx.cell().getValueAsString();
         int from = startIdx - 1; // 1-based -> 0-based
         if (from >= s.length())
         {
@@ -980,7 +1011,8 @@ public final class BuiltinFunctions implements FunctionProvider
             // is NOT a way of saying missing — nothing is ever null (owner, 2026-09-18); one here
             // is a defect in the list's producer. It is passed through only so the fold does not
             // disguise it as ""; PLAN-no-null-list-elements makes the producers null-free.
-            Object raw = x.value(row).resolved();
+            TypedValue tv = x.value(row);
+            Object raw = tv.resolved();
             if (raw instanceof Collection<?> col)
             {
                 List<@Nullable Object> folded = new ArrayList<>(col.size());
@@ -996,11 +1028,55 @@ public final class BuiltinFunctions implements FunctionProvider
                 }
                 return folded;
             }
-            // upper("") = "" and upper(«missing») = "": a genuine missing folds to "" and is
-            // case-folded literally (see function-examples.md "Case & whitespace").
-            String s = x.isMissing(row) ? "" : x.asString(row);
+            // upper(«missing») is that missing (register D36, identity kept — D85c: the input's
+            // own cell is handed through); upper("") = "" (D34 #1, an empty string is present).
+            // The boundary is TypedValue.missing(), never Vector.isMissing — the latter is the F3
+            // fold and would make upper("") missing.
+            if (tv.missing() != null)
+            {
+                return tv.cell();
+            }
+            String s = tv.cell().getValueAsString();
             return toLower ? s.toLowerCase(Locale.ROOT) : s.toUpperCase(Locale.ROOT);
         });
+    }
+
+
+    /**
+     * D86a for an n-ary string producer: the identity the operands' missings combine to
+     * ({@link ArithmeticSemantics#combineIdentities}, pairwise — associative, so this is the n-ary
+     * rule verbatim), or {@code null} when every operand is present — the same convention as
+     * {@link TypedValue#missing()}. The third operand is optional ({@code null} when the call
+     * omitted it). A {@link MissingValue} identity, not a cell: the cell that carries it is
+     * {@link #carrierCell}'s, which is never {@code null}.
+     */
+    private static @Nullable MissingValue combinedMissing(TypedValue a, TypedValue b,
+            @Nullable TypedValue c)
+    {
+        MissingValue combined = ArithmeticSemantics.combineIdentities(a.missing(), b.missing());
+        return c == null ? combined : ArithmeticSemantics.combineIdentities(combined, c.missing());
+    }
+
+
+    /**
+     * The cell a string producer hands through for a {@link #combinedMissing} identity: the operand
+     * whose own missing it is (identity kept, D85c — the input's cell verbatim), or
+     * {@link ScalarSemantics#computedMissing()} when two distinct identities collapsed to
+     * {@code MIS}. Never {@code null}: an {@code IDataValue}-returning declaration in this module
+     * is a value producer, and {@code ScalarSemanticsComputedMissingTest} counts it.
+     */
+    private static IDataValue carrierCell(MissingValue combined, TypedValue a, TypedValue b,
+            @Nullable TypedValue c)
+    {
+        if (a.missing() == combined)
+        {
+            return a.cell();
+        }
+        if (b.missing() == combined)
+        {
+            return b.cell();
+        }
+        return c != null && c.missing() == combined ? c.cell() : ScalarSemantics.computedMissing();
     }
 
 
