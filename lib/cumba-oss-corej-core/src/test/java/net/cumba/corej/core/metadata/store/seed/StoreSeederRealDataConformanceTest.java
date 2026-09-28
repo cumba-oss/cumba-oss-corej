@@ -17,6 +17,7 @@ import net.cumba.corej.core.metadata.store.RealCorpusLocator;
 import net.cumba.corej.core.metadata.store.StoreProvenance;
 import net.cumba.web.api.cache.GzipFileApiCache;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -37,11 +38,11 @@ import org.junit.jupiter.api.io.TempDir;
  * </p>
  *
  * <p>
- * ⭐ The pickle-seeded store is seeded ONCE per class ({@link #pickleSeed}) and read by both tests
- * (PLAN-fast-gate-tests F4). Both used to seed it separately, with the identical seeder, source and
- * options, so the second seed was a third unpickle of the whole corpus that could only produce the
- * same bytes; the first test's byte comparison against the web-api store now covers the very file
- * the second test reads.
+ * ⭐ The pickle-seeded store is seeded ONCE per class ({@link #pickleSeed(Path)}) and read by both
+ * tests (PLAN-fast-gate-tests F4). Both used to seed it separately, with the identical seeder,
+ * source and options, so the second seed was a third unpickle of the whole corpus that could only
+ * produce the same bytes; the first test's byte comparison against the web-api store now covers the
+ * very file the second test reads.
  * </p>
  */
 class StoreSeederRealDataConformanceTest
@@ -79,8 +80,11 @@ class StoreSeederRealDataConformanceTest
     @TempDir
     private static Path sharedTemp;
 
-    /** The pickle seed, made on first use by {@link #pickleSeed}; {@code null} until then. */
-    private static @Nullable PickleSeed pickleSeed;
+    /**
+     * The pickle seed, made on first use by {@link #pickleSeed(Path)}; {@code null} until then and
+     * again after the class ({@link #forgetSeed()}).
+     */
+    private static @Nullable PickleSeed seeded;
 
     /**
      * The pickle-seeded store and the seeder's report on it.
@@ -235,16 +239,28 @@ class StoreSeederRealDataConformanceTest
      */
     private static synchronized PickleSeed pickleSeed(Path aRealPickles) throws IOException
     {
-        PickleSeed seed = pickleSeed;
+        PickleSeed seed = seeded;
         if (seed == null)
         {
             Path store = sharedTemp.resolve("from-pickles.zip");
             StoreSeedReport report = new PickleStoreSeeder(new LocalPickleSource(aRealPickles))
                     .seed(StoreSeedOptions.of(store).withProvenanceOverride(FIXED_PROVENANCE));
             seed = new PickleSeed(store, report);
-            pickleSeed = seed;
+            seeded = seed;
         }
         return seed;
+    }
+
+
+    /**
+     * Drops the seed with the class. The static {@link #sharedTemp} is deleted after the class,
+     * while this static holder would survive a same-JVM rerun (an IDE re-run, a second launcher
+     * session) and hand it a path that no longer exists.
+     */
+    @AfterAll
+    static synchronized void forgetSeed()
+    {
+        seeded = null;
     }
 
 

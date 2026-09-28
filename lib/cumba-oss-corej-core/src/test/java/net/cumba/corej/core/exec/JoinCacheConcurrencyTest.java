@@ -1,6 +1,7 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -19,10 +20,7 @@ import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
-import net.cumba.datatable.DataTableColumnMeta;
-import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -59,10 +57,24 @@ import org.junit.jupiter.api.Timeout;
  * {@link DatasetLookup} that is the SAME instance across waves, and the lazily built join map
  * inside it ({@code ensureJoinMap}) is read concurrently by every worker. ⚠ The identity is
  * observed only after each wave, so these cases catch a lookup that is replaced or evicted between
- * waves. They would NOT catch a duplicate build during the cold-start race itself (a get-then-put
- * regression whose last put wins still leaves one stable instance); catching that needs a build
- * counter for {@code DatasetLookup} / {@code SharedIndexCache.getOrBuild}, which still does not
- * exist — {@code keyMatchIndexBuildCount()} counts key-match indexes only.
+ * waves. They also assert {@code lookupIndexBuildCount() == 1} (the counter of
+ * {@code SharedIndexCache.getOrBuild} builds, since {@code PLAN-identity-safe-join-caches}): the
+ * shared lookup index behind that {@code DatasetLookup} is built once per cache however many
+ * workers race for it — best-effort in the same sense as above (a tiny ADSL, no parked build). ⚠
+ * What that still cannot catch: a duplicate {@code DatasetLookup} built over the one shared index
+ * (a get-then-put regression in {@code JoinCache.getOrBuildLookup} whose last put wins would leave
+ * one stable instance and still count one index build, because the index cache is atomic on its
+ * own); there is no build counter for {@code DatasetLookup} itself.
+ * </p>
+ *
+ * <p>
+ * The fixtures are real {@code ColumnCachedDataTable}s over {@code CachedDataTableColumn}s
+ * ({@link RealTables}), the shape every loaded dataset has, so the join-key reads take the
+ * production {@code KeyCellReader.Direct} path (asserted per fixture), not the generic one. Not
+ * {@code MockTable} (PLAN-fast-gate-tests F3): its cells are Mockito mocks, and a shared mock
+ * records every call from every worker under Mockito's own locking — measured 2026-09-28, ~95 % of
+ * this class's run time (35–50 s → ~1 s), and that locking partly serialised the "concurrent"
+ * workers, which can hide the very race this class exists to find.
  * </p>
  */
 // Test awaits pool/executor termination explicitly; the per-task Future is intentionally ignored.
@@ -219,7 +231,8 @@ class JoinCacheConcurrencyTest
         assertNotNull(baselineCache.get(ADSL_LOOKUP_KEY),
                 "the SUPP-named entry must be served by the JoinCache's key-join branch");
 
-        JoinCache cache = new JoinCache(new JoinCache.SharedIndexCache());
+        JoinCache.SharedIndexCache shared = new JoinCache.SharedIndexCache();
+        JoinCache cache = new JoinCache(shared);
         List<RuleExecutionResult> firstWave = runParallel(THREADS, 1,
                 () -> RuleRunnerCalls.execute(rule, primary, resolver, "AD", null, cache));
         assertEquals(THREADS, firstWave.size(), "every worker must report");
@@ -239,6 +252,9 @@ class JoinCacheConcurrencyTest
         }
         assertSame(built, cache.get(ADSL_LOOKUP_KEY),
                 "a warm JoinCache must keep serving the lookup the cold-start wave built");
+        // Best-effort, and blind to a duplicate DatasetLookup over the one index (class javadoc).
+        assertEquals(1, shared.lookupIndexBuildCount(),
+                "the shared SUPPADSL lookup index must be built once across both waves");
     }
 
 
@@ -253,7 +269,8 @@ class JoinCacheConcurrencyTest
         IDataTable adsl = makeAdsl();
         DatasetResolver resolver = name -> CACHED_JOIN_DATASET.equals(name) ? adsl : null;
 
-        JoinCache cache = new JoinCache(new JoinCache.SharedIndexCache());
+        JoinCache.SharedIndexCache shared = new JoinCache.SharedIndexCache();
+        JoinCache cache = new JoinCache(shared);
 
         Rule a = buildCachedJoinRule();
         a.getCore().setId("CORE-A");
@@ -288,6 +305,9 @@ class JoinCacheConcurrencyTest
             }
             assertSame(first, current, "wave " + i + " must reuse the one cached DatasetLookup");
         }
+        // Best-effort, and blind to a duplicate DatasetLookup over the one index (class javadoc).
+        assertEquals(1, shared.lookupIndexBuildCount(),
+                "two rules with the same {SUPPADSL, [USUBJID]} entry share one lookup index");
     }
 
     // ------------------------------------------------------------------
@@ -315,99 +335,29 @@ class JoinCacheConcurrencyTest
         String[] trtp = new String[rows];
         Arrays.setAll(usubjid, i -> subjects[i % subjects.length]);
         Arrays.fill(trtp, "PLACEBO");
-        return new StringTable("ADLB", new String[]
-        {
-                "USUBJID", "TRTP"
-        }, usubjid, trtp);
+        return direct(RealTables.of("ADLB").str("USUBJID", usubjid).str("TRTP", trtp).build());
     }
 
 
     private static IDataTable makeAdsl()
     {
-        return new StringTable("ADSL", new String[]
-        {
-                "USUBJID", "TRT01P"
-        }, new String[]
-        {
-                "SUBJ01", "SUBJ02", "SUBJ03", "SUBJ04"
-        }, new String[]
-        {
-                "PLACEBO", "ACTIVE", "PLACEBO", "PLACEBO"
-        });
+        return direct(RealTables.of("ADSL").str("USUBJID", "SUBJ01", "SUBJ02", "SUBJ03", "SUBJ04")
+                .str("TRT01P", "PLACEBO", "ACTIVE", "PLACEBO", "PLACEBO").build());
     }
+
 
     /**
-     * A minimal <b>real</b> {@link IDataTable} over character columns: the testkit's
-     * {@code SyntheticDataTable} pattern, with caller-chosen cells instead of a value cycle. Every
-     * other accessor is an {@code IDataTable} default, so a cell reaches the engine exactly as a
-     * real character buffer hands it over ({@code getDataValue} → {@code DataValueSupport}).
-     * <p>
-     * ⚠ Deliberately NOT {@code MockTable} (PLAN-fast-gate-tests F3). Its cells are Mockito mocks,
-     * and a shared mock records every call from every worker under Mockito's own locking: measured
-     * 2026-09-28, ~95 % of this class's run time was spent there (35–50 s → ~1 s), and that locking
-     * partly serialised the "concurrent" workers — a mock can hide the very race this class exists
-     * to find. This table is immutable after construction, so the workers share it without any
-     * synchronisation of its own.
-     * </p>
+     * Guards the fixture's point: its key column must be read the way a loaded dataset's is,
+     * through {@code KeyCellReader.Direct}. Were the fixture ever built as some other table class,
+     * every case here would silently gate the generic path instead.
      */
-    private static final class StringTable implements IDataTable
+    private static IDataTable direct(IDataTable aTable)
     {
-
-        private final DataTableMeta meta;
-
-        private final String[][] cells; // [column][row]
-
-        private final int rows;
-
-        StringTable(String aName, String[] aColumnNames, String[]... aColumns)
-        {
-            if (aColumnNames.length != aColumns.length || aColumns.length == 0)
-            {
-                throw new IllegalArgumentException("one value array per column name");
-            }
-            rows = aColumns[0].length;
-            cells = new String[aColumns.length][];
-            DataTableColumnMeta[] colMetas = new DataTableColumnMeta[aColumns.length];
-            for (int c = 0; c < aColumns.length; c++)
-            {
-                if (aColumns[c].length != rows)
-                {
-                    throw new IllegalArgumentException("column " + aColumnNames[c] + " has "
-                            + aColumns[c].length + " rows, expected " + rows);
-                }
-                cells[c] = aColumns[c].clone();
-                colMetas[c] = DataTableColumnMeta.builder().name(aColumnNames[c]).index(c)
-                        .type(DataValueType.STRING).build();
-            }
-            meta = DataTableMeta.builder().name(aName).label(aName).rowCount(rows)
-                    .totalRowCount(rows).columns(colMetas).build();
-        }
-
-
-        @Override
-        public DataTableMeta getMetaData()
-        {
-            return meta;
-        }
-
-
-        @Override
-        public long getRowCount()
-        {
-            return rows;
-        }
-
-
-        @Override
-        public Object getValue(long aRow, int aColumn)
-        {
-            if (aRow < 0 || aRow >= rows)
-            {
-                throw new IndexOutOfBoundsException("row " + aRow + " outside [0, " + rows + ")");
-            }
-            return cells[aColumn][(int) aRow];
-        }
+        assertInstanceOf(KeyCellReader.Direct.class, KeyCellReader.of(aTable, 0),
+                "the fixture's USUBJID must take the production Direct key-cell read");
+        return aTable;
     }
+
 
     private static Rule buildJoinRule()
     {
