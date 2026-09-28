@@ -727,7 +727,10 @@ public final class StageBChecker
     {
         for (String column : filterColumns)
         {
-            if (rightColumns.contains(column))
+            // A column-name match, so ignoring letter case (owner ruling 2026-09-28, register
+            // CIT §1): a filter on VISITNUM binds to a joined dataset's visitnum, exactly as the
+            // filter's own evaluation (DataTableMeta.getColumnIndex) reads it.
+            if (containsIgnoreCase(rightColumns, column))
             {
                 continue;
             }
@@ -745,6 +748,23 @@ public final class StageBChecker
                                 + " in Requirements.Variables to skip instead (D89)"));
             }
         }
+    }
+
+
+    private static boolean containsIgnoreCase(Set<String> columns, String column)
+    {
+        if (columns.contains(column))
+        {
+            return true;
+        }
+        for (String candidate : columns)
+        {
+            if (candidate.equalsIgnoreCase(column))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
 

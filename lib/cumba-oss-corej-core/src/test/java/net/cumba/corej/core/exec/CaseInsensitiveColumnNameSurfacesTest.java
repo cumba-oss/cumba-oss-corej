@@ -1,0 +1,314 @@
+package net.cumba.corej.core.exec;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import net.cumba.corej.core.metadata.ScopeClassLadder;
+import net.cumba.corej.core.model.Operation;
+import net.cumba.datatable.IDataTable;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Test;
+
+/**
+ * The column-name surfaces of the {@code exec} package that still compared a name case-SENSITIVELY
+ * after the 2026-09-28 ruling (owner: <i>"Case-insensitive everywhere"</i>,
+ * {@code PLAN-case-insensitive-templates}, register {@code CIT §1}), found by review round 1 and by
+ * the fix lane's sweep. Every test runs on a <b>lowercase-named</b> column — the SAS-export shape —
+ * and each one fails on the case-sensitive comparison it guards.
+ *
+ * <p>
+ * Mockito-free: {@link RealTables} builds real column-cached tables, {@link StubMetadataProvider}
+ * and {@link ClassOnlyProvider} are small real providers.
+ * </p>
+ */
+class CaseInsensitiveColumnNameSurfacesTest
+{
+
+    private static final DatasetResolver NO_RESOLVER = _ -> null;
+
+    private static Operation op(String id, String operator)
+    {
+        Operation op = new Operation();
+        op.setId(id);
+        op.setOperator(operator);
+        return op;
+    }
+
+
+    private static DatasetResolver.WithInventory inventory(Map<String, IDataTable> byName)
+    {
+        return new DatasetResolver.WithInventory()
+        {
+
+            @Override
+            public @Nullable IDataTable resolve(String name)
+            {
+                return byName.get(name);
+            }
+
+
+            @Override
+            public Set<String> availableDatasets()
+            {
+                return byName.keySet();
+            }
+        };
+    }
+
+    // -- column_series_metadata: the un-numbered base column -------------------------------------
+
+
+    /**
+     * {@code CDISC-SEND-0119} shape: the base {@code COVAL} plus its numbered continuations. A
+     * lowercase {@code coval} is the base (suffix 0), so {@code coval} + {@code coval2} is a gap —
+     * the check fires. Compared case-sensitively the base was not recognised, only {@code coval2}
+     * was a member, and "fewer than two members" answered {@code false}.
+     */
+    @Test
+    void columnSeriesMetadataRecognisesALowercaseBaseColumn()
+    {
+        IDataTable co = RealTables.of("CO").str("coval", "a").str("coval2", "c").build();
+        Operation series = op("$s", "column_series_metadata");
+        series.setNamePattern("^COVAL\\d+$");
+        series.setName("COVAL");
+
+        Object result = OperationExecutorCalls.executeOne(series, co, NO_RESOLVER, null,
+                new HashMap<>());
+
+        assertEquals(true, result, "coval is the base (0), coval2 is 2 — the gap at 1 fires");
+    }
+
+
+    /** Negative control: the complete lowercase series stays quiet. */
+    @Test
+    void columnSeriesMetadataCompleteLowercaseSeriesDoesNotFire()
+    {
+        IDataTable co = RealTables.of("CO").str("coval", "a").str("coval1", "b").str("coval2", "c")
+                .build();
+        Operation series = op("$s", "column_series_metadata");
+        series.setNamePattern("^COVAL\\d+$");
+        series.setName("COVAL");
+
+        assertEquals(false,
+                OperationExecutorCalls.executeOne(series, co, NO_RESOLVER, null, new HashMap<>()),
+                "0, 1, 2 contiguous ⇒ complete");
+    }
+
+    // -- StandardVariableSelector: natural_key_variables / get_dataset_filtered_variables --------
+
+
+    /**
+     * The Library's {@code VISITNUM} / {@code LBSPEC} are the dataset's {@code visitnum} /
+     * {@code lbspec}: they are selected, and under the dataset's OWN spelling — the name every
+     * later read of them resolves ({@code RecordKeyResolver.present} does the same). Compared
+     * case-sensitively the selection was empty.
+     */
+    @Test
+    void naturalKeyVariablesSelectsLowercaseColumnsUnderTheirOwnSpelling()
+    {
+        IDataTable lb = RealTables.of("LB").str("usubjid", "U1").str("visitnum", "1")
+                .str("lbspec", "BLOOD").str("lbtestcd", "ALT").build();
+        StubMetadataProvider library = new StubMetadataProvider()
+                .variable("LB", Map.of("name", "USUBJID", "role", "Identifier"))
+                .variable("LB", Map.of("name", "VISITNUM", "role", "Timing"))
+                .variable("LB", Map.of("name", "--SPEC", "role", "Record Qualifier"))
+                .variable("LB", Map.of("name", "--TESTCD", "role", "Topic"))
+                .variable("LB", Map.of("name", "--ORRES", "role", "Result Qualifier"));
+
+        Map<String, Object> vars = OperationExecutorCalls
+                .execute(List.of(op("$nk", "natural_key_variables")), lb, NO_RESOLVER, library);
+
+        assertEquals(List.of("visitnum", "lbspec"), vars.get("$nk"),
+                "Timing + Record Qualifier present in any case, in the dataset's spelling; "
+                        + "Identifier / Topic excluded, the absent --ORRES dropped");
+    }
+
+    // -- AP datasets: APID / DOMAIN looked up as column names ------------------------------------
+
+
+    /** A SAS-exported {@code aplb} carrying {@code apid} has the AP suffix {@code LB}. */
+    @Test
+    void apSuffixRecognisesALowercaseApidColumn()
+    {
+        IDataTable aplb = RealTables.of("APLB").str("apid", "P1").str("domain", "APLB").build();
+
+        assertEquals("LB", OperationExecutor.apSuffixOf(aplb, "APLB"));
+    }
+
+
+    /** Negative control: without an APID column in any case there is no AP suffix. */
+    @Test
+    void apSuffixIsEmptyWithoutAnApidColumn()
+    {
+        IDataTable aplb = RealTables.of("APLB").str("usubjid", "U1").str("domain", "APLB").build();
+
+        assertEquals("", OperationExecutor.apSuffixOf(aplb, "APLB"));
+    }
+
+
+    /**
+     * The AP-inherit tier of the class ladder: a lowercase {@code apid} / {@code domain} AP dataset
+     * inherits its parent's class ({@code APLB} → {@code LB}'s). Compared case-sensitively the
+     * inherit never ran and the class stayed undetermined.
+     */
+    @Test
+    void scopeClassLadderInheritsTheParentClassForALowercaseApDataset()
+    {
+        IDataTable aplb = RealTables.of("APLB").str("apid", "P1").str("domain", "APLB").build();
+        IDataTable lb = RealTables.of("LB").str("usubjid", "U1").str("domain", "LB").build();
+
+        String className = ScopeClassLadder.classOf(new ClassOnlyProvider("LB", "FINDINGS"), "APLB",
+                "APLB", aplb, inventory(Map.of("LB", lb)));
+
+        assertEquals("FINDINGS", className);
+    }
+
+    // -- The SUPP-QNAM pivot: a QNAM names a variable --------------------------------------------
+
+
+    /**
+     * {@code AE.AETRTEM} delivered through {@code SUPPAE.QNAM} is found when the QNAM cell spells
+     * it in lower case — on the shared scan, and so on both the Check's dotted {@code exists} and
+     * the requirement gate's {@link ScopeVariableSource#existsViaSuppQnam}.
+     */
+    @Test
+    void suppQnamPivotMatchesTheQualifierIgnoringCase()
+    {
+        IDataTable suppae = RealTables.of("SUPPAE").str("USUBJID", "U1").str("RDOMAIN", "AE")
+                .str("QNAM", "aetrtem").str("QVAL", "Y").build();
+        IDataTable adae = RealTables.of("ADAE").str("USUBJID", "U1").build();
+
+        assertTrue(OperatorRegistry.existsInSuppQnam(suppae, "AETRTEM"), "shared scan");
+        ScopeVariableSource source = ScopeVariableSource.of(inventory(Map.of("SUPPAE", suppae)),
+                adae);
+        assertTrue(source != null && source.existsViaSuppQnam("AE", "AETRTEM"),
+                "requirement gate's pivot");
+        assertFalse(OperatorRegistry.existsInSuppQnam(suppae, "AEREL"),
+                "negative control: a QNAM the table does not carry");
+    }
+
+
+    /**
+     * {@code supp_qnam_present(domain="SUPPPC", key_value="PCCALCN")} — the corpus shape — joins
+     * the supplemental row whose QNAM spells the qualifier in lower case.
+     */
+    @Test
+    void suppQnamPresentMatchesTheQnamIgnoringCase()
+    {
+        IDataTable pc = RealTables.of("PC").str("USUBJID", "U1").str("PCSEQ", "1").build();
+        IDataTable supppc = RealTables.of("SUPPPC").str("USUBJID", "U1").str("RDOMAIN", "PC")
+                .str("IDVAR", "PCSEQ").str("IDVARVAL", "1").str("QNAM", "pccalcn").str("QVAL", "Y")
+                .build();
+        Operation present = op("$p", "supp_qnam_present");
+        present.setDomain("SUPPPC");
+        present.setKeyValue("PCCALCN");
+
+        Object result = OperationExecutorCalls.executeOne(present, pc,
+                name -> "SUPPPC".equals(name) ? supppc : null, null, new HashMap<>());
+
+        GroupedResult grouped = assertInstanceOf(GroupedResult.class, result);
+        assertEquals(1, grouped.results().size(), "the lowercase QNAM row is joined");
+        assertTrue(grouped.results().containsValue(true));
+    }
+
+    // -- A provider that answers a class for one domain -------------------------------------------
+
+    /** A real provider that classifies exactly one domain; every other answer is empty. */
+    private static final class ClassOnlyProvider implements MetadataProvider
+    {
+
+        private final String domain;
+
+        private final String className;
+
+        ClassOnlyProvider(String aDomain, String aClassName)
+        {
+            domain = aDomain;
+            className = aClassName;
+        }
+
+
+        @Override
+        public @Nullable String getDatasetClass(String aDomain)
+        {
+            return domain.equals(aDomain) ? className : null;
+        }
+
+
+        @Override
+        public List<String> getRequiredVariables(String aDomain)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public List<String> getExpectedVariables(String aDomain)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public List<String> getColumnOrder(String aDomain)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public boolean isDomainCustom(String aDomain)
+        {
+            return false;
+        }
+
+
+        @Override
+        public List<String> getCodelistTerms(String aCodelistCode)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public Map<String, String> getVariableMetadata(String aDomain, String aVariable)
+        {
+            return Map.of();
+        }
+
+
+        @Override
+        public List<Map<String, String>> getDomainVariables(String aDomain)
+        {
+            return List.of();
+        }
+
+
+        @Override
+        public Map<String, String> getDatasetMetadata(String aDomain)
+        {
+            return Map.of();
+        }
+
+
+        @Override
+        public Optional<Boolean> isCodelistExtensible(String aCodelistName)
+        {
+            return Optional.empty();
+        }
+
+
+        @Override
+        public String getStandard()
+        {
+            return "sdtmig";
+        }
+    }
+}

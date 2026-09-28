@@ -866,7 +866,9 @@ public final class OperationExecutor
         // the domain code to look like an AP code (the checks above) — a DELIBERATE deviation:
         // upstream chops the leading two characters off ANY >=4-character domain that happens to
         // carry an APID column, so `POOLDEF` + APID yields "OLDEF" there. Recorded in EC-36.
-        return datasetColumnNames(table).contains("APID") ? domainCode.substring(2) : "";
+        // APID is looked up as a column name, so ignoring letter case (CIT §1): a SAS-exported
+        // aplb carrying apid is an AP dataset like APLB carrying APID.
+        return table.getMetaData().getColumnIndex("APID") >= 0 ? domainCode.substring(2) : "";
     }
 
     /**
@@ -2785,7 +2787,9 @@ public final class OperationExecutor
             net.cumba.datatable.DataTableColumnMeta colMeta = meta.getColumn(c);
             String name = colMeta.getName();
             Integer suffix = null;
-            if (base != null && base.equals(name))
+            // The un-numbered base is a column name too: matched ignoring letter case, like the
+            // name_pattern members (CIT §1) — a lowercase coval is the base of coval1 / coval2.
+            if (base != null && base.equalsIgnoreCase(name))
             {
                 suffix = 0;
             }
@@ -2974,7 +2978,9 @@ public final class OperationExecutor
         long rowCount = supp.getRowCount();
         for (long r = 0; r < rowCount; r++)
         {
-            if (!qnam.equals(stringAt(supp, qnamIdx, r)))
+            // A QNAM names a supplemental variable, so it is matched like a column name —
+            // ignoring letter case (register CIT §1), as OperatorRegistry.existsInSuppQnam does.
+            if (!qnam.equalsIgnoreCase(stringAt(supp, qnamIdx, r)))
             {
                 continue;
             }

@@ -81,8 +81,8 @@ final class StandardVariableSelector
      *            cross-domain resolver, passed through to the provider.
      * @param filter
      *            attribute-map predicate; a variable is kept only when it passes.
-     * @return the matching column names present on the dataset; empty when the provider yields no
-     *         variables for it.
+     * @return the matching column names present on the dataset (matched ignoring letter case, each
+     *         in the dataset's own spelling); empty when the provider yields no variables for it.
      */
     static List<String> select(MetadataProvider provider, IDataTable table,
             DatasetResolver resolver, Predicate<Map<String, String>> filter)
@@ -129,7 +129,7 @@ final class StandardVariableSelector
         // EC-36: variable names -> variable prefix; "" for SUPP, AP suffix for AP.
         String prefix = Objects.requireNonNullElse(OperationExecutor.variableWildcardPrefix(table,
                 OperationExecutor.domainPrefix(table)), "");
-        Set<String> datasetCols = OperationExecutor.datasetColumnNames(table);
+        net.cumba.datatable.DataTableMeta meta = table.getMetaData();
         List<String> out = new ArrayList<>();
         for (Map<String, String> varRow : source)
         {
@@ -146,9 +146,13 @@ final class StandardVariableSelector
             // substitute here to preserve identical output regardless of source.
             String resolved = (!fromResolver && name.contains("--")) ? name.replace("--", prefix)
                     : name;
-            if (datasetCols.contains(resolved))
+            // A column-name lookup, so ignoring letter case (owner ruling 2026-09-28, register
+            // CIT §1), and the name selected is the dataset's OWN spelling — the one every later
+            // read of it resolves (RecordKeyResolver.present does the same).
+            int idx = meta.getColumnIndex(resolved);
+            if (idx >= 0)
             {
-                out.add(resolved);
+                out.add(meta.getColumn(idx).getName());
             }
         }
         return out;

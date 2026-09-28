@@ -321,7 +321,9 @@ public class DatasetRuleResolver
         }
         // Compute libraryDefinedVars up front — the input to the skipIfLibraryDefined
         // post-expansion filter that fires inside the unified loop below.
-        Set<String> libraryDefinedVars = new java.util.HashSet<>();
+        // Case-insensitive: it is probed with an expansion's primary column, which carries the
+        // dataset's own spelling (register CIT §1 — column names match ignoring letter case).
+        Set<String> libraryDefinedVars = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         for (Map<String, String> lv : libVars)
         {
             String vn = lv.get("name");
@@ -590,6 +592,9 @@ public class DatasetRuleResolver
                 kept.add(exp);
                 continue;
             }
+            // The primary column carries the DATASET's spelling (the expansion binds the actual
+            // column name), so every comparison below ignores letter case (register CIT §1):
+            // a lowercase trt01p is Library-defined as TRT01P is, and aefl is AE's own AEFL.
             String primaryCol = expCoreId.substring(origCoreId.length() + 1);
 
             if (Boolean.TRUE.equals(template.getSkipIfLibraryDefined())
@@ -598,11 +603,11 @@ public class DatasetRuleResolver
                 continue;
             }
 
-            if (isSdtmDomain && primaryCol.startsWith(domain)
+            if (isSdtmDomain && primaryCol.regionMatches(true, 0, domain, 0, domain.length())
                     && primaryCol.length() > domain.length())
             {
                 String effective = primaryCol.substring(domain.length());
-                if (wildcardSuffix != null && wildcardSuffix.equals(effective))
+                if (wildcardSuffix != null && wildcardSuffix.equalsIgnoreCase(effective))
                 {
                     continue;
                 }

@@ -101,8 +101,9 @@ public final class ScopeClassLadder
         // apSuffixOf gates on a non-empty row-0 DOMAIN *value*. Unifying them would change which
         // class an AP dataset inherits — a Scope.Classes-wide blast radius unrelated to EC-36.
         // If either is edited, re-check the other.
-        if (!aApRecursed && columns.contains("APID") && columns.contains("DOMAIN")
-                && aCdiscDomain.length() >= 4
+        // APID / DOMAIN are looked up as column names, so ignoring letter case (CIT §1).
+        if (!aApRecursed && aTable.getMetaData().getColumnIndex("APID") >= 0
+                && aTable.getMetaData().getColumnIndex("DOMAIN") >= 0 && aCdiscDomain.length() >= 4
                 && aCdiscDomain.toUpperCase(Locale.ROOT).startsWith("AP"))
         {
             String parentDomain = aCdiscDomain.substring(2);

@@ -132,6 +132,51 @@ class ChildMatchPreMergerTest
                 result.getColumn(aetermIdx).getDataValue(1).getValueAsString());
     }
 
+
+    /**
+     * Child wins ignoring letter case (owner ruling 2026-09-28, register {@code CIT §1}): the
+     * primary's lowercase {@code aeterm} IS the parent's {@code AETERM}, so the merge adds no
+     * second, differently cased column and a read of either spelling hits the primary value.
+     * Compared case-sensitively the parent's {@code AETERM} was augmented beside it.
+     */
+    @Test
+    void preMerge_childWins_ignoringLetterCase()
+    {
+        IDataTable primary = TableFixture.of("SUPPAE")//
+                .str("STUDYID", "S1")//
+                .str("USUBJID", "U1")//
+                .str("IDVAR", "AESEQ")//
+                .str("IDVARVAL", "1")//
+                .str("aeterm", "primary-term-1")//
+                .str("RDOMAIN", "AE")//
+                .build();
+        IDataTable parent = TableFixture.of("AE")//
+                .str("STUDYID", "S1")//
+                .str("USUBJID", "U1")//
+                .str("AESEQ", "1")//
+                .str("AETERM", "parent-term-1")//
+                .str("AEDECOD", "parent-decod-1")//
+                .build();
+
+        IDataTable result = ChildMatchPreMerger.preMerge(primary, List.of(md("AE", true)),
+                resolver("AE", parent), "CORE-E10", null);
+
+        assertNotSame(primary, result);
+        DataTableMeta meta = result.getMetaData();
+        List<String> aeterms = new ArrayList<>();
+        for (int c = 0; c < meta.getColumnCount(); c++)
+        {
+            if ("AETERM".equalsIgnoreCase(meta.getColumn(c).getName()))
+            {
+                aeterms.add(meta.getColumn(c).getName());
+            }
+        }
+        assertEquals(List.of("aeterm"), aeterms, "one AETERM column, the primary's own");
+        assertEquals("primary-term-1",
+                result.getColumn(meta.getColumnIndex("AETERM")).getDataValue(0).getValueAsString());
+        assertTrue(meta.getColumnIndex("AEDECOD") >= 0, "the parent-only column is augmented");
+    }
+
     // ----------------------------------------------------------------------------------------
     // E11: duplicate parent keys → first-wins.
     // ----------------------------------------------------------------------------------------

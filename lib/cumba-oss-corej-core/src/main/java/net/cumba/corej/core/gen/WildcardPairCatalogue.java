@@ -1,5 +1,6 @@
 package net.cumba.corej.core.gen;
 
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -56,11 +57,15 @@ public final class WildcardPairCatalogue
      * ({@code *N} / {@code *C}) analysis variable.
      *
      * @param secondaryColumn
-     *            the concrete secondary column name (e.g. {@code TRTPN}, {@code AVALC})
+     *            the concrete secondary column name (e.g. {@code TRTPN}, {@code AVALC}), in any
+     *            letter case
      * @return {@code true} if the column is a catalogued pair secondary
      */
     public static boolean isCataloguedSecondary(String secondaryColumn)
     {
-        return SECONDARIES.contains(secondaryColumn);
+        // The argument is the dataset's actual column name, matched ignoring letter case like
+        // every column name (owner ruling 2026-09-28, register CIT §1): trtpn is catalogued as
+        // TRTPN is. The catalogue itself is spelled in CDISC upper case.
+        return SECONDARIES.contains(secondaryColumn.toUpperCase(Locale.ROOT));
     }
 }

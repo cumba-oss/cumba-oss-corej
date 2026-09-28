@@ -1755,27 +1755,60 @@ public final class WildcardExpander
         return r;
     }
 
+    /**
+     * A dotted {@code DATASET.COLUMN} binding in any letter case. {@code OperandClassifier}'s own
+     * dotted pattern is upper-case only — an <em>authoring</em> rule on rule text — so a binding
+     * such as {@code ADSL.trt01p} or {@code ae.aeSEQ} would otherwise fall through to
+     * {@link OperandKind#COLUMN}.
+     */
+    private static final Pattern DOTTED_ANY_CASE = Pattern
+            .compile("^[A-Za-z][A-Za-z0-9]*\\.[A-Za-z][A-Za-z0-9_]*$");
 
     /**
-     * Classifies a substituted concrete name. The bound name is the dataset's <em>actual</em>
-     * column name, which may be lower- or mixed-case since column names match case-insensitively on
-     * every surface (owner ruling 2026-09-28, {@code PLAN-case-insensitive-templates}, register
-     * entry {@code CIT §1}). {@link OperandClassifier#classify} enforces an <em>authoring</em> rule
-     * on rule text — a lowercase-leading or underscore-bearing operand must be a registered
-     * built-in — and would refuse such a spelling; here the name was bound by the expansion to a
-     * real column, so that refusal means {@link OperandKind#COLUMN}. Every other classification (a
-     * substituted {@code ADSL.&VAR} → {@code DOTTED_REF}) is kept.
+     * Classifies a substituted concrete name — reached by the wildcard expansion ({@code TRTxxP} →
+     * {@code trt01p}) and by the declared-token expansion ({@link TokenExpander}: {@code &VAR} →
+     * {@code trt01p}, {@code ADSL.&VAR} → {@code ADSL.trt01p}, {@code &DOM.&DOMSEQ} →
+     * {@code ae.aeSEQ}). The bound name is the dataset's <em>actual</em> column name, which may be
+     * lower- or mixed-case since column names match case-insensitively on every surface (owner
+     * ruling 2026-09-28, {@code PLAN-case-insensitive-templates}, register entry {@code CIT §1}).
+     *
+     * <p>
+     * {@link OperandClassifier#classify} enforces <em>authoring</em> rules on rule text: a
+     * lowercase-leading or underscore-bearing operand must be a registered built-in, and a dotted
+     * reference must be upper case. Neither applies to a name the expansion bound to a real column,
+     * so the result is decided here:
+     * </p>
+     * <ul>
+     * <li>a dotted binding in any letter case is {@link OperandKind#DOTTED_REF} — the kind every
+     * kind-keyed reader (the stage-A dotted-reference checks, the absent-dataset skip) keys on, so
+     * {@code ae.aeSEQ} reads exactly as {@code AE.AESEQ} does;</li>
+     * <li>a name the classifier refuses, or answers {@link OperandKind#BUILTIN} for (a lowercase
+     * column that happens to spell a built-in), is {@link OperandKind#COLUMN};</li>
+     * <li>any other classification ({@link OperandKind#COLUMN}, and the {@code $} /
+     * {@code _matched_} / still-wildcard kinds a substitution cannot produce from a column) is
+     * kept.</li>
+     * </ul>
      */
     private static OperandKind classifyConcrete(String concrete)
     {
+        OperandKind kind;
         try
         {
-            return OperandClassifier.classify(concrete, -1);
+            kind = OperandClassifier.classify(concrete, -1);
         }
         catch (net.cumba.corej.core.expr.ExpressionException _)
         {
-            return OperandKind.COLUMN;
+            kind = OperandKind.COLUMN;
         }
+        if (kind == OperandKind.BUILTIN)
+        {
+            kind = OperandKind.COLUMN;
+        }
+        if (kind == OperandKind.COLUMN && DOTTED_ANY_CASE.matcher(concrete).matches())
+        {
+            return OperandKind.DOTTED_REF;
+        }
+        return kind;
     }
 
 

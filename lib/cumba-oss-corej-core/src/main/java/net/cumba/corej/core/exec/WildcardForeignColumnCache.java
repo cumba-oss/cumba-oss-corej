@@ -46,8 +46,10 @@ final class WildcardForeignColumnCache
 
     /**
      * Every input of {@link #compute} besides the table: the regex text and its flags. (Every
-     * pattern the engine builds today uses flags 0 — {@code OperandSubstitutor.toColumnPattern} —
-     * but a different flag set matches different columns, so it is part of the key.)
+     * pattern the engine builds today — {@code OperandSubstitutor.toColumnPattern} — carries
+     * {@link java.util.regex.Pattern#CASE_INSENSITIVE}, since column names match ignoring letter
+     * case (register {@code CIT §1}); a different flag set matches different columns, so it is part
+     * of the key.)
      */
     record PatternKey(String regex, int flags)
     {

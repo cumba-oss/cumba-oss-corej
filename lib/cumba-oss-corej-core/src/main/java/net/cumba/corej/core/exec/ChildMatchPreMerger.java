@@ -487,13 +487,18 @@ public final class ChildMatchPreMerger
     private static Set<String> computeAugmentedCols(DataTableMeta meta,
             Map<String, IDataTable> parentTables)
     {
-        Set<String> primaryCols = new LinkedHashSet<>();
+        // Case-insensitive: a parent's AETERM is the primary's aeterm — the same column name
+        // (register CIT §1), so the child's value wins and no second, differently cased column is
+        // augmented. The same set also keeps two parents' differently cased spellings apart from
+        // adding the column twice.
+        Set<String> primaryCols = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         int primaryColCount = meta.getColumnCount();
         for (int c = 0; c < primaryColCount; c++)
         {
             primaryCols.add(meta.getColumn(c).getName());
         }
         Set<String> augmentedCols = new LinkedHashSet<>();
+        Set<String> seen = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         for (IDataTable parent : parentTables.values())
         {
             DataTableMeta pm = parent.getMetaData();
@@ -501,7 +506,7 @@ public final class ChildMatchPreMerger
             {
                 String name = pm.getColumn(c).getName();
                 // Child wins — primary value takes precedence over the augmented one.
-                if (!primaryCols.contains(name))
+                if (!primaryCols.contains(name) && seen.add(name))
                 {
                     augmentedCols.add(name);
                 }

@@ -376,13 +376,23 @@ class ScopeMatcherQualifiedTest
     }
 
 
+    /**
+     * A {@code QNAM} names a supplemental variable, so the pivot is a column-name match and ignores
+     * letter case (owner ruling 2026-09-28, register {@code CIT §1}; the pivot self-ruled a
+     * column-name surface by the coordinator). The gate and the Check-side dotted {@code exists}
+     * share {@code existsInSuppQnam}, so they still cannot diverge. This test pinned the opposite —
+     * "compares case-sensitively" — until review round 1 of
+     * {@code PLAN-case-insensitive-templates}.
+     */
     @Test
-    void suppPivotIsCaseSensitiveLikeTheCheckSide()
+    void suppPivotIgnoresCaseLikeTheCheckSide()
     {
-        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "S1").build();
-        IDataTable suppae = MockTable.of().name("SUPPAE").col("QNAM", "aetrtem").build();
-        assertNotNull(check(include("AE.AETRTEM"), sourceOf(map("AE", ae, "SUPPAE", suppae))),
-                "existsInSuppQnam compares case-sensitively; the scope gate must not diverge");
+        IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").build();
+        IDataTable suppae = RealTables.of("SUPPAE").str("QNAM", "aetrtem").build();
+        assertNull(check(include("AE.AETRTEM"), sourceOf(map("AE", ae, "SUPPAE", suppae))),
+                "QNAM aetrtem delivers AETRTEM; the entry is satisfied");
+        assertNotNull(check(include("AE.AEREL"), sourceOf(map("AE", ae, "SUPPAE", suppae))),
+                "negative control: a qualifier SUPPAE does not carry stays unmet");
     }
 
 

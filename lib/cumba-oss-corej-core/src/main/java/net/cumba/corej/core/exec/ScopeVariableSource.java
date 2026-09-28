@@ -161,12 +161,13 @@ public final class ScopeVariableSource
      *
      * <p>
      * The scan itself is {@code OperatorRegistry.existsInSuppQnam}, shared verbatim, so the
-     * case-sensitive {@code QNAM} comparison and the missing/empty-cell skip are identical on both
-     * paths. Review L8 — one deliberate deviation: the "don't look for {@code SUPPSUPPAE}" guard
-     * below is case-<em>in</em>sensitive, where the Check side tests
-     * {@code domain.startsWith("SUPP")} exactly. That makes a filename-derived lowercase
-     * {@code suppae} behave correctly here; it is unobservable otherwise, since it would take a
-     * dataset literally named {@code SUPPsuppae} to tell the two apart.
+     * {@code QNAM} comparison (ignoring letter case — a {@code QNAM} names a variable, register
+     * {@code CIT §1}) and the missing/empty-cell skip are identical on both paths. Review L8 — one
+     * deliberate deviation: the "don't look for {@code SUPPSUPPAE}" guard below is
+     * case-<em>in</em>sensitive, where the Check side tests {@code domain.startsWith("SUPP")}
+     * exactly. That makes a filename-derived lowercase {@code suppae} behave correctly here; it is
+     * unobservable otherwise, since it would take a dataset literally named {@code SUPPsuppae} to
+     * tell the two apart.
      * </p>
      *
      * @param qualifier

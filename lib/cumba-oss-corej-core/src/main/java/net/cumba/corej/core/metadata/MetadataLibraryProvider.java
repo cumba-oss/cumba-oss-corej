@@ -2977,7 +2977,9 @@ public final class MetadataLibraryProvider implements MetadataProvider
         {
             for (ResolvedVariable v : buildResolvedSdtm(aDomain, null))
             {
-                if (aVariable.equals(v.name()))
+                // A column name, matched ignoring letter case like findColumn above (register
+                // CIT §1): a lowercase usubjid reads USUBJID's model row.
+                if (aVariable.equalsIgnoreCase(v.name()))
                 {
                     return withCanonicalCodelist(v.toAttributeMap(), aDomain, aVariable);
                 }

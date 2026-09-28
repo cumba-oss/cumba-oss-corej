@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -3936,7 +3935,9 @@ public final class ExprCompiler
     {
         Set<String> decodes = new HashSet<>(codeDecode.values());
         // One snapshot of the domain's define variables — getVariableMetadata rescans per call.
-        Map<String, String> codedValuesByVar = new HashMap<>();
+        // Case-insensitive: probed with the dataset's column names (register CIT §1).
+        Map<String, String> codedValuesByVar = new java.util.TreeMap<>(
+                String.CASE_INSENSITIVE_ORDER);
         for (Map<String, String> v : define.getDomainVariables(domain))
         {
             String name = v.get("name");
@@ -3955,7 +3956,7 @@ public final class ExprCompiler
      * drop the many partners that bind no codelist of their own; treating it as an acceptance in
      * the fallback would pair on no evidence at all.
      */
-    private enum PartnerVerdict
+    enum PartnerVerdict
     {
         /** Metadata positively identifies this as the decode partner. */
         CONFIRMED,
@@ -3997,18 +3998,22 @@ public final class ExprCompiler
      *            metadata verdict for a candidate column name
      * @return the resolved partner column, or {@code null}
      */
-    private static @Nullable String resolvePartner(String codeVar, DataTableMeta meta,
+    static @Nullable String resolvePartner(String codeVar, DataTableMeta meta,
             java.util.function.Function<String, PartnerVerdict> confirm)
     {
         for (String suffix : DECODE_PARTNER_SUFFIXES)
         {
-            if (!codeVar.endsWith(suffix) || codeVar.length() <= suffix.length())
+            // Column names match ignoring letter case (register CIT §1): trtpn proposes trtp.
+            if (codeVar.length() <= suffix.length() || !codeVar.regionMatches(true,
+                    codeVar.length() - suffix.length(), suffix, 0, suffix.length()))
             {
                 continue;
             }
-            String candidate = codeVar.substring(0, codeVar.length() - suffix.length());
-            if (meta.getColumnIndex(candidate) >= 0
-                    && confirm.apply(candidate) != PartnerVerdict.REJECTED)
+            int idx = meta.getColumnIndex(codeVar.substring(0, codeVar.length() - suffix.length()));
+            // The partner is named in the dataset's own spelling, like every column the engine
+            // binds.
+            String candidate = idx >= 0 ? meta.getColumn(idx).getName() : null;
+            if (candidate != null && confirm.apply(candidate) != PartnerVerdict.REJECTED)
             {
                 return candidate;
             }
@@ -4017,7 +4022,8 @@ public final class ExprCompiler
         for (int i = 0; i < meta.getColumnCount(); i++)
         {
             String candidate = meta.getColumn(i).getName();
-            if (candidate.equals(codeVar) || confirm.apply(candidate) != PartnerVerdict.CONFIRMED)
+            if (candidate.equalsIgnoreCase(codeVar)
+                    || confirm.apply(candidate) != PartnerVerdict.CONFIRMED)
             {
                 continue;
             }

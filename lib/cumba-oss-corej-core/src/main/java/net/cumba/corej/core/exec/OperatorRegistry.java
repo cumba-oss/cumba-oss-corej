@@ -447,13 +447,18 @@ public final class OperatorRegistry
 
 
     /**
-     * Returns {@code true} when the SUPP-- table has at least one row whose {@code QNAM} cell
-     * equals {@code col}. Empty / missing QNAM cells don't match.
+     * Returns {@code true} when the SUPP-- table has at least one row whose {@code QNAM} cell names
+     * {@code col}, ignoring letter case. Empty / missing QNAM cells don't match.
+     * <p>
+     * A {@code QNAM} names a supplemental <em>variable</em> — the column the SUPP pivot delivers —
+     * so the comparison is a column-name match and ignores letter case like every other one (owner
+     * ruling 2026-09-28, {@code PLAN-case-insensitive-templates}, register {@code CIT §1}).
+     * </p>
      * <p>
      * Fix #124 widened the visibility to package-private so {@link ScopeVariableSource} can reuse
      * the <em>same</em> implementation for a qualified {@code Scope.Variables} entry. Sharing it
      * rather than re-implementing is what makes the scope gate and the {@code Check}-side dotted
-     * {@code exists} provably agree (including this method's case-sensitive comparison).
+     * {@code exists} provably agree (including this method's case-insensitive comparison).
      * </p>
      *
      * @param supp
@@ -478,7 +483,7 @@ public final class OperatorRegistry
                 continue;
             }
             String s = dv.getValueAsString();
-            if (s != null && !s.isEmpty() && s.equals(col))
+            if (s != null && !s.isEmpty() && s.equalsIgnoreCase(col))
             {
                 return true;
             }

@@ -587,9 +587,13 @@ public final class ScopeMatcher
      * the variables listed in {@code None}; rules without a variable requirement match all
      * datasets. Per entry:
      * <ul>
-     * <li>a leading {@code --} is first replaced by {@code domainPrefix} when it is exactly two
-     * characters (mirroring the expression language's {@code --} resolution, e.g. {@code --SEQ} →
-     * {@code AESEQ}); otherwise the entry keeps its raw form and the lookup simply misses;</li>
+     * <li>a leading {@code --} is first replaced by {@code domainPrefix} whenever that is non-null
+     * ({@link #resolveScopeVariable}, mirroring the expression language's {@code --} resolution):
+     * the domain code ({@code --SEQ} → {@code AESEQ}), {@code ""} for a SUPP / SQ dataset
+     * ({@code --QNAM} → {@code QNAM}) or an AP dataset's suffix ({@code APMH} → {@code MHSEQ}), of
+     * whatever length. Only a {@code null} prefix leaves the entry raw, and the lookup of the raw
+     * {@code --} name then misses (in {@code All_Or_None} such an entry is undecidable instead,
+     * {@link #resolveEntryNames});</li>
      * <li>a pattern entry ({@code *}/{@code ?} glob or {@code /…/} regex, {@link #scopePattern}) is
      * satisfied when <b>at least one</b> column name matches (anchored full match,
      * case-insensitive) — so an {@code Exclude} pattern rejects the dataset when <em>any</em>
@@ -601,8 +605,8 @@ public final class ScopeMatcher
      * since the 2026-09-28 ruling — the same regex the wildcard expansion matches against the
      * Check), so a template scoped to {@code TRTxxP} applies when {@code TRT01P} exists and is
      * skipped — naming the entry — when no concrete column matches;</li>
-     * <li>a literal entry keeps the exact-lookup semantics
-     * ({@link DataTableMeta#getColumnIndex(String)});</li>
+     * <li>a literal entry is a name lookup ({@link DataTableMeta#getColumnIndex(String)}, which
+     * ignores letter case);</li>
      * <li>a <b>qualified</b> entry — {@code DATASET.VARIABLE}, naming a variable in another dataset
      * ({@code DM.ARM}, {@code ADSL.TRTxxPN}, {@code SUPP--.QVAL}; Fix #124, parsed per
      * {@link ScopeVariableEntry#parse}) — keeps every semantic above on its variable half while the

@@ -450,6 +450,24 @@ class StageBCheckerTest
     }
 
 
+    /**
+     * A filter column binds to the joined dataset's column ignoring letter case (owner ruling
+     * 2026-09-28, register {@code CIT §1}): {@code AEOUT} against a lowercase {@code aeout} is
+     * resolvable, exactly as the filter's own evaluation reads it. Compared case-sensitively it was
+     * an armed {@code FILTER_UNRESOLVABLE} error.
+     */
+    @Test
+    void aFilterColumnResolvesAgainstALowercaseJoinedColumn()
+    {
+        List<StageBFinding> findings = new ArrayList<>();
+        List<String> skips = new ArrayList<>();
+        StageBChecker.checkFilterBinding("AE", List.of("AEOUT"), Set.of("usubjid", "aeout"), null,
+                findings, skips);
+        assertEquals(List.of(), findings);
+        assertEquals(List.of(), skips);
+    }
+
+
     @Test
     void aDeclaredUnresolvableFilterColumnSkipsWithAReason()
     {
