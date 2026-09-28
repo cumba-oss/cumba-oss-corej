@@ -1,24 +1,16 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import net.cumba.cdisc.define.DefineXmlParser;
 import net.cumba.cdisc.define.ODM;
-import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.metadata.DefineMetadataListCodec;
 import net.cumba.corej.core.metadata.DefineXmlMetadataProvider;
 import net.cumba.corej.core.metadata.OdmDefineXMLProvider;
-import net.cumba.corej.core.model.Rule;
-import net.cumba.corej.core.model.RulePackage;
-import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -27,15 +19,12 @@ import org.junit.jupiter.api.Test;
  * a <b>real define.xml</b> parsed to the ODM model ({@link DefineXmlParser}) feeds the engine's
  * direct-access define provider ({@link OdmDefineXMLProvider} &rarr;
  * {@link DefineXmlMetadataProvider}) with <b>no datatable {@code IMetadataLibrary}</b> in the
- * define path. {@code CDISC-CG0010} then iterates the define ItemDefs and fires where the define
- * role differs from the library role.
+ * define path: roles, the codelist ccode and the coded codes are read straight from the parsed ODM.
  */
 class DefineXmlDirectAccessE2ETest
 {
 
     private static MetadataProvider define;
-
-    private static Rule cg0010;
 
     @BeforeAll
     static void load() throws IOException
@@ -47,13 +36,6 @@ class DefineXmlDirectAccessE2ETest
             odm = new DefineXmlParser().parse(in);
         }
         define = new DefineXmlMetadataProvider(new OdmDefineXMLProvider(odm), null);
-
-        RulePackage pkg = RulePackageLoader
-                .loadCombined(Path.of(System.getProperty("projectBasedir"),
-                        "src/test/resources/fixtures/rules/packages", "rules-sdtmig-3-4.json"));
-        cg0010 = pkg.getRules().values().stream()
-                .filter(r -> r.getCore() != null && "CDISC-CG0010".equals(r.getCore().getId()))
-                .findFirst().orElseThrow(() -> new AssertionError("CDISC-CG0010 not in package"));
     }
 
 
@@ -71,37 +53,5 @@ class DefineXmlDirectAccessE2ETest
         assertEquals("C66731", sex.get("ccode"));
         assertEquals(List.of("C20197", "C16576"),
                 DefineMetadataListCodec.decode(sex.get("codelist_coded_codes")));
-    }
-
-
-    @Test
-    void cg0010_firesWhereDefineRoleDiffersFromLibraryRole()
-    {
-        // Library (IG) roles: AGE=Identifier (differs from define Topic -> fires),
-        // SEX=Qualifier (matches define Qualifier -> no fire).
-        MetadataProvider library = new StubMetadataProvider()
-                .variable("DM", Map.of("name", "AGE", "role", "Identifier"))
-                .variable("DM", Map.of("name", "SEX", "role", "Qualifier"));
-        IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("SEX", "M").build();
-
-        RuleExecutionResult r = RuleRunnerCalls.execute(cg0010, dm, _ -> null, "DM", library, null,
-                define);
-
-        assertTrue(r.hasViolations(), "AGE define-role (Topic) != library-role (Identifier)");
-        assertEquals("AGE", r.getViolations().get(0).getValues().get("define_variable_name"));
-    }
-
-
-    @Test
-    void cg0010_noViolationWhenAllRolesMatch()
-    {
-        MetadataProvider library = new StubMetadataProvider()
-                .variable("DM", Map.of("name", "AGE", "role", "Topic"))
-                .variable("DM", Map.of("name", "SEX", "role", "Qualifier"));
-        IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("SEX", "M").build();
-
-        RuleExecutionResult r = RuleRunnerCalls.execute(cg0010, dm, _ -> null, "DM", library, null,
-                define);
-        assertFalse(r.hasViolations(), "define roles match library roles -> no finding");
     }
 }

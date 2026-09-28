@@ -3,7 +3,6 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -169,19 +168,5 @@ class TierBDefineAccessorParityTest
                 DEFINE);
         assertEquals(RuleExecutionStatus.EXECUTED, ran.getStatus(),
                 "the Tier-B rule must evaluate on the NATIVE backend");
-    }
-
-
-    @Test
-    void cdiscCg0001RetainsNativeExprFromTheCorpus() throws Exception
-    {
-        RulePackage pkg = RulePackageLoader
-                .loadCombined(Path.of(System.getProperty("projectBasedir"),
-                        "src/test/resources/fixtures/rules/packages", "rules-sdtmig-3-4.json"));
-        Rule rule = pkg.getRules().values().stream().filter(
-                r -> r != null && r.getCore() != null && "CDISC-CG0001".equals(r.getCore().getId()))
-                .findFirst().orElseThrow(() -> new AssertionError("CDISC-CG0001 not in package"));
-        assertEquals(null, rule.getLoadError());
-        assertNotNull(rule.getCheckExpr(), "CDISC-CG0001 must be native after R-P3");
     }
 }

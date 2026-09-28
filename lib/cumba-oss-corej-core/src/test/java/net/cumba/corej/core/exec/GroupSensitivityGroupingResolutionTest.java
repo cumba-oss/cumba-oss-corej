@@ -1,13 +1,14 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
-import java.nio.file.Path;
+import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.model.Rule;
-import net.cumba.corej.core.model.RulePackage;
+import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.impl.support.OverlayDataTable;
 import net.cumba.datatable.values.DataValueType;
@@ -15,8 +16,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Regression tests for the Group-sensitivity grouping-variable resolution in
- * {@link RuleRunner#executeGrouped}, pinned on the shipped rule {@code FDA-SD0007}
- * ({@code is_inconsistent_across_dataset(--STRESU, keys=[…])}).
+ * {@link RuleRunner#executeGrouped}, carried by a hand-written rule ({@link #GROUPED_RULE}):
+ * {@code is_inconsistent_across_dataset(--STRESU, keys=[…])} under {@code Sensitivity: Group} with
+ * five {@code --} grouping variables.
  *
  * <p>
  * Two engine bugs are covered:
@@ -27,61 +29,42 @@ import org.junit.jupiter.api.Test;
  * ({@code LBTESTCD}). Before the fix, {@code executeGrouped} built the grouping index over the raw
  * {@code --} names, so {@code createIndex} found no matching column, returned {@code null}, and the
  * rule silently produced <b>zero</b> violations on every dataset.</li>
- * <li><b>Silently dropping unavailable grouping columns (Python parity).</b> A grouping column
- * absent from the dataset (e.g. the permissible {@code --SCAT}) must be dropped — grouping by the
- * remaining present columns — rather than nulling the whole index. When none remain, the whole
- * dataset is a single group.</li>
+ * <li><b>Silently dropping unavailable grouping columns.</b> A grouping column absent from the
+ * dataset (e.g. the permissible {@code --SCAT}) must be dropped — grouping by the remaining present
+ * columns — rather than nulling the whole index. When none remain, the whole dataset is a single
+ * group.</li>
  * </ol>
  *
  * <p>
- * The companion {@code .cdt} scenarios {@code FDA-SD0007-invalid-LB} / {@code -invalid_majority-LB}
- * / {@code -invalid_first_row_deviates-LB} (in the rules repository) exercise (1) end-to-end; these
- * tests add direct, isolated coverage of both the wildcard resolution and the present-column
- * filter, including the all-absent case — which since EC-44 / Fix #134 is ONE consistency class
- * over the whole dataset rather than the empty verdict the operator's own guard used to return.
- * </p>
- *
- * <p>
- * ⚠ The {@code Sensitivity: Group} shape and the five-key grouping list are imposed <b>by this
- * class</b>, not read from the rule — see {@link #groupedRule()}. {@code FDA-SD0007} ships as
- * {@code Sensitivity: Record} and declares <b>seven</b> keys (it adds {@code --OBJ} and
- * {@code --TSTDTL}). Five keys are used here so that
- * {@link #wildcardGroupingVariablesResolveToDomainColumns()} can be the all-present case and
- * {@link #missingGroupingColumnIsDroppedNotZeroed()} the one-absent case; with the shipped seven
- * both would be "some absent" and the distinction the two tests exist to draw would collapse.
- * </p>
- *
- * <p>
- * ⚠ <b>The five-key axis is {@code Grouping_Variables}, not the operator's own {@code keys=}.</b>
- * The loaded Check is left untouched, so {@code is_inconsistent_across_dataset} still carries
- * {@code FDA-SD0007}'s shipped seven keys — and {@code --OBJ} / {@code --TSTDTL} are absent from
- * <em>both</em> arms' tables. So "all five grouping columns present" in
- * {@link #wildcardGroupingVariablesResolveToDomainColumns()} means the axis <em>this class
- * controls</em> is complete; it does <b>not</b> mean the operator sees a complete key set — at the
- * operator level both arms are already "some absent". That is harmless rather than a defect:
- * {@code GroupSemantics.inconsistentAcrossDatasetViolations} filters absent columns out of
- * {@code validGroupCols} before grouping, so all four verdicts asserted here are unaffected by the
- * two it never sees.
+ * The rule is written for this mechanism, not copied from the corpus: the {@code Group} shape and
+ * the five grouping variables are what make
+ * {@link #wildcardGroupingVariablesResolveToDomainColumns()} the all-present case and
+ * {@link #missingGroupingColumnIsDroppedNotZeroed()} the one-absent case. The operator's own
+ * {@code keys=} name the same five columns, so "all present" holds on both axes. The all-absent
+ * case is, since EC-44 / Fix #134, ONE consistency class over the whole dataset rather than the
+ * empty verdict the operator's own guard used to return.
  * </p>
  */
 class GroupSensitivityGroupingResolutionTest
 {
 
-    private static Rule groupedRule() throws Exception
+    /**
+     * Group sensitivity over five {@code --} grouping variables; fires on a group whose
+     * {@code --STRESU} values disagree within the same five identity keys.
+     */
+    private static final String GROUPED_RULE = """
+            {"rules":{"G1":{"Core":{"Id":"T-GROUP-STRESU"},"Sensitivity":"Group",
+             "Scope":{"Domains":{"Include":["LB"]}},
+             "Grouping_Variables":["--TESTCD","--CAT","--SCAT","--SPEC","--METHOD"],
+             "Check":{"expression":
+               "is_inconsistent_across_dataset(--STRESU, keys=[--TESTCD, --CAT, --SCAT, --SPEC, --METHOD])"},
+             "Outcome":{"Message":"m","Output_Variables":["--TESTCD","--STRESU"]}}}}""";
+
+    private static Rule groupedRule() throws IOException
     {
-        Path rules = Path.of(System.getProperty("projectBasedir", "."),
-                "src/test/resources/fixtures/rules/packages", "rules-sdtmig-3-4.json");
-        RulePackage pkg = RulePackageLoader.loadCombined(rules);
-        Rule rule = pkg.getRules().values().stream().filter(
-                r -> r != null && r.getCore() != null && "FDA-SD0007".equals(r.getCore().getId()))
-                .findFirst().orElseThrow(() -> new AssertionError("FDA-SD0007 not in package"));
-        // The shipped rule is Sensitivity Record (all inconsistent rows are reported
-        // individually). This class pins the executeGrouped machinery (wildcard grouping
-        // resolution, present-column filtering, group verdicts), so re-impose the Group shape on
-        // the loaded copy — and the five-key grouping list, see the class javadoc.
-        rule.setSensitivity(net.cumba.corej.core.model.Sensitivity.GROUP);
-        rule.setGroupingVariables(
-                java.util.List.of("--TESTCD", "--CAT", "--SCAT", "--SPEC", "--METHOD"));
+        Rule rule = RulePackageLoader.loadFromString(GROUPED_RULE).getRules().get("G1");
+        assertNull(rule.getLoadError(), "the hand-written rule must load: " + rule.getLoadError());
+        assertEquals(Sensitivity.GROUP, rule.getSensitivity());
         return rule;
     }
 
@@ -126,7 +109,7 @@ class GroupSensitivityGroupingResolutionTest
 
 
     @Test
-    void wildcardGroupingVariablesResolveToDomainColumns() throws Exception
+    void wildcardGroupingVariablesResolveToDomainColumns() throws IOException
     {
         // All five grouping columns present (domain-resolved); LBSTAT absent. Before the fix the
         // raw --TESTCD grouping names matched no column -> createIndex null -> 0 violations.
@@ -170,7 +153,7 @@ class GroupSensitivityGroupingResolutionTest
 
 
     @Test
-    void missingGroupingColumnIsDroppedNotZeroed() throws Exception
+    void missingGroupingColumnIsDroppedNotZeroed() throws IOException
     {
         // LBSCAT (a permissible grouping variable) absent. The rule must group by the remaining
         // present columns and still fire; before the present-column filter, createIndex returned
@@ -211,7 +194,7 @@ class GroupSensitivityGroupingResolutionTest
 
 
     @Test
-    void groupFiresWhenAnyRowFlagged_majorityFirst() throws Exception
+    void groupFiresWhenAnyRowFlagged_majorityFirst() throws IOException
     {
         // Three records of ONE assessment group: the two majority rows (mg/dL) come first, the
         // deviating minority row (mmol/L) last. is_inconsistent_across_dataset flags only the
@@ -257,7 +240,7 @@ class GroupSensitivityGroupingResolutionTest
 
 
     @Test
-    void allGroupingColumnsAbsentIsOneConsistencyClass() throws Exception
+    void allGroupingColumnsAbsentIsOneConsistencyClass() throws IOException
     {
         // None of the five identity columns are present (the --STAT cleanup, EC-11, removed the
         // sixth operator key that used to keep the grouping non-empty here).

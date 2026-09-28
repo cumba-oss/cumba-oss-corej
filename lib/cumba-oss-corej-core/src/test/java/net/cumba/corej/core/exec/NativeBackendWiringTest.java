@@ -1,20 +1,15 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.nio.file.Path;
 import java.util.BitSet;
 import java.util.List;
-import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
-import net.cumba.corej.core.model.RulePackage;
 import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
@@ -22,7 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-/** Phase 4 — feature-flag plumbing, retain-Expr-on-load, and backend selection. */
+/** Phase 4 — feature-flag plumbing and backend selection. */
 @ExtendWith(MockitoExtension.class)
 class NativeBackendWiringTest
 {
@@ -98,30 +93,6 @@ class NativeBackendWiringTest
     }
 
 
-    @Test
-    void loaderRetainsExprForRecordDataRules() throws Exception
-    {
-        RulePackage pkg = RulePackageLoader
-                .loadCombined(Path.of(System.getProperty("projectBasedir"),
-                        "src/test/resources/fixtures/rules/packages/rules-sdtmig-3-4.json"));
-        long withExpr = pkg.getRules().values().stream().filter(r -> r.getCheckExpr() != null)
-                .count();
-        assertTrue(withExpr > 0,
-                "some fully-expression Record-Data rules should retain a checkExpr");
-        for (Rule r : pkg.getRules().values())
-        {
-            if (r.getCheckExpr() != null)
-            {
-                // PLAN-leaf-scope-domain-inference: every rule whose Check compiles natively
-                // carries an inferred evaluation domain and no load error.
-                assertNotNull(r.getEvaluationDomain(),
-                        "checkExpr implies an inferred domain, rule " + r.getCore().getId());
-                assertNull(r.getLoadError());
-            }
-        }
-    }
-
-
     private static BitSet bitsOf(int... rows)
     {
         BitSet bs = new BitSet();
@@ -131,5 +102,4 @@ class NativeBackendWiringTest
         }
         return bs;
     }
-
 }

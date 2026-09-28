@@ -1,11 +1,9 @@
 package net.cumba.corej.core.integration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.io.IOException;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.RuleExecutionResult;
 import net.cumba.corej.core.exec.RuleRunner;
@@ -16,25 +14,48 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * CX-1 probe — the file/size dataset-metadata rules authored against the {@code dataset_location}
- * accessor (source-URI basename, original casing) and {@code dataset_size}. Loads each
- * {@code rules-src} check and runs it through {@link RuleRunner} (which evaluates the
- * {@code extract_metadata} operation via {@code OperationExecutor.evalExtractMetadata} — the CX-1
- * engine change) against a {@link MockTable} carrying a source URI / dataset-size metadata value.
+ * CX-1 probe — the {@code dataset_location} metadata accessor (source-URI basename, original
+ * casing), and the {@code dataset_size} provider channel. A hand-written rule
+ * ({@link #UPPERCASE_LOCATION_RULE}) binds {@code extract_metadata("dataset_location")} and fires
+ * when the basename carries an uppercase letter; it runs through {@link RuleRunner} (which
+ * evaluates the {@code extract_metadata} operation via
+ * {@code OperationExecutor.evalExtractMetadata} — the CX-1 engine change) against a
+ * {@link MockTable} carrying a source URI. The uppercase test only makes the basename observable:
+ * each assertion below pins one edge of {@code fileNameFromUri}.
  */
 class Cx1FileMetadataRulesProbeTest
 {
 
-    private static final YAMLMapper MAPPER = (YAMLMapper) new YAMLMapper()
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    private static final String UPPERCASE_LOCATION_RULE = """
+            {"rules":{"L1":{"Core":{"Id":"T-LOCATION-UPPER"},"Sensitivity":"Dataset",
+             "Scope":{"Domains":{"Include":["ALL"]}},
+             "Bindings":[{"name":"$dataset_location",
+               "expression":"extract_metadata(\\"dataset_location\\")"}],
+             "Check":{"expression":"$dataset_location =~ /[A-Z]/"},
+             "Outcome":{"Message":"m","Output_Variables":["$dataset_location"]}}}}""";
 
-    private static Rule load(String path) throws Exception
+    /**
+     * Fires when the provider-supplied {@code dataset_size} metadata value exceeds one megabyte —
+     * the channel a size rule reads; the threshold is arbitrary.
+     */
+    private static final String SIZE_RULE = """
+            {"rules":{"L1":{"Core":{"Id":"T-DATASET-SIZE"},"Sensitivity":"Dataset",
+             "Scope":{"Domains":{"Include":["ALL"]}},
+             "Bindings":[{"name":"$dataset_size",
+               "expression":"extract_metadata(\\"dataset_size\\")"}],
+             "Check":{"expression":"$dataset_size > 1000000"},
+             "Outcome":{"Message":"m","Output_Variables":["$dataset_size"]}}}}""";
+
+    private static Rule load() throws IOException
     {
-        Rule rule = MAPPER.readValue(Files.readString(Path.of(path)), Rule.class);
-        // Form-B operations (PLAN-retire-corpus-transforms phase 8) carry no operator
-        // until normalized — the same pass the loader and RuleScaffold run.
-        RulePackageLoader.normalizeOperations(rule);
-        RulePackageLoader.installNativeExpr(rule);
+        return load(UPPERCASE_LOCATION_RULE);
+    }
+
+
+    private static Rule load(String json) throws IOException
+    {
+        Rule rule = RulePackageLoader.loadFromString(json).getRules().get("L1");
+        assertNull(rule.getLoadError(), "the hand-written rule must load: " + rule.getLoadError());
         return rule;
     }
 
@@ -48,36 +69,19 @@ class Cx1FileMetadataRulesProbeTest
 
     private static IDataTable withUri(String uri)
     {
-        MockTable t = MockTable.of().col("USUBJID", "S1").name("AE");
-        if (uri != null)
-        {
-            t = t.uri(uri);
-        }
-        return t.build();
+        return MockTable.of().col("USUBJID", "S1").name("AE").uri(uri).build();
     }
-
-    // -- SEND277 : file name must be lowercase (fires when the basename has an uppercase letter) --
 
 
     @Test
-    void send277_firesOnUppercaseFileName() throws Exception
+    void datasetLocation_percentDecoded_trailingSlash_and_opaqueUri() throws IOException
     {
-        Rule rule = load("src/test/resources/fixtures/rules/checks/CDISC/CDISC-SEND-0277.yaml");
+        Rule rule = load();
+        // control: the plain basename is read with its casing
         assertEquals(1, violations(rule, withUri("file:///study/sdtm/AE.xpt")),
-                "uppercase basename must fire");
+                "uppercase basename 'AE.xpt' -> fires");
         assertEquals(0, violations(rule, withUri("file:///study/sdtm/ae.xpt")),
-                "all-lowercase basename must not fire");
-        assertEquals(0, violations(rule, withUri(null)),
-                "no source URI (null basename) must not fire");
-    }
-
-    // -- fileNameFromUri edge cases (exercised through SEND277's dataset_location accessor) --
-
-
-    @Test
-    void datasetLocation_percentDecoded_trailingSlash_and_opaqueUri() throws Exception
-    {
-        Rule rule = load("src/test/resources/fixtures/rules/checks/CDISC/CDISC-SEND-0277.yaml");
+                "lowercase basename 'ae.xpt' -> no fire");
         // percent-decoded (%20 -> space); casing preserved through the decode
         assertEquals(1, violations(rule, withUri("file:///s/A%20E.xpt")),
                 "percent-decoded 'A E.xpt' has an uppercase letter -> fires");
@@ -91,21 +95,23 @@ class Cx1FileMetadataRulesProbeTest
                 "opaque-URI basename 'AE.xpt' via scheme-specific-part -> fires");
     }
 
-    // SEND272 / SD0062 moved off the dataset_location extension proxy to the authoritative
-    // file_format key (CX-2) — their probes live in Cx2FileFormatRulesProbeTest.
 
-    // -- SD1142 : dataset larger than 5 GB (5,000,000,000 bytes) --
-
-
+    /**
+     * {@code extract_metadata("dataset_size")} reads the table's {@code dataset_size} metadata
+     * value — the provider channel a size rule depends on; without it the rule goes inert, not red.
+     */
     @Test
-    void sd1142_firesWhenOver5Gb() throws Exception
+    void datasetSize_readsTheProviderMetadataValue() throws IOException
     {
-        Rule rule = load("src/test/resources/fixtures/rules/checks/PMDA/PMDA-SD1142.yaml");
+        Rule rule = load(SIZE_RULE);
         IDataTable over = MockTable.of().col("USUBJID", "S1").name("AE")
-                .metaValue("dataset_size", 6_000_000_000L).build();
-        assertEquals(1, violations(rule, over), "6 GB must fire");
+                .metaValue("dataset_size", 2_000_000L).build();
+        RuleExecutionResult fired = RuleRunnerCalls.execute(rule, over, _ -> null);
+        assertEquals(1, fired.getViolationCount(), "2 MB is over the 1 MB threshold -> fires");
+        assertEquals("2000000", fired.getViolations().get(0).getValues().get("$dataset_size"),
+                "the finding projects the value read from the channel");
         IDataTable under = MockTable.of().col("USUBJID", "S1").name("AE")
                 .metaValue("dataset_size", 1_000L).build();
-        assertEquals(0, violations(rule, under), "1 KB must not fire");
+        assertEquals(0, violations(rule, under), "1 KB is under the threshold -> no fire");
     }
 }

@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Path;
 import java.util.Map;
 import net.cumba.cdisc.define.DefineXmlParser;
 import net.cumba.cdisc.define.ODM;
@@ -20,30 +19,15 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 /**
- * Phase 8 (theme T2) — the data-vs-define attribute-compare pilots authored on the shipping
- * level-aware {@code var_*(…, "DATA")} vs {@code var_*(…, "DEFINE")} accessors, exercised
- * end-to-end against the real {@code define-itemmeta-e2e.xml} overlay (DM: {@code AGE} label
- * "Age"/integer, {@code SEX} label "Sex"/text).
- *
- * <ul>
- * <li>FDA-SD1324 fires where the dataset variable label differs from the define label, and does not
- * where they match.</li>
- * <li>FDA-SD0059 fires where the dataset variable data type differs from the define type (a string
- * {@code AGE} column, {@code Char}, vs the define {@code integer}, {@code Num}).</li>
- * <li>Both rules are <b>SKIPPED</b> — never PASS/FAIL — when no Define-XML provider is supplied,
- * proving the input-availability gate (RuleRunner's {@code define_} operand-prefix skip).</li>
- * </ul>
+ * Phase 8 (theme T2) — the data-vs-define attribute compare on the level-aware
+ * {@code var_*(…, "DATA")} vs {@code var_*(…, "DEFINE")} accessors, exercised end-to-end against
+ * the real {@code define-itemmeta-e2e.xml} overlay (DM: {@code AGE} label "Age"/integer,
+ * {@code SEX} label "Sex"/text), on a hand-written rule ({@link #LEGACY_TYPE_RULE}).
  */
 class DefineVsDataAttributeCompareTest
 {
 
     private static MetadataProvider define;
-
-    private static Rule sd1324;
-
-    private static Rule sd0059;
-
-    private static Rule sd0060;
 
     @BeforeAll
     static void load() throws IOException
@@ -55,134 +39,6 @@ class DefineVsDataAttributeCompareTest
             odm = new DefineXmlParser().parse(in);
         }
         define = new DefineXmlMetadataProvider(new OdmDefineXMLProvider(odm), null);
-
-        RulePackage pkg = RulePackageLoader
-                .loadCombined(Path.of(System.getProperty("projectBasedir"),
-                        "src/test/resources/fixtures/rules/packages", "rules-sdtmig-3-4.json"));
-        sd1324 = find(pkg, "FDA-SD1324");
-        sd0059 = find(pkg, "FDA-SD0059");
-        sd0060 = find(pkg, "FDA-SD0060");
-    }
-
-
-    private static Rule find(RulePackage pkg, String id)
-    {
-        return pkg.getRules().values().stream()
-                .filter(r -> r.getCore() != null && id.equals(r.getCore().getId())).findFirst()
-                .orElseThrow(() -> new AssertionError(id + " not in package"));
-    }
-
-
-    /** DM with AGE label "WRONG" (define "Age") -> SD1324 fires; SEX label "Sex" matches. */
-    @Test
-    void sd1324_firesOnLabelMismatch()
-    {
-        IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("SEX", "M")
-                .colMeta("AGE", "WRONG", 8, null).colMeta("SEX", "Sex", 1, null).build();
-
-        RuleExecutionResult r = RuleRunnerCalls.execute(sd1324, dm, _ -> null, "DM", null, null,
-                define);
-        assertTrue(r.hasViolations(), "AGE data label (WRONG) != define label (Age)");
-    }
-
-
-    /** DM with matching labels -> SD1324 does not fire. */
-    @Test
-    void sd1324_noFireWhenLabelsMatch()
-    {
-        IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("SEX", "M")
-                .colMeta("AGE", "Age", 8, null).colMeta("SEX", "Sex", 1, null).build();
-
-        RuleExecutionResult r = RuleRunnerCalls.execute(sd1324, dm, _ -> null, "DM", null, null,
-                define);
-        assertFalse(r.hasViolations(), "labels match the define -> no finding");
-    }
-
-
-    /** No define provider -> SD1324 is SKIPPED (never PASS/FAIL). */
-    @Test
-    void sd1324_skippedWhenNoDefine()
-    {
-        IDataTable dm = MockTable.of().name("DM").col("AGE", "56").colMeta("AGE", "WRONG", 8, null)
-                .build();
-
-        RuleExecutionResult r = RuleRunnerCalls.execute(sd1324, dm, _ -> null, "DM", null, null,
-                null);
-        assertTrue(r.isSkipped(), "no Define-XML -> rule SKIPPED");
-        assertFalse(r.hasViolations(), "SKIPPED rule reports no violations");
-    }
-
-
-    /** A string AGE column (Char) vs the define integer (Num) -> SD0059 fires. */
-    @Test
-    void sd0059_firesOnTypeMismatch()
-    {
-        IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("SEX", "M").build();
-
-        RuleExecutionResult r = RuleRunnerCalls.execute(sd0059, dm, _ -> null, "DM", null, null,
-                define);
-        assertTrue(r.hasViolations(), "AGE data type Char != define type Num");
-    }
-
-
-    /** A numeric AGE column (Num) vs the define integer (Num) -> SD0059 does not fire. */
-    @Test
-    void sd0059_noFireWhenTypesMatch()
-    {
-        IDataTable dm = MockTable.of().name("DM").colLong("AGE", 56L).col("SEX", "M").build();
-
-        RuleExecutionResult r = RuleRunnerCalls.execute(sd0059, dm, _ -> null, "DM", null, null,
-                define);
-        assertFalse(r.hasViolations(), "AGE numeric (Num) and SEX text (Char) match the define");
-    }
-
-
-    /** No define provider -> SD0059 is SKIPPED. */
-    @Test
-    void sd0059_skippedWhenNoDefine()
-    {
-        IDataTable dm = MockTable.of().name("DM").col("AGE", "56").build();
-
-        RuleExecutionResult r = RuleRunnerCalls.execute(sd0059, dm, _ -> null, "DM", null, null,
-                null);
-        assertTrue(r.isSkipped(), "no Define-XML -> rule SKIPPED");
-    }
-
-
-    /** A data column absent from the define (ZZ) -> SD0060 fires; AGE/SEX are declared. */
-    @Test
-    void sd0060_firesOnVariableAbsentFromDefine()
-    {
-        IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("SEX", "M").col("ZZ", "x")
-                .build();
-
-        RuleExecutionResult r = RuleRunnerCalls.execute(sd0060, dm, _ -> null, "DM", null, null,
-                define);
-        assertTrue(r.hasViolations(), "ZZ is not declared in the Define-XML");
-    }
-
-
-    /** Every data column declared in the define -> SD0060 does not fire. */
-    @Test
-    void sd0060_noFireWhenAllVariablesInDefine()
-    {
-        IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("SEX", "M").build();
-
-        RuleExecutionResult r = RuleRunnerCalls.execute(sd0060, dm, _ -> null, "DM", null, null,
-                define);
-        assertFalse(r.hasViolations(), "AGE and SEX are both declared in the define");
-    }
-
-
-    /** No define provider -> SD0060 is SKIPPED. */
-    @Test
-    void sd0060_skippedWhenNoDefine()
-    {
-        IDataTable dm = MockTable.of().name("DM").col("AGE", "56").col("ZZ", "x").build();
-
-        RuleExecutionResult r = RuleRunnerCalls.execute(sd0060, dm, _ -> null, "DM", null, null,
-                null);
-        assertTrue(r.isSkipped(), "no Define-XML -> rule SKIPPED");
     }
 
 

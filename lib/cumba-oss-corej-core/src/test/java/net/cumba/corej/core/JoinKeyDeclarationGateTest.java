@@ -9,7 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RulePackage;
@@ -280,61 +279,55 @@ class JoinKeyDeclarationGateTest
 
     /**
      * The gate's population floor over the corpus it can see (review round 4, H6). The corpus lint
-     * pins 197 / 11 / 1 keyed entries over the authored corpus, which lives in another repository;
-     * here the same census runs over the engine's own test-resource packages — every keyed entry of
-     * theirs loads with no §5.7 error, and the three counts are pinned so a fixture edit that
-     * removes the last entry of a kind cannot leave that arm untested in silence. The per-arm
-     * sabotage pairs above are what prove each arm fires.
+     * pins the keyed entries of the authored corpus, which lives in another repository; here the
+     * same census runs over the engine's own hand-written rule package
+     * ({@code rules/rulepackageloader-fixture.json}) — every keyed entry of it loads with no §5.7
+     * error, and the three counts are pinned so a fixture edit that removes the last entry of a
+     * kind cannot leave that arm untested in silence. The per-arm sabotage pairs above are what
+     * prove each arm fires.
      */
     @Test
-    void theResourcePackagesAreDeclaredAndTheirKeyedPopulationIsPinned() throws IOException
+    void theResourcePackageIsDeclaredAndItsKeyedPopulationIsPinned() throws IOException
     {
-        Path base = Path.of(System.getProperty("projectBasedir"), "src/test/resources");
-        List<Path> packages = List.of(
-                base.resolve("fixtures/rules/packages/rules-cdisc-adamig-1-2.json"),
-                base.resolve("fixtures/rules/packages/rules-cdisc-adamig-1-3.json"),
-                base.resolve("fixtures/rules/packages/rules-cdisc-sdtmig-3-2.json"),
-                base.resolve("rules/rulepackageloader-fixture.json"));
+        Path file = Path.of(System.getProperty("projectBasedir"),
+                "src/test/resources/rules/rulepackageloader-fixture.json");
         int ordinary = 0;
         int child = 0;
         int template = 0;
-        for (Path file : packages)
+        RulePackage pkg = RulePackageLoader.loadFromString(Files.readString(file));
+        for (Rule rule : pkg.getRules().values())
         {
-            RulePackage pkg = RulePackageLoader.loadFromString(Files.readString(file));
-            for (Rule rule : pkg.getRules().values())
+            String error = rule.getLoadError();
+            assertTrue(error == null || !error.contains("Match_Datasets"),
+                    file.getFileName() + ": " + error);
+            if (rule.getMatchDatasets() == null)
             {
-                String error = rule.getLoadError();
-                assertTrue(error == null || !error.contains("Match_Datasets"),
-                        file.getFileName() + ": " + error);
-                if (rule.getMatchDatasets() == null)
+                continue;
+            }
+            for (MatchDataset md : rule.getMatchDatasets())
+            {
+                if (md.getKeys() == null || md.getKeys().isEmpty())
                 {
                     continue;
                 }
-                for (MatchDataset md : rule.getMatchDatasets())
+                boolean token = String.valueOf(md.getName()).startsWith("&")
+                        || md.getKeys().stream().anyMatch(k -> k.startsWith("&"));
+                if (token)
                 {
-                    if (md.getKeys() == null || md.getKeys().isEmpty())
-                    {
-                        continue;
-                    }
-                    boolean token = String.valueOf(md.getName()).startsWith("&")
-                            || md.getKeys().stream().anyMatch(k -> k.startsWith("&"));
-                    if (token)
-                    {
-                        template++;
-                    }
-                    else if (Boolean.TRUE.equals(md.getChild()))
-                    {
-                        child++;
-                    }
-                    else
-                    {
-                        ordinary++;
-                    }
+                    template++;
+                }
+                else if (Boolean.TRUE.equals(md.getChild()))
+                {
+                    child++;
+                }
+                else
+                {
+                    ordinary++;
                 }
             }
         }
-        assertEquals(31, ordinary, "ordinary keyed entries across the four resource packages");
-        assertEquals(3, child, "Child keyed entries across the four resource packages");
-        assertEquals(0, template, "expansion-template keyed entries (none authored in a fixture)");
+        assertEquals(4, ordinary, "ordinary keyed entries in the resource package");
+        assertEquals(3, child, "Child keyed entries in the resource package");
+        assertEquals(0, template, "expansion-template keyed entries (none authored in it)");
     }
 }

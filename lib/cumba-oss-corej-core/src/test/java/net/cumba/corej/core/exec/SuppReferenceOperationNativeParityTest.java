@@ -1,16 +1,12 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import net.cumba.corej.core.RulePackageLoader;
-import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.DataTableColumnMeta;
 import net.cumba.datatable.DataTableMeta;
@@ -25,41 +21,38 @@ import org.junit.jupiter.api.Test;
  * target domain must be resolved through the SUPP-- prefix rewrite, on a SUPPLB-shaped dataset.
  *
  * <p>
- * The carrier rule is {@code CDISC-CG0370} ({@code IDVAR not in $rdomain_variables}, where
- * {@code $rdomain_variables} is {@code distinct(IDVAR, value_is_reference=true)}). The operation
- * resolves its target via {@code resolver.resolve("SUPPLB")}. When that lookup returns {@code null}
- * (a dataset name-keying mismatch at study-load time) the operation is skipped and the reference
- * resolves to {@code null}. Legacy then evaluates the membership against the empty set; the native
- * backend used to throw {@code ExpressionException} for that case. These tests pin that the native
- * row evaluation matches legacy in both the resolvable and the unresolvable case — and never
- * throws.
+ * The carrier is a hand-written rule ({@link #SUPP_RDOMAIN_RULE}): {@code IDVAR not in
+ * $rdomain_variables}, where {@code $rdomain_variables} is
+ * {@code distinct(IDVAR, value_is_reference=true, domain="SUPP--")}. The operation resolves its
+ * target via {@code resolver.resolve("SUPPLB")}. When that lookup returns {@code null} (a dataset
+ * name-keying mismatch at study-load time) the operation is skipped and the reference resolves to
+ * the empty set. Legacy then evaluates the membership against the empty set; the native backend
+ * used to throw {@code ExpressionException} for that case. These tests pin that the native row
+ * evaluation matches legacy in both the resolvable and the unresolvable case — and never throws.
  * </p>
  *
- * <h2>⚠ The {@code domain="SUPP--"} operand is INJECTED, not authored</h2> The predecessor of this
- * class carried a rule retired with the CORE family that declared {@code domain: "SUPP--"} on the
- * operation. {@code CDISC-CG0370} is expression-identical on the <em>Check</em> but binds
- * {@code distinct(IDVAR, value_is_reference=true)} with <b>no</b> {@code domain} operand. Measured
- * 2026-09-19: after that retirement <b>no shipped rule authors {@code domain="SUPP--"} at all</b>,
- * so the engine branch under test here — {@code OperationExecutor.resolvePrefixes}'s SUPP-aware
+ * <h2>⚠ The {@code domain="SUPP--"} operand is load-bearing</h2> It is what routes the operation
+ * through the engine branch under test — {@code OperationExecutor.resolvePrefixes}'s SUPP-aware
  * rewrite of a {@code SUPP--} operation domain, and {@code resolveTargetTable}'s self-reference
- * fallback — has no corpus carrier left. {@link #suppRdomainRule()} therefore sets that operand
- * explicitly after normalisation. ⛔ Do not "simplify" the injection away. <b>Measured 2026-09-19 by
- * deleting the injection and running the class:</b>
+ * fallback. No shipped rule authors {@code domain="SUPP--"} (measured 2026-09-19), which is why the
+ * rule is written here rather than read from the corpus. ⛔ Do not drop the operand. <b>Measured
+ * 2026-09-19, and again 2026-09-28 on this hand-written rule, by removing it:</b>
  * {@link #truncatedSuppPrefixBreaksOperationResolution()} fails outright — the unresolvable
  * {@code SUPPSU} target comes back as a resolved {@code GroupedResult} instead of the empty set —
  * while the other two arms <b>still pass</b>, because an operation with no declared domain never
- * reaches the prefix rewrite at all. So two of the three would go silently degenerate rather than
- * red, which is exactly why this note exists.
+ * reaches the prefix rewrite at all.
  */
 class SuppReferenceOperationNativeParityTest
 {
 
-    // Reads the trimmed fixture copy of the shipped rule
-    // (fixtures/rules/checks/CDISC/CDISC-CG0370.yaml, materialised by
-    // the rules repository's scripts/build-core-fixtures.py). The Standards membership block is
-    // ignored (FAIL_ON_UNKNOWN_PROPERTIES=false).
-    private static final ObjectMapper MAPPER = new YAMLMapper()
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    private static final String SUPP_RDOMAIN_RULE = """
+            {"rules":{"S1":{"Core":{"Id":"T-SUPP-IDVAR"},
+             "Scope":{"Domains":{"Include":["SUPP--"]}},
+             "Requirements":{"Variables":{"All":["IDVAR"]}},
+             "Bindings":[{"name":"$rdomain_variables",
+               "expression":"distinct(IDVAR, value_is_reference=true, domain=\\"SUPP--\\")"}],
+             "Check":{"expression":"not empty(IDVAR) and IDVAR not in $rdomain_variables"},
+             "Outcome":{"Message":"m","Output_Variables":["RDOMAIN","IDVAR"]}}}}""";
 
     private static final class Fix
     {
@@ -132,21 +125,12 @@ class SuppReferenceOperationNativeParityTest
     }
 
 
-    private static Rule suppRdomainRule() throws Exception
+    private static Rule suppRdomainRule() throws IOException
     {
-        Path ruleFile = Path.of("src/test/resources/fixtures/rules/checks/CDISC/CDISC-CG0370.yaml");
-        Rule rule = MAPPER.readValue(Files.readString(ruleFile), Rule.class);
-        // rules-src no longer carries Rule_Type / Sensitivity — the loader
-        // derives them, so a hand-bound rule must be completed the same way.
-        // Form-B operations (PLAN-retire-corpus-transforms phase 8) carry no operator
-        // until normalized — the same pass the loader and RuleScaffold run.
-        RulePackageLoader.normalizeOperations(rule);
-        // ⚠ The injected operand — see the class javadoc. It goes on BEFORE the derivation,
-        // because deriveOmittedFields reads the operation's domain when it derives Rule_Type /
-        // Sensitivity, and the point of this class is to run the SUPP-- shape end to end.
-        rule.getOperations().get(0).setDomain("SUPP--");
-        RulePackageLoader.deriveOmittedFields(rule);
-        rule.setCheckExpr(CheckToExpr.toExpr(rule.getCheck()));
+        Rule rule = RulePackageLoader.loadFromString(SUPP_RDOMAIN_RULE).getRules().get("S1");
+        assertNull(rule.getLoadError(), "the hand-written rule must load: " + rule.getLoadError());
+        assertEquals("SUPP--", rule.getOperations().get(0).getDomain(),
+                "the SUPP-- operand is authored, and it is what the class exercises");
         return rule;
     }
 
