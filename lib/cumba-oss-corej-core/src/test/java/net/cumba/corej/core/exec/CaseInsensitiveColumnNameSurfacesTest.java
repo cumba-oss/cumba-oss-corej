@@ -1,9 +1,6 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.HashMap;
 import java.util.List;
@@ -168,54 +165,6 @@ class CaseInsensitiveColumnNameSurfacesTest
                 "APLB", aplb, inventory(Map.of("LB", lb)));
 
         assertEquals("FINDINGS", className);
-    }
-
-    // -- The SUPP-QNAM pivot: a QNAM names a variable --------------------------------------------
-
-
-    /**
-     * {@code AE.AETRTEM} delivered through {@code SUPPAE.QNAM} is found when the QNAM cell spells
-     * it in lower case — on the shared scan, and so on both the Check's dotted {@code exists} and
-     * the requirement gate's {@link ScopeVariableSource#existsViaSuppQnam}.
-     */
-    @Test
-    void suppQnamPivotMatchesTheQualifierIgnoringCase()
-    {
-        IDataTable suppae = RealTables.of("SUPPAE").str("USUBJID", "U1").str("RDOMAIN", "AE")
-                .str("QNAM", "aetrtem").str("QVAL", "Y").build();
-        IDataTable adae = RealTables.of("ADAE").str("USUBJID", "U1").build();
-
-        assertTrue(OperatorRegistry.existsInSuppQnam(suppae, "AETRTEM"), "shared scan");
-        ScopeVariableSource source = ScopeVariableSource.of(inventory(Map.of("SUPPAE", suppae)),
-                adae);
-        assertTrue(source != null && source.existsViaSuppQnam("AE", "AETRTEM"),
-                "requirement gate's pivot");
-        assertFalse(OperatorRegistry.existsInSuppQnam(suppae, "AEREL"),
-                "negative control: a QNAM the table does not carry");
-    }
-
-
-    /**
-     * {@code supp_qnam_present(domain="SUPPPC", key_value="PCCALCN")} — the corpus shape — joins
-     * the supplemental row whose QNAM spells the qualifier in lower case.
-     */
-    @Test
-    void suppQnamPresentMatchesTheQnamIgnoringCase()
-    {
-        IDataTable pc = RealTables.of("PC").str("USUBJID", "U1").str("PCSEQ", "1").build();
-        IDataTable supppc = RealTables.of("SUPPPC").str("USUBJID", "U1").str("RDOMAIN", "PC")
-                .str("IDVAR", "PCSEQ").str("IDVARVAL", "1").str("QNAM", "pccalcn").str("QVAL", "Y")
-                .build();
-        Operation present = op("$p", "supp_qnam_present");
-        present.setDomain("SUPPPC");
-        present.setKeyValue("PCCALCN");
-
-        Object result = OperationExecutorCalls.executeOne(present, pc,
-                name -> "SUPPPC".equals(name) ? supppc : null, null, new HashMap<>());
-
-        GroupedResult grouped = assertInstanceOf(GroupedResult.class, result);
-        assertEquals(1, grouped.results().size(), "the lowercase QNAM row is joined");
-        assertTrue(grouped.results().containsValue(true));
     }
 
     // -- A provider that answers a class for one domain -------------------------------------------

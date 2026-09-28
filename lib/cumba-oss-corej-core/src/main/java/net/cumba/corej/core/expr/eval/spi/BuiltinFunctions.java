@@ -968,13 +968,22 @@ public final class BuiltinFunctions implements FunctionProvider
             // substring probe on the rendered list — the very defect EC-28 fixes for the
             // case-sensitive pair. Keeping it a collection lets the membership branch in
             // Primitives.substring see it, giving case-insensitive EXACT membership.
+            // ⭐ Confirmed as the list form of upper / lower (owner, 2026-09-28,
+            // PLAN-case-insensitive-templates §1 / register CIT §3: "upper allows a list of
+            // strings as parameter and returns a list of these strings converted to upper case",
+            // "implement lower(...) for the same list as well"): a rule normalises the DATASET
+            // side of a name comparison — upper(get_column_order_from_dataset()),
+            // upper(varname()) — against the library's upper-case names. A MISSING element folds
+            // exactly as a missing scalar does below: to "" (a null element already did).
             Object raw = x.value(row).resolved();
             if (raw instanceof Collection<?> col)
             {
                 List<String> folded = new ArrayList<>(col.size());
                 for (Object item : col)
                 {
-                    String s = item != null ? item.toString() : "";
+                    String s = item == null
+                            || Primitives.MemberSet.missingIdentityOfMember(item) != null ? ""
+                                    : item.toString();
                     folded.add(toLower ? s.toLowerCase(Locale.ROOT) : s.toUpperCase(Locale.ROOT));
                 }
                 return folded;

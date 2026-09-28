@@ -377,22 +377,23 @@ class ScopeMatcherQualifiedTest
 
 
     /**
-     * A {@code QNAM} names a supplemental variable, so the pivot is a column-name match and ignores
-     * letter case (owner ruling 2026-09-28, register {@code CIT §1}; the pivot self-ruled a
-     * column-name surface by the coordinator). The gate and the Check-side dotted {@code exists}
-     * share {@code existsInSuppQnam}, so they still cannot diverge. This test pinned the opposite —
-     * "compares case-sensitively" — until review round 1 of
-     * {@code PLAN-case-insensitive-templates}.
+     * A {@code QNAM} cell is a string value and compares case-sensitively (owner, 2026-09-28,
+     * register {@code CIT §3}: <i>"a String that contains a column name is still a string in the
+     * engine"</i>). The gate and the Check-side dotted {@code exists} share
+     * {@code existsInSuppQnam}, so they cannot diverge. Review round 1 of
+     * {@code PLAN-case-insensitive-templates} had re-pinned this the other way (E5); the owner
+     * reverted it.
      */
     @Test
-    void suppPivotIgnoresCaseLikeTheCheckSide()
+    void suppPivotIsCaseSensitiveLikeTheCheckSide()
     {
         IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").build();
         IDataTable suppae = RealTables.of("SUPPAE").str("QNAM", "aetrtem").build();
-        assertNull(check(include("AE.AETRTEM"), sourceOf(map("AE", ae, "SUPPAE", suppae))),
-                "QNAM aetrtem delivers AETRTEM; the entry is satisfied");
-        assertNotNull(check(include("AE.AEREL"), sourceOf(map("AE", ae, "SUPPAE", suppae))),
-                "negative control: a qualifier SUPPAE does not carry stays unmet");
+        assertNotNull(check(include("AE.AETRTEM"), sourceOf(map("AE", ae, "SUPPAE", suppae))),
+                "existsInSuppQnam compares case-sensitively; the scope gate must not diverge");
+        IDataTable suppaeUpper = RealTables.of("SUPPAE").str("QNAM", "AETRTEM").build();
+        assertNull(check(include("AE.AETRTEM"), sourceOf(map("AE", ae, "SUPPAE", suppaeUpper))),
+                "control: the exact spelling is delivered through the pivot");
     }
 
 

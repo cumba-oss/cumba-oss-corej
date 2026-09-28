@@ -447,18 +447,21 @@ public final class OperatorRegistry
 
 
     /**
-     * Returns {@code true} when the SUPP-- table has at least one row whose {@code QNAM} cell names
-     * {@code col}, ignoring letter case. Empty / missing QNAM cells don't match.
+     * Returns {@code true} when the SUPP-- table has at least one row whose {@code QNAM} cell
+     * equals {@code col}. Empty / missing QNAM cells don't match.
      * <p>
-     * A {@code QNAM} names a supplemental <em>variable</em> — the column the SUPP pivot delivers —
-     * so the comparison is a column-name match and ignores letter case like every other one (owner
-     * ruling 2026-09-28, {@code PLAN-case-insensitive-templates}, register {@code CIT §1}).
+     * ⭐ A {@code QNAM} cell is a <em>value</em>, and a string that holds a column name is still a
+     * string: it compares as every string does, case-sensitively (owner, 2026-09-28,
+     * {@code PLAN-case-insensitive-templates} §1 / register {@code CIT §3}: <i>"a String that
+     * contains a column name is still a string in the engine"</i>). Review round 1 of that plan had
+     * made this comparison ignore case (E5); the owner reverted it. Case-insensitivity for a name a
+     * rule handles as a value is spelled in the rule, with {@code upper(…)}.
      * </p>
      * <p>
      * Fix #124 widened the visibility to package-private so {@link ScopeVariableSource} can reuse
      * the <em>same</em> implementation for a qualified {@code Scope.Variables} entry. Sharing it
      * rather than re-implementing is what makes the scope gate and the {@code Check}-side dotted
-     * {@code exists} provably agree (including this method's case-insensitive comparison).
+     * {@code exists} provably agree (including this method's case-sensitive comparison).
      * </p>
      *
      * @param supp
@@ -483,7 +486,7 @@ public final class OperatorRegistry
                 continue;
             }
             String s = dv.getValueAsString();
-            if (s != null && !s.isEmpty() && s.equalsIgnoreCase(col))
+            if (s != null && !s.isEmpty() && s.equals(col))
             {
                 return true;
             }

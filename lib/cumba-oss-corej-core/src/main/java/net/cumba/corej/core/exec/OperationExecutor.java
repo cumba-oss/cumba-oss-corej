@@ -2978,9 +2978,11 @@ public final class OperationExecutor
         long rowCount = supp.getRowCount();
         for (long r = 0; r < rowCount; r++)
         {
-            // A QNAM names a supplemental variable, so it is matched like a column name —
-            // ignoring letter case (register CIT §1), as OperatorRegistry.existsInSuppQnam does.
-            if (!qnam.equalsIgnoreCase(stringAt(supp, qnamIdx, r)))
+            // A QNAM cell is a value and compares as a string, case-sensitively (owner
+            // 2026-09-28, CIT §3: "a String that contains a column name is still a string") — as
+            // OperatorRegistry.existsInSuppQnam does. A rule that wants a case-insensitive QNAM
+            // match spells upper(QNAM) itself.
+            if (!qnam.equals(stringAt(supp, qnamIdx, r)))
             {
                 continue;
             }
