@@ -302,6 +302,46 @@ class CodelistAttributesTest
 
 
     /**
+     * Review round 2, MED-1 / LOW-1: the INLINE spelling answers exactly what the binding spelling
+     * answers on BOTH row orders — with the resolving row second as well as first. The loader's
+     * injected gate {@code available(get_codelist_attributes(…))} is folded over one synthetic row;
+     * before the fix the call answered for row 0 alone, so with a MedDRA row first the rule was
+     * SKIPPED "precondition not met" and the provider was never asked. And it is computed ONCE per
+     * execution: the gate and the Check share one provider round-trip.
+     */
+    @Test
+    void theInlineCallAnswersAsItsBindingOnBothRowOrdersAndAsksOnce() throws Exception
+    {
+        String call = "get_codelist_attributes(TSVCDREF, TSVCDVER, ct_attribute=\"Term CCODE\")";
+        Rule inline = rule("prefix(TSVCDREF, 5) == \"CDISC\" and TSVALCD not in " + call,
+                List.of());
+        Rule bound = rule("prefix(TSVCDREF, 5) == \"CDISC\" and TSVALCD not in $V", List.of(), "$V",
+                call);
+        IDataTable medDraFirst = MockTable.of().name("TS").col("TSVCDREF", "MedDRA", "CDISC CT")
+                .col("TSVCDVER", "", "2024-09-27").col("TSVALCD", "X", "C1").build();
+        IDataTable cdiscFirst = MockTable.of().name("TS").col("TSVCDREF", "CDISC CT", "MedDRA")
+                .col("TSVCDVER", "2024-09-27", "").col("TSVALCD", "C1", "X").build();
+        for (IDataTable table : List.of(medDraFirst, cdiscFirst))
+        {
+            AtomicInteger askedInline = new AtomicInteger();
+            RuleExecutionResult viaInline = RuleRunnerCalls.execute(inline, table, _ -> null, null,
+                    counting("sdtmct-2024-09-27", List.of("C9"), askedInline));
+            AtomicInteger askedBound = new AtomicInteger();
+            RuleExecutionResult viaBinding = RuleRunnerCalls.execute(bound, table, _ -> null, null,
+                    counting("sdtmct-2024-09-27", List.of("C9"), askedBound));
+            assertEquals(RuleExecutionStatus.EXECUTED, viaInline.getStatus(),
+                    viaInline.getStatusMessage());
+            assertEquals(viaBinding.getStatus(), viaInline.getStatus());
+            assertEquals(1, viaInline.getViolations().size(), "only the CDISC row fires");
+            assertEquals(viaBinding.getViolations().get(0).getRow(),
+                    viaInline.getViolations().get(0).getRow());
+            assertEquals(1, askedInline.get(), "gate + Check share one provider round-trip");
+            assertEquals(1, askedBound.get());
+        }
+    }
+
+
+    /**
      * Review round 1, L3: the target argument derives the same Output_Variables in either spelling
      * — positional {@code (TSVCDREF, …)} and keyword {@code (name=TSVCDREF, …)}.
      */

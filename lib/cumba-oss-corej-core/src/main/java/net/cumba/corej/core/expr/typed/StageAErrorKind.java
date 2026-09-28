@@ -66,11 +66,24 @@ public enum StageAErrorKind
      * {@code group}, a computed target, …) a <b>compiled</b> binding whose derived level has a row
      * or variable cursor ({@code PLAN-binding-expressions} §5.0, the hand-over contract's third
      * row): an operation's fields are dataset-level, so there is no row to pick the value at, and
-     * the executor would otherwise read the per-row value as one bogus string. Armed: measured 0
-     * newly parked — before wave 0 no compiled binding existed, and the one wave 0 adds
+     * the executor would otherwise read the per-row value as one bogus string. Since review round 1
+     * (L1) an <b>inline</b> operation — in the Check or nested in a compiled binding — is held to
+     * the same rule through the fields it reads ({@code OperationExecutor.priorReferences}). Armed:
+     * measured 0 newly parked — before wave 0 no compiled binding existed, and the one wave 0 adds
      * ({@code CDISC-CG0288}'s {@code $VALID_TERM_CODES}) is dataset-level and read by no operation.
      */
     OPERATION_READS_CURSOR_BINDING(true),
+
+    /**
+     * A scalar comparison ({@code == != < > <= >=}) against a <b>compiled</b> binding whose static
+     * type is a list ({@code PLAN-binding-expressions} review round 2, LOW-3) — the same comparison
+     * written against the inline list never compiles, so the binding spelling may not quietly run
+     * ({@code !=} flagging every row, {@code ==} none). Operation-produced lists are out of scope
+     * on purpose (the shipped corpus compares against them and their verdicts may not move). Armed:
+     * measured 0 newly parked — the one shipped compiled binding ({@code CDISC-CG0288}) is read
+     * only by {@code in} / {@code not in} / {@code empty}.
+     */
+    COMPARISON_WITH_LIST_BINDING(true),
 
     /**
      * An illegal {@code (attribute, metadata-level)} pair, or an unparseable metadata-level literal

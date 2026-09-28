@@ -54,6 +54,26 @@ public final class EvalRun
     }
 
 
+    /**
+     * ⭐ The ONE rule for a <b>dataset-level</b> value ({@code PLAN-binding-expressions} review
+     * rounds 1 and 2, H1 / MED-1): it is a property of the context's TABLE, not of the range a
+     * reader happens to span, so it is always computed over every row. Two readers span less — the
+     * dataset-level fold ({@code NativeExprEvaluator.evaluateBroadcast}) and the per-variable
+     * metadata loops evaluate over ONE synthetic row — and an aggregate computed over that row
+     * alone answered for row 0 only. Applied where a dataset-level value is produced: a
+     * dataset-level compiled binding ({@code BindingValue}) and an aggregate registry call
+     * ({@code ExprCompiler}). A table with fewer rows than this run spans (the synthetic row over a
+     * 0-row dataset) keeps this run's range.
+     *
+     * @return a run over {@code [0, max(table rows, to))} of the same context
+     */
+    public EvalRun wholeTable()
+    {
+        int rows = Math.max(ctx.rowCount(), to);
+        return from == 0 && to == rows ? this : new EvalRun(ctx, 0, rows);
+    }
+
+
     public int from()
     {
         return from;

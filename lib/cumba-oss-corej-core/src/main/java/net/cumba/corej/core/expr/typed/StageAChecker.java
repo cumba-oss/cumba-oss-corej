@@ -375,6 +375,8 @@ public final class StageAChecker
 
     private void comparison(Expr.Binary b, TypedExpr left, TypedExpr right)
     {
+        listBindingComparison(b, b.left());
+        listBindingComparison(b, b.right());
         ExprType lt = left.type().dereference();
         ExprType rt = right.type().dereference();
         if (mixedTemporalString(lt, rt) || mixedTemporalString(rt, lt))
@@ -393,6 +395,32 @@ public final class StageAChecker
         {
             find(StageAErrorKind.PARAMETER_TYPE, "comparison operands disagree: " + lt.describe()
                     + " " + b.op() + " " + rt.describe());
+        }
+    }
+
+
+    /**
+     * Review round 2, LOW-3: a scalar comparison ({@code == != < > <= >=}) against a
+     * <b>compiled</b> binding whose static type is a list — a list-literal binding or a list-valued
+     * function's — is the load error of the same comparison written against the inline list (which
+     * never compiles). {@code X != $l} otherwise ran and flagged every row, {@code X == $l} none. ⚠
+     * An <b>operation</b> binding's list is deliberately NOT judged here: the shipped corpus
+     * compares against operation lists and the executor answers them (probe F1); changing that
+     * would move shipped verdicts, which wave 0 may not do.
+     */
+    private void listBindingComparison(Expr.Binary b, Expr operand)
+    {
+        if (!(operand instanceof Expr.Ref ref) || rule.compiledBinding(ref.name()) == null)
+        {
+            return;
+        }
+        ExprType type = bindingTypes.get(ref.name());
+        if (type != null && type.dereference() instanceof ListOf)
+        {
+            find(StageAErrorKind.COMPARISON_WITH_LIST_BINDING,
+                    "the comparison " + b.op() + " reads the list-valued binding " + ref.name()
+                            + " as a scalar — test membership with `in` / `not in`, or compare"
+                            + " one element");
         }
     }
 

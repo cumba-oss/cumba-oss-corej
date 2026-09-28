@@ -578,6 +578,36 @@ class CompiledBindingTest
     }
 
 
+    /**
+     * Review round 2, LOW-3: a scalar comparison against a list-valued COMPILED binding is a load
+     * error — the inline spelling `X != ["A"]` never compiles, so `X != $l` may not quietly flag
+     * every row (nor `==` none). An OPERATION-produced list keeps its behaviour (probe F1): the
+     * shipped corpus compares against operation lists and wave 0 may not move those verdicts.
+     */
+    @Test
+    void aScalarComparisonAgainstAListValuedCompiledBindingIsALoadError() throws Exception
+    {
+        for (String check : List.of("X != $l", "X == $l", "$l == X", "X < $l"))
+        {
+            Rule rule = load(check, List.of(), "$l", "[\"A\"]");
+            assertNotNull(rule.getLoadError(), check);
+            assertTrue(rule.getLoadError().contains("COMPARISON_WITH_LIST_BINDING"),
+                    rule.getLoadError());
+        }
+        assertNotNull(
+                load("TSVALCD != $l", List.of(), "$l",
+                        "get_codelist_attributes(TSVCDREF, TSVCDVER, ct_attribute=\"Term CCODE\")")
+                                .getLoadError(),
+                "a list-valued FUNCTION binding is known statically too");
+        // Unchanged: an operation list, membership against the list binding, a scalar binding.
+        assertEquals(Set.of(0L, 1L, 2L),
+                firedRows(run(loadClean("X != $d", "$d", "distinct(Y)"), ae())),
+                "probe F1: an operation list keeps its (shipped) behaviour");
+        loadClean("X not in $l", "$l", "[\"A\"]");
+        loadClean("X != $u", "$u", "upper(X)");
+    }
+
+
     /** Review round 1, M2 (probe F10): a numeric list reaches an operation as its authored text. */
     @Test
     void aNumericListLiteralBindingReachesAnOperationAsItsCanonicalText() throws Exception
@@ -682,7 +712,16 @@ class CompiledBindingTest
         {
                 0b1101
         }), members, "A∈[A,B], Z∉[A,B], B∈[A,B], Q∈[Q]");
-        assertEquals(2, folds.get(), "one fold per distinct list instance, not one per row");
+        assertEquals(2, folds.get(), "one fold per run of one list instance, not one per row");
+        // Review round 2, LOW-2: ONE slot, never a map — a list instance that returns after
+        // another is folded again rather than kept for the whole loop (split_by makes every row's
+        // list distinct, and a per-instance map would hold N sets beside the vector's N lists).
+        folds.set(0);
+        Vector alternating = new ComputedVector(4, DataValueType.STRING,
+                row -> row % 2 == 0 ? shared : other);
+        net.cumba.corej.core.expr.eval.ExprCompilerTestAccess.boundMembership(probe, alternating, 4,
+                false, false, false);
+        assertEquals(4, folds.get(), "an alternating pair refolds per row: memory stays O(1)");
     }
 
 

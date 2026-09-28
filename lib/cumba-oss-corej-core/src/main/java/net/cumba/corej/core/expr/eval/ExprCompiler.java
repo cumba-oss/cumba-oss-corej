@@ -7,7 +7,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -1493,10 +1492,12 @@ public final class ExprCompiler
      * ({@code CDISC-CG0288}'s {@code TSVALCD not in $VALID_TERM_CODES}).</li>
      * <li><b>Per row</b> — any other Vector: each row's cell is its own set (a collection its
      * elements, a scalar a singleton, a missing cell the empty set — the {@link #toSet} contract
-     * {@link #groupedMembership} follows). ⭐ One {@link Primitives.MemberSet} is built per distinct
-     * list <em>instance</em> and reused by every row carrying it, so rows sharing a list fold it
-     * once — deliberately not {@code groupedMembership}'s per-row rebuild. No per-row array is
-     * materialised beyond the vector's own memo (D-W0-3).</li>
+     * {@link #groupedMembership} follows). ⭐ The set of the most recent list <em>instance</em> is
+     * kept in ONE slot and reused while consecutive rows carry that same instance, so a run of rows
+     * sharing a list folds it once. ⚠ One slot, never a map (review round 2, LOW-2): a per-row list
+     * callable such as {@code split_by} makes every row's list distinct, and a per-instance map
+     * would then hold N sets beside the vector's own N lists. No per-row array is materialised
+     * beyond the vector's own memo (D-W0-3).</li>
      * </ul>
      *
      * Package-private for the unit tests.
@@ -1510,14 +1511,26 @@ public final class ExprCompiler
             return listLhs ? Primitives.listMembership(v, set, rowCount, negate, caseInsensitive)
                     : Primitives.membership(v, set, rowCount, negate, caseInsensitive);
         }
-        IdentityHashMap<Object, Primitives.MemberSet> perInstance = new IdentityHashMap<>();
+        Object lastList = null;
+        Primitives.MemberSet lastSet = null;
         BitSet out = new BitSet(rowCount);
         for (int r = 0; r < rowCount; r++)
         {
             Object cell = bound.value(r).resolved();
-            Primitives.MemberSet set = cell instanceof Collection<?>
-                    ? perInstance.computeIfAbsent(cell, list -> toSet(list, caseInsensitive))
-                    : toSet(cell, caseInsensitive);
+            Primitives.MemberSet set;
+            if (cell instanceof Collection<?> && cell == lastList && lastSet != null)
+            {
+                set = lastSet;
+            }
+            else
+            {
+                set = toSet(cell, caseInsensitive);
+                if (cell instanceof Collection<?>)
+                {
+                    lastList = cell;
+                    lastSet = set;
+                }
+            }
             // The same per-row decisions Primitives.listMembership / Primitives.membership make,
             // one row at a time because the set is the row's own.
             boolean member = listLhs
@@ -5241,7 +5254,74 @@ public final class ExprCompiler
             // its constructor.
             return (Vector) fn.apply(run, args, c.kwargs());
         };
-        return cachedValue(c, inner);
+        return cachedValue(c, descriptor.aggregate() ? aggregatePlan(c, inner) : inner);
+    }
+
+
+    /**
+     * ⭐ Review round 2, MED-1 / LOW-1 — an <b>aggregate</b> call folds the whole table, whatever
+     * range its reader spans ({@link EvalRun#wholeTable()}, the rule H1 set for a dataset-level
+     * binding). Written inline in a dataset-level leaf — the loader's injected
+     * {@code available(get_codelist_attributes(…))} gate, or the Check itself — the call used to be
+     * evaluated over the fold's single synthetic row, so it answered for row 0 alone and disagreed
+     * with the same call held by a binding.
+     *
+     * <p>
+     * When the call reads nothing but columns and literals, its result is memoised for the
+     * execution ({@link EvaluationContext#getAggregateMemo()}, keyed by table identity and the
+     * canonical call), so the gate and the Check share one provider round-trip. A call reading a
+     * {@code $}-value or a cursor builtin is recomputed per reader — its value may differ per
+     * variable context, and caching it would be the unsound shortcut. An unusable provider answer
+     * throws before anything is stored.
+     * </p>
+     */
+    private static ValuePlan aggregatePlan(Expr.Call c, ValuePlan inner)
+    {
+        String canon = readsOnlyColumnsAndLiterals(c) ? ExpressionPrinter.print(c) : null;
+        return run ->
+        {
+            EvalRun whole = run.wholeTable();
+            if (canon == null)
+            {
+                return inner.eval(whole);
+            }
+            EvaluationContext ctx = run.ctx();
+            return (Vector) ctx.getAggregateMemo()
+                    .computeIfAbsent(DatasetExpressionCache.keyOf(ctx.getTable(),
+                            canon + "@" + whole.to(), ctx.getDomainPrefix()),
+                            () -> inner.eval(whole));
+        };
+    }
+
+
+    /**
+     * Whether {@code e} reads only (plain or dotted) columns and literals — no {@code $}, no
+     * cursor.
+     */
+    private static boolean readsOnlyColumnsAndLiterals(Expr e)
+    {
+        return switch (e)
+        {
+        case Expr.Ref r -> r.kind() == OperandKind.COLUMN || r.kind() == OperandKind.DOTTED_REF;
+        case Expr.Lit lit -> lit.kind() != Expr.LitKind.LIST
+                || listItems(lit).stream().allMatch(ExprCompiler::readsOnlyColumnsAndLiterals);
+        case Expr.Call call -> call.args().stream()
+                .allMatch(ExprCompiler::readsOnlyColumnsAndLiterals)
+                && call.kwargs().values().stream()
+                        .allMatch(ExprCompiler::readsOnlyColumnsAndLiterals);
+        case Expr.Binary b -> readsOnlyColumnsAndLiterals(b.left())
+                && readsOnlyColumnsAndLiterals(b.right());
+        case Expr.And a -> a.parts().stream().allMatch(ExprCompiler::readsOnlyColumnsAndLiterals);
+        case Expr.Or o -> o.parts().stream().allMatch(ExprCompiler::readsOnlyColumnsAndLiterals);
+        case Expr.Not n -> readsOnlyColumnsAndLiterals(n.inner());
+        };
+    }
+
+
+    @SuppressWarnings("unchecked")
+    private static List<Expr> listItems(Expr.Lit lit)
+    {
+        return (List<Expr>) lit.value();
     }
 
 

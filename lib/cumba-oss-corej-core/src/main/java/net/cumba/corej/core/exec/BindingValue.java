@@ -120,8 +120,7 @@ public final class BindingValue
         EvaluationContext ctx = run.ctx();
         boolean datasetLevel = !binding.needsCursor();
         // H1: a dataset-level binding folds the whole table, never the reader's range.
-        EvalRun evaluated = datasetLevel ? new EvalRun(ctx, 0, Math.max(ctx.rowCount(), run.to()))
-                : run;
+        EvalRun evaluated = datasetLevel ? run.wholeTable() : run;
         Vector cached = memo;
         if (cached != null && memoTable == ctx.getTable() && memoFrom == evaluated.from()
                 && memoTo == evaluated.to()

@@ -117,6 +117,18 @@ public class EvaluationContext
     WildcardForeignColumnCache wildcardColumns = new WildcardForeignColumnCache();
 
     /**
+     * {@code PLAN-binding-expressions} review round 2 (LOW-1): the results of <b>aggregate</b>
+     * registry calls ({@code FunctionDescriptor.aggregate()}, e.g. {@code get_codelist_attributes})
+     * for ONE (rule × dataset) execution, keyed by (table identity, canonical call). An aggregate
+     * folds the whole table (see {@link EvalRun#wholeTable()}), so the injected availability gate,
+     * the Check and every per-variable context read one value instead of re-running the provider. ⭐
+     * Never {@code null} and never shared across executions: a context built with {@code builder()}
+     * gets its own, {@code toBuilder} carries it into every derived context.
+     */
+    @Builder.Default
+    ExpressionResultCache aggregateMemo = new ExpressionResultCache();
+
+    /**
      * Phase 6 of {@code PLAN-typed-expression-engine.md} — the <b>binding-hoist memo</b>: a
      * per-execution store for the results of binding-invariant pure subtrees, armed by
      * {@code RuleRunner} around a variable-cursor binding loop (D8/D92e) and shared by every
