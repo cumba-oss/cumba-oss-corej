@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.corej.core.expr.ast.Expr;
@@ -241,6 +242,138 @@ class CodelistAttributesTest
         RuleExecutionResult member = RuleRunnerCalls.execute(rule, ts("CDISC", "2024-09-27"),
                 _ -> null, null, answering(List.of("C1")));
         assertTrue(member.getViolations().isEmpty(), "C1 is a valid code");
+    }
+
+
+    private static Rule rule(String check, List<String> outputs, String... bindings)
+        throws Exception
+    {
+        Map<String, Object> rule = new LinkedHashMap<>();
+        rule.put("Core", Map.of("Id", "W0-CG0288-VARIANT"));
+        List<Map<String, String>> declared = new ArrayList<>();
+        for (int i = 0; i < bindings.length; i += 2)
+        {
+            declared.add(Map.of("name", bindings[i], "expression", bindings[i + 1]));
+        }
+        if (!declared.isEmpty())
+        {
+            rule.put("Bindings", declared);
+        }
+        rule.put("Check", Map.of("expression", check));
+        rule.put("Outcome", Map.of("Message", "m", "Output_Variables", outputs));
+        String json = MAPPER.writeValueAsString(Map.of("rules", Map.of("x", rule)));
+        return Objects.requireNonNull(RulePackageLoader.loadFromString(json).getRules().get("x"));
+    }
+
+
+    /**
+     * Review round 1, L2 — decided SUPPORT: the list-valued function written INLINE as the
+     * membership right-hand side answers exactly what the same call held by a binding answers (a
+     * binding is only a name for its expression). Its SKIP half was already right (§0.2 a); with a
+     * usable answer it threw "membership right-hand side must be a list literal …" (probe E6b).
+     */
+    @Test
+    void theFunctionInlineAsAMembershipSetAnswersAsItsBindingDoes() throws Exception
+    {
+        String call = "get_codelist_attributes(TSVCDREF, TSVCDVER, ct_attribute=\"Term CCODE\")";
+        Rule inline = rule("TSVALCD not in " + call, List.of());
+        assertNull(inline.getLoadError(), inline.getLoadError());
+        Rule bound = rule("TSVALCD not in $V", List.of(), "$V", call);
+        for (List<String> answer : List.of(List.of("C9"), List.of("C1")))
+        {
+            RuleExecutionResult viaInline = RuleRunnerCalls.execute(inline,
+                    ts("CDISC", "2024-09-27"), _ -> null, null, answering(answer));
+            RuleExecutionResult viaBinding = RuleRunnerCalls.execute(bound,
+                    ts("CDISC", "2024-09-27"), _ -> null, null, answering(answer));
+            assertEquals(RuleExecutionStatus.EXECUTED, viaInline.getStatus(),
+                    viaInline.getStatusMessage());
+            assertEquals(viaBinding.getViolations().size(), viaInline.getViolations().size(),
+                    "answer " + answer);
+        }
+        assertEquals(1, RuleRunnerCalls.execute(inline, ts("CDISC", "2024-09-27"), _ -> null, null,
+                answering(List.of("C9"))).getViolations().size(), "C1 is not in [C9]");
+        // The SKIP half, unchanged: no provider, and a provider with nothing usable.
+        assertEquals(RuleExecutionStatus.SKIPPED,
+                RuleRunnerCalls.execute(inline, ts("CDISC", "2024-09-27")).getStatus());
+        assertEquals(RuleExecutionStatus.SKIPPED, RuleRunnerCalls
+                .execute(inline, ts("CDISC", "2099-01-01"), _ -> null, null, answering(List.of()))
+                .getStatus());
+    }
+
+
+    /**
+     * Review round 1, L3: the target argument derives the same Output_Variables in either spelling
+     * — positional {@code (TSVCDREF, …)} and keyword {@code (name=TSVCDREF, …)}.
+     */
+    @Test
+    void theTargetDerivesTheSameColumnsPositionallyAndByKeyword() throws Exception
+    {
+        Rule positional = rule("TSVALCD not in $V", List.of(), "$V",
+                "get_codelist_attributes(TSVCDREF, TSVCDVER, ct_attribute=\"Term CCODE\")");
+        Rule keyword = rule("TSVALCD not in $V", List.of(), "$V",
+                "get_codelist_attributes(name=TSVCDREF, version=TSVCDVER,"
+                        + " ct_attribute=\"Term CCODE\")");
+        assertNull(keyword.getLoadError(), keyword.getLoadError());
+        assertEquals(List.of("TSVALCD", "TSVCDREF"), positional.getEffectiveOutputVariables());
+        assertEquals(positional.getEffectiveOutputVariables(),
+                keyword.getEffectiveOutputVariables());
+    }
+
+
+    /** A provider answering {@code answer} for {@code pkg} only, counting every question. */
+    private static MetadataProvider counting(String pkg, List<String> answer, AtomicInteger asked)
+    {
+        MetadataProvider p = mock(MetadataProvider.class);
+        lenient().when(p.getStandard()).thenReturn("sdtmig");
+        lenient().when(p.getCodelistAttribute(anyString(), anyString())).thenAnswer(inv ->
+        {
+            asked.incrementAndGet();
+            return pkg.equals(inv.getArgument(0)) ? answer : List.of();
+        });
+        return p;
+    }
+
+
+    /**
+     * Review round 1, H1: ROW 0 resolves no CT package. The dataset-level leaf
+     * {@code not empty($VALID_TERM_CODES)} is folded once over a single synthetic row
+     * ({@code BroadcastFold}); the aggregate must still answer the union of EVERY row. Before the
+     * fix the fold re-ran the function over row 0 alone, found no package and the rule ERRORed.
+     */
+    @Test
+    void theAggregateAnswersEveryRowWhenRowZeroResolvesNoPackage() throws Exception
+    {
+        Rule rule = cg0288Shape();
+        IDataTable table = MockTable.of().name("TS").col("TSVCDREF", "MedDRA", "CDISC CT")
+                .col("TSVCDVER", "", "2024-09-27").col("TSVALCD", "X", "C1").build();
+        AtomicInteger asked = new AtomicInteger();
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table, _ -> null, null,
+                counting("sdtmct-2024-09-27", List.of("C9"), asked));
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        assertEquals(1, result.getViolations().size(), "only the CDISC row fires");
+        assertEquals(1L, result.getViolations().get(0).getRow());
+        assertEquals("[C9]", result.getViolations().get(0).getValues().get("$VALID_TERM_CODES"));
+        assertEquals(1, asked.get(), "one package, asked once");
+    }
+
+
+    /**
+     * Review round 1, M1: the dataset-level binding is computed ONCE per (rule × dataset) execution
+     * — the eager SKIP arm, the dataset-level fold and the Check all read the one memo. Measured
+     * before the fix: the provider was asked 2 + 1 + 2 = 5 times for two packages (the 25 000-code
+     * union of CG0288 three times over).
+     */
+    @Test
+    void theAggregateIsComputedOncePerExecution() throws Exception
+    {
+        IDataTable table = MockTable.of().name("TS").col("TSVCDREF", "CDISC CT", "MedDRA")
+                .col("TSVCDVER", "2024-09-27", "26.0").col("TSVALCD", "C1", "X").build();
+        AtomicInteger asked = new AtomicInteger();
+        RuleExecutionResult result = RuleRunnerCalls.execute(cg0288Shape(), table, _ -> null, null,
+                counting("sdtmct-2024-09-27", List.of("C9"), asked));
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        assertEquals(1, result.getViolations().size());
+        assertEquals(2, asked.get(), "two distinct packages, each asked exactly once");
     }
 
 

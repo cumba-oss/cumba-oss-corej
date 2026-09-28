@@ -184,6 +184,9 @@ class CompiledBindingTest
             Rule rule = load("$x == \"A\"", List.of(), "$x", pair[0], "$x", pair[1]);
             assertNotNull(rule.getLoadError(), pair[0] + " + " + pair[1]);
             assertTrue(rule.getLoadError().contains("`$x` is declared twice"), rule.getLoadError());
+            // Review round 1, L4: the name IS authored — no second, false "dangling" diagnosis.
+            assertFalse(rule.getLoadError().contains("which no Operations entry defines"),
+                    rule.getLoadError());
         }
     }
 
@@ -424,6 +427,30 @@ class CompiledBindingTest
     }
 
 
+    /**
+     * Review round 1, M1: the per-variable loops give every column a fresh variables map; a
+     * dataset-level binding must not be recomputed per column (nor per synthetic broadcast row).
+     */
+    @Test
+    void aDatasetLevelBindingIsComputedOnceAcrossThePerVariableLoop() throws Exception
+    {
+        AtomicInteger calls = new AtomicInteger();
+        FunctionDescriptor counted = new FunctionDescriptor("__w0_counted__", List.of(),
+                FunctionKind.VALUE, (run, args) ->
+                {
+                    calls.incrementAndGet();
+                    return ConstVector.of(1L);
+                }).aggregating();
+        try (var _ = RegistryTestSeam.register(counted))
+        {
+            Rule rule = loadClean("varname() == \"X\" and $c == 1", "$c", "__w0_counted__()");
+            RuleExecutionResult result = run(rule, ae());
+            assertEquals(1, result.getViolations().size(), "the one column named X fires");
+            assertEquals(1, calls.get(), "computed once for the five columns, not once per column");
+        }
+    }
+
+
     @Test
     void aDatasetLevelBindingIsHandedOverAsItsRawValue() throws Exception
     {
@@ -481,6 +508,138 @@ class CompiledBindingTest
         Rule rule = load("Y in $l", List.of(), "$l", "[AETERM, \"A\"]");
         assertNotNull(rule.getLoadError(), "a column in a list binding has no dataset-level value");
         assertTrue(rule.getLoadError().contains("plain literals only"), rule.getLoadError());
+    }
+
+
+    private static IDataTable seqs()
+    {
+        return MockTable.of().name("AE").col("USUBJID", "S1", "S2", "S3")
+                .colLong("AESEQ", 1L, 2L, 3L).col("CSEQ", "1", "2", "3").col("X", "A", "B", "C")
+                .build();
+    }
+
+
+    /** Status, message and fired rows of one execution — what "the same verdict" means. */
+    private static String verdict(Rule rule, IDataTable table)
+    {
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, table);
+        return result.getStatus() + " | " + result.getStatusMessage() + " | " + firedRows(result);
+    }
+
+
+    /**
+     * Review round 1, M2: a list-literal binding is membership against the literal ITSELF — the
+     * numeric member classification, the canonical member text and the column-type gates of the
+     * inline list. Before the fix a numeric member became the text "1.0", so a numeric list against
+     * a Char column fired on EVERY row where the inline list raises its column-type error (probes
+     * E1d / E1e), and a list of digit strings against a Num column ran textually where the inline
+     * list errors (probes F4 / F5).
+     */
+    @Test
+    void aListLiteralBindingIsMembershipAgainstTheLiteralItself() throws Exception
+    {
+        IDataTable t = seqs();
+        for (String[] shape : new String[][]
+        {
+                {
+                        "AESEQ not in", "[1, 2]"
+                },
+                {
+                        "CSEQ not in", "[1, 2]"
+                },
+                {
+                        "CSEQ in", "[1, 2]"
+                },
+                {
+                        "AESEQ not in", "[\"1\", \"2\"]"
+                },
+                {
+                        "CSEQ not in", "[\"1\", \"2\"]"
+                },
+                {
+                        "upper(X) in", "[\"a\"]"
+                }
+        })
+        {
+            String inline = verdict(loadClean(shape[0] + " " + shape[1], "$u", "upper(X)"), t);
+            assertEquals(inline, verdict(loadClean(shape[0] + " $l", "$l", shape[1]), t),
+                    shape[0] + " " + shape[1]);
+            // …and through a binding that merely renames it.
+            assertEquals(inline,
+                    verdict(loadClean(shape[0] + " $k", "$l", shape[1], "$k", "$l"), t),
+                    "alias: " + shape[0] + " " + shape[1]);
+        }
+        assertTrue(verdict(loadClean("CSEQ not in $l", "$l", "[1, 2]"), t)
+                .startsWith("ERROR | column-type mismatch"), "E1d: the inline list's gate");
+        assertTrue(verdict(loadClean("AESEQ not in $l", "$l", "[\"1\", \"2\"]"), t)
+                .startsWith("ERROR | column-type mismatch"), "F4: the inline list's gate");
+        assertEquals("EXECUTED | null | [2]",
+                verdict(loadClean("AESEQ not in $l", "$l", "[1, 2]"), t));
+    }
+
+
+    /** Review round 1, M2 (probe F10): a numeric list reaches an operation as its authored text. */
+    @Test
+    void aNumericListLiteralBindingReachesAnOperationAsItsCanonicalText() throws Exception
+    {
+        Rule rule = loadClean("CSEQ not in $m", List.of("$m", "$a"), "$a", "[1, 2, 3]", "$b", "[2]",
+                "$m", "minus($a, subtract=$b)");
+        RuleExecutionResult result = run(rule, seqs());
+        assertEquals(Set.of(1L), firedRows(result),
+                "[1, 3] leaves only CSEQ \"2\"; [1.0, 3.0] fired all");
+        assertEquals("[1, 3]", result.getViolations().get(0).getValues().get("$m"));
+        assertEquals("[1, 2, 3]", result.getViolations().get(0).getValues().get("$a"));
+    }
+
+
+    @Test
+    void aListLiteralBindingMixingNumbersAndStringsIsTheInlineListsLoadError() throws Exception
+    {
+        Rule rule = load("X in $l", List.of(), "$l", "[1, \"A\"]");
+        assertNotNull(rule.getLoadError());
+        assertTrue(rule.getLoadError().contains("mixes numeric and string members"),
+                rule.getLoadError());
+    }
+
+
+    /**
+     * Review round 1, L1: §5.0 row 3 holds for an INLINE operation too — in the Check or nested in
+     * a compiled binding, reading a per-row binding is a load error, never the run-time backstop.
+     */
+    @Test
+    void anInlineOperationCannotReadAPerRowCompiledBinding() throws Exception
+    {
+        Rule inCheck = load("not empty(minus($a, subtract=$p))", List.of(), "$a", "[\"A\", \"B\"]",
+                "$p", "upper(X)");
+        assertNotNull(inCheck.getLoadError(), "probe E2a");
+        assertTrue(
+                inCheck.getLoadError().contains("OPERATION_READS_CURSOR_BINDING") && inCheck
+                        .getLoadError().contains("the inline operation minus(…) in the Check"),
+                inCheck.getLoadError());
+        Rule inBinding = load("$e == true", List.of(), "$a", "[\"A\"]", "$p", "upper(X)", "$e",
+                "empty(minus($a, subtract=$p))");
+        assertNotNull(inBinding.getLoadError());
+        assertTrue(inBinding.getLoadError().contains("in the binding $e"),
+                inBinding.getLoadError());
+        // The negative control: the same inline minus over two dataset-level lists loads clean.
+        Rule clean = loadClean("X not in minus($a, subtract=$b)", "$a", "[\"A\", \"B\"]", "$b",
+                "[\"B\"]");
+        assertEquals(Set.of(1L, 2L), firedRows(run(clean, seqs())), "probe E2b: [A,B] minus [B]");
+    }
+
+
+    /**
+     * Review round 1, T2: a library-dependent OperationType nested in a compiled binding is SKIPPED
+     * by the provider GATE ("no Library access"), not by the unusable-answer layer.
+     */
+    @Test
+    void aNestedLibraryOperationWithNoLibraryIsSkippedByTheProviderGate() throws Exception
+    {
+        Rule rule = loadClean("$standard == true and empty(AETERM)", "$standard",
+                "domain_is_custom() == false");
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, ae());
+        assertEquals(RuleExecutionStatus.SKIPPED, result.getStatus());
+        assertEquals("Rule skipped — no Library access", result.getStatusMessage());
     }
 
 

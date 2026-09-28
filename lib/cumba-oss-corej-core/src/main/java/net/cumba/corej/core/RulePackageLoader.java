@@ -4912,6 +4912,21 @@ public class RulePackageLoader
                 undefined.remove(binding.name());
             }
         }
+        // Review round 1, L4: a name AUTHORED in `Bindings:` is not dangling even when its binding
+        // did not materialise (a duplicate name, an unnamed or malformed entry) — that failure
+        // carries its own load error, and a second "no Operations entry defines it" message
+        // misdiagnoses the rule.
+        List<net.cumba.corej.core.model.Binding> authored = rule.getBindings();
+        if (authored != null)
+        {
+            for (net.cumba.corej.core.model.Binding binding : authored)
+            {
+                if (binding != null && binding.getName() != null)
+                {
+                    undefined.remove(binding.getName());
+                }
+            }
+        }
         if (undefined.isEmpty())
         {
             return;

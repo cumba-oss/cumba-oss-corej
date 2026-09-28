@@ -104,9 +104,12 @@ class ProviderNeedsTest
     @Test
     void aMalformedInlineOperationCallNeedsNothingItTheCompilerRejectsIt()
     {
-        // record_count takes no target; the operation parser refuses the call, so the reader
-        // reports no need rather than guessing one (the compiler raises the real error).
-        assertTrue(needsOf("record_count(AETERM, AESEV, bogus=1) > 0").isEmpty());
+        // Review round 1, T3: a LIBRARY-dependent operation, so "needs nothing" is a real answer —
+        // the well-formed call needs the Library (the positive control), and the malformed one
+        // (an unknown keyword the operation parser refuses) reports no need rather than guessing
+        // one; the compiler raises the real error.
+        assertTrue(needsOf("not domain_is_custom()").library(), "the positive control");
+        assertTrue(needsOf("not domain_is_custom(bogus=1)").isEmpty());
     }
 
 

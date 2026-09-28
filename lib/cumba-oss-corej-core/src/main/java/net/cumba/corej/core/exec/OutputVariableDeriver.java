@@ -522,9 +522,10 @@ public final class OutputVariableDeriver
         }
         case Expr.Call call ->
         {
-            if (!call.args().isEmpty() && !call.kwargs().containsKey("domain"))
+            Expr target = targetArgument(call);
+            if (target != null && !call.kwargs().containsKey("domain"))
             {
-                contributeTarget(walk, call.args().get(0));
+                contributeTarget(walk, target);
             }
         }
         case Expr.Binary binary ->
@@ -545,6 +546,26 @@ public final class OutputVariableDeriver
             }
         }
         }
+    }
+
+
+    /**
+     * A call's TARGET argument (runbook R6) in either spelling (review round 1, L3): the first
+     * positional argument, else the keyword naming the target parameter — the registered function's
+     * first parameter, or an inline operation's {@code name} — so {@code f(TSVCDREF, …)} and
+     * {@code f(name=TSVCDREF, …)} derive the same columns.
+     */
+    private static @Nullable Expr targetArgument(Expr.Call call)
+    {
+        if (!call.args().isEmpty())
+        {
+            return call.args().get(0);
+        }
+        net.cumba.corej.core.expr.eval.FunctionDescriptor descriptor = net.cumba.corej.core.expr.eval.FunctionRegistry
+                .descriptor(call.name());
+        String targetParameter = descriptor == null ? "name"
+                : descriptor.parameters().isEmpty() ? null : descriptor.parameters().get(0).name();
+        return targetParameter == null ? null : call.kwargs().get(targetParameter);
     }
 
 

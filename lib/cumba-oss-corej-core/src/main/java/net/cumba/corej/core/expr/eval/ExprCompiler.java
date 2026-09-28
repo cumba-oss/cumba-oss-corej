@@ -314,6 +314,16 @@ public final class ExprCompiler
      * nested list, a regex, a column reference or a call ({@code upper("x")}, {@code date("…")})
      * has no dataset-level value to fold into the list — a load error on the binding, never a
      * member rendered as its source text.
+     *
+     * <p>
+     * ⭐ Review round 1, M2: a list-literal binding behaves <b>exactly</b> like the same list
+     * written inline. A member is carried as the text the inline literal's member set is built from
+     * ({@link #literalText} — a number in its canonical plain form, {@code 1} never {@code "1.0"}),
+     * so an operation reading the list ({@code minus}) and the report render it as authored; a list
+     * mixing numeric and string members is the inline list's load error
+     * ({@link #numericMemberSet}); and membership against the binding is compiled as membership
+     * against the literal itself ({@link #compileMembership}), column-type gates included.
+     * </p>
      */
     private static List<Object> listLiteralValues(Expr.Lit lit)
     {
@@ -327,8 +337,9 @@ public final class ExprCompiler
             {
                 throw unsupported("a list binding holds plain literals only, not " + item);
             }
-            values.add(literalObject(member));
+            values.add(literalText(member));
         }
+        numericMemberSet(lit);
         return List.copyOf(values);
     }
 
@@ -894,8 +905,83 @@ public final class ExprCompiler
         };
     }
 
+    /**
+     * Membership plans compiled for a list-literal binding substituted into its reader
+     * ({@link #compileMembership}), keyed by the substituted {@code Binary}.
+     */
+    private static final Map<Expr, ExprProgram.BoolPlan> LITERAL_BINDING_MEMBERSHIP = new ConcurrentHashMap<>();
 
     private static ExprProgram.BoolPlan compileMembership(Expr.Binary b)
+    {
+        ExprProgram.BoolPlan asWritten = compileMembershipAsWritten(b);
+        if (!(b.right() instanceof Expr.Ref ref) || ref.kind() != OperandKind.OPERATION_REF)
+        {
+            return asWritten;
+        }
+        // ⭐ Review round 1, M2: a `$`-name bound to a LIST LITERAL is membership against that
+        // literal — the numeric / temporal member classification, the canonical member text and
+        // the column-type gates of the inline list — never a textual set of its members. Only the
+        // run knows what the name is bound to, so the substituted plan is chosen per run and
+        // compiled once per substituted expression.
+        return run ->
+        {
+            Expr.Lit literal = boundListLiteral(run, ref.name());
+            if (literal == null)
+            {
+                return asWritten.eval(run);
+            }
+            return LITERAL_BINDING_MEMBERSHIP
+                    .computeIfAbsent(new Expr.Binary(b.op(), b.left(), literal),
+                            e -> compileMembershipAsWritten((Expr.Binary) e))
+                    .eval(run);
+        };
+    }
+
+
+    /**
+     * Whether {@code e} is a call to a registered function (never an inline operation) whose
+     * declared result is a list ({@code ElementTable}), e.g. {@code get_codelist_attributes(…)}.
+     */
+    private static boolean isListValuedFunctionCall(Expr e)
+    {
+        return e instanceof Expr.Call call && !isInlineOperation(call)
+                && FunctionRegistry.descriptor(call.name()) != null
+                && net.cumba.corej.core.expr.typed.ElementTable.resultType(
+                        call.name()) instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf;
+    }
+
+
+    /**
+     * The list literal a {@code $}-name is bound to in {@code run}'s context — directly, or through
+     * a chain of bindings that each merely rename another — or {@code null}.
+     */
+    private static Expr.@Nullable Lit boundListLiteral(EvalRun run, String name)
+    {
+        Map<String, Object> variables = run.ctx().getVariables();
+        String current = name;
+        for (int hops = 0; hops <= variables.size(); hops++)
+        {
+            if (!(variables.get(current) instanceof BindingValue bound))
+            {
+                return null;
+            }
+            Expr expression = bound.binding().expression();
+            if (expression instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+            {
+                return lit;
+            }
+            if (!(expression instanceof Expr.Ref alias)
+                    || alias.kind() != OperandKind.OPERATION_REF)
+            {
+                return null;
+            }
+            current = alias.name();
+        }
+        return null;
+    }
+
+
+    private static ExprProgram.BoolPlan compileMembershipAsWritten(Expr.Binary b)
     {
         boolean negate = b.op() == Expr.BinOp.NOT_IN;
         // T3 composite membership: `tuple(c1, c2, …) [not] in distinct([c1, c2, …], domain="D")`.
@@ -1092,6 +1178,12 @@ public final class ExprCompiler
         // supporting both the broadcast-set and the per-row GroupedResult shapes (e.g. an inlined
         // `X in distinct(SV.VISITNUM, group=[USUBJID])`). Built once at compile time.
         Operation inlineSetOp = inlineSetOperation(right);
+        // Review round 1, L2 (decided: SUPPORT, not a load error): a list-valued REGISTRY function
+        // written inline as the right-hand side reads its Vector exactly as a compiled binding
+        // holding the same call does (boundMembership). A binding is only a name for its
+        // expression, so writing the call inline must not change the verdict — and static
+        // readers (BindingInliner) already treat the two spellings as one.
+        ValuePlan listCallP = isListValuedFunctionCall(right) ? valuePlan(right) : null;
         // Phase 3 (R9): only a STATIC all-string list literal states a character expectation the
         // gate can hold a probe to; a $-list, wildcard, accessor or grouped set is dynamic and
         // never gates (mirroring numericMemberSet's literal-only classification). The explicit
@@ -1103,6 +1195,13 @@ public final class ExprCompiler
             if (v == null)
             {
                 return new BitSet();
+            }
+            if (listCallP != null)
+            {
+                Vector members = listCallP.eval(run);
+                return members == null ? new BitSet()
+                        : boundMembership(v, members, run.rowCount(), negate, caseInsensitive,
+                                listLhs);
             }
             if (allStringLiteralList)
             {

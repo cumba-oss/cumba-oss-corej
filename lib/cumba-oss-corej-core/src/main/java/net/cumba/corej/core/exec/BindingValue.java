@@ -27,6 +27,21 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
+ * ⭐ <b>A dataset-level binding is a property of the TABLE, not of the reading run</b> (review round
+ * 1, H1 / M1). A binding whose derived domain reads no cursor
+ * ({@link CompiledBinding#needsCursor()} is {@code false}) — an aggregate such as
+ * {@code get_codelist_attributes}, or arithmetic over one — is always evaluated over the context's
+ * whole table, whatever range the reader spans, and memoised on the table alone. Two readers made
+ * both halves necessary: {@code BroadcastFold} folds a dataset-level leaf over ONE synthetic row
+ * ({@code NativeExprEvaluator.evaluateBroadcast}), which re-ran an aggregate over row 0 only
+ * (CDISC-CG0288 ERRORed whenever row 0 named no CT package) and evicted the memo; and the
+ * per-variable loops give every column a fresh variables map, which recomputed the binding once per
+ * column. It is now computed <b>once per (rule × dataset) execution</b>. The one exception is a
+ * table with fewer rows than the reading run spans — a synthetic broadcast row over a 0-row dataset
+ * — which evaluates over the run, as before.
+ * </p>
+ *
+ * <p>
  * <b>Three readers, three forms</b> (§5.0's hand-over contract):
  * </p>
  * <ul>
@@ -93,7 +108,8 @@ public final class BindingValue
 
 
     /**
-     * The binding's Vector over {@code run}, memoised for the run's (variables, table, range).
+     * The binding's Vector over {@code run}, memoised for the run's (variables, table, range) — or,
+     * for a dataset-level binding, over the context's whole table, memoised for the table alone.
      *
      * @param run
      *            the reading run
@@ -102,9 +118,14 @@ public final class BindingValue
     public Vector vector(EvalRun run)
     {
         EvaluationContext ctx = run.ctx();
+        boolean datasetLevel = !binding.needsCursor();
+        // H1: a dataset-level binding folds the whole table, never the reader's range.
+        EvalRun evaluated = datasetLevel ? new EvalRun(ctx, 0, Math.max(ctx.rowCount(), run.to()))
+                : run;
         Vector cached = memo;
-        if (cached != null && memoVariables == ctx.getVariables() && memoTable == ctx.getTable()
-                && memoFrom == run.from() && memoTo == run.to())
+        if (cached != null && memoTable == ctx.getTable() && memoFrom == evaluated.from()
+                && memoTo == evaluated.to()
+                && (datasetLevel || memoVariables == ctx.getVariables()))
         {
             return cached;
         }
@@ -117,12 +138,12 @@ public final class BindingValue
         depth++;
         try
         {
-            Vector v = program.evaluate(run);
+            Vector v = program.evaluate(evaluated);
             memo = v;
             memoVariables = ctx.getVariables();
             memoTable = ctx.getTable();
-            memoFrom = run.from();
-            memoTo = run.to();
+            memoFrom = evaluated.from();
+            memoTo = evaluated.to();
             return v;
         }
         finally

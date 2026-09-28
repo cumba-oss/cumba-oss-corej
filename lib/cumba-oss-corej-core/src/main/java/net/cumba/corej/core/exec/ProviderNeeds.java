@@ -47,8 +47,8 @@ import org.jspecify.annotations.Nullable;
  * {@code ProviderRequirements} surfaces 1 and 3, {@code RulePackageLoader.gateTermsForCall}
  * ({@link #ofCall}) and {@code StudyValidationService.requiredDictionaryTypes}. Wave 1 adds the
  * {@link ProviderNeed.Kind#DICTIONARY} capability on its ported dictionary functions and routes its
- * remaining dictionary sites here; a dictionary view such as {@code DictionaryRequirements.of} may
- * only ever be a view of this class, never a sibling.
+ * remaining dictionary sites here; any dictionary-only view it adds (its D-W1-3) may only ever be a
+ * view of this class, never a sibling.
  * </p>
  *
  * @param library

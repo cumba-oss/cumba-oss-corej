@@ -943,9 +943,10 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
 
 
         /**
-         * Declare a codelist's own attributes: key {@code ccode} (NCI concept id, e.g.
-         * {@code C66734}) and/or key {@code pref} (NCI preferred term). The codelist's own
-         * submission value is {@code aCodelistName} itself.
+         * Declare one CT package's values of one attribute — what
+         * {@code MetadataProvider.getCodelistAttribute(pkg, attribute)} serves, and the only input
+         * of the {@code get_codelist_attributes} function ({@code CDISC-CG0288}). The package id
+         * and attribute are kept verbatim; declaring the same pair twice replaces the values.
          */
         public Builder codelistAttributes(String aCtPackageId, String aCtAttribute,
                 List<String> aValues)
@@ -956,6 +957,11 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
         }
 
 
+        /**
+         * Declare a codelist's own attributes: key {@code ccode} (NCI concept id, e.g.
+         * {@code C66734}) and/or key {@code pref} (NCI preferred term). The codelist's own
+         * submission value is {@code aCodelistName} itself.
+         */
         public Builder codelistMeta(String aCodelistName, Map<String, String> aMeta)
         {
             codelistMeta.put(up(aCodelistName), new LinkedHashMap<>(aMeta));

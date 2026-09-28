@@ -260,6 +260,7 @@ public final class StageAChecker
                 typed.put(level.getKey(), root);
             }
             checker.checkBindingOrder();
+            checker.checkInlineOperationReads(levels.values());
             checker.checkMatchDatasets(levels.values());
         }
         catch (RuntimeException ex)
@@ -1368,6 +1369,93 @@ public final class StageAChecker
                                     + " cannot read the per-row or per-variable binding " + ref
                                     + " — an operation reads only a dataset-level value");
                 }
+            }
+        }
+    }
+
+
+    /**
+     * Review round 1, L1: §5.0's hand-over contract, row 3, for an <b>inline</b> operation — one
+     * written in the Check or nested in a compiled binding ({@code not empty(minus($a,
+     * subtract=$p))}). It reads its prior {@code $}-values through exactly the fields a declared
+     * operation does ({@link OperationExecutor#priorReferences}), so a per-row or per-variable
+     * compiled binding among them is the same load error, never a run-time backstop throw.
+     */
+    private void checkInlineOperationReads(Iterable<Expr> levels)
+    {
+        for (Expr level : levels)
+        {
+            inlineOperationReads(level, "the Check");
+        }
+        List<CompiledBinding> compiled = rule.getCompiledBindings();
+        if (compiled != null)
+        {
+            for (CompiledBinding binding : compiled)
+            {
+                inlineOperationReads(binding.expression(), "the binding " + binding.name());
+            }
+        }
+    }
+
+
+    private void inlineOperationReads(Expr e, String where)
+    {
+        switch (e)
+        {
+        case Expr.And a -> a.parts().forEach(p -> inlineOperationReads(p, where));
+        case Expr.Or o -> o.parts().forEach(p -> inlineOperationReads(p, where));
+        case Expr.Not n -> inlineOperationReads(n.inner(), where);
+        case Expr.Binary b ->
+        {
+            inlineOperationReads(b.left(), where);
+            inlineOperationReads(b.right(), where);
+        }
+        case Expr.Call c ->
+        {
+            if (ExprCompiler.isInlineOperation(c))
+            {
+                checkInlineOperationCall(c, where);
+            }
+            c.args().forEach(a -> inlineOperationReads(a, where));
+            c.kwargs().values().forEach(a -> inlineOperationReads(a, where));
+        }
+        case Expr.Lit lit ->
+        {
+            if (lit.kind() == Expr.LitKind.LIST)
+            {
+                @SuppressWarnings("unchecked")
+                List<Expr> items = (List<Expr>) lit.value();
+                items.forEach(item -> inlineOperationReads(item, where));
+            }
+        }
+        case Expr.Ref _ ->
+        {
+            // a reference is not a call
+        }
+        }
+    }
+
+
+    private void checkInlineOperationCall(Expr.Call c, String where)
+    {
+        Operation op;
+        try
+        {
+            op = OperationExpressionParser.fromCall(c, null);
+        }
+        catch (RuntimeException _)
+        {
+            return; // a malformed call is the compiler's own error
+        }
+        for (String ref : OperationExecutor.priorReferences(op))
+        {
+            CompiledBinding read = rule.compiledBinding(ref);
+            if (read != null && read.needsCursor())
+            {
+                find(StageAErrorKind.OPERATION_READS_CURSOR_BINDING,
+                        "the inline operation " + c.name() + "(…) in " + where
+                                + " cannot read the per-row or per-variable binding " + ref
+                                + " — an operation reads only a dataset-level value");
             }
         }
     }
