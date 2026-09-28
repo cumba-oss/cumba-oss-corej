@@ -1,5 +1,6 @@
 package net.cumba.corej.ruletest.cdt.ruletest;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -9,6 +10,7 @@ import java.util.List;
 import java.util.Optional;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.metadata.store.MetadataStoreWriter;
+import net.cumba.corej.core.metadata.store.Presence;
 import net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory;
 import net.cumba.corej.core.metadata.store.StoredDataStructure;
 import net.cumba.corej.core.metadata.store.StoredProduct;
@@ -38,6 +40,91 @@ class ScenarioLibraryResolverTest
     private static LibraryRef adamRef()
     {
         return LibraryRef.builder().standard("adamig").version("1-3").build();
+    }
+
+
+    /** A store holding only the ADaMIG 1.3 product, no CT package at all. */
+    private static Path writeAdamStore(Path aTemp) throws IOException
+    {
+        Path store = aTemp.resolve("adam-store.zip");
+        StoredProduct adam = StoredProduct.builder().key("standards/adam/adamig-1-3").version("1-3")
+                .dataStructures(
+                        List.of(new StoredDataStructure("ADSL", null, "1",
+                                "SUBJECT LEVEL ANALYSIS DATASET", null,
+                                List.of(new StoredVariableSet("Identifier", null, "1",
+                                        List.of(StoredVariable.builder().name("USUBJID")
+                                                .ordinal("1").core("Req").build()),
+                                        null)),
+                                null)))
+                .build();
+        new MetadataStoreWriter().addProduct(adam).publishedCtPackages(List.of())
+                .productCatalogue(List.of("standards/adam/adamig-1-3")).write(store);
+        return store;
+    }
+
+
+    /**
+     * The explicit-factory overload (LAC review round 1, L3): it resolves against the store it is
+     * handed and reads no ambient setting. The ambient property is pointed at a file that is not a
+     * store — the ambient overload would answer empty for it — and the explicit overload must still
+     * resolve, and leave the property exactly as it found it.
+     */
+    @Test
+    void resolveWithFactory_ignoresTheAmbientStoreAndLeavesItUntouched(@TempDir Path aTemp)
+        throws IOException
+    {
+        StoreMetadataProviderFactory factory = StoreMetadataProviderFactory
+                .open(writeAdamStore(aTemp));
+        Path bogus = aTemp.resolve("not-a-store.zip");
+        Files.writeString(bogus, "not a store");
+        System.setProperty(StoreMetadataProviderFactory.STORE_PROPERTY, bogus.toString());
+
+        Optional<MetadataProvider> provider = ScenarioLibraryResolver.resolve(adamRef(), factory);
+
+        assertTrue(provider.isPresent(),
+                "the store handed in holds the product => the overload must return a provider");
+        assertTrue(provider.orElseThrow().supportsStructureKeyedVariables(),
+                "the ADaM ref must resolve to the structure-keyed ADaM provider");
+        assertEquals(bogus.toString(),
+                System.getProperty(StoreMetadataProviderFactory.STORE_PROPERTY),
+                "the explicit overload must not write the global store property");
+    }
+
+
+    @Test
+    void resolveWithFactory_storeLacksTheProduct_returnsEmpty(@TempDir Path aTemp)
+        throws IOException
+    {
+        Path store = aTemp.resolve("empty-store.zip");
+        new MetadataStoreWriter().publishedCtPackages(List.of()).productCatalogue(List.of())
+                .write(store);
+
+        assertTrue(
+                ScenarioLibraryResolver.resolve(adamRef(), StoreMetadataProviderFactory.open(store))
+                        .isEmpty(),
+                "a store without the referenced product => unavailable (scenario skips)");
+    }
+
+
+    /**
+     * Pins the documented CT disposition: a pinned {@code ct=} package the store lacks does NOT
+     * empty the result — the provider is built over an empty substitute. A caller for which that is
+     * a vacuous pass must check {@link StoreMetadataProviderFactory#presence} itself, which is why
+     * the presence answer is asserted here too.
+     */
+    @Test
+    void resolveWithFactory_pinnedCtPackageAbsent_stillResolves(@TempDir Path aTemp)
+        throws IOException
+    {
+        StoreMetadataProviderFactory factory = StoreMetadataProviderFactory
+                .open(writeAdamStore(aTemp));
+        String pinned = "adamct-2025-09-26";
+        LibraryRef ref = adamRef().toBuilder().ctPackage(pinned).build();
+
+        assertEquals(Presence.ABSENT, factory.presence(pinned),
+                "precondition: the store must not hold the pinned package");
+        assertTrue(ScenarioLibraryResolver.resolve(ref, factory).isPresent(),
+                "a missing pinned CT package is substituted empty, not a reason for empty");
     }
 
 

@@ -19,10 +19,23 @@ import net.cumba.corej.core.metadata.store.StoreMetadataProviderFactory;
  * until then no longer exists), or signals that no library metadata is available.
  *
  * <p>
- * Availability gate: {@link StoreMetadataProviderFactory#resolveConfiguredFile} — empty when no
- * {@code CDISC_METADATA_STORE} (env) / {@code cdisc.metadata.store} (sysprop) names a store file.
- * Callers should treat {@link Optional#empty()} as "skip this scenario", exactly as they did for
- * the missing-API-key gate this replaces.
+ * Two entry points. {@link #resolve(LibraryRef)} finds the store itself through
+ * {@link StoreMetadataProviderFactory#resolveConfiguredFile} — empty when no
+ * {@code CDISC_METADATA_STORE} (env) / {@code cdisc.metadata.store} (sysprop) names a store file —
+ * and opens it per call. {@link #resolve(LibraryRef, StoreMetadataProviderFactory)} takes a store
+ * the caller already holds and reads no ambient setting at all: the path for a caller that owns its
+ * store (the rule corpus's suites seed one per JVM), so it never has to publish that store into the
+ * global system property and never reopens it per scenario. Callers should treat
+ * {@link Optional#empty()} as "skip this scenario", exactly as they did for the missing-API-key
+ * gate this replaces.
+ * </p>
+ *
+ * <p>
+ * ⚠ A CT package the ref pins ({@code ct=}) but the store lacks does <b>not</b> empty the result:
+ * the factory substitutes an empty package for the ref's own CT root (logged as a WARNING) and
+ * drops a missing {@code sdtmct} fallback of an ADaM ref, so the rule runs against no terms of that
+ * package. A caller for which that would be a vacuous pass checks
+ * {@link StoreMetadataProviderFactory#presence} for each pinned id first.
  * </p>
  *
  * <p>
@@ -80,13 +93,33 @@ public final class ScenarioLibraryResolver
                     file, e.getMessage());
             return Optional.empty();
         }
+        return resolve(aRef, factory);
+    }
+
+
+    /**
+     * Resolve {@code aRef} against a store the caller has already opened. Reads no environment
+     * variable and no system property, and neither opens nor closes the store — the caller owns it,
+     * so one factory can serve every scenario of a run.
+     *
+     * @param aRef
+     *            the scenario's {@code #library-ref}
+     * @param aFactory
+     *            a factory over the store to resolve against
+     * @return the provider, or {@link Optional#empty()} when the store lacks the referenced product
+     *         (IG, or a declared ADaM product). A pinned CT package the store lacks is NOT a reason
+     *         for empty — see the class javadoc.
+     */
+    public static Optional<MetadataProvider> resolve(LibraryRef aRef,
+            StoreMetadataProviderFactory aFactory)
+    {
         String standard = aRef.getStandard().toLowerCase(Locale.ROOT);
         if (standard.startsWith("adam"))
         {
             // The single declared product an omitted --metadata-products implies for this pair.
             List<String> declared = List
                     .of(MetadataProductKeys.standardsKey(aRef.getStandard(), aRef.getVersion()));
-            return factory.forAdam(aRef.getStandard(), aRef.getVersion(), declared,
+            return aFactory.forAdam(aRef.getStandard(), aRef.getVersion(), declared,
                     ctIdsWithPrefix(aRef.getCtPackages(), "adamct"),
                     ctIdsWithPrefix(aRef.getCtPackages(), "sdtmct"));
         }
@@ -98,7 +131,7 @@ public final class ScenarioLibraryResolver
             ctIds.addAll(ctIdsWithPrefix(aRef.getCtPackages(), "sendct"));
         }
         ctIds.addAll(ctIdsWithPrefix(aRef.getCtPackages(), "sdtmct"));
-        return factory.forSdtm(aRef.getStandard(), aRef.getVersion(), ctIds);
+        return aFactory.forSdtm(aRef.getStandard(), aRef.getVersion(), ctIds);
     }
 
 
