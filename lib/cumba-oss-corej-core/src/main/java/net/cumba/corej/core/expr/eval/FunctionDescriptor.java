@@ -25,11 +25,70 @@ import org.jspecify.annotations.Nullable;
  *            collector} descriptor the list is instead the flat element vectors. {@code null} for
  *            an operation-kind descriptor whose calls compile through the {@code OperationExecutor}
  *            bridge instead of the registry ({@code OperationDescriptors})
+ * @param provider
+ *            the <b>provider capability</b> ({@link ProviderNeed}) — the run-level provider the
+ *            function needs before it can answer, or {@code null} when it needs none
+ *            ({@code PLAN-binding-expressions} §5.2)
+ * @param aggregate
+ *            whether the call raises its operands' level to {@code dataset} (SPEC §1.4) — see
+ *            {@link #aggregating()}
  */
 public record FunctionDescriptor(String name, List<Parameter> parameters, FunctionKind kind,
-        @Nullable EvalFunction fn)
+        @Nullable EvalFunction fn, @Nullable ProviderNeed provider, boolean aggregate)
 {
 
+    /**
+     * The pre-wave-0 shape: a function that needs no provider and does not raise its level.
+     *
+     * @param name
+     *            the function name
+     * @param parameters
+     *            the ordered parameter list
+     * @param kind
+     *            the result shape
+     * @param fn
+     *            the implementation, or {@code null} for a compiler-dispatched / operation-kind
+     *            descriptor
+     */
+    public FunctionDescriptor(String name, List<Parameter> parameters, FunctionKind kind,
+            @Nullable EvalFunction fn)
+    {
+        this(name, parameters, kind, fn, null, false);
+    }
+
+
+    /**
+     * This descriptor declaring a <b>provider capability</b> ({@link ProviderNeed};
+     * {@code PLAN-binding-expressions} §5.2) — the one key every provider gate reads for a registry
+     * function, beside the {@code OperationType} predicates it reads for an operation.
+     *
+     * @param aProvider
+     *            the provider the function needs
+     * @return the copy
+     */
+    public FunctionDescriptor withProvider(ProviderNeed aProvider)
+    {
+        return new FunctionDescriptor(name, parameters, kind, fn, aProvider, aggregate);
+    }
+
+
+    /**
+     * This descriptor declared an <b>aggregate</b> (SPEC §1.4 raising): the call folds every row of
+     * its operands into one broadcast value, so its level is {@code dataset} — the operands'
+     * variable cursor survives — whatever its operands' granularity. {@code record_count()} is the
+     * historical, name-keyed instance; a ported list-valued callable such as
+     * {@code get_codelist_attributes(TSVCDREF, TSVCDVER, …)} declares it here, which is what lets
+     * stage A, {@code DomainScan} and the hand-over contract read its binding as dataset-level.
+     *
+     * @return the copy
+     */
+    public FunctionDescriptor aggregating()
+    {
+        return new FunctionDescriptor(name, parameters, kind, fn, provider, true);
+    }
+
+
+    /** Validates the descriptor; see the record javadoc. */
     public FunctionDescriptor
     {
         if (name == null || name.isEmpty())

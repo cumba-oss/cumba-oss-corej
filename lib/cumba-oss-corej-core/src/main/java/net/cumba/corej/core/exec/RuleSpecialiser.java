@@ -197,6 +197,30 @@ public final class RuleSpecialiser
             }
         }
 
+        // PLAN-binding-expressions R11: a compiled binding's expression is resolved exactly as the
+        // Check's is — through ExprPrefixResolver — and SET on the copy below: shallowCopy copies
+        // the list by reference, unresolved, so nothing would fail if this were forgotten.
+        List<net.cumba.corej.core.model.CompiledBinding> compiledBindings = rule
+                .getCompiledBindings();
+        List<net.cumba.corej.core.model.CompiledBinding> newCompiledBindings = compiledBindings;
+        if (compiledBindings != null)
+        {
+            List<net.cumba.corej.core.model.CompiledBinding> resolved = new ArrayList<>(
+                    compiledBindings.size());
+            boolean changed = false;
+            for (net.cumba.corej.core.model.CompiledBinding binding : compiledBindings)
+            {
+                net.cumba.corej.core.expr.ast.Expr r = ExprPrefixResolver
+                        .resolve(binding.expression(), variablePrefix, datasetPrefix);
+                changed |= r != binding.expression();
+                resolved.add(r == binding.expression() ? binding : binding.withExpression(r));
+            }
+            if (changed)
+            {
+                newCompiledBindings = resolved;
+            }
+        }
+
         List<MatchDataset> matchDatasets = rule.getMatchDatasets();
         List<MatchDataset> newMatchDatasets = matchDatasets;
         if (matchDatasets != null && table != null)
@@ -266,10 +290,10 @@ public final class RuleSpecialiser
 
         boolean changed = newCheck != check || levelsChanged[0] || newPrecondition != precondition
                 || newCheckExpr != checkExpr || newLevelExprs != levelExprs || newPreExpr != preExpr
-                || newOperations != operations || newMatchDatasets != matchDatasets
-                || newGroupingVariables != groupingVariables || newGrouping != grouping
-                || newOutcome != outcome || newEffectiveOut != effectiveOut
-                || newExcludedOut != excludedOut;
+                || newOperations != operations || newCompiledBindings != compiledBindings
+                || newMatchDatasets != matchDatasets || newGroupingVariables != groupingVariables
+                || newGrouping != grouping || newOutcome != outcome
+                || newEffectiveOut != effectiveOut || newExcludedOut != excludedOut;
         if (!changed)
         {
             return rule;
@@ -292,6 +316,7 @@ public final class RuleSpecialiser
         copy.setCheckLevelExprs(newLevelExprs);
         copy.setPreconditionExpr(newPreExpr);
         copy.setOperations(newOperations);
+        copy.setCompiledBindings(newCompiledBindings);
         copy.setMatchDatasets(newMatchDatasets);
         copy.setGroupingVariables(newGroupingVariables);
         copy.setGrouping(newGrouping);

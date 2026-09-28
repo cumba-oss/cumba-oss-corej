@@ -107,6 +107,14 @@
         <Field name="results" />
         <Bug pattern="EI_EXPOSE_REP" />
     </Match>
+    <!-- BoundBinding$OfOperation (PLAN-binding-expressions §5.0): a VIEW over the rule's own
+         Operation record, by design — Rule.bindingOrder() hands readers the very instance
+         Rule.getOperations() holds (the executor reads it; a copy would let the two views of one
+         binding drift). Exposing and storing the mutable record IS the contract. -->
+    <Match>
+        <Class name="net.cumba.corej.core.model.BoundBinding$OfOperation" />
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2" />
+    </Match>
     <!-- Violation$Unit$Group: the compact constructor stores an unmodifiable
          null-tolerant copy of the grouping-key tuple, so the record accessor
          returns an immutable list — same shape as VlmMatch below. -->

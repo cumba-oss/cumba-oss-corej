@@ -542,8 +542,11 @@ public final class RuleClassifier
         // Check:.
         for (CheckCondition condition : rule.checkConditions())
         {
-            collect(toExprOrNull(condition), false, true, operationsById(rule), operationAware,
-                    out);
+            // PLAN-binding-expressions R19: a COMPILED binding is read through — its expression
+            // classified at the reference's position, exactly as if it were written inline —
+            // never resolved against the operations and degraded to UNRESOLVED (the worst case).
+            collect(net.cumba.corej.core.expr.convert.BindingInliner.inline(toExprOrNull(condition),
+                    rule), false, true, operationsById(rule), operationAware, out);
         }
         return out;
     }

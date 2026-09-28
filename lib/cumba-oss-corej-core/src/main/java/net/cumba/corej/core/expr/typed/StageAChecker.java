@@ -31,6 +31,8 @@ import net.cumba.corej.core.expr.eval.Parameter;
 import net.cumba.corej.core.expr.typed.ExprType.ListOf;
 import net.cumba.corej.core.expr.typed.ExprType.Primitive;
 import net.cumba.corej.core.expr.typed.ExprType.Unknown;
+import net.cumba.corej.core.model.BoundBinding;
+import net.cumba.corej.core.model.CompiledBinding;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.Outcome;
@@ -187,7 +189,7 @@ public final class StageAChecker
         this.foreignDatasets = foreignDatasets;
         this.bindingLevels = new HashMap<>();
         this.bindingTypes = new HashMap<>();
-        scanBindings(rule.getOperations());
+        scanBindings(rule.bindingOrder());
     }
 
 
@@ -1014,8 +1016,22 @@ public final class StageAChecker
         checkParameterBinding(c, descriptor, children);
         ExprType type = descriptor.kind() == FunctionKind.BOOLEAN ? Primitive.BOOLEAN
                 : ElementTable.resultType(c.name());
-        // record_count() folds the row axis (§1.4): the one registry entry that raises.
-        Level level = "record_count".equals(c.name()) ? Level.DATASET : joinChildren(children);
+        // record_count() folds the row axis (§1.4) — by name, historically — and so does every
+        // descriptor declared an aggregate (PLAN-binding-expressions §4.1: a ported list-valued
+        // callable such as get_codelist_attributes); an aggregate keeps its operands' cursor.
+        Level level;
+        if ("record_count".equals(c.name()))
+        {
+            level = Level.DATASET;
+        }
+        else if (descriptor.aggregate())
+        {
+            level = new Level(Granularity.Simple.DATASET, joinChildren(children).cursor());
+        }
+        else
+        {
+            level = joinChildren(children);
+        }
         return new TypedExpr(c, type, level, children);
     }
 
@@ -1248,19 +1264,27 @@ public final class StageAChecker
 
     /**
      * The level and result type of each {@code $}-binding, derived from its declaration (spec §3.2
-     * — a binding's level is derived, never a source): {@code group} keys give {@code group(K)},
-     * otherwise the operation's result kind decides, the same classification {@code DomainScan}
-     * routes on. The result type (phase 3b) comes from the operation's function name — see
-     * {@link #bindingTypes}.
+     * — a binding's level is derived, never a source), <b>both kinds, in authored order</b>
+     * ({@code PLAN-binding-expressions} R24). An operation binding: {@code group} keys give
+     * {@code group(K)}, otherwise the operation's result kind decides, the same classification
+     * {@code DomainScan} routes on; the result type (phase 3b) comes from the operation's function
+     * name — see {@link #bindingTypes}. A <b>compiled</b> binding is walked with this very checker
+     * — the one the Check uses — so its level is the derived level of its expression and its type
+     * the expression's type, and a type error inside it is a stage-A finding like one in the Check.
+     * The walk sees every EARLIER binding's level and type, which is all a binding may read.
      */
-    private void scanBindings(@Nullable List<Operation> operations)
+    private void scanBindings(List<BoundBinding> order)
     {
-        if (operations == null || operations.isEmpty())
+        for (BoundBinding binding : order)
         {
-            return;
-        }
-        for (Operation op : operations)
-        {
+            if (binding instanceof CompiledBinding compiled)
+            {
+                TypedExpr typed = walk(compiled.expression());
+                bindingLevels.put(compiled.name(), typed.level());
+                bindingTypes.put(compiled.name(), typed.type());
+                continue;
+            }
+            Operation op = ((BoundBinding.OfOperation) binding).operation();
             String id = op.getId();
             if (id == null)
             {
@@ -1296,35 +1320,65 @@ public final class StageAChecker
      */
     private void checkBindingOrder()
     {
-        List<Operation> operations = rule.getOperations();
-        if (operations == null || operations.isEmpty())
+        // PLAN-binding-expressions R25: over the AUTHORED order of BOTH binding kinds — a compiled
+        // binding reading a later operation binding, or the reverse, is the same error. The
+        // loader rejects a duplicate name (R1), so the putIfAbsent below never has to choose.
+        List<BoundBinding> order = rule.bindingOrder();
+        if (order.isEmpty())
         {
             return;
         }
         Map<String, Integer> declaredAt = new HashMap<>();
-        for (int i = 0; i < operations.size(); i++)
+        for (int i = 0; i < order.size(); i++)
         {
-            String id = operations.get(i).getId();
+            String id = order.get(i).name();
             if (id != null)
             {
                 declaredAt.putIfAbsent(id, i);
             }
         }
-        for (int i = 0; i < operations.size(); i++)
+        for (int i = 0; i < order.size(); i++)
         {
-            Operation op = operations.get(i);
-            for (String ref : referencedBindings(op))
+            BoundBinding binding = order.get(i);
+            Set<String> refs = switch (binding)
+            {
+            case BoundBinding.OfOperation op -> referencedBindings(op.operation());
+            case CompiledBinding compiled -> compiledBindingRefs(compiled);
+            };
+            for (String ref : refs)
             {
                 Integer target = declaredAt.get(ref);
                 if (target != null && target >= i)
                 {
                     find(StageAErrorKind.FORWARD_OR_CYCLIC_BINDING,
-                            "binding " + (op.getId() == null ? "#" + i : op.getId())
+                            "binding " + (binding.name() == null ? "#" + i : binding.name())
                                     + " references " + ref
                                     + (target == i ? " (itself)" : ", which is declared later"));
                 }
+                CompiledBinding read = rule.compiledBinding(ref);
+                if (binding instanceof BoundBinding.OfOperation && read != null
+                        && read.needsCursor())
+                {
+                    // §5.0's hand-over contract, row 3: an operation's fields are dataset-level
+                    // (name / subtract / group / a computed target), so there is no row to pick a
+                    // per-row compiled binding's value at — never a silent `vector.toString()`.
+                    find(StageAErrorKind.OPERATION_READS_CURSOR_BINDING,
+                            "the operation binding "
+                                    + (binding.name() == null ? "#" + i : binding.name())
+                                    + " cannot read the per-row or per-variable binding " + ref
+                                    + " — an operation reads only a dataset-level value");
+                }
             }
         }
+    }
+
+
+    /** The {@code $}-references a compiled binding's expression makes. */
+    private static Set<String> compiledBindingRefs(CompiledBinding compiled)
+    {
+        Set<String> refs = new LinkedHashSet<>();
+        collectOperationRefs(compiled.expression(), refs);
+        return refs;
     }
 
 
@@ -1347,6 +1401,14 @@ public final class StageAChecker
             }
         }
         addDollarRef(refs, op.getName());
+        // PLAN-binding-expressions I5: minus's subtrahend and a computed target are prior reads
+        // too (OperationExecutor.priorReferences) — the order check and the per-row-read check
+        // must see every field the executor reads a $-value through.
+        addDollarRef(refs, op.getSubtract());
+        if (op.getNameExpr() != null)
+        {
+            collectOperationRefs(op.getNameExpr(), refs);
+        }
         addDollarRef(refs, op.getReference());
         addDollarRef(refs, op.getKeyValue());
         List<String> group = op.getGroup();
@@ -1963,6 +2025,16 @@ public final class StageAChecker
      */
     private void collectBindingDottedRefs(Set<String> dotted, Set<String> qualifiedWildcards)
     {
+        // PLAN-binding-expressions R26: a compiled binding's dotted references are qualifiers
+        // like the Check's own.
+        List<CompiledBinding> compiled = rule.getCompiledBindings();
+        if (compiled != null)
+        {
+            for (CompiledBinding binding : compiled)
+            {
+                collectDottedRefs(binding.expression(), dotted, qualifiedWildcards);
+            }
+        }
         List<Operation> operations = rule.getOperations();
         if (operations == null)
         {

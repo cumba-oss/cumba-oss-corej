@@ -296,8 +296,6 @@ public final class OperationExpressionParser
         m.put("key_name", Operation::getKeyName);
         m.put("key_value", Operation::getKeyValue);
         m.put("model_class", Operation::getModelClass);
-        m.put("ct_attribute", Operation::getCtAttribute);
-        m.put("version", Operation::getVersion);
         m.put("ct_package_types", Operation::getCtPackageTypes);
         m.put("regex", Operation::getRegex);
         m.put("name_pattern", Operation::getNamePattern);
@@ -662,8 +660,6 @@ public final class OperationExpressionParser
         case "key_name" -> op.setKeyName(stringOf(value));
         case "key_value" -> op.setKeyValue(stringOf(value));
         case "model_class" -> op.setModelClass(stringOf(value));
-        case "ct_attribute" -> op.setCtAttribute(stringOf(value));
-        case "version" -> op.setVersion(stringOf(value));
         case "ct_package_types" -> op.setCtPackageTypes(listOf(value));
         case "regex" -> op.setRegex(stringOf(value));
         case "name_pattern" -> op.setNamePattern(stringOf(value));

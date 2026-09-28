@@ -24,7 +24,6 @@ import net.cumba.corej.core.model.CheckConditionAny;
 import net.cumba.corej.core.model.CheckConditionNot;
 import net.cumba.corej.core.model.LevelCheck;
 import net.cumba.corej.core.model.MatchDataset;
-import net.cumba.corej.core.model.OperationType;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.Sensitivity;
 import net.cumba.datatable.DataTableColumnMeta;
@@ -588,7 +587,19 @@ public final class RuleRunner
         // ⚑ Plan C §3.3: EVERY declared level. A define_*/library_* operand in a weaker level
         // needs its provider just as much as one in the strictest — reading getCheck() alone would
         // let the rule run with no provider and report a silent, false PASS.
-        for (CheckCondition operandCheck : rule.checkConditions())
+        // PLAN-binding-expressions I2: a COMPILED binding is read by the Check, so a bare
+        // define_* / library_* operand inside it needs its provider exactly as one in the Check —
+        // it is gated here, through the Check's own walker, as a condition the Check reads.
+        List<CheckCondition> operandSurfaces = new ArrayList<>(rule.checkConditions());
+        if (rule.getCompiledBindings() != null)
+        {
+            for (net.cumba.corej.core.model.CompiledBinding binding : rule.getCompiledBindings())
+            {
+                operandSurfaces.add(new net.cumba.corej.core.model.CheckConditionExpression(
+                        binding.expression(), binding.name()));
+            }
+        }
+        for (CheckCondition operandCheck : operandSurfaces)
         {
             if (defineProvider == null && referencesOperandPrefix(operandCheck, "define_"))
             {
@@ -731,116 +742,35 @@ public final class RuleRunner
         // rule needs a MetadataProvider and none is configured, the rule reports SKIPPED
         // before any supplier fires. Detected via OperationExecutor.isLibraryDependent without
         // running the dispatch.
+        //
+        // ⭐ Wave 0 (PLAN-binding-expressions R10): a COMPILED binding sits in the same map, in
+        // authored order (Rule.bindingOrder), as a BindingValue — evaluated lazily in the reading
+        // context, never before it is read (D-W0-3). The no-provider arms read ProviderNeeds, the
+        // one helper that sees both an operation's OperationType and a registry function's
+        // provider capability, over both binding kinds.
         Map<String, Object> variables = Map.of();
-        if (rule.getOperations() != null && !rule.getOperations().isEmpty())
+        List<net.cumba.corej.core.model.Operation> resolvedOps = rule.getOperations() == null
+                ? List.of()
+                : rule.getOperations();
+        List<net.cumba.corej.core.model.CompiledBinding> compiledBindings = rule
+                .getCompiledBindings() == null ? List.of() : rule.getCompiledBindings();
+        // The context every operation supplier hands a compiled binding to (§5.0 / I5). Set once
+        // the context is built; see `contextFirst` below for why that is always before any
+        // supplier can read a compiled binding.
+        java.util.concurrent.atomic.AtomicReference<@Nullable EvaluationContext> rootContext = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.function.Supplier<EvaluationContext> rootContextSupplier = () -> Objects
+                .requireNonNull(rootContext.get(), "a compiled binding was read by an operation"
+                        + " before the rule's evaluation context was built");
+        if (!resolvedOps.isEmpty() || !compiledBindings.isEmpty())
         {
             // D77: the `--` prefixes were resolved by the specialisation stage at the top of this
             // method (RuleSpecialiser, which stashes each Operation's originalName so the D92a
             // inventory folds keep their template) — the operations arrive concrete.
-            List<net.cumba.corej.core.model.Operation> resolvedOps = rule.getOperations();
-            if (libraryProvider == null)
+            RuleExecutionResult noProvider = noProviderSkip(ProviderNeeds.ofBindings(rule), ruleId,
+                    message, evalTable, libraryProvider, defineProvider, dictionaryProvider);
+            if (noProvider != null)
             {
-                for (net.cumba.corej.core.model.Operation op : resolvedOps)
-                {
-                    if (OperationExecutor.isLibraryDependent(op.getOperationType()))
-                    {
-                        return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                                .violations(List.of()).totalRows(evalTable.getRowCount())
-                                .status(RuleExecutionStatus.SKIPPED)
-                                .statusMessage("Rule skipped — no Library access").build();
-                    }
-                }
-            }
-            // T2-residual: a define-set operation (define_variable_names / define_key_variables)
-            // needs the sponsor Define-XML overlay. With no Define-XML supplied the rule SKIPs
-            // (never PASS/FAIL) before any supplier fires — the same input-availability discipline
-            // as the Library gate above and the define_* operand-prefix gate for the attribute
-            // compares.
-            if (defineProvider == null)
-            {
-                for (net.cumba.corej.core.model.Operation op : resolvedOps)
-                {
-                    if (OperationExecutor.isDefineDependent(op.getOperationType()))
-                    {
-                        return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                                .violations(List.of()).totalRows(evalTable.getRowCount())
-                                .status(RuleExecutionStatus.SKIPPED)
-                                .statusMessage("Rule skipped — no Define-XML metadata "
-                                        + "(rule requires define_* operations)")
-                                .build();
-                    }
-                }
-            }
-            // KDICT-F1 / Fix #268: an external-dictionary operation (valid_external_dictionary_*
-            // / dictionary_has_decode) can only answer when a dictionary of its
-            // `external_dictionary_type` is loaded. With none loaded every one of those arms
-            // returns null (they all test `dictionaryProvider != null && isAvailable(type)`), the
-            // null $-ref broadcasts and no row fires — so the rule EXECUTES and reports a silent
-            // false PASS. This arm restores the input-availability discipline of the Library and
-            // Define arms above for the DECLARED ($-ref) form, which is the form the entire
-            // shipped corpus uses: RulePackageLoader.injectInlineOperationGates only ever emits the
-            // `dictionary_available(<type>)` Precondition gate for INLINED operation calls, and no
-            // shipped rule inlines one.
-            //
-            // Mirrors that injected gate exactly:
-            // • one required type per dictionary operation, ANDed — a rule whose types are only
-            // partly loaded still SKIPs (the inliner emits one gate term per distinct type, and a
-            // conjunction folds false when any term does);
-            // • availability is the TYPE test, not merely a non-null provider — a MedDRA-only
-            // bundle leaves a UNII rule just as unanswerable as no bundle at all;
-            // • DICTIONARY_AVAILABLE is excluded: that operation IS the gate. Its executor arm is
-            // total (it yields Boolean.FALSE, never null, with no provider), so eager-skipping on
-            // it would destroy the very reporting it exists for.
-            // An operation with no (or blank) external_dictionary_type is not this arm's case: no
-            // install could ever satisfy it, so it is an authoring defect, tagged as a loadError
-            // by RulePackageLoader.validateDictionaryOperationTypes — such a rule reports ERROR
-            // through the loadError sentinel above and never reaches this arm (D13 item 3).
-            //
-            // D13 item 2 — the SKIP names the state, not just the type: "not installed",
-            // "installed but unusable" and "no/absent version selected" demand three different
-            // operator actions, and one catch-all message actively misleads the operator who DID
-            // install the dictionary. The provider carries the diagnosis recorded by whoever
-            // declined to load the type (RuntimeDictionaryProvider.loadDirectory's content guard,
-            // DictionaryStore's version binding); with no provider at all, every type is simply
-            // not installed.
-            Set<String> unavailableDictionaryTypes = new LinkedHashSet<>();
-            for (net.cumba.corej.core.model.Operation op : resolvedOps)
-            {
-                OperationType opType = op.getOperationType();
-                if (opType == OperationType.DICTIONARY_AVAILABLE
-                        || !OperationExecutor.isDictionaryDependent(opType))
-                {
-                    continue;
-                }
-                String dictionaryType = op.getExternalDictionaryType();
-                if (dictionaryType == null || dictionaryType.isBlank())
-                {
-                    continue; // loadError at load time — unreachable via any loader path
-                }
-                if (dictionaryProvider == null || !dictionaryProvider.isAvailable(dictionaryType))
-                {
-                    unavailableDictionaryTypes.add(dictionaryType);
-                }
-            }
-            if (!unavailableDictionaryTypes.isEmpty())
-            {
-                StringBuilder skipReason = new StringBuilder("Rule skipped — ");
-                for (String type : unavailableDictionaryTypes)
-                {
-                    if (skipReason.length() > "Rule skipped — ".length())
-                    {
-                        skipReason.append("; ");
-                    }
-                    skipReason.append("external dictionary ").append(type).append(' ')
-                            .append(dictionaryProvider == null
-                                    ? RuntimeDictionaryProvider.notInstalledDetail()
-                                    : dictionaryProvider.unavailabilityDetail(type));
-                }
-                skipReason.append(" (rule requires valid_external_dictionary_* operations)");
-                return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                        .violations(List.of()).totalRows(evalTable.getRowCount())
-                        .status(RuleExecutionStatus.SKIPPED).statusMessage(skipReason.toString())
-                        .build();
+                return noProvider;
             }
             // Build the lazy variables map. The supplier closes over the variables map itself so
             // an op's supplier can read prior op results — forcing only the LazyValues it
@@ -856,161 +786,54 @@ public final class RuleRunner
             final MetadataProvider lazyLibrary = libraryProvider;
             final RuntimeDictionaryProvider lazyDict = dictionaryProvider;
             final MetadataProvider lazyDefine = defineProvider;
-            for (net.cumba.corej.core.model.Operation op : resolvedOps)
+            for (net.cumba.corej.core.model.BoundBinding binding : rule.bindingOrder())
             {
+                if (binding instanceof net.cumba.corej.core.model.CompiledBinding compiled)
+                {
+                    lazyVars.put(compiled.name(), new BindingValue(compiled));
+                    continue;
+                }
+                net.cumba.corej.core.model.Operation op = ((net.cumba.corej.core.model.BoundBinding.OfOperation) binding)
+                        .operation();
                 String opId = op.getId();
                 if (opId == null || op.getOperationType() == null)
                 {
                     // Unidentified or unknown-type op — eager-run for its side effects
                     // (typed-null type logs a WARN; null id has nowhere to land its result).
-                    // Materialise only the prior LazyValue entries referenced via this op's
-                    // group list to avoid forcing unrelated ops or creating cycles.
-                    Map<String, Object> resolved = new LinkedHashMap<>();
-                    List<String> opGroup = op.getGroup();
-                    if (opGroup != null)
-                    {
-                        for (String g : opGroup)
-                        {
-                            if (g == null || !g.startsWith("$"))
-                            {
-                                continue;
-                            }
-                            Object v = lazyVars.get(g);
-                            if (v instanceof LazyValue<?> lv)
-                            {
-                                v = lv.get();
-                            }
-                            if (v != null)
-                            {
-                                resolved.put(g, v);
-                            }
-                        }
-                    }
-                    // minus references its operands via name/subtract (not group); force those
-                    // prior-op $-refs too so set-difference sees their resolved lists.
-                    forceOperandRefs(op, opId, lazyVars, resolved);
-                    OperationExecutor.executeOne(op, lazyTable, lazyResolver, lazyLibrary, resolved,
-                            ruleId, lazyDict, lazyDefine, opNumericExpected);
+                    // Materialise only the prior entries it references (§0.2 c: routed through the
+                    // same hand-over helper as the lazy supplier below, never a local copy).
+                    OperationExecutor.executeOne(op, lazyTable, lazyResolver, lazyLibrary,
+                            gatherPriors(op, opId, lazyVars, rootContextSupplier), ruleId, lazyDict,
+                            lazyDefine, opNumericExpected);
                     continue;
                 }
                 final net.cumba.corej.core.model.Operation finalOp = op;
-                LazyValue<Object> lazy = new LazyValue<>(() ->
-                {
-                    // Materialise only the prior LazyValue entries this op actually depends on
-                    // via its group list ($variable refs), so independent ops don't fan out
-                    // and create cycles among each other. expandGroupRefs reads
-                    // priorResults.get(g) only for group entries that startsWith("$"); other
-                    // entries stay lazy and downstream readers unwrap via ctx.resolveVariable.
-                    Map<String, Object> resolved = new LinkedHashMap<>();
-                    List<String> opGroup = finalOp.getGroup();
-                    if (opGroup != null)
-                    {
-                        for (String g : opGroup)
-                        {
-                            if (g == null || !g.startsWith("$") || g.equals(opId))
-                            {
-                                continue;
-                            }
-                            Object v = lazyVars.get(g);
-                            if (v instanceof LazyValue<?> lv)
-                            {
-                                v = lv.get();
-                            }
-                            if (v != null)
-                            {
-                                resolved.put(g, v);
-                            }
-                        }
-                    }
-                    // minus references its operands via name/subtract (not group); force those
-                    // prior-op $-refs too so set-difference sees their resolved lists.
-                    forceOperandRefs(finalOp, opId, lazyVars, resolved);
-                    return OperationExecutor.executeOne(finalOp, lazyTable, lazyResolver,
-                            lazyLibrary, resolved, ruleId, lazyDict, lazyDefine, opNumericExpected);
-                });
+                // Materialise only the prior entries this op actually depends on — its group
+                // $-refs, its name / subtract operands and its computed target's $-refs — so
+                // independent ops don't fan out and create cycles among each other. Each is
+                // handed over through BindingValue.forOperation (§5.0 / I5): a LazyValue is
+                // forced, a compiled binding answers its raw dataset-level value.
+                LazyValue<Object> lazy = new LazyValue<>(() -> OperationExecutor.executeOne(finalOp,
+                        lazyTable, lazyResolver, lazyLibrary,
+                        gatherPriors(finalOp, opId, lazyVars, rootContextSupplier), ruleId,
+                        lazyDict, lazyDefine, opNumericExpected));
                 lazyVars.put(opId, lazy);
             }
             variables = lazyVars;
-
-            // Phase 2a.1 (Fix #42 phase 1 — defensive): force every library-dependent
-            // Operation eagerly and check for LIBRARY_NOT_AVAILABLE. The Phase 2a lazy
-            // mechanism (Fix #36) explicitly preserves the eager skip semantic for
-            // library-dependent ops; this widens that gate from "no provider at all" to
-            // "provider configured but returned no usable data for this domain", so a rule
-            // like FDA-SD0058 doesn't fan out one violation per column when the model
-            // metadata is missing. The full parity port (richer get_variables_metadata_from
-            // _standard_model with model-class fallback) is tracked as Fix #42.
-            if (libraryProvider != null)
+        }
+        // ⭐ `contextFirst`: a rule that carries a compiled binding builds its joins and its
+        // context BEFORE the eager "answered but unusable" arms force anything, so an operation
+        // supplier that reads a compiled binding always has the context the binding evaluates in.
+        // A rule without one keeps today's order byte for byte — its eager arms run first, exactly
+        // where they always ran — so none of the 892 shipped operation bindings can move.
+        boolean contextFirst = !compiledBindings.isEmpty();
+        if (!contextFirst)
+        {
+            RuleExecutionResult unusable = eagerProviderSkip(resolvedOps, variables, ruleId,
+                    message, evalTable, libraryProvider, defineProvider);
+            if (unusable != null)
             {
-                for (net.cumba.corej.core.model.Operation op : resolvedOps)
-                {
-                    String opId = op.getId();
-                    // Fix #371 — plain isLibraryDependent again. Fix #369 needed the wider
-                    // `isLibraryBacked` only because `domain_label()` read the Library while
-                    // sitting outside `isLibraryDependent` (which is materialised into the shipped
-                    // corpus as Requirements.Library, so it could not simply be widened). With
-                    // `domain_label()` retired there is no such operation left, and the second
-                    // predicate dissolved with it.
-                    if (opId == null
-                            || !OperationExecutor.isLibraryDependent(op.getOperationType()))
-                    {
-                        continue;
-                    }
-                    Object value = lazyVars.get(opId);
-                    if (value instanceof LazyValue<?> lv)
-                    {
-                        value = lv.get();
-                    }
-                    if (value == OperationExecutor.LIBRARY_NOT_AVAILABLE)
-                    {
-                        // Fix #369 — name the CDISC Library explicitly when it could not be
-                        // consulted at all. "returned no data" is true but misleading there: it
-                        // reads as "the Library was asked and had nothing", when in fact it was
-                        // never reachable (typically an expired subscription key), and the two
-                        // call for different action from whoever reads the report.
-                        return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                                .violations(List.of()).totalRows(evalTable.getRowCount())
-                                .status(RuleExecutionStatus.SKIPPED)
-                                .statusMessage(libraryProvider.isLibraryUnavailable()
-                                        ? "Rule skipped — the CDISC Library could not be consulted"
-                                                + " for this run, and " + op.getOperationType()
-                                                + " may not be answered from a non-library source"
-                                        : "Rule skipped — library returned no data for "
-                                                + op.getOperationType())
-                                .build();
-                    }
-                }
-            }
-            // Phase 2a.1 (define analog, M4): a define-dependent op that resolved but returned no
-            // usable data — e.g. define_key_variables against a Define whose KeySequence is empty
-            // for this dataset — yields LIBRARY_NOT_AVAILABLE. Skip the rule rather than let the
-            // empty key set collapse an is_not_unique_set to the constant STUDYID anchor and flag
-            // every record as a duplicate (PMDA-SD1152). Mirrors the Python operation, which raises
-            // DefineXMLNotProvidedError → SKIPPED on an empty key sequence.
-            if (defineProvider != null)
-            {
-                for (net.cumba.corej.core.model.Operation op : resolvedOps)
-                {
-                    String opId = op.getId();
-                    if (opId == null || !OperationExecutor.isDefineDependent(op.getOperationType()))
-                    {
-                        continue;
-                    }
-                    Object value = lazyVars.get(opId);
-                    if (value instanceof LazyValue<?> lv)
-                    {
-                        value = lv.get();
-                    }
-                    if (value == OperationExecutor.LIBRARY_NOT_AVAILABLE)
-                    {
-                        return RuleExecutionResult.builder().ruleId(ruleId).message(message)
-                                .violations(List.of()).totalRows(evalTable.getRowCount())
-                                .status(RuleExecutionStatus.SKIPPED)
-                                .statusMessage("Rule skipped — Define-XML declares no key "
-                                        + "variables for " + op.getOperationType())
-                                .build();
-                    }
-                }
+                return unusable;
             }
         }
 
@@ -1055,8 +878,23 @@ public final class RuleRunner
                 // of a validation run shares it; without a run cache the context's own default is
                 // used (per-execute scope, still cached).
                 .wildcardColumns(runWildcardColumns(joinCache)).build();
+        rootContext.set(ctx);
         try
         {
+            if (contextFirst)
+            {
+                RuleExecutionResult unusable = eagerProviderSkip(resolvedOps, variables, ruleId,
+                        message, evalTable, libraryProvider, defineProvider);
+                if (unusable == null)
+                {
+                    unusable = eagerCompiledBindingSkip(compiledBindings, ctx, ruleId, message,
+                            libraryProvider);
+                }
+                if (unusable != null)
+                {
+                    return unusable;
+                }
+            }
             // ⭐ `null` for every single-level rule — the entire shipped corpus — so executeAgainst
             // takes the same branch, with the same arguments, that it took before this plan.
             List<CheckLevelPlan> levels = levelSkips == null ? null
@@ -1069,6 +907,249 @@ public final class RuleRunner
             // (finding, SKIPPED, or a propagating evaluation error). See logAbsentColumnFolds.
             logAbsentColumnFolds(ruleId, evalTable, ctx);
         }
+    }
+
+
+    /**
+     * The no-provider SKIP arms ({@code Fix #36} library, T2-residual define, {@code KDICT-F1} /
+     * {@code Fix #268} dictionary): a rule whose <b>bindings</b> need a provider the run does not
+     * have reports {@code SKIPPED} before any supplier fires. Read through {@link ProviderNeeds},
+     * which sees an operation binding's {@code OperationType} and a compiled binding's
+     * provider-capable calls alike ({@code PLAN-binding-expressions} R10); for an operation-only
+     * rule it answers exactly what the three per-operation loops it replaced answered, with the
+     * same messages in the same order.
+     *
+     * <p>
+     * The dictionary arm (KDICT-F1 / Fix #268): an external-dictionary operation can only answer
+     * when a dictionary of its {@code external_dictionary_type} is loaded, and with none loaded the
+     * rule would otherwise EXECUTE and silently false-PASS. One required type per dictionary
+     * binding, ANDed (the injected inline gate emits one term per distinct type); availability is
+     * the TYPE test, not merely a non-null provider; {@code dictionary_available} is excluded
+     * because it IS the gate (its arm is total). An operation with no (or blank)
+     * {@code external_dictionary_type} is a load error (D13 item 3) and never reaches here. D13
+     * item 2 — the SKIP names the state ("not installed", "installed but unusable", "no/absent
+     * version selected"), not just the type.
+     * </p>
+     *
+     * @return the SKIPPED result, or {@code null} when every needed provider is present
+     */
+    private static @Nullable RuleExecutionResult noProviderSkip(ProviderNeeds needs,
+            @Nullable String ruleId, @Nullable String message, IDataTable evalTable,
+            @Nullable MetadataProvider libraryProvider, @Nullable MetadataProvider defineProvider,
+            @Nullable RuntimeDictionaryProvider dictionaryProvider)
+    {
+        if (libraryProvider == null && needs.library())
+        {
+            return RuleExecutionResult.builder().ruleId(ruleId).message(message)
+                    .violations(List.of()).totalRows(evalTable.getRowCount())
+                    .status(RuleExecutionStatus.SKIPPED)
+                    .statusMessage("Rule skipped — no Library access").build();
+        }
+        // T2-residual: a define-set operation (define_variable_names / define_key_variables)
+        // needs the sponsor Define-XML overlay. With no Define-XML supplied the rule SKIPs
+        // (never PASS/FAIL) before any supplier fires — the same input-availability discipline
+        // as the Library gate above and the define_* operand-prefix gate for the attribute
+        // compares.
+        if (defineProvider == null && needs.define())
+        {
+            return RuleExecutionResult.builder().ruleId(ruleId).message(message)
+                    .violations(List.of()).totalRows(evalTable.getRowCount())
+                    .status(RuleExecutionStatus.SKIPPED)
+                    .statusMessage("Rule skipped — no Define-XML metadata "
+                            + "(rule requires define_* operations)")
+                    .build();
+        }
+        Set<String> unavailableDictionaryTypes = new LinkedHashSet<>();
+        for (String dictionaryType : needs.dictionaryTypes())
+        {
+            if (dictionaryProvider == null || !dictionaryProvider.isAvailable(dictionaryType))
+            {
+                unavailableDictionaryTypes.add(dictionaryType);
+            }
+        }
+        if (unavailableDictionaryTypes.isEmpty())
+        {
+            return null;
+        }
+        StringBuilder skipReason = new StringBuilder("Rule skipped — ");
+        for (String type : unavailableDictionaryTypes)
+        {
+            if (skipReason.length() > "Rule skipped — ".length())
+            {
+                skipReason.append("; ");
+            }
+            skipReason.append("external dictionary ").append(type).append(' ')
+                    .append(dictionaryProvider == null
+                            ? RuntimeDictionaryProvider.notInstalledDetail()
+                            : dictionaryProvider.unavailabilityDetail(type));
+        }
+        skipReason.append(" (rule requires valid_external_dictionary_* operations)");
+        return RuleExecutionResult.builder().ruleId(ruleId).message(message).violations(List.of())
+                .totalRows(evalTable.getRowCount()).status(RuleExecutionStatus.SKIPPED)
+                .statusMessage(skipReason.toString()).build();
+    }
+
+
+    /**
+     * Phase 2a.1 (Fix #42 phase 1 — defensive) and its define analog (M4): force every library- /
+     * define-dependent <b>operation</b> eagerly and SKIP the rule when one answered
+     * {@link OperationExecutor#LIBRARY_NOT_AVAILABLE} — the provider was configured but returned no
+     * usable data for this domain, so a rule like FDA-SD0058 does not fan out one violation per
+     * column, and an empty Define key set does not collapse an {@code is_not_unique_set} to the
+     * constant STUDYID anchor (PMDA-SD1152). Extracted unchanged from {@code execute} so the
+     * context-first path of a rule with compiled bindings can run it after the context exists.
+     *
+     * <p>
+     * Fix #371 — plain {@code isLibraryDependent}; Fix #369 — the CDISC Library is named explicitly
+     * when it could not be consulted at all ("returned no data" would read as "asked and had
+     * nothing").
+     * </p>
+     *
+     * @return the SKIPPED result, or {@code null} when every forced operation answered
+     */
+    private static @Nullable RuleExecutionResult eagerProviderSkip(
+            List<net.cumba.corej.core.model.Operation> resolvedOps, Map<String, Object> lazyVars,
+            @Nullable String ruleId, @Nullable String message, IDataTable evalTable,
+            @Nullable MetadataProvider libraryProvider, @Nullable MetadataProvider defineProvider)
+    {
+        if (libraryProvider != null)
+        {
+            for (net.cumba.corej.core.model.Operation op : resolvedOps)
+            {
+                String opId = op.getId();
+                if (opId == null || !OperationExecutor.isLibraryDependent(op.getOperationType()))
+                {
+                    continue;
+                }
+                Object value = lazyVars.get(opId);
+                if (value instanceof LazyValue<?> lv)
+                {
+                    value = lv.get();
+                }
+                if (value == OperationExecutor.LIBRARY_NOT_AVAILABLE)
+                {
+                    return RuleExecutionResult.builder().ruleId(ruleId).message(message)
+                            .violations(List.of()).totalRows(evalTable.getRowCount())
+                            .status(RuleExecutionStatus.SKIPPED)
+                            .statusMessage(libraryProvider.isLibraryUnavailable()
+                                    ? "Rule skipped — the CDISC Library could not be consulted"
+                                            + " for this run, and " + op.getOperationType()
+                                            + " may not be answered from a non-library source"
+                                    : "Rule skipped — library returned no data for "
+                                            + op.getOperationType())
+                            .build();
+                }
+            }
+        }
+        if (defineProvider != null)
+        {
+            for (net.cumba.corej.core.model.Operation op : resolvedOps)
+            {
+                String opId = op.getId();
+                if (opId == null || !OperationExecutor.isDefineDependent(op.getOperationType()))
+                {
+                    continue;
+                }
+                Object value = lazyVars.get(opId);
+                if (value instanceof LazyValue<?> lv)
+                {
+                    value = lv.get();
+                }
+                if (value == OperationExecutor.LIBRARY_NOT_AVAILABLE)
+                {
+                    return RuleExecutionResult.builder().ruleId(ruleId).message(message)
+                            .violations(List.of()).totalRows(evalTable.getRowCount())
+                            .status(RuleExecutionStatus.SKIPPED)
+                            .statusMessage("Rule skipped — Define-XML declares no key "
+                                    + "variables for " + op.getOperationType())
+                            .build();
+                }
+            }
+        }
+        return null;
+    }
+
+
+    /**
+     * ⭐ The compiled-binding half of the eager "answered but unusable" arm
+     * ({@code PLAN-binding-expressions} R10 / §5.2 (c)): every compiled binding that needs a
+     * provider ({@link ProviderNeeds#ofExpr}) and no variable cursor is forced here, before the
+     * Check runs; a capability-carrying function (or a provider-dependent inline operation) with no
+     * usable data raises {@link net.cumba.corej.core.expr.eval.UnusableProviderAnswerException},
+     * and the rule reports {@code SKIPPED} with the operation arm's message, naming the function.
+     * Without it {@code CDISC-CG0288}'s {@code not empty($VALID_TERM_CODES)} would read an empty
+     * answer as {@code false} and the rule would PASS. The forced value is memoised on the binding
+     * for this context, so the Check reuses it rather than asking the provider twice.
+     *
+     * @return the SKIPPED result, or {@code null} when every forced binding answered
+     */
+    private static @Nullable RuleExecutionResult eagerCompiledBindingSkip(
+            List<net.cumba.corej.core.model.CompiledBinding> compiledBindings,
+            EvaluationContext ctx, @Nullable String ruleId, @Nullable String message,
+            @Nullable MetadataProvider libraryProvider)
+    {
+        for (net.cumba.corej.core.model.CompiledBinding compiled : compiledBindings)
+        {
+            if ((compiled.domain() != null && compiled.domain().varCursor())
+                    || ProviderNeeds.ofExpr(compiled.expression()).isEmpty()
+                    || !(ctx.getVariables().get(compiled.name()) instanceof BindingValue value))
+            {
+                continue;
+            }
+            try
+            {
+                value.vector(net.cumba.corej.core.expr.eval.EvalRun.fullRange(ctx));
+            }
+            catch (net.cumba.corej.core.expr.eval.UnusableProviderAnswerException unusable)
+            {
+                String statusMessage = switch (unusable.kind())
+                {
+                case LIBRARY -> libraryProvider != null && libraryProvider.isLibraryUnavailable()
+                        ? "Rule skipped — the CDISC Library could not be consulted for this run,"
+                                + " and " + unusable.function()
+                                + " may not be answered from a non-library source"
+                        : "Rule skipped — library returned no data for " + unusable.function();
+                case DEFINE -> "Rule skipped — Define-XML returned no data for "
+                        + unusable.function();
+                case DICTIONARY -> "Rule skipped — the external dictionary returned no data for "
+                        + unusable.function();
+                };
+                return RuleExecutionResult.builder().ruleId(ruleId).message(message)
+                        .violations(List.of()).totalRows(ctx.getTable().getRowCount())
+                        .status(RuleExecutionStatus.SKIPPED).statusMessage(statusMessage).build();
+            }
+        }
+        return null;
+    }
+
+
+    /**
+     * The prior {@code $}-entries an operation reads ({@link OperationExecutor#priorReferences} —
+     * its group, its {@code name} / {@code subtract} operands, its computed target), each handed
+     * over through {@link BindingValue#forOperation(Object, java.util.function.Supplier)}: a
+     * {@link LazyValue} is forced, a compiled binding answers its raw dataset-level value
+     * ({@code PLAN-binding-expressions} §5.0 / I5). A self-reference ({@code opId}) is skipped so
+     * the in-flight {@link LazyValue} is never forced; an entry that resolves to {@code null} is
+     * left out, exactly as before.
+     */
+    private static Map<String, Object> gatherPriors(net.cumba.corej.core.model.Operation op,
+            @Nullable String opId, Map<String, Object> lazyVars,
+            java.util.function.Supplier<EvaluationContext> rootContext)
+    {
+        Map<String, Object> resolved = new LinkedHashMap<>();
+        for (String ref : OperationExecutor.priorReferences(op))
+        {
+            if (ref.equals(opId))
+            {
+                continue;
+            }
+            Object v = BindingValue.forOperation(lazyVars.get(ref), rootContext);
+            if (v != null)
+            {
+                resolved.put(ref, v);
+            }
+        }
+        return resolved;
     }
 
 
@@ -2088,7 +2169,11 @@ public final class RuleRunner
     {
         net.cumba.corej.core.expr.ast.Expr checkExpr = Objects
                 .requireNonNull(checkExprOf(rule, ctx));
-        var needed = net.cumba.corej.core.expr.eval.MetadataExprScan.providerLevelsUsed(checkExpr);
+        // PLAN-binding-expressions I2: a var_*("LIBRARY") / define_* read inside a COMPILED binding
+        // the Check reads requests its provider exactly as one in the Check does.
+        var needed = net.cumba.corej.core.expr.eval.MetadataExprScan
+                .providerLevelsUsed(Objects.requireNonNull(
+                        net.cumba.corej.core.expr.convert.BindingInliner.inline(checkExpr, rule)));
         // The Define universe iterates the ItemDefs, so it needs the provider even when no leaf
         // reads the DEFINE level (the `var_exists(varname())` discriminator reads DATA only):
         // without one the rule is SKIPPED, never silently run over the data columns.
@@ -2965,7 +3050,11 @@ public final class RuleRunner
     {
         net.cumba.corej.core.expr.ast.Expr checkExpr = Objects
                 .requireNonNull(checkExprOf(rule, ctx));
-        var needed = net.cumba.corej.core.expr.eval.MetadataExprScan.providerLevelsUsed(checkExpr);
+        // PLAN-binding-expressions I2: a var_*("LIBRARY") / define_* read inside a COMPILED binding
+        // the Check reads requests its provider exactly as one in the Check does.
+        var needed = net.cumba.corej.core.expr.eval.MetadataExprScan
+                .providerLevelsUsed(Objects.requireNonNull(
+                        net.cumba.corej.core.expr.convert.BindingInliner.inline(checkExpr, rule)));
         if (needed.contains(net.cumba.corej.core.expr.eval.MetadataLevel.DEFINE)
                 && ctx.getDefineProvider() == null)
         {
@@ -4100,6 +4189,26 @@ public final class RuleRunner
                     Object groupVal = grouped.getForRowOrDefault(ctx, row);
                     values.put(varName, scalarToString(groupVal));
                 }
+                else if (val instanceof net.cumba.corej.core.expr.eval.Vector perRow)
+                {
+                    // Wave 0 (PLAN-binding-expressions §5.2): a per-row COMPILED binding reports
+                    // its value AT THE FINDING'S ROW. A collection renders like an operation's
+                    // list; a scalar cell renders like any other cell (reportedValue: a missing
+                    // prints its marker, never ""). A dataset-level compiled binding is not a
+                    // Vector here — resolveVariable hands over its raw value, which takes the
+                    // arm below and renders exactly as the operation it replaces.
+                    if (row >= ctx.rowCount())
+                    {
+                        // A dataset-level finding on an empty table has no row to read.
+                        values.put(varName, "");
+                        continue;
+                    }
+                    net.cumba.corej.core.expr.eval.TypedValue cell = perRow.value((int) row);
+                    values.put(varName,
+                            cell.resolved() instanceof java.util.Collection<?> c
+                                    ? renderCollection(c)
+                                    : reportedValue(cell.cell()));
+                }
                 else
                 {
                     values.put(varName, scalarToString(val));
@@ -4306,39 +4415,6 @@ public final class RuleRunner
         return RecordKeyResolver.resolve(aCtx.getTable(), aCtx.getDomainName(),
                 FindingKeyMode.configured(), aCtx.getDefineProvider(), aCtx.getLibraryProvider(),
                 aCtx.getDatasetResolver(), aCtx.getRuleId());
-    }
-
-
-    /**
-     * Forces the prior-operation {@code $}-refs an operation reads through its {@code name} /
-     * {@code subtract} fields (the {@code minus} operands), materialising the referenced
-     * {@link LazyValue}s into {@code resolved}. Group {@code $}-refs are handled separately by
-     * {@code expandGroupRefs}; this covers the operand fields that gathering only the {@code group}
-     * list would miss, so set-difference sees its operands' resolved lists. A self-reference
-     * ({@code ref.equals(opId)}) is skipped so the in-flight {@link LazyValue} is never forced.
-     */
-    private static void forceOperandRefs(net.cumba.corej.core.model.Operation op,
-            @Nullable String opId, Map<String, Object> lazyVars, Map<String, Object> resolved)
-    {
-        for (String ref : new String[]
-        {
-                op.getName(), op.getSubtract()
-        })
-        {
-            if (ref == null || !ref.startsWith("$") || ref.equals(opId))
-            {
-                continue;
-            }
-            Object v = lazyVars.get(ref);
-            if (v instanceof LazyValue<?> lv)
-            {
-                v = lv.get();
-            }
-            if (v != null)
-            {
-                resolved.put(ref, v);
-            }
-        }
     }
 
 

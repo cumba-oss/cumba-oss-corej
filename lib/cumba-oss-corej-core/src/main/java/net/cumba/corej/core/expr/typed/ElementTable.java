@@ -61,6 +61,9 @@ public final class ElementTable
             Map.entry("date_diff_days", Primitive.NUMBER),
             // collection results
             Map.entry("split_by", new ListOf(Primitive.STRING)),
+            // wave 0's list-valued exemplar (PLAN-binding-expressions): one list of CT attribute
+            // values — a set by content, a list by carrier (§1.5).
+            Map.entry("get_codelist_attributes", new ListOf(Primitive.STRING)),
             // §1.5: tuple(…) is sugar for a list<column-reference> composite key
             Map.entry("tuple", new ListOf(Primitive.COLUMN_REFERENCE)));
 

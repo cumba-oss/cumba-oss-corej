@@ -310,9 +310,10 @@ public class EvaluationContext
 
 
     /**
-     * Resolves a single variable by id, transparently unwrapping {@link LazyValue} wrappers.
-     * Operation results live in the variables map as {@code LazyValue<Object>} instances (Fix #36)
-     * so a never-read Operation never runs. Use this method for single-key reads; enumeration loops
+     * Resolves a single variable by id, transparently unwrapping {@link LazyValue} wrappers and
+     * answering a compiled binding's {@link BindingValue#handOver hand-over form}. Operation
+     * results live in the variables map as {@code LazyValue<Object>} instances (Fix #36) so a
+     * never-read Operation never runs. Use this method for single-key reads; enumeration loops
      * should keep using {@code getVariables()} directly and unwrap per entry only when the entry's
      * type is actually examined, otherwise iterating the map forces every Operation prematurely.
      */
@@ -330,6 +331,13 @@ public class EvaluationContext
         if (raw instanceof LazyValue<?> lv)
         {
             return lv.get();
+        }
+        if (raw instanceof BindingValue compiled)
+        {
+            // Wave 0 (PLAN-binding-expressions §5.0): a compiled binding answers its HAND-OVER
+            // form — the raw dataset-level value, or the Vector of a per-row binding — so every
+            // reader outside the compiler keeps the vocabulary an operation result gives it.
+            return compiled.handOver(this);
         }
         return raw;
     }

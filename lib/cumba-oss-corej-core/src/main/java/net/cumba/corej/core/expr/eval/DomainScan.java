@@ -142,7 +142,7 @@ public final class DomainScan
         {
         // MATCHED_FLAG: a boolean at level record (spec §3.3) — a per-row verdict.
         case COLUMN, WILDCARD_COLUMN, DOTTED_REF, MATCHED_FLAG -> Domain.ROW;
-        case OPERATION_REF -> ofKind(kinds.kindOf(r.name()));
+        case OPERATION_REF -> kinds.domainOf(r.name());
         case BUILTIN -> builtin(r.name());
         };
     }
@@ -251,8 +251,17 @@ public final class DomainScan
             }
             return ofKind(kind);
         }
+        Domain operands = joinAll(c.args(), kinds).join(joinAll(c.kwargs().values(), kinds));
+        FunctionDescriptor descriptor = FunctionRegistry.descriptor(name);
+        if (descriptor != null && descriptor.aggregate())
+        {
+            // SPEC §1.4 raising (PLAN-binding-expressions §4.1): an aggregate folds the row axis
+            // of its operands into one broadcast value — the ROW demand is absorbed, a VAR cursor
+            // survives (one value per variable), as for the whole-column verdict calls above.
+            return Domain.of(operands.varCursor(), false);
+        }
         // record_count() and every other value function / predicate: the join of its operands.
-        return joinAll(c.args(), kinds).join(joinAll(c.kwargs().values(), kinds));
+        return operands;
     }
 
 

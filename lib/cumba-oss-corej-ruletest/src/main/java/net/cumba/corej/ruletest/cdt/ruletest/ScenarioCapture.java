@@ -392,6 +392,17 @@ public final class ScenarioCapture
                 }
             }
         }
+        // PLAN-binding-expressions R28: a COMPILED binding reads datasets too — a nested
+        // operation's `domain=` and an inventory call inside it are captured like a declared
+        // operation's, so the captured scenario carries what the binding reads.
+        if (aRule.getCompiledBindings() != null)
+        {
+            for (net.cumba.corej.core.model.CompiledBinding binding : aRule.getCompiledBindings())
+            {
+                anyInventoryOp |= collectBindingDomains(binding.expression(),
+                        referenceDomainsViaOps);
+            }
+        }
         for (String nameUpper : referenceDomainsViaOps)
         {
             if (aDropped.contains(nameUpper) || aOut.containsKey(nameUpper)
@@ -417,6 +428,15 @@ public final class ScenarioCapture
             for (CheckCondition levelCondition : aRule.checkConditions())
             {
                 collectDomainPresenceNames(levelCondition, presenceNames);
+            }
+            // R28: a presence call inside a compiled binding is read by the Check too.
+            if (aRule.getCompiledBindings() != null)
+            {
+                for (net.cumba.corej.core.model.CompiledBinding binding : aRule
+                        .getCompiledBindings())
+                {
+                    collectDomainPresenceNames(binding.expression(), presenceNames);
+                }
             }
             for (String nameUpper : presenceNames)
             {
@@ -447,6 +467,53 @@ public final class ScenarioCapture
                 aOut.put(nameUpper, stubFor(nameUpper));
             }
         }
+    }
+
+
+    /**
+     * The datasets a compiled binding's nested calls name through a {@code domain=} string literal,
+     * added to {@code aOut} upper-cased ({@code PLAN-binding-expressions} R28).
+     *
+     * @return whether the expression holds an inventory-scanning call ({@code dataset_names} /
+     *         {@code study_domains})
+     */
+    private static boolean collectBindingDomains(Expr aExpr, Set<String> aOut)
+    {
+        return switch (aExpr)
+        {
+        case Expr.And and -> and.parts().stream().map(part -> collectBindingDomains(part, aOut))
+                .reduce(false, Boolean::logicalOr);
+        case Expr.Or or -> or.parts().stream().map(part -> collectBindingDomains(part, aOut))
+                .reduce(false, Boolean::logicalOr);
+        case Expr.Not not -> collectBindingDomains(not.inner(), aOut);
+        case Expr.Binary binary ->
+        {
+            // Both sides are walked — each may name a domain — before either answer is used.
+            boolean left = collectBindingDomains(binary.left(), aOut);
+            boolean right = collectBindingDomains(binary.right(), aOut);
+            yield left || right;
+        }
+        case Expr.Call call ->
+        {
+            boolean inventory = "dataset_names".equals(call.name())
+                    || "study_domains".equals(call.name());
+            if (call.kwargs().get("domain") instanceof Expr.Lit lit
+                    && lit.kind() == Expr.LitKind.STRING)
+            {
+                aOut.add(((String) lit.value()).toUpperCase(Locale.ROOT));
+            }
+            for (Expr arg : call.args())
+            {
+                inventory |= collectBindingDomains(arg, aOut);
+            }
+            for (Expr value : call.kwargs().values())
+            {
+                inventory |= collectBindingDomains(value, aOut);
+            }
+            yield inventory;
+        }
+        case Expr.Ref _,Expr.Lit _ -> false;
+        };
     }
 
 

@@ -305,11 +305,6 @@ public class Operation
     @JsonProperty("model_class")
     private @Nullable String modelClass;
 
-    @JsonProperty("ct_attribute")
-    private @Nullable String ctAttribute;
-
-    private @Nullable String version;
-
     @JsonProperty("ct_package_types")
     private @Nullable List<String> ctPackageTypes;
 

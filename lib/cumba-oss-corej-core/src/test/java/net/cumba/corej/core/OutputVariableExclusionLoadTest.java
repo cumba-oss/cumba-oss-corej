@@ -366,27 +366,42 @@ class OutputVariableExclusionLoadTest
 
 
     /**
-     * ⭐ Phase 7b changed this test's premise: a <b>declared</b> {@code split_by} binding is no
-     * longer authorable at all. {@code split_by} is not an operation ({@code OperationType} has no
-     * {@code SPLIT_BY} — a broadcast operation cannot produce a per-row list), so the only way the
-     * declared form ever loaded was the retired field form, which the loader's T9 inliner then
-     * lowered into the Check. With the field form gone, the sanctioned spelling is the inline value
-     * function in the Check — and a binding that tries to declare {@code split_by} fails LOUD as an
-     * unknown operation instead of relying on the inliner. The inliner's declared-operation arm
-     * keeps running as a safety net for programmatically constructed rules, but no authoring
-     * surface reaches it any more.
+     * ⭐ Phase 7b changed this test's premise, and wave 0 changed it again
+     * ({@code PLAN-binding-expressions}). {@code split_by} is not an operation
+     * ({@code OperationType} has no {@code SPLIT_BY} — a broadcast operation cannot produce a
+     * per-row list), so after 7b a binding that declared it failed LOUD as an unknown operation.
+     * Since wave 0 a {@code Bindings:} entry may hold ANY expression: the declared form is a
+     * <b>compiled binding</b> — the per-row token list, exactly what the inline value function
+     * computes — and loads. Being list-valued it is <b>bulk</b> (R15, as a list operation's result
+     * is): its id is never derived as an output variable, so an {@code !$tok} exclusion names
+     * nothing the rule derives and is the E-3.1 load error, exactly as for a bulk operation. The
+     * corpus keeps authoring the inline spelling ({@code SplitByOperationCorpusGateTest} in the
+     * corpus repo holds that line), and the inline spelling keeps loading.
      */
     @Test
-    void aDeclaredSplitByBindingIsALoadErrorAndTheInlineSpellingLoads() throws Exception
+    void aDeclaredSplitByBindingIsACompiledBindingAndTheInlineSpellingLoads() throws Exception
     {
         Rule declared = load("""
                 {"Core":{"Id":"R1"},"Sensitivity":"Record",
                  "Bindings":[{"name": "$tok", "expression": "split_by(AESPEC, delimiter=\\"/\\")"}],
                  "Check":{"all":[{"expression": "contains($tok, \\"X\\")"},
                                  {"expression": "empty(AESEV)"}]},
+                 "Outcome":{"Message":"m","Output_Variables":["AESEV"]}}""");
+        assertNull(declared.getLoadError(), declared.getLoadError());
+        assertNull(declared.getOperations(), "split_by is not an operation");
+        assertNotNull(declared.compiledBinding("$tok"), "it is a compiled binding");
+        assertFalse(declared.getEffectiveOutputVariables().contains("$tok"),
+                "a list-valued binding is bulk: " + declared.getEffectiveOutputVariables());
+
+        Rule excluded = load("""
+                {"Core":{"Id":"R1"},"Sensitivity":"Record",
+                 "Bindings":[{"name": "$tok", "expression": "split_by(AESPEC, delimiter=\\"/\\")"}],
+                 "Check":{"all":[{"expression": "contains($tok, \\"X\\")"},
+                                 {"expression": "empty(AESEV)"}]},
                  "Outcome":{"Message":"m","Output_Variables":["AESEV","!$tok"]}}""");
-        assertNotNull(declared.getLoadError(), "a declared split_by binding must fail loud");
-        assertTrue(declared.getLoadError().contains("split_by"), declared.getLoadError());
+        assertNotNull(excluded.getLoadError(), "a bulk id is never derived, so !$tok is E-3.1");
+        assertTrue(excluded.getLoadError().contains("!$tok names nothing the rule derives"),
+                excluded.getLoadError());
 
         Rule inline = load("""
                 {"Core":{"Id":"R1"},"Sensitivity":"Record",

@@ -825,7 +825,9 @@ public final class BroadcastFold
                 yield true;
             }
             Object val = ctx.resolveVariable(r.name());
-            if (val instanceof GroupedResult)
+            // A per-row COMPILED binding (PLAN-binding-expressions §5.0) hands over its Vector:
+            // per-row values, exactly as a GroupedResult — never broadcast-safe.
+            if (val instanceof GroupedResult || val instanceof Vector)
             {
                 yield false;
             }

@@ -470,6 +470,18 @@ public final class BuiltinFunctions implements FunctionProvider
                         run.ctx().getDictionaryProvider() != null && run.ctx()
                                 .getDictionaryProvider().isAvailable(constString(args.get(0)))));
 
+        // -- VALUE list: the CT attributes of the CT packages the rows name (wave 0) ------------
+        // get_codelist_attributes(TSVCDREF, TSVCDVER, ct_attribute="Term CCODE") — the list-valued
+        // exemplar of PLAN-binding-expressions (CDISC-CG0288), ported from the retired operation.
+        // Target `name` only (runbook R6), the version column its second positional, ct_attribute a
+        // string keyword. An AGGREGATE (one list for the dataset, broadcast) carrying the LIBRARY
+        // provider capability: no provider / no usable answer ⇒ the rule SKIPs, never PASSes.
+        fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.CodelistAttributes.NAME,
+                List.of(p("name"), p("version"), p("ct_attribute", Primitive.STRING)),
+                FunctionKind.VALUE, net.cumba.corej.core.exec.CodelistAttributes::evaluate)
+                        .withProvider(net.cumba.corej.core.expr.eval.ProviderNeed.LIBRARY)
+                        .aggregating());
+
         // -- BOOLEAN substring -----------------------------------------------
         bool(fns, "contains", List.of(p("x"), p("value")), (run, args) -> Primitives
                 .contains(args.get(0), args.get(1), run.rowCount(), false));

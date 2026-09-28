@@ -116,28 +116,6 @@ class OperationExecutorLibraryOpsTest
 
 
     @Test
-    void getCodelistAttributes_returnsListFromProvider()
-    {
-        // get_codelist_attributes resolves a CT package from the row's target (name) + version
-        // columns and the standard, then extracts the requested ct_attribute. The row carries
-        // TSVCDREF=CDISC + TSVCDVER=2024-09-27 → package sdtmct-2024-09-27 (sdtmig standard).
-        IDataTable table = MockTable.of().col("TSVCDREF", "CDISC").col("TSVCDVER", "2024-09-27")
-                .name("TS").build();
-        Provider p = new Provider();
-        p.standard = "sdtmig";
-        p.codelistAttribute = List.of("A", "B");
-
-        Operation op = makeOp("$attrs", "get_codelist_attributes");
-        op.setName("TSVCDREF");
-        op.setVersion("TSVCDVER");
-        op.setCtAttribute("Term CCODE");
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
-                p);
-        assertEquals(List.of("A", "B"), vars.get("$attrs"));
-    }
-
-
-    @Test
     void datasetClassFromLibrary_returnsClassNameOnDatasetMetadata()
     {
         IDataTable table = MockTable.of().col("X", "1").name("AE").build();
@@ -736,8 +714,6 @@ class OperationExecutorLibraryOpsTest
 
         List<String> codelistTerms = List.of();
 
-        List<String> codelistAttribute = List.of();
-
         final Map<String, String> variableMetadata = Map.of();
 
         List<Map<String, String>> domainVariables = List.of();
@@ -792,13 +768,6 @@ class OperationExecutorLibraryOpsTest
         public List<String> getCodelistTerms(String c)
         {
             return codelistTerms;
-        }
-
-
-        @Override
-        public List<String> getCodelistAttribute(String ctPackageId, String ctAttribute)
-        {
-            return codelistAttribute;
         }
 
 

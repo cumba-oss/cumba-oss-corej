@@ -1484,35 +1484,6 @@ class OperationExecutorTest
         assertSame(OperationExecutor.LIBRARY_NOT_AVAILABLE, vars.get("$domain_lib_ccode"));
     }
 
-
-    @Test
-    void testGetCodelistAttributes_resolvesPackageFromRowColumns()
-    {
-        // get_codelist_attributes derives a CT package id from the row's target column
-        // (name=TSVCDREF → "CDISC") + version column (version=TSVCDVER → "2024-09-27") + the
-        // standard ("sdtmig" → prefix "sdtmct"), then extracts the named ct_attribute. It must NOT
-        // route through getCodelistTerms(name) the way codelist_terms does.
-        IDataTable table = MockTable.of().col("TSVCDREF", "CDISC").col("TSVCDVER", "2024-09-27")
-                .name("TS").build();
-
-        MetadataProvider provider = mock(MetadataProvider.class);
-        when(provider.getStandard()).thenReturn("sdtmig");
-        when(provider.getCodelistAttribute("sdtmct-2024-09-27", "Term CCODE"))
-                .thenReturn(List.of("C1", "C2"));
-
-        Operation op = makeOp("$VALID_TERM_CODES", "get_codelist_attributes");
-        op.setName("TSVCDREF");
-        op.setVersion("TSVCDVER");
-        op.setCtAttribute("Term CCODE");
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER,
-                provider);
-
-        @SuppressWarnings("unchecked")
-        List<String> result = (List<String>) vars.get("$VALID_TERM_CODES");
-        assertEquals(List.of("C1", "C2"), result);
-    }
-
     // -----------------------------------------------------------------------
     // EC-46 — a date extreme has a value only when a DETERMINED candidate wins
     // against every possible completion of every other candidate.

@@ -156,8 +156,9 @@ public final class StageBChecker
 
     /**
      * The specialised expression surfaces stage B walks: every level's raised {@code Expr} (the
-     * strictest-level {@code checkExpr} for a single-level rule) plus the precondition. A rule with
-     * no native form contributes nothing — the checker can only get quieter, never wrong.
+     * strictest-level {@code checkExpr} for a single-level rule), the precondition, and every
+     * compiled binding's expression ({@code PLAN-binding-expressions} I3). A rule with no native
+     * form contributes nothing — the checker can only get quieter, never wrong.
      *
      * <p>
      * Public since the D76 absent-column default landed in the engine: {@code RuleRunner} computes
@@ -181,6 +182,15 @@ public final class StageBChecker
         if (rule.getPreconditionExpr() != null)
         {
             roots.add(rule.getPreconditionExpr());
+        }
+        // PLAN-binding-expressions I3: a compiled binding's expression is evaluated against the
+        // same dataset as the Check, so its column types, its absent columns (and their D76
+        // numeric defaults, which RuleRunner derives from these roots), its unresolved `--` and its
+        // `_matched_` flags are this checker's business exactly as the Check's are.
+        List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
+        if (compiled != null)
+        {
+            compiled.forEach(binding -> roots.add(binding.expression()));
         }
         return roots;
     }

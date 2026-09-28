@@ -7,6 +7,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -20,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.cumba.corej.core.exec.ArithmeticSemantics;
+import net.cumba.corej.core.exec.BindingValue;
 import net.cumba.corej.core.exec.DatasetResolver;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.ExpressionResultCache;
@@ -271,6 +273,89 @@ public final class ExprCompiler
     public static ExprProgram compile(Expr expr)
     {
         return new ExprProgram(compileBool(expr));
+    }
+
+
+    /**
+     * ⭐ Wave 0 ({@code PLAN-binding-expressions} §2): compiles a <b>compiled binding</b>'s
+     * expression — any well-typed expression, not only an operation call — on exactly the path the
+     * {@code Check} compiles on. A condition compiles through {@link #compileBool} and yields its
+     * per-row verdict as Booleans; anything else is a value in <b>value position</b>
+     * ({@link #valuePlan}, never {@code null}). Cached per {@code Expr} by
+     * {@link NativeExprEvaluator#bindingProgram}.
+     *
+     * @param e
+     *            the binding expression
+     * @return the compiled binding plan
+     * @throws ExpressionException
+     *             for a construct the native backend does not implement — a load error on the
+     *             binding
+     */
+    public static BindingProgram compileBinding(Expr e)
+    {
+        if (isConditionExpr(e))
+        {
+            return BindingProgram.condition(compileBool(e));
+        }
+        if (e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+        {
+            // A list literal is a dataset-level LIST binding (option 2 of §3.1: one list in a
+            // ConstVector). It is never a scalar operand in the Check, so valuePlan refuses it;
+            // as a binding it is the plain way to name a list.
+            ConstVector list = ConstVector.of(listLiteralValues(lit));
+            return BindingProgram.value(_ -> list);
+        }
+        return BindingProgram.value(valuePlan(e));
+    }
+
+
+    /**
+     * The members of a list-literal binding: plain string / number / boolean literals only. A
+     * nested list, a regex, a column reference or a call ({@code upper("x")}, {@code date("…")})
+     * has no dataset-level value to fold into the list — a load error on the binding, never a
+     * member rendered as its source text.
+     */
+    private static List<Object> listLiteralValues(Expr.Lit lit)
+    {
+        @SuppressWarnings("unchecked")
+        List<Expr> items = (List<Expr>) lit.value();
+        List<Object> values = new ArrayList<>(items.size());
+        for (Expr item : items)
+        {
+            if (!(item instanceof Expr.Lit member) || member.kind() == Expr.LitKind.LIST
+                    || member.kind() == Expr.LitKind.REGEX)
+            {
+                throw unsupported("a list binding holds plain literals only, not " + item);
+            }
+            values.add(literalObject(member));
+        }
+        return List.copyOf(values);
+    }
+
+
+    /**
+     * Whether {@code e} is a condition — the shapes {@link #compileBool} compiles: a logical
+     * connective, a comparison / membership / regex match, the join-match flag, or a boolean call
+     * (a registered BOOLEAN function, compiler-dispatched ones included, or an admitted boolean
+     * inline operation — {@link #isBooleanCall}). Arithmetic, literals, references and value calls
+     * are values.
+     *
+     * @param e
+     *            the expression
+     * @return whether it is a condition
+     */
+    public static boolean isConditionExpr(Expr e)
+    {
+        return switch (e)
+        {
+        case Expr.And _ -> true;
+        case Expr.Or _ -> true;
+        case Expr.Not _ -> true;
+        case Expr.Binary b -> !isArith(b.op());
+        case Expr.Ref r -> r.kind() == OperandKind.MATCHED_FLAG;
+        case Expr.Call c -> isBooleanCall(c);
+        case Expr.Lit _ -> false;
+        };
     }
 
     // ---------------------------------------------------------------------
@@ -1023,6 +1108,18 @@ public final class ExprCompiler
             {
                 ColumnTypeGate.requireCharacterRead(v, "membership in a string list");
             }
+            // Wave 0 (PLAN-binding-expressions I4): a COMPILED binding on the right is a Vector —
+            // a dataset-level list broadcast as a ConstVector (the set is built once, exactly as
+            // buildSet builds it from an operation's list), or a per-row list (one set per row).
+            if (right instanceof Expr.Ref boundRef)
+            {
+                Vector bound = boundVector(run, boundRef.name());
+                if (bound != null)
+                {
+                    return boundMembership(v, bound, run.rowCount(), negate, caseInsensitive,
+                            listLhs);
+                }
+            }
             // A $-reference may resolve to a per-row GroupedResult (e.g. CDISC-CG0034's
             // $sv_visitnum, a distinct-per-USUBJID operation). The membership set is then resolved
             // PER ROW (GroupedResult.getForRow) with a per-row loop instead of the broadcast
@@ -1283,6 +1380,56 @@ public final class ExprCompiler
             // D81 (phase 6b): the probe is =='s own per-member decision tree.
             return negate != Primitives.isMember(dv, set, caseInsensitive);
         });
+    }
+
+
+    /**
+     * Membership against a <b>compiled binding</b>'s Vector ({@code PLAN-binding-expressions} §4.1,
+     * option 2 — a list travels inside a Vector).
+     *
+     * <ul>
+     * <li><b>Dataset level</b> — a {@link ConstVector}: the one value folds through {@link #toSet}
+     * once, and membership runs through exactly the primitives {@code buildSet}'s {@code $}-list
+     * branch feeds, so a compiled list binding and an operation's list answer identically
+     * ({@code CDISC-CG0288}'s {@code TSVALCD not in $VALID_TERM_CODES}).</li>
+     * <li><b>Per row</b> — any other Vector: each row's cell is its own set (a collection its
+     * elements, a scalar a singleton, a missing cell the empty set — the {@link #toSet} contract
+     * {@link #groupedMembership} follows). ⭐ One {@link Primitives.MemberSet} is built per distinct
+     * list <em>instance</em> and reused by every row carrying it, so rows sharing a list fold it
+     * once — deliberately not {@code groupedMembership}'s per-row rebuild. No per-row array is
+     * materialised beyond the vector's own memo (D-W0-3).</li>
+     * </ul>
+     *
+     * Package-private for the unit tests.
+     */
+    static BitSet boundMembership(Vector v, Vector bound, int rowCount, boolean negate,
+            boolean caseInsensitive, boolean listLhs)
+    {
+        if (bound instanceof ConstVector constant)
+        {
+            Primitives.MemberSet set = toSet(constant.value(), caseInsensitive);
+            return listLhs ? Primitives.listMembership(v, set, rowCount, negate, caseInsensitive)
+                    : Primitives.membership(v, set, rowCount, negate, caseInsensitive);
+        }
+        IdentityHashMap<Object, Primitives.MemberSet> perInstance = new IdentityHashMap<>();
+        BitSet out = new BitSet(rowCount);
+        for (int r = 0; r < rowCount; r++)
+        {
+            Object cell = bound.value(r).resolved();
+            Primitives.MemberSet set = cell instanceof Collection<?>
+                    ? perInstance.computeIfAbsent(cell, list -> toSet(list, caseInsensitive))
+                    : toSet(cell, caseInsensitive);
+            // The same per-row decisions Primitives.listMembership / Primitives.membership make,
+            // one row at a time because the set is the row's own.
+            boolean member = listLhs
+                    ? Primitives.anyInSet(v.value(r).resolved(), set, caseInsensitive)
+                    : Primitives.isMember(v.value(r).cell(), set, caseInsensitive);
+            if (negate != member)
+            {
+                out.set(r);
+            }
+        }
+        return out;
     }
 
 
@@ -1958,7 +2105,10 @@ public final class ExprCompiler
         // qualified asymmetry Fix #126 built), and folding them would produce the identical verdict
         // by a different route — so the special case is kept rather than quietly replaced.
         boolean firesOnAbsentColumn = FIRES_ON_ABSENT_COLUMN.contains(name);
-        ValuePlan arg0 = operandPlan(bound.get(0), true);
+        ValuePlan compiledArg0 = operandPlan(bound.get(0), true);
+        // The availability gate reads an unusable provider answer as "not available" (§0.2 a).
+        ValuePlan arg0 = AVAILABILITY_GATE.equals(name) ? unusableAsUnavailable(compiledArg0)
+                : compiledArg0;
         List<@Nullable ValuePlan> rest = new ArrayList<>(Math.max(0, bound.size() - 1));
         boolean literalArg1 = LITERAL_ARG1.contains(name);
         for (int i = 1; i < bound.size(); i++)
@@ -1989,6 +2139,40 @@ public final class ExprCompiler
                 args.add(p == null ? null : p.eval(run));
             }
             return (BitSet) fn.apply(run, args, c.kwargs());
+        };
+    }
+
+    /**
+     * The name of the §9.C availability gate {@code available(<call>)} — the one boolean builtin
+     * whose argument may raise {@link UnusableProviderAnswerException}.
+     */
+    private static final String AVAILABILITY_GATE = "available";
+
+    /**
+     * ⭐ The inline-in-Check catch point of the provider capability's "answered but unusable" signal
+     * ({@code PLAN-binding-expressions} §0.2 a). A capability-carrying function (or a
+     * provider-dependent inline operation) with nothing usable raises
+     * {@link UnusableProviderAnswerException} instead of answering an empty result; inside
+     * {@code available(<call>)} — the gate the loader injects for an inline provider call — that is
+     * exactly "not available", so the argument evaluates to the {@code LIBRARY_NOT_AVAILABLE}
+     * sentinel, which {@code available} reads as {@code false} and never lets out of the gate. The
+     * injected Precondition then SKIPs the rule, as it does for the operation sentinel.
+     */
+    private static ValuePlan unusableAsUnavailable(ValuePlan argument)
+    {
+        return run ->
+        {
+            try
+            {
+                return argument.eval(run);
+            }
+            catch (UnusableProviderAnswerException ex)
+            {
+                LOGGER.log(System.Logger.Level.DEBUG, "available(): {0}", ex.getMessage());
+                // The empty result: isResultAvailable reads it as "not available", exactly as it
+                // reads the operation sentinel — which never leaves this gate either way.
+                return ConstVector.of(List.of());
+            }
         };
     }
 
@@ -4445,6 +4629,14 @@ public final class ExprCompiler
             {
                 return dottedVector(ctx, rc, name);
             }
+            // Wave 0 (PLAN-binding-expressions I4): a COMPILED binding is read as the Vector its
+            // plan evaluates to in THIS run — never through the raw hand-over form, which is for
+            // the readers outside the compiler.
+            Vector bound = boundVector(run, name);
+            if (bound != null)
+            {
+                return bound;
+            }
             Object var = ctx.resolveVariable(name);
             if (var != null)
             {
@@ -4530,6 +4722,14 @@ public final class ExprCompiler
             if (name.indexOf('.') > 0)
             {
                 return dottedVector(ctx, rc, name);
+            }
+            // Wave 0 (PLAN-binding-expressions I4): a COMPILED binding is read as the Vector its
+            // plan evaluates to in THIS run — never through the raw hand-over form, which is for
+            // the readers outside the compiler.
+            Vector bound = boundVector(run, name);
+            if (bound != null)
+            {
+                return bound;
             }
             Object var = ctx.resolveVariable(name);
             if (var != null)
@@ -4697,10 +4897,24 @@ public final class ExprCompiler
                     + "' cannot be inlined; author it as a var_*(dataset=) accessor");
         }
         Operation op = OperationExpressionParser.fromCall(c, null);
+        ProviderNeed.Kind provider = OperationExecutor.isLibraryDependent(type)
+                ? ProviderNeed.Kind.LIBRARY
+                : OperationExecutor.isDefineDependent(type) ? ProviderNeed.Kind.DEFINE : null;
         return run ->
         {
             EvaluationContext ctx = run.ctx();
             Object result = inlineOperationResult(op, ctx);
+            if (provider != null && OperationExecutor.isNotAvailableSentinel(result))
+            {
+                // Wave 0 (PLAN-binding-expressions §5.2 (c)): the provider answered nothing
+                // usable. In the Check this is unreachable — the loader-injected
+                // `available(<call>)` gate SKIPs first, and now reads this very signal — but a
+                // provider call nested inside a COMPILED binding has no injected gate: the signal
+                // is what makes RuleRunner's eager arm SKIP it instead of letting the sentinel
+                // broadcast into the binding's arithmetic or membership.
+                throw new UnusableProviderAnswerException(c.name(), provider,
+                        "the provider returned no usable data");
+            }
             // A skipped / unresolvable operation (null) broadcasts null — no row fires — mirroring
             // an absent $-operation reference (valueRefPlan / nameRefPlan).
             return result == null ? ConstVector.of(null)
@@ -4791,27 +5005,40 @@ public final class ExprCompiler
 
     /**
      * The prior-{@code $}-variable map to feed {@link OperationExecutor#executeOne} for an inline
-     * operation. {@code OperationExecutor.expandGroupRefs} reads {@code group} entries that name a
-     * {@code $}-variable straight out of this map and would see an unforced
-     * {@link net.cumba.corej.core.exec.LazyValue} wrapper (neither a String nor a Collection) and
-     * silently drop the reference. So when the operation's {@code group} names any
-     * {@code $}-variable, return a small map with exactly those entries forced via
-     * {@link EvaluationContext#resolveVariable} (which unwraps {@code LazyValue}); other variables
-     * stay lazy. With no {@code $}-group reference the live map is passed through unchanged.
+     * operation. The executor reads a prior {@code $}-entry in exactly three places —
+     * {@code expandGroupRefs} (the {@code group} list), {@code evalMinus} (the {@code name} /
+     * {@code subtract} operands) and {@code TargetExpressionMaterializer} (a computed target) — and
+     * none of them unwraps a {@link net.cumba.corej.core.exec.LazyValue} or a compiled binding's
+     * holder. So when the operation references any {@code $}-variable
+     * ({@link OperationExecutor#priorReferences}), return a small map with exactly those entries
+     * forced through {@link BindingValue#forOperation(Object, java.util.function.Supplier)} — the
+     * one hand-over helper; other variables stay lazy. With no {@code $}-reference the live map is
+     * passed through unchanged (nothing in it is read).
      */
     private static Map<String, Object> forcedPriors(Operation op, EvaluationContext ctx)
     {
-        List<String> group = op.getGroup();
-        if (group == null || group.stream().noneMatch(g -> g != null && g.startsWith("$")))
+        Set<String> refs = OperationExecutor.priorReferences(op);
+        if (refs.isEmpty())
         {
             return ctx.getVariables();
         }
+        // ⭐ Wave 0 (PLAN-binding-expressions I5): every $-entry the operation reads — its group,
+        // its
+        // name / subtract operands and its computed target — is forced through the ONE hand-over
+        // helper RuleRunner's supplier uses. Before, only the group was forced here, so an inline
+        // `minus($a, subtract=$b)` read its operands as raw LazyValue wrappers (normalizeToList's
+        // scalar arm → one `LazyValue.toString()` element), and a compiled binding would have
+        // reached the executor as its holder object.
         Map<String, Object> forced = new LinkedHashMap<>();
-        for (String g : group)
+        for (String ref : refs)
         {
-            if (g != null && g.startsWith("$") && ctx.getVariables().containsKey(g))
+            if (ctx.getVariables().containsKey(ref))
             {
-                forced.put(g, ctx.resolveVariable(g));
+                Object value = BindingValue.forOperation(ctx.getVariables().get(ref), () -> ctx);
+                if (value != null)
+                {
+                    forced.put(ref, value);
+                }
             }
         }
         return forced;
@@ -5933,6 +6160,19 @@ public final class ExprCompiler
         boolean numericExpected = ctx.getNumericExpectedColumns().contains(name);
         return ComputedVector.typed(rowCount, lookup.declaredTypeOf(col),
                 row -> lookup.lookupValue(ctx.getTable(), row, col, numericExpected), name);
+    }
+
+
+    /**
+     * The Vector of the compiled binding {@code name} in {@code run} — {@code null} when the name
+     * is not a compiled binding (an operation binding, a builtin, a column). Package-private for
+     * the membership arm and the tests.
+     */
+    static @Nullable Vector boundVector(EvalRun run, String name)
+    {
+        return run.ctx().getVariables().get(name) instanceof BindingValue binding
+                ? binding.vector(run)
+                : null;
     }
 
 

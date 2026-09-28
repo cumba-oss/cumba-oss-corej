@@ -61,12 +61,13 @@ public final class OutputVariableDeriver
      * list-valued exception is {@code MINUS}, whose result <em>is</em> the finding (the missing
      * members), so it derives normally. Signed off 2026-07-29. Applied as a global post-filter on
      * every derived {@code $}-id, not merely a D4a gate — a bulk {@code $}-ref reaches the derived
-     * set through the Check walk too (plan §11.3, CDISC-CG0014).
+     * set through the Check walk too (plan §11.3, CDISC-CG0014). ⚑ {@code get_codelist_attributes}
+     * left this set when wave 0 ported it to a function ({@code PLAN-binding-expressions}): its
+     * binding is now bulk through {@link #bulkOperationIds}' list-typed compiled-binding arm (R15).
      */
     private static final EnumSet<OperationType> BULK_RESULT_OPERATIONS = EnumSet.of(
-            OperationType.CODELIST_TERMS, OperationType.GET_CODELIST_ATTRIBUTES,
-            OperationType.VALID_CODELIST_DATES, OperationType.DISTINCT,
-            OperationType.EXTRACT_METADATA, OperationType.DATASET_NAMES,
+            OperationType.CODELIST_TERMS, OperationType.VALID_CODELIST_DATES,
+            OperationType.DISTINCT, OperationType.EXTRACT_METADATA, OperationType.DATASET_NAMES,
             OperationType.STUDY_DOMAINS, OperationType.STANDARD_DOMAINS,
             OperationType.DEFINE_DATASET_NAMES, OperationType.VARIABLE_NAMES,
             OperationType.DEFINE_VARIABLE_NAMES, OperationType.EXPECTED_VARIABLES,
@@ -362,12 +363,27 @@ public final class OutputVariableDeriver
 
     private static Set<String> bulkOperationIds(Rule rule)
     {
+        Set<String> ids = new HashSet<>();
+        // PLAN-binding-expressions R15: a LIST-valued compiled binding is bulk too — option 2 of
+        // §3.1 carries a list inside a Vector, so "list-valued" is the result type of its root
+        // call (ElementTable, the table the stage-A checker types the binding with), or a list
+        // literal root.
+        List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
+        if (compiled != null)
+        {
+            for (net.cumba.corej.core.model.CompiledBinding binding : compiled)
+            {
+                if (isListValued(binding.expression()))
+                {
+                    ids.add(binding.name());
+                }
+            }
+        }
         List<Operation> operations = rule.getOperations();
         if (operations == null)
         {
-            return Set.of();
+            return ids;
         }
-        Set<String> ids = new HashSet<>();
         for (Operation op : operations)
         {
             if (op == null || op.getId() == null)
@@ -381,6 +397,17 @@ public final class OutputVariableDeriver
             }
         }
         return ids;
+    }
+
+
+    private static boolean isListValued(Expr expression)
+    {
+        if (expression instanceof Expr.Lit lit)
+        {
+            return lit.kind() == Expr.LitKind.LIST;
+        }
+        return expression instanceof Expr.Call call && net.cumba.corej.core.expr.typed.ElementTable
+                .resultType(call.name()) instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf;
     }
 
 
@@ -407,6 +434,17 @@ public final class OutputVariableDeriver
 
     private static void contributeOperations(Rule rule, Walk walk)
     {
+        // PLAN-binding-expressions R16: a COMPILED binding contributes its id (D4a) and the
+        // primary columns it reads as its TARGET (D4b) — see contributeTarget.
+        List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
+        if (compiled != null)
+        {
+            for (net.cumba.corej.core.model.CompiledBinding binding : compiled)
+            {
+                walk.derived.add(binding.name());
+                contributeTarget(walk, binding.expression());
+            }
+        }
         List<Operation> operations = rule.getOperations();
         if (operations == null)
         {
@@ -455,6 +493,57 @@ public final class OutputVariableDeriver
                     addName(walk, key);
                 }
             }
+        }
+    }
+
+
+    /**
+     * D4b for a compiled binding ({@code PLAN-binding-expressions} R16, a phase-0 decision): the
+     * undotted column references its expression reads as a <b>target</b> — every column outside a
+     * call, and at a call only its first positional argument (the one target a ported callable
+     * declares, runbook R6), which is exactly the input an operation's D4b always derived as
+     * {@code name}. A call's other arguments are parameters and are not derived — the operation's
+     * D4b never derived {@code get_codelist_attributes}' {@code version} column, so deriving
+     * {@code TSVCDVER} now would add an {@code Output_Variables} key to {@code CDISC-CG0288}'s
+     * findings that wave 0 must not move. A call carrying a {@code domain=} keyword reads another
+     * dataset, so its target is not a column of the evaluation dataset; a dotted reference is
+     * foreign by construction; a {@code $}-reference is another binding, covered by its own D4a.
+     */
+    private static void contributeTarget(Walk walk, Expr expr)
+    {
+        switch (expr)
+        {
+        case Expr.Ref ref ->
+        {
+            if (ref.kind() == OperandKind.COLUMN || ref.kind() == OperandKind.WILDCARD_COLUMN)
+            {
+                addName(walk, ref.name());
+            }
+        }
+        case Expr.Call call ->
+        {
+            if (!call.args().isEmpty() && !call.kwargs().containsKey("domain"))
+            {
+                contributeTarget(walk, call.args().get(0));
+            }
+        }
+        case Expr.Binary binary ->
+        {
+            contributeTarget(walk, binary.left());
+            contributeTarget(walk, binary.right());
+        }
+        case Expr.And and -> and.parts().forEach(part -> contributeTarget(walk, part));
+        case Expr.Or or -> or.parts().forEach(part -> contributeTarget(walk, part));
+        case Expr.Not not -> contributeTarget(walk, not.inner());
+        case Expr.Lit lit ->
+        {
+            if (lit.kind() == Expr.LitKind.LIST)
+            {
+                @SuppressWarnings("unchecked")
+                List<Expr> items = (List<Expr>) lit.value();
+                items.forEach(item -> contributeTarget(walk, item));
+            }
+        }
         }
     }
 

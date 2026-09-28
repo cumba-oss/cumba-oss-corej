@@ -943,6 +943,22 @@ public final class RuleTestCdt
                 aOut.write('\n');
             }
         }
+        for (var pkg : aLib.getCodelistAttributesMap().entrySet())
+        {
+            for (var attribute : pkg.getValue().entrySet())
+            {
+                aOut.write("#library codelist-attributes ");
+                aOut.write(quoteIfNeeded(pkg.getKey()));
+                aOut.write(' ');
+                aOut.write(quoteIfNeeded(attribute.getKey()));
+                for (String value : attribute.getValue())
+                {
+                    aOut.write(' ');
+                    aOut.write(quoteIfNeeded(value));
+                }
+                aOut.write('\n');
+            }
+        }
         if (!aLib.getPublishedCtPackagesList().isEmpty())
         {
             aOut.write("#library published-ct-packages");
@@ -1278,6 +1294,7 @@ public final class RuleTestCdt
      * #library codelist-term-ccodes  CODELIST TERM=Cxxxxx TERM=Cxxxxx ...
      * #library codelist-meta         CODELIST ccode=Cxxxxx pref="NCI Preferred Term"
      * #library published-ct-packages PKG [PKG ...]
+     * #library codelist-attributes   PKG "ATTRIBUTE" VALUE VALUE ...
      * #library standard-domains      DOMAIN [DOMAIN ...]
      * #library dataset-class         DOMAIN CLASSNAME
      * #library domain-variables      DOMAIN NAME:ROLE NAME:ROLE ...
@@ -1350,6 +1367,17 @@ public final class RuleTestCdt
         case "codelist-terms" -> applyDomainVars(aBuilder::codelistTerms, rest, aSource, aLineIdx,
                 kind);
         case "published-ct-packages" -> aBuilder.publishedCtPackages(rest.toArray(new String[0]));
+        // PLAN-binding-expressions: the per-CT-package attribute values get_codelist_attributes
+        // unions (CDISC-CG0288) — PKG, then the quoted attribute name, then its values.
+        case "codelist-attributes" ->
+        {
+            if (rest.size() < 2)
+            {
+                throw error(aSource, aLineIdx,
+                        aLabel + " codelist-attributes: expected PKG \"ATTRIBUTE\" VALUE ...");
+            }
+            aBuilder.codelistAttributes(rest.get(0), rest.get(1), rest.subList(2, rest.size()));
+        }
         // Fix #147: the canonical dataset names an `Expansion: known_domain_only` filter reads.
         // Declaring the kind at all — even with no names — makes the filter decidable.
         case "standard-domains" -> aBuilder.standardDatasetNames(rest.toArray(new String[0]));

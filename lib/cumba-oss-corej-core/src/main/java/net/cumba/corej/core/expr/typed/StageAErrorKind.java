@@ -62,6 +62,17 @@ public enum StageAErrorKind
     FORWARD_OR_CYCLIC_BINDING(true),
 
     /**
+     * An <b>operation</b> binding that reads (through {@code name}, {@code subtract},
+     * {@code group}, a computed target, …) a <b>compiled</b> binding whose derived level has a row
+     * or variable cursor ({@code PLAN-binding-expressions} §5.0, the hand-over contract's third
+     * row): an operation's fields are dataset-level, so there is no row to pick the value at, and
+     * the executor would otherwise read the per-row value as one bogus string. Armed: measured 0
+     * newly parked — before wave 0 no compiled binding existed, and the one wave 0 adds
+     * ({@code CDISC-CG0288}'s {@code $VALID_TERM_CODES}) is dataset-level and read by no operation.
+     */
+    OPERATION_READS_CURSOR_BINDING(true),
+
+    /**
      * An illegal {@code (attribute, metadata-level)} pair, or an unparseable metadata-level literal
      * (§1.1 — the 78-cell table with 50 legal). Armed: measured 0 newly parked (the engine already
      * parks these today).

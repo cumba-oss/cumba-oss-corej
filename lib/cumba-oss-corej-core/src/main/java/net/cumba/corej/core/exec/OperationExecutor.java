@@ -274,7 +274,7 @@ public final class OperationExecutor
         }
         return switch (type)
         {
-        case REQUIRED_VARIABLES, EXPECTED_VARIABLES, GET_COLUMN_ORDER_FROM_LIBRARY, GET_MODEL_COLUMN_ORDER, GET_PARENT_MODEL_COLUMN_ORDER, VARIABLE_NAMES, STANDARD_DOMAINS, GET_DATASET_FILTERED_VARIABLES, NATURAL_KEY_VARIABLES, GET_MODEL_FILTERED_VARIABLES, VALID_CODELIST_DATES, DATASET_CLASS_FROM_LIBRARY, REFERENCED_DOMAIN_CLASS, DOMAIN_IS_CUSTOM, CODELIST_TERMS, GET_CODELIST_ATTRIBUTES -> true;
+        case REQUIRED_VARIABLES, EXPECTED_VARIABLES, GET_COLUMN_ORDER_FROM_LIBRARY, GET_MODEL_COLUMN_ORDER, GET_PARENT_MODEL_COLUMN_ORDER, VARIABLE_NAMES, STANDARD_DOMAINS, GET_DATASET_FILTERED_VARIABLES, NATURAL_KEY_VARIABLES, GET_MODEL_FILTERED_VARIABLES, VALID_CODELIST_DATES, DATASET_CLASS_FROM_LIBRARY, REFERENCED_DOMAIN_CLASS, DOMAIN_IS_CUSTOM, CODELIST_TERMS -> true;
         default -> false;
         };
     }
@@ -470,6 +470,23 @@ public final class OperationExecutor
 
 
     /**
+     * Whether {@code result} is the {@link #LIBRARY_NOT_AVAILABLE} skip sentinel — the operation
+     * answered "the provider could not serve this". Public for {@code ExprCompiler}'s inline
+     * operation plan, which turns it into the provider capability's
+     * {@code UnusableProviderAnswerException} ({@code PLAN-binding-expressions} §5.2 (c)) instead
+     * of broadcasting the sentinel.
+     *
+     * @param result
+     *            an operation result
+     * @return whether it is the sentinel
+     */
+    public static boolean isNotAvailableSentinel(@Nullable Object result)
+    {
+        return result == LIBRARY_NOT_AVAILABLE;
+    }
+
+
+    /**
      * Whether an operation {@code result} is usable — not {@code null}, not the
      * {@link #LIBRARY_NOT_AVAILABLE} skip sentinel, and not an empty list (an unresolved codelist /
      * model lookup). The {@code available(<op>)} builtin (§9.C) folds this to the Precondition
@@ -484,6 +501,90 @@ public final class OperationExecutor
     {
         return result != null && result != LIBRARY_NOT_AVAILABLE
                 && !(result instanceof java.util.Collection<?> c && c.isEmpty());
+    }
+
+
+    /**
+     * Every prior {@code $}-entry the executor reads for {@code op} — the {@code $}-names in its
+     * {@code group} list, its {@code name} / {@code subtract} operands (the {@code minus} operands)
+     * and every {@code $}-reference inside a computed target ({@code nameExpr}). These are the only
+     * three places {@link #executeOne} consults {@code priorResults} ({@link #expandGroupRefs},
+     * {@link #evalMinus}, {@code TargetExpressionMaterializer}), so a caller that forces exactly
+     * these ({@code PLAN-binding-expressions} I5) hands the executor everything it reads and
+     * nothing it does not.
+     *
+     * @param op
+     *            the operation
+     * @return the referenced {@code $}-names, in first-seen order; empty when there are none
+     */
+    public static Set<String> priorReferences(Operation op)
+    {
+        Set<String> refs = new LinkedHashSet<>();
+        if (op.getGroup() != null)
+        {
+            for (String g : op.getGroup())
+            {
+                if (g != null && g.startsWith("$"))
+                {
+                    refs.add(g);
+                }
+            }
+        }
+        for (String operand : new String[]
+        {
+                op.getName(), op.getSubtract()
+        })
+        {
+            if (operand != null && operand.startsWith("$"))
+            {
+                refs.add(operand);
+            }
+        }
+        if (op.getNameExpr() != null)
+        {
+            collectOperationRefs(op.getNameExpr(), refs);
+        }
+        return refs;
+    }
+
+
+    private static void collectOperationRefs(net.cumba.corej.core.expr.ast.Expr e, Set<String> out)
+    {
+        switch (e)
+        {
+        case net.cumba.corej.core.expr.ast.Expr.Ref r ->
+        {
+            if (r.kind() == net.cumba.corej.core.expr.OperandKind.OPERATION_REF)
+            {
+                out.add(r.name());
+            }
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Lit lit ->
+        {
+            if (lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST)
+            {
+                @SuppressWarnings("unchecked")
+                List<net.cumba.corej.core.expr.ast.Expr> items = (List<net.cumba.corej.core.expr.ast.Expr>) lit
+                        .value();
+                items.forEach(item -> collectOperationRefs(item, out));
+            }
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Call c ->
+        {
+            c.args().forEach(a -> collectOperationRefs(a, out));
+            c.kwargs().values().forEach(a -> collectOperationRefs(a, out));
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Binary b ->
+        {
+            collectOperationRefs(b.left(), out);
+            collectOperationRefs(b.right(), out);
+        }
+        case net.cumba.corej.core.expr.ast.Expr.And a -> a.parts()
+                .forEach(p -> collectOperationRefs(p, out));
+        case net.cumba.corej.core.expr.ast.Expr.Or o -> o.parts()
+                .forEach(p -> collectOperationRefs(p, out));
+        case net.cumba.corej.core.expr.ast.Expr.Not n -> collectOperationRefs(n.inner(), out);
+        }
     }
 
 
@@ -590,8 +691,6 @@ public final class OperationExecutor
         copy.setKeyName(op.getKeyName());
         copy.setKeyValue(op.getKeyValue());
         copy.setModelClass(op.getModelClass());
-        copy.setCtAttribute(op.getCtAttribute());
-        copy.setVersion(op.getVersion());
         copy.setCtPackageTypes(op.getCtPackageTypes());
         copy.setRegex(op.getRegex());
         copy.setNamePattern(op.getNamePattern());
@@ -1070,8 +1169,6 @@ public final class OperationExecutor
         resolved.setKeyName(op.getKeyName());
         resolved.setKeyValue(op.getKeyValue());
         resolved.setModelClass(op.getModelClass());
-        resolved.setCtAttribute(op.getCtAttribute());
-        resolved.setVersion(op.getVersion());
         resolved.setCtPackageTypes(op.getCtPackageTypes());
         resolved.setRegex(op.getRegex());
         resolved.setValueIsReference(op.getValueIsReference());
@@ -1339,24 +1436,6 @@ public final class OperationExecutor
             {
                 LOGGER.log(System.Logger.Level.INFO,
                         "[{0}] {1} resolved no codelist terms for op {2} — rule will be skipped",
-                        ruleId != null ? ruleId : "?", type, op.getId());
-                yield LIBRARY_NOT_AVAILABLE;
-            }
-            yield r;
-        }
-        case GET_CODELIST_ATTRIBUTES ->
-        {
-            @Nullable
-            Object r = evalLibrary(libraryProvider, op, table,
-                    p -> codelistAttributes(p, op, table), ruleId);
-            // Empty attribute set ⇒ unresolved CT package / unknown attribute. Skip the rule
-            // (Python raises MissingDataError / ValueError) rather than fan out a contained-by
-            // check against an empty set.
-            if (r instanceof List<?> list && list.isEmpty())
-            {
-                LOGGER.log(System.Logger.Level.INFO,
-                        "[{0}] {1} resolved no codelist attributes for op {2} — rule will be "
-                                + "skipped",
                         ruleId != null ? ruleId : "?", type, op.getId());
                 yield LIBRARY_NOT_AVAILABLE;
             }
@@ -4458,101 +4537,6 @@ public final class OperationExecutor
     private static @Nullable String blankToNull(@Nullable String aValue)
     {
         return aValue == null || aValue.isBlank() ? null : aValue;
-    }
-
-
-    /**
-     * Resolves the {@code get_codelist_attributes} operation result (CDISC-CG0288). Mirrors
-     * Python's {@code operations/get_codelist_attributes.py}: per row, derive a CT package id from
-     * two data columns — the target column ({@code op.getName()}, e.g. {@code TSVCDREF}) and the
-     * version column ({@code op.getVersion()}, e.g. {@code TSVCDVER}) — then extract
-     * {@code op.getCtAttribute()} from each distinct resolved package, unioning the values
-     * (order-preserving, deduped).
-     *
-     * <p>
-     * The Java engine yields a single operation value broadcast to every row (it has no per-row
-     * Series), so when distinct rows resolve to distinct packages the attribute sets are unioned.
-     * For CDISC-CG0288 the single row resolves to {@code sdtmct-2024-09-27}, giving exactly that
-     * package's set.
-     * </p>
-     */
-    private static List<String> codelistAttributes(MetadataProvider provider, Operation op,
-            IDataTable table)
-    {
-        String ctAttribute = op.getCtAttribute();
-        if (ctAttribute == null || op.getName() == null || op.getVersion() == null)
-        {
-            return List.of();
-        }
-        DataTableMeta meta = table.getMetaData();
-        int targetIdx = meta.getColumnIndex(op.getName());
-        int versionIdx = meta.getColumnIndex(op.getVersion());
-        if (targetIdx < 0 || versionIdx < 0)
-        {
-            return List.of();
-        }
-        String standard = provider.getStandard();
-        IDataTableColumn targetCol = table.getColumn(targetIdx);
-        IDataTableColumn versionCol = table.getColumn(versionIdx);
-        long rowCount = table.getRowCount();
-        // Distinct CT package ids in row order.
-        List<String> packageIds = new ArrayList<>();
-        for (long r = 0; r < rowCount; r++)
-        {
-            IDataValue targetDv = targetCol.getDataValue(r);
-            IDataValue versionDv = versionCol.getDataValue(r);
-            String targetVal = targetDv.isMissingOrInvalid() ? "" : targetDv.getValueAsString();
-            String versionVal = versionDv.isMissingOrInvalid() ? "" : versionDv.getValueAsString();
-            String pkgId = ctPackageId(targetVal, versionVal, standard);
-            if (pkgId != null && !packageIds.contains(pkgId))
-            {
-                packageIds.add(pkgId);
-            }
-        }
-        // Order-preserving union with O(1) membership across the (typically one) resolved packages.
-        Set<String> out = new LinkedHashSet<>();
-        for (String pkgId : packageIds)
-        {
-            out.addAll(provider.getCodelistAttribute(pkgId, ctAttribute));
-        }
-        return List.copyOf(out);
-    }
-
-
-    /**
-     * Derives a CT package id from the row's target value, version value and the active standard,
-     * matching Python's {@code _get_ct_package}. Returns {@code null} when the version is blank.
-     */
-    private static @Nullable String ctPackageId(String aTargetVal, String aVersionVal,
-            @Nullable String aStandard)
-    {
-        String version = aVersionVal == null ? "" : aVersionVal.strip();
-        if (version.isEmpty())
-        {
-            return null;
-        }
-        String target = aTargetVal == null ? "" : aTargetVal.strip();
-        if ("CDISC".equals(target) || "CDISC CT".equals(target))
-        {
-            String std = aStandard == null ? "" : aStandard.toLowerCase(Locale.ROOT);
-            // (TIG substandard handling is not exercised by any shipping rule; the standard name is
-            // used directly, matching the non-TIG branch of the Python logic.)
-            String prefix;
-            if (std.contains("adam"))
-            {
-                prefix = "adamct";
-            }
-            else if (std.contains("send"))
-            {
-                prefix = "sendct";
-            }
-            else
-            {
-                prefix = "sdtmct";
-            }
-            return prefix + "-" + version;
-        }
-        return target + "-" + version;
     }
 
 

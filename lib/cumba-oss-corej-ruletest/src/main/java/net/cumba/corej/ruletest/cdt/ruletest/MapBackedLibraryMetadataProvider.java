@@ -127,6 +127,18 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
      */
     private final Map<String, Map<String, String>> codelistMeta;
 
+    /**
+     * Per-CT-package attribute values ({@code #library codelist-attributes PKG "ATTRIBUTE" V ...}):
+     * package id &rarr; attribute name &rarr; values, served by
+     * {@link #getCodelistAttribute(String, String)} — what the {@code get_codelist_attributes}
+     * function unions over the packages a row names ({@code CDISC-CG0288};
+     * {@code PLAN-binding-expressions}). A package or attribute the scenario does not declare
+     * answers the empty list, which the function turns into its unusable-answer signal (the rule
+     * SKIPs). Package ids and attribute names are kept verbatim ({@code sdtmct-2024-09-27},
+     * {@code "Term CCODE"}).
+     */
+    private final Map<String, Map<String, List<String>>> codelistAttributes;
+
     private final List<String> publishedCtPackages;
 
     /**
@@ -158,6 +170,14 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
         this.codelistTermMappings = deepCopyLeaf(b.codelistTermMappings);
         this.codelistTermCcodes = deepCopyLeaf(b.codelistTermCcodes);
         this.codelistMeta = deepCopyLeaf(b.codelistMeta);
+        Map<String, Map<String, List<String>>> attributes = new LinkedHashMap<>();
+        b.codelistAttributes.forEach((pkg, byAttribute) ->
+        {
+            Map<String, List<String>> copy = new LinkedHashMap<>();
+            byAttribute.forEach((attribute, values) -> copy.put(attribute, List.copyOf(values)));
+            attributes.put(pkg, Collections.unmodifiableMap(copy));
+        });
+        this.codelistAttributes = Collections.unmodifiableMap(attributes);
         this.publishedCtPackages = List.copyOf(b.publishedCtPackages);
         this.standardDatasetNames = b.standardDatasetNames == null ? null
                 : List.copyOf(b.standardDatasetNames);
@@ -388,6 +408,14 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
     public List<Map<String, String>> getModelVariablesForClass(String aModelClass)
     {
         return modelClassVariables.getOrDefault(up(aModelClass), List.of());
+    }
+
+
+    @Override
+    public List<String> getCodelistAttribute(String aCtPackageId, String aCtAttribute)
+    {
+        return codelistAttributes.getOrDefault(aCtPackageId, Map.of()).getOrDefault(aCtAttribute,
+                List.of());
     }
 
 
@@ -660,6 +688,12 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
     }
 
 
+    public Map<String, Map<String, List<String>>> getCodelistAttributesMap()
+    {
+        return codelistAttributes;
+    }
+
+
     public Map<String, Map<String, String>> getCodelistMetaMap()
     {
         return codelistMeta;
@@ -695,7 +729,8 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
                 && modelClassVariables.isEmpty() && datasetMetadata.isEmpty()
                 && codelistExtensible.isEmpty() && codelistTermMappings.isEmpty()
                 && codelistTermCcodes.isEmpty() && codelistMeta.isEmpty()
-                && publishedCtPackages.isEmpty() && standardDatasetNames == null;
+                && codelistAttributes.isEmpty() && publishedCtPackages.isEmpty()
+                && standardDatasetNames == null;
     }
 
     // ---- Helpers --------------------------------------------------------------
@@ -794,6 +829,8 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
         private final Map<String, Map<String, String>> codelistTermCcodes = new HashMap<>();
 
         private final Map<String, Map<String, String>> codelistMeta = new HashMap<>();
+
+        private final Map<String, Map<String, List<String>>> codelistAttributes = new LinkedHashMap<>();
 
         private final List<String> publishedCtPackages = new ArrayList<>();
 
@@ -910,6 +947,15 @@ public final class MapBackedLibraryMetadataProvider implements MetadataProvider
          * {@code C66734}) and/or key {@code pref} (NCI preferred term). The codelist's own
          * submission value is {@code aCodelistName} itself.
          */
+        public Builder codelistAttributes(String aCtPackageId, String aCtAttribute,
+                List<String> aValues)
+        {
+            codelistAttributes.computeIfAbsent(aCtPackageId, _ -> new LinkedHashMap<>())
+                    .put(aCtAttribute, new ArrayList<>(aValues));
+            return this;
+        }
+
+
         public Builder codelistMeta(String aCodelistName, Map<String, String> aMeta)
         {
             codelistMeta.put(up(aCodelistName), new LinkedHashMap<>(aMeta));

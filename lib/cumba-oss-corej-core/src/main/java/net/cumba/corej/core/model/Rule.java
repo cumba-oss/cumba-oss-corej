@@ -184,6 +184,81 @@ public class Rule
 
 
     /**
+     * Every binding of the rule — operation bindings ({@code getOperations()}) and compiled
+     * bindings ({@code getCompiledBindings()}) — in <b>authored order</b>
+     * ({@code PLAN-binding-expressions} §5.0).
+     *
+     * <p>
+     * The operations keep their list order; each compiled binding is placed directly after the last
+     * of its {@link CompiledBinding#predecessors()} still present, or first when none is. Compiled
+     * bindings are placed in their own list order, which is their authored order, so two compiled
+     * bindings never swap. An {@code operations} entry that is {@code null} (a hand-built test
+     * rule) is skipped, exactly as every operation reader skips it.
+     * </p>
+     *
+     * @return the ordered bindings; empty when the rule has none
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public List<BoundBinding> bindingOrder()
+    {
+        List<BoundBinding> order = new java.util.ArrayList<>();
+        if (operations != null)
+        {
+            for (Operation op : operations)
+            {
+                if (op != null)
+                {
+                    order.add(new BoundBinding.OfOperation(op));
+                }
+            }
+        }
+        if (compiledBindings == null || compiledBindings.isEmpty())
+        {
+            return order;
+        }
+        for (CompiledBinding compiled : compiledBindings)
+        {
+            int insertAt = 0;
+            for (int i = 0; i < order.size(); i++)
+            {
+                String present = order.get(i).name();
+                if (present != null && compiled.predecessors().contains(present))
+                {
+                    insertAt = i + 1;
+                }
+            }
+            order.add(insertAt, compiled);
+        }
+        return order;
+    }
+
+
+    /**
+     * The compiled binding named {@code name}, or {@code null} when the rule has none by that name
+     * (it may still name an operation binding).
+     *
+     * @param name
+     *            the {@code $}-name
+     * @return the compiled binding, or {@code null}
+     */
+    public @Nullable CompiledBinding compiledBinding(@Nullable String name)
+    {
+        if (name == null || compiledBindings == null)
+        {
+            return null;
+        }
+        for (CompiledBinding compiled : compiledBindings)
+        {
+            if (compiled.name().equals(name))
+            {
+                return compiled;
+            }
+        }
+        return null;
+    }
+
+
+    /**
      * Every declared level's condition, strictest first — the walk surface for a gate or a
      * collector that must see the <b>whole</b> rule rather than only its strongest statement.
      *
@@ -657,6 +732,20 @@ public class Rule
      */
     @com.fasterxml.jackson.annotation.JsonIgnore
     private @Nullable List<Operation> operations;
+
+    /**
+     * The rule's <b>compiled</b> bindings — every {@code Bindings:} entry whose expression is not a
+     * single top-level {@link OperationType} call ({@code PLAN-binding-expressions}, wave 0 of
+     * {@code RUNBOOK-operations-to-functions}). Materialised beside {@link #operations} by
+     * {@code RulePackageLoader.normalizeOperations}; runtime-only, never serialised.
+     *
+     * <p>
+     * ⛔ A reader that must see every binding reads {@link #bindingOrder()}, never this list or
+     * {@link #operations} alone.
+     * </p>
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private @Nullable List<CompiledBinding> compiledBindings;
 
     /**
      * ⛔ Phase 7b (owner ruling 2026-09-17, "no legacy engine forms"): the pre-rename

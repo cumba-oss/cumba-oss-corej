@@ -87,62 +87,6 @@ class OperationExecutorSurvivorPinsTest
     }
 
     // ==================================================================
-    // get_codelist_attributes → ctPackageId: which CT package the row's
-    // (target, version, standard) triple names. Ask the wrong package and the rule
-    // validates terms against a codelist the sponsor never used.
-    // ==================================================================
-
-
-    /** Runs get_codelist_attributes and reports the CT package id the provider was asked for. */
-    private static Object packageIdsAskedFor(String target, String version, @Nullable String std)
-    {
-        IDataTable table = MockTable.of().name("TS").col("TSVCDREF", target)
-                .col("TSVCDVER", version).build();
-        RecordingProvider p = new RecordingProvider();
-        p.standard = std;
-        Operation op = makeOp("$attrs", "get_codelist_attributes");
-        op.setName("TSVCDREF");
-        op.setVersion("TSVCDVER");
-        op.setCtAttribute("Term CCODE");
-        return OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER, p).get("$attrs");
-    }
-
-
-    @Test
-    void ctPackageId_derivesThePrefixFromTheStandard_andPassesNonCdiscTargetsThrough()
-    {
-        // The provider echoes the package id it was asked for, so the operation's value IS the
-        // derived package id.
-        assertEquals(List.of("sdtmct-2024-09-27"),
-                packageIdsAskedFor("CDISC", "2024-09-27", "sdtmig"), "SDTM standard ⇒ sdtmct");
-        assertEquals(List.of("adamct-2024-09-27"),
-                packageIdsAskedFor("CDISC", "2024-09-27", "adamig"), "ADaM standard ⇒ adamct");
-        assertEquals(List.of("sendct-2024-09-27"),
-                packageIdsAskedFor("CDISC", "2024-09-27", "sendig"), "SEND standard ⇒ sendct");
-        assertEquals(List.of("sdtmct-2024-09-27"), packageIdsAskedFor("CDISC", "2024-09-27", null),
-                "an unknown/absent standard falls back to sdtmct, it must not crash");
-        // "CDISC CT" is the second accepted spelling of the same target.
-        assertEquals(List.of("adamct-2024-09-27"),
-                packageIdsAskedFor("CDISC CT", "2024-09-27", "adamig"), "the 'CDISC CT' spelling");
-        // The target is stripped before the comparison.
-        assertEquals(List.of("sdtmct-2024-09-27"),
-                packageIdsAskedFor("  CDISC  ", "  2024-09-27  ", "sdtmig"),
-                "operands are stripped");
-        // Negative — a sponsor/external CT target is used verbatim as the package prefix, NOT
-        // silently mapped onto a CDISC package.
-        assertEquals(List.of("MEDDRA-2024-09-27"),
-                packageIdsAskedFor("MEDDRA", "2024-09-27", "sdtmig"),
-                "a non-CDISC target names its own package");
-        // Negative — a blank version resolves to no package at all: the provider is never asked,
-        // the attribute union stays empty, and an empty library answer is published as the SKIP
-        // sentinel. What matters here is that no package was invented: a fabricated id such as
-        // "sdtmct-" would come back as a one-element list instead.
-        assertEquals("<library not available>",
-                String.valueOf(packageIdsAskedFor("CDISC", "   ", "sdtmig")),
-                "a blank version ⇒ no CT package ⇒ nothing asked for");
-    }
-
-    // ==================================================================
     // supp_qnam_present / supp_qnam_value — the SUPP→parent join. The GroupedResult's
     // KEY is what decides which parent record the qualifier lands on.
     // ==================================================================
@@ -434,8 +378,9 @@ class OperationExecutorSurvivorPinsTest
     // ==================================================================
 
     /**
-     * A {@link MetadataProvider} that echoes back the CT package id it was asked for, so a test can
-     * assert WHICH package {@code ctPackageId} derived rather than merely that some list came back.
+     * A {@link MetadataProvider} with a settable standard and model-variable answer. ⚑ Its CT
+     * package echo (the {@code ctPackageId} pins) moved with {@code get_codelist_attributes} to
+     * {@code CodelistAttributesTest} when wave 0 ported the operation to a function.
      */
     private static final class RecordingProvider implements MetadataProvider
     {
@@ -445,13 +390,6 @@ class OperationExecutorSurvivorPinsTest
 
         @Nullable
         List<String> standardModelVariables = List.of();
-
-        @Override
-        public List<String> getCodelistAttribute(String aCtPackageId, String aCtAttribute)
-        {
-            return List.of(aCtPackageId);
-        }
-
 
         @Override
         public @Nullable List<String> getStandardModelVariables(IDataTable aTable,

@@ -572,6 +572,10 @@ class MapBackedLibraryMetadataProviderTest
 
             assertFalse(MapBackedLibraryMetadataProvider.builder()
                     .modelClassVariable("EVENTS", "--TERM", "Topic").build().isEmpty());
+
+            assertFalse(MapBackedLibraryMetadataProvider.builder()
+                    .codelistAttributes("sdtmct-2024-09-27", "Term CCODE", List.of("C49488"))
+                    .build().isEmpty());
         }
     }
 }

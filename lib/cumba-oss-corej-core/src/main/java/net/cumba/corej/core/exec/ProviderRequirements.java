@@ -7,12 +7,10 @@ import java.util.TreeSet;
 import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.expr.ExpressionException;
 import net.cumba.corej.core.expr.ast.Expr;
-import net.cumba.corej.core.expr.convert.OperationExpressionParser;
 import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.MetadataExprScan;
 import net.cumba.corej.core.expr.eval.MetadataLevel;
 import net.cumba.corej.core.model.CheckCondition;
-import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.OperationType;
 import net.cumba.corej.core.model.Rule;
 import org.jspecify.annotations.Nullable;
@@ -100,20 +98,26 @@ public record ProviderRequirements(boolean library, boolean define, boolean dict
         boolean lib = false;
         boolean def = false;
         boolean dict = false;
-        // Surface 1 — declared Operations.
-        List<Operation> ops = rule.getOperations();
-        if (ops != null)
+        // Surface 1 — the rule's BINDINGS, both kinds (PLAN-binding-expressions R20): a declared
+        // operation by its OperationType, a compiled binding by every call it holds — an inline
+        // operation or a registry function carrying the provider capability. Read through
+        // ProviderNeeds, the one reader the runtime SKIP arms share, so the forecast and the SKIP
+        // cannot disagree about a ported callable.
+        ProviderNeeds bindings = ProviderNeeds.ofBindings(rule);
+        lib |= bindings.library();
+        def |= bindings.define();
+        dict |= bindings.dictionary();
+        // Surface 2b over a compiled binding: a var_*("LIBRARY") accessor inside it needs its
+        // provider exactly as one in the Check does (surface 3 is inside ofBindings above).
+        List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
+        if (compiled != null)
         {
-            for (Operation op : ops)
+            for (net.cumba.corej.core.model.CompiledBinding binding : compiled)
             {
-                if (op == null)
-                {
-                    continue;
-                }
-                OperationType type = op.getOperationType();
-                lib |= OperationExecutor.isLibraryDependent(type);
-                def |= OperationExecutor.isDefineDependent(type);
-                dict |= isDictionaryDependency(type);
+                Set<MetadataLevel> levels = MetadataExprScan
+                        .providerLevelsUsed(binding.expression());
+                lib |= levels.contains(MetadataLevel.LIBRARY);
+                def |= levels.contains(MetadataLevel.DEFINE);
             }
         }
         // ⚑ Plan C §3.3: EVERY declared check level. A define_* / library_* operand sitting in a
@@ -256,17 +260,6 @@ public record ProviderRequirements(boolean library, boolean define, boolean dict
                 List.copyOf(defSkipped));
     }
 
-
-    /**
-     * Whether the operation type is a dictionary <em>dependency</em>, i.e. dictionary-backed and
-     * not the {@code dictionary_available} gate itself.
-     */
-    private static boolean isDictionaryDependency(@Nullable OperationType type)
-    {
-        return type != OperationType.DICTIONARY_AVAILABLE
-                && OperationExecutor.isDictionaryDependent(type);
-    }
-
     /**
      * Mutable accumulator for {@link #scanInlineCalls} — a record cannot be built incrementally.
      */
@@ -340,25 +333,14 @@ public record ProviderRequirements(boolean library, boolean define, boolean dict
 
     private static void classifyCall(Expr.Call call, Inlined out)
     {
-        if (!ExprCompiler.isInlineOperation(call))
-        {
-            return;
-        }
-        Operation op;
-        try
-        {
-            op = OperationExpressionParser.fromCall(call, null);
-        }
-        catch (RuntimeException _)
-        {
-            // Not a well-formed operation call — the compiler rejects it on its own, and a rule
-            // that cannot compile has no provider dependency worth deriving.
-            return;
-        }
-        OperationType type = op.getOperationType();
-        out.library |= OperationExecutor.isLibraryDependent(type);
-        out.define |= OperationExecutor.isDefineDependent(type);
-        out.dictionary |= isDictionaryDependency(type);
+        // PLAN-binding-expressions R20: an inline OperationType call by its predicates AND a
+        // registry function by its provider capability — through ProviderNeeds, so a ported
+        // callable inline in the Check keeps its place in the forecast. A malformed operation call
+        // needs nothing (the compiler rejects it on its own).
+        ProviderNeeds needs = ProviderNeeds.ofCall(call);
+        out.library |= needs.library();
+        out.define |= needs.define();
+        out.dictionary |= needs.dictionary();
     }
 
 }

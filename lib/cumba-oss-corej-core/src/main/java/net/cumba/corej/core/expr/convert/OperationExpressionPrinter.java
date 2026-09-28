@@ -113,8 +113,6 @@ public final class OperationExpressionPrinter
         // pair it composes with. Omitting it here would erase it from CDISC-SEND-0268/0269/0270
         // on the next regen (see the keep_missings warning above).
         addString(parts, "model_class", op.getModelClass());
-        addString(parts, "ct_attribute", op.getCtAttribute());
-        addString(parts, "version", op.getVersion());
         addList(parts, "ct_package_types", op.getCtPackageTypes());
         addString(parts, "regex", op.getRegex());
         addString(parts, "name_pattern", op.getNamePattern());

@@ -304,6 +304,13 @@ public final class StudyRuleClassifier
             return true;
         }
         seen.add(opRef);
+        // PLAN-binding-expressions R27: a COMPILED binding reads the primary dataset exactly when
+        // its expression does — walked like the Check, never assumed the worst.
+        net.cumba.corej.core.model.CompiledBinding compiled = rule.compiledBinding(opRef);
+        if (compiled != null)
+        {
+            return readsPrimaryDataset(compiled.expression(), rule);
+        }
         Operation op = findOperation(opRef, rule);
         if (op == null)
         {

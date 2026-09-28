@@ -2,6 +2,7 @@ package net.cumba.corej.core.expr.eval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -176,7 +177,17 @@ class UnifiedBooleanSurfaceTest
         // LIBRARY_NOT_AVAILABLE sentinel; `== false` must NOT fire (the BoolPlan/invert reroute
         // would have flipped a no-fire into an all-fire false positive — domain_is_custom is
         // excluded precisely to avoid that).
-        assertEquals(0, eval("domain_is_custom() == false", ctx()).cardinality());
+        // ⭐ Wave 0 (PLAN-binding-expressions §5.2 (c)): the sentinel no longer broadcasts at all.
+        // A provider-dependent inline operation that answered it raises the provider capability's
+        // "answered but unusable" signal — loud (the rule would report ERROR), never a verdict,
+        // neither the old silent no-fire nor the all-fire this guard exists for. In a loaded rule
+        // the injected `library_available() and available(domain_is_custom())` Precondition SKIPs
+        // first (available() reads the same signal as "not available"), so the throw is reached
+        // only by a Check evaluated without its gate, as here.
+        assertThrows(UnusableProviderAnswerException.class,
+                () -> eval("domain_is_custom() == false", ctx()));
+        assertFalse(eval("available(domain_is_custom())", ctx()).get(0),
+                "the availability gate reads the signal as not available");
     }
 
 

@@ -1888,7 +1888,8 @@ public final class Primitives
     }
 
 
-    private static boolean anyInSet(@Nullable Object value, MemberSet set, boolean caseInsensitive)
+    // Package-private (was private) for ExprCompiler.boundMembership's per-row list-LHS arm.
+    static boolean anyInSet(@Nullable Object value, MemberSet set, boolean caseInsensitive)
     {
         if (!(value instanceof List<?> list))
         {

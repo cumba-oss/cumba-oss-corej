@@ -392,6 +392,45 @@ class RuleTestCdtEdgeCaseTest
         }
 
 
+        /**
+         * {@code get_codelist_attributes} (PLAN-binding-expressions phase 3) reads
+         * {@code getCodelistAttribute(pkg, attribute)}; the directive seeds it, a quoted attribute
+         * keeps its space, and the writer emits it back so a round trip is lossless.
+         */
+        @Test
+        void library_codelistAttributes_storedAndRoundTripped()
+        {
+            String content = scenario("""
+                    #test CORE-1 expect=violation domain=AE
+                    #library codelist-attributes sdtmct-2024-09-27 "Term CCODE" C49488 C66731""");
+            RuleTestScenario s = RuleTestCdt.parse(content, "t", null);
+
+            assertEquals(List.of("C49488", "C66731"),
+                    s.getLibrary().getCodelistAttribute("sdtmct-2024-09-27", "Term CCODE"));
+            assertTrue(s.getLibrary().getCodelistAttribute("sdtmct-2024-09-27", "Other").isEmpty());
+            assertTrue(s.getLibrary().getCodelistAttribute("other-pkg", "Term CCODE").isEmpty());
+
+            String out = RuleTestCdt.toString(s);
+            assertTrue(out.contains(
+                    "#library codelist-attributes sdtmct-2024-09-27 \"Term CCODE\" C49488 C66731"),
+                    out);
+            assertEquals(List.of("C49488", "C66731"), RuleTestCdt.parse(out, "rt", null)
+                    .getLibrary().getCodelistAttribute("sdtmct-2024-09-27", "Term CCODE"));
+        }
+
+
+        @Test
+        void library_codelistAttributes_withoutAttributeIsAnError()
+        {
+            String content = scenario("""
+                    #test CORE-1 expect=violation domain=AE
+                    #library codelist-attributes sdtmct-2024-09-27""");
+            RuleTestCdtException ex = assertThrows(RuleTestCdtException.class,
+                    () -> RuleTestCdt.parse(content, "t", null));
+            assertTrue(ex.getMessage().contains("codelist-attributes"), ex.getMessage());
+        }
+
+
         @Test
         void library_datasetClass_setsClassName()
         {

@@ -108,7 +108,6 @@ public final class OperationDescriptors
         case CODELIST_TERMS -> add(params,
                 Parameter.optional("codelists", new ListOf(Primitive.COLUMN_REFERENCE)),
                 Parameter.optional("level", Primitive.METADATA_LEVEL), str("returntype"));
-        case GET_CODELIST_ATTRIBUTES -> add(params, str("ct_attribute"), str("version"));
         case VALID_CODELIST_DATES -> add(params,
                 Parameter.optional("ct_package_types", new ListOf(Primitive.STRING)));
         case GET_DATASET_FILTERED_VARIABLES -> add(params, str("key_name"), str("key_value"));

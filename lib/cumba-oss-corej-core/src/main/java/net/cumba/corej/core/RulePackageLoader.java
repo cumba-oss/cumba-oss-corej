@@ -588,24 +588,10 @@ public class RulePackageLoader
             // this is the sole producer on the load path. Guarded on `operations == null` for
             // idempotence: this method is public and re-run by every external binder.
             List<net.cumba.corej.core.model.Binding> bindings = rule.getBindings();
-            if (ops == null && bindings != null && !bindings.isEmpty())
+            if (ops == null && rule.getCompiledBindings() == null && bindings != null
+                    && !bindings.isEmpty())
             {
-                ops = new ArrayList<>(bindings.size());
-                for (net.cumba.corej.core.model.Binding binding : bindings)
-                {
-                    String expression = binding.getExpression();
-                    if (expression == null || expression.isBlank())
-                    {
-                        throw new net.cumba.corej.core.expr.RuleDefinitionException(
-                                "binding `" + binding.getName() + "` declares no `expression:` — a"
-                                        + " `Bindings:` entry is `name:` + `expression:`");
-                    }
-                    Operation op = new Operation();
-                    op.setId(binding.getName());
-                    op.setExpression(expression);
-                    ops.add(op);
-                }
-                rule.setOperations(ops);
+                ops = materialiseBindings(rule, bindings);
             }
             if (ops != null && !ops.isEmpty())
             {
@@ -653,6 +639,79 @@ public class RulePackageLoader
             String prior = rule.getLoadError();
             rule.setLoadError(prior != null ? prior + "; " + ex.getMessage() : ex.getMessage());
         }
+    }
+
+
+    /**
+     * Wave 0 ({@code PLAN-binding-expressions} §5.1 R1): parses each authored binding <b>once</b>
+     * and routes it — a single top-level {@code OperationType} call keeps today's {@link Operation}
+     * record (ruling D-W0-1; its expression is normalised by the caller exactly as before), any
+     * other expression becomes a {@link net.cumba.corej.core.model.CompiledBinding} compiled like
+     * the {@code Check}. The routing predicate is {@code BindingRouting.isOperationCall}, the one
+     * spelling the corpus tests share.
+     *
+     * <p>
+     * ⛔ <b>One name per binding.</b> A name declared twice — of either kind, in any mix — is a load
+     * error: the stage-A order check records the <em>first</em> declaration and the runtime map the
+     * <em>last</em>, and with two kinds interleaving that disagreement would decide which kind a
+     * {@code $}-reference reads. A compiled binding must also be named (nothing could reference an
+     * anonymous one; an anonymous operation keeps its historical eager-run behaviour).
+     * </p>
+     *
+     * @return the operation bindings, or {@code null} when every binding compiled
+     */
+    private static @Nullable List<Operation> materialiseBindings(Rule rule,
+            List<net.cumba.corej.core.model.Binding> bindings)
+    {
+        List<Operation> ops = new ArrayList<>(bindings.size());
+        List<net.cumba.corej.core.model.CompiledBinding> compiled = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        List<String> authoredBefore = new ArrayList<>();
+        for (net.cumba.corej.core.model.Binding binding : bindings)
+        {
+            String name = binding.getName();
+            String expression = binding.getExpression();
+            if (expression == null || expression.isBlank())
+            {
+                throw new net.cumba.corej.core.expr.RuleDefinitionException("binding `" + name
+                        + "` declares no `expression:` — a `Bindings:` entry is `name:` +"
+                        + " `expression:`");
+            }
+            if (name != null && !seen.add(name))
+            {
+                throw new net.cumba.corej.core.expr.RuleDefinitionException("binding name `" + name
+                        + "` is declared twice — a `Bindings:` name must be unique within the rule");
+            }
+            net.cumba.corej.core.expr.ast.Expr parsed = net.cumba.corej.core.expr.convert.BindingRouting
+                    .tryParse(expression);
+            if (parsed == null
+                    || net.cumba.corej.core.expr.convert.BindingRouting.isOperationCall(parsed))
+            {
+                Operation op = new Operation();
+                op.setId(name);
+                op.setExpression(expression);
+                ops.add(op);
+            }
+            else
+            {
+                if (name == null || name.isBlank())
+                {
+                    throw new net.cumba.corej.core.expr.RuleDefinitionException("the binding `"
+                            + expression + "` declares no `name:` — a binding that is not a single"
+                            + " operation call is read only through its `$`-name");
+                }
+                compiled.add(new net.cumba.corej.core.model.CompiledBinding(name, parsed,
+                        authoredBefore, null));
+            }
+            if (name != null)
+            {
+                authoredBefore.add(name);
+            }
+        }
+        List<Operation> result = ops.isEmpty() ? null : ops;
+        rule.setOperations(result);
+        rule.setCompiledBindings(compiled.isEmpty() ? null : compiled);
+        return result;
     }
 
 
@@ -742,15 +801,35 @@ public class RulePackageLoader
             validateInlineMissingValues(level);
         }
         validateInlineMissingValues(rule.getPrecondition());
+        // PLAN-binding-expressions R2: an inline call INSIDE a compiled binding is on the inline
+        // surface too, and gets the same value / operator rejections.
+        List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
+        if (compiled != null)
+        {
+            compiled.forEach(binding -> validateInlineMissingValues(binding.expression()));
+        }
         validateTupleCorrespondence(rule);
         Map<String, String> silencing = new LinkedHashMap<>();
         for (CheckCondition level : rule.checkConditions())
         {
-            collectSilencingConsumers(level, declared, false, silencing);
+            collectSilencingConsumers(throughCompiledBindings(level, rule), declared, false,
+                    silencing);
         }
         // The Precondition (Fix #13) gates whether the Check runs at all, so a positive-polarity
         // consumer there silences the rule just as effectively as one in the Check itself.
-        collectSilencingConsumers(rule.getPrecondition(), declared, false, silencing);
+        collectSilencingConsumers(throughCompiledBindings(rule.getPrecondition(), rule), declared,
+                false, silencing);
+        // R2: a comparison INSIDE a compiled binding is a consumer wherever the binding is read (a
+        // condition binding `$b: $ind > X`), so each binding expression is walked on its own too.
+        // A compiled binding read by the Check is ALSO judged at its point of use, through
+        // throughCompiledBindings above — so `$c: $ind` consumed by `$c > X` is caught where its
+        // polarity is known. Over-rejection is loud and the author restructures; under-rejection is
+        // the silent death this guard exists to prevent.
+        if (compiled != null)
+        {
+            compiled.forEach(binding -> collectSilencingExpr(binding.expression(), declared, false,
+                    silencing));
+        }
         if (!silencing.isEmpty())
         {
             Map.Entry<String, String> first = silencing.entrySet().iterator().next();
@@ -760,6 +839,46 @@ public class RulePackageLoader
                     + "`, which reads an undeterminable extreme as \"no violation\" and would"
                     + " silence the check instead of reporting it");
         }
+    }
+
+
+    /**
+     * The condition with every reference to a compiled binding read through
+     * ({@code BindingInliner}) — so the polarity walk sees an indeterminate operation consumed via
+     * a compiled binding exactly where its value is compared ({@code PLAN-binding-expressions} R2).
+     * The very same condition when the rule has no compiled binding.
+     */
+    private static @Nullable CheckCondition throughCompiledBindings(
+            @Nullable CheckCondition condition, Rule rule)
+    {
+        if (condition == null || rule.getCompiledBindings() == null
+                || rule.getCompiledBindings().isEmpty())
+        {
+            return condition;
+        }
+        return inlineCompiledBindings(condition, rule);
+    }
+
+
+    private static CheckCondition inlineCompiledBindings(CheckCondition condition, Rule rule)
+    {
+        return switch (condition)
+        {
+        case CheckConditionAll all -> new CheckConditionAll(
+                all.getConditions().stream().map(c -> inlineCompiledBindings(c, rule)).toList());
+        case CheckConditionAny any -> new CheckConditionAny(
+                any.getConditions().stream().map(c -> inlineCompiledBindings(c, rule)).toList());
+        case CheckConditionNot not -> new CheckConditionNot(
+                inlineCompiledBindings(not.getCondition(), rule));
+        case net.cumba.corej.core.model.CheckConditionExpression expr ->
+        {
+            net.cumba.corej.core.expr.ast.Expr inlined = java.util.Objects.requireNonNull(
+                    net.cumba.corej.core.expr.convert.BindingInliner.inline(expr.expr(), rule));
+            yield inlined == expr.expr() ? expr
+                    : new net.cumba.corej.core.model.CheckConditionExpression(inlined,
+                            net.cumba.corej.core.expr.ExpressionPrinter.print(inlined));
+        }
+        };
     }
 
 
@@ -1592,44 +1711,40 @@ public class RulePackageLoader
     }
 
 
+    /**
+     * The gate terms one inline call demands, read through {@code ProviderNeeds} — the one reader
+     * of provider needs ({@code PLAN-binding-expressions} §5.2 / I1): an inline
+     * {@code OperationType} call by its predicates <b>and</b> a registry function by its provider
+     * capability, so a ported provider-backed function inline in the Check gets exactly the
+     * {@code library_available()} / {@code available(<call>)} / {@code dictionary_available("…")}
+     * terms the operation it replaces got. ({@code available(<call>)} reads the capability's
+     * "answered but unusable" signal as "not available" — {@code ExprCompiler}'s availability-gate
+     * arm.) The {@code dictionary_available} operation is never gated on itself: it IS the gate, as
+     * the eager declared-form arm has always treated it.
+     */
     private static void gateTermsForCall(net.cumba.corej.core.expr.ast.Expr.Call call,
             net.cumba.corej.core.expr.ast.Expr check,
             Map<String, net.cumba.corej.core.expr.ast.Expr> needed)
     {
-        if (!net.cumba.corej.core.expr.eval.ExprCompiler.isInlineOperation(call))
+        net.cumba.corej.core.exec.ProviderNeeds needs = net.cumba.corej.core.exec.ProviderNeeds
+                .ofCall(call);
+        if (needs.isEmpty())
         {
             return;
         }
-        Operation op;
-        try
+        if (needs.dictionary())
         {
-            op = net.cumba.corej.core.expr.convert.OperationExpressionParser.fromCall(call, null);
-        }
-        catch (RuntimeException _)
-        {
-            return; // not a well-formed operation call — the compiler will reject it on its own
-        }
-        net.cumba.corej.core.model.OperationType type = op.getOperationType();
-        if (net.cumba.corej.core.exec.OperationExecutor.isDictionaryDependent(type))
-        {
-            if (op.getExternalDictionaryType() != null)
+            for (String type : needs.dictionaryTypes())
             {
                 addGateTerm(needed,
                         new net.cumba.corej.core.expr.ast.Expr.Call("dictionary_available",
                                 List.of(new net.cumba.corej.core.expr.ast.Expr.Lit(
-                                        net.cumba.corej.core.expr.ast.Expr.LitKind.STRING,
-                                        op.getExternalDictionaryType())),
+                                        net.cumba.corej.core.expr.ast.Expr.LitKind.STRING, type)),
                                 Map.of()));
             }
             return;
         }
-        boolean library = net.cumba.corej.core.exec.OperationExecutor.isLibraryDependent(type);
-        boolean define = net.cumba.corej.core.exec.OperationExecutor.isDefineDependent(type);
-        if (!library && !define)
-        {
-            return;
-        }
-        if (library)
+        if (needs.library())
         {
             addGateTerm(needed, new net.cumba.corej.core.expr.ast.Expr.Call("library_available",
                     List.of(), Map.of()));
@@ -1831,6 +1946,14 @@ public class RulePackageLoader
             level.setValue(net.cumba.corej.core.expr.MetadataOperandMapping
                     .canonicalizeMetadataOperands(level.getValue()));
         }
+        // Wave 0 (PLAN-binding-expressions R24 / R9): the compiled bindings get the SAME
+        // canonicalisation and their derived domain, before stage A types them with the Check's
+        // own checker and before the runner routes on them.
+        installCompiledBindings(rule);
+        if (rule.getLoadError() != null)
+        {
+            return;
+        }
         // Phase 2 of PLAN-typed-expression-engine.md: the stage-A checker (spec §2) runs here —
         // once per rule, on the same canonicalised IR the compiler sees, before anything is
         // installed. An ARMED finding files on the existing loadError/park channel (spec §9:
@@ -1855,6 +1978,63 @@ public class RulePackageLoader
             rule.setLoadError(ex.getMessage());
         }
         raisePrecondition(rule);
+    }
+
+
+    /**
+     * Wave 0 ({@code PLAN-binding-expressions} R24 / R9): readies the rule's <b>compiled</b>
+     * bindings for stage A and the runner — each expression is metadata-canonicalised exactly as
+     * the Check's levels are (the uniformity ruling: a name means the same in a binding as in the
+     * Check), its derived evaluation domain is installed in authored order
+     * ({@link net.cumba.corej.core.expr.eval.OperationKinds#forRule} — a binding sees the domains
+     * of the bindings authored before it), and its plan is compiled once. A binding the native
+     * backend cannot compile is a load error naming the binding, never a silent absent value.
+     *
+     * @param rule
+     *            the rule whose compiled bindings to install, in place
+     */
+    private static void installCompiledBindings(Rule rule)
+    {
+        List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
+        if (compiled == null || compiled.isEmpty())
+        {
+            return;
+        }
+        List<net.cumba.corej.core.model.CompiledBinding> canonical = new ArrayList<>(
+                compiled.size());
+        for (net.cumba.corej.core.model.CompiledBinding binding : compiled)
+        {
+            // A fresh record with NO domain: an expanded or re-installed rule re-derives it from
+            // the expression it now carries, never from a template's.
+            canonical.add(new net.cumba.corej.core.model.CompiledBinding(
+                    binding.name(), net.cumba.corej.core.expr.MetadataOperandMapping
+                            .canonicalizeMetadataOperands(binding.expression()),
+                    binding.predecessors(), null));
+        }
+        rule.setCompiledBindings(canonical);
+        net.cumba.corej.core.expr.eval.OperationKinds kinds = net.cumba.corej.core.expr.eval.OperationKinds
+                .forRule(rule);
+        List<net.cumba.corej.core.model.CompiledBinding> installed = new ArrayList<>(
+                canonical.size());
+        for (net.cumba.corej.core.model.CompiledBinding binding : canonical)
+        {
+            try
+            {
+                net.cumba.corej.core.expr.eval.NativeExprEvaluator
+                        .bindingProgram(binding.expression());
+            }
+            catch (net.cumba.corej.core.expr.ExpressionException
+                    | net.cumba.corej.core.expr.RuleDefinitionException ex)
+            {
+                String error = "binding `" + binding.name() + "` has no native expression form: "
+                        + ex.getMessage();
+                rule.setLoadError(
+                        rule.getLoadError() == null ? error : rule.getLoadError() + "; " + error);
+                return;
+            }
+            installed.add(binding.withDomain(kinds.domainOf(binding.name())));
+        }
+        rule.setCompiledBindings(installed);
     }
 
 
@@ -2044,8 +2224,13 @@ public class RulePackageLoader
     private static void inlineVariableExistsOps(Rule rule,
             SequencedMap<Severity, net.cumba.corej.core.expr.ast.Expr> levels)
     {
-        Map<String, String> candidates = net.cumba.corej.core.expr.convert.VariableExistsInliner
-                .candidateColumns(rule.getOperations());
+        Map<String, String> candidates = new LinkedHashMap<>(
+                net.cumba.corej.core.expr.convert.VariableExistsInliner
+                        .candidateColumns(rule.getOperations()));
+        // PLAN-binding-expressions R4: an operation a COMPILED binding reads is not inlinable —
+        // the inliner rewrites only the Check / Precondition, so dropping it would leave the
+        // binding's $-reference dangling at run time.
+        candidates.keySet().removeAll(compiledBindingReferences(rule));
         if (candidates.isEmpty())
         {
             return;
@@ -2139,6 +2324,22 @@ public class RulePackageLoader
 
 
     /**
+     * Every {@code $}-name the rule's compiled bindings reference ({@code PLAN-binding-expressions}
+     * R4 / R5): the operations the two load-time inliners must not drop.
+     */
+    private static java.util.Set<String> compiledBindingReferences(Rule rule)
+    {
+        java.util.Set<String> refs = new java.util.LinkedHashSet<>();
+        List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
+        if (compiled != null)
+        {
+            compiled.forEach(binding -> collectOperandRefs(binding.expression(), refs));
+        }
+        return refs;
+    }
+
+
+    /**
      * T9: lowers a {@code split_by} operation into the per-row {@code split_by(<col>, "<delim>")}
      * value function within {@code check}, dropping the inlined operation from the rule. Leaves the
      * rule unchanged when it has no referenced {@code split_by} operation.
@@ -2153,8 +2354,12 @@ public class RulePackageLoader
     private static void inlineSplitByOps(Rule rule,
             SequencedMap<Severity, net.cumba.corej.core.expr.ast.Expr> levels)
     {
-        Map<String, net.cumba.corej.core.expr.ast.Expr> candidates = net.cumba.corej.core.expr.convert.SplitByInliner
-                .candidateCalls(rule.getOperations());
+        Map<String, net.cumba.corej.core.expr.ast.Expr> candidates = new LinkedHashMap<>(
+                net.cumba.corej.core.expr.convert.SplitByInliner
+                        .candidateCalls(rule.getOperations()));
+        // PLAN-binding-expressions R5: as for variable_exists (R4) — never drop an operation a
+        // compiled binding reads.
+        candidates.keySet().removeAll(compiledBindingReferences(rule));
         if (candidates.isEmpty())
         {
             return;
@@ -4678,21 +4883,33 @@ public class RulePackageLoader
         // "Check" about a Precondition sends its reader to the wrong half of the rule.
         java.util.Set<String> inPrecondition = new java.util.LinkedHashSet<>();
         collectOperandRefs(rule.getPrecondition(), inPrecondition);
+        // PLAN-binding-expressions R6: a compiled binding's own $-references must resolve too — a
+        // binding reading an undefined $y is as dangling as the Check doing so.
+        java.util.Set<String> inBindings = new java.util.LinkedHashSet<>();
+        List<net.cumba.corej.core.model.CompiledBinding> compiledBindings = rule
+                .getCompiledBindings();
+        if (compiledBindings != null)
+        {
+            for (net.cumba.corej.core.model.CompiledBinding binding : compiledBindings)
+            {
+                collectOperandRefs(binding.expression(), inBindings);
+            }
+        }
         java.util.Set<String> undefined = new java.util.LinkedHashSet<>(inCheck);
         undefined.addAll(inPrecondition);
+        undefined.addAll(inBindings);
         if (undefined.isEmpty())
         {
             return;
         }
-        List<Operation> ops = rule.getOperations();
-        if (ops != null)
+        // ⛔ Resolved against BOTH binding kinds: a compiled binding defines its $-name exactly as
+        // an operation binding does, or `Bindings: [{name: $x, expression: upper(AETERM)}]` +
+        // `Check: $x == "FOO"` would be a "dangling $" load ERROR.
+        for (net.cumba.corej.core.model.BoundBinding binding : rule.bindingOrder())
         {
-            for (Operation op : ops)
+            if (binding.name() != null)
             {
-                if (op != null && op.getId() != null)
-                {
-                    undefined.remove(op.getId());
-                }
+                undefined.remove(binding.name());
             }
         }
         if (undefined.isEmpty())
@@ -4701,8 +4918,13 @@ public class RulePackageLoader
         }
         boolean anyInCheck = undefined.stream().anyMatch(inCheck::contains);
         boolean anyInPrecondition = undefined.stream().anyMatch(inPrecondition::contains);
+        boolean anyInBindings = undefined.stream().anyMatch(inBindings::contains);
         String surface = anyInCheck && anyInPrecondition ? "Check and Precondition"
-                : anyInCheck ? "Check" : "Precondition";
+                : anyInCheck ? "Check" : anyInPrecondition ? "Precondition" : "Bindings";
+        if (anyInBindings && (anyInCheck || anyInPrecondition))
+        {
+            surface = surface + " and Bindings";
+        }
         String message = "[" + ruleId(rule) + "] " + surface + " references the operand"
                 + (undefined.size() == 1 ? " " : "s ") + String.join(", ", undefined)
                 + " which no Operations entry defines: the name never enters the evaluation"
@@ -4837,6 +5059,14 @@ public class RulePackageLoader
             collectInlineUnresolvedWildcards(level, findings);
         }
         collectInlineUnresolvedWildcards(rule.getPrecondition(), findings);
+        // PLAN-binding-expressions R7: an operation call nested in a COMPILED binding is an inline
+        // call too — `$x: is_last_in_group(…, ordering="--SEQ") …` is the same silence.
+        List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
+        if (compiled != null)
+        {
+            compiled.forEach(
+                    binding -> collectInlineUnresolvedWildcards(binding.expression(), findings));
+        }
         if (findings.isEmpty())
         {
             return;
@@ -5030,6 +5260,14 @@ public class RulePackageLoader
             collectInlineTypelessDictionaryOps(level, findings);
         }
         collectInlineTypelessDictionaryOps(rule.getPrecondition(), findings);
+        // PLAN-binding-expressions R8: a dictionary call nested in a COMPILED binding is on the
+        // inline surface too.
+        List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
+        if (compiled != null)
+        {
+            compiled.forEach(
+                    binding -> collectInlineTypelessDictionaryOps(binding.expression(), findings));
+        }
         if (findings.isEmpty())
         {
             return;

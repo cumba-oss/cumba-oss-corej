@@ -526,9 +526,9 @@ public interface MetadataProvider
 
     /**
      * Returns the set of values for a given CT attribute across every codelist (and term) in the
-     * named CT package. Used by the {@code get_codelist_attributes} operation (CDISC-CG0288), which
-     * resolves a CT package id per-row from data columns and then extracts one of six attributes
-     * from the package:
+     * named CT package. Used by the {@code get_codelist_attributes} function (CDISC-CG0288,
+     * {@link CodelistAttributes}), which resolves a CT package id per-row from data columns and
+     * then extracts one of six attributes from the package:
      *
      * <ul>
      * <li>{@code "Codelist CCODE"} — every codelist's {@code conceptId}</li>
@@ -541,8 +541,9 @@ public interface MetadataProvider
      *
      * <p>
      * The returned list is order-preserving and de-duplicated. Implementations without CT-package
-     * access (or for an unknown package / attribute) return an empty list, which callers translate
-     * into the {@link OperationExecutor#LIBRARY_NOT_AVAILABLE} skip sentinel.
+     * access (or for an unknown package / attribute) return an empty list, which the function
+     * translates into the provider capability's "answered but unusable" signal
+     * ({@code UnusableProviderAnswerException}) — the rule SKIPs.
      * </p>
      *
      * @param aCtPackageId

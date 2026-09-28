@@ -1162,25 +1162,16 @@ public final class StudyValidationService
      */
     private static Set<String> requiredDictionaryTypes(Rule rule)
     {
-        List<net.cumba.corej.core.model.Operation> ops = rule.getOperations();
-        if (ops == null || ops.isEmpty())
-        {
-            return Set.of();
-        }
+        // PLAN-binding-expressions R17 (§0.2 d: wired in W0): read through ProviderNeeds, the one
+        // reader of provider needs, over BOTH binding kinds — a dictionary call nested in a
+        // compiled binding needs its dictionary just as a declared operation does, and the
+        // report's dictionary-basis line must name it. dictionary_available is the gate, never a
+        // need (the helper excludes it, as this loop always did).
         Set<String> needed = new LinkedHashSet<>();
-        for (net.cumba.corej.core.model.Operation op : ops)
+        for (String dictionaryType : net.cumba.corej.core.exec.ProviderNeeds.ofBindings(rule)
+                .dictionaryTypes())
         {
-            net.cumba.corej.core.model.OperationType type = op.getOperationType();
-            if (type == net.cumba.corej.core.model.OperationType.DICTIONARY_AVAILABLE
-                    || !net.cumba.corej.core.exec.OperationExecutor.isDictionaryDependent(type))
-            {
-                continue;
-            }
-            String dictionaryType = op.getExternalDictionaryType();
-            if (dictionaryType != null && !dictionaryType.isBlank())
-            {
-                needed.add(dictionaryType.toLowerCase(Locale.ROOT));
-            }
+            needed.add(dictionaryType.toLowerCase(Locale.ROOT));
         }
         return needed;
     }

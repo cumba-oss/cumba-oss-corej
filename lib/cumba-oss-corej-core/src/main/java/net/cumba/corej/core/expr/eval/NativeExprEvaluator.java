@@ -24,6 +24,8 @@ public final class NativeExprEvaluator
 
     private static final ConcurrentHashMap<Expr, ExprProgram> CACHE = new ConcurrentHashMap<>();
 
+    private static final ConcurrentHashMap<Expr, BindingProgram> BINDING_CACHE = new ConcurrentHashMap<>();
+
     private NativeExprEvaluator()
     {
     }
@@ -76,6 +78,23 @@ public final class NativeExprEvaluator
     }
 
 
+    /**
+     * The compiled plan of a <b>compiled binding</b>'s expression
+     * ({@code PLAN-binding-expressions}, wave 0), cached per {@code Expr} exactly like the Check's
+     * program.
+     *
+     * @param expr
+     *            the binding expression
+     * @return the plan
+     * @throws ExpressionException
+     *             if the expression contains a construct the native backend does not implement
+     */
+    public static BindingProgram bindingProgram(Expr expr)
+    {
+        return BINDING_CACHE.computeIfAbsent(expr, ExprCompiler::compileBinding);
+    }
+
+
     private static ExprProgram program(Expr expr)
     {
         return CACHE.computeIfAbsent(expr, ExprCompiler::compile);
@@ -86,6 +105,7 @@ public final class NativeExprEvaluator
     static void clearCacheForTesting()
     {
         CACHE.clear();
+        BINDING_CACHE.clear();
     }
 
 }

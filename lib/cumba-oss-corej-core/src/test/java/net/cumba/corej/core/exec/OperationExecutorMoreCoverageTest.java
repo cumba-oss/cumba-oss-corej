@@ -61,7 +61,9 @@ class OperationExecutorMoreCoverageTest
         assertTrue(OperationExecutor.isLibraryDependent(OperationType.DATASET_CLASS_FROM_LIBRARY));
         assertTrue(OperationExecutor.isLibraryDependent(OperationType.DOMAIN_IS_CUSTOM));
         assertTrue(OperationExecutor.isLibraryDependent(OperationType.CODELIST_TERMS));
-        assertTrue(OperationExecutor.isLibraryDependent(OperationType.GET_CODELIST_ATTRIBUTES));
+        // get_codelist_attributes left the operation surface in wave 0 (PLAN-binding-expressions):
+        // its LIBRARY dependency is now the function's provider capability —
+        // CodelistAttributesTest.
     }
 
 
@@ -710,8 +712,6 @@ class OperationExecutorMoreCoverageTest
         op.setReturntype("Boolean");
         op.setKeyName("USUBJID");
         op.setKeyValue("S01");
-        op.setCtAttribute("CDISCSubmissionValue");
-        op.setVersion("2024-03-29");
         op.setCtPackageTypes(List.of("sdtmct"));
         op.setRegex("^.+FL$");
         op.setNamePattern(".+FL$");
@@ -756,8 +756,6 @@ class OperationExecutorMoreCoverageTest
         assertEquals("Boolean", copy.getReturntype());
         assertEquals("USUBJID", copy.getKeyName());
         assertEquals("S01", copy.getKeyValue());
-        assertEquals("CDISCSubmissionValue", copy.getCtAttribute());
-        assertEquals("2024-03-29", copy.getVersion());
         assertEquals(List.of("sdtmct"), copy.getCtPackageTypes());
         assertEquals("^.+FL$", copy.getRegex());
         assertEquals(".+FL$", copy.getNamePattern());

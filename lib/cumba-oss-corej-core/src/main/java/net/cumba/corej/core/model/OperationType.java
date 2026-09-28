@@ -37,7 +37,6 @@ public enum OperationType
     DY("dy", EmptyResult.MISSING),
     EXPECTED_VARIABLES("expected_variables", EmptyResult.SET),
     EXTRACT_METADATA("extract_metadata", EmptyResult.MISSING),
-    GET_CODELIST_ATTRIBUTES("get_codelist_attributes", EmptyResult.SET),
     GET_COLUMN_ORDER_FROM_DATASET("get_column_order_from_dataset", EmptyResult.SET),
     GET_COLUMN_ORDER_FROM_LIBRARY("get_column_order_from_library", EmptyResult.SET),
     GET_DATASET_FILTERED_VARIABLES("get_dataset_filtered_variables", EmptyResult.SET),

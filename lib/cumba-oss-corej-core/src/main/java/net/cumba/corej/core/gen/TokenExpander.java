@@ -710,6 +710,11 @@ public final class TokenExpander
         rule.setRequirements(template.getRequirements());
         rule.setMatchDatasets(substituteMatchDatasets(template.getMatchDatasets(), substitutions));
         rule.setOperations(substituteOperations(template.getOperations(), substitutions));
+        // PLAN-binding-expressions R21: the compiled bindings get the Check's substitution — this
+        // method builds a fresh Rule, so a binding list it did not name would be dropped silently
+        // from every expanded rule and its $-references would dangle.
+        rule.setCompiledBindings(WildcardExpander
+                .substituteCompiledBindings(template.getCompiledBindings(), rename, TOKEN_POLICY));
         rule.setGroupingVariables(template.getGroupingVariables() != null
                 ? template.getGroupingVariables().stream().map(rename).toList()
                 : null);

@@ -121,8 +121,6 @@ class RuleModelTest
         op.setRegex("^[A-Z]");
         op.setKeyName("key");
         op.setKeyValue("val");
-        op.setCtAttribute("attr");
-        op.setVersion("1.0");
         op.setCtPackageTypes(List.of("sdtm"));
         op.setReturntype("string");
         op.setLevel("top");

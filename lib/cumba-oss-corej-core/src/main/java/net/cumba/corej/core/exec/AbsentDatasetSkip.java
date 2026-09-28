@@ -649,6 +649,9 @@ public final class AbsentDatasetSkip
             }
         }
         collectDotted(check, out);
+        // A compiled binding's reads resolve on the Check's own path (the same joins, the same
+        // inline-call dispatch), so they are widened exactly as the Check's are.
+        collectCompiledBindingDatasets(rule, out);
         return out;
     }
 
@@ -737,7 +740,23 @@ public final class AbsentDatasetSkip
                 addDataset(out, operation.getDomain());
             }
         }
+        collectCompiledBindingDatasets(rule, out);
         return out;
+    }
+
+
+    /**
+     * PLAN-binding-expressions R12 / R13: a <b>compiled</b> binding is a fourth surface a foreign
+     * dataset is read through — its dotted references and its nested calls' {@code domain=}, walked
+     * exactly as the Check's.
+     */
+    private static void collectCompiledBindingDatasets(Rule rule, Set<String> out)
+    {
+        List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
+        if (compiled != null)
+        {
+            compiled.forEach(binding -> collectDotted(binding.expression(), out));
+        }
     }
 
 
@@ -783,6 +802,7 @@ public final class AbsentDatasetSkip
                 addDataset(out, operation.getDomain());
             }
         }
+        collectCompiledBindingDatasets(rule, out);
         collectDotted(check, out);
         return out;
     }
@@ -850,22 +870,34 @@ public final class AbsentDatasetSkip
      */
     static boolean readsAny(Expr expr, Rule rule, Set<String> datasets)
     {
+        return readsAny(expr, rule, datasets, new ArrayList<>());
+    }
+
+
+    /**
+     * {@link #readsAny(Expr, Rule, Set)} carrying the binding names already visited, so a compiled
+     * binding read through another one cannot recurse forever on a hand-built cyclic rule (a
+     * loadable rule has none — a cycle is a stage-A error).
+     */
+    private static boolean readsAny(Expr expr, Rule rule, Set<String> datasets, List<String> seen)
+    {
         return switch (expr)
         {
         case Expr.Lit lit -> lit.value() instanceof List<?> elements && elements.stream()
-                .anyMatch(e -> e instanceof Expr nested && readsAny(nested, rule, datasets));
-        case Expr.Ref ref -> refReads(ref, rule, datasets, new ArrayList<>());
-        case Expr.Not not -> readsAny(not.inner(), rule, datasets);
-        case Expr.And and -> and.parts().stream().anyMatch(p -> readsAny(p, rule, datasets));
-        case Expr.Or or -> or.parts().stream().anyMatch(p -> readsAny(p, rule, datasets));
-        case Expr.Binary binary -> readsAny(binary.left(), rule, datasets)
-                || readsAny(binary.right(), rule, datasets);
-        case Expr.Call call -> callReads(call, rule, datasets);
+                .anyMatch(e -> e instanceof Expr nested && readsAny(nested, rule, datasets, seen));
+        case Expr.Ref ref -> refReads(ref, rule, datasets, seen);
+        case Expr.Not not -> readsAny(not.inner(), rule, datasets, seen);
+        case Expr.And and -> and.parts().stream().anyMatch(p -> readsAny(p, rule, datasets, seen));
+        case Expr.Or or -> or.parts().stream().anyMatch(p -> readsAny(p, rule, datasets, seen));
+        case Expr.Binary binary -> readsAny(binary.left(), rule, datasets, seen)
+                || readsAny(binary.right(), rule, datasets, seen);
+        case Expr.Call call -> callReads(call, rule, datasets, seen);
         };
     }
 
 
-    private static boolean callReads(Expr.Call call, Rule rule, Set<String> datasets)
+    private static boolean callReads(Expr.Call call, Rule rule, Set<String> datasets,
+            List<String> seen)
     {
         if (PRESENCE_CALLS.contains(call.name()))
         {
@@ -883,8 +915,8 @@ public final class AbsentDatasetSkip
         {
             return true;
         }
-        return call.args().stream().anyMatch(a -> readsAny(a, rule, datasets))
-                || call.kwargs().values().stream().anyMatch(a -> readsAny(a, rule, datasets));
+        return call.args().stream().anyMatch(a -> readsAny(a, rule, datasets, seen))
+                || call.kwargs().values().stream().anyMatch(a -> readsAny(a, rule, datasets, seen));
     }
 
 
@@ -917,6 +949,13 @@ public final class AbsentDatasetSkip
             return false;
         }
         seen.add(opRef);
+        // PLAN-binding-expressions R14: a COMPILED binding reads a dataset exactly when its
+        // expression does — dotted refs, nested calls' domain=, and the bindings it reads in turn.
+        net.cumba.corej.core.model.CompiledBinding compiled = rule.compiledBinding(opRef);
+        if (compiled != null)
+        {
+            return readsAny(compiled.expression(), rule, datasets, seen);
+        }
         List<Operation> operations = rule.getOperations();
         if (operations == null)
         {

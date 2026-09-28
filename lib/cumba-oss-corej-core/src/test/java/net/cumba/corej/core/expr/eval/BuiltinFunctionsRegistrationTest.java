@@ -43,22 +43,24 @@ class BuiltinFunctionsRegistrationTest
             "date_contains/2/BOOLEAN", "date_overlaps/2/BOOLEAN", "day/1/VALUE",
             "dictionary_available/1/BOOLEAN", "does_not_contain/2/BOOLEAN",
             "earliest_possible/1/VALUE", "empty/1/BOOLEAN", "ends_with/2/BOOLEAN",
-            "equalsIgnoreCase/2/BOOLEAN", "floor/1/VALUE", "has_alpha/1/BOOLEAN",
-            "has_digit/1/BOOLEAN", "imatches/2/BOOLEAN", "invalid_date/1/BOOLEAN",
-            "invalid_duration/1-2/BOOLEAN", "is_complete_date/1/BOOLEAN",
-            "is_complete_date_part/1/BOOLEAN", "is_incomplete_date/1/BOOLEAN",
-            "is_integer/1/BOOLEAN", "is_missing/1/BOOLEAN", "is_not_complete_date_part/1/BOOLEAN",
-            "is_not_integer/1/BOOLEAN", "is_numeric/1/BOOLEAN", "is_partial_date/1/BOOLEAN",
-            "is_present/1/BOOLEAN", "is_valid_date/1/BOOLEAN", "is_valid_duration/1/BOOLEAN",
-            "is_valid_name/1/BOOLEAN", "is_valid_testcd/1/BOOLEAN", "latest_possible/1/VALUE",
-            "len/1/VALUE", "length/1/VALUE", "library_available/0/BOOLEAN", "lowcase/1/VALUE",
-            "lower/1/VALUE", "month/1/VALUE", "non_empty/1/BOOLEAN", "normalize_space/1/VALUE",
-            "prefix/2/VALUE", "prefix_matches/2-3/BOOLEAN", "present/1/BOOLEAN",
-            "record_count/0/VALUE", "round/1/VALUE", "size/1/VALUE", "split_by/2/VALUE",
-            "starts_with/2/BOOLEAN", "substring/2-3/VALUE", "suffix/2/VALUE",
-            "suffix_matches/2-3/BOOLEAN", "time_contains/2/BOOLEAN", "time_overlaps/2/BOOLEAN",
-            "trim/1/VALUE", "tuple/2+/VALUE", "upcase/1/VALUE", "upper/1/VALUE", "value/0/VALUE",
-            "varname/0/VALUE", "year/1/VALUE");
+            "equalsIgnoreCase/2/BOOLEAN", "floor/1/VALUE",
+            // wave 0 (PLAN-binding-expressions): the list-valued exemplar, ported from the
+            // retired GET_CODELIST_ATTRIBUTES operation
+            "get_codelist_attributes/3/VALUE", "has_alpha/1/BOOLEAN", "has_digit/1/BOOLEAN",
+            "imatches/2/BOOLEAN", "invalid_date/1/BOOLEAN", "invalid_duration/1-2/BOOLEAN",
+            "is_complete_date/1/BOOLEAN", "is_complete_date_part/1/BOOLEAN",
+            "is_incomplete_date/1/BOOLEAN", "is_integer/1/BOOLEAN", "is_missing/1/BOOLEAN",
+            "is_not_complete_date_part/1/BOOLEAN", "is_not_integer/1/BOOLEAN",
+            "is_numeric/1/BOOLEAN", "is_partial_date/1/BOOLEAN", "is_present/1/BOOLEAN",
+            "is_valid_date/1/BOOLEAN", "is_valid_duration/1/BOOLEAN", "is_valid_name/1/BOOLEAN",
+            "is_valid_testcd/1/BOOLEAN", "latest_possible/1/VALUE", "len/1/VALUE", "length/1/VALUE",
+            "library_available/0/BOOLEAN", "lowcase/1/VALUE", "lower/1/VALUE", "month/1/VALUE",
+            "non_empty/1/BOOLEAN", "normalize_space/1/VALUE", "prefix/2/VALUE",
+            "prefix_matches/2-3/BOOLEAN", "present/1/BOOLEAN", "record_count/0/VALUE",
+            "round/1/VALUE", "size/1/VALUE", "split_by/2/VALUE", "starts_with/2/BOOLEAN",
+            "substring/2-3/VALUE", "suffix/2/VALUE", "suffix_matches/2-3/BOOLEAN",
+            "time_contains/2/BOOLEAN", "time_overlaps/2/BOOLEAN", "trim/1/VALUE", "tuple/2+/VALUE",
+            "upcase/1/VALUE", "upper/1/VALUE", "value/0/VALUE", "varname/0/VALUE", "year/1/VALUE");
 
     private static Set<String> actual()
     {

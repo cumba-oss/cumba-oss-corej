@@ -766,7 +766,45 @@ public final class WildcardExpander
         {
             collectWildcardNamesRecursive(condition, names);
         }
+        // PLAN-binding-expressions R22: a COMPILED binding is a named sub-expression of the
+        // Check, so a marker it carries makes the rule a template exactly as if written inline.
+        List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
+        if (compiled != null)
+        {
+            compiled.forEach(binding -> collectWildcardNamesFromExpr(binding.expression(), names));
+        }
         return names;
+    }
+
+
+    /**
+     * The compiled bindings with every expression rewritten through {@code rename} under
+     * {@code policy} — the Check's own walk ({@code PLAN-binding-expressions} R21 / R22), so a
+     * compiled binding is renamed exactly as the Check is. The binding names are carried over, as
+     * an operation binding's id is: a {@code $}-name is never a template. Call names are never
+     * rewritten by the walk (the operator-name trap of {@code PLAN-retire-dead-multi-match-lookup}
+     * cannot reach a compiled expression).
+     *
+     * @param bindings
+     *            the template's compiled bindings, may be {@code null}
+     * @param rename
+     *            the name rewriter
+     * @param policy
+     *            which string literals the pass may rewrite
+     * @return the rewritten bindings, or {@code null} for {@code null}
+     */
+    static @Nullable List<net.cumba.corej.core.model.CompiledBinding> substituteCompiledBindings(
+            @Nullable List<net.cumba.corej.core.model.CompiledBinding> bindings,
+            java.util.function.UnaryOperator<String> rename, StringLiteralPolicy policy)
+    {
+        if (bindings == null)
+        {
+            return null;
+        }
+        return bindings.stream()
+                .map(binding -> binding
+                        .withExpression(substituteExpr(binding.expression(), rename, policy)))
+                .toList();
     }
 
 
@@ -1195,6 +1233,10 @@ public final class WildcardExpander
         rule.setScope(template.getScope());
         rule.setRequirements(expandRequirements(template.getRequirements(), nameMap, tuple));
         rule.setOperations(renameOperationNames(template.getOperations(), rename));
+        // PLAN-binding-expressions R22: the compiled bindings are renamed like the Check — a
+        // fresh `new Rule()` would otherwise drop them silently from every expanded child.
+        rule.setCompiledBindings(substituteCompiledBindings(template.getCompiledBindings(), rename,
+                StringLiteralPolicy.EXISTS_NAME_ONLY));
         rule.setMatchDatasets(template.getMatchDatasets());
         rule.setGroupingVariables(template.getGroupingVariables());
         rule.setGrouping(template.getGrouping());
@@ -1322,8 +1364,6 @@ public final class WildcardExpander
         copy.setKeyName(op.getKeyName());
         copy.setKeyValue(op.getKeyValue());
         copy.setModelClass(op.getModelClass());
-        copy.setCtAttribute(op.getCtAttribute());
-        copy.setVersion(op.getVersion());
         copy.setCtPackageTypes(op.getCtPackageTypes());
         copy.setRegex(op.getRegex());
         copy.setNamePattern(op.getNamePattern());
