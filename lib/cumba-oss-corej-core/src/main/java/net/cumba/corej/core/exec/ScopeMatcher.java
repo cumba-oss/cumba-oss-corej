@@ -597,10 +597,10 @@ public final class ScopeMatcher
      * <li>an entry carrying the wildcard markers ({@code xx}, {@code zz}, {@code y}, {@code w} —
      * e.g. {@code TRTxxP}, see
      * {@link net.cumba.corej.core.gen.WildcardExpander#scopeVariableWildcardPattern}) is likewise
-     * satisfied when at least one column matches the marker pattern (anchored, case-sensitive — the
-     * same regex the wildcard expansion matches against the Check), so a template scoped to
-     * {@code TRTxxP} applies when {@code TRT01P} exists and is skipped — naming the entry — when no
-     * concrete column matches;</li>
+     * satisfied when at least one column matches the marker pattern (anchored, case-insensitive
+     * since the 2026-09-28 ruling — the same regex the wildcard expansion matches against the
+     * Check), so a template scoped to {@code TRTxxP} applies when {@code TRT01P} exists and is
+     * skipped — naming the entry — when no concrete column matches;</li>
      * <li>a literal entry keeps the exact-lookup semantics
      * ({@link DataTableMeta#getColumnIndex(String)});</li>
      * <li>a <b>qualified</b> entry — {@code DATASET.VARIABLE}, naming a variable in another dataset
