@@ -19,8 +19,10 @@ import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Outcome;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.RuleCore;
+import net.cumba.datatable.DataTableColumnMeta;
+import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
-import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -313,16 +315,99 @@ class JoinCacheConcurrencyTest
         String[] trtp = new String[rows];
         Arrays.setAll(usubjid, i -> subjects[i % subjects.length]);
         Arrays.fill(trtp, "PLACEBO");
-        return MockTable.of().col("USUBJID", usubjid).col("TRTP", trtp).name("ADLB").build();
+        return new StringTable("ADLB", new String[]
+        {
+                "USUBJID", "TRTP"
+        }, usubjid, trtp);
     }
 
 
     private static IDataTable makeAdsl()
     {
-        return MockTable.of().col("USUBJID", "SUBJ01", "SUBJ02", "SUBJ03", "SUBJ04")
-                .col("TRT01P", "PLACEBO", "ACTIVE", "PLACEBO", "PLACEBO").name("ADSL").build();
+        return new StringTable("ADSL", new String[]
+        {
+                "USUBJID", "TRT01P"
+        }, new String[]
+        {
+                "SUBJ01", "SUBJ02", "SUBJ03", "SUBJ04"
+        }, new String[]
+        {
+                "PLACEBO", "ACTIVE", "PLACEBO", "PLACEBO"
+        });
     }
 
+    /**
+     * A minimal <b>real</b> {@link IDataTable} over character columns: the testkit's
+     * {@code SyntheticDataTable} pattern, with caller-chosen cells instead of a value cycle. Every
+     * other accessor is an {@code IDataTable} default, so a cell reaches the engine exactly as a
+     * real character buffer hands it over ({@code getDataValue} → {@code DataValueSupport}).
+     * <p>
+     * ⚠ Deliberately NOT {@code MockTable} (PLAN-fast-gate-tests F3). Its cells are Mockito mocks,
+     * and a shared mock records every call from every worker under Mockito's own locking: measured
+     * 2026-09-28, ~95 % of this class's run time was spent there (35–50 s → ~1 s), and that locking
+     * partly serialised the "concurrent" workers — a mock can hide the very race this class exists
+     * to find. This table is immutable after construction, so the workers share it without any
+     * synchronisation of its own.
+     * </p>
+     */
+    private static final class StringTable implements IDataTable
+    {
+
+        private final DataTableMeta meta;
+
+        private final String[][] cells; // [column][row]
+
+        private final int rows;
+
+        StringTable(String aName, String[] aColumnNames, String[]... aColumns)
+        {
+            if (aColumnNames.length != aColumns.length || aColumns.length == 0)
+            {
+                throw new IllegalArgumentException("one value array per column name");
+            }
+            rows = aColumns[0].length;
+            cells = new String[aColumns.length][];
+            DataTableColumnMeta[] colMetas = new DataTableColumnMeta[aColumns.length];
+            for (int c = 0; c < aColumns.length; c++)
+            {
+                if (aColumns[c].length != rows)
+                {
+                    throw new IllegalArgumentException("column " + aColumnNames[c] + " has "
+                            + aColumns[c].length + " rows, expected " + rows);
+                }
+                cells[c] = aColumns[c].clone();
+                colMetas[c] = DataTableColumnMeta.builder().name(aColumnNames[c]).index(c)
+                        .type(DataValueType.STRING).build();
+            }
+            meta = DataTableMeta.builder().name(aName).label(aName).rowCount(rows)
+                    .totalRowCount(rows).columns(colMetas).build();
+        }
+
+
+        @Override
+        public DataTableMeta getMetaData()
+        {
+            return meta;
+        }
+
+
+        @Override
+        public long getRowCount()
+        {
+            return rows;
+        }
+
+
+        @Override
+        public Object getValue(long aRow, int aColumn)
+        {
+            if (aRow < 0 || aRow >= rows)
+            {
+                throw new IndexOutOfBoundsException("row " + aRow + " outside [0, " + rows + ")");
+            }
+            return cells[aColumn][(int) aRow];
+        }
+    }
 
     private static Rule buildJoinRule()
     {
