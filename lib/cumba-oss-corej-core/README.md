@@ -65,13 +65,15 @@ output.
   until the wave-41 rename) runs in `cumba-oss-corej-rules`' default
   build. The Python lane it was once compared against was removed in
   wave 33 — the `PyParity` profile no longer exists in any `pom.xml`.
-- Some tests here need a Python-engine **pickle metadata cache**. Point
-  `CDISC_PICKLE_CACHE_DIR` (or `-Dcdisc.pickle.cache.dir`) at one; the cache
+- The tests that verify the pickle **seeder** (`PickleStoreSeederTest`,
+  `StoreSeederRealDataConformanceTest`, …) need the CDISC pickle corpus. Point
+  `CDISC_PICKLE_CACHE_DIR` (or `-Dcdisc.pickle.cache.dir`) at one; the corpus
   is not part of this repository and has no location it can be assumed to
-  occupy. Without it **this module's**
-  pickle tests skip (`assumeTrue`). ⚠ In `cumba-oss-corej-rules` the
-  cache is mandatory instead: `PickleProviderGuardTest` fails loudly
-  there rather than let specs silently flip `EXECUTED` → `SKIPPED`.
+  occupy. Without it **this module's** seeder tests skip (`assumeTrue`).
+  Nothing else reads a pickle: every check reads the unified metadata store
+  the seeder writes. ⚠ In `cumba-oss-corej-rules` the corpus is mandatory
+  instead, as the store's seed: `LibraryProviderGuardTest` fails loudly there
+  rather than let specs silently flip `EXECUTED` → `SKIPPED`.
 
 ## Layout of test-only artifacts
 
