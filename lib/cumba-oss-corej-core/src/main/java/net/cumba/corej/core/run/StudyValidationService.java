@@ -77,10 +77,11 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <h2>Library metadata</h2> A validation run reads <b>no</b> {@code CDISC_API_KEY} and no pickle
- * corpus: its one library source is the unified metadata store named by
- * {@code CDISC_METADATA_STORE} / {@code cdisc.metadata.store} (see {@code tryStoreProvider}).
- * Without a store the run proceeds in degraded mode and the rules that need library metadata report
- * SKIPPED, visibly. The API key belongs to seeding only ({@code --seed-cache-from-api}).
+ * corpus: its one library source is the unified metadata store named, in precedence order, by the
+ * run's own {@link StudyValidationParams#metadataStore()}, then {@code CDISC_METADATA_STORE}, then
+ * {@code cdisc.metadata.store} (see {@code tryStoreProvider}). Without a store the run proceeds in
+ * degraded mode and the rules that need library metadata report SKIPPED, visibly. The API key
+ * belongs to seeding only ({@code --seed-cache-from-api}).
  */
 @CustomLog
 public final class StudyValidationService
