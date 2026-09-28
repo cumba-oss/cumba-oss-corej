@@ -218,10 +218,11 @@ class UpperLowerListFormTest
     {
         // upper(MIS_A) == MIS_A: the scalar form hands a missing QNAM's own cell through (register
         // D36, identity kept — D85c), so it equals the SAME missing on the other side (row 0,
-        // D34 #5-2) and not a different one (row 1, .A vs MIS) nor "" — the fold used to answer ""
-        // for every missing, which made row 1 fire. Row 2 is the ordinary present comparison.
+        // D34 #5-2) and not a different one (row 1, .A vs MIS) nor a present "" (row 3, .A vs
+        // "") — the fold used to answer "" for every missing, which made rows 1 and 3 fire. Row 2
+        // is the ordinary present comparison.
         Rule rule = load("$u == upper(Q2)", "$u", "upper(QNAM)");
-        OverlayDataTable supp = OverlayDataTable.empty("SUPPAE", "SUPPAE", 3);
+        OverlayDataTable supp = OverlayDataTable.empty("SUPPAE", "SUPPAE", 4);
         int qnam = supp.addColumn("QNAM", DataValueType.STRING, "QNAM");
         int q2 = supp.addColumn("Q2", DataValueType.STRING, "Q2");
         supp.setDataValue(0, qnam, new DataValueMissing(MissingValue.MIS_A));
@@ -230,11 +231,13 @@ class UpperLowerListFormTest
         supp.setDataValue(1, q2, new DataValueMissing(MissingValue.MIS));
         supp.setValue(2, qnam, "aesosp");
         supp.setValue(2, q2, "AESOSP");
+        supp.setDataValue(3, qnam, new DataValueMissing(MissingValue.MIS_A));
+        supp.setValue(3, q2, "");
         assertEquals(MissingValue.MIS_A, supp.getColumn(qnam).getDataValue(0L).getValue(),
                 "fixture control: row 0's QNAM is the .A missing");
         assertEquals(bits(0, 2), eval(rule, ctx(rule, supp, Map.of())),
-                "upper(.A) == upper(.A) fires, upper(.A) == upper(MIS) does not, and the present "
-                        + "pair still fires");
+                "upper(.A) == upper(.A) fires, upper(.A) == upper(MIS) and upper(.A) == upper(\"\")"
+                        + " do not, and the present pair still fires");
     }
 
 }

@@ -220,14 +220,20 @@ public final class BuiltinFunctions implements FunctionProvider
                     // never carries one, so "otherwise char" normally applies, exactly as it does
                     // for DatasetLookup.lookupValue's absent-column arm.
                     //
-                    // ⚠ The numeric arm must stay a `null` HERE and only here: this is the
-                    // UNTYPED ComputedVector(int, DataValueType, IntFunction<Object>) producer,
-                    // whose only spelling of a missing is a null payload —
-                    // TypedValue.resolved(type, MissingValue.MIS) would publish the marker as a
-                    // PRESENT value. The carrier folds the null to MissingValue.MIS, which is the
-                    // constant owed. ⛔ Do not "harden" it by handing back MIS; hardening this
-                    // channel needs a non-null @FunctionalInterface, not a value change (NullAway
-                    // cannot see a lambda's return against a generic type argument at all).
+                    // ⚠ The numeric arm answers `null`: this is the UNTYPED
+                    // ComputedVector(int, DataValueType, IntFunction<Object>) producer, which
+                    // spells a missing row in exactly two ways — a `null` payload (the legacy
+                    // spelling, which TypedValue.resolved folds to MissingValue.MIS, the constant
+                    // owed here) or an IDataValue row (carried as TypedValue.typedCell, identity
+                    // intact: how the D36 string producers hand an input's own missing cell
+                    // through, and ScalarSemantics.computedMissing() for a computed MIS). ⛔ What
+                    // it must never answer is the bare MissingValue.MIS: that is neither spelling,
+                    // and TypedValue.resolved(type, MissingValue.MIS) publishes the marker as a
+                    // PRESENT value. The null is tolerated, not endorsed (see the null-free
+                    // value-channel invariant on ComputedVector's untyped constructor): swapping it
+                    // for computedMissing() moves no value, and closing the channel to null is a
+                    // non-null @FunctionalInterface, since NullAway cannot see a lambda's return
+                    // against a generic type argument at all.
                     return ctx.getNumericExpectedColumns().contains(colName) ? null : "";
                 }
                 // A blank resolves per ScalarSemantics.resolvedString — type-INDEPENDENT: a
@@ -369,6 +375,14 @@ public final class BuiltinFunctions implements FunctionProvider
                     Vector x = args.get(0);
                     Vector start = args.get(1);
                     Vector length = args.get(2);
+                    // Gate hoisted to vector construction (a function of the VECTOR, not of a
+                    // row): a missing x takes the D36 early return before start/length are read,
+                    // so a per-row gate would let a Char start/length column pass on data where
+                    // x is missing on every row.
+                    net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(start,
+                            "a numeric function operand");
+                    net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(length,
+                            "a numeric function operand");
                     return new ComputedVector(run.rowCount(), DataValueType.STRING,
                             row -> substring(x, start, length, row));
                 }));
@@ -828,6 +842,11 @@ public final class BuiltinFunctions implements FunctionProvider
      */
     private static ComputedVector affixValue(int rowCount, Vector x, Vector n, boolean isPrefix)
     {
+        // Gate hoisted to vector construction, as between/numericValue do: a missing x takes the
+        // D36 early return before n is read, so the per-row gate in integral() alone would let a
+        // Char n column pass wherever x is missing on every row.
+        net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(n,
+                "a numeric function operand");
         return new ComputedVector(rowCount, DataValueType.STRING, row ->
         {
             TypedValue tx = x.value(row);
@@ -848,15 +867,15 @@ public final class BuiltinFunctions implements FunctionProvider
      * Per-row {@code substring} with a 1-based {@code start} (SAS/CDISC convention) and an optional
      * {@code length}. A missing operand — {@code x}, {@code start} or {@code length} — yields the
      * cell of {@link #carrierCell} for its {@link #combinedMissing} identity (D36 with the D86a
-     * identity rule), as the operand's own cell. Returns {@code null} (the computed missing,
-     * {@code MIS}) when a present {@code start} is non-integral / {@code < 1} / past the end of
-     * {@code x}, or a present {@code length} is non-integral. A {@code length <= 0} yields the
-     * empty string; a {@code length} running past the end of {@code x} is clamped.
-     * {@code substring("", 1)} is a start past the end of a length-0 string, so it stays the
-     * computed missing (the documented bounds rule, unchanged).
+     * identity rule), as the operand's own cell. Returns {@link ScalarSemantics#computedMissing()}
+     * (the computed missing, {@code MIS}) when a present {@code start} is non-integral /
+     * {@code < 1} / past the end of {@code x}, or a present {@code length} is non-integral — never
+     * {@code null}, so every missing row is an {@code IDataValue} and every present one a
+     * {@code String}. A {@code length <= 0} yields the empty string; a {@code length} running past
+     * the end of {@code x} is clamped. {@code substring("", 1)} is a start past the end of a
+     * length-0 string, so it stays the computed missing (the documented bounds rule, unchanged).
      */
-    private static @Nullable Object substring(Vector x, Vector start, @Nullable Vector length,
-            int row)
+    private static Object substring(Vector x, Vector start, @Nullable Vector length, int row)
     {
         TypedValue tx = x.value(row);
         TypedValue tstart = start.value(row);
@@ -869,13 +888,13 @@ public final class BuiltinFunctions implements FunctionProvider
         Integer startIdx = integral(start, row);
         if (startIdx == null || startIdx < 1)
         {
-            return null;
+            return ScalarSemantics.computedMissing();
         }
         String s = tx.cell().getValueAsString();
         int from = startIdx - 1; // 1-based -> 0-based
         if (from >= s.length())
         {
-            return null; // start past the end ⇒ missing
+            return ScalarSemantics.computedMissing(); // start past the end ⇒ computed MIS
         }
         if (length == null)
         {
@@ -884,7 +903,7 @@ public final class BuiltinFunctions implements FunctionProvider
         Integer len = integral(length, row);
         if (len == null)
         {
-            return null;
+            return ScalarSemantics.computedMissing();
         }
         if (len <= 0)
         {
@@ -901,8 +920,10 @@ public final class BuiltinFunctions implements FunctionProvider
      */
     private static @Nullable Integer integral(Vector v, int row)
     {
-        // ⚠ integral() is itself per-row; its callers hoist the gate. Kept here as a belt-and-
-        // braces raise for any future caller that forgets — requireNumericRead is idempotent.
+        // ⚠ integral() is itself per-row; its callers (affixValue, the substring descriptor) hoist
+        // the gate to vector construction, which is what makes it data-independent. Kept here as
+        // a belt-and-braces raise for any future caller that forgets — requireNumericRead is
+        // idempotent.
         net.cumba.corej.core.expr.eval.ColumnTypeGate.requireNumericRead(v,
                 "a numeric function operand");
         Double d = numeric(v, row);

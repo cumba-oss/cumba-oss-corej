@@ -1,6 +1,7 @@
 package net.cumba.corej.core.expr.eval;
 
 import static net.cumba.corej.core.expr.eval.VectorLayerTest.col;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -809,8 +810,8 @@ class BuiltinFunctionsTest
     @Test
     void concatCoalesceArity3()
     {
-        IDataTable t = MockTable.of().col("A", "x", "", "").col("B", "y", "q", "")
-                .col("C", "z", "r", "").build();
+        IDataTable t = MissingCellTables.of("T").str("A", "x", "", "").str("B", "y", "q", "")
+                .str("C", "z", "r", "").build();
         // concat/3: every "" here is a PRESENT empty string (D34 #1) and contributes nothing; a
         // genuinely missing operand is concatIdentityCombinesPerD86a's subject.
         Vector cc = value("concat", 3, col(t, "A"), col(t, "B"), col(t, "C"));
@@ -818,40 +819,45 @@ class BuiltinFunctionsTest
         assertEquals("qr", cc.asString(1)); // A "" -> contributes nothing
         assertPresentEmpty(cc, 2); // all "" -> "" (present)
 
-        // coalesce/3: first non-missing operand.
+        // coalesce/3: the first operand that is neither missing nor "" (empty()'s predicate,
+        // PLAN-coalesce-empty-semantics); none qualifies on row 2, so the answer is the COMPUTED
+        // missing, MIS — asserted on the typed carrier, not through the F3 Vector.isMissing fold
+        // (which would be true for a "" answer as well).
         Vector co = value("coalesce", 3, col(t, "A"), col(t, "B"), col(t, "C"));
         assertEquals("x", co.asString(0));
-        assertEquals("q", co.asString(1)); // A missing -> B
-        assertTrue(co.isMissing(2), "all missing -> missing");
+        assertEquals("q", co.asString(1)); // A "" -> B
+        assertMissing(co, 2, MissingValue.MIS); // all "" -> computed MIS
     }
 
 
     @Test
     void substringTwoArg()
     {
-        IDataTable t = MockTable.of().col("X", "ABCDE", "", "AB").build();
+        IDataTable t = MissingCellTables.strings("X", "ABCDE", "", "AB");
         // 1-based start: start=2 -> "BCDE".
         Vector s2 = value("substring", 3, col(t, "X"), ConstVector.of(2.0));
         assertEquals("BCDE", s2.asString(0));
         // substring("", 2): the "" input is judged literally (no longer pre-treated as missing),
-        // but start=2 is past the end of a length-0 string, so the bounds rule yields MISSING
-        // (function-examples.md "Substring"; the doc's "" row is corrected separately).
-        assertTrue(s2.isMissing(1), "substring(\"\",2) -> missing (start past end of length-0)");
-        // start beyond length -> missing.
-        assertTrue(value("substring", 3, col(t, "X"), ConstVector.of(5.0)).isMissing(2));
+        // but start=2 is past the end of a length-0 string, so the bounds rule yields the
+        // COMPUTED missing, MIS (function-examples.md "Substring"). Every "no result" row below is
+        // asserted on the typed carrier (TypedValue.missing() == MIS), never through the F3
+        // Vector.isMissing fold, which a present "" answer would satisfy too.
+        assertMissing(s2, 1, MissingValue.MIS);
+        // start beyond length -> computed MIS.
+        assertMissing(value("substring", 3, col(t, "X"), ConstVector.of(5.0)), 2, MissingValue.MIS);
         // start == length (1-based) -> last char.
         assertEquals("B", value("substring", 3, col(t, "X"), ConstVector.of(2.0)).asString(2));
-        // start < 1 -> missing.
-        assertTrue(value("substring", 3, col(t, "X"), ConstVector.of(0.0)).isMissing(0));
-        // non-integral start -> missing.
-        assertTrue(value("substring", 3, col(t, "X"), ConstVector.of(2.5)).isMissing(0));
+        // start < 1 -> computed MIS.
+        assertMissing(value("substring", 3, col(t, "X"), ConstVector.of(0.0)), 0, MissingValue.MIS);
+        // non-integral start -> computed MIS.
+        assertMissing(value("substring", 3, col(t, "X"), ConstVector.of(2.5)), 0, MissingValue.MIS);
     }
 
 
     @Test
     void substringThreeArg()
     {
-        IDataTable t = MockTable.of().col("X", "ABCDE").build();
+        IDataTable t = MissingCellTables.strings("X", "ABCDE");
         // start=2, length=3 -> "BCD".
         assertEquals("BCD",
                 value("substring", 1, col(t, "X"), ConstVector.of(2.0), ConstVector.of(3.0))
@@ -860,13 +866,12 @@ class BuiltinFunctionsTest
         assertEquals("CDE",
                 value("substring", 1, col(t, "X"), ConstVector.of(3.0), ConstVector.of(99.0))
                         .asString(0));
-        // length <= 0 -> empty string.
-        assertEquals("",
-                value("substring", 1, col(t, "X"), ConstVector.of(2.0), ConstVector.of(0.0))
-                        .asString(0));
-        // non-integral length -> missing.
-        assertTrue(value("substring", 1, col(t, "X"), ConstVector.of(2.0), ConstVector.of(1.5))
-                .isMissing(0));
+        // length <= 0 -> a PRESENT empty string.
+        assertPresentEmpty(
+                value("substring", 1, col(t, "X"), ConstVector.of(2.0), ConstVector.of(0.0)), 0);
+        // non-integral length -> the computed MIS (typed carrier, not the F3 fold).
+        assertMissing(value("substring", 1, col(t, "X"), ConstVector.of(2.0), ConstVector.of(1.5)),
+                0, MissingValue.MIS);
 
         // substring("", 1, 1): "" is present (D34 #1) but start=1 is already past the end of a
         // length-0 string (from index 0 >= length 0), so the bounds rule yields the COMPUTED
@@ -877,6 +882,58 @@ class BuiltinFunctionsTest
         assertMissing(v, 0, MissingValue.MIS); // substring("",1,1) -> computed MIS
         assertMissing(v, 1, MissingValue.MIS); // substring(MIS,1,1) -> MIS
         assertMissing(v, 2, MissingValue.MIS_A); // substring(.A,1,1) -> .A
+    }
+
+
+    /**
+     * D86a's second clause — <b>two or more distinct identities ⇒ {@code MIS}</b> — for every n-ary
+     * string producer, over {@code .A} and {@code .B}. Every other identity row pairs {@code .A}
+     * with {@code MIS}, where "the combined identity" and "the first operand's identity" can
+     * coincide ({@code carrierCell} hands {@code MIS}'s own cell through); only a pair of two
+     * <em>named</em> identities reaches {@code ScalarSemantics.computedMissing()}, so only these
+     * rows tell the rule apart from a "first identity wins" slip. {@code assertAll}: each row is
+     * judged and reported on its own, so a red names every row it reaches.
+     */
+    @Test
+    void twoDistinctNamedIdentitiesCollapseToMisPerD86a()
+    {
+        IDataTable t = MissingCellTables.of("T").str("A", MissingValue.MIS_A)
+                .str("B", MissingValue.MIS_B).str("S", "ABC").str("L", "b")
+                .dbl("NA", MissingValue.MIS_A).dbl("NB", MissingValue.MIS_B).build();
+        assertAll(
+                () -> assertMissing(value("concat", 1, col(t, "A"), col(t, "B")), 0,
+                        MissingValue.MIS), // concat(.A, .B)
+                () -> assertMissing(value("concat", 1, col(t, "A"), col(t, "L"), col(t, "B")), 0,
+                        MissingValue.MIS), // concat(.A, "b", .B)
+                () -> assertMissing(value("prefix", 1, col(t, "A"), col(t, "NB")), 0,
+                        MissingValue.MIS), // prefix(.A, n=.B)
+                () -> assertMissing(value("suffix", 1, col(t, "A"), col(t, "NB")), 0,
+                        MissingValue.MIS), // suffix(.A, n=.B)
+                () -> assertMissing(value("substring", 1, col(t, "S"), col(t, "NA"), col(t, "NB")),
+                        0, MissingValue.MIS)); // substring("ABC", .A, .B)
+    }
+
+
+    /**
+     * Identity rows each judged on its own ({@code assertAll}), so a pre-D36 engine is shown red on
+     * EVERY one of them rather than on the first failing row of a longer test with the rest red
+     * only by argument: {@code suffix(.A, 2)} (the old fold answered {@code ""}), and a missing
+     * {@code start} / {@code length} of {@code substring} (the old code minted a fresh
+     * {@code MIS}).
+     */
+    @Test
+    void suffixAndSubstringOperandsCarryTheirOwnIdentity()
+    {
+        IDataTable t = MissingCellTables.of("T").str("X", MissingValue.MIS_A).str("S", "ABC")
+                .dbl("NA", MissingValue.MIS_A).build();
+        assertAll(
+                () -> assertMissing(value("suffix", 1, col(t, "X"), ConstVector.of(2.0)), 0,
+                        MissingValue.MIS_A), // suffix(.A, 2) -> .A
+                () -> assertMissing(value("substring", 1, col(t, "S"), col(t, "NA")), 0,
+                        MissingValue.MIS_A), // substring("ABC", .A) -> .A
+                () -> assertMissing(
+                        value("substring", 1, col(t, "S"), ConstVector.of(1.0), col(t, "NA")), 0,
+                        MissingValue.MIS_A)); // substring("ABC", 1, .A) -> .A
     }
 
 

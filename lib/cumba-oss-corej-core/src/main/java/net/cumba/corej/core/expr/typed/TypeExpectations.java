@@ -94,7 +94,14 @@ public final class TypeExpectations
     {
     }
 
-    /** Positional numeric arguments per function name, mirroring the hoisted builtin gates. */
+    /**
+     * Positional numeric arguments per function name, mirroring the builtin gates that
+     * {@code BuiltinFunctions} raises at vector construction ({@code between}; {@code abs} /
+     * {@code round} / {@code floor} / {@code ceil} through {@code numericValue}; the {@code n} of
+     * {@code prefix} / {@code suffix} through {@code affixValue}; the {@code start} /
+     * {@code length} of {@code substring}). Keep the two in step: a gated argument missing here
+     * gets no D76 absent-column default and no Stage-B finding.
+     */
     private static final Map<String, int[]> NUMERIC_ARGS = Map.of("between", new int[]
     {
             0, 1, 2
@@ -116,6 +123,9 @@ public final class TypeExpectations
     }, "suffix", new int[]
     {
             1
+    }, "substring", new int[]
+    {
+            1, 2
     });
 
     /** Call names that route a comparison into the temporal families (no plain gate). */

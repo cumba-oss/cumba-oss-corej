@@ -29,9 +29,18 @@ import org.opentest4j.AssertionFailedError;
  * <li>{@code upper(X) == upper(Y)} ≡ {@code equalsIgnoreCase(X, Y)} (two missings are equal iff
  * they are the same missing, D34 #5-2; a missing equals no string);</li>
  * <li>{@code upper(X) == ""} ≡ {@code upper(X) in [""]} ≡ "X is the empty string" (D34 #1 —
- * {@code ""} is present; a missing is not {@code ""});</li>
- * <li>{@code empty(upper(X))} ≡ {@code empty(X)} (D34 #7 — the broad blank predicate is
- * unmoved).</li>
+ * {@code ""} is present; a missing is not {@code ""}). ⚠ Only the {@code lower} spelling of the
+ * membership reaches {@code caseFold}: {@code upper(X) in […]} is the case-insensitive membership
+ * surface, which {@code ExprCompiler} unwraps to a probe of the bare {@code X}
+ * ({@code isUpperCall}), so {@code upper(X) in [""]} tests that path, not the fold;</li>
+ * <li>{@code empty(upper(X))} ≡ {@code empty(X)} (D34 #7 — the broad blank predicate is unmoved). ⚠
+ * A <b>regression guard</b> for D34 #7, <b>not evidence for D36</b>: {@code empty} is true for a
+ * missing <em>and</em> for {@code ""}, so it held over the old fold-to-{@code ""} as well;</li>
+ * <li>the n-ary verdicts that DID move: {@code empty(concat(X, Y))} is true when either operand is
+ * missing (the old {@code concat} let a missing contribute {@code ""}, so
+ * {@code empty(concat(MIS, "b"))} was false), and {@code prefix(X, 2) == ""} /
+ * {@code suffix(X, 2) == ""} hold for a present {@code ""} only (the old affix folded a missing
+ * {@code X} to {@code ""}).</li>
  * </ul>
  * Every expected bit set is derived from a <em>reference predicate over the fixture cells</em>, not
  * from the engine, and each is asserted non-empty and non-full so an ERROR == ERROR pass cannot
@@ -39,7 +48,9 @@ import org.opentest4j.AssertionFailedError;
  * and the {@code MIS_A} rows are what tell the mechanism apart from its one plausible slip — a
  * {@code null}-returning producer, which {@code TypedValue.resolved} folds to a fresh {@code MIS}.
  * {@link #aNullReturningFoldPassesTheMisRowsAndRedsTheMisARow} runs that slip against the same
- * assertions.
+ * assertions — a <b>helper sensitivity check</b> (it proves the assertion helpers can see the
+ * slip), not a mutant of the production code; the production mutants are run as negative controls
+ * against {@code BuiltinFunctions} itself.
  */
 class StringFunctionMissingDifferentialTest
 {
@@ -156,12 +167,49 @@ class StringFunctionMissingDifferentialTest
     })
     void emptyOfFoldIsEmptyOfX(String fn)
     {
+        // A D34 #7 regression guard, not evidence for D36: it held over the old fold-to-"" too.
         IDataTable t = grid();
         BitSet expected = rowsWhereX(x -> x instanceof MissingValue || "".equals(x));
         assertBaselineFires(expected);
         assertEquals(expected, eval("empty(X)", t), "reference side (D34 #7)");
         assertEquals(expected, eval("empty(" + fn + "(X))", t),
                 "empty(" + fn + "(X)) covers exactly what empty(X) covers");
+    }
+
+
+    @Test
+    void emptyOfConcatIsTrueWhenEitherOperandIsMissing()
+    {
+        IDataTable t = grid();
+        // Reference: concat(X, Y) is missing when either operand is (D36 names concat), else the
+        // text X + Y — "" only when both are "".
+        BitSet expected = rowsWhere((x, y) -> x instanceof MissingValue || y instanceof MissingValue
+                || ("".equals(x) && "".equals(y)));
+        assertBaselineFires(expected);
+        BitSet actual = eval("empty(concat(X, Y))", t);
+        assertEquals(expected, actual, "empty(concat(X, Y)) — a missing operand poisons concat");
+        int misThenA = 3 * N; // X = MIS, Y = "a"
+        assertTrue(actual.get(misThenA),
+                "empty(concat(MIS, \"a\")) is now TRUE — the old concat answered \"a\" here");
+    }
+
+
+    @ParameterizedTest
+    @ValueSource(strings =
+    {
+            "prefix", "suffix"
+    })
+    void affixEqualsEmptyLiteralIffXIsTheEmptyString(String fn)
+    {
+        IDataTable t = grid();
+        BitSet expected = rowsWhereX(x -> x instanceof String s && s.isEmpty());
+        assertBaselineFires(expected);
+        BitSet actual = eval(fn + "(X, 2) == \"\"", t);
+        assertEquals(expected, actual,
+                fn + "(X, 2) == \"\" holds for a present \"\" only — a missing X's affix is that "
+                        + "missing, not \"\"");
+        assertFalse(actual.get(3 * N), fn + "(MIS, 2) == \"\" is now FALSE (it used to be true)");
+        assertFalse(actual.get(4 * N), fn + "(.A, 2) == \"\" is FALSE");
     }
 
 
@@ -213,8 +261,8 @@ class StringFunctionMissingDifferentialTest
 
 
     /**
-     * The mutant check (plan §7): the one plausible mechanism slip is a producer that returns
-     * {@code null} for a missing input — {@code TypedValue.resolved} then mints a fresh
+     * The helper sensitivity check (plan §7): the one plausible mechanism slip is a producer that
+     * returns {@code null} for a missing input — {@code TypedValue.resolved} then mints a fresh
      * {@code MIS}, so a suite that only ever feeds {@code MIS} stays green over it. Built here
      * through the real {@link ComputedVector} (its untyped channel, exactly as {@code caseFold}
      * produces) with the slip in the producer, and run against the same two assertions: the

@@ -16,6 +16,7 @@ import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.ast.Expr.BinOp;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -830,8 +831,8 @@ class NativeExprEvaluatorTest
         assertEquals(bits(0), NativeExprEvaluator.evaluate(px(eq), ctx(t)), "prefix(X,2) == FA");
         // prefix_not_equal_to with prefix:2: fires where the first 2 chars differ from "FA",
         // INCLUDING row 3 — a present "" (D34 #1), whose prefix is "" and differs from "FA". (A
-        // genuinely missing cell would fire too: prefix(«missing», 2) is that missing (D36), and
-        // a missing != a string.)
+        // genuinely missing cell fires too: prefix(«missing», 2) is that missing (D36), and a
+        // missing != a string — pinned by affixCompareOverAGenuinelyMissingCell.)
         //
         // ⚠ This assertion was inverted by EC-49 / Fix #148 (2026-08-04). Until then the native
         // compile intersected the affix-NEQ result with Primitives.nonEmpty(lv), so row 3 was
@@ -853,6 +854,24 @@ class NativeExprEvaluatorTest
         assertParity(notIn, t);
         assertEquals(bits(2, 3), NativeExprEvaluator.evaluate(px(notIn), ctx(t)),
                 "prefix(X,2) not in [FA, AP] — 'F' fires, the present '' has prefix '' and fires");
+    }
+
+
+    @Test
+    void affixCompareOverAGenuinelyMissingCell()
+    {
+        // The parenthetical of affixCompareAgainstALiteral, pinned: prefix(«missing», 2) is that
+        // missing (register D36, identity kept), so != "FA" fires on it (a missing differs from
+        // every string) and == "FA" / == "" do not. A real fixture — MockTable mints MIS only.
+        IDataTable t = MissingCellTables.strings("X", "FAKE", MissingValue.MIS, MissingValue.MIS_A,
+                "");
+        assertEquals(bits(1, 2, 3),
+                NativeExprEvaluator.evaluate(px("prefix(X, 2) != \"FA\""), ctx(t)),
+                "prefix(X,2) != FA fires on MIS, .A and the present \"\"");
+        assertEquals(bits(0), NativeExprEvaluator.evaluate(px("prefix(X, 2) == \"FA\""), ctx(t)),
+                "prefix(X,2) == FA");
+        assertEquals(bits(3), NativeExprEvaluator.evaluate(px("prefix(X, 2) == \"\""), ctx(t)),
+                "prefix(«missing», 2) is not \"\" — only the present \"\" row's prefix is");
     }
 
 

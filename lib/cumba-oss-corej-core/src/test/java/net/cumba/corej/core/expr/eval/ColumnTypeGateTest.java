@@ -1,5 +1,6 @@
 package net.cumba.corej.core.expr.eval;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -20,8 +21,10 @@ import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
 import net.cumba.datatable.values.DataValueType;
+import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
 /**
  * PLAN-column-type-conformance Phases 1′ and 3 — the {@code num()} conversion (R2/R10) and the
@@ -162,6 +165,33 @@ class ColumnTypeGateTest
         // silent: AVAL and the num("")-poisoned quotient are BOTH missing, and the equality
         // fold answers equal.
         assertEquals(bits(0, 1, 2), eval("AVAL != BASE / num(DOSE)", c));
+    }
+
+
+    @Test
+    @DisplayName("prefix/suffix n and substring start/length gate a Char column whatever the data")
+    void lengthArgumentsGateCharEvenWhenEveryOtherOperandIsMissing()
+    {
+        // The gate is a function of the VECTOR (its declared type), so it must not depend on the
+        // rows: with X missing on EVERY row, a string producer takes its D36 early return (the
+        // missing X's own cell) before it ever reads n / start / length — a per-row gate inside
+        // integral() would then never run, and a Char length column would pass silently on
+        // exactly the data that hides the defect. Hoisted to vector construction, it errors
+        // regardless of the data (as between/abs/round/floor/ceil already did).
+        IDataTable t = MissingCellTables.of("LB").str("X", MissingValue.MIS, MissingValue.MIS_A)
+                .str("NCHAR", "2", "3").build();
+        EvaluationContext c = ctxOf(t);
+        // assertAll: each spelling is judged and reported on its own.
+        assertAll(List
+                .of("prefix(X, NCHAR) == \"a\"", "suffix(X, NCHAR) == \"a\"",
+                        "substring(X, NCHAR) == \"a\"", "substring(X, 1, NCHAR) == \"a\"")
+                .stream()
+                .map(expr -> (Executable) () -> assertThrows(ColumnTypeMismatchException.class,
+                        () -> eval(expr, c), expr)));
+        // Control: the num() authoring satisfies the gate over the same all-missing data — the
+        // throw above is the gate, not the fixture — and a missing X never equals "a".
+        assertEquals(new BitSet(), eval("prefix(X, num(NCHAR)) == \"a\"", c));
+        assertEquals(new BitSet(), eval("substring(X, 1, num(NCHAR)) == \"a\"", c));
     }
 
     // ---- direction 2: Num where character is expected (R9/R12) ------------------
