@@ -297,8 +297,10 @@ public final class MetadataLibraryProvider implements MetadataProvider
     /**
      * Loader for CT packages other than the configured one (e.g. when a {@code TS} row references a
      * different version than {@code config.ct_packages[0]}). Backed by the unified metadata store
-     * ({@code MetadataStore.ctPackage(id)}). {@code null} when no store is wired (network /
-     * Define-XML providers).
+     * ({@code MetadataStore.ctPackage(id)}). {@code null} for the study-only / Define-XML provider
+     * ({@link #forDefine}), the ADaM product-list constructor and {@link #degraded}; the one
+     * production SDTM path, {@code StoreMetadataProviderFactory.forSdtm}, always passes the store's
+     * loader.
      */
     private final @Nullable Function<String, Optional<StoredCtPackage>> ctPackageLoader;
 
@@ -2699,7 +2701,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
      * finding 3: reads the {@link #declaredSourceLibrary() undecorated study library} so a
      * standards-library class supplied by enrichment never masquerades as a declared define class.
      * (The {@code EnrichedMetadataLibrary} overlay itself was retired by cache P4 with the CDISC
-     * Library API path — the store- and pickle-built libraries never wrap.)
+     * Library API path — the store-built libraries never wrap.)
      */
     @Override
     public @Nullable String getDeclaredDatasetClass(String aDatasetName)
@@ -2775,7 +2777,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
             return productClass;
         }
         // Tier 2.5 — curated, JSON-backed static fallback. Reached whenever the Library product
-        // walk yields nothing (no API key, network failure, or a domain the product doesn't cover),
+        // walk yields nothing (no store, or a domain the product doesn't cover),
         // so known standard domains (e.g. DM -> SPECIAL PURPOSE) still resolve offline. Placed
         // before the heuristic sniffer so the curated mapping wins for known standard domains.
         String mapped = DomainClassMap.getInstance().classFor(standardFamily(), aCdiscDomain);

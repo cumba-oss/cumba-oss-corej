@@ -994,8 +994,8 @@ class StudyValidationServiceTest
     }
 
     // ------------------------------------------------------------------
-    // Pickle-cache id helpers (pure logic; the pickle-cache-gated provider tests live in
-    // corej-rules/StudyValidationServicePickleTest — PLAN-engine-rules-decoupling Q4)
+    // Id helpers (pure logic; the store-backed provider tests live in
+    // corej-rules/StudyValidationServiceStoreTest — PLAN-engine-rules-decoupling Q4, cache 8g)
     // ------------------------------------------------------------------
 
     /**

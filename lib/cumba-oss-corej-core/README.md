@@ -70,10 +70,12 @@ output.
   `CDISC_PICKLE_CACHE_DIR` (or `-Dcdisc.pickle.cache.dir`) at one; the corpus
   is not part of this repository and has no location it can be assumed to
   occupy. Without it **this module's** seeder tests skip (`assumeTrue`).
-  The only other test that reads a pickle is `PickleIgModelLinkGuardTest`,
-  which checks the seed input itself (every SDTM-family IG in the corpus
-  still links its Model); every check reads the unified metadata store the
-  seeder writes. ⚠ In `cumba-oss-corej-rules` the corpus is mandatory
+  Two other tests read the real pickle corpus, both to check the seed input
+  itself: `PickleIgModelLinkGuardTest` (every SDTM-family IG in the corpus
+  still links its Model) and leg 5 of `StoreFieldManifestTest` (every key
+  the corpus publishes is a stored field or a recorded exclusion; without
+  the corpus it walks only the synthetic fixtures). Every check reads the
+  unified metadata store the seeder writes. ⚠ In `cumba-oss-corej-rules` the corpus is mandatory
   instead, as the store's seed: `LibraryProviderGuardTest` fails loudly there
   rather than let specs silently flip `EXECUTED` → `SKIPPED`.
 
