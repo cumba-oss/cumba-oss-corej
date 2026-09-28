@@ -503,10 +503,8 @@ public class RulePackageLoader
      * Public so a harness that bypasses {@link #load} can apply the identical normalisation a
      * production load performs rather than re-implementing it. It has no production caller outside
      * this class. Its callers outside it are test harnesses: {@code RuleScaffold}, the
-     * {@code rulespec} drift-guard harness in the rule-corpus repository's tests, and three
-     * integration probe classes in this repository's tests
-     * ({@code CrossStandardCompositeProbeTest}, {@code AdamG2HardeningProbeTest},
-     * {@code PmdaAdValueIndexedTwinsProbeTest}), which build rules by hand.
+     * {@code rulespec} drift-guard harness in the rule-corpus repository's tests, and tests in this
+     * repository that build rules by hand.
      * </p>
      *
      * <p>
