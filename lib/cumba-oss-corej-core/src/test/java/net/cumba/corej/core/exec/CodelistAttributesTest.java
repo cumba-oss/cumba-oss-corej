@@ -341,6 +341,108 @@ class CodelistAttributesTest
     }
 
 
+    private static MetadataProvider perColumn(List<String> asked)
+    {
+        MetadataProvider provider = mock(MetadataProvider.class);
+        lenient().when(provider.getStandard()).thenReturn("sdtmig");
+        lenient().when(provider.getCodelistAttribute(anyString(), anyString())).thenAnswer(inv ->
+        {
+            String pkg = inv.getArgument(0);
+            asked.add(pkg);
+            return pkg.startsWith("A-") ? List.of("a1")
+                    : pkg.startsWith("B-") ? List.of("b1") : List.of("zz");
+        });
+        return provider;
+    }
+
+
+    /**
+     * Review round 3, MED-A: an aggregate whose arguments read the VARIABLE cursor —
+     * {@code varname()}, {@code value()} — is recomputed per variable, never served from the
+     * execution memo. Before the fix the injected Precondition gate evaluated the call cursor-less
+     * (package {@code "-v1"}), memoised that answer, and every column read it: four FALSE
+     * violations, the provider asked once.
+     */
+    @Test
+    void anAggregateReadingTheVariableCursorIsRecomputedPerVariable() throws Exception
+    {
+        IDataTable table = MockTable.of().name("TS").col("A", "a1", "a1").col("B", "b1", "b1")
+                .build();
+        List<String> asked = new ArrayList<>();
+        RuleExecutionResult result = RuleRunnerCalls.execute(
+                rule("value() not in get_codelist_attributes(varname(), \"v1\","
+                        + " ct_attribute=\"Term CCODE\")", List.of()),
+                table, _ -> null, null, perColumn(asked));
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        assertTrue(result.getViolations().isEmpty(),
+                "each column's values are in its own package — " + asked);
+        assertTrue(asked.contains("A-v1") && asked.contains("B-v1"),
+                "the provider is asked per column: " + asked);
+        // value() as the target: each column's cells name their own package ("A" -> A-v1 ->
+        // [A]), so every cell is in its own column's answer — per variable, not one memo slot.
+        IDataTable named = MockTable.of().name("TS").col("A", "A", "A").col("B", "B", "B").build();
+        List<String> askedByValue = new ArrayList<>();
+        MetadataProvider echoTarget = mock(MetadataProvider.class);
+        lenient().when(echoTarget.getStandard()).thenReturn("sdtmig");
+        lenient().when(echoTarget.getCodelistAttribute(anyString(), anyString())).thenAnswer(inv ->
+        {
+            String pkg = inv.getArgument(0);
+            askedByValue.add(pkg);
+            return List.of(pkg.substring(0, pkg.indexOf('-')));
+        });
+        RuleExecutionResult byValue = RuleRunnerCalls.execute(
+                rule("value() not in get_codelist_attributes(value(), \"v1\","
+                        + " ct_attribute=\"Term CCODE\")", List.of()),
+                named, _ -> null, null, echoTarget);
+        assertEquals(RuleExecutionStatus.EXECUTED, byValue.getStatus(), byValue.getStatusMessage());
+        assertTrue(byValue.getViolations().isEmpty(), "value(): " + askedByValue);
+        assertTrue(askedByValue.contains("A-v1") && askedByValue.contains("B-v1"),
+                "value(): the provider is asked per column: " + askedByValue);
+    }
+
+
+    /**
+     * Review round 3, MED-A, the shadowing half: a COLUMN name that a context variable shadows
+     * resolves through the context first, so two contexts sharing one execution memo must not share
+     * the aggregate's answer. ({@code variable_name} itself is a BUILTIN reference, which never
+     * reaches the memo at all — asserted too.)
+     */
+    @Test
+    void anAggregateOverAShadowedColumnIsNotSharedAcrossContexts()
+    {
+        for (String target : List.of("XTARGET", "variable_name"))
+        {
+            List<String> asked = new ArrayList<>();
+            Expr call = CheckExpressionParser.parse(
+                    "get_codelist_attributes(" + target + ", \"v1\", ct_attribute=\"Term CCODE\")");
+            EvaluationContext first = EvaluationContext.builder()
+                    .table(MockTable.of().name("TS").col("A", "a1").build())
+                    .libraryProvider(perColumn(asked))
+                    .variables(new LinkedHashMap<>(Map.of(target, "A"))).build();
+            EvaluationContext second = first.toBuilder()
+                    .variables(new LinkedHashMap<>(Map.of(target, "B"))).build();
+            assertEquals(List.of("a1"), net.cumba.corej.core.expr.eval.ExprCompiler
+                    .evaluateValueExpression(call, first).value(0).resolved(), target);
+            assertEquals(List.of("b1"),
+                    net.cumba.corej.core.expr.eval.ExprCompiler
+                            .evaluateValueExpression(call, second).value(0).resolved(),
+                    target + ": the second context shares the memo but not the shadowed name");
+            assertEquals(List.of("A-v1", "B-v1"), asked, target);
+        }
+        // The positive control: an unshadowed column IS memoised across the two contexts.
+        List<String> once = new ArrayList<>();
+        Expr plain = CheckExpressionParser
+                .parse("get_codelist_attributes(A, \"v1\", ct_attribute=\"Term CCODE\")");
+        EvaluationContext base = EvaluationContext.builder()
+                .table(MockTable.of().name("TS").col("A", "A").build())
+                .libraryProvider(perColumn(once)).build();
+        net.cumba.corej.core.expr.eval.ExprCompiler.evaluateValueExpression(plain, base);
+        net.cumba.corej.core.expr.eval.ExprCompiler.evaluateValueExpression(plain,
+                base.toBuilder().variables(Map.of("other", "x")).build());
+        assertEquals(List.of("A-v1"), once, "one execution, one provider round-trip");
+    }
+
+
     /**
      * Review round 1, L3: the target argument derives the same Output_Variables in either spelling
      * — positional {@code (TSVCDREF, …)} and keyword {@code (name=TSVCDREF, …)}.

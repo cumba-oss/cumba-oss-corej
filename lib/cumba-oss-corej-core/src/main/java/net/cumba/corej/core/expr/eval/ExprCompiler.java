@@ -5267,25 +5267,30 @@ public final class ExprCompiler
      * with the same call held by a binding.
      *
      * <p>
-     * When the call reads nothing but columns and literals, its result is memoised for the
-     * execution ({@link EvaluationContext#getAggregateMemo()}, keyed by table identity and the
-     * canonical call), so the gate and the Check share one provider round-trip. A call reading a
-     * {@code $}-value or a cursor builtin is recomputed per reader — its value may differ per
-     * variable context, and caching it would be the unsound shortcut. An unusable provider answer
-     * throws before anything is stored.
+     * Its result is memoised for the execution ({@link EvaluationContext#getAggregateMemo()}, keyed
+     * by table identity and the canonical call), so the gate and the Check share one provider
+     * round-trip — but ONLY when every argument is a plain column, a dotted column or a literal
+     * ({@link #memoisableColumns}) AND, at the reading context, none of those column names is
+     * shadowed by a context variable. ⛔ Review round 3, MED-A: a nested call such as
+     * {@code varname()} / {@code value()} reads the variable cursor, and a per-variable context
+     * binds {@code variable_name}; memoising either served the cursor-less gate's answer to every
+     * column. Anything else is recomputed per reader. An unusable provider answer throws before
+     * anything is stored.
      * </p>
      */
     private static ValuePlan aggregatePlan(Expr.Call c, ValuePlan inner)
     {
-        String canon = readsOnlyColumnsAndLiterals(c) ? ExpressionPrinter.print(c) : null;
+        List<String> memoisable = memoisableColumns(c);
+        List<String> columns = memoisable == null ? List.of() : memoisable;
+        String canon = memoisable == null ? null : ExpressionPrinter.print(c);
         return run ->
         {
             EvalRun whole = run.wholeTable();
-            if (canon == null)
+            EvaluationContext ctx = run.ctx();
+            if (canon == null || columns.stream().anyMatch(ctx.getVariables()::containsKey))
             {
                 return inner.eval(whole);
             }
-            EvaluationContext ctx = run.ctx();
             return (Vector) ctx.getAggregateMemo()
                     .computeIfAbsent(DatasetExpressionCache.keyOf(ctx.getTable(),
                             canon + "@" + whole.to(), ctx.getDomainPrefix()),
@@ -5295,26 +5300,38 @@ public final class ExprCompiler
 
 
     /**
-     * Whether {@code e} reads only (plain or dotted) columns and literals — no {@code $}, no
-     * cursor.
+     * The column names an aggregate call reads, when every argument is a plain column, a dotted
+     * column or a literal (a list of plain literals included) — or {@code null} when any argument
+     * is anything else: a nested call (a cursor builtin such as {@code varname()} is a nullary
+     * call), a {@code $}-value, a wildcard. {@code null} means "never memoise".
      */
-    private static boolean readsOnlyColumnsAndLiterals(Expr e)
+    private static @Nullable List<String> memoisableColumns(Expr.Call c)
     {
-        return switch (e)
+        List<String> columns = new ArrayList<>();
+        List<Expr> arguments = new ArrayList<>(c.args());
+        arguments.addAll(c.kwargs().values());
+        for (Expr argument : arguments)
         {
-        case Expr.Ref r -> r.kind() == OperandKind.COLUMN || r.kind() == OperandKind.DOTTED_REF;
-        case Expr.Lit lit -> lit.kind() != Expr.LitKind.LIST
-                || listItems(lit).stream().allMatch(ExprCompiler::readsOnlyColumnsAndLiterals);
-        case Expr.Call call -> call.args().stream()
-                .allMatch(ExprCompiler::readsOnlyColumnsAndLiterals)
-                && call.kwargs().values().stream()
-                        .allMatch(ExprCompiler::readsOnlyColumnsAndLiterals);
-        case Expr.Binary b -> readsOnlyColumnsAndLiterals(b.left())
-                && readsOnlyColumnsAndLiterals(b.right());
-        case Expr.And a -> a.parts().stream().allMatch(ExprCompiler::readsOnlyColumnsAndLiterals);
-        case Expr.Or o -> o.parts().stream().allMatch(ExprCompiler::readsOnlyColumnsAndLiterals);
-        case Expr.Not n -> readsOnlyColumnsAndLiterals(n.inner());
-        };
+            if (argument instanceof Expr.Ref r
+                    && (r.kind() == OperandKind.COLUMN || r.kind() == OperandKind.DOTTED_REF))
+            {
+                columns.add(r.name());
+            }
+            else if (!isPlainLiteral(argument)
+                    && !(argument instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
+                            && listItems(lit).stream().allMatch(ExprCompiler::isPlainLiteral)))
+            {
+                return null;
+            }
+        }
+        return columns;
+    }
+
+
+    /** A literal that is not a list — reads nothing. */
+    private static boolean isPlainLiteral(Expr e)
+    {
+        return e instanceof Expr.Lit lit && lit.kind() != Expr.LitKind.LIST;
     }
 
 
