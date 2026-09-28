@@ -39,8 +39,11 @@ import org.jspecify.annotations.Nullable;
  * over the {@link TypeExpectations gate's own expectation notions} (D76a), the D76 absent-column
  * default those expectations decide (the one case the gate deliberately skips — "an absent-column
  * fold never set an expectation"), and the bind-time home the remaining stage-B rows of spec §9
- * grow into. Dotted joined references are deliberately <b>not</b> shadowed here (no resolver at
- * this seam) — they stay gate-only until phase 5b.
+ * grow into. Dotted joined references are deliberately <b>not</b> type-checked here: the column
+ * half judges the primary dataset's metadata only, and a dotted reference's declared kind stays the
+ * gate's business. Since phase 5b-J the checker does see the joined datasets through the
+ * {@link ForeignDatasetInventory}, but only for the two rows that need them — the
+ * {@code Match_Datasets} {@code Filter} binding (D89) and the {@code _matched_} flag.
  * </p>
  *
  * <p>
@@ -218,21 +221,23 @@ public final class StageBChecker
             return;
         }
         TypeExpectations expectations = TypeExpectations.of(roots);
-        boolean hasJoins = rule.getMatchDatasets() != null && !rule.getMatchDatasets().isEmpty();
+        boolean hasChildEntry = hasChildEntry(rule);
         for (String column : expectations.valueReadColumns())
         {
             int idx = meta.getColumnIndex(column);
             if (idx < 0)
             {
-                // The absent-column fold candidate (EC-38). An unqualified name may still
-                // resolve through a Match_Datasets join — resolution this seam cannot see — so
-                // the record says so rather than overclaiming.
+                // The absent-column fold candidate (EC-38). An unqualified name always means the
+                // PRIMARY's column (UVC), so a keyed or keyless Match_Datasets join never supplies
+                // it. The one exception is a Child: true entry, whose parent columns the primary
+                // lacks are merged in under their bare names (ChildMatchPreMerger) — after this
+                // seam — so only that case keeps the hedge.
                 String defaultType = expectations.numericExpected(column)
                         ? "number (missing = MissingValue.MIS)"
                         : "string (missing = \"\")";
-                findings.add(new StageBFinding(StageBErrorKind.ABSENT_COLUMN, column,
-                        "absent from " + meta.getName() + "; D76 default type " + defaultType
-                                + (hasJoins ? " (unless a Match_Datasets join carries it)" : "")));
+                findings.add(new StageBFinding(StageBErrorKind.ABSENT_COLUMN, column, "absent from "
+                        + meta.getName() + "; D76 default type " + defaultType
+                        + (hasChildEntry ? " (unless its Child: true parent supplies it)" : "")));
                 continue;
             }
             ColumnTypeGate.Kind kind = ColumnTypeGate.kindOf(meta.getColumn(idx).getType());
@@ -283,6 +288,25 @@ public final class StageBChecker
                                 + ") if the rule means a numeric comparison"));
             }
         }
+    }
+
+
+    /** Whether any {@code Match_Datasets} entry of the rule is a {@code Child: true} entry. */
+    private static boolean hasChildEntry(Rule rule)
+    {
+        List<MatchDataset> matches = rule.getMatchDatasets();
+        if (matches == null)
+        {
+            return false;
+        }
+        for (MatchDataset match : matches)
+        {
+            if (Boolean.TRUE.equals(match.getChild()))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ------------------------------------------------------------------

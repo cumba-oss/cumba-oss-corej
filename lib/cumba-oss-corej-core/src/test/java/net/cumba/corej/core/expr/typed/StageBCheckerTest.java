@@ -1,6 +1,7 @@
 package net.cumba.corej.core.expr.typed;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -258,17 +259,49 @@ class StageBCheckerTest
 
 
     @Test
-    void aJoinCarryingRuleSaysAbsenceMayResolveViaTheJoin()
+    void aKeyedJoinNeverSuppliesAnAbsentBareColumnSoTheRecordDoesNotHedge()
     {
+        // UVC (PLAN-unqualified-joined-column-gate S11): a bare name means the PRIMARY's column,
+        // so an ordinary Match_Datasets entry cannot supply it and the record claims no way out.
         Rule rule = rule("DMAGE < 5");
         MatchDataset match = new MatchDataset();
         match.setName("DM");
+        match.setKeys(List.of("USUBJID"));
         rule.setMatchDatasets(List.of(match));
         StageBReport report = StageBChecker.check(rule, MockTable.of().col("USUBJID", "S1").build(),
                 true, null, Set.of());
         List<StageBFinding> absent = of(report, StageBErrorKind.ABSENT_COLUMN);
         assertEquals(1, absent.size());
-        assertTrue(absent.get(0).message().contains("Match_Datasets"));
+        assertEquals("DMAGE", absent.get(0).binding());
+        assertTrue(absent.get(0).message().endsWith("(missing = MissingValue.MIS)"),
+                absent.get(0).message());
+        assertFalse(absent.get(0).message().contains("Match_Datasets"), absent.get(0).message());
+        assertFalse(absent.get(0).message().contains("Child"), absent.get(0).message());
+    }
+
+
+    @Test
+    void aChildEntrysParentMaySupplyAnAbsentBareColumnAndTheRecordSaysSo()
+    {
+        // The one path that still reads a parent column under its bare name
+        // (ChildMatchPreMerger, D2 of PLAN-unqualified-joined-column-gate), merged in after
+        // this seam.
+        Rule rule = rule("AESMIE != \"Y\"");
+        MatchDataset child = new MatchDataset();
+        child.setName("AE");
+        child.setChild(Boolean.TRUE);
+        child.setKeys(List.of("USUBJID", "IDVAR", "IDVARVAL"));
+        rule.setMatchDatasets(List.of(child));
+        StageBReport report = StageBChecker.check(rule,
+                MockTable.of().col("QNAM", "AESOSP").build(), true, null, Set.of());
+        List<StageBFinding> absent = of(report, StageBErrorKind.ABSENT_COLUMN);
+        assertEquals(1, absent.size());
+        assertEquals("AESMIE", absent.get(0).binding());
+        assertTrue(
+                absent.get(0).message()
+                        .endsWith("(missing = \"\") (unless its Child: true parent supplies it)"),
+                absent.get(0).message());
+        assertEquals(List.of(), report.armedFindings());
     }
 
     // ------------------------------------------------------------------
