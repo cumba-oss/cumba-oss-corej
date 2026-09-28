@@ -76,9 +76,11 @@ import org.jspecify.annotations.Nullable;
  * {@link CancelledException}.
  * </p>
  *
- * <h2>Authentication</h2> The CDISC Library API key is read from the {@code CDISC_API_KEY}
- * environment variable, falling back to the {@code cdisc.library.api.key} system property. Without
- * a key, enrichment is skipped (degraded mode) and the run may produce SKIPPED rules.
+ * <h2>Library metadata</h2> A validation run reads <b>no</b> {@code CDISC_API_KEY} and no pickle
+ * corpus: its one library source is the unified metadata store named by
+ * {@code CDISC_METADATA_STORE} / {@code cdisc.metadata.store} (see {@code tryStoreProvider}).
+ * Without a store the run proceeds in degraded mode and the rules that need library metadata report
+ * SKIPPED, visibly. The API key belongs to seeding only ({@code --seed-cache-from-api}).
  */
 @CustomLog
 public final class StudyValidationService
@@ -87,7 +89,7 @@ public final class StudyValidationService
     /**
      * Environment variable that sets the default rules directory when no explicit
      * {@link StudyValidationParams#rulesDir()} is given. Takes precedence over
-     * {@link #SP_RULES_DIR} (env-first, mirroring the {@code CDISC_API_KEY} convention).
+     * {@link #SP_RULES_DIR} (env-first, mirroring the {@code CDISC_METADATA_STORE} convention).
      */
     public static final String ENV_RULES_DIR = "COREJ_RULES_DIR";
 

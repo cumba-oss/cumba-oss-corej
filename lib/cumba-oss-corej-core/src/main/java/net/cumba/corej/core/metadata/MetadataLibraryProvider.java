@@ -296,8 +296,9 @@ public final class MetadataLibraryProvider implements MetadataProvider
 
     /**
      * Loader for CT packages other than the configured one (e.g. when a {@code TS} row references a
-     * different version than {@code config.ct_packages[0]}). Backed by the pickle cache.
-     * {@code null} when no pickle source is wired (network / Define-XML providers).
+     * different version than {@code config.ct_packages[0]}). Backed by the unified metadata store
+     * ({@code MetadataStore.ctPackage(id)}). {@code null} when no store is wired (network /
+     * Define-XML providers).
      */
     private final @Nullable Function<String, Optional<StoredCtPackage>> ctPackageLoader;
 
@@ -3277,7 +3278,7 @@ public final class MetadataLibraryProvider implements MetadataProvider
         {
             return configuredCtPackage;
         }
-        // Otherwise load the requested package by id from the pickle cache. (A null
+        // Otherwise load the requested package by id from the metadata store. (A null
         // configuredCtPackageId must NOT shadow the loader — a row may reference a package other
         // than, or in the absence of, the configured one.)
         if (ctPackageLoader != null)
