@@ -1,7 +1,6 @@
 package net.cumba.corej.core.expr.typed;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,6 +15,7 @@ import net.cumba.corej.core.model.Rule;
 import net.cumba.corej.core.model.VariableRequirement;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.testkit.SyntheticDataTable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -263,20 +263,20 @@ class StageBCheckerTest
     {
         // UVC (PLAN-unqualified-joined-column-gate S11): a bare name means the PRIMARY's column,
         // so an ordinary Match_Datasets entry cannot supply it and the record claims no way out.
+        // A real table, not a mock (owner: Mockito-free tests); the whole message is pinned, so
+        // both its prefix (which dataset lacks the column) and its tail (no hedge) are held.
         Rule rule = rule("DMAGE < 5");
         MatchDataset match = new MatchDataset();
         match.setName("DM");
         match.setKeys(List.of("USUBJID"));
         rule.setMatchDatasets(List.of(match));
-        StageBReport report = StageBChecker.check(rule, MockTable.of().col("USUBJID", "S1").build(),
-                true, null, Set.of());
+        StageBReport report = StageBChecker.check(rule, table("AE", "USUBJID"), true, null,
+                Set.of());
         List<StageBFinding> absent = of(report, StageBErrorKind.ABSENT_COLUMN);
         assertEquals(1, absent.size());
         assertEquals("DMAGE", absent.get(0).binding());
-        assertTrue(absent.get(0).message().endsWith("(missing = MissingValue.MIS)"),
+        assertEquals("absent from AE; D76 default type number (missing = MissingValue.MIS)",
                 absent.get(0).message());
-        assertFalse(absent.get(0).message().contains("Match_Datasets"), absent.get(0).message());
-        assertFalse(absent.get(0).message().contains("Child"), absent.get(0).message());
     }
 
 
@@ -292,16 +292,52 @@ class StageBCheckerTest
         child.setChild(Boolean.TRUE);
         child.setKeys(List.of("USUBJID", "IDVAR", "IDVARVAL"));
         rule.setMatchDatasets(List.of(child));
-        StageBReport report = StageBChecker.check(rule,
-                MockTable.of().col("QNAM", "AESOSP").build(), true, null, Set.of());
+        StageBReport report = StageBChecker.check(rule, table("SUPPAE", "QNAM"), true, null,
+                Set.of());
         List<StageBFinding> absent = of(report, StageBErrorKind.ABSENT_COLUMN);
         assertEquals(1, absent.size());
         assertEquals("AESMIE", absent.get(0).binding());
-        assertTrue(
-                absent.get(0).message()
-                        .endsWith("(missing = \"\") (unless its Child: true parent supplies it)"),
-                absent.get(0).message());
+        assertEquals("absent from SUPPAE; D76 default type string (missing = \"\")"
+                + " (unless its Child: true parent supplies it)", absent.get(0).message());
         assertEquals(List.of(), report.armedFindings());
+    }
+
+
+    @Test
+    void aNullMatchDatasetsElementIsNoEntryAndTheRecordDoesNotHedge()
+    {
+        // The loader tolerates `Match_Datasets: [null]`; the hedge test must read such an element
+        // as no entry — never an NPE, never a Child. The second, real Child entry proves the scan
+        // walks past the null rather than stopping at it.
+        Rule rule = rule("AESMIE != \"Y\"");
+        List<MatchDataset> matches = new ArrayList<>();
+        matches.add(null);
+        rule.setMatchDatasets(matches);
+        List<StageBFinding> absent = of(
+                StageBChecker.check(rule, table("SUPPAE", "QNAM"), true, null, Set.of()),
+                StageBErrorKind.ABSENT_COLUMN);
+        assertEquals(List.of("absent from SUPPAE; D76 default type string (missing = \"\")"),
+                absent.stream().map(StageBFinding::message).toList());
+        MatchDataset child = new MatchDataset();
+        child.setName("AE");
+        child.setChild(Boolean.TRUE);
+        child.setKeys(List.of("USUBJID", "IDVAR", "IDVARVAL"));
+        matches.add(child);
+        absent = of(StageBChecker.check(rule, table("SUPPAE", "QNAM"), true, null, Set.of()),
+                StageBErrorKind.ABSENT_COLUMN);
+        assertEquals(1, absent.size());
+        assertTrue(absent.get(0).message().endsWith(" (unless its Child: true parent supplies it)"),
+                absent.get(0).message());
+    }
+
+
+    /** A one-row, all-character real table (the testkit's {@link SyntheticDataTable}). */
+    private static IDataTable table(String name, String... columns)
+    {
+        return new SyntheticDataTable(name, List.of(columns), new String[]
+        {
+                "S1"
+        }, 1);
     }
 
     // ------------------------------------------------------------------

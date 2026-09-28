@@ -291,7 +291,10 @@ public final class StageBChecker
     }
 
 
-    /** Whether any {@code Match_Datasets} entry of the rule is a {@code Child: true} entry. */
+    /**
+     * Whether any {@code Match_Datasets} entry of the rule is a {@code Child: true} entry. A
+     * {@code null} element (the loader tolerates {@code [null]}) is no entry at all.
+     */
     private static boolean hasChildEntry(Rule rule)
     {
         List<MatchDataset> matches = rule.getMatchDatasets();
@@ -301,7 +304,7 @@ public final class StageBChecker
         }
         for (MatchDataset match : matches)
         {
-            if (Boolean.TRUE.equals(match.getChild()))
+            if (match != null && Boolean.TRUE.equals(match.getChild()))
             {
                 return true;
             }
