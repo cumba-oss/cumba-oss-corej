@@ -1,8 +1,8 @@
 {
   "manifest": "metadata store reachable-field manifest",
-  "formatVersion": 3,
-  "frozen": "2026-09-26",
-  "authority": "databrowser-meta plans/AUDIT-metadata-reachable-fields.md sections 2 and 3 (the TABLES, never the prose counts), widened by plans/PLAN-define-ct-evaluation.md T1-3 (b) and T1-9 (every field the pickle cache publishes, at every level, except _links and the Python cache builder's additions)",
+  "formatVersion": 4,
+  "frozen": "2026-09-28",
+  "authority": "databrowser-meta plans/AUDIT-metadata-reachable-fields.md sections 2 and 3 (the TABLES, never the prose counts), widened by plans/PLAN-define-ct-evaluation.md T1-3 (b) and T1-9 (every field the pickle cache publishes, at every level, except _links and the Python cache builder's additions), and by plans/PLAN-store-cdash-codelist-ids.md (owner 2026-09-28: T1-9's one _links-derived projection, codelistIds from _links.codelist, covers CDASH fields as well as variables - two codelistIds rows, one per level)",
   "guardedBy": "net.cumba.corej.core.metadata.store.seed.StoreFieldManifestTest",
   "purpose": [
     "Data only: the argument for every row lives in the audit and the plan and is not repeated here.",
@@ -13,7 +13,9 @@
     "List<String> against an array-only reader, so the field was dropped from every seeded store while",
     "a fixture-fed round-trip test stayed green (fixed in 948647c, StoreFormat.FORMAT_VERSION 1 -> 2);",
     "and the codelist `name` was the one codelist-level field the source publishes that no manifest row",
-    "and no record carried, which no leg could see (fixed by PLAN-define-ct-evaluation, 2 -> 3)."
+    "and no record carried, which no leg could see (fixed by PLAN-define-ct-evaluation, 2 -> 3).",
+    "3 -> 4 (PLAN-store-cdash-codelist-ids) is a widening, not a repair: CDASH fields gained the",
+    "codelistIds projection the variables already had."
   ],
   "typeVocabulary": {
     "scalar": "record component String",
@@ -110,7 +112,7 @@
         { "field": "examples", "type": "scalar", "reached-by": "both", "note": "SCALAR. Audit section 3 listed it as list-valued and that error dropped the field from every seeded store - this row is the one this manifest most exists for" },
         { "field": "usageRestrictions", "type": "scalar", "reached-by": "both" },
         { "field": "variableCcode", "type": "scalar", "reached-by": "both" },
-        { "field": "codelistIds", "type": "list", "source": "_links.codelist[].href", "transformed": true, "reached-by": "coreJ", "note": "audit section 3 correction - _links.codelist is an ARRAY; each ref reduced to its trailing id segment. The one _links-derived projection that predates T1-9 and stays" }
+        { "field": "codelistIds", "type": "list", "source": "_links.codelist[].href", "transformed": true, "reached-by": "coreJ", "note": "audit section 3 correction - _links.codelist is an ARRAY; each ref reduced to its trailing id segment. One of the two _links-derived projections: this one predates T1-9 and stays; the field level carries the same projection since format 4" }
       ],
       "excluded": [
         { "source": "_links", "reason": "owner 2026-09-25: the _links can stay dropped - only the pre-existing codelistIds projection of _links.codelist survives" }
@@ -231,10 +233,11 @@
         { "field": "mappingInstructions", "type": "scalar", "reached-by": "none" },
         { "field": "prompt", "type": "scalar", "reached-by": "none" },
         { "field": "questionText", "type": "scalar", "reached-by": "none" },
-        { "field": "domainSpecific", "type": "scalar", "reached-by": "none", "note": "CDASH model domain fields only" }
+        { "field": "domainSpecific", "type": "scalar", "reached-by": "none", "note": "CDASH model domain fields only" },
+        { "field": "codelistIds", "type": "list", "source": "_links.codelist[].href", "transformed": true, "reached-by": "none", "note": "owner 2026-09-28 (PLAN-store-cdash-codelist-ids): T1-9's one _links-derived projection extended from variables to CDASH fields, on all four field paths; each ref reduced to its trailing id segment, exactly as the variable level's row" }
       ],
       "excluded": [
-        { "source": "_links", "reason": "owner 2026-09-25: the _links can stay dropped - and a field's _links.codelist is deliberately NOT projected into a codelist-id list, which would be a new _links-derived value (T1-9)" }
+        { "source": "_links", "reason": "owner 2026-09-25: the _links can stay dropped - only the codelistIds projection of _links.codelist survives (owner 2026-09-28, format 4)" }
       ]
     },
     {

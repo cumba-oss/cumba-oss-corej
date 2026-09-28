@@ -37,6 +37,11 @@ final class StoreFormat
      * The current on-disk format version.
      *
      * <p>
+     * <b>4</b> (2026-09-28) — CDASH field {@code codelistIds} (PLAN-store-cdash-codelist-ids; T1-9
+     * extended by the owner 2026-09-28): every CDASH field level — domain, scenario, model class,
+     * model domain — carries the C-codes of its {@code _links.codelist}, projected exactly as
+     * {@code StoredVariable.codelistIds}. A v3 store holds none and is REFUSED — never read with
+     * them empty (T1-10 a).<br>
      * <b>3</b> (2026-09-26) — the codelist {@code name}, the product-level scalars
      * ({@code description}/{@code effectiveDate}/{@code registrationStatus}/{@code source}; class
      * {@code description}; dataset {@code description}/{@code status}; data-structure and
@@ -53,7 +58,7 @@ final class StoreFormat
      * <b>1</b> — the initial layout.
      * </p>
      */
-    static final int FORMAT_VERSION = 3;
+    static final int FORMAT_VERSION = 4;
 
     static final String ENTRY_MANIFEST = "manifest.json";
 

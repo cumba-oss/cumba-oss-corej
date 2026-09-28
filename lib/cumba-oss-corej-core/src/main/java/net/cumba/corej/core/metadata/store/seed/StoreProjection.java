@@ -42,11 +42,14 @@ import org.jspecify.annotations.Nullable;
  * ({@code "false"}); both land as {@link Boolean}, anything unrecognisable as {@code null} — the
  * same leniency {@code CtCodelist.extensible()} applies, for the same reason;</li>
  * <li>{@code _links.codelist}: an ARRAY of refs (audit §3 correction), each reduced to its trailing
- * id segment;</li>
+ * id segment — on SDTM/SEND variables and, since format 4, on CDASH fields (T1-9's one
+ * {@code _links}-derived exception, extended by the owner 2026-09-28,
+ * PLAN-store-cdash-codelist-ids);</li>
  * <li>an ADaM structure's {@code class} key lands in {@link StoredDataStructure#className()};</li>
  * <li>Python-only keys ({@code dataset_names}, {@code standard_type} — added by the Python cache
- * builder, absent from the API documents) and all other {@code _links} internals are simply never
- * read. Everything else the pickles publish IS read, at every level, since format 3
+ * builder, absent from the API documents) and all other {@code _links} internals (bar
+ * {@code _links.codelist} above and a product's {@code _links.model}) are simply never read.
+ * Everything else the pickles publish IS read, at every level, since format 3
  * (PLAN-define-ct-evaluation T1-9); the manifest's {@code excluded} blocks record the two
  * exceptions per level, and {@code StoreFieldManifestTest} leg 5 reds on a source key that is in
  * neither list.</li>
@@ -244,8 +247,10 @@ final class StoreProjection
 
 
     /**
-     * A CDASH field — the scalar union of domain, scenario and model-class fields. Its
-     * {@code _links.codelist} is deliberately not projected (T1-9 keeps {@code _links} out).
+     * A CDASH field — the scalar union of domain, scenario and model-class fields, plus its
+     * {@code _links.codelist} C-codes through the same {@link #codelistIds(JsonNode)} the variables
+     * use (format 4; T1-9 extended by the owner 2026-09-28). Every CDASH field level goes through
+     * here, so none can diverge.
      */
     private static StoredField field(JsonNode aField)
     {
@@ -258,7 +263,8 @@ final class StoreProjection
                 .implementationNotes(text(aField, "implementationNotes"))
                 .mappingInstructions(text(aField, "mappingInstructions"))
                 .prompt(text(aField, "prompt")).questionText(text(aField, "questionText"))
-                .domainSpecific(text(aField, "domainSpecific")).build();
+                .domainSpecific(text(aField, "domainSpecific")).codelistIds(codelistIds(aField))
+                .build();
     }
 
 
@@ -314,14 +320,15 @@ final class StoreProjection
 
 
     /**
-     * The variable's codelist refs — {@code _links.codelist} is an ARRAY (31 real variables carry
-     * 2–5 refs; audit §3 correction), each ref's id being the trailing segment of its href
+     * The codelist refs of a variable or a CDASH field — {@code _links.codelist} is an ARRAY (31
+     * real variables carry 2–5 refs, audit §3 correction; 121 real CDASH fields carry more than
+     * one, 2026-09-28), each ref's id being the trailing segment of its href
      * ({@code /mdr/root/ct/sdtmct/codelists/C66731} → {@code C66731}). A lone object is accepted
      * too, defensively. Absent link ⇒ {@code null}, matching every other unpublished field.
      */
-    private static @Nullable List<String> codelistIds(JsonNode aVariable)
+    private static @Nullable List<String> codelistIds(JsonNode anElement)
     {
-        JsonNode link = aVariable.path("_links").path("codelist");
+        JsonNode link = anElement.path("_links").path("codelist");
         if (link.isMissingNode() || link.isNull())
         {
             return null;

@@ -1,6 +1,7 @@
 package net.cumba.corej.core.metadata.store;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -94,8 +95,8 @@ class MetadataStoreCorruptionTest
             String manifest = new String(entries.get(StoreFormat.ENTRY_MANIFEST),
                     StandardCharsets.UTF_8);
             entries.put(StoreFormat.ENTRY_MANIFEST,
-                    manifest.replace("\"formatVersion\" : 3", "\"formatVersion\" : 99")
-                            .getBytes(StandardCharsets.UTF_8));
+                    manifest.replace("\"formatVersion\" : " + StoreFormat.FORMAT_VERSION,
+                            "\"formatVersion\" : 99").getBytes(StandardCharsets.UTF_8));
             return entries;
         });
         StoreFormatException failure = assertThrows(StoreFormatException.class,
@@ -111,6 +112,33 @@ class MetadataStoreCorruptionTest
                 "neutral: no surface remedy in the engine (review round 2): "
                         + failure.getMessage());
         assertTrue(!failure.getMessage().contains("must be re-seeded"), failure.getMessage());
+    }
+
+
+    /**
+     * The PREVIOUS format is refused, whatever the current one is (PLAN-store-cdash-codelist-ids
+     * C4): a store the current writer produced, relabelled to {@code FORMAT_VERSION - 1}, fails
+     * with the typed exception and the neutral re-seed wording, never as "newer". The reader checks
+     * the version before it decompresses or binds anything else (D-16), so a relabel exercises
+     * exactly the path a real previous-format layout takes — {@code format-v2.zip} stays the one
+     * real old layout in the tree ({@code MetadataStoreFormatV2RefusalTest}).
+     */
+    @Test
+    void thePreviousFormatVersionIsRefusedWithTheReSeedWording() throws IOException
+    {
+        Path previous = tempDir.resolve("previous.zip");
+        MetadataStoreFixtures.populatedWriter().write(previous);
+        CorruptStores.relabelFormatVersion(previous, StoreFormat.FORMAT_VERSION - 1);
+        StoreFormatException failure = assertThrows(StoreFormatException.class,
+                () -> MetadataStore.open(previous));
+        assertEquals(StoreFormat.FORMAT_VERSION - 1, failure.foundVersion());
+        assertEquals(StoreFormat.FORMAT_VERSION, failure.knownVersion());
+        assertFalse(failure.writtenByNewerBuild(), "an OLDER store is not a newer build's");
+        assertTrue(failure.getMessage().contains("format " + (StoreFormat.FORMAT_VERSION - 1)),
+                failure.getMessage());
+        assertTrue(failure.getMessage().contains("the store must be re-seeded"),
+                failure.getMessage());
+        assertFalse(failure.getMessage().contains("newer build"), failure.getMessage());
     }
 
 

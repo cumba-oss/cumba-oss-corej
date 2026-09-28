@@ -25,14 +25,16 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The old-format disposition (PLAN-define-ct-evaluation T1-10 a, D-16): a format-2 store is refused
  * WHOLE, with a typed {@link StoreFormatException}, before any part is decompressed or bound — so a
- * store lacking the fields format 3 added (the codelist {@code name} among them) can never be read
- * with them silently empty.
+ * store lacking the fields the formats after 2 added (the codelist {@code name} among them) can
+ * never be read with them silently empty.
  *
  * <p>
  * {@code /metadata/store/format-v2.zip} is the only real format-2 byte layout in the tree: it was
  * written ONCE by the unmodified format-2 writer ({@code MetadataStoreFixtures.populatedWriter()}
  * at {@code cumba-corej} 1f8d276) and committed; its sha256 is pinned here so a regenerated fixture
- * cannot quietly become a format-3 store that this test then "refuses" for the wrong reason.
+ * cannot quietly become a current-format store that this test then "refuses" for the wrong reason.
+ * The PREVIOUS format's refusal, whatever it is, is {@code MetadataStoreCorruptionTest}'s relabel
+ * test.
  * </p>
  */
 class MetadataStoreFormatV2RefusalTest
@@ -45,7 +47,7 @@ class MetadataStoreFormatV2RefusalTest
     @TempDir
     Path tempDir;
 
-    /** NS2: the fixture is refused with the typed exception, found 2 / known 3, "re-seed". */
+    /** NS2: the fixture is refused with the typed exception, found 2 / known current, "re-seed". */
     @Test
     void aFormat2StoreIsRefusedWholeWithATypedException() throws IOException
     {

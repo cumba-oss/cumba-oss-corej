@@ -1,15 +1,25 @@
 package net.cumba.corej.core.metadata.store.seed;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import net.cumba.corej.core.metadata.pickle.LocalPickleSource;
+import net.cumba.corej.core.metadata.pickle.PickleCache;
 import net.cumba.corej.core.metadata.pickle.PickleCacheSeeder;
 import net.cumba.corej.core.metadata.pickle.SeedOptions;
 import net.cumba.corej.core.metadata.store.MetadataStore;
@@ -70,6 +80,15 @@ class StoreSeederRealDataConformanceTest
 
     private static final List<StoreProvenance> FIXED_PROVENANCE = List
             .of(new StoreProvenance("conformance", "real-corpus", "2026-09-08T00:00:00Z"));
+
+    /**
+     * The fewest CDASH fields with a {@code _links.codelist} the real corpus held when format 4 was
+     * cut (2026-09-28: cdashig 1-1-1 … 2-3, tig 1-0/cdash, models/cdash 1-0 … 1-3). A floor, not a
+     * pin: the corpus locator is not version-pinned, and a newer corpus with more fields is no
+     * defect. The exact figure is the source-derived count, which the stored count must equal field
+     * by field ({@code assertCdashFieldCodelistIds}).
+     */
+    private static final int MIN_LINKED_CDASH_FIELDS = 2027;
 
     @TempDir
     private Path temp;
@@ -157,12 +176,14 @@ class StoreSeederRealDataConformanceTest
 
 
     /**
-     * NS3 (PLAN-define-ct-evaluation, T1-3 b / T1-9): the fields the format-3 bump admitted really
-     * arrive from the REAL pickle corpus — asserted on the zip's own JSON, never through the
-     * records, so this compiles against any format and reds by assertion, not by compilation. The
-     * codelist {@code name} was the one field the source publishes at codelist level that the store
-     * dropped (41 852 / 41 852 codelists carry it); the product scalars and the CDASH
-     * domain/scenario/field levels are the T1-9 additions.
+     * NS3 (PLAN-define-ct-evaluation, T1-3 b / T1-9): the fields the format-3 and format-4 bumps
+     * admitted really arrive from the REAL pickle corpus — asserted on the zip's own JSON, never
+     * through the records, so this compiles against any format and reds by assertion, not by
+     * compilation. The codelist {@code name} was the one field the source publishes at codelist
+     * level that the store dropped (41 852 / 41 852 codelists carry it); the product scalars and
+     * the CDASH domain/scenario/field levels are the T1-9 additions; the CDASH fields'
+     * {@code codelistIds} are format 4's (PLAN-store-cdash-codelist-ids C5 — see
+     * {@link #assertCdashFieldCodelistIds}).
      */
     @Test
     void theRealSeedCarriesEveryFieldTheFormatBumpAdmitted() throws IOException
@@ -171,15 +192,15 @@ class StoreSeederRealDataConformanceTest
         Path realPickles = RealCorpusLocator.locate().orElseThrow();
         Path store = pickleSeed(realPickles).store();
 
-        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(store.toFile()))
+        ObjectMapper mapper = new ObjectMapper();
+        try (ZipFile zip = new ZipFile(store.toFile()))
         {
-            com.fasterxml.jackson.databind.JsonNode headers = mapper
+            JsonNode headers = mapper
                     .readTree(zip.getInputStream(zip.getEntry("ct/codelists.json")))
                     .get("codelists");
             int nullName = 0;
             int sexVersions = 0;
-            for (com.fasterxml.jackson.databind.JsonNode header : headers)
+            for (JsonNode header : headers)
             {
                 if (!header.hasNonNull("name"))
                 {
@@ -195,24 +216,24 @@ class StoreSeederRealDataConformanceTest
             assertTrue(sexVersions >= 1, "C66731 must be among the codelist versions");
             assertEquals(0, nullName, "every codelist header carries its name (T1-3 b)");
 
-            com.fasterxml.jackson.databind.JsonNode sdtmig = mapper.readTree(
+            JsonNode sdtmig = mapper.readTree(
                     zip.getInputStream(zip.getEntry("products/standards/sdtmig/3-4.json")));
             assertTrue(sdtmig.hasNonNull("description") && sdtmig.hasNonNull("effectiveDate"),
                     "the product scalars the source publishes are stored (T1-9): " + sdtmig);
 
-            com.fasterxml.jackson.databind.JsonNode cdashig = mapper.readTree(
+            JsonNode cdashig = mapper.readTree(
                     zip.getInputStream(zip.getEntry("products/standards/cdashig/2-3.json")));
             int domains = 0;
             int scenarios = 0;
             int fields = 0;
-            for (com.fasterxml.jackson.databind.JsonNode clazz : cdashig.path("classes"))
+            for (JsonNode clazz : cdashig.path("classes"))
             {
-                for (com.fasterxml.jackson.databind.JsonNode domain : clazz.path("domains"))
+                for (JsonNode domain : clazz.path("domains"))
                 {
                     domains++;
                     fields += domain.path("fields").size();
                 }
-                for (com.fasterxml.jackson.databind.JsonNode scenario : clazz.path("scenarios"))
+                for (JsonNode scenario : clazz.path("scenarios"))
                 {
                     scenarios++;
                     fields += scenario.path("fields").size();
@@ -221,6 +242,108 @@ class StoreSeederRealDataConformanceTest
             assertTrue(domains > 0 && scenarios > 0 && fields > 0,
                     "CDASHIG 2.3 domains/scenarios/fields are stored as levels (T1-9, S18): "
                             + domains + "/" + scenarios + "/" + fields);
+
+            assertCdashFieldCodelistIds(mapper, PickleCache.open(realPickles), zip);
+        }
+    }
+
+
+    /**
+     * C5 (PLAN-store-cdash-codelist-ids): source and store walked IN PARALLEL, product by product,
+     * over all four CDASH field paths — the product's {@code domains[].fields}, and per class
+     * {@code domains[].fields}, {@code scenarios[].fields} and {@code cdashModelFields}. Where the
+     * source field has a {@code _links.codelist}, the stored {@code codelistIds} equals its refs'
+     * trailing id segments, in order; where it has none, the stored key is ABSENT — never
+     * {@code []}. The oracle is the pickle document itself, read through {@link PickleCache}, not
+     * the projection under test.
+     */
+    private static void assertCdashFieldCodelistIds(ObjectMapper aMapper, PickleCache aSource,
+            ZipFile aStore)
+        throws IOException
+    {
+        Set<String> keys = new LinkedHashSet<>(aSource.standardKeys());
+        keys.addAll(aSource.modelKeys());
+        int[] counts = new int[2]; // [0] linked, [1] unlinked
+        for (String key : keys)
+        {
+            JsonNode source = aMapper.valueToTree(
+                    aSource.get(key).orElseThrow(() -> new AssertionError("unreadable " + key)));
+            ZipEntry entry = aStore.getEntry("products/" + key + ".json");
+            assertNotNull(entry, "the store holds no product " + key);
+            JsonNode stored = aMapper.readTree(aStore.getInputStream(entry));
+            compareFieldLists(key + ".domains", source.path("domains"), stored.path("domains"),
+                    "fields", counts);
+            JsonNode sourceClasses = source.path("classes");
+            JsonNode storedClasses = stored.path("classes");
+            assertEquals(sourceClasses.size(), storedClasses.size(), key + ".classes");
+            for (int c = 0; c < sourceClasses.size(); c++)
+            {
+                String at = key + ".classes[" + c + "]";
+                JsonNode from = sourceClasses.get(c);
+                JsonNode to = storedClasses.get(c);
+                compareFieldLists(at + ".domains", from.path("domains"), to.path("domains"),
+                        "fields", counts);
+                compareFieldLists(at + ".scenarios", from.path("scenarios"), to.path("scenarios"),
+                        "fields", counts);
+                compareFields(at + ".cdashModelFields", from.path("cdashModelFields"),
+                        to.path("cdashModelFields"), counts);
+            }
+        }
+        assertTrue(counts[0] >= MIN_LINKED_CDASH_FIELDS,
+                "CDASH fields with a _links.codelist in the real corpus: " + counts[0]
+                        + ", below the " + MIN_LINKED_CDASH_FIELDS + " measured at format 4");
+        assertTrue(counts[1] > 0, "no CDASH field WITHOUT a link was compared - the absent-key"
+                + " branch went unexercised");
+        // Surfaced in the test log for the gate evidence; the assertions above are the gate.
+        System.out.printf("CDASH fields compared: %,d with codelistIds, %,d without%n", counts[0],
+                counts[1]);
+    }
+
+
+    /** Each element's {@code aFieldsKey} array compared by {@link #compareFields}. */
+    private static void compareFieldLists(String aWhere, JsonNode aSource, JsonNode aStored,
+            String aFieldsKey, int[] aCounts)
+    {
+        assertEquals(aSource.size(), aStored.size(), aWhere);
+        for (int i = 0; i < aSource.size(); i++)
+        {
+            compareFields(aWhere + "[" + i + "]." + aFieldsKey, aSource.get(i).path(aFieldsKey),
+                    aStored.get(i).path(aFieldsKey), aCounts);
+        }
+    }
+
+
+    private static void compareFields(String aWhere, JsonNode aSource, JsonNode aStored,
+            int[] aCounts)
+    {
+        assertEquals(aSource.size(), aStored.size(), aWhere);
+        for (int i = 0; i < aSource.size(); i++)
+        {
+            JsonNode from = aSource.get(i);
+            JsonNode to = aStored.get(i);
+            String at = aWhere + "[" + i + "] " + from.path("name").asText();
+            assertEquals(from.path("name").asText(), to.path("name").asText(),
+                    at + ": the walk is out of step");
+            JsonNode link = from.path("_links").path("codelist");
+            if (link.isMissingNode() || link.isNull())
+            {
+                aCounts[1]++;
+                assertFalse(to.has("codelistIds"),
+                        at + ": no source link, so codelistIds must be ABSENT, never []: " + to);
+                continue;
+            }
+            aCounts[0]++;
+            List<String> expected = new ArrayList<>();
+            for (JsonNode ref : link.isArray() ? link : List.of(link))
+            {
+                String href = ref.path("href").asText();
+                expected.add(href.substring(href.lastIndexOf('/') + 1));
+            }
+            assertTrue(to.path("codelistIds").isArray(),
+                    at + ": a source link, so codelistIds must be stored: " + to);
+            List<String> actual = new ArrayList<>();
+            to.path("codelistIds").forEach(id -> actual.add(id.asText()));
+            assertEquals(expected, actual, at + ": the stored codelistIds");
         }
     }
 
