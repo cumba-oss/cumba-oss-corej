@@ -175,20 +175,17 @@ class UpperLowerListFormTest
         // MissingValue element is carried through UNCHANGED (never folded to "" nor to its
         // rendered marker), in its position; the present elements around it fold. No authored
         // list can spell a missing member, so the fold is called as the compiler calls it, on a
-        // list that carries one. A null element (the raw channel's "contributes nothing") is a
-        // missing element too and passes through unchanged (review round 3 LOW-2: it used to fold
-        // to "", which made it equal to a present empty string in a membership set).
+        // list that carries one.
         List<Object> withMissing = new ArrayList<>();
         withMissing.add("aeSeq");
         withMissing.add(MissingValue.MIS);
         withMissing.add(MissingValue.MIS_A);
-        withMissing.add(null);
         IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").build();
         EvalRun run = EvalRun.fullRange(EvaluationContext.builder().table(ae)
                 .datasetResolver(NO_RESOLVER).variables(new LinkedHashMap<>()).build());
-        assertEquals(Arrays.asList("AESEQ", MissingValue.MIS, MissingValue.MIS_A, null),
+        assertEquals(Arrays.asList("AESEQ", MissingValue.MIS, MissingValue.MIS_A),
                 fold("upper", run, withMissing));
-        assertEquals(Arrays.asList("aeseq", MissingValue.MIS, MissingValue.MIS_A, null),
+        assertEquals(Arrays.asList("aeseq", MissingValue.MIS, MissingValue.MIS_A),
                 fold("lower", run, withMissing));
     }
 

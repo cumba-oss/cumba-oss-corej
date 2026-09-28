@@ -124,12 +124,12 @@ class BuiltinFunctionsTest
 
 
     @Test
-    void caseFoldOverACollectionCarriesNullElementsThroughUnchanged()
+    void caseFoldDoesNotDisguiseANullElementAsEmptyString()
     {
-        // PLAN-case-insensitive-templates review round 3 (LOW-2): a null element is a missing
-        // element (the raw channel's "contributes nothing") and passes through unchanged, in its
-        // position, like a MissingValue element (register D36) — it no longer folds to "", which
-        // made it equal to a present empty string wherever the folded list is used.
+        // ⛔ Nothing is ever null (owner, 2026-09-18): a null list element is a DEFECT in the
+        // list's producer, not a way of saying missing. The fold must not hide it by turning it
+        // into a present "" (which it used to do); it passes it through untouched so the defect
+        // stays visible. PLAN-no-null-list-elements makes the producers null-free.
         Vector sets = new ComputedVector(1, net.cumba.datatable.values.DataValueType.STRING,
                 _ -> java.util.Arrays.asList("y", null));
 

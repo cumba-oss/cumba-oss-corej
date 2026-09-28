@@ -973,11 +973,13 @@ public final class BuiltinFunctions implements FunctionProvider
             // strings as parameter and returns a list of these strings converted to upper case",
             // "implement lower(...) for the same list as well"): a rule normalises the DATASET
             // side of a name comparison — upper(get_column_order_from_dataset()),
-            // upper(varname()) — against the library's upper-case names. A MISSING element — a
-            // MissingValue, or a null (the raw channel's "contributes nothing") — is carried
-            // through UNCHANGED, in its position (register D36: missing propagates through the
-            // string functions, upper named first); it is never folded to "" nor to its rendered
-            // marker. Only a present element is folded.
+            // upper(varname()) — against the library's upper-case names. A MISSING element (a
+            // MissingValue) is carried through UNCHANGED, in its position (register D36: missing
+            // propagates through the string functions, upper named first); it is never folded to
+            // "" nor to its rendered marker. Only a present element is folded. ⛔ A null element
+            // is NOT a way of saying missing — nothing is ever null (owner, 2026-09-18); one here
+            // is a defect in the list's producer. It is passed through only so the fold does not
+            // disguise it as ""; PLAN-no-null-list-elements makes the producers null-free.
             Object raw = x.value(row).resolved();
             if (raw instanceof Collection<?> col)
             {
