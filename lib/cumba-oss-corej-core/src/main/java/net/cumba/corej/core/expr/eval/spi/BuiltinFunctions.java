@@ -973,17 +973,22 @@ public final class BuiltinFunctions implements FunctionProvider
             // strings as parameter and returns a list of these strings converted to upper case",
             // "implement lower(...) for the same list as well"): a rule normalises the DATASET
             // side of a name comparison — upper(get_column_order_from_dataset()),
-            // upper(varname()) — against the library's upper-case names. A MISSING element folds
-            // exactly as a missing scalar does below: to "" (a null element already did).
+            // upper(varname()) — against the library's upper-case names. A MISSING element is
+            // carried through UNCHANGED, in its position (register D36: missing propagates through
+            // the string functions, upper named first) — never folded to "" nor to its rendered
+            // marker. A null element (the raw channel's "contributes nothing") folds to "".
             Object raw = x.value(row).resolved();
             if (raw instanceof Collection<?> col)
             {
-                List<String> folded = new ArrayList<>(col.size());
+                List<Object> folded = new ArrayList<>(col.size());
                 for (Object item : col)
                 {
-                    String s = item == null
-                            || Primitives.MemberSet.missingIdentityOfMember(item) != null ? ""
-                                    : item.toString();
+                    if (Primitives.MemberSet.missingIdentityOfMember(item) != null)
+                    {
+                        folded.add(item);
+                        continue;
+                    }
+                    String s = item == null ? "" : item.toString();
                     folded.add(toLower ? s.toLowerCase(Locale.ROOT) : s.toUpperCase(Locale.ROOT));
                 }
                 return folded;

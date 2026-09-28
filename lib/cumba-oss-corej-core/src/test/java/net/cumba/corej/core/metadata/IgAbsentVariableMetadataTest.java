@@ -22,6 +22,7 @@ import net.cumba.corej.core.exec.StubMetadataProvider;
 import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.metadata.IMetadataLibrary;
+import net.cumba.datatable.testkit.SyntheticDataTable;
 import net.cumba.web.api.dev.MapResource;
 import org.junit.jupiter.api.Test;
 
@@ -193,6 +194,37 @@ class IgAbsentVariableMetadataTest
         assertEquals(Map.of("name", "XXTERM", "simpleDatatype", "Char", "role", "Topic"),
                 provider.getIgAbsentVariableMetadata(xx, NO_RESOLVER, "XX", "XXTERM"),
                 "the provider's own answer is the allow-list too");
+    }
+
+
+    /**
+     * The tier is keyed by the dataset's own spelling (the finding enrichment and the Check pass
+     * the column name as the dataset carries it), and matches it to the model row ignoring letter
+     * case like every other tier (owner ruling 2026-09-28, register {@code CIT §1}): a SAS-exported
+     * {@code xxterm} reads {@code XXTERM}'s row. Compared case-sensitively the tier answered
+     * {@code {}} for every lowercase column. The row names the variable in the model's spelling.
+     * Mockito-free: a real {@link SyntheticDataTable}.
+     */
+    @Test
+    void aLowercaseColumnReadsItsScopeClassRow()
+    {
+        MetadataLibraryProvider provider = igViewProvider();
+        Map<String, String> expected = Map.of("name", "XXTERM", "simpleDatatype", "Char", "role",
+                "Topic");
+        for (List<String> columns : List.of(
+                List.of("DOMAIN", "STUDYID", "USUBJID", "XXSEQ", "XXTERM", "XXDTC"),
+                List.of("domain", "studyid", "usubjid", "xxseq", "xxterm", "xxdtc")))
+        {
+            IDataTable xx = new SyntheticDataTable("XX", columns, new String[]
+            {
+                    "XX"
+            }, 1);
+            String term = columns.get(4);
+            assertEquals(expected, read(provider, xx, NO_RESOLVER, term), term);
+            assertEquals(expected,
+                    provider.getIgAbsentVariableMetadata(xx, NO_RESOLVER, "XX", term),
+                    term + ": the provider's own answer");
+        }
     }
 
 

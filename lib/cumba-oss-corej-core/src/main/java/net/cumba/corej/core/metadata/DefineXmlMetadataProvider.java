@@ -144,7 +144,11 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
         Map<String, String> direct = null;
         for (Map<String, String> v : define.getVariables(domain))
         {
-            if (variable.equals(v.get("name")))
+            // The dataset's column is matched to its ItemDef by NAME, ignoring letter case
+            // (register
+            // CIT §1): a lowercase paramcd reads the PARAMCD ItemDef. Codelist and decode VALUES
+            // stay exact.
+            if (variable.equalsIgnoreCase(v.get("name")))
             {
                 direct = toProviderKeys(v);
                 break;

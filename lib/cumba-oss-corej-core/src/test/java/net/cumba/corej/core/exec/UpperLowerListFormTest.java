@@ -167,20 +167,27 @@ class UpperLowerListFormTest
 
 
     @Test
-    void aMissingElementFoldsLikeAMissingScalarToTheEmptyString()
+    void aMissingElementStaysTheMissingValue()
     {
-        // No authored list can spell a missing member, so the fold is called as the compiler
-        // calls it, on a list that carries one. upper(«missing») is "" for a scalar; an element
-        // folds the same way, and lower agrees.
+        // Register D36 (propagation): missing propagates through the string functions, upper
+        // named first. The list form is new behaviour this plan defines, so it follows D36: a
+        // MissingValue element is carried through UNCHANGED (never folded to "" nor to its
+        // rendered marker), in its position; the present elements around it fold. No authored
+        // list can spell a missing member, so the fold is called as the compiler calls it, on a
+        // list that carries one. A null element (the raw channel's "contributes nothing") keeps
+        // its pre-plan fold to "".
         List<Object> withMissing = new ArrayList<>();
         withMissing.add("aeSeq");
         withMissing.add(MissingValue.MIS);
+        withMissing.add(MissingValue.MIS_A);
         withMissing.add(null);
         IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").build();
         EvalRun run = EvalRun.fullRange(EvaluationContext.builder().table(ae)
                 .datasetResolver(NO_RESOLVER).variables(new LinkedHashMap<>()).build());
-        assertEquals(List.of("AESEQ", "", ""), fold("upper", run, withMissing));
-        assertEquals(List.of("aeseq", "", ""), fold("lower", run, withMissing));
+        assertEquals(List.of("AESEQ", MissingValue.MIS, MissingValue.MIS_A, ""),
+                fold("upper", run, withMissing));
+        assertEquals(List.of("aeseq", MissingValue.MIS, MissingValue.MIS_A, ""),
+                fold("lower", run, withMissing));
     }
 
 

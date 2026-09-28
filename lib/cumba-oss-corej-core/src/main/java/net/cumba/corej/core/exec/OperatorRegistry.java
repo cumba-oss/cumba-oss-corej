@@ -454,8 +454,11 @@ public final class OperatorRegistry
      * string: it compares as every string does, case-sensitively (owner, 2026-09-28,
      * {@code PLAN-case-insensitive-templates} §1 / register {@code CIT §3}: <i>"a String that
      * contains a column name is still a string in the engine"</i>). Review round 1 of that plan had
-     * made this comparison ignore case (E5); the owner reverted it. Case-insensitivity for a name a
-     * rule handles as a value is spelled in the rule, with {@code upper(…)}.
+     * made this comparison ignore case (E5); the owner reverted it. The engine reads the
+     * {@code QNAM} cell here itself — for a qualified {@code Requirements} entry and the
+     * {@code Check}'s dotted {@code exists} alike, as {@code OperationExecutor.evalSuppQnamJoin}
+     * does for {@code supp_qnam_present} / {@code supp_qnam_value} — so a rule has no place to fold
+     * it: a lowercase {@code QNAM} cell does not match an upper-case qualifier name.
      * </p>
      * <p>
      * Fix #124 widened the visibility to package-private so {@link ScopeVariableSource} can reuse

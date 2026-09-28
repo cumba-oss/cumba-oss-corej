@@ -3035,7 +3035,9 @@ public final class MetadataLibraryProvider implements MetadataProvider
         }
         for (ResolvedVariable v : buildResolvedSdtm(aDomain, DatasetInHand.of(aTable, aResolver)))
         {
-            if (aVariable.equals(v.name()))
+            // A column name in the dataset's own spelling, matched ignoring letter case like every
+            // other tier (register CIT §1): a lowercase xxterm reads XXTERM's model row.
+            if (aVariable.equalsIgnoreCase(v.name()))
             {
                 return servedIgAbsentAttributes(v);
             }

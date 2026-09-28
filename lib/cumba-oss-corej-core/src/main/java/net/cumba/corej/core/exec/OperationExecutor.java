@@ -846,12 +846,12 @@ public final class OperationExecutor
      * {@code ""} unconditionally.
      * </p>
      * <p>
-     * {@code LibraryValidator.classNameFor} computes the same Python {@code ap_suffix} to inherit
-     * an AP dataset's class from its parent domain. The two are deliberately <em>not</em> shared:
-     * that one gates on the {@code DOMAIN} <em>column</em> and reads an already-resolved CDISC
-     * domain, this one gates on a non-empty row-0 {@code DOMAIN} <em>value</em>. Unifying them
-     * would change which class an AP dataset inherits — a {@code Scope.Classes}-wide blast radius
-     * unrelated to EC-36. If either is edited, re-check the other.
+     * {@code ScopeClassLadder.classOf} computes the same Python {@code ap_suffix} to inherit an AP
+     * dataset's class from its parent domain. The two are deliberately <em>not</em> shared: that
+     * one gates on the {@code DOMAIN} <em>column</em> and reads an already-resolved CDISC domain,
+     * this one gates on a non-empty row-0 {@code DOMAIN} <em>value</em>. Unifying them would change
+     * which class an AP dataset inherits — a {@code Scope.Classes}-wide blast radius unrelated to
+     * EC-36. If either is edited, re-check the other.
      * </p>
      */
     static String apSuffixOf(IDataTable table, @Nullable String domainCode)
@@ -2978,10 +2978,11 @@ public final class OperationExecutor
         long rowCount = supp.getRowCount();
         for (long r = 0; r < rowCount; r++)
         {
-            // A QNAM cell is a value and compares as a string, case-sensitively (owner
+            // A QNAM cell is a value and the pivot compares it exactly, as a string (owner
             // 2026-09-28, CIT §3: "a String that contains a column name is still a string") — as
-            // OperatorRegistry.existsInSuppQnam does. A rule that wants a case-insensitive QNAM
-            // match spells upper(QNAM) itself.
+            // OperatorRegistry.existsInSuppQnam does. The engine reads QNAM here itself, so a rule
+            // has no place to fold it: a lowercase QNAM cell does not match an upper-case
+            // qualifier name.
             if (!qnam.equals(stringAt(supp, qnamIdx, r)))
             {
                 continue;
@@ -4681,11 +4682,11 @@ public final class OperationExecutor
 
 
     /**
-     * The dataset's column names in declaration order — the ONE implementation, shared by
-     * {@link StandardVariableSelector}, {@link RecordKeyResolver}, {@code LibraryValidator} (the
-     * scope matcher's tier-3 sniff) and {@code MetadataLibraryProvider} (the SDTM walks' class for
-     * a domain the run's IG does not define, {@code PLAN-custom-domain-model-walk} S2). Public for
-     * the last two, which live outside this package.
+     * The dataset's column names in declaration order, in the dataset's own spelling — read by
+     * {@code ScopeClassLadder.classOf} (the scope matcher's tier-3 sniff, and through it the SDTM
+     * walks' class for a domain the run's IG does not define, {@code PLAN-custom-domain-model-walk}
+     * S2), which hands the set to the class sniffer; the sniffer folds the case itself. Public
+     * because {@code ScopeClassLadder} lives outside this package.
      */
     public static Set<String> datasetColumnNames(IDataTable table)
     {

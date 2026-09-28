@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.function.Function;
 import net.cumba.cdisc.define.Alias;
 import net.cumba.cdisc.define.CheckValue;
@@ -441,7 +442,11 @@ public final class VlmResolver
     {
         if (domainKey != null)
         {
-            byVar.computeIfAbsent(domainKey, _ -> new LinkedHashMap<>()).putAll(vars);
+            // Keyed by variable NAME ignoring letter case: resolve() is probed with the dataset's
+            // own column spelling (register CIT §1), so a lowercase lbstresc reads LBSTRESC's
+            // ValueListDef.
+            byVar.computeIfAbsent(domainKey, _ -> new TreeMap<>(String.CASE_INSENSITIVE_ORDER))
+                    .putAll(vars);
         }
     }
 
