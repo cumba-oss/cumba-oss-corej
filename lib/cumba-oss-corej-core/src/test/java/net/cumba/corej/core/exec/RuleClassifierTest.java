@@ -272,6 +272,28 @@ class RuleClassifierTest
         }
 
 
+        /**
+         * The DATASET rationale lists the leaves it judged, capped at four so it stays readable: a
+         * fifth leaf is counted, not printed.
+         */
+        @Test
+        void theDatasetRationaleCapsTheLeafListAtFour()
+        {
+            StringBuilder leaves = new StringBuilder();
+            for (int i = 1; i <= 5; i++)
+            {
+                leaves.append(i == 1 ? "" : ",").append("{\"expression\": \"var_exists(\\\"A")
+                        .append(i).append("\\\")\"}");
+            }
+            RuleClassifier.Derived<Sensitivity> s = RuleClassifier
+                    .deriveSensitivity(rule("{\"Check\":{\"all\":[" + leaves + "]}}"));
+            assertEquals(Sensitivity.DATASET, s.value());
+            assertTrue(s.rationale().contains(", … +1)"), s.rationale());
+            assertTrue(s.rationale().contains("A4"), s.rationale());
+            assertFalse(s.rationale().contains("A5"), s.rationale());
+        }
+
+
         @Test
         void aPerRecordLeafMakesItRecord()
         {

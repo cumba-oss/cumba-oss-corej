@@ -492,6 +492,28 @@ class WildcardExpanderTest
         assertEquals("var_not_exists(\"SAFFL\")", rendered(safCheck.getConditions().get(1)));
     }
 
+
+    /**
+     * An exists-family literal that carries no wildcard is not the expansion's to rename: it stays
+     * byte-identical in every expanded rule while its sibling's marker is substituted.
+     */
+    @Test
+    void expand_existsLiteralWithoutAMarkerIsKept()
+    {
+        Rule template = buildTemplateRule("CDISC-AD0007", Sensitivity.DATASET,
+                new CheckConditionAll(
+                        List.of(expr("var_exists(\"*FN\")"), expr("var_exists(\"ARM\")"))),
+                List.of("*FN"));
+
+        IDataTable table = MockTable.withColumns("SAFFN", "ARM");
+
+        List<Rule> expanded = WildcardExpander.expand(template, table.getMetaData());
+        assertEquals(1, expanded.size());
+        CheckConditionAll check = (CheckConditionAll) expanded.get(0).getCheck();
+        assertEquals("var_exists(\"SAFFN\")", rendered(check.getConditions().get(0)));
+        assertEquals("var_exists(\"ARM\")", rendered(check.getConditions().get(1)));
+    }
+
     // ---- Fix #23 — mixed-group expansion ----
 
 

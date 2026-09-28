@@ -398,6 +398,32 @@ class DatasetRuleResolverTest
                 skipped.getFirst().reason());
     }
 
+
+    /**
+     * A template the scope gate admits (no {@code Requirements.Variables} to pre-filter it) whose
+     * wildcard then matches no column of the dataset is audited as a skipped source rule with the
+     * expander's NoMatch reason — never silently dropped from the audit.
+     */
+    @Test
+    void wildcardTemplateMatchingNoColumnIsAuditedAsNoMatch()
+    {
+        Rule template = wildcardScopedTemplate();
+        template.setRequirements(null);
+        DatasetRuleResolver gen = new DatasetRuleResolver(new AdamMockLibraryProvider());
+        gen.setStaticRules(List.of(template));
+
+        GeneratedRulePackage pkg = gen(gen, MockTable.withColumns("STUDYID", "USUBJID", "AVAL"),
+                "ADLBC", "BASIC DATA STRUCTURE");
+
+        assertTrue(pkg.getRules().stream()
+                .noneMatch(r -> String.valueOf(r.getCore().getId()).startsWith("TEST-WCSCOPE")));
+        List<SkippedSourceRule> skipped = pkg.getSkippedSourceRules().stream()
+                .filter(s -> "TEST-WCSCOPE".equals(s.rule().getCore().getId())).toList();
+        assertEquals(1, skipped.size());
+        assertEquals("Template did not match any columns in dataset ADLBC",
+                skipped.getFirst().reason());
+    }
+
     // ---- Phase G7: Deduplication ----
 
     // ---- Category 4: Expected Variable ----
