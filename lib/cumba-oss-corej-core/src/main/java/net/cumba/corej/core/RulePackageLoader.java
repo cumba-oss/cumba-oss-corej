@@ -561,10 +561,13 @@ public class RulePackageLoader
 
     /**
      * Per-rule variant of {@link #normalizeOperations(RulePackage)}: materialises the authored
-     * {@code Bindings:} entries ({@code name:} + {@code expression:}, phase 7b) into the field-form
-     * {@link Operation} records the {@code OperationExecutor} consumes. Public for the same reason
-     * as {@link #deriveOmittedFields(Rule)}: anything that binds a {@link Rule} outside this loader
-     * — the {@code rulespec} harness ({@code RuleScaffold}), a tool, an editor preview — must apply
+     * {@code Bindings:} entries ({@code name:} + {@code expression:}, phase 7b) — a single
+     * top-level operation call into the field-form {@link Operation} record the
+     * {@code OperationExecutor} consumes, any other expression into a
+     * {@link net.cumba.corej.core.model.CompiledBinding} ({@code PLAN-binding-expressions} wave 0;
+     * the one routing predicate is {@code BindingRouting}). Public for the same reason as
+     * {@link #deriveOmittedFields(Rule)}: anything that binds a {@link Rule} outside this loader —
+     * the {@code rulespec} harness ({@code RuleScaffold}), a tool, an editor preview — must apply
      * the same pass, or a shipped rule's declared bindings never reach {@code getOperations()} and
      * silently resolve {@code null}. Idempotent; a malformed expression lands on the rule's
      * {@code loadError} channel, preserving any earlier cause.

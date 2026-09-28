@@ -9,10 +9,9 @@ import net.cumba.corej.core.expr.convert.OperationExpressionParser;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One authored {@code Bindings:} entry — the <b>only</b> authoring surface for a rule's operation
- * bindings since phase 7b of {@code PLAN-typed-expression-engine.md} (owner rulings 2026-09-17):
- * the {@code $}-variable {@link #name} plus the single function-call {@link #expression} that
- * computes it, e.g.
+ * One authored {@code Bindings:} entry — the <b>only</b> authoring surface for a rule's bindings
+ * since phase 7b of {@code PLAN-typed-expression-engine.md} (owner rulings 2026-09-17): the
+ * {@code $}-variable {@link #name} plus the {@link #expression} that computes it, e.g.
  *
  * <pre>{@code
  * Bindings:
@@ -21,11 +20,13 @@ import org.jspecify.annotations.Nullable;
  * }</pre>
  *
  * <p>
- * {@code RulePackageLoader.normalizeOperations} materialises each binding into the executor's
- * internal bound-argument record ({@link Operation}) via
- * {@link net.cumba.corej.core.expr.convert.OperationExpressionParser}. The {@link Operation} class
- * is <em>not</em> an authoring surface any more — {@code Rule.operations} is {@code @JsonIgnore} —
- * so nothing field-shaped binds from YAML/JSON.
+ * {@code RulePackageLoader.normalizeOperations} routes each binding ({@code BindingRouting},
+ * {@code PLAN-binding-expressions} wave 0): a <b>single top-level operation call</b> is
+ * materialised into the executor's internal bound-argument record ({@link Operation}) via
+ * {@link net.cumba.corej.core.expr.convert.OperationExpressionParser}; <b>any other expression</b>
+ * becomes a {@link CompiledBinding}, compiled like the Check. The {@link Operation} class is
+ * <em>not</em> an authoring surface any more — {@code Rule.operations} is {@code @JsonIgnore} — so
+ * nothing field-shaped binds from YAML/JSON.
  * </p>
  *
  * <p>
@@ -54,9 +55,10 @@ public class Binding
     private @Nullable String name;
 
     /**
-     * The single operation function call computing the binding's value, e.g.
-     * {@code "record_count(group=[USUBJID])"}. Required — the loader files a rule whose binding has
-     * none on the {@code loadError} channel.
+     * The expression computing the binding's value — a single operation call such as
+     * {@code "record_count(group=[USUBJID])"}, or since wave 0 any expression the Check could
+     * contain ({@code "upper(AETERM)"}, {@code "$n - 1"}, {@code "[\"A\", \"B\"]"}). Required — the
+     * loader files a rule whose binding has none on the {@code loadError} channel.
      */
     private @Nullable String expression;
 
