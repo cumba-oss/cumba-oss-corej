@@ -16,6 +16,7 @@ import net.cumba.corej.core.metadata.store.MetadataStore;
 import net.cumba.corej.core.metadata.store.RealCorpusLocator;
 import net.cumba.corej.core.metadata.store.StoreProvenance;
 import net.cumba.web.api.cache.GzipFileApiCache;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -33,6 +34,14 @@ import org.junit.jupiter.api.io.TempDir;
  * the synthetic {@link StoreSeederConformanceTest} pins the same property everywhere. This run is
  * heavyweight (it unpickles ~420 MB twice and gzip-writes an intermediate cache) and exists to
  * prove the property, the measured sizes and the audit's dedup numbers on the real data.
+ * </p>
+ *
+ * <p>
+ * ⭐ The pickle-seeded store is seeded ONCE per class ({@link #pickleSeed}) and read by both tests
+ * (PLAN-fast-gate-tests F4). Both used to seed it separately, with the identical seeder, source and
+ * options, so the second seed was a third unpickle of the whole corpus that could only produce the
+ * same bytes; the first test's byte comparison against the web-api store now covers the very file
+ * the second test reads.
  * </p>
  */
 class StoreSeederRealDataConformanceTest
@@ -64,6 +73,27 @@ class StoreSeederRealDataConformanceTest
     @TempDir
     private Path temp;
 
+    /**
+     * Holds the one pickle-seeded store; class-scoped, so it outlives each test's {@link #temp}.
+     */
+    @TempDir
+    private static Path sharedTemp;
+
+    /** The pickle seed, made on first use by {@link #pickleSeed}; {@code null} until then. */
+    private static @Nullable PickleSeed pickleSeed;
+
+    /**
+     * The pickle-seeded store and the seeder's report on it.
+     *
+     * @param store
+     *            the seeded store zip.
+     * @param report
+     *            the seeder's report.
+     */
+    private record PickleSeed(Path store, StoreSeedReport report)
+    {
+    }
+
     @Test
     void bothSeedersProduceAByteIdenticalStoreFromTheRealCorpus() throws IOException
     {
@@ -77,9 +107,9 @@ class StoreSeederRealDataConformanceTest
         assumeTrue(recordedProducts != null,
                 "real web cache (for /mdr/products) not present - skipping");
 
-        Path fromPickles = temp.resolve("from-pickles.zip");
-        StoreSeedReport pickleReport = new PickleStoreSeeder(new LocalPickleSource(realPickles))
-                .seed(StoreSeedOptions.of(fromPickles).withProvenanceOverride(FIXED_PROVENANCE));
+        PickleSeed seed = pickleSeed(realPickles);
+        Path fromPickles = seed.store();
+        StoreSeedReport pickleReport = seed.report();
 
         Path webCache = Files.createDirectories(temp.resolve("web-cache"));
         new PickleCacheSeeder().seed(SeedOptions
@@ -135,9 +165,7 @@ class StoreSeederRealDataConformanceTest
     {
         assumeTrue(RealCorpusLocator.locate().isPresent(), RealCorpusLocator.ABSENT_MESSAGE);
         Path realPickles = RealCorpusLocator.locate().orElseThrow();
-        Path store = temp.resolve("pickles-only.zip");
-        new PickleStoreSeeder(new LocalPickleSource(realPickles))
-                .seed(StoreSeedOptions.of(store).withProvenanceOverride(FIXED_PROVENANCE));
+        Path store = pickleSeed(realPickles).store();
 
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(store.toFile()))
@@ -190,6 +218,33 @@ class StoreSeederRealDataConformanceTest
                     "CDASHIG 2.3 domains/scenarios/fields are stored as levels (T1-9, S18): "
                             + domains + "/" + scenarios + "/" + fields);
         }
+    }
+
+
+    /**
+     * The store {@link PickleStoreSeeder} writes from the real pickle corpus with
+     * {@link #FIXED_PROVENANCE}, seeded on the first call and handed to every later one. Nothing
+     * writes to the store after the seed: both tests only open it for reading.
+     *
+     * @param aRealPickles
+     *            the real pickle corpus.
+     * @return the seed.
+     * @throws IOException
+     *             if the seed fails; a later call then seeds again rather than reusing a partial
+     *             store.
+     */
+    private static synchronized PickleSeed pickleSeed(Path aRealPickles) throws IOException
+    {
+        PickleSeed seed = pickleSeed;
+        if (seed == null)
+        {
+            Path store = sharedTemp.resolve("from-pickles.zip");
+            StoreSeedReport report = new PickleStoreSeeder(new LocalPickleSource(aRealPickles))
+                    .seed(StoreSeedOptions.of(store).withProvenanceOverride(FIXED_PROVENANCE));
+            seed = new PickleSeed(store, report);
+            pickleSeed = seed;
+        }
+        return seed;
     }
 
 
