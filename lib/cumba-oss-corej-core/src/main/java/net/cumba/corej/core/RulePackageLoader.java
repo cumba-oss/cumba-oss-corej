@@ -4205,8 +4205,9 @@ public class RulePackageLoader
      * <p>
      * ⚠ Three kinds of pattern, two identities (review rounds 2 E-L1 and 3 R3-2): a <b>glob</b>
      * compiles {@code CASE_INSENSITIVE} and its literal runs are quoted, so two spellings differing
-     * only in case are one shape and are folded; a <b>marker template</b> ({@code TRTxxP}) is
-     * matched case-<b>sensitively</b> — the lowercase markers are the whole point — and a
+     * only in case are one shape and are folded; a <b>marker template</b> ({@code TRTxxP}) is keyed
+     * exactly because its lowercase markers are what make it a template ({@code TRTXXP} is a
+     * literal) — the compiled template still matches column names ignoring case (CIT §1) — and a
      * <b>{@code /regex/}</b> carries escapes ({@code \d} vs {@code \D}) and inline flags
      * ({@code (?-i)}) that case-insensitive matching does not neutralise, so both are keyed
      * exactly. And a literal whose fold equals a pattern entry's fold
