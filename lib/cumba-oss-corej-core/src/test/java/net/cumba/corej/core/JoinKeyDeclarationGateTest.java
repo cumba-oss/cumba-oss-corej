@@ -280,10 +280,11 @@ class JoinKeyDeclarationGateTest
     /**
      * The gate's population floor over the corpus it can see (review round 4, H6). The corpus lint
      * pins the keyed entries of the authored corpus, which lives in another repository; here the
-     * same census runs over the engine's own hand-written rule package
-     * ({@code rules/rulepackageloader-fixture.json}) — every keyed entry of it loads with no §5.7
-     * error, and the three counts are pinned so a fixture edit that removes the last entry of a
-     * kind cannot leave that arm untested in silence. The per-arm sabotage pairs above are what
+     * same census runs over the engine's own rule package
+     * ({@code rules/rulepackageloader-fixture.json}, a frozen, hand-maintained snapshot of seven
+     * published rules that nothing syncs with the corpus) — every keyed entry of it loads with no
+     * §5.7 error, and the three counts are pinned so a fixture edit that removes the last entry of
+     * a kind cannot leave that arm untested in silence. The per-arm sabotage pairs above are what
      * prove each arm fires.
      */
     @Test

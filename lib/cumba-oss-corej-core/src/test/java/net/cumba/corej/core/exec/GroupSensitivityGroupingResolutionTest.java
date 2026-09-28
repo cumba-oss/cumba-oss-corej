@@ -28,7 +28,12 @@ import org.junit.jupiter.api.Test;
  * wildcard form ({@code --TESTCD}); the table carries the domain-resolved column
  * ({@code LBTESTCD}). Before the fix, {@code executeGrouped} built the grouping index over the raw
  * {@code --} names, so {@code createIndex} found no matching column, returned {@code null}, and the
- * rule silently produced <b>zero</b> violations on every dataset.</li>
+ * rule silently produced <b>zero</b> violations on every dataset. Today the names are resolved at
+ * bind time by {@code RuleSpecialiser} (D77) — an unresolved {@code --} reaching the runner ERRORs
+ * the rule — and {@code RuleRunner.resolveGroupingPrefixes} only re-applies the substitution to
+ * names that are already concrete. The failure mode left to guard is a resolution to the WRONG
+ * prefix: concrete names that match no column, which the absent-column fallback below silently
+ * collapses into one group. That is why the resolution test carries TWO groups.</li>
  * <li><b>Silently dropping unavailable grouping columns.</b> A grouping column absent from the
  * dataset (e.g. the permissible {@code --SCAT}) must be dropped — grouping by the remaining present
  * columns — rather than nulling the whole index. When none remain, the whole dataset is a single
@@ -70,9 +75,10 @@ class GroupSensitivityGroupingResolutionTest
 
 
     /**
-     * Builds a 2-row LB table from an ordered column→(row0,row1) map. {@code LBSEQ} is a LONG
-     * column; everything else is STRING. The two {@code LBSTRESU} values are intentionally
-     * inconsistent (g/L vs mg/dL) so any rule that groups the two rows together fires.
+     * Builds an LB table from an ordered column→(row0, row1, …) map; the row count is the first
+     * column's length. {@code LBSEQ} is a LONG column numbered from 1 (its map value is ignored);
+     * everything else is STRING. Each test gives rows it groups together intentionally inconsistent
+     * {@code LBSTRESU} values, so the rule fires once per such group.
      */
     private static IDataTable lb(Map<String, String[]> cols)
     {
@@ -113,42 +119,49 @@ class GroupSensitivityGroupingResolutionTest
     {
         // All five grouping columns present (domain-resolved); LBSTAT absent. Before the fix the
         // raw --TESTCD grouping names matched no column -> createIndex null -> 0 violations.
+        //
+        // TWO assessment groups (ALB and GLUC), each internally inconsistent in LBSTRESU. Only a
+        // grouping index built over the correctly RESOLVED names (LBTESTCD, ...) separates them,
+        // giving one group-level violation per group = 2. Were the names resolved to anything
+        // that matches no column (a wrong prefix), every grouping column would read as absent,
+        // the whole dataset would collapse into one group (the all-absent fallback), and the
+        // group verdict would report 1 — so a single-group table could not tell the two apart.
         Map<String, String[]> cols = new LinkedHashMap<>();
         cols.put("STUDYID", new String[]
         {
-                "S1", "S1"
+                "S1", "S1", "S1", "S1"
         });
         cols.put("USUBJID", new String[]
         {
-                "001", "001"
+                "001", "001", "001", "001"
         });
         cols.put("LBSEQ", null);
         cols.put("LBTESTCD", new String[]
         {
-                "ALB", "ALB"
+                "ALB", "ALB", "GLUC", "GLUC"
         });
         cols.put("LBCAT", new String[]
         {
-                "CHEM", "CHEM"
+                "CHEM", "CHEM", "CHEM", "CHEM"
         });
         cols.put("LBSCAT", new String[]
         {
-                "GEN", "GEN"
+                "GEN", "GEN", "GEN", "GEN"
         });
         cols.put("LBSPEC", new String[]
         {
-                "SERUM", "SERUM"
+                "SERUM", "SERUM", "SERUM", "SERUM"
         });
         cols.put("LBMETHOD", new String[]
         {
-                "ENZ", "ENZ"
+                "ENZ", "ENZ", "ENZ", "ENZ"
         });
         cols.put("LBSTRESU", new String[]
         {
-                "g/L", "mg/dL"
+                "g/L", "mg/dL", "mg/dL", "mmol/L"
         });
-        // One failing group (the two rows share all grouping keys) -> one group-level violation.
-        assertEquals(1, run(groupedRule(), lb(cols)));
+        // Two failing groups -> one group-level violation each.
+        assertEquals(2, run(groupedRule(), lb(cols)));
     }
 
 

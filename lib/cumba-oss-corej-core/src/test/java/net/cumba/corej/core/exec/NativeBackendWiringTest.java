@@ -63,19 +63,24 @@ class NativeBackendWiringTest
     }
 
 
+    /**
+     * A record rule carrying its native expression form ({@code SEX == "M"}) runs on the native
+     * backend — the only one since the legacy engine was retired — and flags exactly the matching
+     * rows. (Formerly a native-vs-legacy comparison; with one backend both arms were the same call,
+     * so the comparison proved nothing and was dropped.)
+     */
     @Test
-    void nativeAndLegacyAgreeWhenFlagOn()
+    void nativeBackendFlagsExactlyTheMatchingRows()
     {
         CheckConditionAll check = new CheckConditionAll(List.of(eq("SEX", "M")));
         Rule rule = recordRule(check);
         rule.setCheckExpr(CheckToExpr.toExpr(check));
         IDataTable t = MockTable.of().col("SEX", "M", "F", "M", "").build();
 
-        var legacy = RuleRunnerCalls.execute(rule, t, NO_RESOLVER, null, null, null);
-        var nativ = RuleRunnerCalls.execute(rule, t, NO_RESOLVER, null, null, null);
+        var result = RuleRunnerCalls.execute(rule, t, NO_RESOLVER, null, null, null);
 
-        assertEquals(rows(legacy), rows(nativ), "native must match legacy");
-        assertEquals(bitsOf(0, 2), rows(nativ));
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus());
+        assertEquals(bitsOf(0, 2), rows(result), "rows 0 and 2 carry SEX == M");
     }
 
 

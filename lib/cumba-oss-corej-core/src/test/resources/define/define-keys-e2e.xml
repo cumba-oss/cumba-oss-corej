@@ -10,8 +10,13 @@
         <ItemRef ItemOID="IT.LB.USUBJID" OrderNumber="2" Mandatory="Yes" Role="Identifier"
                  KeySequence="1"/>
         <ItemRef ItemOID="IT.LB.LBTESTCD" OrderNumber="3" Mandatory="Yes" Role="Topic"
-                 KeySequence="2"/>
+                 KeySequence="3"/>
         <ItemRef ItemOID="IT.LB.LBORRES" OrderNumber="4" Mandatory="No" Role="Result Qualifier"/>
+        <!-- LBDTC is declared LAST in ItemRef order but is the SECOND key: KeySequence order
+             (USUBJID, LBDTC, LBTESTCD) differs from ItemRef order (USUBJID, LBTESTCD, LBDTC),
+             so a key list that is not sorted by KeySequence is visibly wrong. -->
+        <ItemRef ItemOID="IT.LB.LBDTC" OrderNumber="5" Mandatory="No" Role="Timing"
+                 KeySequence="2"/>
       </ItemGroupDef>
       <ItemDef OID="IT.LB.STUDYID" Name="STUDYID" DataType="text" Length="20">
         <Description><TranslatedText xml:lang="en">Study Identifier</TranslatedText></Description>
@@ -24,6 +29,9 @@
       </ItemDef>
       <ItemDef OID="IT.LB.LBORRES" Name="LBORRES" DataType="text" Length="20">
         <Description><TranslatedText xml:lang="en">Result in Original Units</TranslatedText></Description>
+      </ItemDef>
+      <ItemDef OID="IT.LB.LBDTC" Name="LBDTC" DataType="datetime">
+        <Description><TranslatedText xml:lang="en">Date/Time of Specimen Collection</TranslatedText></Description>
       </ItemDef>
     </MetaDataVersion>
   </Study>

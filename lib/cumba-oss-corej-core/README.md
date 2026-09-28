@@ -41,11 +41,15 @@ output.
   (`dictionaries/`) and the source censuses (`src/main/java`, sibling
   modules) resolve via module-relative paths (the dataviewer convention
   these tests originated under).
-- The engine tests carry **no copy of corpus rules**. The generated
-  `src/test/resources/fixtures/rules` tree was retired by
+- The engine tests carry **no generated or synced copy of corpus rules**.
+  The generated `src/test/resources/fixtures/rules` tree was retired by
   `PLAN-engine-fixture-join-key-drift` (2026-09-28): an engine test is
   carried by a small rule written inline for the mechanism it tests, and
-  rule verdicts live in the corpus's own `.cdt` scenarios.
+  rule verdicts live in the corpus's own `.cdt` scenarios. The one
+  exception is `src/test/resources/rules/rulepackageloader-fixture.json`,
+  a frozen, hand-maintained snapshot of seven published rules that the
+  loader tests (`RulePackageLoaderTest`) read: nothing syncs it with the
+  corpus, and nothing needs to.
 - The **spec harness** is no longer in this module — it moved to
   `cumba-oss-corej-rules` on 2026-09-01, alongside the corpus its specs
   resolve against. There, every YAML spec under `rulespec/specs/` runs

@@ -117,18 +117,23 @@ class DefineVariableAndKeyOperationsTest
     }
 
 
-    /** LB declares USUBJID (KeySequence 1) and LBTESTCD (2); STUDYID and LBORRES are not keys. */
+    /**
+     * LB declares USUBJID (KeySequence 1), LBDTC (2) and LBTESTCD (3); STUDYID and LBORRES are not
+     * keys. LBDTC is the LAST ItemRef, so ItemRef order would answer
+     * {@code [USUBJID, LBTESTCD, LBDTC]} — only a KeySequence sort answers the expected order.
+     */
     @Test
     void defineKeyVariables_answersTheKeysInKeySequenceOrder() throws IOException
     {
         IDataTable lb = MockTable.of().name("LB").col("STUDYID", "S1").col("USUBJID", "S1-001")
-                .col("LBTESTCD", "ALB").col("LBORRES", "40").build();
+                .col("LBTESTCD", "ALB").col("LBORRES", "40").col("LBDTC", "2026-01-01").build();
 
         RuleExecutionResult r = RuleRunnerCalls.execute(rule(KEY_VARIABLES_RULE, "K1"), lb,
                 _ -> null, "LB", null, null, lbDefine);
         assertEquals(RuleExecutionStatus.EXECUTED, r.getStatus());
         assertEquals(1, r.getViolationCount());
-        assertEquals("[USUBJID, LBTESTCD]", r.getViolations().get(0).getValues().get("$keys"));
+        assertEquals("[USUBJID, LBDTC, LBTESTCD]",
+                r.getViolations().get(0).getValues().get("$keys"));
     }
 
 

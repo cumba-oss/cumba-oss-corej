@@ -23,6 +23,12 @@ import org.junit.jupiter.api.Test;
  * {@code var_*(…, "DATA")} vs {@code var_*(…, "DEFINE")} accessors, exercised end-to-end against
  * the real {@code define-itemmeta-e2e.xml} overlay (DM: {@code AGE} label "Age"/integer,
  * {@code SEX} label "Sex"/text), on a hand-written rule ({@link #LEGACY_TYPE_RULE}).
+ *
+ * <p>
+ * The "legacy" in the rule constant and the {@code ec2_legacyLane_*} method names is historical: it
+ * names the retired {@code --no-native-eval} lane these tests were written for. The native
+ * evaluator is now the only backend, so both tests run the rule through it.
+ * </p>
  */
 class DefineVsDataAttributeCompareTest
 {
@@ -42,7 +48,10 @@ class DefineVsDataAttributeCompareTest
     }
 
 
-    /** Sanity: the define overlay exposes the labels/types the rules compare against. */
+    /**
+     * Sanity: the define overlay exposes the {@code define-itemmeta-e2e.xml} metadata the tests
+     * below rely on (DM.AGE labelled "Age").
+     */
     @Test
     void defineOverlayExposesExpectedMetadata()
     {
@@ -50,12 +59,12 @@ class DefineVsDataAttributeCompareTest
         assertTrue("Age".equals(age.get("label")), "define AGE label");
     }
 
-    // --- EC-2 (Q-6b): the legacy kill-switch lane (--no-native-eval) must normalize the raw
-    // Define vocab in RuleRunner.buildVariableMetadata, so `define_variable_data_type` is compared
-    // as Num/Char (matching the data-side operand), not as the raw "integer"/"text" tokens. A
-    // flat-authored CheckConditionAll rule (not a CheckConditionExpression) with nativeEval=false
-    // takes the legacy operand cascade — the exact path that reads buildVariableMetadata's map. The
-    // define overlay declares DM.AGE integer (→Num) and DM.SEX text (→Char).
+    // --- EC-2 (Q-6b): the Define-side type must be compared as Num/Char (matching the data-side
+    // operand), not as the raw Define "integer"/"text" tokens. Written for the retired legacy lane
+    // (--no-native-eval), which read the raw vocab through RuleRunner.buildVariableMetadata; the
+    // flat-authored all-of Check below now runs on the native evaluator, the only backend, via
+    // var_type("DATA") vs var_type("DEFINE"). The define overlay declares DM.AGE integer (→Num) and
+    // DM.SEX text (→Char).
     private static final String LEGACY_TYPE_RULE = "{\"rules\":{\"L1\":{\"Core\":{\"Id\":\"L1\"},"
             + "\"Sensitivity\":\"Dataset\",\"Scope\":{\"Domains\":{\"Include\":[\"ALL\"]}},"
             + "\"Check\":{\"all\":[" + "{\"expression\": \"not empty(var_name(\\\"DEFINE\\\"))\"},"
@@ -72,9 +81,9 @@ class DefineVsDataAttributeCompareTest
 
 
     /**
-     * Legacy lane: a numeric AGE column (Num) and text SEX column (Char) both match the define
-     * (integer→Num, text→Char) once EC-2 normalizes the stored Define vocab, so the rule does NOT
-     * fire. Before EC-2 the raw "integer" token compared unequal to "Num" and this over-fired.
+     * A numeric AGE column (Num) and text SEX column (Char) both match the define (integer→Num,
+     * text→Char) once the Define vocab is normalized, so the rule does NOT fire. Before EC-2 the
+     * raw "integer" token compared unequal to "Num" and this over-fired.
      */
     @Test
     void ec2_legacyLane_noFireWhenTypesMatchAfterNormalization()
@@ -85,14 +94,14 @@ class DefineVsDataAttributeCompareTest
         RuleExecutionResult r = RuleRunnerCalls.execute(rule, dm, _ -> null, "DM", null, null,
                 define);
         assertFalse(r.hasViolations(),
-                "legacy lane: Num AGE == define integer(→Num), Char SEX == define text(→Char)");
+                "Num AGE == define integer(→Num), Char SEX == define text(→Char)");
     }
 
 
     /**
-     * Legacy lane: a string AGE column (Char) still fires against the define integer (→Num),
-     * proving the EC-2 normalization is idempotent for the data-side Num/Char operand and does not
-     * mask a genuine type mismatch.
+     * A string AGE column (Char) still fires against the define integer (→Num), proving the EC-2
+     * normalization is idempotent for the data-side Num/Char operand and does not mask a genuine
+     * type mismatch.
      */
     @Test
     void ec2_legacyLane_firesOnGenuineTypeMismatch()
@@ -102,7 +111,7 @@ class DefineVsDataAttributeCompareTest
 
         RuleExecutionResult r = RuleRunnerCalls.execute(rule, dm, _ -> null, "DM", null, null,
                 define);
-        assertTrue(r.hasViolations(), "legacy lane: Char AGE != define integer(→Num)");
+        assertTrue(r.hasViolations(), "Char AGE != define integer(→Num)");
     }
 
 

@@ -17,18 +17,28 @@ import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.Test;
 
 /**
- * End-to-end native/legacy parity guard for a {@code value_is_reference} membership operation whose
- * target domain must be resolved through the SUPP-- prefix rewrite, on a SUPPLB-shaped dataset.
+ * End-to-end guard for a {@code value_is_reference} membership operation whose target domain must
+ * be resolved through the SUPP-- prefix rewrite, on a SUPPLB-shaped dataset.
  *
  * <p>
  * The carrier is a hand-written rule ({@link #SUPP_RDOMAIN_RULE}): {@code IDVAR not in
  * $rdomain_variables}, where {@code $rdomain_variables} is
- * {@code distinct(IDVAR, value_is_reference=true, domain="SUPP--")}. The operation resolves its
- * target via {@code resolver.resolve("SUPPLB")}. When that lookup returns {@code null} (a dataset
- * name-keying mismatch at study-load time) the operation is skipped and the reference resolves to
- * the empty set. Legacy then evaluates the membership against the empty set; the native backend
- * used to throw {@code ExpressionException} for that case. These tests pin that the native row
- * evaluation matches legacy in both the resolvable and the unresolvable case — and never throws.
+ * {@code distinct(IDVAR, value_is_reference=true, domain="SUPP--")}. Each test asserts the exact
+ * set of flagged {@code IDVAR} values against a stated expectation, and that the rule EXECUTED
+ * (never ERROR). Three mechanisms are pinned:
+ * </p>
+ * <ol>
+ * <li><b>SUPP-- rewrite</b> — with the full {@code SUPPLB} prefix, {@code "SUPP--"} becomes
+ * {@code "SUPPLB"}, which resolves, so only {@code BOGUS} (not an LB column) is flagged.</li>
+ * <li><b>Self-reference fallback</b> — when {@code SUPPLB} is not registered by name, the operation
+ * runs against the current table and still flags only {@code BOGUS}.</li>
+ * <li><b>Truncated prefix</b> — the two-character {@code "SU"} prefix rewrites the target to the
+ * unresolvable {@code SUPPSU}; the operation answers the empty set and the rule over-fires on both
+ * rows, without throwing.</li>
+ * </ol>
+ * <p>
+ * The class name is historical: it dates from when a legacy and a native row backend were compared
+ * here. Only the native backend exists now, so nothing is compared against a second engine.
  * </p>
  *
  * <h2>⚠ The {@code domain="SUPP--"} operand is load-bearing</h2> It is what routes the operation
@@ -144,12 +154,11 @@ class SuppReferenceOperationNativeParityTest
         DatasetResolver resolver = inventory(supp, lb, /*registerSupp=*/true);
 
         // "SUPPLB" is the value LibraryValidator now derives (cdiscDomain):
-        // OperationExecutor.resolvePrefixes's
-        // SUPP-aware branch turns "SUPP--" into "SUPPLB", which resolves, so the per-RDOMAIN
-        // column-name set is built and only BOGUS (not an LB column) is flagged.
-        assertEquals(List.of("BOGUS"), flaggedIdvars(rule, supp, resolver, "SUPPLB"), "legacy");
+        // OperationExecutor.resolvePrefixes's SUPP-aware branch turns "SUPP--" into "SUPPLB",
+        // which resolves, so the per-RDOMAIN column-name set is built and only BOGUS (not an LB
+        // column) is flagged; LBSEQ is a real LB column.
         assertEquals(List.of("BOGUS"), flaggedIdvars(rule, supp, resolver, "SUPPLB"),
-                "native must match legacy");
+                "SUPP-- rewritten to the resolvable SUPPLB -> only BOGUS flagged");
     }
 
 
@@ -162,19 +171,14 @@ class SuppReferenceOperationNativeParityTest
         // SUPPLB is NOT registered by name, so the operation's "SUPP--" target ("SUPPLB") does not
         // resolve via resolver.resolve. J7 part 2 (resolveTargetTable self-reference fallback): the
         // current table's name ("SUPPLB") starts with the unresolved domain, so the operation —
-        // which
-        // is self-referential — runs against the current table. $rdomain_variables then reads the
-        // SUPP's own RDOMAIN ("LB") and unions LB's columns (tablesForDomain), so LBSEQ is a real
-        // LB
-        // column (no fire) and only BOGUS is flagged. resolveTargetTable is shared by both
-        // backends,
-        // so legacy and native change identically and parity holds (and neither throws).
+        // which is self-referential — runs against the current table. $rdomain_variables then
+        // reads the SUPP's own RDOMAIN ("LB") and unions LB's columns (tablesForDomain), so LBSEQ
+        // is a real LB column (no fire) and only BOGUS is flagged. Without the fallback the target
+        // would be the empty set and LBSEQ would be flagged too.
         DatasetResolver resolver = inventory(supp, lb, /*registerSupp=*/false);
 
-        List<String> legacy = flaggedIdvars(rule, supp, resolver, "SUPPLB");
-        List<String> nativ = flaggedIdvars(rule, supp, resolver, "SUPPLB");
-        assertEquals(List.of("BOGUS"), legacy, "self-reference fallback resolves the operation");
-        assertEquals(legacy, nativ, "native must match legacy (no ExpressionException)");
+        assertEquals(List.of("BOGUS"), flaggedIdvars(rule, supp, resolver, "SUPPLB"),
+                "self-reference fallback resolves the operation -> only BOGUS flagged");
     }
 
 
@@ -204,11 +208,10 @@ class SuppReferenceOperationNativeParityTest
         // empty set means.
         assertEquals(List.of(), res, "operation target SUPPSU does not resolve -> empty set");
 
-        // With the truncated prefix the full rule does not throw (post-fix) but over-fires.
-        List<String> legacy = flaggedIdvars(rule, supp, resolver, "SU");
-        List<String> nativ = flaggedIdvars(rule, supp, resolver, "SU");
-        assertEquals(List.of("LBSEQ", "BOGUS"), legacy, "truncated prefix -> over-fire (legacy)");
-        assertEquals(legacy, nativ, "native matches legacy under the broken prefix (no throw)");
+        // With the truncated prefix the full rule EXECUTES (no ExpressionException over the empty
+        // set) but over-fires: every non-empty IDVAR is "not in" the empty set.
+        assertEquals(List.of("LBSEQ", "BOGUS"), flaggedIdvars(rule, supp, resolver, "SU"),
+                "truncated prefix -> empty target set -> both rows flagged");
 
         // With the correct full prefix the operation resolves and only BOGUS is flagged.
         assertEquals(List.of("BOGUS"), flaggedIdvars(rule, supp, resolver, "SUPPLB"),
@@ -234,6 +237,8 @@ class SuppReferenceOperationNativeParityTest
     {
         RuleExecutionResult result = RuleRunnerCalls.execute(rule, supp, resolver, domainPrefix,
                 null, null);
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
+                () -> "the rule must execute, never ERROR: " + result.getStatusMessage());
         List<String> idvars = new ArrayList<>();
         result.getViolations().forEach(v -> idvars.add(v.getValues().get("IDVAR")));
         return idvars;
