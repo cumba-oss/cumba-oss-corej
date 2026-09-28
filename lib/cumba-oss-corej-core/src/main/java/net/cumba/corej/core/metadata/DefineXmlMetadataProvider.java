@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.gen.DefineXMLProvider;
 import org.jspecify.annotations.Nullable;
@@ -141,18 +142,28 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
     @Override
     public Map<String, String> getVariableMetadata(String domain, String variable)
     {
+        // The dataset's column is matched to its ItemDef by NAME, ignoring letter case (register
+        // CIT §1): a lowercase paramcd reads the PARAMCD ItemDef. Codelist and decode VALUES stay
+        // exact. When two ItemDefs differ only in case, an exact spelling wins, and otherwise the
+        // FIRST declared — the rule VlmResolver and ExprCompiler.resolveDecodePartner follow too.
         Map<String, String> direct = null;
+        Map<String, String> firstIgnoringCase = null;
         for (Map<String, String> v : define.getVariables(domain))
         {
-            // The dataset's column is matched to its ItemDef by NAME, ignoring letter case
-            // (register
-            // CIT §1): a lowercase paramcd reads the PARAMCD ItemDef. Codelist and decode VALUES
-            // stay exact.
-            if (variable.equalsIgnoreCase(v.get("name")))
+            String name = v.get("name");
+            if (variable.equals(name))
             {
                 direct = toProviderKeys(v);
                 break;
             }
+            if (firstIgnoringCase == null && variable.equalsIgnoreCase(name))
+            {
+                firstIgnoringCase = v;
+            }
+        }
+        if (direct == null && firstIgnoringCase != null)
+        {
+            direct = toProviderKeys(firstIgnoringCase);
         }
         if (direct == null)
         {
@@ -175,7 +186,10 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
     @Override
     public List<String> getColumnOrder(String domain)
     {
-        List<String> order = define.getVariables(domain).stream().map(v -> v.get("name")).toList();
+        // An ItemDef without a Name names no column; it is skipped, as getVariableMetadata and
+        // VlmResolver skip it.
+        List<String> order = define.getVariables(domain).stream().map(v -> v.get("name"))
+                .filter(Objects::nonNull).toList();
         if (order.isEmpty() && fallback != null)
         {
             return fallback.getColumnOrder(domain);

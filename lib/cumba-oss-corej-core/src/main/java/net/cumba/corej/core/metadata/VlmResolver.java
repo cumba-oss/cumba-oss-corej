@@ -85,13 +85,13 @@ public final class VlmResolver
     private final Map<String, CodeList> codeListsByOid;
 
     /** domain-key (ItemGroupDef name and/or domain) -&gt; variable name -&gt; its ValueListDef. */
-    private final Map<String, Map<String, ValueListDef>> valueListByVar;
+    private final Map<String, VarKeyed> valueListByVar;
 
     private final List<String> structuralWarnings;
 
     private VlmResolver(Map<String, ItemDef> itemDefsByOid,
             Map<String, WhereClauseDef> whereClausesByOid, Map<String, CodeList> codeListsByOid,
-            Map<String, Map<String, ValueListDef>> valueListByVar, List<String> structuralWarnings)
+            Map<String, VarKeyed> valueListByVar, List<String> structuralWarnings)
     {
         this.itemDefsByOid = itemDefsByOid;
         this.whereClausesByOid = whereClausesByOid;
@@ -119,7 +119,7 @@ public final class VlmResolver
         Map<String, CodeList> codeLists = index(mdv.getCodeLists(), CodeList::getOid);
         Map<String, ValueListDef> valueLists = index(mdv.getValueListDefs(), ValueListDef::getOid);
 
-        Map<String, Map<String, ValueListDef>> byVar = new LinkedHashMap<>();
+        Map<String, VarKeyed> byVar = new LinkedHashMap<>();
         List<String> warnings = new ArrayList<>();
         if (mdv.getItemGroupDefs() != null)
         {
@@ -176,7 +176,7 @@ public final class VlmResolver
         {
             return null;
         }
-        Map<String, ValueListDef> vars = valueListByVar.get(domain);
+        VarKeyed vars = valueListByVar.get(domain);
         ValueListDef vl = vars == null ? null : vars.get(variable);
         if (vl == null || vl.getItemRefs() == null)
         {
@@ -437,19 +437,54 @@ public final class VlmResolver
     }
 
 
-    private static void putDomainKey(Map<String, Map<String, ValueListDef>> byVar,
-            @Nullable String domainKey, Map<String, ValueListDef> vars)
+    private static void putDomainKey(Map<String, VarKeyed> byVar, @Nullable String domainKey,
+            Map<String, ValueListDef> vars)
     {
         if (domainKey != null)
         {
-            // Keyed by variable NAME ignoring letter case: resolve() is probed with the dataset's
-            // own column spelling (register CIT §1), so a lowercase lbstresc reads LBSTRESC's
-            // ValueListDef.
-            byVar.computeIfAbsent(domainKey, _ -> new TreeMap<>(String.CASE_INSENSITIVE_ORDER))
-                    .putAll(vars);
+            byVar.computeIfAbsent(domainKey, _ -> new VarKeyed()).putAll(vars);
         }
     }
 
+    /**
+     * A domain's value-list definitions by variable NAME. resolve() is probed with the dataset's
+     * own column spelling (register CIT §1), so a lowercase {@code lbstresc} reads
+     * {@code LBSTRESC}'s ValueListDef. When two ItemDefs differ only in case, an exact spelling
+     * wins, and otherwise the FIRST declared spelling — the rule
+     * {@code DefineXmlMetadataProvider.getVariableMetadata} and
+     * {@code ExprCompiler.resolveDecodePartner} follow too. The exact map keeps its own semantics
+     * (a later ItemGroupDef of the same domain key replaces an identically spelled entry).
+     */
+    private static final class VarKeyed
+    {
+
+        private final Map<String, ValueListDef> exact = new LinkedHashMap<>();
+
+        private final Map<String, String> firstSpelling = new TreeMap<>(
+                String.CASE_INSENSITIVE_ORDER);
+
+        void putAll(Map<String, ValueListDef> vars)
+        {
+            vars.forEach((name, vl) ->
+            {
+                exact.put(name, vl);
+                firstSpelling.putIfAbsent(name, name);
+            });
+        }
+
+
+        @Nullable
+        ValueListDef get(String name)
+        {
+            ValueListDef vl = exact.get(name);
+            if (vl != null)
+            {
+                return vl;
+            }
+            String spelling = firstSpelling.get(name);
+            return spelling == null ? null : exact.get(spelling);
+        }
+    }
 
     private static void validateStructure(Iterable<ValueListDef> valueLists,
             Map<String, WhereClauseDef> whereClauses, Map<String, ItemDef> itemDefs,

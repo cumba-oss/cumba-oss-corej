@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -174,8 +175,9 @@ class UpperLowerListFormTest
         // MissingValue element is carried through UNCHANGED (never folded to "" nor to its
         // rendered marker), in its position; the present elements around it fold. No authored
         // list can spell a missing member, so the fold is called as the compiler calls it, on a
-        // list that carries one. A null element (the raw channel's "contributes nothing") keeps
-        // its pre-plan fold to "".
+        // list that carries one. A null element (the raw channel's "contributes nothing") is a
+        // missing element too and passes through unchanged (review round 3 LOW-2: it used to fold
+        // to "", which made it equal to a present empty string in a membership set).
         List<Object> withMissing = new ArrayList<>();
         withMissing.add("aeSeq");
         withMissing.add(MissingValue.MIS);
@@ -184,9 +186,9 @@ class UpperLowerListFormTest
         IDataTable ae = RealTables.of("AE").str("USUBJID", "S1").build();
         EvalRun run = EvalRun.fullRange(EvaluationContext.builder().table(ae)
                 .datasetResolver(NO_RESOLVER).variables(new LinkedHashMap<>()).build());
-        assertEquals(List.of("AESEQ", MissingValue.MIS, MissingValue.MIS_A, ""),
+        assertEquals(Arrays.asList("AESEQ", MissingValue.MIS, MissingValue.MIS_A, null),
                 fold("upper", run, withMissing));
-        assertEquals(List.of("aeseq", MissingValue.MIS, MissingValue.MIS_A, ""),
+        assertEquals(Arrays.asList("aeseq", MissingValue.MIS, MissingValue.MIS_A, null),
                 fold("lower", run, withMissing));
     }
 

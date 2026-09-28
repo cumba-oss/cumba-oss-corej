@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ODM xmlns:def="http://www.cdisc.org/ns/def/v2.1" ODMVersion="1.3.2" FileType="Snapshot"
+     FileOID="DEF.CASE.VARIANTS" CreationDateTime="2026-01-01T00:00:00">
+  <Study OID="S1">
+    <MetaDataVersion OID="MDV.1" Name="Define names differing only in case" DefineVersion="2.1.0"
+                     StandardName="SDTM-IG" StandardVersion="3.4">
+      <!-- PLAN-case-insensitive-templates review round 3 (LOW-2 / LOW-3). Two ItemDefs per domain
+           whose names differ ONLY in letter case, each carrying a distinguishable payload, so a
+           lookup shows WHICH one it read: an exact spelling must win, and any other spelling
+           must read the FIRST declared. XX also carries an ItemDef without a Name.
+             XX: PARAMCD (code), PARAM (codelist = PARAMCD's decodes), param (a different codelist)
+             LB: LBSTRESC -> VL.LB.A (length 10), lbstresc -> VL.LB.B (length 99)            -->
+      <ItemGroupDef OID="IG.XX" Name="XX" Domain="XX" Repeating="Yes" Purpose="Tabulation"
+                    SASDatasetName="XX">
+        <ItemRef ItemOID="IT.XX.PARAMCD" OrderNumber="1" Mandatory="No" Role="Topic"/>
+        <ItemRef ItemOID="IT.XX.PARAM" OrderNumber="2" Mandatory="No" Role="Synonym Qualifier"/>
+        <ItemRef ItemOID="IT.XX.param" OrderNumber="3" Mandatory="No" Role="Qualifier"/>
+        <ItemRef ItemOID="IT.XX.NONAME" OrderNumber="4" Mandatory="No" Role="Qualifier"/>
+      </ItemGroupDef>
+      <ItemGroupDef OID="IG.LB" Name="LB" Domain="LB" Repeating="Yes" Purpose="Tabulation"
+                    SASDatasetName="LB">
+        <ItemRef ItemOID="IT.LB.LBTESTCD" OrderNumber="1" Mandatory="Yes" Role="Topic"/>
+        <ItemRef ItemOID="IT.LB.LBSTRESC" OrderNumber="2" Mandatory="No" Role="Result Qualifier"/>
+        <ItemRef ItemOID="IT.LB.lbstresc" OrderNumber="3" Mandatory="No" Role="Result Qualifier"/>
+      </ItemGroupDef>
+      <ItemDef OID="IT.XX.PARAMCD" Name="PARAMCD" DataType="text" Length="8">
+        <CodeListRef CodeListOID="CL.PARAMCD"/>
+      </ItemDef>
+      <ItemDef OID="IT.XX.PARAM" Name="PARAM" DataType="text" Length="40">
+        <Description><TranslatedText xml:lang="en">Parameter (upper)</TranslatedText></Description>
+        <CodeListRef CodeListOID="CL.PARAM"/>
+      </ItemDef>
+      <ItemDef OID="IT.XX.param" Name="param" DataType="text" Length="41">
+        <Description><TranslatedText xml:lang="en">Parameter (lower)</TranslatedText></Description>
+        <CodeListRef CodeListOID="CL.OTHER"/>
+      </ItemDef>
+      <ItemDef OID="IT.XX.NONAME" DataType="text" Length="8"/>
+      <ItemDef OID="IT.LB.LBTESTCD" Name="LBTESTCD" DataType="text" Length="8"/>
+      <ItemDef OID="IT.LB.LBSTRESC" Name="LBSTRESC" DataType="text" Length="20">
+        <def:ValueListRef ValueListOID="VL.LB.A"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.lbstresc" Name="lbstresc" DataType="text" Length="20">
+        <def:ValueListRef ValueListOID="VL.LB.B"/>
+      </ItemDef>
+      <ItemDef OID="IT.LB.A.GLUC" Name="LBSTRESC_GLUC_A" DataType="text" Length="10"/>
+      <ItemDef OID="IT.LB.B.GLUC" Name="LBSTRESC_GLUC_B" DataType="text" Length="99"/>
+      <def:ValueListDef OID="VL.LB.A">
+        <ItemRef ItemOID="IT.LB.A.GLUC" OrderNumber="1" Mandatory="Yes">
+          <def:WhereClauseRef WhereClauseOID="WC.LB.GLUC"/>
+        </ItemRef>
+      </def:ValueListDef>
+      <def:ValueListDef OID="VL.LB.B">
+        <ItemRef ItemOID="IT.LB.B.GLUC" OrderNumber="1" Mandatory="Yes">
+          <def:WhereClauseRef WhereClauseOID="WC.LB.GLUC"/>
+        </ItemRef>
+      </def:ValueListDef>
+      <def:WhereClauseDef OID="WC.LB.GLUC">
+        <RangeCheck Comparator="EQ" SoftHard="Soft" def:ItemOID="IT.LB.LBTESTCD">
+          <CheckValue>GLUC</CheckValue>
+        </RangeCheck>
+      </def:WhereClauseDef>
+      <CodeList OID="CL.PARAMCD" Name="Parameter Code" DataType="text">
+        <CodeListItem CodedValue="ALB">
+          <Decode><TranslatedText xml:lang="en">Albumin</TranslatedText></Decode>
+        </CodeListItem>
+        <CodeListItem CodedValue="BILI">
+          <Decode><TranslatedText xml:lang="en">Bilirubin</TranslatedText></Decode>
+        </CodeListItem>
+      </CodeList>
+      <CodeList OID="CL.PARAM" Name="Parameter" DataType="text">
+        <EnumeratedItem CodedValue="Albumin"/>
+        <EnumeratedItem CodedValue="Bilirubin"/>
+      </CodeList>
+      <CodeList OID="CL.OTHER" Name="Something else" DataType="text">
+        <EnumeratedItem CodedValue="Other"/>
+      </CodeList>
+    </MetaDataVersion>
+  </Study>
+</ODM>

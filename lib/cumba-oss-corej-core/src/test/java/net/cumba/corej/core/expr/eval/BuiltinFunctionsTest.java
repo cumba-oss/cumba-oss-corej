@@ -124,14 +124,18 @@ class BuiltinFunctionsTest
 
 
     @Test
-    void caseFoldOverACollectionRendersNullElementsAsEmpty()
+    void caseFoldOverACollectionCarriesNullElementsThroughUnchanged()
     {
+        // PLAN-case-insensitive-templates review round 3 (LOW-2): a null element is a missing
+        // element (the raw channel's "contributes nothing") and passes through unchanged, in its
+        // position, like a MissingValue element (register D36) — it no longer folds to "", which
+        // made it equal to a present empty string wherever the folded list is used.
         Vector sets = new ComputedVector(1, net.cumba.datatable.values.DataValueType.STRING,
                 _ -> java.util.Arrays.asList("y", null));
 
         Vector lo = value("lower", 1, sets);
 
-        assertEquals(java.util.Arrays.asList("y", ""), lo.value(0).resolved());
+        assertEquals(java.util.Arrays.asList("y", null), lo.value(0).resolved());
     }
 
 

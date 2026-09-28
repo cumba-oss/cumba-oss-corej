@@ -3935,19 +3935,28 @@ public final class ExprCompiler
     {
         Set<String> decodes = new HashSet<>(codeDecode.values());
         // One snapshot of the domain's define variables — getVariableMetadata rescans per call.
-        // Case-insensitive: probed with the dataset's column names (register CIT §1).
-        Map<String, String> codedValuesByVar = new java.util.TreeMap<>(
-                String.CASE_INSENSITIVE_ORDER);
+        // Probed with the dataset's column names, so matched by NAME ignoring letter case
+        // (register CIT §1). When two ItemDefs differ only in case, an exact spelling wins, and
+        // otherwise the FIRST declared spelling — as DefineXmlMetadataProvider.getVariableMetadata
+        // and VlmResolver resolve it. (An identically spelled duplicate still replaces the earlier
+        // entry, as before.)
+        Map<String, String> codedValuesByVar = new LinkedHashMap<>();
+        Map<String, String> firstSpelling = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for (Map<String, String> v : define.getDomainVariables(domain))
         {
             String name = v.get("name");
             if (name != null)
             {
                 codedValuesByVar.put(name, v.get("codelist_coded_values"));
+                firstSpelling.putIfAbsent(name, name);
             }
         }
-        return resolvePartner(codeVar, meta,
-                candidate -> defineVerdict(candidate, decodes, codedValuesByVar));
+        return resolvePartner(codeVar, meta, candidate ->
+        {
+            String spelling = codedValuesByVar.containsKey(candidate) ? candidate
+                    : firstSpelling.get(candidate);
+            return defineVerdict(decodes, spelling == null ? null : codedValuesByVar.get(spelling));
+        });
     }
 
     /**
@@ -4043,10 +4052,9 @@ public final class ExprCompiler
      * ({@link PartnerVerdict#REJECTED}), or it binds no codelist at all
      * ({@link PartnerVerdict#UNKNOWN}).
      */
-    private static PartnerVerdict defineVerdict(String candidate, Set<String> decodes,
-            Map<String, String> codedValuesByVar)
+    private static PartnerVerdict defineVerdict(Set<String> decodes, @Nullable String codedValues)
     {
-        List<String> coded = DefineMetadataListCodec.decode(codedValuesByVar.get(candidate));
+        List<String> coded = DefineMetadataListCodec.decode(codedValues);
         if (coded.isEmpty())
         {
             return PartnerVerdict.UNKNOWN;
