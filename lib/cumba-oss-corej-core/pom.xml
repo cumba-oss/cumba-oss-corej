@@ -271,10 +271,9 @@
                 <configuration>
                     <!--
                         Override the project-wide target/test-cwd setting back to the module
-                        basedir: the curated fixture corpus (src/test/resources/fixtures/rules)
-                        and documentation/expression-language-reference.md resolve via
-                        module-relative paths (the dataviewer convention these tests
-                        originated under).
+                        basedir: the dictionary tests read dictionaries/, and the source censuses
+                        read src/main/java and the sibling modules via module-relative paths (the
+                        dataviewer convention these tests originated under).
                     -->
                     <workingDirectory>${project.basedir}</workingDirectory>
                 </configuration>
