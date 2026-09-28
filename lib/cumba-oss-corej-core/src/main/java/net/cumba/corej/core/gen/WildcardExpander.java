@@ -15,6 +15,7 @@ import net.cumba.corej.core.RulePackageLoader;
 import net.cumba.corej.core.exec.ScopeVariableEntry;
 import net.cumba.corej.core.expr.ExpressionPrinter;
 import net.cumba.corej.core.expr.OperandClassifier;
+import net.cumba.corej.core.expr.OperandKind;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
@@ -230,7 +231,7 @@ public final class WildcardExpander
      * or {@code null} when the entry carries no real marker (a concrete uppercase name, or a
      * mixed-case literal whose lowercase runs are all "unknown marker → literal", e.g.
      * {@code "Char"} or {@code "TRTyyP"} — {@code yy} is not a marker). The regex is the same
-     * case-sensitive anchored pattern {@link #expand} matches against the dataset columns, so the
+     * case-insensitive anchored pattern {@link #expand} matches against the dataset columns, so the
      * scope gate and the Check-side expansion agree on which concrete columns satisfy a template.
      * Used by {@link net.cumba.corej.core.exec.ScopeMatcher} to give wildcard scope entries
      * at-least-one-column matching semantics — without it the gate tests the marker text literally
@@ -956,6 +957,15 @@ public final class WildcardExpander
          * <p>
          * The name is scanned left to right. Uppercase characters, digits, and underscores are
          * literal. Lowercase sequences and {@code *} are replaced with capture groups.
+         * <p>
+         * The compiled regex is {@link Pattern#CASE_INSENSITIVE}: column names match
+         * case-insensitively on every surface (owner ruling 2026-09-28,
+         * {@code PLAN-case-insensitive-templates} — the rulings register entry {@code CIT §1}), so
+         * {@code TRTxxP} matches {@code trt01p} exactly as the datatable lookup, a {@code /regex/}
+         * entry and a glob already did. What is bound is the dataset's <em>actual</em> column name;
+         * the captured marker digits are unaffected. ⛔ A revision of the case rule changes every
+         * surface together, never this one alone.
+         * </p>
          */
         static WildcardPattern parse(String name)
         {
@@ -1014,7 +1024,8 @@ public final class WildcardExpander
                 }
             }
             regex.append("$");
-            return new WildcardPattern(name, Pattern.compile(regex.toString()), groups);
+            return new WildcardPattern(name,
+                    Pattern.compile(regex.toString(), Pattern.CASE_INSENSITIVE), groups);
         }
 
 
@@ -1739,9 +1750,32 @@ public final class WildcardExpander
         String concrete = rename.apply(r.name());
         if (concrete != null && !concrete.equals(r.name()))
         {
-            return new Expr.Ref(concrete, OperandClassifier.classify(concrete, -1));
+            return new Expr.Ref(concrete, classifyConcrete(concrete));
         }
         return r;
+    }
+
+
+    /**
+     * Classifies a substituted concrete name. The bound name is the dataset's <em>actual</em>
+     * column name, which may be lower- or mixed-case since column names match case-insensitively on
+     * every surface (owner ruling 2026-09-28, {@code PLAN-case-insensitive-templates}, register
+     * entry {@code CIT §1}). {@link OperandClassifier#classify} enforces an <em>authoring</em> rule
+     * on rule text — a lowercase-leading or underscore-bearing operand must be a registered
+     * built-in — and would refuse such a spelling; here the name was bound by the expansion to a
+     * real column, so that refusal means {@link OperandKind#COLUMN}. Every other classification (a
+     * substituted {@code ADSL.&VAR} → {@code DOTTED_REF}) is kept.
+     */
+    private static OperandKind classifyConcrete(String concrete)
+    {
+        try
+        {
+            return OperandClassifier.classify(concrete, -1);
+        }
+        catch (net.cumba.corej.core.expr.ExpressionException _)
+        {
+            return OperandKind.COLUMN;
+        }
     }
 
 

@@ -1568,7 +1568,9 @@ public final class OperationExecutor
         Pattern compiled;
         try
         {
-            compiled = Pattern.compile(pattern);
+            // name_pattern matches column names: case-insensitive on every surface (owner ruling
+            // 2026-09-28, PLAN-case-insensitive-templates, register entry CIT §1).
+            compiled = Pattern.compile(pattern, Pattern.CASE_INSENSITIVE);
         }
         catch (java.util.regex.PatternSyntaxException ex)
         {
@@ -2765,7 +2767,9 @@ public final class OperationExecutor
         Pattern compiled;
         try
         {
-            compiled = Pattern.compile(pattern);
+            // name_pattern matches column names: case-insensitive on every surface (owner ruling
+            // 2026-09-28, PLAN-case-insensitive-templates, register entry CIT §1).
+            compiled = Pattern.compile(pattern, Pattern.CASE_INSENSITIVE);
         }
         catch (java.util.regex.PatternSyntaxException _)
         {
@@ -5710,7 +5714,9 @@ public final class OperationExecutor
         Pattern compiled;
         try
         {
-            compiled = Pattern.compile(pattern);
+            // name_pattern matches column names: case-insensitive on every surface (owner ruling
+            // 2026-09-28, PLAN-case-insensitive-templates, register entry CIT §1).
+            compiled = Pattern.compile(pattern, Pattern.CASE_INSENSITIVE);
         }
         catch (java.util.regex.PatternSyntaxException _)
         {

@@ -54,6 +54,22 @@ class OperationExecutorRowExtremeTest
     }
 
 
+    /**
+     * Owner ruling 2026-09-28 ({@code PLAN-case-insensitive-templates}, register {@code CIT §1}):
+     * the {@code name_pattern} column selection matches in any letter case, and the result is keyed
+     * by the ACTUAL column names.
+     */
+    @Test
+    void namePatternMatchesColumnsInAnyLetterCase()
+    {
+        IDataTable ds = MockTable.of().col("tr01n", "9", "3").col("Tr02N", "12", "20")
+                .col("OTHER", "x", "y").name("TR").build();
+        GroupedResult gr = run(rowOp("row_max", "^TR\\d+N$"), ds);
+        assertEquals(List.of("tr01n", "Tr02N"), gr.groupColumns());
+        assertEquals("12", GroupedResultTextView.byText(gr).get("9" + NUL + "12"));
+    }
+
+
     @Test
     void numericMode_min_picksNumericMinimum()
     {

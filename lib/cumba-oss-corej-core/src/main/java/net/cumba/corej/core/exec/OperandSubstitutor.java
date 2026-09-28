@@ -536,7 +536,11 @@ public final class OperandSubstitutor
             }
         }
         sb.append('$');
-        return Pattern.compile(sb.toString());
+        // Column names match case-insensitively on every surface (owner ruling 2026-09-28,
+        // PLAN-case-insensitive-templates, register entry CIT §1) — a `${*}` pattern is a
+        // column-name matcher like a marker template, and a revision changes every surface
+        // together.
+        return Pattern.compile(sb.toString(), Pattern.CASE_INSENSITIVE);
     }
 
 

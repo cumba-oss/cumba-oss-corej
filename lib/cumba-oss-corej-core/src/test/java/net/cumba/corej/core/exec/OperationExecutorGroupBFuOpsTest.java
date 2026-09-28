@@ -438,6 +438,23 @@ class OperationExecutorGroupBFuOpsTest
     }
 
 
+    /**
+     * Owner ruling 2026-09-28 ({@code PLAN-case-insensitive-templates}, register {@code CIT §1}):
+     * the series members are selected by a column-name pattern, which matches in any letter case —
+     * a lowercase {@code coval1} / {@code coval3} pair is the same gap as the uppercase one.
+     */
+    @Test
+    void columnSeriesMetadata_selectsMembersInAnyLetterCase()
+    {
+        IDataTable co = MockTable.of().col("coval1", "b").col("Coval3", "d").name("CO").build();
+        Operation op = makeOp("$s", "column_series_metadata");
+        op.setNamePattern("^COVAL\\d+$");
+        Object result = OperationExecutorCalls.executeOne(op, co, NO_RESOLVER, null,
+                new HashMap<>());
+        assertEquals(true, result, "lowercase members are selected ⇒ the gap is seen ⇒ fire");
+    }
+
+
     @Test
     void columnSeriesMetadata_gapInSuffixes_fires()
     {

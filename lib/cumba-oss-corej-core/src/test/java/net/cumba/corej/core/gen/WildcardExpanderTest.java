@@ -109,6 +109,34 @@ class WildcardExpanderTest
     }
 
 
+    /**
+     * Owner ruling 2026-09-28 ({@code PLAN-case-insensitive-templates}, register {@code CIT §1}):
+     * column names match case-insensitively on every surface, marker templates included. Before,
+     * this pattern was the one case-sensitive column matcher in the engine — a lowercase
+     * {@code trt01p} left {@code CDISC-AD0581} firing falsely and 65 {@code All}-template rules
+     * silently skipping.
+     */
+    @Test
+    void scopeVariableWildcardPattern_matchesAnyLetterCase()
+    {
+        var xx = WildcardExpander.scopeVariableWildcardPattern("TRTxxP");
+        assertNotNull(xx);
+        assertTrue(xx.matcher("trt01p").matches());
+        assertTrue(xx.matcher("Trt01P").matches());
+        assertFalse(xx.matcher("trt1p").matches(), "the marker still demands two digits");
+
+        var y = WildcardExpander.scopeVariableWildcardPattern("TRxxPGy");
+        assertNotNull(y);
+        assertTrue(y.matcher("tr02pg1").matches());
+        assertFalse(y.matcher("tr02pg").matches(), "y still demands at least one digit");
+
+        var w = WildcardExpander.scopeVariableWildcardPattern("STRATwR");
+        assertNotNull(w);
+        assertTrue(w.matcher("strat1r").matches());
+        assertFalse(w.matcher("strat12r").matches(), "w is still a single digit");
+    }
+
+
     @Test
     void scopeVariableWildcardPattern_digitBearingStemKeepsItsDigitsLiteral()
     {
@@ -335,6 +363,34 @@ class WildcardExpanderTest
         assertEquals(2, expanded.size());
         assertEquals("CDISC-AD0005-SAFFL", expanded.get(0).getCore().getId());
         assertEquals("CDISC-AD0005-ITTFL", expanded.get(1).getCore().getId());
+    }
+
+
+    /**
+     * Owner ruling 2026-09-28 ({@code PLAN-case-insensitive-templates}, register {@code CIT §1}):
+     * the Check-side expansion matches a lowercase column, and what it binds is the dataset's
+     * ACTUAL column name — the expanded rule reads {@code trt01p}, not a re-spelled {@code TRT01P}
+     * — while the captured marker digits are unaffected.
+     */
+    @Test
+    void expand_lowercaseColumnBindsTheActualColumnName()
+    {
+        Rule template = buildTemplateRule("CASE-TRT",
+                new CheckConditionAll(List.of(expr("empty(TRTxxP)"))), List.of("TRTxxP"));
+
+        IDataTable table = MockTable.withColumns("STUDYID", "trt01p", "Trt02P");
+
+        List<Rule> expanded = WildcardExpander.expand(template, table.getMetaData());
+
+        assertEquals(2, expanded.size());
+        assertEquals("CASE-TRT-trt01p", expanded.get(0).getCore().getId());
+        assertEquals(List.of("trt01p"), expanded.get(0).getOutcome().getOutputVariables());
+        assertEquals("CASE-TRT-Trt02P", expanded.get(1).getCore().getId());
+        assertEquals(List.of("Trt02P"), expanded.get(1).getOutcome().getOutputVariables());
+        String check0 = rendered(expanded.get(0).getCheck());
+        assertTrue(check0.contains("empty(trt01p)"),
+                "the Check reads the actual column name, not a re-spelled one: " + check0);
+        assertFalse(check0.contains("TRTxxP"), check0);
     }
 
 

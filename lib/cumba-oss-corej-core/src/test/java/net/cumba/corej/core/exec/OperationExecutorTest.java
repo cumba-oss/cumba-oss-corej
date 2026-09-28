@@ -53,6 +53,24 @@ class OperationExecutorTest
         assertEquals(3L, vars.get("$VAR_COUNT"));
     }
 
+
+    /**
+     * Owner ruling 2026-09-28 ({@code PLAN-case-insensitive-templates}, register {@code CIT §1}): a
+     * {@code name_pattern} is a column-name matcher and matches in any letter case.
+     */
+    @Test
+    void testVariableCount_namePatternMatchesAnyLetterCase()
+    {
+        IDataTable table = MockTable.of().col("saffl", "Y", "N").col("ITTFL", "Y", "Y")
+                .col("AGE", "1", "2").build();
+
+        Operation op = makeOp("$VAR_COUNT", "variable_count");
+        op.setNamePattern("^.+FL$");
+        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
+
+        assertEquals(2L, vars.get("$VAR_COUNT"), "saffl and ITTFL both match ^.+FL$");
+    }
+
     // -----------------------------------------------------------------------
     // record_count
     // -----------------------------------------------------------------------

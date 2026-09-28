@@ -196,6 +196,23 @@ class OperationExecutorAdamRequiredVariablesTest
     }
 
 
+    /**
+     * Owner ruling 2026-09-28 ({@code PLAN-case-insensitive-templates}, register {@code CIT §1}): a
+     * lowercase {@code trt01p} satisfies the published template {@code TRTxxP}, and the substituted
+     * list reports the column under its ACTUAL name.
+     */
+    @Test
+    void aNamingTemplateIsSatisfiedByALowercaseColumnUnderItsActualName()
+    {
+        IDataTable adsl = MockTable.of().col("STUDYID", "P1").col("USUBJID", "S1")
+                .col("trt01p", "Placebo").name("ADSL").build();
+        StructureProvider p = new StructureProvider(
+                Map.of(AdamDataStructureDetector.ADSL, List.of("STUDYID", "USUBJID", "TRTxxP")));
+
+        assertEquals(List.of("STUDYID", "USUBJID", "trt01p"), run(adsl, p));
+    }
+
+
     @Test
     void aNamingTemplateWithNoMatchingColumnIsReportedVerbatim()
     {

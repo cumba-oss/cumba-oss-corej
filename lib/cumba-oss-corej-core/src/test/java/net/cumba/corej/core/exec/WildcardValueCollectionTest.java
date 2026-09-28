@@ -100,6 +100,22 @@ class WildcardValueCollectionTest
     }
 
 
+    /**
+     * Owner ruling 2026-09-28 ({@code PLAN-case-insensitive-templates}, register {@code CIT §1}): a
+     * {@code ${*}} column-name pattern matches in any letter case, like every other column-name
+     * surface.
+     */
+    @Test
+    void localTableWildcardMatchesColumnsInAnyLetterCase()
+    {
+        IDataTable t = MockTable.of().col("trt01pn", "1", "2").col("Trt02PN", "3", "4")
+                .col("OTHER", "x", "y").build();
+        EvaluationContext c = ctx(t, map(), Map.of());
+        List<Object> row0 = ValueResolver.resolveWildcardValues(wildcard("TRT${*}PN"), null, c, 0);
+        assertEquals(List.of("1", "3"), row0, "both lowercase/mixed-case TRT..PN columns match");
+    }
+
+
     @Test
     void localTableWildcardSkipsBlankCells()
     {

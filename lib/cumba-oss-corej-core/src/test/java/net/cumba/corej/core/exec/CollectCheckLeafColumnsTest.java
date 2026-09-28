@@ -75,6 +75,20 @@ class CollectCheckLeafColumnsTest
     }
 
 
+    /**
+     * Owner ruling 2026-09-28 ({@code PLAN-case-insensitive-templates}, register {@code CIT §1}):
+     * the numbered-sibling match is a column-name match and ignores letter case; it contributes the
+     * ACTUAL column names.
+     */
+    @Test
+    void additionalColumnsMatchNumberedSiblingsInAnyLetterCase()
+    {
+        var check = new CheckConditionAll(List.of(expr("additional_columns_empty(TSVAL)")));
+        assertEquals(List.of("tsval1", "Tsval2"), List.copyOf(RuleRunner
+                .collectCheckLeafColumns(check, meta("TSVAL", "tsval1", "Tsval2", "TSVALCD"))));
+    }
+
+
     @Test
     void comparisonRightOperandContributesNothing()
     {

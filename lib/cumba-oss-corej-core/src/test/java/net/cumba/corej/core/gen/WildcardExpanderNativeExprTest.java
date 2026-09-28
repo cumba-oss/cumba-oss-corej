@@ -82,6 +82,32 @@ class WildcardExpanderNativeExprTest
     }
 
 
+    /**
+     * Owner ruling 2026-09-28 ({@code PLAN-case-insensitive-templates}, register {@code CIT §1}): a
+     * lowercase column matches the template, the expanded ref carries the ACTUAL column name and is
+     * classified as a plain {@link OperandKind#COLUMN} — the classifier's authoring rule ("a
+     * lowercase-leading operand is a built-in") must not refuse a name the expansion bound to a
+     * real column.
+     */
+    @Test
+    void lowercaseColumnExpandsToAColumnRefUnderItsActualName()
+    {
+        Rule template = nativeRule("var_exists(TRTxxPN) and not var_exists(TRTxxP)");
+        IDataTable table = MockTable.withColumns("STUDYID", "trt01pn");
+
+        List<Rule> expanded = WildcardExpander.expand(template, table.getMetaData());
+
+        assertEquals(1, expanded.size());
+        assertEquals("var_exists(trt01pn) and not var_exists(TRT01P)", exprOf(expanded.get(0)));
+        Expr e = ((CheckConditionExpression) expanded.get(0).getCheck()).expr();
+        Expr.And and = assertInstanceOf(Expr.And.class, e);
+        Expr.Call exists = assertInstanceOf(Expr.Call.class, and.parts().get(0));
+        Expr.Ref ref = assertInstanceOf(Expr.Ref.class, exists.args().get(0));
+        assertEquals("trt01pn", ref.name());
+        assertEquals(OperandKind.COLUMN, ref.kind());
+    }
+
+
     @Test
     void stringLiteralWildcardExpands()
     {

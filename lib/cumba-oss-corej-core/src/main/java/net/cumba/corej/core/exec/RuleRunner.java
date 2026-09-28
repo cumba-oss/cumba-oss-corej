@@ -3936,7 +3936,10 @@ public final class RuleRunner
         if (("additional_columns_empty".equals(operator)
                 || "additional_columns_not_empty".equals(operator)) && meta != null)
         {
-            Pattern pat = Pattern.compile("^" + Pattern.quote(name) + "\\d+$");
+            // A column-name match: case-insensitive on every surface (owner ruling 2026-09-28,
+            // PLAN-case-insensitive-templates, register entry CIT §1).
+            Pattern pat = Pattern.compile("^" + Pattern.quote(name) + "\\d+$",
+                    Pattern.CASE_INSENSITIVE);
             for (int i = 0; i < meta.getColumnCount(); i++)
             {
                 String col = meta.getColumn(i).getName();
