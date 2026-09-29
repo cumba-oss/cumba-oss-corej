@@ -12,7 +12,7 @@ output.
 <dependency>
     <groupId>net.cumba</groupId>
     <artifactId>cumba-oss-corej-core</artifactId>
-    <version>0.3.0</version>
+    <version>0.5.0</version>
 </dependency>
 ```
 
@@ -86,8 +86,8 @@ this repository — not here. The spec harness moved out of the engine, and on
 2026-09-01 the module that held it was folded into the rules module, alongside
 the rule corpus its specs resolve against.
 
-- `rulespec/specs/` — the YAML rule-execution specs (531 in the public
-  `cumba-oss-corej-rules`; the internal corpus carries more)
+- `rulespec/specs/` — the YAML rule-execution specs (987 in the public
+  `cumba-oss-corej-rules`; the internal corpus carries the same number)
 - ⛔ `cdisc-rules-engine/` — the vendored Python fork, **removed** in
   stage 4 phase 4 (last pinned at `195c7172`,
   `v0.16.0-hf3-19-g195c7172`). Its `resources/cache` used to be one

@@ -77,7 +77,7 @@ Artifacts are published under groupId `net.cumba` with the module's artifactId:
 <dependency>
     <groupId>net.cumba</groupId>
     <artifactId>cumba-oss-corej-core</artifactId>
-    <version>0.3.0</version>
+    <version>0.5.0</version>
 </dependency>
 ```
 

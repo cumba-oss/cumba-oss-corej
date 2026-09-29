@@ -14,7 +14,7 @@ production by downstream services, and it shares no code with the rule corpus.
 <dependency>
     <groupId>net.cumba</groupId>
     <artifactId>cumba-oss-corej-ruletest</artifactId>
-    <version>0.3.0</version>
+    <version>0.5.0</version>
 </dependency>
 ```
 
