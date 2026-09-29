@@ -29,8 +29,10 @@ import net.cumba.corej.core.expr.eval.BroadcastFold;
  * ({@code ExprCompiler.arithmeticPlan}), a numeric-literal membership probe ({@code ExprCompiler}'s
  * numeric member set), an equality side whose other side is statically numeric (a numeric literal
  * or a {@code num(...)} conversion — {@code ExprCompiler.staticKind}), and the numeric arguments of
- * {@code between} / {@code abs} / {@code round} / {@code floor} / {@code ceil} and the affix length
- * operand ({@code BuiltinFunctions} / {@code Primitives} hoisted gates).</li>
+ * {@code between} / {@code abs} / {@code round} / {@code floor} / {@code ceil}, the affix length
+ * operand of {@code prefix} / {@code suffix} / {@code prefix_matches} / {@code suffix_matches}, the
+ * start and length of {@code substring}, and the length of {@code has_equal_length} /
+ * {@code has_not_equal_length} ({@code BuiltinFunctions} / {@code Primitives} hoisted gates).</li>
  * <li><b>CHARACTER</b> — a regex-match subject ({@code ExprCompiler.compileRegex}), a
  * string-literal membership probe, and an equality side whose other side is a string literal.</li>
  * <li><b>ISO_TEXT</b> — the argument of a {@code date(...)} / {@code time(...)} conversion: an
@@ -96,37 +98,53 @@ public final class TypeExpectations
 
     /**
      * Positional numeric arguments per function name, mirroring the builtin gates that
-     * {@code BuiltinFunctions} raises at vector construction ({@code between}; {@code abs} /
-     * {@code round} / {@code floor} / {@code ceil} through {@code numericValue}; the {@code n} of
-     * {@code prefix} / {@code suffix} through {@code affixValue}; the {@code start} /
-     * {@code length} of {@code substring}). Keep the two in step: a gated argument missing here
-     * gets no D76 absent-column default and no Stage-B finding.
+     * {@code BuiltinFunctions} / {@code Primitives} raise at vector construction ({@code between};
+     * {@code abs} / {@code round} / {@code floor} / {@code ceil} through {@code numericValue}; the
+     * {@code n} of {@code prefix} / {@code suffix} through {@code affixValue}; the {@code start} /
+     * {@code length} of {@code substring}; the {@code n} of {@code prefix_matches} /
+     * {@code suffix_matches} through {@code Primitives.affixRegex}; the length of
+     * {@code has_equal_length} / {@code has_not_equal_length} through
+     * {@code Primitives.lengthEquality}). Keep the two in step: a gated argument missing here gets
+     * no D76 absent-column default and no Stage-B finding ({@code NumericArgumentPositionsTest}).
      */
-    private static final Map<String, int[]> NUMERIC_ARGS = Map.of("between", new int[]
-    {
-            0, 1, 2
-    }, "abs", new int[]
-    {
-            0
-    }, "round", new int[]
-    {
-            0
-    }, "floor", new int[]
-    {
-            0
-    }, "ceil", new int[]
-    {
-            0
-    }, "prefix", new int[]
-    {
-            1
-    }, "suffix", new int[]
-    {
-            1
-    }, "substring", new int[]
-    {
-            1, 2
-    });
+    private static final Map<String, int[]> NUMERIC_ARGS = Map
+            .ofEntries(Map.entry("between", new int[]
+            {
+                    0, 1, 2
+            }), Map.entry("abs", new int[]
+            {
+                    0
+            }), Map.entry("round", new int[]
+            {
+                    0
+            }), Map.entry("floor", new int[]
+            {
+                    0
+            }), Map.entry("ceil", new int[]
+            {
+                    0
+            }), Map.entry("prefix", new int[]
+            {
+                    1
+            }), Map.entry("suffix", new int[]
+            {
+                    1
+            }), Map.entry("substring", new int[]
+            {
+                    1, 2
+            }), Map.entry("prefix_matches", new int[]
+            {
+                    2
+            }), Map.entry("suffix_matches", new int[]
+            {
+                    2
+            }), Map.entry("has_equal_length", new int[]
+            {
+                    1
+            }), Map.entry("has_not_equal_length", new int[]
+            {
+                    1
+            }));
 
     /** Call names that route a comparison into the temporal families (no plain gate). */
     private static final Set<String> TEMPORAL_CALLS = Set.of("date", "time", "date_part",
