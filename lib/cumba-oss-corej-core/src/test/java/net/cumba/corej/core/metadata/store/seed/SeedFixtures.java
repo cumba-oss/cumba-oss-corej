@@ -262,6 +262,73 @@ final class SeedFixtures
 
 
     /**
+     * A CDASH IG product in the shape of {@code standards/cdashig/2-3} in
+     * {@code standards_details.pkl}: a class carrying {@code domains} (each with {@code fields})
+     * and {@code scenarios} (each with {@code fields}), and no {@code datasets}. Every key is one
+     * the real pickle publishes at that level (measured 2026-09-29); none is invented. It is the
+     * only synthetic source that reaches the {@code domain}, {@code scenario} and {@code field}
+     * levels of the store's field manifest. Not written into {@link #writePickleDir}: the seeder
+     * tests' expectations are built on the five products there.
+     */
+    static Map<String, Object> cdashigDoc()
+    {
+        Map<String, Object> aeyn = cdashField("AEYN", "Any Adverse Event", "4", "O",
+                "An indication of whether any AEs were experienced during the study.");
+        aeyn.put("codelistSubmissionValues", List.of("NY"));
+        aeyn.put("completionInstructions",
+                "Indicate if the subject experienced any adverse events.");
+        aeyn.put("_links",
+                Map.of("codelist",
+                        List.of(Map.of("href", "/mdr/root/ct/sdtmct/codelists/C66742", "type",
+                                "Root Value Domain")),
+                        "self", Map.of("href", "/mdr/cdashig/2-3/domains/AE/fields/AEYN", "type",
+                                "Data Collection Field")));
+        Map<String, Object> ae = new LinkedHashMap<>();
+        ae.put("_links", Map.of("self",
+                Map.of("href", "/mdr/cdashig/2-3/domains/AE", "type", "CDASH Domain")));
+        ae.put("description", "An events domain that contains data describing untoward medical"
+                + " occurrences.");
+        ae.put("fields", List.of(aeyn));
+        ae.put("label", "Adverse Events");
+        ae.put("name", "AE");
+        ae.put("ordinal", "1");
+        Map<String, Object> studyid = cdashField("STUDYID", "Study Identifier", "1", "HR",
+                "A unique identifier for a study.");
+        studyid.put("_links",
+                Map.of("self", Map.of("href",
+                        "/mdr/cdashig/2-3/scenarios/DS.PROTOCOLMILESTONEOTHEREVENT/fields/STUDYID",
+                        "type", "Data Collection Field")));
+        Map<String, Object> milestone = new LinkedHashMap<>();
+        milestone.put("_links",
+                Map.of("self",
+                        Map.of("href", "/mdr/cdashig/2-3/scenarios/DS.PROTOCOLMILESTONEOTHEREVENT",
+                                "type", "CDASH Scenario")));
+        milestone.put("domain", "Disposition");
+        milestone.put("domainName", "DS");
+        milestone.put("fields", List.of(studyid));
+        milestone.put("ordinal", "5");
+        milestone.put("scenario", "PROTOCOL MILESTONE/OTHER EVENT");
+        Map<String, Object> events = new LinkedHashMap<>();
+        events.put("_links",
+                Map.of("self", Map.of("href", "/mdr/cdashig/2-3/classes/Events", "type", "Class")));
+        events.put("description", "Occurrences independent of planned study evaluations.");
+        events.put("domains", List.of(ae));
+        events.put("label", "Events");
+        events.put("name", "Events");
+        events.put("ordinal", "2");
+        events.put("scenarios", List.of(milestone));
+        Map<String, Object> doc = product("CDASHIG v2.3",
+                "Clinical Data Acquisition Standards Harmonization Implementation Guide for Human"
+                        + " Clinical Trials Version 2.3",
+                "2-3", "/mdr/cdashig/2-3", "/mdr/cdash/1-3");
+        doc.put("description", "Clinical Data Acquisition Standards Harmonization (CDASH)"
+                + " establishes a standard way to collect data across studies.");
+        doc.put("classes", List.of(events));
+        return doc;
+    }
+
+
+    /**
      * One CT package. {@code aRevised} distinguishes the two SDTM packages: the {@code NY} codelist
      * is byte-identical in both (codelist-version dedup) while {@code YESONLY} carries a revised
      * term definition (a distinct term despite the same concept id).
@@ -350,6 +417,28 @@ final class SeedFixtures
         variable.put("simpleDatatype", "Char");
         variable.put("description", "Description of " + aName + ".");
         return variable;
+    }
+
+
+    /**
+     * A CDASH IG data collection field with the keys every real one carries (domain and scenario
+     * fields alike); the optional ones are added by the caller.
+     */
+    private static Map<String, Object> cdashField(String aName, String aLabel, String aOrdinal,
+            String aCore, String aDefinition)
+    {
+        Map<String, Object> field = new LinkedHashMap<>();
+        field.put("core", aCore);
+        field.put("definition", aDefinition);
+        field.put("implementationNotes", "Implementation notes of " + aName + ".");
+        field.put("label", aLabel);
+        field.put("mappingInstructions", "Mapping instructions of " + aName + ".");
+        field.put("name", aName);
+        field.put("ordinal", aOrdinal);
+        field.put("prompt", aLabel);
+        field.put("questionText", "What is the " + aLabel + "?");
+        field.put("simpleDatatype", "Char");
+        return field;
     }
 
 

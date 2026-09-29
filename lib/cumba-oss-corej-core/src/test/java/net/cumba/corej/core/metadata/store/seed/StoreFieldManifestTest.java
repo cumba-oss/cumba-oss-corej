@@ -227,13 +227,15 @@ class StoreFieldManifestTest
      * Leg 5 — source coverage (PLAN-define-ct-evaluation NS1, T1-9). The blind spot the class
      * javadoc used to state — <i>"a field the SOURCE publishes that is missing from both the
      * manifest and the records"</i> — is exactly how the codelist {@code name} stayed out of the
-     * store for a month. This leg walks the SOURCE documents (the synthetic {@code SeedFixtures},
-     * and the real pickle corpus when {@link RealCorpusLocator} resolves it: the newest package of
-     * every CT family — phase 0b measured all 206 packages carrying one key set per level — plus
-     * every IG and model product) and reds on any key that is neither a manifest {@code field} (by
-     * its {@code source}) nor an {@code excluded} entry with a reason. T1-9 rules the pickle cache
-     * the universe: every key it publishes is stored, unless it is {@code _links} or a Python
-     * cache-builder addition, and that decision is recorded here, not implied by silence.
+     * store for a month. This leg walks the SOURCE documents (the synthetic {@code SeedFixtures} —
+     * whose CDASH IG product alone reaches the domain, scenario and field levels, so every level is
+     * reached without the corpus — and the real pickle corpus when {@link RealCorpusLocator}
+     * resolves it: the newest package of every CT family — phase 0b measured all 206 packages
+     * carrying one key set per level — plus every IG and model product) and reds on any key that is
+     * neither a manifest {@code field} (by its {@code source}) nor an {@code excluded} entry with a
+     * reason. T1-9 rules the pickle cache the universe: every key it publishes is stored, unless it
+     * is {@code _links} or a Python cache-builder addition, and that decision is recorded here, not
+     * implied by silence.
      */
     @Test
     void everySourceKeyIsEitherAStoredFieldOrADeliberateExclusion()
@@ -246,6 +248,7 @@ class StoreFieldManifestTest
         walker.product(SeedFixtures.adamDoc());
         walker.product(SeedFixtures.sdtmModelDoc());
         walker.product(SeedFixtures.adamModelDoc());
+        walker.product(SeedFixtures.cdashigDoc());
         RealCorpusLocator.locate().ifPresent(walker::realCorpus);
 
         // Non-vacuity: the walk reached every level, and each with at least one key.
