@@ -2,7 +2,8 @@ package net.cumba.corej.core.expr.eval;
 
 import static net.cumba.corej.core.expr.eval.VectorLayerTest.col;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 import java.util.BitSet;
 import java.util.List;
@@ -10,6 +11,7 @@ import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.expr.CheckExpressionParser;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -185,6 +187,42 @@ class CoalesceEmptySemanticsTest
         assertEquals("c", co.asString(0), "A \"\" and B missing both skipped -> C");
         // ⚠ TypedValue.isMissing, NOT Vector.isMissing: the vector fold is also true for "", so
         // it could not tell a genuine missing result from an "" one (D34: missing != "").
-        assertTrue(co.value(1).isMissing(), "all empty -> a genuine missing, not \"\"");
+        assertSame(MissingValue.MIS, co.value(1).missing(),
+                "all empty -> a genuine missing, not \"\": B's MIS, the one missing operand (D86a)");
+    }
+
+
+    /**
+     * Once every operand is skipped, the result is D86a over the operands that are genuinely
+     * missing ({@code TypedValue.missing()} non-null): one distinct identity ⇒ that operand's own
+     * cell, two or more ⇒ {@code MIS}, none (every operand a present {@code ""}) ⇒ the computed
+     * {@code MIS} as before ({@code PLAN-missing-identity-nonstring-functions} §3). The skip
+     * predicate itself is unchanged — {@code empty()}'s (CO1) — and so is the present branch.
+     */
+    @Test
+    @DisplayName("all operands skipped -> D86a over the missing ones; the present branch unchanged")
+    void allSkippedIsD86aOverTheMissingOperands()
+    {
+        MissingValue a = MissingValue.MIS_A;
+        MissingValue b = MissingValue.MIS_B;
+        MissingValue mis = MissingValue.MIS;
+        IDataTable t = MissingCellTables.of("T").str("A", a, a, a, "", "", mis, "x", a, "", a)
+                .str("B", "", a, b, "", b, a, a, "", "", a)
+                .str("C", "", "", "", "", "", "", "", b, a, "").build();
+        Vector two = coalesce(10, col(t, "A"), col(t, "B"));
+        assertSame(a, two.value(0).missing(), "coalesce(.A, \"\") is .A");
+        assertSame(a, two.value(1).missing(), "coalesce(.A, .A) is .A — one distinct identity");
+        assertSame(mis, two.value(2).missing(), "coalesce(.A, .B) is MIS — two identities");
+        assertSame(mis, two.value(3).missing(), "coalesce(\"\", \"\") is the computed MIS");
+        assertSame(b, two.value(4).missing(), "coalesce(\"\", .B) is .B");
+        assertSame(mis, two.value(5).missing(), "coalesce(MIS, .A) is MIS — MIS and .A differ");
+        assertNull(two.value(6).missing(), "a present operand still wins");
+        assertEquals("x", two.asString(6));
+
+        Vector three = coalesce(10, col(t, "A"), col(t, "B"), col(t, "C"));
+        assertSame(mis, three.value(7).missing(), "coalesce(.A, \"\", .B) is MIS");
+        assertSame(a, three.value(8).missing(),
+                "coalesce(\"\", \"\", .A) is .A — the third operand");
+        assertSame(a, three.value(9).missing(), "coalesce(.A, .A, \"\") is .A");
     }
 }

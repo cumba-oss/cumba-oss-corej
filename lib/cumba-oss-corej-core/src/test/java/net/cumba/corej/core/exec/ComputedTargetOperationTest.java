@@ -3,15 +3,19 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Map;
 import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.corej.core.expr.convert.OperationExpressionParser;
+import net.cumba.corej.core.expr.eval.TypedValue;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.testkit.MockTable;
+import net.cumba.datatable.values.DataValueType;
+import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -128,6 +132,36 @@ class ComputedTargetOperationTest
         assertTrue(m.table().getDataValue(1, idx).isMissingOrInvalid(), "the typed cell channel");
         assertEquals(TargetExpressionMaterializer.SYNTHETIC_NAME, m.op().getName());
         assertNull(m.op().getNameExpr());
+    }
+
+
+    /**
+     * §3 evidence (iv) of {@code PLAN-missing-identity-nonstring-functions}: a materialised
+     * computed target whose declared type is {@code LONG} ({@code round}) carries a special
+     * missing's identity into the synthetic column — the materializer copies the result's typed
+     * cells verbatim, and {@code round(.A)} is {@code .A} (D85c), not a fresh {@code MIS}. The
+     * source is a real {@code DOUBLE} buffer holding the NaN-encoded {@code .A} / {@code .B}, the
+     * way a SAS special missing arrives from a provider.
+     */
+    @Test
+    void materializedLongTargetCarriesTheSpecialMissingIdentity()
+    {
+        IDataTable t = RealTables.of("VS")
+                .dbl("X", 2.4, MissingValue.MIS_A.asDouble(), MissingValue.MIS_B.asDouble())
+                .build();
+        TargetExpressionMaterializer.Materialized m = TargetExpressionMaterializer
+                .materialize(formB("max(round(X))"), t, Map.of());
+        assertNotNull(m);
+        int idx = m.table().getMetaData()
+                .getColumnIndex(TargetExpressionMaterializer.SYNTHETIC_NAME);
+        assertTrue(idx >= 0);
+        assertEquals(DataValueType.LONG, m.table().getMetaData().getColumn(idx).getType(),
+                "round's result is a LONG column");
+        assertEquals(2.0, m.table().getDataValue(0, idx).getValueAsDouble(), 1e-9);
+        assertSame(MissingValue.MIS_A, TypedValue.missingIdentityOf(m.table().getDataValue(1, idx)),
+                "the LONG column carries .A — round(.A) is .A");
+        assertSame(MissingValue.MIS_B, TypedValue.missingIdentityOf(m.table().getDataValue(2, idx)),
+                "and .B stays .B");
     }
 
 

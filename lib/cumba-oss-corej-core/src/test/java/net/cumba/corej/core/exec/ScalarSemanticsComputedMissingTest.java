@@ -611,6 +611,21 @@ class ScalarSemanticsComputedMissingTest
      * population by type. The unary producers return the input's {@code TypedValue.cell()} directly
      * and declare no {@code IDataValue} of their own.
      * </p>
+     *
+     * <p>
+     * ⚑ <b>18 → 18 on 2026-09-29, a MOVE, READ:</b>
+     * {@code PLAN-missing-identity-nonstring-functions} moved {@code carrierCell} (and its
+     * {@code MissingValue}-typed partner {@code combinedMissing}) out of {@code BuiltinFunctions}
+     * into {@code ArithmeticSemantics}, beside {@code combineIdentities}, as the one public helper
+     * the n-ary function producers share ({@code concat}, {@code substring},
+     * {@code prefix}/{@code suffix}, {@code coalesce}, {@code StudyDay}).
+     * {@code BuiltinFunctions.carrierCell} −1, {@code ArithmeticSemantics.carrierCell} +1 — same
+     * body, still never {@code null}. The non-string producers the plan changed ({@code len},
+     * {@code char}, {@code numericValue}, {@code dateComponent}, {@code hullBound},
+     * {@code splitBy}, {@code colref}, {@code Primitives.numConversion}) are lambdas or
+     * {@code Object}-returning helpers that hand a cell or {@code computedMissing()} through the
+     * untyped {@code ComputedVector} channel and declare no {@code IDataValue} of their own.
+     * </p>
      */
     private static final int EXPECTED_VALUE_PRODUCERS = 18;
 

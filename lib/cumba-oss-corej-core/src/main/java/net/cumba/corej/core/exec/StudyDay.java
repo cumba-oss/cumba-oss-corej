@@ -6,9 +6,11 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import net.cumba.corej.core.expr.eval.ComputedVector;
 import net.cumba.corej.core.expr.eval.EvalRun;
+import net.cumba.corej.core.expr.eval.TypedValue;
 import net.cumba.corej.core.expr.eval.Vector;
 import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.IDataValue;
+import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -29,10 +31,14 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * The algorithm is the retired {@code calculateStudyDay}, unchanged: with a complete
  * {@code yyyy-MM-dd} prefix on both sides, {@code date − reference + 1} when the date is on or
- * after the reference, else {@code date − reference} — there is no day 0. A short, missing or
- * unparsable cell on either side answers the computed missing
+ * after the reference, else {@code date − reference} — there is no day 0. A <b>missing</b> cell on
+ * either side answers that missing — the input's own cell, identity kept, two distinct identities
+ * collapsing to {@code MIS} (D85c / D86a, {@link ArithmeticSemantics#combinedMissing} /
+ * {@link ArithmeticSemantics#carrierCell}, {@code PLAN-missing-identity-nonstring-functions}) —
+ * decided <b>before</b> the parse, so {@code dy(.A, "2020")} is {@code .A}. Only an all-present but
+ * short or unparsable input answers the computed missing
  * ({@link ScalarSemantics#computedMissing()}, the {@code IDataValue} hand-through of
- * {@code PLAN-case-fold-missing-d36}), never a raw {@code MissingValue} payload and never
+ * {@code PLAN-case-fold-missing-d36}); never a raw {@code MissingValue} payload and never
  * {@code null}. The result renders as the retired operation's {@code Long} did
  * ({@code $value_dy_algorithm=1}, not {@code 1.0}).
  * </p>
@@ -66,7 +72,14 @@ public final class StudyDay
         Vector reference = args.get(1);
         return new ComputedVector(run.rowCount(), DataValueType.LONG, row ->
         {
-            Long day = studyDay(text(date.value(row).cell()), text(reference.value(row).cell()));
+            TypedValue td = date.value(row);
+            TypedValue tr = reference.value(row);
+            MissingValue missing = ArithmeticSemantics.combinedMissing(td, tr, null);
+            if (missing != null)
+            {
+                return ArithmeticSemantics.carrierCell(missing, td, tr, null);
+            }
+            Long day = studyDay(text(td.cell()), text(tr.cell()));
             return day != null ? day : ScalarSemantics.computedMissing();
         });
     }

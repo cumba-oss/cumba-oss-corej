@@ -1,5 +1,7 @@
 package net.cumba.corej.core.exec;
 
+import net.cumba.corej.core.expr.eval.TypedValue;
+import net.cumba.datatable.values.IDataValue;
 import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
 
@@ -65,6 +67,14 @@ import org.jspecify.annotations.Nullable;
  * 3d's ruled change, not an accident; the fused skip existed only to freeze verdicts until this
  * phase.
  * </p>
+ *
+ * <p>
+ * The same identity rule governs every VALUE <b>function</b>, not only the operators (D85c / D86a
+ * over any n-ary operation): {@link #combinedMissing} and {@link #carrierCell} are the shared
+ * helper the function producers call ({@code BuiltinFunctions}, {@code StudyDay};
+ * {@code PLAN-case-fold-missing-d36}, {@code PLAN-missing-identity-nonstring-functions}) — a
+ * missing operand's own cell is handed through, never a fresh {@code MIS}.
+ * </p>
  */
 public final class ArithmeticSemantics
 {
@@ -103,6 +113,69 @@ public final class ArithmeticSemantics
             return left;
         }
         return left == right ? left : MissingValue.MIS;
+    }
+
+
+    /**
+     * D86a for an n-ary VALUE function over its operands' carriers: the identity their missings
+     * combine to ({@link #combineIdentities}, pairwise — associative, so this is the n-ary rule
+     * verbatim), or {@code null} when every operand is present — the same convention as
+     * {@link TypedValue#missing()}. The third operand is optional ({@code null} when the call
+     * omitted it). A {@link MissingValue} identity, not a cell: the cell that carries it is
+     * {@link #carrierCell}'s, which is never {@code null}.
+     *
+     * <p>
+     * The one helper every function producer shares ({@code BuiltinFunctions}' string and
+     * non-string producers, {@code StudyDay}); {@code ExprCompiler.arithmeticCell} spells the same
+     * rule inline over its two operands. A unary producer needs neither: it hands
+     * {@code TypedValue.cell()} through when {@code TypedValue.missing()} is non-null.
+     * </p>
+     *
+     * @param a
+     *            the first operand's carrier
+     * @param b
+     *            the second operand's carrier
+     * @param c
+     *            the optional third operand's carrier, or {@code null} when omitted
+     * @return the combined missing identity, or {@code null} when every operand is present
+     */
+    public static @Nullable MissingValue combinedMissing(TypedValue a, TypedValue b,
+            @Nullable TypedValue c)
+    {
+        MissingValue combined = combineIdentities(a.missing(), b.missing());
+        return c == null ? combined : combineIdentities(combined, c.missing());
+    }
+
+
+    /**
+     * The cell a VALUE function hands through for a {@link #combinedMissing} identity: the operand
+     * whose own missing it is (identity kept, D85c — the input's cell verbatim), or
+     * {@link ScalarSemantics#computedMissing()} when two distinct identities collapsed to
+     * {@code MIS}. Never {@code null}: an {@code IDataValue}-returning declaration in this module
+     * is a value producer, and {@code ScalarSemanticsComputedMissingTest} counts it.
+     *
+     * @param combined
+     *            the identity {@link #combinedMissing} answered for these operands
+     * @param a
+     *            the first operand's carrier
+     * @param b
+     *            the second operand's carrier
+     * @param c
+     *            the optional third operand's carrier, or {@code null} when omitted
+     * @return the operand cell carrying {@code combined}, or the computed missing
+     */
+    public static IDataValue carrierCell(MissingValue combined, TypedValue a, TypedValue b,
+            @Nullable TypedValue c)
+    {
+        if (a.missing() == combined)
+        {
+            return a.cell();
+        }
+        if (b.missing() == combined)
+        {
+            return b.cell();
+        }
+        return c != null && c.missing() == combined ? c.cell() : ScalarSemantics.computedMissing();
     }
 
 

@@ -161,7 +161,154 @@ class BuiltinFunctionsTest
         assertFalse(l.isMissing(1));
         assertEquals(0.0, l.asDouble(1)); // "" -> length 0 (a present value)
         assertEquals(1.0, l.asDouble(2));
-        assertTrue(l.value(3).isMissing(), "len(«missing») is MISSING, not 0 (D13)");
+        assertMissing(l, 3, MissingValue.MIS); // len(«missing») is MISSING, not 0 (D13)
+    }
+
+
+    /**
+     * The three identity rows of a non-string function (register D85c / D86a,
+     * {@code PLAN-missing-identity-nonstring-functions}): the rows {@code first},
+     * {@code first + 1}, {@code first + 2} hold {@code MIS}, {@code .A}, {@code .B} on input, and
+     * the result carries exactly that missing — never a fresh {@code MIS} for a {@code .A}.
+     * Asserted on {@link TypedValue#missing()}, never the F3 {@code Vector.isMissing} fold.
+     */
+    private static void assertIdentityRows(Vector v, int first)
+    {
+        assertMissing(v, first, MissingValue.MIS);
+        assertMissing(v, first + 1, MissingValue.MIS_A);
+        assertMissing(v, first + 2, MissingValue.MIS_B);
+    }
+
+
+    @Test
+    void lenAndCharKeepTheInputsMissingIdentity()
+    {
+        // D85c: len(.A) is .A — a MissingValue has no length, and the missing it is carries on.
+        // len("") stays 0 (a present value of length zero, D34 #1); char("") stays the computed
+        // MIS (no first character) — "" is not a missing input, so it has no identity to keep.
+        IDataTable t = MissingCellTables.strings("X", "ab", "", MissingValue.MIS,
+                MissingValue.MIS_A, MissingValue.MIS_B);
+        Vector l = value("len", 5, col(t, "X"));
+        assertEquals(2.0, l.asDouble(0));
+        assertFalse(l.value(1).isMissing(), "len(\"\") is a present 0");
+        assertEquals(0.0, l.asDouble(1));
+        assertIdentityRows(l, 2);
+
+        Vector c = value("char", 5, col(t, "X"));
+        assertEquals(97.0, c.asDouble(0));
+        assertMissing(c, 1, MissingValue.MIS); // char("") -> the computed MIS
+        assertIdentityRows(c, 2);
+    }
+
+
+    @Test
+    void numericFunctionsKeepTheInputsMissingIdentityOverDoubleAndLong()
+    {
+        // abs / round / floor / ceil over a DOUBLE and a LONG column: the missing input's own cell
+        // is handed through the LONG / DOUBLE result vector (the d36 carrier reads the identity
+        // from the cell, not from the declared type).
+        IDataTable t = MissingCellTables.of("T")
+                .dbl("D", 2.5, MissingValue.MIS, MissingValue.MIS_A, MissingValue.MIS_B)
+                .lng("L", 3L, MissingValue.MIS, MissingValue.MIS_A, MissingValue.MIS_B).build();
+        double[] onDouble =
+        {
+                2.5, 3.0, 2.0, 3.0
+        };
+        String[] fns =
+        {
+                "abs", "round", "floor", "ceil"
+        };
+        for (int i = 0; i < fns.length; i++)
+        {
+            Vector d = value(fns[i], 4, col(t, "D"));
+            assertEquals(onDouble[i], d.asDouble(0), fns[i] + "(2.5)");
+            assertIdentityRows(d, 1);
+            Vector l = value(fns[i], 4, col(t, "L"));
+            assertEquals(3.0, l.asDouble(0), fns[i] + "(3)");
+            assertIdentityRows(l, 1);
+        }
+    }
+
+
+    @Test
+    void numKeepsTheInputsMissingIdentityAndFeedsAbs()
+    {
+        // num(.A) is .A — without it abs(num(X)), the authored route into abs under the
+        // column-type gate, would still answer MIS for X = .A. num("") and num("abc") stay the
+        // computed MIS (present, but not a number).
+        IDataTable s = MissingCellTables.strings("X", "-1.5", "", "abc", MissingValue.MIS,
+                MissingValue.MIS_A, MissingValue.MIS_B);
+        Vector n = Primitives.numConversion(col(s, "X"), 6);
+        assertEquals(-1.5, n.asDouble(0));
+        assertMissing(n, 1, MissingValue.MIS); // num("") -> computed MIS
+        assertMissing(n, 2, MissingValue.MIS); // num("abc") -> computed MIS
+        assertIdentityRows(n, 3);
+        Vector a = value("abs", 6, n);
+        assertEquals(1.5, a.asDouble(0));
+        assertMissing(a, 2, MissingValue.MIS);
+        assertIdentityRows(a, 3); // abs(num(.A)) -> .A
+
+        IDataTable t = MissingCellTables.of("T")
+                .dbl("D", 2.5, MissingValue.MIS, MissingValue.MIS_A, MissingValue.MIS_B)
+                .lng("L", 3L, MissingValue.MIS, MissingValue.MIS_A, MissingValue.MIS_B).build();
+        Vector nd = Primitives.numConversion(col(t, "D"), 4);
+        assertEquals(2.5, nd.asDouble(0));
+        assertIdentityRows(nd, 1);
+        Vector nl = Primitives.numConversion(col(t, "L"), 4);
+        assertEquals(3.0, nl.asDouble(0));
+        assertIdentityRows(nl, 1);
+    }
+
+
+    @Test
+    void dateComponentsAndHullBoundsKeepTheInputsMissingIdentity()
+    {
+        // A missing input is that missing; a present "" or junk cell has nothing to extract and
+        // stays the computed MIS.
+        IDataTable t = MissingCellTables.strings("X", "2024-03-15", "", "junk", MissingValue.MIS,
+                MissingValue.MIS_A, MissingValue.MIS_B);
+        for (String fn : List.of("year", "month", "day", "earliest_possible", "latest_possible"))
+        {
+            Vector v = value(fn, 6, col(t, "X"));
+            assertFalse(v.value(0).isMissing(), fn + " of a complete date is present");
+            assertMissing(v, 1, MissingValue.MIS); // fn("") -> computed MIS
+            assertMissing(v, 2, MissingValue.MIS); // fn("junk") -> computed MIS
+            assertIdentityRows(v, 3);
+        }
+    }
+
+
+    @Test
+    void splitByKeepsTheInputsMissingIdentityAsAScalar()
+    {
+        // FINDINGS I1's missing half: split_by(.A, ",") is .A — the input's own cell, a scalar
+        // (so NF §1 / NNL §1 hold: no list, hence no element). split_by("", ",") keeps its
+        // answer, the computed MIS.
+        IDataTable t = MissingCellTables.strings("X", "a,b", "", MissingValue.MIS,
+                MissingValue.MIS_A, MissingValue.MIS_B);
+        Vector v = value("split_by", 5, col(t, "X"), ConstVector.of(","));
+        assertEquals(List.of("a", "b"), v.value(0).resolved());
+        assertMissing(v, 1, MissingValue.MIS);
+        assertIdentityRows(v, 2);
+    }
+
+
+    @Test
+    void colrefKeepsTheMissingIdentityOfEitherHop()
+    {
+        // Rows 0-2: the FIRST hop is missing -> that missing. Rows 4-6: the first hop names N and
+        // N's cell on that row is missing -> the named column's own missing (a column read keeps
+        // its cell's identity, TR §E). Row 3 is the present happy path.
+        IDataTable t = MissingCellTables.of("T")
+                .str("IDVAR", MissingValue.MIS, MissingValue.MIS_A, MissingValue.MIS_B, "N", "N",
+                        "N", "N")
+                .dbl("N", 1.0, 1.0, 1.0, 2.0, MissingValue.MIS, MissingValue.MIS_A,
+                        MissingValue.MIS_B)
+                .build();
+        Vector r = valueOn("colref", t, 7, col(t, "IDVAR"));
+        assertIdentityRows(r, 0);
+        assertFalse(r.value(3).isMissing(), "a present second hop is present");
+        assertIdentityRows(r, 4);
     }
 
 
@@ -418,8 +565,8 @@ class BuiltinFunctionsTest
         assertEquals(32.0, c.asDouble(1)); // leading space (boundary used by char(value()) <= 32)
         assertEquals(9.0, c.asDouble(2)); // leading tab — a control char <= 32
         assertEquals(233.0, c.asDouble(3)); // first char of a multi-byte string
-        assertTrue(c.isMissing(4), "char(\"\") -> missing");
-        assertTrue(c.isMissing(5), "char(«missing») -> missing");
+        assertMissing(c, 4, MissingValue.MIS); // char("") -> the computed missing
+        assertMissing(c, 5, MissingValue.MIS); // char(«missing») -> that missing
     }
 
 
@@ -670,7 +817,7 @@ class BuiltinFunctionsTest
         // A missing/empty first hop yields a missing result (mirrors ValueResolver).
         IDataTable t = MockTable.of().col("IDVAR", (String) null).col("AESEQ", "1").build();
         Vector r = valueOn("colref", t, 1, col(t, "IDVAR"));
-        assertTrue(r.isMissing(0));
+        assertMissing(r, 0, MissingValue.MIS); // that missing (D85c; .A: colrefKeeps…Identity)
     }
 
 
@@ -686,8 +833,8 @@ class BuiltinFunctionsTest
         Vector x = Primitives.numConversion(col(t, "X"), 4);
         Vector a = value("abs", 4, x);
         assertEquals(3.5, a.asDouble(0));
-        assertTrue(a.isMissing(2), "missing in -> missing out");
-        assertTrue(a.isMissing(3), "non-numeric -> missing");
+        assertMissing(a, 2, MissingValue.MIS); // num("") -> computed MIS -> abs keeps it
+        assertMissing(a, 3, MissingValue.MIS); // non-numeric -> computed MIS
 
         // round is half-up toward +inf (Math.round): 2.5 -> 3, -3.5 -> -3.
         assertEquals(3.0, value("round", 4, x).asDouble(1));
@@ -929,16 +1076,16 @@ class BuiltinFunctionsTest
         Vector y = value("year", 6, col(t, "X"));
         assertEquals(2024.0, y.asDouble(0));
         assertEquals(2024.0, y.asDouble(3), "T time part ignored");
-        assertTrue(y.isMissing(4), "missing -> missing");
-        assertTrue(y.isMissing(5), "unparseable -> missing");
+        assertMissing(y, 4, MissingValue.MIS); // "" -> the computed missing
+        assertMissing(y, 5, MissingValue.MIS); // unparseable -> the computed missing
 
         Vector m = value("month", 6, col(t, "X"));
-        assertTrue(m.isMissing(0), "year-only has no month");
+        assertMissing(m, 0, MissingValue.MIS); // year-only has no month
         assertEquals(3.0, m.asDouble(1));
         assertEquals(3.0, m.asDouble(2));
 
         Vector d = value("day", 6, col(t, "X"));
-        assertTrue(d.isMissing(1), "month-precision has no day");
+        assertMissing(d, 1, MissingValue.MIS); // month-precision has no day
         assertEquals(15.0, d.asDouble(2));
         assertEquals(15.0, d.asDouble(3));
     }

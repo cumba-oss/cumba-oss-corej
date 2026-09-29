@@ -4,6 +4,7 @@ import static net.cumba.corej.core.expr.eval.VectorLayerTest.col;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -28,10 +29,11 @@ import org.junit.jupiter.api.Test;
  * </p>
  *
  * <p>
- * ⚠ Out of scope, and filed ({@code FINDINGS-unowned-residuals}): {@code split_by} of a missing
- * cell answers a whole-cell {@code null} — the untyped scalar channel ({@code NF §1}, still
- * {@code target}), not a list element. The missing rows below are asserted only to be <b>not a
- * list</b>.
+ * {@code split_by} of a missing cell is that missing — the input's own cell, a <b>scalar</b>, so
+ * there is no list and hence no element ({@code PLAN-missing-identity-nonstring-functions}, closing
+ * the missing half of {@code FINDINGS-unowned-residuals} I1); a present blank keeps its answer, the
+ * computed {@code MIS}. The missing rows below are asserted to be <b>not a list</b> and to carry
+ * their identity.
  * </p>
  */
 class PerRowListProducersNullFreeTest
@@ -104,6 +106,11 @@ class PerRowListProducersNullFreeTest
             assertFalse(comma.value(r).resolved() instanceof Collection<?>,
                     "row " + r + ": a blank or missing x is the scalar channel, not a list");
         }
+        assertSame(MissingValue.MIS, comma.value(2).missing(),
+                "split_by(\"\", \",\") keeps its answer, the computed MIS");
+        assertSame(MissingValue.MIS, comma.value(5).missing(), "split_by(MIS, \",\") is MIS");
+        assertSame(MissingValue.MIS_A, comma.value(6).missing(),
+                "split_by(.A, \",\") is .A — the input's own cell, not a fresh MIS (D85c)");
     }
 
 

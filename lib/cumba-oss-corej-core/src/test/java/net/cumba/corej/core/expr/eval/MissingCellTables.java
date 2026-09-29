@@ -55,6 +55,13 @@ final class MissingCellTables
     }
 
 
+    /** A {@code LONG} column; each cell a {@link Long} or a {@link MissingValue}. */
+    MissingCellTables lng(String column, Object... cells)
+    {
+        return column(column, DataValueType.LONG, cells);
+    }
+
+
     private MissingCellTables column(String column, DataValueType type, Object... cells)
     {
         names.add(column);

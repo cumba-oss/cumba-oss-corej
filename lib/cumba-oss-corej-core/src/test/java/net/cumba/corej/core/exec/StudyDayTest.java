@@ -3,6 +3,7 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -13,6 +14,7 @@ import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.Vector;
 import net.cumba.corej.core.model.Rule;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.values.DataValueMissing;
 import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.MissingValue;
 import org.junit.jupiter.api.Test;
@@ -60,10 +62,9 @@ class StudyDayTest
         assertEquals(2L, out.value(0).resolved(), "only the yyyy-MM-dd prefix counts");
         for (int row = 1; row < 7; row++)
         {
-            assertTrue(out.value(row).cell().isMissingOrInvalid(),
-                    "row " + row + " cannot be computed and is a missing cell, never null");
-            assertEquals(MissingValue.MIS, out.value(row).cell().getValue(),
-                    "row " + row + " is the computed missing (D36 hand-through)");
+            assertSame(MissingValue.MIS, out.value(row).missing(),
+                    "row " + row + " cannot be computed: every input is present, so it is the"
+                            + " computed missing MIS (D36 #8), never null");
         }
     }
 
@@ -71,12 +72,37 @@ class StudyDayTest
     @Test
     void aMissingInputCellIsMissingAndTheDayRendersAsAWholeNumber()
     {
-        Vector dates = strings("2020-01-20", null);
+        Vector dates = strings("2020-01-20", MissingValue.MIS);
         Vector reference = strings("2020-01-15", "2020-01-15");
         Vector out = StudyDay.evaluate(EvalRun.ofRowCount(2), List.of(dates, reference));
         assertEquals("6", out.value(0).cell().getValueAsString(),
                 "the day renders as the retired operation's Long did — 6, not 6.0");
-        assertTrue(out.value(1).cell().isMissingOrInvalid());
+        assertSame(MissingValue.MIS, out.value(1).missing());
+    }
+
+
+    /**
+     * D85c / D86a ({@code PLAN-missing-identity-nonstring-functions}): a missing input's own cell
+     * is the answer — identity kept, two distinct identities collapse to {@code MIS} — and the
+     * identity is decided <b>before</b> the parse, as {@code arithmeticCell} and {@code substring}
+     * do: {@code dy(.A, "2020")} is {@code .A} although the reference is short. Only an all-present
+     * but short or unparsable input gives the computed {@code MIS}.
+     */
+    @Test
+    void aMissingInputKeepsItsIdentityDecidedBeforeTheParse()
+    {
+        MissingValue a = MissingValue.MIS_A;
+        MissingValue b = MissingValue.MIS_B;
+        Vector dates = strings(a, a, "2020-01-20", a, MissingValue.MIS, "2020-01", b);
+        Vector reference = strings("2020", b, b, a, "2020-01-15", a, "2020-01-15");
+        Vector out = StudyDay.evaluate(EvalRun.ofRowCount(7), List.of(dates, reference));
+        assertSame(a, out.value(0).missing(), "dy(.A, \"2020\") is .A — identity before parse");
+        assertSame(MissingValue.MIS, out.value(1).missing(), "dy(.A, .B) is MIS (D86a)");
+        assertSame(b, out.value(2).missing(), "dy(date, .B) is .B — the reference's own missing");
+        assertSame(a, out.value(3).missing(), "dy(.A, .A) is .A — one distinct identity");
+        assertSame(MissingValue.MIS, out.value(4).missing(), "dy(MIS, date) is MIS");
+        assertSame(a, out.value(5).missing(), "dy(\"2020-01\", .A) is .A — before the parse");
+        assertSame(b, out.value(6).missing(), "dy(.B, date) is .B");
     }
 
     // ------------------------------------------------------------------ the rule surface
@@ -171,10 +197,11 @@ class StudyDayTest
     // ------------------------------------------------------------------ helpers
 
 
-    private static Vector strings(String... cells)
+    /** A typed STRING vector; each cell a {@link String} or a {@link MissingValue} (any one). */
+    private static Vector strings(Object... cells)
     {
         return ComputedVector.typed(cells.length, DataValueType.STRING,
-                row -> cells[row] == null ? DataValues.of(MissingValue.MIS)
+                row -> cells[row] instanceof MissingValue mv ? new DataValueMissing(mv)
                         : DataValues.of(cells[row]));
     }
 

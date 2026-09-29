@@ -30,7 +30,6 @@ import net.cumba.corej.core.expr.typed.ExprType.Primitive;
 import net.cumba.corej.core.expr.typed.ExprType.Unknown;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.values.DataValueType;
-import net.cumba.datatable.values.IDataValue;
 import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
 
@@ -73,15 +72,24 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * <b>A missing input to a string transform is handed through as its own cell</b> (register D36,
- * {@code PLAN-case-fold-missing-d36}): {@code upper}/{@code lower}, {@code trim},
- * {@code normalize_space}, {@code prefix}/{@code suffix}, {@code substring} and {@code concat}
- * answer the input's {@link MissingValue} — identity kept ({@code .A} stays {@code .A}), several
- * distinct identities collapsing to {@code MIS} per D86a ({@link #combinedMissing} /
- * {@link #carrierCell}) — never {@code ""}. An empty string is a present value and stays {@code ""}
- * (D34 #1); the boundary is {@link TypedValue#missing()}, never the F3 {@code Vector.isMissing}
- * fold. The untyped {@link ComputedVector} carries an {@code IDataValue} row as a typed cell, which
- * is what lets a producer return the cell.
+ * <b>A missing input to a VALUE function is handed through as its own cell</b> (register D36 for
+ * the string transforms, {@code PLAN-case-fold-missing-d36}; D85c / D86a for the non-string ones,
+ * {@code PLAN-missing-identity-nonstring-functions}): {@code upper}/{@code lower}, {@code trim},
+ * {@code normalize_space}, {@code prefix}/{@code suffix}, {@code substring}, {@code concat}, and
+ * {@code len}, {@code char}, {@code abs}/{@code round}/{@code floor}/{@code ceil},
+ * {@code year}/{@code month}/{@code day}, {@code earliest_possible}/{@code latest_possible},
+ * {@code coalesce} (once every operand is skipped), {@code split_by} and {@code colref} answer the
+ * input's {@link MissingValue} — identity kept ({@code .A} stays {@code .A}), several distinct
+ * identities collapsing to {@code MIS} per D86a ({@link ArithmeticSemantics#combinedMissing} /
+ * {@link ArithmeticSemantics#carrierCell}) — never {@code ""} and never a fresh {@code MIS}. The
+ * identity is decided before any parse. An empty string is a present value (D34 #1): it stays
+ * {@code ""} for a string transform, and a function with nothing to compute from it ({@code char},
+ * {@code abs}, a date component, …) answers the computed {@code MIS},
+ * {@link ScalarSemantics#computedMissing()} — never {@code null}. The boundary is
+ * {@link TypedValue#missing()}, never the F3 {@code Vector.isMissing} fold. The untyped
+ * {@link ComputedVector} carries an {@code IDataValue} row as a typed cell whatever its declared
+ * type (the identity is read from the cell), which is what lets a LONG or DOUBLE producer return
+ * the cell.
  * </p>
  */
 public final class BuiltinFunctions implements FunctionProvider
@@ -103,10 +111,11 @@ public final class BuiltinFunctions implements FunctionProvider
         {
             Vector x = args.get(0);
             // ⭐ D13 / SPEC §4(4)'s len limb: a genuine MissingValue HAS NO LENGTH, so
-            // len(«missing»)
-            // is MISSING, not 0 — the producer returns null and the carrier publishes D36 #8's
-            // computed missing. len("") is still 0: an empty string is a present value of length
-            // zero (D34 #1), and an ABSENT character column is all-"" (D76/D131a), so
+            // len(«missing») is MISSING, not 0 — and it is THAT missing: the input's own cell is
+            // handed through, so len(.A) is .A (D85c,
+            // PLAN-missing-identity-nonstring-functions). len("") is still 0: an empty string is
+            // a present value of length zero (D34 #1), and an ABSENT character column is all-""
+            // (D76/D131a), so
             // `len(ABSENT) == 0` and `len(BLANK) == 0` are both TRUE and the EC-43
             // absent-equals-blank contract (D96a) holds. ⚠⚠ That equality is exactly what this
             // limb was BLOCKED on: while nameRefPlan minted ALL_MISSING for a character-expected
@@ -119,7 +128,8 @@ public final class BuiltinFunctions implements FunctionProvider
             return new ComputedVector(run.rowCount(), DataValueType.LONG, row ->
             {
                 TypedValue tv = x.value(row);
-                return tv.missing() != null ? null : (long) tv.cell().getValueAsString().length();
+                return tv.missing() != null ? tv.cell()
+                        : (long) tv.cell().getValueAsString().length();
             });
         };
         value(fns, "len", len);
@@ -172,21 +182,26 @@ public final class BuiltinFunctions implements FunctionProvider
                         : tv.cell().getValueAsString().strip().replaceAll("\\s+", " ");
             });
         });
-        // char(x): the Unicode code point of the first character of x, as a LONG. A missing/"" cell
-        // ⇒ missing, so char(value()) <= 32 (the leading-space test) does not fire on a blank on
-        // its
-        // own (numeric <= over a missing LHS yields no violation).
+        // char(x): the Unicode code point of the first character of x, as a LONG. A missing x ⇒
+        // that missing (D85c, the input's own cell — char(.A) is .A); a present "" has no first
+        // character ⇒ the computed MIS. Either way char(value()) <= 32 (the leading-space test)
+        // does not fire on a blank on its own (numeric <= over a missing LHS yields no violation).
         value(fns, "char", (run, args) ->
         {
             Vector x = args.get(0);
             return new ComputedVector(run.rowCount(), DataValueType.LONG, row ->
             {
+                TypedValue tv = x.value(row);
+                if (tv.missing() != null)
+                {
+                    return tv.cell();
+                }
                 if (x.isMissing(row))
                 {
-                    return null;
+                    return ScalarSemantics.computedMissing();
                 }
                 String s = x.asString(row);
-                return s.isEmpty() ? null : (long) s.codePointAt(0);
+                return s.isEmpty() ? ScalarSemantics.computedMissing() : (long) s.codePointAt(0);
             });
         });
 
@@ -202,7 +217,14 @@ public final class BuiltinFunctions implements FunctionProvider
             var ctx = run.ctx();
             return new ComputedVector(run.rowCount(), DataValueType.STRING, row ->
             {
-                Object name = firstHop.value(row).resolved();
+                TypedValue first = firstHop.value(row);
+                if (first.missing() != null)
+                {
+                    // A missing first hop names no column: the answer is that missing, its own
+                    // cell (D85c — colref(.A) is .A, PLAN-missing-identity-nonstring-functions).
+                    return first.cell();
+                }
+                Object name = first.resolved();
                 // Mirror ValueResolver: a non-string / empty first hop is returned as-is.
                 if (!(name instanceof String colName) || colName.isEmpty())
                 {
@@ -238,8 +260,10 @@ public final class BuiltinFunctions implements FunctionProvider
                 }
                 // A blank resolves per ScalarSemantics.resolvedString — type-INDEPENDENT: a
                 // missing cell reads null whatever the column type (owner ruling 2026-09-18), a
-                // stored "" reads "".
-                return ScalarSemantics.resolvedString(ctx.getTable(), colIdx, row);
+                // stored "" reads "". The null is the missing cell's: that cell is the answer, so
+                // the column read keeps its identity (D85c, TR §E — a second-hop .A is .A).
+                String second = ScalarSemantics.resolvedString(ctx.getTable(), colIdx, row);
+                return second != null ? second : ctx.getTable().getColumn(colIdx).getDataValue(row);
             });
         });
 
@@ -285,7 +309,8 @@ public final class BuiltinFunctions implements FunctionProvider
         }));
 
         // -- VALUE numeric helpers (native-only; no legacy operator) ---------
-        // Missing or non-numeric input ⇒ missing output. abs preserves fractions (DOUBLE);
+        // A missing input ⇒ that missing (its own cell, D85c: abs(.A) is .A); a present
+        // non-numeric input ⇒ the computed MIS. abs preserves fractions (DOUBLE);
         // round/floor/ceil yield an integral LONG. round is half-up toward +∞ (Math.round).
         value(fns, "abs", (run, args) -> numericValue(run.rowCount(), args.get(0),
                 DataValueType.DOUBLE, Math::abs));
@@ -312,7 +337,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // combined per D86a — one distinct identity ⇒ that identity, two or more ⇒ MIS. A present
         // "" contributes nothing, and an ABSENT char column is "" (D34 #3), so an absent operand
         // still contributes nothing. coalesce(a, b[, c]): the first
-        // operand that is neither missing nor "" — resolved — else missing. ⚠ Vector.isMissing is
+        // operand that is neither missing nor "" — resolved — else, once every operand is
+        // skipped, D86a over the operands that are genuinely missing (see coalesce(Vector…)).
+        // ⚠ Vector.isMissing is
         // empty()'s scalar predicate (DataValueSupport.isEmptyOrMissing), so an absent char
         // column, which folds to "" (D34 #3), is skipped and the next operand is consulted; a
         // numeric 0 is a real value and is kept (PLAN-coalesce-empty-semantics, design A, owner
@@ -330,10 +357,10 @@ public final class BuiltinFunctions implements FunctionProvider
                         TypedValue ta = a.value(row);
                         TypedValue tb = b.value(row);
                         TypedValue tc = c == null ? null : c.value(row);
-                        MissingValue missing = combinedMissing(ta, tb, tc);
+                        MissingValue missing = ArithmeticSemantics.combinedMissing(ta, tb, tc);
                         if (missing != null)
                         {
-                            return carrierCell(missing, ta, tb, tc);
+                            return ArithmeticSemantics.carrierCell(missing, ta, tb, tc);
                         }
                         String s = ta.cell().getValueAsString() + tb.cell().getValueAsString();
                         return tc == null ? s : s + tc.cell().getValueAsString();
@@ -346,18 +373,8 @@ public final class BuiltinFunctions implements FunctionProvider
                     Vector a = args.get(0);
                     Vector b = args.get(1);
                     Vector c = args.get(2);
-                    return new ComputedVector(run.rowCount(), DataValueType.STRING, row ->
-                    {
-                        if (!a.isMissing(row))
-                        {
-                            return a.value(row).resolved();
-                        }
-                        if (!b.isMissing(row))
-                        {
-                            return b.value(row).resolved();
-                        }
-                        return c == null || c.isMissing(row) ? null : c.value(row).resolved();
-                    });
+                    return new ComputedVector(run.rowCount(), DataValueType.STRING,
+                            row -> coalesce(a, b, c, row));
                 }));
 
         // -- VALUE substring (native-only; 1-based start, SAS/CDISC convention) ---
@@ -393,8 +410,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // split_by operation (pandas Series.str.split, which keeps trailing empties). Each row's
         // cell is a List<String>, so a list-consuming operator (the per-row not_contains_all token
         // branch) reads it element-wise. The delimiter is a broadcast literal (2nd positional arg).
-        // A missing x yields a null cell (no tokens ⇒ no violation); populated rows are the only
-        // ones a split rule targets (its non_empty Precondition gates blanks). This is the native
+        // A missing x yields that missing, its own cell — a scalar, not a list (D85c; no tokens ⇒
+        // no violation); a present "" the computed MIS. Populated rows are the only ones a split
+        // rule targets (its non_empty Precondition gates blanks). This is the native
         // lowering of a split_by OPERATION (SplitByInliner): coreJ has no SPLIT_BY OperationType
         // because a broadcast operation cannot carry a per-row-varying list.
         fns.add(new FunctionDescriptor("split_by",
@@ -430,8 +448,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // -- VALUE ISO-8601 date-component extraction (native-only) ----------
         // year(x) / month(x) / day(x): the requested component of an ISO-8601 date as a LONG. A
         // leading `YYYY[-MM[-DD]]` prefix is parsed (any `T…` time part and anything after the day
-        // is ignored). A missing/unparseable value, or a value that does not carry the requested
-        // component, yields MISSING — e.g. year("2024")=2024, month("2024")=missing,
+        // is ignored). A missing value yields that missing (its own cell, D85c: year(.A) is .A);
+        // a present "" / unparseable value, or a value that does not carry the requested
+        // component, yields the computed MIS — e.g. year("2024")=2024, month("2024")=missing,
         // day("2024-03")=missing, year("2024-03-15T08:00")=2024. The components are NOT
         // calendar-validated here (use is_valid_date for that); a syntactically well-formed but
         // impossible value such as "2024-13" still yields month=13.
@@ -716,8 +735,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // exact — prefix/suffix/is_complete_date/is_complete_date_part are all per-cell date
         // builtins.
         // A cell that cannot be positioned (blank, junk, calendar-impossible, year-masked) yields
-        // a MISSING result rather than a saturated sentinel: "the earliest date this could be" has
-        // no answer, and 9999-12-31 is a real clinical value that must never be manufactured.
+        // the computed MISSING rather than a saturated sentinel: "the earliest date this could be"
+        // has no answer, and 9999-12-31 is a real clinical value that must never be manufactured.
+        // A missing cell yields that missing, its own cell (D85c: earliest_possible(.A) is .A).
         fns.add(new FunctionDescriptor("earliest_possible", List.of(p("x")), FunctionKind.VALUE,
                 (run, args) -> hullBound(run.rowCount(), args.get(0), false)));
         fns.add(new FunctionDescriptor("latest_possible", List.of(p("x")), FunctionKind.VALUE,
@@ -753,10 +773,13 @@ public final class BuiltinFunctions implements FunctionProvider
 
 
     /**
-     * Per-row numeric transform: parses {@code x} as a double and applies {@code op}; a missing or
-     * non-numeric cell yields a missing result. Used by {@code abs}/{@code round}/{@code floor}/
-     * {@code ceil} (the LONG ones round the {@code op} result to an integral value via the vector's
-     * declared type).
+     * Per-row numeric transform: parses {@code x} as a double and applies {@code op}. A missing
+     * cell yields that missing — its own cell, identity kept (D85c: {@code abs(.A)} is {@code .A})
+     * — decided before the parse; a present {@code ""} or non-numeric cell yields the computed
+     * {@code MIS} ({@link ScalarSemantics#computedMissing()}). Used by {@code abs}/{@code round}/
+     * {@code floor}/{@code ceil} (the LONG ones round the {@code op} result to an integral value
+     * via the vector's declared type). ⚠ {@link #numeric} itself is untouched: {@code between} and
+     * {@link #integral} (the {@code substring} / {@code prefix} length) read its F3 fold.
      */
     private static ComputedVector numericValue(int rowCount, Vector x, DataValueType type,
             java.util.function.DoubleUnaryOperator op)
@@ -768,10 +791,15 @@ public final class BuiltinFunctions implements FunctionProvider
                 "a numeric function operand");
         return new ComputedVector(rowCount, type, row ->
         {
+            TypedValue tv = x.value(row);
+            if (tv.missing() != null)
+            {
+                return tv.cell();
+            }
             Double d = numeric(x, row);
             if (d == null)
             {
-                return null;
+                return ScalarSemantics.computedMissing();
             }
             double result = op.applyAsDouble(d);
             if (type == DataValueType.LONG)
@@ -806,15 +834,22 @@ public final class BuiltinFunctions implements FunctionProvider
      * Per-row {@code split_by(x, delimiter)}: the token list from splitting {@code x} on the
      * <em>literal</em> {@code delimiter} (quoted so it is never a regex), keeping trailing empty
      * tokens — bit-for-bit pandas {@code Series.str.split(delimiter)} (Python reference engine). A
-     * missing {@code x} yields {@code null} (the operator treats a null cell as no tokens ⇒ no
-     * violation); an empty delimiter yields the single-element list {@code [x]}. The returned list
-     * is immutable and never contains {@code null} (splitting produces strings only).
+     * missing {@code x} yields that missing — its own cell, a scalar, never a list (D85c;
+     * {@code FINDINGS-unowned-residuals} I1's missing half) — and a present {@code ""} the computed
+     * {@code MIS}; the operator treats either as no tokens ⇒ no violation. An empty delimiter
+     * yields the single-element list {@code [x]}. A returned list is immutable and never contains
+     * {@code null} (splitting produces strings only).
      */
-    private static @Nullable List<String> splitBy(Vector x, String delimiter, int row)
+    private static Object splitBy(Vector x, String delimiter, int row)
     {
+        TypedValue tv = x.value(row);
+        if (tv.missing() != null)
+        {
+            return tv.cell();
+        }
         if (x.isMissing(row))
         {
-            return null;
+            return ScalarSemantics.computedMissing();
         }
         String s = x.asString(row);
         if (delimiter.isEmpty())
@@ -862,11 +897,24 @@ public final class BuiltinFunctions implements FunctionProvider
      * bounds, so {@code earliest_possible(A) >= latest_possible(B)} still answers true for two
      * equal complete dates.
      * </p>
+     *
+     * <p>
+     * A missing cell yields that missing, its own cell (D85c); a present {@code ""} or a cell that
+     * cannot be positioned yields the computed {@code MIS}, never {@code null}.
+     * </p>
      */
     private static ComputedVector hullBound(int rowCount, Vector x, boolean high)
     {
-        return new ComputedVector(rowCount, DataValueType.STRING,
-                row -> x.isMissing(row) ? null : IsoDateComparison.bound(x.asString(row), high));
+        return new ComputedVector(rowCount, DataValueType.STRING, row ->
+        {
+            TypedValue tv = x.value(row);
+            if (tv.missing() != null)
+            {
+                return tv.cell();
+            }
+            String bound = x.isMissing(row) ? null : IsoDateComparison.bound(x.asString(row), high);
+            return bound != null ? bound : ScalarSemantics.computedMissing();
+        });
     }
 
 
@@ -888,10 +936,10 @@ public final class BuiltinFunctions implements FunctionProvider
         {
             TypedValue tx = x.value(row);
             TypedValue tn = n.value(row);
-            MissingValue missing = combinedMissing(tx, tn, null);
+            MissingValue missing = ArithmeticSemantics.combinedMissing(tx, tn, null);
             if (missing != null)
             {
-                return carrierCell(missing, tx, tn, null);
+                return ArithmeticSemantics.carrierCell(missing, tx, tn, null);
             }
             Integer len = integral(n, row);
             String s = tx.cell().getValueAsString();
@@ -903,24 +951,25 @@ public final class BuiltinFunctions implements FunctionProvider
     /**
      * Per-row {@code substring} with a 1-based {@code start} (SAS/CDISC convention) and an optional
      * {@code length}. A missing operand — {@code x}, {@code start} or {@code length} — yields the
-     * cell of {@link #carrierCell} for its {@link #combinedMissing} identity (D36 with the D86a
-     * identity rule), as the operand's own cell. Returns {@link ScalarSemantics#computedMissing()}
-     * (the computed missing, {@code MIS}) when a present {@code start} is non-integral /
-     * {@code < 1} / past the end of {@code x}, or a present {@code length} is non-integral — never
-     * {@code null}, so every missing row is an {@code IDataValue} and every present one a
-     * {@code String}. A {@code length <= 0} yields the empty string; a {@code length} running past
-     * the end of {@code x} is clamped. {@code substring("", 1)} is a start past the end of a
-     * length-0 string, so it stays the computed missing (the documented bounds rule, unchanged).
+     * cell of {@link ArithmeticSemantics#carrierCell} for its
+     * {@link ArithmeticSemantics#combinedMissing} identity (D36 with the D86a identity rule), as
+     * the operand's own cell. Returns {@link ScalarSemantics#computedMissing()} (the computed
+     * missing, {@code MIS}) when a present {@code start} is non-integral / {@code < 1} / past the
+     * end of {@code x}, or a present {@code length} is non-integral — never {@code null}, so every
+     * missing row is an {@code IDataValue} and every present one a {@code String}. A
+     * {@code length <= 0} yields the empty string; a {@code length} running past the end of
+     * {@code x} is clamped. {@code substring("", 1)} is a start past the end of a length-0 string,
+     * so it stays the computed missing (the documented bounds rule, unchanged).
      */
     private static Object substring(Vector x, Vector start, @Nullable Vector length, int row)
     {
         TypedValue tx = x.value(row);
         TypedValue tstart = start.value(row);
         TypedValue tlen = length == null ? null : length.value(row);
-        MissingValue missing = combinedMissing(tx, tstart, tlen);
+        MissingValue missing = ArithmeticSemantics.combinedMissing(tx, tstart, tlen);
         if (missing != null)
         {
-            return carrierCell(missing, tx, tstart, tlen);
+            return ArithmeticSemantics.carrierCell(missing, tx, tstart, tlen);
         }
         Integer startIdx = integral(start, row);
         if (startIdx == null || startIdx < 1)
@@ -974,19 +1023,25 @@ public final class BuiltinFunctions implements FunctionProvider
 
     /**
      * Extracts the {@code component} (0 = year, 1 = month, 2 = day) of a leading ISO-8601
-     * {@code YYYY[-MM[-DD]]} prefix as a LONG, or {@code null} (missing) when {@code x} is missing,
-     * the prefix is malformed, or the requested component is absent at the value's precision.
+     * {@code YYYY[-MM[-DD]]} prefix as a LONG. A missing {@code x} yields that missing — its own
+     * cell, identity kept (D85c); a present {@code ""}, a malformed prefix, or a component absent
+     * at the value's precision yields the computed {@code MIS}, never {@code null}.
      */
     private static ComputedVector dateComponent(int rowCount, Vector x, int component)
     {
         return new ComputedVector(rowCount, DataValueType.LONG, row ->
         {
+            TypedValue tv = x.value(row);
+            if (tv.missing() != null)
+            {
+                return tv.cell();
+            }
             if (x.isMissing(row))
             {
-                return null;
+                return ScalarSemantics.computedMissing();
             }
             Integer v = isoComponent(x.asString(row), component);
-            return v == null ? null : (long) (int) v;
+            return v == null ? ScalarSemantics.computedMissing() : (long) (int) v;
         });
     }
 
@@ -1101,40 +1156,34 @@ public final class BuiltinFunctions implements FunctionProvider
 
 
     /**
-     * D86a for an n-ary string producer: the identity the operands' missings combine to
-     * ({@link ArithmeticSemantics#combineIdentities}, pairwise — associative, so this is the n-ary
-     * rule verbatim), or {@code null} when every operand is present — the same convention as
-     * {@link TypedValue#missing()}. The third operand is optional ({@code null} when the call
-     * omitted it). A {@link MissingValue} identity, not a cell: the cell that carries it is
-     * {@link #carrierCell}'s, which is never {@code null}.
+     * Per-row {@code coalesce(a, b[, c])}: the first operand that {@code empty()} would not flag —
+     * neither a missing nor {@code ""} ({@link Vector#isMissing}, CO1) — resolved. Once every
+     * operand is skipped, the answer is D86a over the operands that are genuinely missing
+     * ({@link TypedValue#missing()} non-null; a present {@code ""} contributes no identity): one
+     * distinct identity ⇒ that operand's own cell, two or more ⇒ {@code MIS}, none (every operand
+     * {@code ""}) ⇒ the computed {@code MIS} ({@code PLAN-missing-identity-nonstring-functions}).
+     * So {@code coalesce(.A, "")} is {@code .A}, {@code coalesce(.A, .B)} is {@code MIS}.
      */
-    private static @Nullable MissingValue combinedMissing(TypedValue a, TypedValue b,
-            @Nullable TypedValue c)
+    private static @Nullable Object coalesce(Vector a, Vector b, @Nullable Vector c, int row)
     {
-        MissingValue combined = ArithmeticSemantics.combineIdentities(a.missing(), b.missing());
-        return c == null ? combined : ArithmeticSemantics.combineIdentities(combined, c.missing());
-    }
-
-
-    /**
-     * The cell a string producer hands through for a {@link #combinedMissing} identity: the operand
-     * whose own missing it is (identity kept, D85c — the input's cell verbatim), or
-     * {@link ScalarSemantics#computedMissing()} when two distinct identities collapsed to
-     * {@code MIS}. Never {@code null}: an {@code IDataValue}-returning declaration in this module
-     * is a value producer, and {@code ScalarSemanticsComputedMissingTest} counts it.
-     */
-    private static IDataValue carrierCell(MissingValue combined, TypedValue a, TypedValue b,
-            @Nullable TypedValue c)
-    {
-        if (a.missing() == combined)
+        if (!a.isMissing(row))
         {
-            return a.cell();
+            return a.value(row).resolved();
         }
-        if (b.missing() == combined)
+        if (!b.isMissing(row))
         {
-            return b.cell();
+            return b.value(row).resolved();
         }
-        return c != null && c.missing() == combined ? c.cell() : ScalarSemantics.computedMissing();
+        if (c != null && !c.isMissing(row))
+        {
+            return c.value(row).resolved();
+        }
+        TypedValue ta = a.value(row);
+        TypedValue tb = b.value(row);
+        TypedValue tc = c == null ? null : c.value(row);
+        MissingValue missing = ArithmeticSemantics.combinedMissing(ta, tb, tc);
+        return missing != null ? ArithmeticSemantics.carrierCell(missing, ta, tb, tc)
+                : ScalarSemantics.computedMissing();
     }
 
 
