@@ -8,9 +8,14 @@ import net.cumba.corej.core.expr.CheckToExpr;
 import net.cumba.corej.core.expr.MetadataOperandMapping;
 import net.cumba.corej.core.expr.ast.Expr;
 import net.cumba.corej.core.expr.convert.OperationExpressionParser;
+import net.cumba.corej.core.expr.eval.ArgumentBinder;
 import net.cumba.corej.core.expr.eval.BroadcastFold;
+import net.cumba.corej.core.expr.eval.FunctionDescriptor;
+import net.cumba.corej.core.expr.eval.FunctionRegistry;
 import net.cumba.corej.core.expr.eval.MetadataAttribute;
 import net.cumba.corej.core.expr.eval.MetadataLevel;
+import net.cumba.corej.core.expr.eval.Parameter;
+import net.cumba.corej.core.expr.typed.ExprType;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.Operation;
 import net.cumba.corej.core.model.OperationType;
@@ -680,6 +685,27 @@ public final class RuleClassifier
                 value = operandText(args.get(1), ops, usages, operationAware);
                 valueIsLiteral = args.get(1) instanceof Expr.Lit;
             }
+            if (name == null && args.isEmpty())
+            {
+                // A call whose column operands are all bound by KEYWORD — the function surface's
+                // `is_last_in_group(ordering=SESEQ, group=[USUBJID])` reads two columns and
+                // carries no positional at all. Read through the descriptor (see
+                // declaredColumnOperands) so the leaf names what the call reads; without this
+                // the leaf had no operand, the Check was "signal-free", no Sensitivity was
+                // derived, and the runner collapsed N per-row findings to one (review round 1 of
+                // PLAN-function-surface-wave1, M3). A call with a positional keeps today's
+                // reading — its first two positionals — so no existing classification moves.
+                List<String> declared = declaredColumnOperands(call);
+                if (!declared.isEmpty())
+                {
+                    name = declared.get(0);
+                }
+                if (declared.size() > 1)
+                {
+                    value = declared.get(1);
+                    valueIsLiteral = false;
+                }
+            }
         }
         case Expr.Binary binary ->
         {
@@ -780,13 +806,87 @@ public final class RuleClassifier
             // the operator and recursing would discard it (ds_exists("EX") is a dataset-presence
             // assertion, not a check on a column called EX).
             boolean namesItsOwnOperand = operand != null && classify(operand) != null;
-            yield operand != null && operand.equals(call.name()) && !namesItsOwnOperand
-                    && !call.args().isEmpty()
-                            ? operandText(call.args().get(0), ops, usages, operationAware)
-                            : operand;
+            if (operand != null && operand.equals(call.name()) && !namesItsOwnOperand)
+            {
+                if (!call.args().isEmpty())
+                {
+                    yield operandText(call.args().get(0), ops, usages, operationAware);
+                }
+                // No positional: the operand it reads may be bound by keyword (the same case as
+                // the predicate-position arm in atom — `is_last_in_group(ordering=…) == true`).
+                List<String> declared = declaredColumnOperands(call);
+                if (!declared.isEmpty())
+                {
+                    yield declared.get(0);
+                }
+            }
+            yield operand;
         }
         default -> null;
         };
+    }
+
+
+    /**
+     * The column references a registry or compiler-dispatched call reads through its
+     * <em>declared</em> parameters, in declaration order: every bound slot whose parameter is typed
+     * {@code COLUMN_REFERENCE} or {@code list<column-reference>} contributes its plain or
+     * {@code --}-prefix references. Empty for an unknown name, a call that does not bind, or a call
+     * whose descriptor declares no column parameter. This is the general form the later waves need
+     * (W3+ port callables whose columns arrive as keywords, {@code group=} / {@code keys=} /
+     * {@code reference=}); the positional reading of {@link #atom} stays first so that today's
+     * derivations do not move.
+     */
+    private static List<String> declaredColumnOperands(Expr.Call call)
+    {
+        FunctionDescriptor descriptor = FunctionRegistry.descriptor(call.name());
+        if (descriptor == null)
+        {
+            return List.of();
+        }
+        List<@Nullable Expr> bound;
+        try
+        {
+            bound = ArgumentBinder.bind(descriptor, call);
+        }
+        catch (RuntimeException _)
+        {
+            return List.of(); // the compiler reports the malformed call on its own terms
+        }
+        List<Parameter> params = descriptor.parameters();
+        List<String> out = new ArrayList<>(2);
+        for (int i = 0; i < bound.size() && i < params.size(); i++)
+        {
+            ExprType type = params.get(i).type();
+            boolean column = type == ExprType.Primitive.COLUMN_REFERENCE
+                    || (type instanceof ExprType.ListOf list
+                            && list.element() == ExprType.Primitive.COLUMN_REFERENCE);
+            if (column)
+            {
+                collectColumnRefs(bound.get(i), out);
+            }
+        }
+        return out;
+    }
+
+
+    private static void collectColumnRefs(@Nullable Expr e, List<String> out)
+    {
+        if (e instanceof Expr.Ref ref)
+        {
+            out.add(ref.name());
+        }
+        else if (e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
+                && lit.value() instanceof List<?> items)
+        {
+            for (Object item : items)
+            {
+                if (item instanceof Expr member)
+                {
+                    collectColumnRefs(member, out);
+                }
+            }
+        }
     }
 
 

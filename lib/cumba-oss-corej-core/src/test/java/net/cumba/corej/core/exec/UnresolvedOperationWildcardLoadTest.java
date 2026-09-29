@@ -223,9 +223,11 @@ class UnresolvedOperationWildcardLoadTest
     @Test
     void fieldsResolvePrefixesDoesResolve_areNotCaught() throws IOException
     {
-        // name / group / dictionary_parent / external_dictionary_term_variable all ARE rewritten
-        // by resolvePrefixes (the last two by Fix #125 / EC-36), and shipped rules rely on it —
-        // CDISC-CG0562 groups by "--TESTCD", CDISC-CG0460 declares dictionary_parent "--SOC".
+        // name / group ARE rewritten by resolvePrefixes, and shipped rules rely on it —
+        // CDISC-CG0562 groups by "--TESTCD". (dictionary_parent and
+        // external_dictionary_term_variable were on this list until wave 1 deleted the fields
+        // with the pair / hierarchy ports; CDISC-CG0460's "--SOC" is a typed column parameter of
+        // valid_external_dictionary_hierarchy now, resolved by the shared parameter path.)
         Rule rule = load(
                 """
                         {

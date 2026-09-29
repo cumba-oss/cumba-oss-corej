@@ -111,9 +111,10 @@ public final class RuleRunner
      * ({@code null} disables caching, behaviour-identical to computing every lookup).
      * {@code dictionaryProvider} (T1) is the runtime
      * {@link net.cumba.corej.core.metadata.RuntimeDictionaryProvider} consulted by the
-     * {@code valid_external_dictionary_*} operations and the {@code dictionary_available}
-     * skip-gate. {@code vlmResolver} is the per-record Define-XML value-level metadata resolver for
-     * the {@code vlm_*} accessors ({@code Value Check against Define XML VLM} rule type).
+     * {@code valid_external_dictionary_*} callables (the pair and hierarchy registry functions, the
+     * value / code operations until W3) and the {@code dictionary_available} skip-gate.
+     * {@code vlmResolver} is the per-record Define-XML value-level metadata resolver for the
+     * {@code vlm_*} accessors ({@code Value Check against Define XML VLM} rule type).
      * </p>
      *
      * <p>
@@ -267,11 +268,25 @@ public final class RuleRunner
                     .totalRows(table != null ? table.getRowCount() : 0L)
                     .status(RuleExecutionStatus.ERROR).statusMessage(errorMsg).build());
         }
-        catch (net.cumba.corej.core.expr.eval.ColumnTypeMismatchException
-                | net.cumba.corej.core.expr.eval.UngatedProviderReachException e)
+        catch (net.cumba.corej.core.expr.eval.UngatedProviderReachException e)
         {
-            // The second is wave 1's D-W1-3 (vii) tripwire: a provider-backed function reached
-            // past a gate that should have SKIPPED the rule reports ERROR, never its empty default.
+            // Wave 1's D-W1-3 (vii) tripwire, ERROR site 8 (EngineErrorMessageContractTest): a
+            // provider-backed function reached past a gate that should have SKIPPED the rule
+            // reports ERROR, never its empty default. Its own catch, so the rules repository's
+            // ViolationNormaliser can classify it by its fixed message tail rather than folding it
+            // into the column-type reason (review round 1 of PLAN-function-surface-wave1, L1).
+            String errorMsg = String.valueOf(e.getMessage());
+            LOGGER.log(System.Logger.Level.WARNING, "[{0}] {1}",
+                    rule.effectiveId() != null ? rule.effectiveId() : "?", errorMsg);
+            Violation sentinel = new Violation(0, Map.of("__error__", errorMsg));
+            return stampSeverity(rule, RuleExecutionResult.builder().ruleId(rule.effectiveId())
+                    .message(rule.getOutcome() != null ? rule.getOutcome().getMessage() : null)
+                    .violations(List.of(sentinel))
+                    .totalRows(table != null ? table.getRowCount() : 0L)
+                    .status(RuleExecutionStatus.ERROR).statusMessage(errorMsg).build());
+        }
+        catch (net.cumba.corej.core.expr.eval.ColumnTypeMismatchException e)
+        {
             // Phase 3 of PLAN-column-type-conformance (R4/R5/R9): the rule read a resolved column
             // against its declared type without a conversion — a Char column where a number is
             // expected (author num(X)), or a Num column where text is expected. Per-DATASET
@@ -986,7 +1001,11 @@ public final class RuleRunner
                             ? RuntimeDictionaryProvider.notInstalledDetail()
                             : dictionaryProvider.unavailabilityDetail(type));
         }
-        skipReason.append(" (rule requires valid_external_dictionary_* operations)");
+        // Names no surface: the dictionary functions are registry functions since wave 1, and
+        // W3 ports the value / code / decode callables the same way.
+        // generated/findings-snapshot.tsv
+        // carries the status, not this text (measured 0 rows, review round 1 lane 2).
+        skipReason.append(" (the rule needs this external dictionary)");
         return RuleExecutionResult.builder().ruleId(ruleId).message(message).violations(List.of())
                 .totalRows(evalTable.getRowCount()).status(RuleExecutionStatus.SKIPPED)
                 .statusMessage(skipReason.toString()).build();

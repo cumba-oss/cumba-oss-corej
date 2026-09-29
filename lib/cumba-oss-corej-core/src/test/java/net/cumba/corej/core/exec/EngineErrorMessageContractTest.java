@@ -67,6 +67,9 @@ class EngineErrorMessageContractTest
     /** Verbatim copy of {@code ViolationNormaliser.INVALID_SPLIT_DOMAIN_MESSAGE_SUFFIX}. */
     private static final String INVALID_SPLIT_DOMAIN_MESSAGE_SUFFIX = "; the domain cannot be joined";
 
+    /** Verbatim copy of {@code ViolationNormaliser.UNGATED_PROVIDER_REACH_MESSAGE_SUFFIX}. */
+    private static final String UNGATED_PROVIDER_REACH_MESSAGE_SUFFIX = " — the provider gate should have skipped this rule before any row was read";
+
     /**
      * ⚠⚠ <b>A SECOND cross-repository coupling, and a different one from the four above.</b> Those
      * protect {@code ViolationNormaliser}'s ERROR classification; this one protects a test
@@ -251,9 +254,14 @@ class EngineErrorMessageContractTest
         // degrading every stage-B ERROR to OTHER in silence. Until it landed such an ERROR did
         // classify as OTHER, which was tolerable only because every armed stage-B kind is measured
         // at ZERO population.
+        // Site 8 is PLAN-function-surface-wave1's D-W1-3 (vii) tripwire: the
+        // UngatedProviderReachException catch (a provider-backed function reached past its gate),
+        // given its own catch in review round 1 so that ViolationNormaliser classifies it by the
+        // exception's fixed message tail (UNGATED_PROVIDER_REACH, pinned below) rather than
+        // folding it into COLUMN_TYPE_MISMATCH's catch.
         long sites = source("RuleRunner.java").lines()
                 .filter(l -> l.contains("RuleExecutionStatus.ERROR")).count();
-        Assertions.assertEquals(7, sites,
+        Assertions.assertEquals(8, sites,
                 "RuleRunner's ERROR-producing sites changed. Re-derive the ErrorReason vocabulary "
                         + "in the rules repository's ViolationNormaliser before accepting this.");
     }
@@ -301,6 +309,29 @@ class EngineErrorMessageContractTest
                 "the split-domain union-failure message tail moved or was reworded — every such "
                         + "ERROR would classify as OTHER; update this constant AND "
                         + "ViolationNormaliser's in the rules repository");
+    }
+
+
+    @Test
+    void theUngatedProviderReachSuffixIsStillTheEngineSWording() throws IOException
+    {
+        // Built at exactly ONE site, the exception's constructor (expr/eval, not exec); the
+        // classifier in the rules repository matches the tail because the head names the function
+        // and the missing provider or type.
+        String flattened = sourceAt(SRC.resolveSibling("expr").resolve("eval")
+                .resolve("UngatedProviderReachException.java")).replaceAll("\"\\s*\\+\\s*\"", "");
+        int count = 0;
+        for (int from = flattened
+                .indexOf(UNGATED_PROVIDER_REACH_MESSAGE_SUFFIX); from >= 0; from = flattened
+                        .indexOf(UNGATED_PROVIDER_REACH_MESSAGE_SUFFIX,
+                                from + UNGATED_PROVIDER_REACH_MESSAGE_SUFFIX.length()))
+        {
+            count++;
+        }
+        Assertions.assertEquals(1, count,
+                "the tripwire's message tail moved or was reworded — every such ERROR would "
+                        + "classify as OTHER; update this constant AND ViolationNormaliser's "
+                        + "UNGATED_PROVIDER_REACH_MESSAGE_SUFFIX in the rules repository");
     }
 
 

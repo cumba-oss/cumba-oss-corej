@@ -92,8 +92,7 @@ public final class OutputVariableDeriver
     private static final Set<String> COLUMN_KEYS_FUNCTIONS = Set.of("is_unique_set",
             "is_not_unique_set", "is_unique_value", "is_not_unique_value", "is_unique_relationship",
             "is_not_unique_relationship", "is_inconsistent_across_dataset",
-            "is_consistent_across_dataset", "has_multiple_values_for",
-            "has_mixed_emptiness_within_group");
+            "is_consistent_across_dataset", "has_multiple_values_for");
 
     /**
      * D5 — identity columns the engine attaches to every record-level finding out-of-band (R-9.6b,

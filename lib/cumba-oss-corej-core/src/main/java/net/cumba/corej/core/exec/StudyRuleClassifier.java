@@ -79,7 +79,7 @@ public final class StudyRuleClassifier
      * which would resolve against the dataset under evaluation).
      */
     private static final Set<String> DOMAIN_PINNED_CALLS = Set.of("record_count", "variable_count",
-            "distinct", "max", "min", "max_date", "min_date");
+            "distinct", "max", "max_date", "min_date");
 
     /**
      * Operators whose result is a study-level fact. {@code minus} composes other operations, so its
@@ -91,12 +91,15 @@ public final class StudyRuleClassifier
     /**
      * Operators that read a dataset but are study-safe when pinned to an explicit {@code domain}.
      * An <em>allowlist</em>, mirroring {@link #DOMAIN_PINNED_CALLS}: the operator vocabulary is
-     * large and most of it ({@code dy}, {@code date_diff_days}, {@code is_last_in_group},
-     * {@code extract_metadata}, the dictionary validators, …) resolves against the record under
-     * evaluation, so anything unrecognised must be assumed to read the primary dataset.
+     * large and most of it ({@code date_diff_days}, {@code extract_metadata}, the dictionary
+     * validators, …) resolves against the record under evaluation, so anything unrecognised must be
+     * assumed to read the primary dataset. ({@code dy} and {@code is_last_in_group}, once named
+     * here as examples, are registry functions since wave 1; they never were on this list.) There
+     * is no {@code min} operation — {@code min_date} is the earliest-date aggregate — so the
+     * {@code "min"} both sets used to carry matched nothing.
      */
     private static final Set<String> DOMAIN_PINNED_OPERATORS = Set.of("record_count",
-            "variable_count", "distinct", "max", "min", "max_date", "min_date");
+            "variable_count", "distinct", "max", "max_date", "min_date");
 
     /**
      * Whether {@code operator} names an operation whose result is a study-level fact — it

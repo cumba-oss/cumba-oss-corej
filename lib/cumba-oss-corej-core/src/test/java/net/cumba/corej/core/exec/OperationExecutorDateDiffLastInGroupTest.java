@@ -499,7 +499,7 @@ class OperationExecutorDateDiffLastInGroupTest
         assertEquals(39L, GroupedResultTextView.byText(gr).get("2012-07-10" + NUL + "S1"));
     }
 
-    // -- F-corej-L1-04: the tie rule and the non-numeric ordering path ---------
-
-    // -- F-corej-L1-03: the SDTM "no Day 0" boundary of the dy operation -------
+    // (The F-corej-L1-04 tie-rule / non-numeric-ordering and F-corej-L1-03 "no Day 0" sections
+    // that used to close this file went with wave 1's ports: their claims live in
+    // GroupedPredicatesTest and StudyDayTest.)
 }

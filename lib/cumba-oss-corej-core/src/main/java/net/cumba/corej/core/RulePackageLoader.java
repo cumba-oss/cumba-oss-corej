@@ -4972,12 +4972,14 @@ public class RulePackageLoader
      *
      * <p>
      * All three reach {@code DataTableMeta.getColumnIndex} unchanged, so a literal {@code "--SEQ"}
-     * misses every column and the operation quietly produces nothing: {@code evalIsLastInGroup}
-     * returns {@code null} on {@code ordIdx < 0}, {@code evalDateDiffDays} silently treats an
-     * unparseable, unresolvable {@code offset} as {@code 0} (a wrong answer, not a skip), and
-     * {@code evalDy} / {@code evalDateDiffDays} read a missing {@code reference} column as "no
-     * reference date". Nothing downstream distinguishes that from clean data — the same silence
-     * class as {@link #validateOperationReferences(Rule)}, so it gets the same load channel.
+     * misses every column and the operation quietly produces nothing: {@code evalDateDiffDays}
+     * silently treats an unparseable, unresolvable {@code offset} as {@code 0} (a wrong answer, not
+     * a skip) and reads a missing {@code reference} column as "no reference date". (Wave 1 ported
+     * {@code is_last_in_group} and {@code dy}, the other two readers this used to name; on the
+     * function surface {@code --} is resolved by the typed column parameter and a quoted name is a
+     * load error, so the silence is unrepresentable there.) Nothing downstream distinguishes that
+     * from clean data — the same silence class as {@link #validateOperationReferences(Rule)}, so it
+     * gets the same load channel.
      * </p>
      *
      * <p>
@@ -5018,10 +5020,11 @@ public class RulePackageLoader
      * documents. This is <em>not</em> a sentinel-prefix collision risk: the walk keys off
      * {@code ExprCompiler.isInlineOperation}, which requires a real {@code OperationType} name, so
      * a native leaf function that merely shares a kwarg name is never mistaken for an operation.
-     * Three functions carry an {@code ordering=} kwarg across the 29 shipped uses in {@code rules/}
-     * and only one of them is an {@code OperationType}: {@code has_next_corresponding_record} (16)
-     * and {@code empty_within_except_last_row} (7) are native Check functions,
-     * {@code is_last_in_group} (6) is the operation.
+     * Three functions carry an {@code ordering=} kwarg in {@code rules/} and since wave 1 none of
+     * them is an {@code OperationType}: {@code has_next_corresponding_record},
+     * {@code empty_within_except_last_row} and the ported {@code is_last_in_group} are all registry
+     * / compiler-dispatched functions (the {@code ordering} Operation field is gone, D-W1-6), so
+     * this walk no longer meets the kwarg on an operation at all.
      * </p>
      *
      * @param pkg
@@ -5080,7 +5083,9 @@ public class RulePackageLoader
         }
         collectInlineUnresolvedWildcards(rule.getPrecondition(), findings);
         // PLAN-binding-expressions R7: an operation call nested in a COMPILED binding is an inline
-        // call too — `$x: is_last_in_group(…, ordering="--SEQ") …` is the same silence.
+        // call too — `$x: date_diff_days(…, offset="--SEQ") …` is the same silence. (The example
+        // this used to give, is_last_in_group(…, ordering="--SEQ"), is a registry function since
+        // wave 1: there a quoted ordering is a load error of its own, R1.)
         List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
         if (compiled != null)
         {
@@ -5276,25 +5281,26 @@ public class RulePackageLoader
         // walks, for the same reason: an inline operation never reaches rule.getOperations().
         for (CheckCondition level : rule.checkConditions())
         {
-            collectInlineTypelessDictionaryOps(level, findings);
+            collectInlineTypelessDictionaryOps(level, "the Check", findings);
         }
-        collectInlineTypelessDictionaryOps(rule.getPrecondition(), findings);
+        collectInlineTypelessDictionaryOps(rule.getPrecondition(), "the Precondition", findings);
         // PLAN-binding-expressions R8: a dictionary call nested in a COMPILED binding is on the
         // inline surface too.
         List<net.cumba.corej.core.model.CompiledBinding> compiled = rule.getCompiledBindings();
         if (compiled != null)
         {
-            compiled.forEach(
-                    binding -> collectInlineTypelessDictionaryOps(binding.expression(), findings));
+            compiled.forEach(binding -> collectInlineTypelessDictionaryOps(binding.expression(),
+                    "binding " + binding.name(), findings));
         }
         if (findings.isEmpty())
         {
             return;
         }
         String message = "[" + ruleId(rule) + "] " + String.join(", ", findings)
-                + ": no installed dictionary can ever satisfy an operation that names no type, so"
-                + " the rule is defective — fix the rule by declaring external_dictionary_type;"
-                + " installing dictionaries cannot help";
+                + ": no installed dictionary can ever satisfy a dictionary call whose type is not"
+                + " a static string literal, so the rule is defective — fix the rule by declaring"
+                + " external_dictionary_type as a string literal; installing dictionaries cannot"
+                + " help";
         rule.setLoadError(
                 rule.getLoadError() == null ? message : rule.getLoadError() + "; " + message);
     }
@@ -5324,7 +5330,7 @@ public class RulePackageLoader
 
     /** Walks a Check/Precondition tree for operations authored inline in a native expression. */
     private static void collectInlineTypelessDictionaryOps(@Nullable CheckCondition condition,
-            List<String> findings)
+            String where, List<String> findings)
     {
         if (condition == null)
         {
@@ -5333,19 +5339,26 @@ public class RulePackageLoader
         switch (condition)
         {
         case CheckConditionAll all -> all.getConditions()
-                .forEach(c -> collectInlineTypelessDictionaryOps(c, findings));
+                .forEach(c -> collectInlineTypelessDictionaryOps(c, where, findings));
         case CheckConditionAny any -> any.getConditions()
-                .forEach(c -> collectInlineTypelessDictionaryOps(c, findings));
-        case CheckConditionNot not -> collectInlineTypelessDictionaryOps(not.getCondition(),
+                .forEach(c -> collectInlineTypelessDictionaryOps(c, where, findings));
+        case CheckConditionNot not -> collectInlineTypelessDictionaryOps(not.getCondition(), where,
                 findings);
         case net.cumba.corej.core.model.CheckConditionExpression expression -> collectInlineTypelessDictionaryOps(
-                expression.expr(), findings);
+                expression.expr(), where, findings);
         }
     }
 
 
+    /**
+     * @param where
+     *            the surface the call was authored on — {@code "the Check"},
+     *            {@code "the Precondition"} or {@code "binding $x"} — so the finding sends the
+     *            author to the right line; the message states which of the two defects it is (no
+     *            type declared at all, or a type that is not a static string literal)
+     */
     private static void collectInlineTypelessDictionaryOps(net.cumba.corej.core.expr.ast.Expr expr,
-            List<String> findings)
+            String where, List<String> findings)
     {
         // Wave 1 (D-W1-3 (iv)/(v)): ProviderNeeds' typeless view sees BOTH keys — an inline
         // OperationType call with a blank type and a registry function (the ported
@@ -5355,11 +5368,63 @@ public class RulePackageLoader
         for (net.cumba.corej.core.expr.ast.Expr.Call call : net.cumba.corej.core.exec.ProviderNeeds
                 .typelessDictionaryCalls(expr))
         {
-            String kind = net.cumba.corej.core.expr.eval.ExprCompiler.isInlineOperation(call)
-                    ? "inline operation "
-                    : "inline function ";
-            findings.add(kind + call.name() + "(…) " + TYPELESS_DICTIONARY_MARKER);
+            boolean operation = net.cumba.corej.core.expr.eval.ExprCompiler.isInlineOperation(call);
+            String kind = operation ? "inline operation " : "inline function ";
+            net.cumba.corej.core.expr.ast.Expr type = operation ? null
+                    : boundArgument(call,
+                            net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER);
+            String defect = type == null ? TYPELESS_DICTIONARY_MARKER
+                    : "binds " + net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER
+                            + " to " + describeArgument(type) + ", not a static string literal";
+            findings.add(kind + call.name() + "(…) in " + where + " " + defect);
         }
+    }
+
+
+    /**
+     * The expression bound to {@code parameter} on a registry call, or {@code null} when the call
+     * has no descriptor, does not bind, or leaves the parameter absent.
+     */
+    private static net.cumba.corej.core.expr.ast.@Nullable Expr boundArgument(
+            net.cumba.corej.core.expr.ast.Expr.Call call, String parameter)
+    {
+        net.cumba.corej.core.expr.eval.FunctionDescriptor descriptor = net.cumba.corej.core.expr.eval.FunctionRegistry
+                .descriptor(call.name());
+        if (descriptor == null)
+        {
+            return null;
+        }
+        List<net.cumba.corej.core.expr.eval.Parameter> params = descriptor.parameters();
+        try
+        {
+            List<net.cumba.corej.core.expr.ast.@Nullable Expr> bound = net.cumba.corej.core.expr.eval.ArgumentBinder
+                    .bind(descriptor, call);
+            for (int i = 0; i < params.size() && i < bound.size(); i++)
+            {
+                if (parameter.equals(params.get(i).name()))
+                {
+                    return bound.get(i);
+                }
+            }
+        }
+        catch (RuntimeException _)
+        {
+            return null; // an unbindable call is the compiler's own load error
+        }
+        return null;
+    }
+
+
+    private static String describeArgument(net.cumba.corej.core.expr.ast.Expr e)
+    {
+        return switch (e)
+        {
+        case net.cumba.corej.core.expr.ast.Expr.Ref ref -> "the column reference " + ref.name();
+        case net.cumba.corej.core.expr.ast.Expr.Lit lit -> "the "
+                + lit.kind().name().toLowerCase(java.util.Locale.ROOT) + " literal " + lit.value();
+        case net.cumba.corej.core.expr.ast.Expr.Call c -> "the call " + c.name() + "(…)";
+        default -> "an expression";
+        };
     }
 
 

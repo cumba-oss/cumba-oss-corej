@@ -163,9 +163,11 @@ final class IndexHelper
      *
      * <p>
      * Under {@link GroupKeyPolicy#KEEP_MISSING_KEYS} — the shipped behaviour of every
-     * {@code Operations[].group:} evaluator except {@code is_last_in_group} — a blank key component
-     * keys under its own identity ({@code ""} for an empty cell, the {@code MissingValue} constant
-     * for a genuine missing — {@code W38-A1} / Fix #249) and the group is still formed. With
+     * {@code Operations[].group:} evaluator (the one operator that discarded a blank key,
+     * {@code is_last_in_group}, is a registry function since wave 1 and still does, through
+     * {@code GroupSemantics.group} in {@code GroupedPredicates}) — a blank key component keys under
+     * its own identity ({@code ""} for an empty cell, the {@code MissingValue} constant for a
+     * genuine missing — {@code W38-A1} / Fix #249) and the group is still formed. With
      * {@link GroupKeyPolicy#keepMissings()} {@code false} a block whose representative row carries
      * a blank key component is dropped instead, which is what lets the {@code group:} surface
      * answer an authored {@code keep_missings: false} — the half of the fold/discard asymmetry that

@@ -126,8 +126,8 @@ public final class OperationDescriptors
                 str("external_dictionary_type"), str("dictionary_term_type"), caseSensitive());
         default ->
         {
-            // Target-only operations (constant, extract_metadata, the library/define walks, …):
-            // no keyword parameters beyond the target.
+            // Target-only operations (extract_metadata, the library/define walks, …): no keyword
+            // parameters beyond the target. (constant, once the example here, was deleted by W1.)
         }
         }
         return new FunctionDescriptor(type.getJsonValue(), params, FunctionKind.VALUE, null);

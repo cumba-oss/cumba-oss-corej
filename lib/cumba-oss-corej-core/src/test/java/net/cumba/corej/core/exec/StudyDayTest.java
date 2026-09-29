@@ -49,11 +49,16 @@ class StudyDayTest
     @Test
     void aTimePartIsIgnoredAndAShortOrUnparsableSideIsMissing()
     {
-        Vector dates = strings("2020-01-16T10:30", "2020-01", "abc", "", "2020-01-16");
-        Vector reference = strings("2020-01-15", "2020-01-15", "2020-01-15", "2020-01-15", "2020");
-        Vector out = StudyDay.evaluate(EvalRun.ofRowCount(5), List.of(dates, reference));
+        // Rows 1-4 are SHORT (never parsed); rows 5-6 are ten characters long and reach
+        // LocalDate.parse, which throws — the DateTimeParseException branch (2020-02-30 is a
+        // well-formed impossible date, abcdefghij is not a date at all).
+        Vector dates = strings("2020-01-16T10:30", "2020-01", "abc", "", "2020-01-16", "2020-02-30",
+                "abcdefghij");
+        Vector reference = strings("2020-01-15", "2020-01-15", "2020-01-15", "2020-01-15", "2020",
+                "2020-01-15", "2020-01-15");
+        Vector out = StudyDay.evaluate(EvalRun.ofRowCount(7), List.of(dates, reference));
         assertEquals(2L, out.value(0).resolved(), "only the yyyy-MM-dd prefix counts");
-        for (int row = 1; row < 5; row++)
+        for (int row = 1; row < 7; row++)
         {
             assertTrue(out.value(row).cell().isMissingOrInvalid(),
                     "row " + row + " cannot be computed and is a missing cell, never null");
@@ -98,8 +103,10 @@ class StudyDayTest
     @Test
     void everyRowGetsItsOwnDayEvenWhenRowsShareASubject() throws Exception
     {
-        // The retired GroupedResult keyed the day by (USUBJID, date), so rows sharing a key
-        // shared its LAST-computed day. A per-row Vector has no key to share.
+        // The retired GroupedResult keyed the day by (USUBJID, date); rows 0 and 2 share that key
+        // and, being the same subject and date, computed the same day, so the collision could not
+        // change an answer there. This pins the vector path's per-row independence: every row is
+        // computed on its own, with nothing keyed to share.
         Rule rule = loadClean("$dy < 0", List.of("$dy"), "$dy", "dy(VSDTC, DM.RFSTDTC)");
         IDataTable vs = RealTables.of("VS").str("USUBJID", "S1", "S1", "S1")
                 .str("VSDTC", "2019-12-30", "2020-01-01", "2019-12-30").build();
@@ -120,9 +127,18 @@ class StudyDayTest
                 .str("AEDTC", "2020-01-10", "2020-01-10").lng("AEDY", 6L, 3L).build();
         IDataTable dm = RealTables.of("DM").str("USUBJID", "S1").str("RFSTDTC", "2020-01-05")
                 .str("RFXSTDTC", "2020-01-08").build();
-        assertEquals(1, run(positional, ae, dm).getViolations().size(),
-                "day 3 against RFXSTDTC, never day 6 against RFSTDTC");
-        assertEquals(1, run(keyword, ae, dm).getViolations().size(), "D9: one binding");
+        // Either reference yields exactly ONE finding (row 0 against RFXSTDTC, row 1 against
+        // RFSTDTC), so the count alone cannot tell them apart: the row and the $dy value can.
+        for (Rule rule : List.of(positional, keyword))
+        {
+            List<Violation> violations = run(rule, ae, dm).getViolations();
+            assertEquals(1, violations.size(), "D9: one binding");
+            assertEquals(0L, violations.get(0).getRow(),
+                    "row 0 (AEDY=6) fires against RFXSTDTC; row 1 (AEDY=3) would fire against"
+                            + " RFSTDTC");
+            assertEquals("3", violations.get(0).getValues().get("$dy"),
+                    "day 3 against RFXSTDTC, never day 6 against RFSTDTC");
+        }
     }
 
     // ------------------------------------------------------------------ negative controls

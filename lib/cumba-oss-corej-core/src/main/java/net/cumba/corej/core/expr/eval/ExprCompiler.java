@@ -2515,7 +2515,7 @@ public final class ExprCompiler
         List<@Nullable Expr> bound = bindStrict(c);
         String rawOrder = strictColumnName(bound.get(0), c.name(), "ordering");
         List<String> rawGroup = strictColumnNames(bound.get(1), c.name(), "group");
-        GroupKeyPolicy policy = groupKeyPolicyRequiringGroup(c, rawGroup,
+        GroupKeyPolicy policy = groupKeyPolicyRequiringGroup(c.name(), bound.get(2), rawGroup,
                 GroupKeyPolicy.DROP_MISSING_KEYS);
         return run ->
         {
@@ -2543,7 +2543,7 @@ public final class ExprCompiler
                 : strictColumnNames(bound.get(1), c.name(), "group");
         List<String> rawQualifiers = bound.get(2) == null ? List.of()
                 : strictColumnNames(bound.get(2), c.name(), "qualifying_any_populated");
-        GroupKeyPolicy policy = groupKeyPolicyRequiringGroup(c, rawGroup,
+        GroupKeyPolicy policy = groupKeyPolicyRequiringGroup(c.name(), bound.get(3), rawGroup,
                 GroupKeyPolicy.KEEP_MISSING_KEYS);
         return run ->
         {
@@ -2624,19 +2624,32 @@ public final class ExprCompiler
 
 
     /**
-     * {@code keep_missings=} without a non-empty {@code group} is a load error (pre-go review L5),
-     * as {@code OperationExpressionParser.validateKeepMissings} made it for exactly these two
-     * operators: with no grouping key the disposition would have no effect.
+     * The {@code keep_missings} disposition of a wave-1 grouped plan, read from the <b>bound</b>
+     * slot so that the positional and the keyword spelling are one binding (D9; review round 1 of
+     * {@code PLAN-function-surface-wave1}: the kwargs-only reader {@link #groupKeyPolicy} bound a
+     * positional {@code keep_missings} and then ignored it). {@code keep_missings} without a
+     * non-empty {@code group} is a load error (pre-go review L5), as
+     * {@code OperationExpressionParser.validateKeepMissings} made it for exactly these two
+     * operators: with no grouping key the disposition would have no effect. A value that is not a
+     * boolean literal is a load error too.
      */
-    private static GroupKeyPolicy groupKeyPolicyRequiringGroup(Expr.Call c, List<String> group,
-            GroupKeyPolicy base)
+    private static GroupKeyPolicy groupKeyPolicyRequiringGroup(String function,
+            @Nullable Expr keepMissings, List<String> group, GroupKeyPolicy base)
     {
-        if (c.kwargs().containsKey("keep_missings") && group.isEmpty())
+        if (keepMissings == null)
         {
-            throw unsupported("`keep_missings` on " + c.name()
+            return base;
+        }
+        if (group.isEmpty())
+        {
+            throw unsupported("`keep_missings` on " + function
                     + " requires a non-empty `group`; with no grouping key it would have no effect");
         }
-        return groupKeyPolicy(c, base);
+        if (!(keepMissings instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.BOOL)
+        {
+            throw unsupported(function + " keep_missings= must be a boolean literal");
+        }
+        return base.withKeepMissings((Boolean) lit.value());
     }
 
 
@@ -5216,12 +5229,12 @@ public final class ExprCompiler
         // written, they travel into the Operation's filter map, and resolvePrefixes (its
         // resolveFilterKeys step) is the only place they are resolved — without this call a
         // `--`-keyed filter names a non-existent column and matches nothing, silently.
-        // ⚑ For the name operand of variable_count / variable_value_count (D92a, the inventory
-        // fold), which ExprPrefixResolver also leaves as a TEMPLATE, the call is not what makes
-        // it work: resolvePrefixes resolves the name against THIS dataset but stashes the
-        // template as originalName, and the executor re-resolves that template (originalName, or
-        // the name when nothing was stashed) against each inventory dataset itself
-        // (countVariableAcrossInventory / evalVariableValueCount → resolveTemplate), so `--LNKGRP`
+        // ⚑ For the name operand of variable_count (D92a, the inventory fold; its sibling
+        // variable_value_count was deleted by wave 1), which ExprPrefixResolver also leaves as a
+        // TEMPLATE, the call is not what makes it work: resolvePrefixes resolves the name against
+        // THIS dataset but stashes the template as originalName, and the executor re-resolves
+        // that template (originalName, or the name when nothing was stashed) against each
+        // inventory dataset itself (countVariableAcrossInventory → resolveTemplate), so `--LNKGRP`
         // becomes AELNKGRP, CMLNKGRP, … whether or not this call ran.
         Operation resolved = OperationExecutor.resolvePrefixes(op, ctx.getDomainPrefix(),
                 ctx.getVariableWildcardPrefix());
@@ -5335,6 +5348,22 @@ public final class ExprCompiler
         }
         if (descriptor.kind() != FunctionKind.VALUE)
         {
+            if (descriptor.kind() == FunctionKind.BOOLEAN)
+            {
+                // A BOOLEAN call lands here only when isBooleanCall declined it, which for a
+                // registry function means its arity did not fit (descriptorAccepting). Let the
+                // binder name the real cause — "accepts at most N argument(s)" — rather than the
+                // misleading "not a value function" (review round 1 of
+                // PLAN-function-surface-wave1, the grouped ports' arity negative controls).
+                try
+                {
+                    ArgumentBinder.bind(descriptor, c);
+                }
+                catch (ExpressionException ex)
+                {
+                    throw unsupported(messageOf(ex));
+                }
+            }
             throw unsupported("function '" + c.name() + "' is not a value function");
         }
         // Phase 6b (D19a): bind arguments to the one descriptor's parameter list first — one
@@ -6988,23 +7017,77 @@ public final class ExprCompiler
      * compile time, which the loader records as the rule's load error. Stage A's
      * {@code PARAMETER_TYPE} check sees the same mismatch but is not armed, so this is the
      * load-time seam that makes the retired quoted spellings fail loudly instead of silently
-     * computing against a constant string.
+     * computing against a constant string. Whoever arms {@code PARAMETER_TYPE} retires this seam
+     * (runbook §7).
+     *
+     * <p>
+     * The seam reaches every registry call bound here, not only wave 1's: a trailing
+     * <b>collector</b> of column references ({@code tuple(A, B, …)}, §1.5 sugar) is checked element
+     * by element, so {@code tuple(A, B, "C")} fails exactly as {@code tuple("A", B)} does (review
+     * round 1 of {@code PLAN-function-surface-wave1}: the leading slots alone were read, so the two
+     * spellings behaved differently — a tightening with zero corpus sites).
+     * </p>
      */
     private static void rejectLiteralColumnArguments(FunctionDescriptor descriptor,
             List<@Nullable Expr> bound)
     {
         List<Parameter> params = descriptor.parameters();
-        for (int i = 0; i < params.size() && i < bound.size(); i++)
+        for (int i = 0; i < bound.size(); i++)
         {
-            Parameter param = params.get(i);
-            if (param.type() == net.cumba.corej.core.expr.typed.ExprType.Primitive.COLUMN_REFERENCE
-                    && bound.get(i) instanceof Expr.Lit lit)
+            Parameter param = params.get(Math.min(i, params.size() - 1));
+            boolean columnSlot = param
+                    .type() == net.cumba.corej.core.expr.typed.ExprType.Primitive.COLUMN_REFERENCE
+                    || (param.collector() && param
+                            .type() instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf list
+                            && list.element() == net.cumba.corej.core.expr.typed.ExprType.Primitive.COLUMN_REFERENCE);
+            if (columnSlot && bound.get(i) instanceof Expr.Lit lit)
             {
                 throw unsupported("argument '" + param.name() + "' of '" + descriptor.name()
                         + "' takes a column reference, not the literal " + lit.value()
                         + " — a quoted name is a string, never a column");
             }
         }
+        rejectNonLiteralDictionaryFlags(descriptor, bound);
+    }
+
+
+    /**
+     * The companion seam for the dictionary functions' {@code case_sensitive} flag (review round 1
+     * of {@code PLAN-function-surface-wave1}, lane 2 M1): the retired operation surface parsed
+     * {@code case_sensitive} as a boolean field, so a non-boolean was a load error; on the function
+     * surface the same mismatch is Stage A's unarmed {@code PARAMETER_TYPE}, and the function reads
+     * the flag as {@code Boolean.FALSE.equals(value(0))} — a column or a string bound there would
+     * silently mean "case-sensitive". Anything that is not a {@code BOOL} literal at a
+     * {@code case_sensitive} parameter of a DICTIONARY-backed descriptor is a load error. Retired
+     * together with {@link #rejectLiteralColumnArguments} when {@code PARAMETER_TYPE} is armed.
+     */
+    private static void rejectNonLiteralDictionaryFlags(FunctionDescriptor descriptor,
+            List<@Nullable Expr> bound)
+    {
+        ProviderNeed need = descriptor.provider();
+        if (need == null || need.kind() != ProviderNeed.Kind.DICTIONARY)
+        {
+            return;
+        }
+        List<Parameter> params = descriptor.parameters();
+        for (int i = 0; i < params.size() && i < bound.size(); i++)
+        {
+            Expr e = bound.get(i);
+            if (e != null && "case_sensitive".equals(params.get(i).name())
+                    && !(e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.BOOL))
+            {
+                throw unsupported("argument 'case_sensitive' of '" + descriptor.name()
+                        + "' takes a boolean literal (true or false), not " + describe(e));
+            }
+        }
+    }
+
+
+    private static String describe(Expr e)
+    {
+        return e instanceof Expr.Lit lit ? "the literal " + lit.value()
+                : e instanceof Expr.Ref ref ? "the reference " + ref.name()
+                        : e.getClass().getSimpleName();
     }
 
 

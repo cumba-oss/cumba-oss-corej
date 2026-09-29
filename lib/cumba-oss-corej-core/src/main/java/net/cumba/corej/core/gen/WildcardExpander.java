@@ -1305,9 +1305,9 @@ public final class WildcardExpander
      * </p>
      * <p>
      * The column positions are {@code name}, {@code names}, {@code group}, {@code reference},
-     * {@code ordering}, {@code offset}, {@code minuend_match},
-     * {@code external_dictionary_term_variable}, {@code dictionary_parent},
-     * {@code qualifying_any_populated} and the <b>keys</b> of {@code filter}. Everything else is a
+     * {@code offset}, {@code minuend_match} and the <b>keys</b> of {@code filter}
+     * ({@code ordering}, {@code external_dictionary_term_variable}, {@code dictionary_parent} and
+     * {@code qualifying_any_populated} went with wave 1's ports, D-W1-6). Everything else is a
      * literal, a dataset name, an operator name or a {@code $}-reference and is copied unchanged —
      * in particular {@code id}, {@code subtract} and the {@code minus} {@code value} list, which
      * name operation results rather than columns, and the filter <em>values</em>, which are data.

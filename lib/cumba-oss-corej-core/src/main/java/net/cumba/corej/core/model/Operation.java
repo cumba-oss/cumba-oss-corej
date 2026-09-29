@@ -121,12 +121,14 @@ public class Operation
      *
      * <p>
      * ⚠⚠ <b>This parameter exists because {@code group:} means two different things today.</b> The
-     * five grouped operators that key through {@code IndexHelper.groupByPresent} — {@code max_date}
-     * / {@code min_date}, {@code max}, {@code distinct}, {@code record_count},
-     * {@code has_mixed_emptiness_within_group} — <b>fold</b> a blank key and keep the group, while
-     * {@code is_last_in_group} partitions through {@code GroupSemantics.partition} and
-     * <b>discards</b> it. Nothing in the YAML told the author which they would get. Declaring
-     * {@code keep_missings} now settles it explicitly on either operator.
+     * four grouped operators that key through {@code IndexHelper.groupByPresent} — {@code max_date}
+     * / {@code min_date}, {@code max}, {@code distinct}, {@code record_count} — <b>fold</b> a blank
+     * key and keep the group. (Until wave 1 of the operation→function programme
+     * {@code has_mixed_emptiness_within_group} was a fifth, and {@code is_last_in_group} the one
+     * operator that partitioned through {@code GroupSemantics} and <b>discarded</b> it; both are
+     * registry functions now, {@code GroupedPredicates}, with the same two defaults.) Nothing in
+     * the YAML told the author which they would get. Declaring {@code keep_missings} now settles it
+     * explicitly on either operator.
      * </p>
      *
      * <p>

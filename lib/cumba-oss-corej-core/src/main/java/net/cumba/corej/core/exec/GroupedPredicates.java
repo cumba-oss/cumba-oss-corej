@@ -8,6 +8,7 @@ import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
 import net.cumba.datatable.values.GroupKeyPolicy;
 import net.cumba.datatable.values.IDataValue;
+import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -91,11 +92,24 @@ public final class GroupedPredicates
 
 
     /**
-     * The ranking of D-W1-2: a total order whose equality is exactly the key identity. A missing
-     * ranks below every value and identical to the same missing marker (two markers order by their
-     * text); two numeric cells compare as numbers ({@code -0.0} is {@code 0.0}); two textual cells
-     * that both parse as numbers compare as numbers first and, where that says equal but the texts
-     * differ ({@code 5} against {@code 5.0}), by their text; anything else compares by text.
+     * The ranking of D-W1-2, whose equality is exactly the key identity. A missing ranks below
+     * every value ({@code D34 #5}) and identical to the same missing marker; two markers order by
+     * their value byte ({@code D34 #5-1}, the order {@code Primitives.compareWithMissing} ships for
+     * {@code <}), so {@code ._} ({@code MIS__}, byte 60) and {@code .} ({@code MIS}, byte 64) never
+     * tie, and {@code .} is the higher one where their text would say the opposite. Two numeric
+     * cells compare as numbers ({@code -0.0} is {@code 0.0}); two textual cells that both parse as
+     * numbers compare as numbers first and, where that says equal but the texts differ ({@code 5}
+     * against {@code 5.0}), by their text; anything else compares by text.
+     *
+     * <p>
+     * ⚠ This is a total order on a numeric column, on a CHAR column whose values all parse as
+     * numbers, and on one where none does. It is <b>not</b> a total order on a CHAR column that
+     * mixes the two: {@code 3 < 10} (numeric), {@code 10 < 2x} (text), {@code 2x < 3} (text) is a
+     * cycle, and on such a group the maximum — hence which rows are "last" — depends on the row
+     * order (pinned as today's behaviour by {@code GroupedPredicatesTest}; no ruling orders a mixed
+     * CHAR column, and both corpus sites order by the numeric {@code SESEQ} — filed in
+     * {@code plans/findings/FINDINGS-function-surface-wave1-review.md}).
+     * </p>
      *
      * @param a
      *            the left cell
@@ -111,6 +125,11 @@ public final class GroupedPredicates
         {
             if (aMissing && bMissing)
             {
+                if (a.getValue() instanceof MissingValue am
+                        && b.getValue() instanceof MissingValue bm)
+                {
+                    return Integer.compare(am.getValue(), bm.getValue());
+                }
                 return Objects.requireNonNullElse(a.getValueAsString(), "")
                         .compareTo(Objects.requireNonNullElse(b.getValueAsString(), ""));
             }

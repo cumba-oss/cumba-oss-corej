@@ -76,11 +76,12 @@ class RecordCountSingleDescriptorTest
 
     /**
      * The registry/operation overlap is closed and named: {@code record_count} (this test's
-     * subject) and {@code dictionary_available} (the §9.C gate builtin, whose arity-1 form
-     * {@code dictionary_available("X")} and operation form
-     * {@code dictionary_available(external_dictionary_type="X")} both answer
-     * {@code provider.isAvailable(X)}). Anything else appearing here is a NEW silent collision —
-     * extend this list only with the equivalence argument that justifies it.
+     * subject) alone. ({@code dictionary_available} was the second member until wave 1 of the
+     * operation→function programme deleted the OPERATION; the §9.C gate builtin
+     * {@code dictionary_available("X")} stays, and the keyword form
+     * {@code dictionary_available(external_dictionary_type="X")} is an unknown-keyword load error.)
+     * Anything else appearing here is a NEW silent collision — extend this list only with the
+     * equivalence argument that justifies it.
      */
     @Test
     void registryOperationNameOverlapIsExactlyTheRecordCountFastPath()

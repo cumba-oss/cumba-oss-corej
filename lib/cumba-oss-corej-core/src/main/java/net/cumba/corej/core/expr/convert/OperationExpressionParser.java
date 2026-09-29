@@ -31,13 +31,15 @@ import org.jspecify.annotations.Nullable;
  *
  * <pre>{@code
  *   variable_count(--LNKGRP)
- *   variable_value_count(--LNKGRP)
  *   record_count(filter=filter(TSPARMCD="INDIC", TSVALNF="NA"))
  *   record_count(group=[USUBJID])
  *   distinct(IDVAR, value_is_reference=true)
  *   get_dataset_filtered_variables(key_name="role", key_value="Timing")
- *   constant("Y")
  * }</pre>
+ * <p>
+ * ({@code variable_value_count} and {@code constant}, once listed here, were deleted by wave 1 of
+ * the operation→function programme; a spelling naming either is an unknown-operation load error.)
+ * </p>
  *
  * <p>
  * The same {@link #fromCall(Expr.Call, String)} mapping is reused by the native compiler's inline
@@ -492,9 +494,10 @@ public final class OperationExpressionParser
      * </p>
      * <ol>
      * <li><b>the operator</b> must be one that forms groups from {@code group:} — {@code min_date},
-     * {@code max_date}, {@code max}, {@code distinct}, {@code record_count},
-     * {@code has_mixed_emptiness_within_group}, {@code is_last_in_group}. Anywhere else the field
-     * would be dead;</li>
+     * {@code max_date}, {@code max}, {@code distinct}, {@code record_count}. (Until wave 1
+     * {@code has_mixed_emptiness_within_group} and {@code is_last_in_group} were on this list; as
+     * registry functions the same rule is {@code ExprCompiler.groupKeyPolicyRequiringGroup}.)
+     * Anywhere else the field would be dead;</li>
      * <li><b>there must be a {@code group:}</b> to apply it to. A grouping-key disposition on an
      * operation with no grouping key is a no-op, which is the silent shape this guard exists to
      * prevent — the same reasoning that makes {@code missing_values} require

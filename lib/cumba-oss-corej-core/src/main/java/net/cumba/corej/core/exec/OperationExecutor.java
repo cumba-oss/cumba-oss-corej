@@ -1087,21 +1087,21 @@ public final class OperationExecutor
      * Operations; the native inline-operation path ({@code ExprCompiler.inlineOperationResult})
      * calls it at eval time for what {@code ExprPrefixResolver} leaves unresolved — the
      * {@code filter=} keys, which only {@code resolveFilterKeys} resolves. (The inventory-fold name
-     * operand of {@code variable_count} / {@code variable_value_count} is also left as a template,
-     * and this method resolves it against this dataset but also stashes the template as
-     * {@code originalName}, which is what the executor reads: it re-resolves that template per
-     * inventory dataset through {@code resolveTemplate}.) For a declared Operation, without it a
-     * {@code group}/{@code name} naming a {@code --}-prefixed column would hand this executor a
-     * non-existent column and silently resolve to {@code null}.
+     * operand of {@code variable_count} is also left as a template, and this method resolves it
+     * against this dataset but also stashes the template as {@code originalName}, which is what the
+     * executor reads: it re-resolves that template per inventory dataset through
+     * {@code resolveTemplate}.) For a declared Operation, without it a {@code group}/{@code name}
+     * naming a {@code --}-prefixed column would hand this executor a non-existent column and
+     * silently resolve to {@code null}.
      * </p>
      *
      * <p>
      * Two-prefix form (EC-36). {@code domainCodePrefix} substitutes {@code --} in {@code op.domain}
      * — a <em>dataset-name</em> wildcard, so it keeps the CDISC domain code and the Fix #33
      * SUPP/SQAP parent-stripping. {@code variablePrefix} substitutes {@code --} everywhere else
-     * ({@code name}, {@code names}, {@code group}, {@code external_dictionary_term_variable}),
-     * which are <em>variable names</em> and therefore follow Python's {@code wildcard_replacement}:
-     * the 2-character AP suffix for an AP dataset, {@code ""} for SUPP/SQ.
+     * ({@code name}, {@code names}, {@code group}), which are <em>variable names</em> and therefore
+     * follow Python's {@code wildcard_replacement}: the 2-character AP suffix for an AP dataset,
+     * {@code ""} for SUPP/SQ.
      * <p>
      * A {@code null} {@code variablePrefix} falls back to the Fix #33-stripped domain prefix, which
      * is exactly the pre-EC-36 behaviour (what the retired single-prefix overload passed).

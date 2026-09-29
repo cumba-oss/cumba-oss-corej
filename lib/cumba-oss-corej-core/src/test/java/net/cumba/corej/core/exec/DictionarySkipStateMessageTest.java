@@ -30,7 +30,7 @@ import org.junit.jupiter.api.io.TempDir;
 class DictionarySkipStateMessageTest
 {
 
-    private static final String SUFFIX = "(rule requires valid_external_dictionary_* operations)";
+    private static final String SUFFIX = "(the rule needs this external dictionary)";
 
     private static Rule meddraRule() throws IOException
     {

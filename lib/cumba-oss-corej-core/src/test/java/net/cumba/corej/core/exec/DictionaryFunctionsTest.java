@@ -149,7 +149,9 @@ class DictionaryFunctionsTest
         String missing = loadError("valid_external_dictionary_code_term_pair(TSVALCD, TSVAL)");
         assertTrue(missing.contains("external_dictionary_type"), missing);
         // D-W1-3 (v): a type that is not a static string literal cannot be gated before the rows
-        // are read, so the typeless-dictionary guard refuses it — for BOTH functions.
+        // are read, so the typeless-dictionary guard refuses it — for BOTH functions. The message
+        // names the surface (the binding) and the defect (bound to a column, not a literal) —
+        // review round 1 lane 2 L5: it used to say "declares no external_dictionary_type".
         for (String spelling : List.of(
                 "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL,"
                         + " external_dictionary_type=TSPARMCD)",
@@ -157,9 +159,47 @@ class DictionaryFunctionsTest
                         + " external_dictionary_type=AESOC)"))
         {
             String error = loadError(spelling);
-            assertTrue(error.contains("names no type") || error.contains("no installed dictionary"),
+            assertTrue(
+                    error.contains("in binding $v binds external_dictionary_type to the column"
+                            + " reference") && error.contains("not a static string literal")
+                            && !error.contains("declares no external_dictionary_type"),
                     spelling + ": " + error);
         }
+        // The same call inline in the Check names the Check as its surface.
+        String inline = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"W1-DICT\"},"
+                + "\"Check\":{\"expression\":\"valid_external_dictionary_code_term_pair(TSVALCD,"
+                + " TSVAL, external_dictionary_type=TSPARMCD) == false\"}}}}";
+        Rule rule = RulePackageLoader.loadFromString(inline).getRules().get("x");
+        assertNotNull(rule);
+        assertNotNull(rule.getLoadError(), "the inline non-literal type is a load error too");
+        assertTrue(rule.getLoadError().contains("in the Check binds external_dictionary_type"),
+                rule.getLoadError());
+    }
+
+
+    @Test
+    void aNonBooleanCaseSensitiveIsALoadError() throws Exception
+    {
+        // Review round 1 lane 2 M1: the retired operation parsed case_sensitive as a boolean
+        // field; on the function surface Stage A's PARAMETER_TYPE is unarmed, and the function
+        // reads the flag as Boolean.FALSE.equals(value(0)) — a column or a string bound there
+        // would silently mean "case-sensitive". The compile seam refuses anything but a BOOL
+        // literal, for both functions and both argument forms.
+        for (String spelling : List.of(
+                "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL,"
+                        + " external_dictionary_type=\\\"unii\\\", case_sensitive=TSPARMCD)",
+                "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL,"
+                        + " external_dictionary_type=\\\"unii\\\", case_sensitive=\\\"false\\\")",
+                "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL, \\\"unii\\\", 0)",
+                "valid_external_dictionary_hierarchy(AEHLT, AESOC,"
+                        + " external_dictionary_type=\\\"meddra\\\", case_sensitive=AESOC)"))
+        {
+            String error = loadError(spelling);
+            assertTrue(error.contains("case_sensitive") && error.contains("boolean literal"),
+                    spelling + ": " + error);
+        }
+        assertNull(load("valid_external_dictionary_code_term_pair(TSVALCD, TSVAL, \\\"unii\\\","
+                + " false)").getLoadError(), "the positional boolean literal binds");
     }
 
 
