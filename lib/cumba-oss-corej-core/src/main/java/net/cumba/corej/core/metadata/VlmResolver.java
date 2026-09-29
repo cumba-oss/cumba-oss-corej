@@ -339,6 +339,12 @@ public final class VlmResolver
     }
 
 
+    /**
+     * The value-level codelist's coded values. An item without a {@code CodedValue}, or with a
+     * blank one, names no term and is skipped (register {@code NNL §1};
+     * {@code PLAN-no-null-list-elements} review round 2, MEDIUM-1), exactly as
+     * {@code OdmDefineXMLProvider}'s variable-level read skips it.
+     */
     private static List<String> codedValues(CodeList cl)
     {
         List<String> out = new ArrayList<>();
@@ -346,9 +352,10 @@ public final class VlmResolver
         {
             for (CodeListItem it : cl.getCodeListItems())
             {
-                if (it.getCodedValue() != null)
+                String coded = it.getCodedValue();
+                if (coded != null && !coded.isBlank())
                 {
-                    out.add(it.getCodedValue());
+                    out.add(coded);
                 }
             }
         }
@@ -356,9 +363,10 @@ public final class VlmResolver
         {
             for (EnumeratedItem it : cl.getEnumeratedItems())
             {
-                if (it.getCodedValue() != null)
+                String coded = it.getCodedValue();
+                if (coded != null && !coded.isBlank())
                 {
-                    out.add(it.getCodedValue());
+                    out.add(coded);
                 }
             }
         }

@@ -3,6 +3,7 @@ package net.cumba.corej.core.exec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -122,29 +123,32 @@ class RuleRunnerOutputProjectionHelpersTest
 
     /**
      * An array is NOT a list value (register {@code NNL §1}; {@code PLAN-no-null-list-elements}
-     * review round 1, LOW-2): no operation result or variable is one, so {@code scalarToString}'s
-     * array arm — which this test used to pin as {@code "[x, y]"} — was dead, assumed its elements
-     * non-null although the {@code ListValueGuard} scans only a {@code Collection}, and cast every
-     * array to {@code Object[]}. It is deleted. Red before: the primitive array threw
-     * {@code ClassCastException}; an array now takes the bounded opaque-type fallback like any
-     * other non-list object.
+     * review round 1, LOW-2, and round 2, LOW): no operation result or variable is one, so
+     * {@code scalarToString}'s array arm — which this test once pinned as {@code "[x, y]"} — was
+     * dead and was deleted in round 1. Round 1 then let an array fall through to the opaque
+     * {@code toString} fallback, which put {@code "[Ljava.lang.Object;@…"} into a finding. Round 2
+     * makes it fail loud instead: an array reaching the report path is a producer defect, never a
+     * value to render. Red before: both arrays rendered as {@code "[I@…"} /
+     * {@code "[Ljava.lang.Object;@…"}.
      */
     @Test
-    void anArrayIsNotAListValueAndTakesTheOpaqueFallback()
+    void anArrayIsNotAListValueAndThrows()
     {
         int[] primitive =
         {
                 1, 2
         };
-        assertTrue(render(primitive).startsWith("[I@"),
-                "a primitive array no longer throws ClassCastException in the report path; it"
-                        + " renders as the opaque object it is");
+        IllegalStateException p = assertThrows(IllegalStateException.class, () -> render(primitive),
+                "a primitive array is refused, not rendered as [I@…");
+        assertEquals("an array is not a list value (NNL §1)", p.getMessage());
         Object[] objects =
         {
                 "x", "y"
         };
-        assertTrue(render(objects).startsWith("[Ljava.lang.Object;@"),
-                "an Object[] is an opaque value too, not rendered as the list \"[x, y]\"");
+        IllegalStateException o = assertThrows(IllegalStateException.class, () -> render(objects),
+                "an Object[] is refused too, neither rendered as the list \"[x, y]\" nor as"
+                        + " [Ljava.lang.Object;@…");
+        assertEquals("an array is not a list value (NNL §1)", o.getMessage());
     }
 
 

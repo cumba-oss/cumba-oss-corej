@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import net.cumba.corej.core.exec.MetadataProvider;
 import net.cumba.corej.core.gen.DefineXMLProvider;
 import org.jspecify.annotations.Nullable;
@@ -187,9 +186,12 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
     public List<String> getColumnOrder(String domain)
     {
         // An ItemDef without a Name names no column; it is skipped, as getVariableMetadata and
-        // VlmResolver skip it.
+        // VlmResolver skip it. A BLANK Name="" names no column either and is skipped the same way
+        // (register NNL §1; PLAN-no-null-list-elements review round 2, MEDIUM-1): served, it was
+        // the present "" in define_variable_names(), and FDA/PMDA-SD0054 reported it as a
+        // declared variable missing from the dataset.
         List<String> order = define.getVariables(domain).stream().map(v -> v.get("name"))
-                .filter(Objects::nonNull).toList();
+                .filter(n -> n != null && !n.isBlank()).toList();
         if (order.isEmpty() && fallback != null)
         {
             return fallback.getColumnOrder(domain);

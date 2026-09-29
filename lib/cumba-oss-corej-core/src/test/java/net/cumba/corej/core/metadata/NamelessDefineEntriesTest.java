@@ -23,7 +23,10 @@ import org.junit.jupiter.api.Test;
  * a {@code CodedValue} — is <b>skipped</b> by its producer. It is neither served as {@code null}
  * (nothing is ever null) nor as {@code ""} (a present value naming nothing). A <b>blank</b>
  * {@code Name=""} / {@code CodedValue=""} names nothing either and is skipped the same way (review
- * round 1, S-1).
+ * round 1, S-1) — by every reader of the entry, not only the first one fixed: the column order and
+ * the key variables skip a nameless or blank-named {@code ItemDef}, and the coded / extended values
+ * skip a blank {@code CodedValue} (review round 2, MEDIUM-1: a blank {@code ItemDef} served as
+ * {@code ""} made FDA/PMDA-SD0054 report {@code $missing_define_variables = [""]}).
  *
  * <p>
  * Real {@code OdmDefineXMLProvider} over a real parsed document, Mockito-free. Red-before on HEAD:
@@ -96,6 +99,66 @@ class NamelessDefineEntriesTest
         assertEquals(List.of("M", "F"), terms,
                 "the items without a CodedValue and with a blank one are skipped; the two coded items"
                         + " keep their order");
+    }
+
+
+    @Test
+    void getColumnOrderSkipsTheNamelessAndTheBlankNamedItemDef()
+    {
+        List<String> order = define.getColumnOrder("DM");
+
+        assertTrue(order.stream().noneMatch(Objects::isNull), "no null element (NNL §1)");
+        assertFalse(order.contains(""), "and no blank name — Name=\"\" names no column");
+        assertEquals(List.of("USUBJID", "SEX"), order,
+                "the two named ItemDefs in OrderNumber order; the nameless and the blank-named one"
+                        + " between them are gone");
+    }
+
+
+    @Test
+    void defineVariableNamesOperationIsExactlyTheNamedItemDefs()
+    {
+        Operation op = new Operation();
+        op.setId("$define_variables");
+        op.setOperator("define_variable_names");
+        SyntheticDataTable dm = new SyntheticDataTable("DM", List.of("STUDYID"), new String[]
+        {
+                "S1"
+        }, 1);
+
+        Object result = OperationExecutor.executeOne(op, dm, _ -> null, null, Map.of(), "T-NNL",
+                null, define);
+
+        assertEquals(List.of("USUBJID", "SEX"), result,
+                "define_variable_names() — what FDA/PMDA-SD0054 compares against the dataset's"
+                        + " columns — carries no \"\" for the blank-named ItemDef");
+    }
+
+
+    @Test
+    void getKeyVariablesSkipsTheNamelessAndTheBlankNamedItemDef()
+    {
+        assertEquals(List.of("USUBJID"), odm.getKeyVariables("DM"),
+                "KeySequence 2 (Name=\"\") and 3 (no Name) name no key variable; only KeySequence"
+                        + " 1 is served");
+        assertEquals(List.of("USUBJID"), define.getKeyVariables("DM"),
+                "DefineXmlMetadataProvider passes the ODM key list through unchanged");
+    }
+
+
+    @Test
+    void codedAndExtendedValuesSkipTheBlankCodedValue()
+    {
+        Map<String, String> sex = define.getVariableMetadata("DM", "SEX");
+
+        assertEquals(List.of("M", "F"),
+                DefineMetadataListCodec.decode(sex.get("codelist_coded_values")),
+                "var_codelist_coded_values(\"DEFINE\"): the item without a CodedValue and the blank"
+                        + " one are skipped");
+        assertEquals(List.of("F"),
+                DefineMetadataListCodec.decode(sex.get("codelist_extended_values")),
+                "var_codelist_extended_values(\"DEFINE\"): the blank CodedValue is flagged"
+                        + " def:ExtendedValue=\"Yes\" and is skipped all the same — it names no term");
     }
 
 }

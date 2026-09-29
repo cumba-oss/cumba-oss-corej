@@ -1,6 +1,7 @@
 package net.cumba.corej.core.exec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -121,14 +122,16 @@ class OperationExecutorMinusTest
 
 
     /**
-     * An array is NOT a list value ({@code PLAN-no-null-list-elements} review round 1, LOW-2): no
-     * operation result is one, so {@code normalizeToList}'s {@code Object[]} arm — which this test
-     * used to pin as {@code [A, C]} under the name {@code arrayOperandsAreCoercedToLists} — was
-     * dead, and the one path the {@code ListValueGuard} did not scan. It is deleted: an array
-     * operand is one opaque scalar, never its elements.
+     * An array is NOT a list value ({@code PLAN-no-null-list-elements} review round 1, LOW-2, and
+     * round 2, LOW): no operation result is one, so {@code normalizeToList}'s {@code Object[]} arm
+     * — which this test once pinned as {@code [A, C]} under the name
+     * {@code arrayOperandsAreCoercedToLists} — was dead and was deleted in round 1. Round 1 then
+     * let an array fall through as one opaque scalar (a one-element list holding
+     * {@code "[Ljava.lang.String;@…"}); round 2 makes it fail loud, since an array operand is a
+     * producer defect, never a value. Red before: the minus returned that one-element list.
      */
     @Test
-    void anArrayOperandIsNotAListValue()
+    void anArrayOperandIsNotAListValueAndThrows()
     {
         Map<String, Object> prior = new LinkedHashMap<>();
         prior.put("$a", new String[]
@@ -136,8 +139,10 @@ class OperationExecutorMinusTest
                 "A", "B", "C"
         });
         prior.put("$b", List.of("B"));
-        assertEquals(1, run(minusOp("$a", "$b"), prior).size(),
-                "the array is one scalar element, not the three elements A, B, C");
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> run(minusOp("$a", "$b"), prior),
+                "the array is refused — neither its elements A, B, C nor one opaque scalar");
+        assertEquals("an array is not a list value (NNL §1)", e.getMessage());
     }
 
     // ---- EC-7: literal `value` list minuend --------------------------------------------------

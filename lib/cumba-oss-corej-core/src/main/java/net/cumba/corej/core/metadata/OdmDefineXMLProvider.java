@@ -257,7 +257,9 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
     /**
      * Every CodeListItem/EnumeratedItem submission ({@code CodedValue}) — the codelist's coded
      * values (EC-19, Python parity). The variable-level counterpart of {@code VlmResolver}'s coded
-     * values read, backing {@code define_variable_codelist_coded_values}.
+     * values read, backing {@code define_variable_codelist_coded_values}. An item without a
+     * {@code CodedValue}, or with a blank one, names no term and is skipped (register
+     * {@code NNL §1}; review round 2, MEDIUM-1).
      */
     private static List<String> codedValues(CodeList cl)
     {
@@ -266,9 +268,10 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
         {
             for (CodeListItem it : cl.getCodeListItems())
             {
-                if (it.getCodedValue() != null)
+                String coded = it.getCodedValue();
+                if (coded != null && !coded.isBlank())
                 {
-                    values.add(it.getCodedValue());
+                    values.add(coded);
                 }
             }
         }
@@ -276,9 +279,10 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
         {
             for (EnumeratedItem it : cl.getEnumeratedItems())
             {
-                if (it.getCodedValue() != null)
+                String coded = it.getCodedValue();
+                if (coded != null && !coded.isBlank())
                 {
-                    values.add(it.getCodedValue());
+                    values.add(coded);
                 }
             }
         }
@@ -299,9 +303,10 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
         {
             for (CodeListItem it : cl.getCodeListItems())
             {
-                if (it.getCodedValue() != null && "Yes".equals(it.getExtendedValue()))
+                String coded = it.getCodedValue();
+                if (coded != null && !coded.isBlank() && "Yes".equals(it.getExtendedValue()))
                 {
-                    values.add(it.getCodedValue());
+                    values.add(coded);
                 }
             }
         }
@@ -309,9 +314,10 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
         {
             for (EnumeratedItem it : cl.getEnumeratedItems())
             {
-                if (it.getCodedValue() != null && "Yes".equals(it.getExtendedValue()))
+                String coded = it.getCodedValue();
+                if (coded != null && !coded.isBlank() && "Yes".equals(it.getExtendedValue()))
                 {
-                    values.add(it.getCodedValue());
+                    values.add(coded);
                 }
             }
         }
@@ -554,9 +560,13 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
         {
             Integer seq = ref.getKeySequence();
             ItemDef def = seq != null ? defs.get(ref.getItemOID()) : null;
-            if (def != null && def.getName() != null)
+            // A nameless or blank-named ItemDef names no key variable and is skipped (register
+            // NNL §1; PLAN-no-null-list-elements review round 2, MEDIUM-1), as getColumnOrder
+            // and getDatasetNames skip it.
+            String name = def != null ? def.getName() : null;
+            if (seq != null && name != null && !name.isBlank())
             {
-                keyVars.add(new KeyVar(seq, def.getName()));
+                keyVars.add(new KeyVar(seq, name));
             }
         }
         keyVars.sort(java.util.Comparator.comparingInt(KeyVar::sequence));

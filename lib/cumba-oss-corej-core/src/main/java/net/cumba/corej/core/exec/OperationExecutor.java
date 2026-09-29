@@ -2195,7 +2195,9 @@ public final class OperationExecutor
      * sides ({@code D34 #5-2}). ⚑ The {@code Object[]} arm that stood here is gone (review round 1,
      * LOW-2): no operation result is an array — every one is a {@code List}, a {@code Set}, a
      * {@link GroupedResult} or a scalar — so the arm was dead, and it was the one path the
-     * {@link ListValueGuard} does not scan.
+     * {@link ListValueGuard} does not scan. ⚠ An array is not a list value, and since review round
+     * 2 (LOW) it fails loud with an {@link IllegalStateException} instead of falling through as one
+     * opaque scalar (a one-element list holding {@code "[Ljava.lang.Object;@…"}).
      * </p>
      */
     private static List<Object> normalizeToList(@Nullable Object value)
@@ -2203,6 +2205,10 @@ public final class OperationExecutor
         if (value == null)
         {
             return List.of();
+        }
+        if (value.getClass().isArray())
+        {
+            throw new IllegalStateException("an array is not a list value (NNL §1)");
         }
         if (value instanceof java.util.Collection<?> c)
         {

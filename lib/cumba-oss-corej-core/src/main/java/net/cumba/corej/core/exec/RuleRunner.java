@@ -4440,8 +4440,11 @@ public final class RuleRunner
      * ⚑ No array arm (removed by {@code PLAN-no-null-list-elements} review round 1, LOW-2): no
      * operation result or variable value is an array, so the arm was dead; it assumed its elements
      * non-null although the {@code ListValueGuard} scans only a {@code Collection}, and it cast any
-     * array to {@code Object[]}, which throws {@code ClassCastException} on a primitive one. An
-     * array would now render through the bounded {@code toString} fallback.
+     * array to {@code Object[]}, which throws {@code ClassCastException} on a primitive one. ⚠ An
+     * array is not a list value, and since review round 2 (LOW) it fails loud with an
+     * {@link IllegalStateException} instead of rendering through the {@code toString} fallback as
+     * the opaque {@code "[Ljava.lang.Object;@…"} — an array reaching a finding is a producer
+     * defect, never a value to report.
      * </p>
      */
     private static String scalarToString(@Nullable Object aValue)
@@ -4449,6 +4452,10 @@ public final class RuleRunner
         if (aValue == null)
         {
             return "";
+        }
+        if (aValue.getClass().isArray())
+        {
+            throw new IllegalStateException("an array is not a list value (NNL §1)");
         }
         if (aValue instanceof Number n)
         {

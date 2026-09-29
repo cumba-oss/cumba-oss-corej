@@ -70,6 +70,12 @@ class VlmResolverTest
                                 .aliases(List.of(Alias.builder().context("nci:ExtCodeID").name("C1")
                                         .build()))
                                 .build(),
+                        // Two items that name no term — a blank CodedValue and none at all — are
+                        // skipped by the coded-values read (register NNL §1;
+                        // PLAN-no-null-list-elements review round 2, MEDIUM-1), so the assertion
+                        // below still sees exactly the two coded units.
+                        CodeListItem.builder().codedValue("").build(),
+                        CodeListItem.builder().build(),
                         CodeListItem.builder().codedValue("mmol/L").build()))
                 .aliases(List.of(Alias.builder().context("nci:ExtCodeID").name("C67").build()))
                 .build();
