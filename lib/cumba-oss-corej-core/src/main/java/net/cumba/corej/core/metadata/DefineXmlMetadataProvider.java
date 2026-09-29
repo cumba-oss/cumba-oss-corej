@@ -230,8 +230,11 @@ public final class DefineXmlMetadataProvider implements MetadataProvider
     @Override
     public List<String> getCodelistTerms(String codelistCode)
     {
+        // A CodeListItem without a CodedValue has no term to serve: OdmDefineXMLProvider leaves the
+        // key out of its map, and the entry is skipped here (register NNL §1 — never a null
+        // element).
         List<String> terms = define.getCodelistTerms(codelistCode).stream()
-                .map(t -> t.get("codedValue")).toList();
+                .map(t -> t.get("codedValue")).filter(Objects::nonNull).toList();
         if (terms.isEmpty() && fallback != null)
         {
             return fallback.getCodelistTerms(codelistCode);

@@ -4500,7 +4500,7 @@ public final class RuleRunner
         StringBuilder sb = new StringBuilder();
         sb.append('[');
         int i = 0;
-        for (Object element : aCollection)
+        for (Object element : ListValueGuard.elements(aCollection))
         {
             if (i == MAX_COLLECTION_RENDER_ELEMENTS)
             {
@@ -4511,7 +4511,9 @@ public final class RuleRunner
             {
                 sb.append(", ");
             }
-            String rendered = element == null ? "null" : element.toString();
+            // An element is never null (register NNL §1): the list passed the ListValueGuard at
+            // its birth site.
+            String rendered = element.toString();
             if (rendered.length() > 64)
             {
                 rendered = rendered.substring(0, 64) + "…";

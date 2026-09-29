@@ -1711,9 +1711,10 @@ public final class GroupSemantics
     /**
      * The distinct string values of a resolved {@code $}-operation source for
      * {@code not_contains_all} — the {@code $}-branch of the distinct-source-value contract: a
-     * {@code Collection} maps per-element {@code toString} (insertion order kept, {@code null}
-     * elements skipped); an absent or non-collection value yields the <b>empty</b> set (so any
-     * non-empty requirement flags every row). A missing element is its
+     * {@code Collection} maps per-element {@code toString} (insertion order kept; no element is
+     * {@code null} — the result passed {@code OperationExecutor.executeOne}'s
+     * {@code ListValueGuard}, register {@code NNL §1}); an absent or non-collection value yields
+     * the <b>empty</b> set (so any non-empty requirement flags every row). A missing element is its
      * {@link net.cumba.corej.core.expr.eval.Primitives.MissingMember} identity, never its
      * {@code "."} display string — the identity {@link #distinctColumnValues} keeps for the column
      * source ({@code W38-A1} part 4), so a missing member never satisfies a real {@code "."} token
@@ -1725,12 +1726,9 @@ public final class GroupSemantics
         if (resolved instanceof java.util.Collection<?> col)
         {
             Set<Object> out = LinkedHashSet.newLinkedHashSet(col.size());
-            for (Object item : col)
+            for (Object item : ListValueGuard.elements(col))
             {
-                if (item != null)
-                {
-                    out.add(net.cumba.corej.core.expr.eval.Primitives.keyComponent(item));
-                }
+                out.add(net.cumba.corej.core.expr.eval.Primitives.keyComponent(item));
             }
             return out;
         }
@@ -1752,11 +1750,12 @@ public final class GroupSemantics
 
 
     /**
-     * The string list of a resolved {@code $}-operation value — mirrors the {@code $}-branch of The
-     * string-list contract: a {@code Collection} maps per-element {@code toString} with
-     * {@code null} elements contributing the EMPTY string; a non-null scalar is a singleton; an
-     * absent value yields the empty list. A missing element is its {@code MissingMember} identity,
-     * as in {@link #distinctOperationValues}, so a required missing is satisfied only by the same
+     * The string list of a resolved {@code $}-operation value — the {@code $}-branch of the
+     * string-list contract: a {@code Collection} maps per-element {@code toString} (no element is
+     * {@code null}: the result passed {@code OperationExecutor.executeOne}'s
+     * {@code ListValueGuard}, register {@code NNL §1}); a present scalar is a singleton; an absent
+     * value yields the empty list. A missing element is its {@code MissingMember} identity, as in
+     * {@link #distinctOperationValues}, so a required missing is satisfied only by the same
      * missing.
      */
     public static List<Object> operationStringList(@Nullable Object resolved)
@@ -1764,7 +1763,7 @@ public final class GroupSemantics
         if (resolved instanceof java.util.Collection<?> col)
         {
             List<Object> out = new ArrayList<>(col.size());
-            for (Object item : col)
+            for (Object item : ListValueGuard.elements(col))
             {
                 out.add(net.cumba.corej.core.expr.eval.Primitives.keyComponent(item));
             }
@@ -1776,18 +1775,18 @@ public final class GroupSemantics
     }
 
 
-    /** Per-element {@code toString} set of a {@code Collection} value; scalar → singleton. */
+    /**
+     * Per-element {@code toString} set of a {@code Collection} value; scalar → singleton. No
+     * element is {@code null} (register {@code NNL §1}).
+     */
     private static Set<String> toStringSet(Object value)
     {
         Set<String> result = new HashSet<>();
         if (value instanceof java.util.Collection<?> col)
         {
-            for (Object item : col)
+            for (Object item : ListValueGuard.elements(col))
             {
-                if (item != null)
-                {
-                    result.add(item.toString());
-                }
+                result.add(item.toString());
             }
         }
         else
@@ -1798,18 +1797,18 @@ public final class GroupSemantics
     }
 
 
-    /** Per-element {@code toString} list of a {@code Collection} value; scalar → singleton. */
+    /**
+     * Per-element {@code toString} list of a {@code Collection} value; scalar → singleton. No
+     * element is {@code null} (register {@code NNL §1}).
+     */
     private static List<String> toStringList(Object value)
     {
         List<String> result = new ArrayList<>();
         if (value instanceof java.util.Collection<?> col)
         {
-            for (Object item : col)
+            for (Object item : ListValueGuard.elements(col))
             {
-                if (item != null)
-                {
-                    result.add(item.toString());
-                }
+                result.add(item.toString());
             }
         }
         else

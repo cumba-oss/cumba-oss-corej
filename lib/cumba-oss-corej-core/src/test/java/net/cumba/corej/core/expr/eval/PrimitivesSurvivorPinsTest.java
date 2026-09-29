@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.Arrays;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Set;
@@ -337,18 +336,14 @@ class PrimitivesSurvivorPinsTest
 
 
     /**
-     * Null elements in the list are skipped, and a present member still matches past them (line
-     * 897) — negating the null-skip either NPEs or drops the real member.
+     * The null-skip pin that stood here ({@code listMembershipSkipsNullElementsAndMatchesTheRest})
+     * is retired: its mutant's code — {@code anyInSet}'s {@code item == null} skip — is gone with
+     * register {@code NNL §1} (no list element is null; {@code ConstVector.of} rejects one). The
+     * case-insensitive rows it also carried keep their pin here.
      */
     @Test
-    void listMembershipSkipsNullElementsAndMatchesTheRest()
+    void listMembershipCaseInsensitiveFoldsTheElementNotTheSet()
     {
-        ConstVector list = ConstVector.of(Arrays.asList(null, "Y"));
-        assertEquals(bits(0), Primitives.listMembership(list,
-                Primitives.MemberSet.ofStrings(Set.of("Y")), 1, false, false));
-        assertEquals(bits(), Primitives.listMembership(list,
-                Primitives.MemberSet.ofStrings(Set.of("N")), 1, false, false));
-        // Case-insensitive variant folds the element, not the (pre-folded) set.
         ConstVector lower = ConstVector.of(List.of("y"));
         assertEquals(bits(0), Primitives.listMembership(lower,
                 Primitives.MemberSet.ofStrings(Set.of("Y")), 1, false, true));

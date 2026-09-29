@@ -1,6 +1,5 @@
 package net.cumba.corej.core.expr.eval;
 
-import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
 import java.util.List;
@@ -1183,8 +1182,9 @@ public final class Primitives
      * {@code negate} before {@link #membershipOperand} is consulted, so the {@code $}-operation
      * membership arm cannot disagree with the scalar one. <b>(b) A missing ELEMENT inside the
      * collection is a different position and is deliberately OUT OF SCOPE</b> (owner): it simply
-     * does not match the needle — {@link #containsElement} still folds it to {@code ""} — and it
-     * does not make the whole call false.
+     * does not match the needle — {@link #containsElement} compares each element's own text, and no
+     * element is {@code null} (register {@code NNL §1}) — and it does not make the whole call
+     * false.
      * </p>
      */
     private static BitSet substring(Vector v, Vector targets, int rowCount, SubstringMode mode,
@@ -1262,15 +1262,15 @@ public final class Primitives
 
 
     /**
-     * Exact membership of {@code needle} in {@code col}. A {@code null} element contributes the
-     * empty string — the same fold the scalar path applies to a missing cell, and what
-     * {@code ExprCompiler.groupedMembership} does on the mirrored ({@code LHS ∈ $list}) direction.
+     * Exact membership of {@code needle} in {@code col}, each element by its own text. No element
+     * is {@code null}: the collection is an operation result that passed
+     * {@code OperationExecutor.executeOne}'s {@code ListValueGuard} (register {@code NNL §1}).
      */
     private static boolean containsElement(Collection<?> col, String needle)
     {
-        for (Object item : col)
+        for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(col))
         {
-            if (needle.equals(item != null ? item.toString() : ""))
+            if (needle.equals(item.toString()))
             {
                 return true;
             }
@@ -1384,22 +1384,22 @@ public final class Primitives
 
     /**
      * The composite-key component of a raw member: a missing member (see
-     * {@link MemberSet#missingIdentityOfMember}) as its {@link MissingMember}, a {@code null} as
-     * {@code ""} (the raw channel's {@code @Nullable} contract), any other member as
-     * {@code toString()}.
+     * {@link MemberSet#missingIdentityOfMember}) as its {@link MissingMember}, any other member as
+     * {@code toString()}. A member is never {@code null} (register {@code NNL §1}: the list it came
+     * from passed the {@code ListValueGuard} at its birth site).
      *
      * @param item
      *            a raw member
      * @return the component — a {@link MissingMember} or a {@code String}
      */
-    public static Object keyComponent(@Nullable Object item)
+    public static Object keyComponent(Object item)
     {
         MissingValue missing = MemberSet.missingIdentityOfMember(item);
         if (missing != null)
         {
             return new MissingMember(missing);
         }
-        return item != null ? item.toString() : "";
+        return item.toString();
     }
 
     /**
@@ -1431,10 +1431,12 @@ public final class Primitives
      * </p>
      *
      * <p>
-     * ⚠ A {@code null} item still folds to {@code ""}, exactly as before. These are raw
-     * {@code Object}s from an operation result, and {@code PLAN-null-free-value-channel} §5 ruled
-     * the raw channel {@code @Nullable} <b>by contract</b> — so re-classifying a raw {@code null}
-     * is a different axis and deliberately not touched here.
+     * ⭐ No member is ever {@code null} (register {@code NNL §1},
+     * {@code PLAN-no-null-list-elements}): every list a builder classifies passed the
+     * {@code ListValueGuard} at its birth site ({@code OperationExecutor.executeOne} for an
+     * operation result, {@code ConstVector.of} for a constant list) or was built null-free per row.
+     * A member is a present value or a {@code MissingValue} — the fold of a {@code null} to
+     * {@code ""} that stood here is gone with the {@code null}s.
      * </p>
      *
      * @param present
@@ -1453,11 +1455,8 @@ public final class Primitives
          */
         public MemberSet
         {
-            // ⚠ Set.copyOf REJECTS a null element, so a caller handing in a set containing null
-            // gets
-            // an NPE here rather than a silently broken member. {@link #of} cannot produce one (a
-            // null
-            // item folds to ""), so this is a future-caller guard, not a live path (review LOW-7).
+            // Set.copyOf REJECTS a null element — consistent with NNL §1: no member is null, and
+            // {@link #of} never produces one, so this is a future-caller guard, not a live path.
             present = Set.copyOf(present);
             missing = Set.copyOf(missing);
         }
@@ -1483,7 +1482,7 @@ public final class Primitives
             // habit from the builders it replaced (terminal review, LOW-5).
             Set<String> present = new java.util.HashSet<>();
             Set<MissingValue> missing = new java.util.HashSet<>();
-            for (Object item : items)
+            for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(items))
             {
                 MissingValue mv = missingIdentityOfMember(item);
                 if (mv != null)
@@ -1491,7 +1490,8 @@ public final class Primitives
                     missing.add(mv);
                     continue;
                 }
-                String s = item != null ? item.toString() : "";
+                // Never null (NNL §1) — the list passed the ListValueGuard at its birth site.
+                String s = item.toString();
                 present.add(caseInsensitive ? s.toUpperCase(java.util.Locale.ROOT) : s);
             }
             return new MemberSet(present, missing);
@@ -1502,9 +1502,9 @@ public final class Primitives
          * The missing identity a raw member carries, or {@code null} for a present member — the one
          * classification every member-set site shares: a {@link MissingValue} itself, or an
          * {@link IDataValue} that is missing ({@link TypedValue#missingIdentityOf}, so a
-         * NaN-carrying numeric cell yields its marker too). A {@code null} item is not a missing
-         * identity here: the raw channel is {@code @Nullable} by contract and each builder states
-         * what a {@code null} means ({@code ""}, or skipped).
+         * NaN-carrying numeric cell yields its marker too). An item is never {@code null} (register
+         * {@code NNL §1}); a {@code null} here is not a missing identity and is not classified — it
+         * would have thrown at the list's birth site.
          *
          * @param item
          *            a raw member
@@ -1525,32 +1525,6 @@ public final class Primitives
                 return TypedValue.missingIdentityOf(dv);
             }
             return null;
-        }
-
-
-        /**
-         * As {@link #of}, except that a {@code null} item is <b>skipped</b> instead of folded to
-         * {@code ""} — the contract of the list-valued metadata accessors ({@code var_codelist_*},
-         * {@code vlm_codelist_*}), whose builders never contributed a {@code null} element as a
-         * member.
-         *
-         * @param items
-         *            the raw members
-         * @param caseInsensitive
-         *            whether to upper-case the present members, as the comparison will
-         * @return the classified set
-         */
-        public static MemberSet ofSkippingNulls(Iterable<?> items, boolean caseInsensitive)
-        {
-            List<Object> nonNull = new ArrayList<>();
-            for (Object item : items)
-            {
-                if (item != null)
-                {
-                    nonNull.add(item);
-                }
-            }
-            return of(nonNull, caseInsensitive);
         }
 
 
@@ -1861,10 +1835,10 @@ public final class Primitives
      * ({@code ~all(is_in(item, allowed) for item in tokens)}, proven per-row by CoreIssue890): a
      * single valid token passes, one invalid token fires. A null / non-list / empty-list cell never
      * fires ({@code all([])} is {@code True} ⇒ contained ⇒ no violation). Matching is
-     * case-sensitive (CT submission values are exact-case), and {@code null} tokens fold to
-     * {@code ""}. Each token is compared as a {@linkplain #keyComponent key component}: a missing
-     * token is its {@link MissingMember} and is allowed only by the same missing, never by a
-     * present {@code "."} ({@code D34 #5-2}; review round 2, L3 — the mirror of R4).
+     * case-sensitive (CT submission values are exact-case); no token is {@code null} (register
+     * {@code NNL §1}). Each token is compared as a {@linkplain #keyComponent key component}: a
+     * missing token is its {@link MissingMember} and is allowed only by the same missing, never by
+     * a present {@code "."} ({@code D34 #5-2}; review round 2, L3 — the mirror of R4).
      */
     public static BitSet notContainsAllTokens(Vector tokens, Set<?> allowed, int rowCount)
     {
@@ -1875,7 +1849,7 @@ public final class Primitives
             {
                 continue;
             }
-            for (Object item : list)
+            for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(list))
             {
                 if (!allowed.contains(keyComponent(item)))
                 {
@@ -1895,12 +1869,10 @@ public final class Primitives
         {
             return false;
         }
-        for (Object item : list)
+        // No element is null (register NNL §1): the list passed the ListValueGuard at its birth
+        // site.
+        for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(list))
         {
-            if (item == null)
-            {
-                continue;
-            }
             MissingValue identity = MemberSet.missingIdentityOfMember(item);
             if (identity != null)
             {

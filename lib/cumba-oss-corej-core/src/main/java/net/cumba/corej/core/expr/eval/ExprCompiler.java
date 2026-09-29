@@ -1303,10 +1303,10 @@ public final class ExprCompiler
 
     /**
      * Coerces an operation result into a set of reference row-tuples (T3): a {@link Collection} of
-     * {@link List} elements, each normalised by {@link #toTupleKey} (a {@code null} element folds
-     * to {@code ""}, a missing one keeps its identity). A {@code null} / non-collection / empty
-     * result is the empty set (so {@code not in} fires and {@code in} does not — the single-column
-     * contract).
+     * {@link List} elements, each normalised by {@link #toTupleKey} (a missing element keeps its
+     * identity; no element is {@code null}, register {@code NNL §1}). A {@code null} /
+     * non-collection / empty result is the empty set (so {@code not in} fires and {@code in} does
+     * not — the single-column contract).
      */
     private static Set<List<Object>> toTupleSet(@Nullable Object result)
     {
@@ -1330,9 +1330,9 @@ public final class ExprCompiler
     /**
      * Normalises a tuple cell (the {@code tuple} function's {@code List} cell, or a reference-set
      * {@code List} element) to a list of {@linkplain Primitives#keyComponent key components} — a
-     * present element as its text, a {@code null} as {@code ""}, a missing element as its
-     * {@link Primitives.MissingMember} identity (D11 / D34 #5-2, never its {@code "."} display
-     * string) — or {@code null} when the value is not a {@link List}.
+     * present element as its text, a missing element as its {@link Primitives.MissingMember}
+     * identity (D11 / D34 #5-2, never its {@code "."} display string); no element is {@code null}
+     * (register {@code NNL §1}) — or {@code null} when the value is not a {@link List}.
      */
     static @Nullable List<Object> toTupleKey(@Nullable Object value)
     {
@@ -1341,7 +1341,7 @@ public final class ExprCompiler
             return null;
         }
         List<Object> out = new ArrayList<>(list.size());
-        for (Object item : list)
+        for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(list))
         {
             out.add(Primitives.keyComponent(item));
         }
@@ -1410,8 +1410,9 @@ public final class ExprCompiler
                 continue;
             }
             // ⭐ PLAN-member-set-identity-hardening: classified, never rendered — a MissingValue
-            // member keeps its identity (a null element is skipped, as before).
-            Primitives.MemberSet set = Primitives.MemberSet.ofSkippingNulls(list, caseInsensitive);
+            // member keeps its identity. No element is null: the VLM list is built null-free by
+            // VlmResolver (register NNL §1).
+            Primitives.MemberSet set = Primitives.MemberSet.of(list, caseInsensitive);
             // D81 (phase 6b): the probe is =='s own per-member decision tree.
             if (negate != Primitives.isMember(dv, set, caseInsensitive))
             {
@@ -1439,8 +1440,9 @@ public final class ExprCompiler
         if (rv != null && run.rowCount() > 0 && rv.value(0).resolved() instanceof List<?> list)
         {
             // ⭐ PLAN-member-set-identity-hardening: classified, never rendered — a MissingValue
-            // member keeps its identity (a null element is skipped, as before).
-            return Primitives.MemberSet.ofSkippingNulls(list, caseInsensitive);
+            // member keeps its identity. No element is null: the accessor's ConstVector passed the
+            // ListValueGuard at construction (register NNL §1).
+            return Primitives.MemberSet.of(list, caseInsensitive);
         }
         return EMPTY_MEMBERS;
     }
@@ -2868,12 +2870,11 @@ public final class ExprCompiler
                 Object resolved = ctx.resolveVariable(k);
                 if (resolved instanceof Collection<?> col)
                 {
-                    for (Object item : col)
+                    // An operation result passed executeOne's ListValueGuard — no element is
+                    // null (register NNL §1).
+                    for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(col))
                     {
-                        if (item != null)
-                        {
-                            out.add(item.toString());
-                        }
+                        out.add(item.toString());
                     }
                     continue;
                 }
@@ -5112,8 +5113,9 @@ public final class ExprCompiler
      * unresolvable / {@link GroupedResult} result the empty set (a {@link GroupedResult} is handled
      * per row before this is reached). The members are classified through
      * {@link Primitives.MemberSet} — a {@code MissingValue} keeps its identity instead of rendering
-     * to {@code "."} (owner 2026-09-25, {@code PLAN-member-set-identity-hardening}); a {@code null}
-     * element still folds to {@code ""}. Package-private for {@code MemberSetBuilderIdentityTest}.
+     * to {@code "."} (owner 2026-09-25, {@code PLAN-member-set-identity-hardening}); no element is
+     * {@code null} (register {@code NNL §1}: the result passed the {@code ListValueGuard} at its
+     * birth site). Package-private for {@code MemberSetBuilderIdentityTest}.
      */
     static Primitives.MemberSet toSet(@Nullable Object result, boolean caseInsensitive)
     {

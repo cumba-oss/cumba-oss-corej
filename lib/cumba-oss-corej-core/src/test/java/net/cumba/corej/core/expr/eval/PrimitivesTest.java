@@ -357,11 +357,16 @@ class PrimitivesTest
 
 
     @Test
-    void collectionMembershipFoldsNullElementsToEmptyString()
+    void collectionMembershipDoesNotFoldAMissingElementToEmptyString()
     {
+        // Register NNL §1 re-pinned this from a null element (folded to ""): an element is a value
+        // or a MissingValue, and a MissingValue is not "" (D12).
         ComputedVector sets = new ComputedVector(1, net.cumba.datatable.values.DataValueType.STRING,
-                _ -> java.util.Arrays.asList("N", null));
-        assertEquals(bits(0), Primitives.contains(sets, ConstVector.of(""), 1, false));
+                _ -> java.util.List.of("N", MissingValue.MIS));
+        assertEquals(bits(), Primitives.contains(sets, ConstVector.of(""), 1, false),
+                "the missing element does not match \"\"");
+        assertEquals(bits(0), Primitives.contains(sets, ConstVector.of("N"), 1, false),
+                "baseline must fire: the present sibling still matches");
     }
 
 

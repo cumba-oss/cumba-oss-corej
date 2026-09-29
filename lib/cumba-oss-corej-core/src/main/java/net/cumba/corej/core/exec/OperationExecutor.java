@@ -161,6 +161,30 @@ public final class OperationExecutor
             @Nullable RuntimeDictionaryProvider dictionaryProvider,
             @Nullable MetadataProvider defineProvider, Set<String> numericExpectedColumns)
     {
+        Object result = executeOneUnguarded(op, table, resolver, libraryProvider, priorResults,
+                ruleId, dictionaryProvider, defineProvider, numericExpectedColumns);
+        // ⭐ Register NNL §1 — the ONE birth site of every operation result (RuleRunner's lazy and
+        // eager arms, ExprCompiler.inlineOperationResult all enter here): a list result holding a
+        // null element is a producer defect and throws here, naming the operation, so the rule
+        // ERRORs with that message instead of a consumer folding the element to "" or dropping
+        // it. Once per operation per (rule × dataset) — LazyValue memoises the result — never per
+        // row (PLAN-no-null-list-elements §3).
+        ListValueGuard.requireNoNullElement(result, () -> "operation " + op.getOperator() + " (id="
+                + op.getId() + ") of rule " + (ruleId != null ? ruleId : "?"));
+        return result;
+    }
+
+
+    /**
+     * {@link #executeOne} before the {@link ListValueGuard}: the body is a method of its own so
+     * every one of its {@code return}s passes through the guard.
+     */
+    private static @Nullable Object executeOneUnguarded(Operation op, IDataTable table,
+            DatasetResolver resolver, @Nullable MetadataProvider libraryProvider,
+            Map<String, Object> priorResults, @Nullable String ruleId,
+            @Nullable RuntimeDictionaryProvider dictionaryProvider,
+            @Nullable MetadataProvider defineProvider, Set<String> numericExpectedColumns)
+    {
         OperationType type = op.getOperationType();
         if (type == null)
         {
@@ -626,24 +650,20 @@ public final class OperationExecutor
             Object val = variables.get(g);
             switch (val)
             {
+            // A $-reference resolves to a prior operation result, which passed executeOne's
+            // ListValueGuard — its elements are never null (register NNL §1).
             case List<?> list ->
             {
-                for (Object item : list)
+                for (Object item : ListValueGuard.elements(list))
                 {
-                    if (item != null)
-                    {
-                        expanded.add(item.toString());
-                    }
+                    expanded.add(item.toString());
                 }
             }
             case java.util.Collection<?> col ->
             {
-                for (Object item : col)
+                for (Object item : ListValueGuard.elements(col))
                 {
-                    if (item != null)
-                    {
-                        expanded.add(item.toString());
-                    }
+                    expanded.add(item.toString());
                 }
             }
             case String s -> expanded.add(s);
@@ -2158,10 +2178,11 @@ public final class OperationExecutor
 
 
     /**
-     * Coerces an operation result to a {@code List<String>} for set operations, mirroring
-     * {@code minus.py}'s {@code _normalize_to_list}: {@code null} → {@code []}; any
-     * {@link java.util.Collection} → its non-null elements stringified; an array → the same; a
-     * scalar → a singleton list of its string form.
+     * Coerces an operation result to a {@code List<String>} for set operations: an absent
+     * ({@code null}) result → {@code []}; any {@link java.util.Collection} → its elements
+     * stringified; an array → the same; a scalar → a singleton list of its string form. The
+     * elements are never {@code null} — a prior operation result passed {@link #executeOne}'s
+     * {@link ListValueGuard} (register {@code NNL §1}).
      */
     private static List<String> normalizeToList(@Nullable Object value)
     {
@@ -2172,12 +2193,9 @@ public final class OperationExecutor
         if (value instanceof java.util.Collection<?> c)
         {
             List<String> out = new ArrayList<>(c.size());
-            for (Object item : c)
+            for (Object item : ListValueGuard.elements(c))
             {
-                if (item != null)
-                {
-                    out.add(item.toString());
-                }
+                out.add(item.toString());
             }
             return out;
         }
@@ -2188,10 +2206,7 @@ public final class OperationExecutor
             List<String> out = new ArrayList<>(arr.length);
             for (Object item : arr)
             {
-                if (item != null)
-                {
-                    out.add(item.toString());
-                }
+                out.add(item.toString());
             }
             return out;
         }
@@ -4962,9 +4977,18 @@ public final class OperationExecutor
 
 
     /**
-     * Uppercases every element (Locale.ROOT), preserving order and any {@code null} elements. FU-2:
-     * {@code dataset_names} and {@code define_dataset_names} are uppercased in both engines so the
-     * set-compares in SD0061/SD1063 are case-invariant and identical across Java and Python.
+     * Uppercases every element (Locale.ROOT), preserving order. FU-2: {@code dataset_names} and
+     * {@code define_dataset_names} are uppercased so the set-compares in SD0061/SD1063 are
+     * case-invariant.
+     *
+     * <p>
+     * ⚠ A {@code null} element is <b>not</b> a value here and is <b>not</b> folded: it is handed on
+     * untouched so that the {@link ListValueGuard} at {@link #executeOne} — the birth site of this
+     * result — reports it naming the operation (register {@code NNL §1}), rather than an anonymous
+     * {@code NullPointerException} from this loop. The producers are null-free
+     * ({@code OdmDefineXMLProvider.getDatasetNames} skips a nameless {@code ItemGroupDef}); this is
+     * upstream of the guard, not a consumer of a guarded list.
+     * </p>
      */
     private static List<String> upperCaseAll(java.util.Collection<String> names)
     {

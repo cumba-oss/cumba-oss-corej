@@ -1028,18 +1028,18 @@ public final class BuiltinFunctions implements FunctionProvider
             // upper(varname()) — against the library's upper-case names. A MISSING element (a
             // MissingValue) is carried through UNCHANGED, in its position (register D36: missing
             // propagates through the string functions, upper named first); it is never folded to
-            // "" nor to its rendered marker. Only a present element is folded. ⛔ A null element
-            // is NOT a way of saying missing — nothing is ever null (owner, 2026-09-18); one here
-            // is a defect in the list's producer. It is passed through only so the fold does not
-            // disguise it as ""; PLAN-no-null-list-elements makes the producers null-free.
+            // "" nor to its rendered marker. Only a present element is folded. The list reaching
+            // this fold passed the ListValueGuard at its birth site (an operation result at
+            // OperationExecutor.executeOne, a constant list at ConstVector.of) or was built
+            // null-free per row (split_by, tuple), so no element is null (register NNL §1).
             TypedValue tv = x.value(row);
             Object raw = tv.resolved();
             if (raw instanceof Collection<?> col)
             {
-                List<@Nullable Object> folded = new ArrayList<>(col.size());
-                for (Object item : col)
+                List<Object> folded = new ArrayList<>(col.size());
+                for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(col))
                 {
-                    if (item == null || Primitives.MemberSet.missingIdentityOfMember(item) != null)
+                    if (Primitives.MemberSet.missingIdentityOfMember(item) != null)
                     {
                         folded.add(item);
                         continue;

@@ -4,7 +4,6 @@ import static net.cumba.corej.core.expr.eval.VectorLayerTest.col;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.Arrays;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
@@ -111,8 +110,6 @@ class MemberSetBuilderIdentityTest
     @Test
     void toSetKeepsItsOtherContractsUnchanged()
     {
-        assertEquals(Set.of("", "B"), ExprCompiler.toSet(Arrays.asList(null, "B"), false).present(),
-                "a null element still folds to \"\" (the raw channel stays nullable by contract)");
         assertEquals(Set.of("ABC"), ExprCompiler.toSet(List.of("abc"), true).present(),
                 "the case-insensitive surface still upper-cases present members");
         assertEquals(Set.of("7"), ExprCompiler.toSet(7L, false).present(),
@@ -187,13 +184,10 @@ class MemberSetBuilderIdentityTest
     @Test
     void listAccessorSetClassifiesAMissingElement()
     {
-        ExprCompiler.ValuePlan plan = _ -> ConstVector
-                .of(Arrays.asList("A", MissingValue.MIS, null));
+        ExprCompiler.ValuePlan plan = _ -> ConstVector.of(List.of("A", MissingValue.MIS));
         Primitives.MemberSet set = ExprCompiler.listAccessorSet(plan, EvalRun.ofRowCount(1), false);
         assertEquals(Set.of(MissingValue.MIS), set.missing(), "the missing keeps its identity");
-        assertEquals(Set.of("A"), set.present(),
-                "no '.' among the present members, and a null element is skipped (not \"\"), as"
-                        + " the accessor builder always did");
+        assertEquals(Set.of("A"), set.present(), "no '.' among the present members");
     }
 
 
@@ -322,22 +316,6 @@ class MemberSetBuilderIdentityTest
     }
 
 
-    /** The grouped set keeps toSet's null contract: a null element is the member "". */
-    @Test
-    void groupedMembershipFoldsANullElementToTheEmptyString()
-    {
-        IDataTable t = MockTable.of().name("DS").colSasMissing("X", "", "A", null)
-                .col("G", "g1", "g1", "g1").build();
-        GroupedResult grouped = new GroupedResult(List.of("G"),
-                Map.<String, Object> of("g1", Arrays.asList(null, "B")));
-        EvaluationContext c = EvaluationContext.builder().table(t)
-                .variables(Map.of("$grp", grouped)).build();
-        assertEquals(bits(0), eval("X in $grp", c),
-                "the null element is the member \"\", matched by the present blank of row 0 and"
-                        + " NOT by the missing of row 2 (D12)");
-    }
-
-
     /**
      * LOW-2 / L3 — the list-accessor source of {@code not_contains_all} and its tokens compare as
      * key components, so a missing source member never satisfies a {@code "."} token. ⚠ Pinned on
@@ -418,11 +396,11 @@ class MemberSetBuilderIdentityTest
         List<Object> mis = ExprCompiler.toTupleKey(List.of("A", MissingValue.MIS));
         List<Object> misA = ExprCompiler.toTupleKey(List.of("A", MissingValue.MIS_A));
         List<Object> dot = ExprCompiler.toTupleKey(List.of("A", "."));
-        List<Object> blank = ExprCompiler.toTupleKey(Arrays.asList("A", null));
+        List<Object> blank = ExprCompiler.toTupleKey(List.of("A", ""));
         assertTrue(mis != null && misA != null && dot != null && blank != null);
         assertEquals(4, Set.of(mis, misA, dot, blank).size(),
-                "MIS, .A, a present '.' and a null (\"\") are four different components");
-        assertEquals(List.of("A", ""), blank, "a null element still folds to \"\"");
+                "MIS, .A, a present '.' and a present \"\" are four different components");
+        assertEquals(List.of("A", ""), blank, "a present empty string is its own component");
         assertEquals("[A, .]", mis.toString(), "the identity prints as the report's marker");
     }
 

@@ -3,7 +3,6 @@ package net.cumba.corej.core.expr.eval;
 import static net.cumba.corej.core.expr.eval.VectorLayerTest.col;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import java.util.Arrays;
 import java.util.BitSet;
 import java.util.List;
 import net.cumba.datatable.IDataTable;
@@ -185,20 +184,21 @@ class SubstringMissingLimbTest
 
     /**
      * ⛔ <b>(b) A missing ELEMENT inside the collection is a DIFFERENT position, and is out of
-     * scope</b> (owner). It simply does not match the needle — {@code containsElement} folds it to
-     * {@code ""} — and it does not make the whole call false.
+     * scope</b> (owner). It simply does not match the needle and it does not make the whole call
+     * false. The element is a {@code MissingValue} — never a {@code null} (register {@code NNL
+     * §1}, which re-pinned this from a {@code null} element folded to {@code ""}).
      */
     @Test
     void aMissingElementInsideTheCollectionIsADifferentPositionAndIsOutOfScope()
     {
-        ComputedVector withNull = new ComputedVector(1, DataValueType.STRING,
-                _ -> Arrays.asList("N", null));
-        assertEquals(new BitSet(), Primitives.contains(withNull, ConstVector.of("Y"), 1, false),
-                "the null element does not match \"Y\" — and the call is NOT false-by-ruling");
-        assertEquals(bits(0), Primitives.contains(withNull, ConstVector.of("N"), 1, false),
+        ComputedVector withMissing = new ComputedVector(1, DataValueType.STRING,
+                _ -> List.of("N", MissingValue.MIS));
+        assertEquals(new BitSet(), Primitives.contains(withMissing, ConstVector.of("Y"), 1, false),
+                "the missing element does not match \"Y\" — and the call is NOT false-by-ruling");
+        assertEquals(bits(0), Primitives.contains(withMissing, ConstVector.of("N"), 1, false),
                 "…proved by the sibling member still matching: the call was evaluated, not shorted");
-        assertEquals(bits(0), Primitives.contains(withNull, ConstVector.of(""), 1, false),
-                "and the null element still folds to \"\" — unchanged by R2-20");
+        assertEquals(new BitSet(), Primitives.contains(withMissing, ConstVector.of(""), 1, false),
+                "and the missing element is NOT the empty string (D12) — nothing folds it to \"\"");
     }
 
 }

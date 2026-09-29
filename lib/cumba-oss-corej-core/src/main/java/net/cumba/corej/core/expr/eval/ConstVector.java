@@ -21,9 +21,27 @@ public record ConstVector(@Nullable Object value, DataValueType declaredType,
         TypedValue typed) implements Vector
 {
 
-    /** Builds a {@code ConstVector} for {@code value}, deriving its declared type. */
+    /**
+     * Builds a {@code ConstVector} for {@code value}, deriving its declared type.
+     *
+     * <p>
+     * ⭐ A list value holds no {@code null} element (register {@code NNL §1}): when {@code value} is
+     * a {@link java.util.Collection} it passes the {@link net.cumba.corej.core.exec.ListValueGuard}
+     * here, once per construction — the birth site of every literal list binding,
+     * {@code variableVector} over an operation result, the list accessors
+     * ({@code DefineMetadataListCodec.decode}), {@code CodelistAttributes}, the injected
+     * {@code library_variable_*_values} and every compile-time constant fold. Per-row reads of the
+     * cached {@link TypedValue} never rescan it. A scalar {@code null} is the untyped scalar
+     * channel ({@code NF §1}, still {@code target}) and is not this guard's concern.
+     * </p>
+     */
     public static ConstVector of(@Nullable Object value)
     {
+        if (value instanceof java.util.Collection<?>)
+        {
+            net.cumba.corej.core.exec.ListValueGuard.requireNoNullElement(value,
+                    () -> "a constant list value (ConstVector.of)");
+        }
         DataValueType type = typeOf(value);
         return new ConstVector(value, type, TypedValue.resolved(type, value));
     }
