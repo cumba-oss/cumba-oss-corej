@@ -37,10 +37,29 @@ public record ConstVector(@Nullable Object value, DataValueType declaredType,
      */
     public static ConstVector of(@Nullable Object value)
     {
+        return of(value, () -> "a constant list value (ConstVector.of)");
+    }
+
+
+    /**
+     * As {@link #of(Object)}, naming the <b>producer</b> of a list value for the
+     * {@link net.cumba.corej.core.exec.ListValueGuard}'s message — the list accessor, the variable,
+     * the function — so a rule that ERRORs on a {@code null} element says where the list was born
+     * ({@code PLAN-no-null-list-elements} review round 1, LOW-1). The one-argument form names only
+     * <i>"a constant list value"</i>; a birth site that knows its producer uses this one.
+     *
+     * @param value
+     *            the broadcast value
+     * @param producer
+     *            names the producer — evaluated only when a {@code null} element is found
+     * @return the vector
+     */
+    public static ConstVector of(@Nullable Object value,
+            java.util.function.Supplier<String> producer)
+    {
         if (value instanceof java.util.Collection<?>)
         {
-            net.cumba.corej.core.exec.ListValueGuard.requireNoNullElement(value,
-                    () -> "a constant list value (ConstVector.of)");
+            net.cumba.corej.core.exec.ListValueGuard.requireNoNullElement(value, producer);
         }
         DataValueType type = typeOf(value);
         return new ConstVector(value, type, TypedValue.resolved(type, value));

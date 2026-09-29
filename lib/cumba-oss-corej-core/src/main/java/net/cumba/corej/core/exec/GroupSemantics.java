@@ -1644,8 +1644,9 @@ public final class GroupSemantics
 
 
     /**
-     * Verdict of {@code shares_no_elements_with}. Both operands are converted to string sets
-     * ({@code Collection} → per-element {@code toString}, scalar → singleton); when <b>either</b>
+     * Verdict of {@code shares_no_elements_with}. Both operands are converted to key-component sets
+     * ({@code Collection} → per-element {@code Primitives.keyComponent}, scalar → singleton — a
+     * missing element is its identity, never {@code "."}, {@code D34 #5-2}); when <b>either</b>
      * operand is unresolvable ({@code null}) every row is flagged; when the two sets share at least
      * one element no row is flagged; otherwise (disjoint sets) every row is flagged. The verdict is
      * row-independent (broadcast).
@@ -1657,9 +1658,9 @@ public final class GroupSemantics
         {
             return allSet(rowCount);
         }
-        Set<String> setA = toStringSet(nameSet);
-        Set<String> setB = toStringSet(valueSet);
-        for (String s : setA)
+        Set<Object> setA = toKeySet(nameSet);
+        Set<Object> setB = toKeySet(valueSet);
+        for (Object s : setA)
         {
             if (setB.contains(s))
             {
@@ -1671,10 +1672,11 @@ public final class GroupSemantics
 
 
     /**
-     * Verdict of {@code is_not_ordered_subset_of}. Both operands are converted to string lists;
-     * when <b>either</b> operand is unresolvable ({@code null}) no row is flagged; when the
-     * {@code name} list appears in the same order within the {@code value} list (gaps allowed) no
-     * row is flagged; otherwise every row is flagged. Row-independent (broadcast).
+     * Verdict of {@code is_not_ordered_subset_of}. Both operands are converted to key-component
+     * lists (a missing element is its identity, never {@code "."}, {@code D34 #5-2}); when
+     * <b>either</b> operand is unresolvable ({@code null}) no row is flagged; when the {@code name}
+     * list appears in the same order within the {@code value} list (gaps allowed) no row is
+     * flagged; otherwise every row is flagged. Row-independent (broadcast).
      */
     public static BitSet isNotOrderedSubsetVerdict(@Nullable Object nameVal,
             @Nullable Object valueVal, int rowCount)
@@ -1683,10 +1685,10 @@ public final class GroupSemantics
         {
             return new BitSet();
         }
-        List<String> subset = toStringList(nameVal);
-        List<String> superList = toStringList(valueVal);
+        List<Object> subset = toKeyList(nameVal);
+        List<Object> superList = toKeyList(valueVal);
         int superIdx = 0;
-        for (String item : subset)
+        for (Object item : subset)
         {
             boolean found = false;
             while (superIdx < superList.size())
@@ -1776,44 +1778,54 @@ public final class GroupSemantics
 
 
     /**
-     * Per-element {@code toString} set of a {@code Collection} value; scalar → singleton. No
-     * element is {@code null} (register {@code NNL §1}).
+     * The key-component set of a {@code Collection} value ({@code Primitives.keyComponent} per
+     * element); a scalar → the singleton of its component. A missing element is its
+     * {@code MissingMember} identity, so it meets only the same missing and never a present
+     * {@code "."} ({@code D34 #5-2}). No element is {@code null} (register {@code NNL §1}).
+     *
+     * <p>
+     * ⚠ Corrected by {@code PLAN-no-null-list-elements} review round 1 ({@code FINDINGS} §E): this
+     * was a per-element {@code toString} set, and {@code MissingValue.MIS.toString()} is
+     * {@code "."}, so a missing element and a present {@code "."} were one member.
+     * </p>
      */
-    private static Set<String> toStringSet(Object value)
+    private static Set<Object> toKeySet(Object value)
     {
-        Set<String> result = new HashSet<>();
+        Set<Object> result = new HashSet<>();
         if (value instanceof java.util.Collection<?> col)
         {
             for (Object item : ListValueGuard.elements(col))
             {
-                result.add(item.toString());
+                result.add(net.cumba.corej.core.expr.eval.Primitives.keyComponent(item));
             }
         }
         else
         {
-            result.add(value.toString());
+            result.add(net.cumba.corej.core.expr.eval.Primitives.keyComponent(value));
         }
         return result;
     }
 
 
     /**
-     * Per-element {@code toString} list of a {@code Collection} value; scalar → singleton. No
-     * element is {@code null} (register {@code NNL §1}).
+     * The key-component list of a {@code Collection} value, in order; a scalar → the singleton of
+     * its component. As {@link #toKeySet}: a missing element is its identity, never its {@code "."}
+     * display string ({@code D34 #5-2}; {@code FINDINGS} §E, corrected with it). No element is
+     * {@code null} (register {@code NNL §1}).
      */
-    private static List<String> toStringList(Object value)
+    private static List<Object> toKeyList(Object value)
     {
-        List<String> result = new ArrayList<>();
+        List<Object> result = new ArrayList<>();
         if (value instanceof java.util.Collection<?> col)
         {
             for (Object item : ListValueGuard.elements(col))
             {
-                result.add(item.toString());
+                result.add(net.cumba.corej.core.expr.eval.Primitives.keyComponent(item));
             }
         }
         else
         {
-            result.add(value.toString());
+            result.add(net.cumba.corej.core.expr.eval.Primitives.keyComponent(value));
         }
         return result;
     }

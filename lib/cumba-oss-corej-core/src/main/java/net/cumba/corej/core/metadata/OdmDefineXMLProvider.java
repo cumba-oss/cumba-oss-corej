@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import net.cumba.cdisc.define.Alias;
 import net.cumba.cdisc.define.CodeList;
 import net.cumba.cdisc.define.CodeListItem;
@@ -528,9 +527,10 @@ public final class OdmDefineXMLProvider implements DefineXMLProvider
         // A nameless ItemGroupDef names no dataset: it is skipped, exactly as a nameless ItemDef
         // is skipped by getKeyVariables / getColumnOrder (register NNL §1 — an element of a list
         // value is a real value or a MissingValue, never null; a missing member means "no entry",
-        // never "" and never null).
-        return mdv.getItemGroupDefs().stream().map(ItemGroupDef::getName).filter(Objects::nonNull)
-                .toList();
+        // never "" and never null). A BLANK Name="" names nothing either and is skipped the same
+        // way (review round 1, S-1) — served, it would be the present "" dataset name.
+        return mdv.getItemGroupDefs().stream().map(ItemGroupDef::getName)
+                .filter(n -> n != null && !n.isBlank()).toList();
     }
 
 

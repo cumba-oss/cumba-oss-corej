@@ -120,19 +120,24 @@ class OperationExecutorMinusTest
     }
 
 
+    /**
+     * An array is NOT a list value ({@code PLAN-no-null-list-elements} review round 1, LOW-2): no
+     * operation result is one, so {@code normalizeToList}'s {@code Object[]} arm — which this test
+     * used to pin as {@code [A, C]} under the name {@code arrayOperandsAreCoercedToLists} — was
+     * dead, and the one path the {@code ListValueGuard} did not scan. It is deleted: an array
+     * operand is one opaque scalar, never its elements.
+     */
     @Test
-    void arrayOperandsAreCoercedToLists()
+    void anArrayOperandIsNotAListValue()
     {
         Map<String, Object> prior = new LinkedHashMap<>();
         prior.put("$a", new String[]
         {
                 "A", "B", "C"
         });
-        prior.put("$b", new String[]
-        {
-                "B"
-        });
-        assertEquals(List.of("A", "C"), run(minusOp("$a", "$b"), prior));
+        prior.put("$b", List.of("B"));
+        assertEquals(1, run(minusOp("$a", "$b"), prior).size(),
+                "the array is one scalar element, not the three elements A, B, C");
     }
 
     // ---- EC-7: literal `value` list minuend --------------------------------------------------

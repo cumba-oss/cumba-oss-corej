@@ -199,6 +199,8 @@ class SubstringMissingLimbTest
                 "…proved by the sibling member still matching: the call was evaluated, not shorted");
         assertEquals(new BitSet(), Primitives.contains(withMissing, ConstVector.of(""), 1, false),
                 "and the missing element is NOT the empty string (D12) — nothing folds it to \"\"");
+        assertEquals(new BitSet(), Primitives.contains(withMissing, ConstVector.of("."), 1, false),
+                "nor is it a present \".\" — its display string is not its identity (D34 #5-2)");
     }
 
 }

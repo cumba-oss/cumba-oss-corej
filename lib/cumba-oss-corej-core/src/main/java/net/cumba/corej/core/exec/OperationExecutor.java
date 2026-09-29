@@ -2153,15 +2153,17 @@ public final class OperationExecutor
      * <p>
      * Edge cases (matching {@code minus.py}): an absent/empty minuend yields {@code []}; an
      * absent/null subtrahend yields the minuend unchanged. {@code null} normalises to {@code []}, a
-     * scalar to a singleton list, any collection to its stringified elements.
+     * scalar to a singleton list, any collection to its elements (see {@link #normalizeToList}). An
+     * element is removed iff it EQUALS a subtrahend element ({@code D81} / {@code D34 #5-2}): a
+     * missing element meets only the same missing, never a present {@code "."}.
      * </p>
      */
-    private static List<String> evalMinus(Operation op, Map<String, Object> resolved)
+    private static List<Object> evalMinus(Operation op, Map<String, Object> resolved)
     {
         // EC-7: a literal `value` list takes the minuend slot when present (subtract stays a
         // $-ref);
         // otherwise the minuend is the `name` $-ref to a prior operation result, as before.
-        List<String> minuend = op.getValue() != null ? normalizeToList(op.getValue())
+        List<Object> minuend = op.getValue() != null ? normalizeToList(op.getValue())
                 : normalizeToList(resolved.get(op.getName()));
         if (minuend.isEmpty())
         {
@@ -2171,20 +2173,32 @@ public final class OperationExecutor
         {
             return minuend;
         }
-        Set<String> subtrahend = new java.util.HashSet<>(
+        Set<Object> subtrahend = new java.util.HashSet<>(
                 normalizeToList(resolved.get(op.getSubtract())));
         return minuend.stream().filter(x -> !subtrahend.contains(x)).toList();
     }
 
 
     /**
-     * Coerces an operation result to a {@code List<String>} for set operations: an absent
-     * ({@code null}) result → {@code []}; any {@link java.util.Collection} → its elements
-     * stringified; an array → the same; a scalar → a singleton list of its string form. The
-     * elements are never {@code null} — a prior operation result passed {@link #executeOne}'s
-     * {@link ListValueGuard} (register {@code NNL §1}).
+     * Coerces an operation result to a list for set operations: an absent ({@code null}) result →
+     * {@code []}; any {@link java.util.Collection} → its elements, a present element as its text, a
+     * missing element ({@code Primitives.MemberSet.missingIdentityOfMember}) as its
+     * {@link MissingValue} identity; a scalar → the singleton of the same. The elements are never
+     * {@code null} — a prior operation result passed {@link #executeOne}'s {@link ListValueGuard}
+     * (register {@code NNL §1}).
+     *
+     * <p>
+     * ⚠ Corrected by {@code PLAN-no-null-list-elements} review round 1 ({@code FINDINGS} §E): every
+     * element was stringified, and {@code MissingValue.MIS.toString()} is {@code "."} — so
+     * subtracting a present {@code "."} removed a missing element, and a missing element that
+     * survived came out as a present {@code "."}. A missing element now keeps its identity on both
+     * sides ({@code D34 #5-2}). ⚑ The {@code Object[]} arm that stood here is gone (review round 1,
+     * LOW-2): no operation result is an array — every one is a {@code List}, a {@code Set}, a
+     * {@link GroupedResult} or a scalar — so the arm was dead, and it was the one path the
+     * {@link ListValueGuard} does not scan.
+     * </p>
      */
-    private static List<String> normalizeToList(@Nullable Object value)
+    private static List<Object> normalizeToList(@Nullable Object value)
     {
         if (value == null)
         {
@@ -2192,25 +2206,23 @@ public final class OperationExecutor
         }
         if (value instanceof java.util.Collection<?> c)
         {
-            List<String> out = new ArrayList<>(c.size());
+            List<Object> out = new ArrayList<>(c.size());
             for (Object item : ListValueGuard.elements(c))
             {
-                out.add(item.toString());
+                out.add(setElement(item));
             }
             return out;
         }
-        if (value instanceof Object[] arr)
-        {
-            // Object[] only — a primitive array is not an operation result here and falls through
-            // to the scalar branch rather than risking a ClassCastException.
-            List<String> out = new ArrayList<>(arr.length);
-            for (Object item : arr)
-            {
-                out.add(item.toString());
-            }
-            return out;
-        }
-        return List.of(value.toString());
+        return List.of(setElement(value));
+    }
+
+
+    /** A set-operation element: a missing member as its {@link MissingValue}, else its text. */
+    private static Object setElement(Object item)
+    {
+        MissingValue missing = net.cumba.corej.core.expr.eval.Primitives.MemberSet
+                .missingIdentityOfMember(item);
+        return missing != null ? missing : item.toString();
     }
 
 

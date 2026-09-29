@@ -4767,7 +4767,7 @@ public final class ExprCompiler
             Object var = ctx.resolveVariable(name);
             if (var != null)
             {
-                return variableVector(ctx, rc, var);
+                return variableVector(ctx, rc, var, () -> "variable " + name);
             }
             if (name.startsWith("$"))
             {
@@ -4861,7 +4861,7 @@ public final class ExprCompiler
             Object var = ctx.resolveVariable(name);
             if (var != null)
             {
-                return variableVector(ctx, rc, var);
+                return variableVector(ctx, rc, var, () -> "variable " + name);
             }
             if (name.startsWith("$"))
             {
@@ -5045,7 +5045,8 @@ public final class ExprCompiler
             // A skipped / unresolvable operation (null) broadcasts null — no row fires — mirroring
             // an absent $-operation reference (valueRefPlan / nameRefPlan).
             return result == null ? ConstVector.of(null)
-                    : variableVector(ctx, run.rowCount(), result);
+                    : variableVector(ctx, run.rowCount(), result,
+                            () -> "inline operation " + c.name());
         };
     }
 
@@ -5625,7 +5626,9 @@ public final class ExprCompiler
                 // A list-valued attribute (e.g. var_codelist_coded_codes) is carried JSON-encoded
                 // through the string provider channel; materialise it as a List<String> operand so
                 // membership compares it element-wise (mirrors Python's is_column_of_iterables).
-                return ConstVector.of(DefineMetadataListCodec.decode(raw));
+                String accessor = attr.functionName();
+                return ConstVector.of(DefineMetadataListCodec.decode(raw),
+                        () -> "list accessor " + accessor);
             }
             return ConstVector.of(attr.normalize(raw));
         };
@@ -6388,7 +6391,8 @@ public final class ExprCompiler
     }
 
 
-    private static Vector variableVector(EvaluationContext ctx, int rowCount, Object var)
+    private static Vector variableVector(EvaluationContext ctx, int rowCount, Object var,
+            java.util.function.Supplier<String> producer)
     {
         if (var instanceof GroupedResult grouped)
         {
@@ -6405,7 +6409,7 @@ public final class ExprCompiler
             return new ComputedVector(rowCount, DataValueType.STRING,
                     row -> grouped.getForRowOrDefault(ctx, row));
         }
-        return ConstVector.of(var);
+        return ConstVector.of(var, producer);
     }
 
 

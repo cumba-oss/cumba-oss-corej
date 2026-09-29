@@ -112,15 +112,39 @@ class RuleRunnerOutputProjectionHelpersTest
     }
 
 
-    /** A Map renders through its entry set; an Object[] through its list view. */
+    /** A Map renders through its entry set. */
     @Test
-    void mapAndArrayRenderThroughTheCollectionPath()
+    void mapRendersThroughTheCollectionPath()
     {
         assertEquals("[k=v]", render(Map.of("k", "v")));
-        assertEquals("[x, y]", render(new Object[]
+    }
+
+
+    /**
+     * An array is NOT a list value (register {@code NNL §1}; {@code PLAN-no-null-list-elements}
+     * review round 1, LOW-2): no operation result or variable is one, so {@code scalarToString}'s
+     * array arm — which this test used to pin as {@code "[x, y]"} — was dead, assumed its elements
+     * non-null although the {@code ListValueGuard} scans only a {@code Collection}, and cast every
+     * array to {@code Object[]}. It is deleted. Red before: the primitive array threw
+     * {@code ClassCastException}; an array now takes the bounded opaque-type fallback like any
+     * other non-list object.
+     */
+    @Test
+    void anArrayIsNotAListValueAndTakesTheOpaqueFallback()
+    {
+        int[] primitive =
+        {
+                1, 2
+        };
+        assertTrue(render(primitive).startsWith("[I@"),
+                "a primitive array no longer throws ClassCastException in the report path; it"
+                        + " renders as the opaque object it is");
+        Object[] objects =
         {
                 "x", "y"
-        }));
+        };
+        assertTrue(render(objects).startsWith("[Ljava.lang.Object;@"),
+                "an Object[] is an opaque value too, not rendered as the list \"[x, y]\"");
     }
 
 

@@ -317,6 +317,27 @@ class MemberSetBuilderIdentityTest
 
 
     /**
+     * The grouped set's present {@code ""} member (review round 1, L-4 — re-pinned from the retired
+     * {@code groupedMembershipFoldsANullElementToTheEmptyString}, whose {@code null} element
+     * register {@code NNL §1} made impossible): a present {@code ""} member matches a present blank
+     * row and NOT a missing row ({@code D12}). Mockito-free.
+     */
+    @Test
+    void groupedMembershipMatchesAPresentEmptyMemberOnlyAgainstABlankRow()
+    {
+        IDataTable t = MissingCellTables.of("DS").str("X", "", "A", MissingValue.MIS)
+                .str("G", "g1", "g1", "g1").build();
+        GroupedResult grouped = new GroupedResult(List.of("G"),
+                Map.<String, Object> of("g1", List.of("", "B")));
+        EvaluationContext c = EvaluationContext.builder().table(t)
+                .variables(Map.of("$grp", grouped)).build();
+        assertEquals(bits(0), eval("X in $grp", c),
+                "the present \"\" member is matched by the present blank of row 0 and NOT by the"
+                        + " missing of row 2 (D12)");
+    }
+
+
+    /**
      * LOW-2 / L3 — the list-accessor source of {@code not_contains_all} and its tokens compare as
      * key components, so a missing source member never satisfies a {@code "."} token. ⚠ Pinned on
      * the two calls the site composes: a real metadata accessor carries codelist strings and cannot

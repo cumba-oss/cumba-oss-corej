@@ -1182,9 +1182,9 @@ public final class Primitives
      * {@code negate} before {@link #membershipOperand} is consulted, so the {@code $}-operation
      * membership arm cannot disagree with the scalar one. <b>(b) A missing ELEMENT inside the
      * collection is a different position and is deliberately OUT OF SCOPE</b> (owner): it simply
-     * does not match the needle — {@link #containsElement} compares each element's own text, and no
-     * element is {@code null} (register {@code NNL §1}) — and it does not make the whole call
-     * false.
+     * does not match the needle — {@link #containsElement} compares each present element's own text
+     * and never a missing element's display string ({@code D34 #5-2}), and no element is
+     * {@code null} (register {@code NNL §1}) — and it does not make the whole call false.
      * </p>
      */
     private static BitSet substring(Vector v, Vector targets, int rowCount, SubstringMode mode,
@@ -1262,15 +1262,26 @@ public final class Primitives
 
 
     /**
-     * Exact membership of {@code needle} in {@code col}, each element by its own text. No element
-     * is {@code null}: the collection is an operation result that passed
+     * Exact membership of the <b>present</b> {@code needle} in {@code col}: a present element by
+     * its own text; a missing element ({@link MemberSet#missingIdentityOfMember}) never matches — a
+     * present needle is not a missing ({@code D34 #5-2}: two values are equal iff the same missing
+     * or the same present value; {@code D81}: membership is a disjunction of that equality). No
+     * element is {@code null}: the collection is an operation result that passed
      * {@code OperationExecutor.executeOne}'s {@code ListValueGuard} (register {@code NNL §1}).
+     *
+     * <p>
+     * ⚠ Corrected by {@code PLAN-no-null-list-elements} review round 1 (M-1,
+     * {@code FINDINGS-unowned-residuals} §E): this compared {@code needle.equals(item.toString())}
+     * for every element, and {@code MissingValue.MIS.toString()} is {@code "."} — so a present
+     * {@code "."} needle matched a {@code MIS} element, contradicting (b) of {@link #substring}'s
+     * javadoc (<i>"it simply does not match the needle"</i>).
+     * </p>
      */
     private static boolean containsElement(Collection<?> col, String needle)
     {
         for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(col))
         {
-            if (needle.equals(item.toString()))
+            if (MemberSet.missingIdentityOfMember(item) == null && needle.equals(item.toString()))
             {
                 return true;
             }

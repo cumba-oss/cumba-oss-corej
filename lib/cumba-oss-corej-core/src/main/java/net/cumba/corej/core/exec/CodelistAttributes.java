@@ -88,7 +88,7 @@ public final class CodelistAttributes
             throw new UnusableProviderAnswerException(NAME, ProviderNeed.Kind.LIBRARY,
                     "no codelist attributes resolved for " + attribute);
         }
-        return ConstVector.of(values);
+        return ConstVector.of(values, () -> NAME + "(ct_attribute=\"" + attribute + "\")");
     }
 
 
@@ -129,7 +129,10 @@ public final class CodelistAttributes
         {
             out.addAll(provider.getCodelistAttribute(pkgId, attribute));
         }
-        return List.copyOf(out);
+        // Not List.copyOf: it throws a bare NullPointerException on a null element, naming
+        // nothing, before the list reaches ConstVector.of's ListValueGuard, which names this
+        // function (register NNL §1; PLAN-no-null-list-elements review round 1, LOW-1).
+        return java.util.Collections.unmodifiableList(new ArrayList<>(out));
     }
 
 

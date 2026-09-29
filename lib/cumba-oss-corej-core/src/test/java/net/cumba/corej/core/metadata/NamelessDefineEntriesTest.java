@@ -21,7 +21,9 @@ import org.junit.jupiter.api.Test;
  * Register {@code NNL §1} ({@code PLAN-no-null-list-elements} row 13): a Define-XML entry with
  * <b>no member</b> — an {@code ItemGroupDef} without a {@code Name}, a {@code CodeListItem} without
  * a {@code CodedValue} — is <b>skipped</b> by its producer. It is neither served as {@code null}
- * (nothing is ever null) nor as {@code ""} (a present value naming nothing).
+ * (nothing is ever null) nor as {@code ""} (a present value naming nothing). A <b>blank</b>
+ * {@code Name=""} / {@code CodedValue=""} names nothing either and is skipped the same way (review
+ * round 1, S-1).
  *
  * <p>
  * Real {@code OdmDefineXMLProvider} over a real parsed document, Mockito-free. Red-before on HEAD:
@@ -57,7 +59,8 @@ class NamelessDefineEntriesTest
         assertTrue(names.stream().noneMatch(Objects::isNull), "no null element (NNL §1)");
         assertFalse(names.contains(""), "and no empty name either — a nameless group is skipped");
         assertEquals(List.of("AE", "DM"), names,
-                "the two named groups, in document order, with the nameless one between them gone");
+                "the two named groups, in document order, with the nameless and the blank-named one"
+                        + " between them gone");
         assertEquals(names, define.getDatasetNames(),
                 "DefineXmlMetadataProvider passes the ODM list through unchanged");
     }
@@ -89,8 +92,10 @@ class NamelessDefineEntriesTest
         List<String> terms = define.getCodelistTerms("CL.SEX");
 
         assertTrue(terms.stream().noneMatch(Objects::isNull), "no null element (NNL §1)");
+        assertFalse(terms.contains(""), "and no blank term — CodedValue=\"\" names nothing");
         assertEquals(List.of("M", "F"), terms,
-                "the item without a CodedValue is skipped; the two coded items keep their order");
+                "the items without a CodedValue and with a blank one are skipped; the two coded items"
+                        + " keep their order");
     }
 
 }

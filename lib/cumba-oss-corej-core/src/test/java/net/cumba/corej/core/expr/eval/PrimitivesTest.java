@@ -365,6 +365,9 @@ class PrimitivesTest
                 _ -> java.util.List.of("N", MissingValue.MIS));
         assertEquals(bits(), Primitives.contains(sets, ConstVector.of(""), 1, false),
                 "the missing element does not match \"\"");
+        assertEquals(bits(), Primitives.contains(sets, ConstVector.of("."), 1, false),
+                "nor a present \".\" — a missing element is its identity, not its display string"
+                        + " (D34 #5-2)");
         assertEquals(bits(0), Primitives.contains(sets, ConstVector.of("N"), 1, false),
                 "baseline must fire: the present sibling still matches");
     }
