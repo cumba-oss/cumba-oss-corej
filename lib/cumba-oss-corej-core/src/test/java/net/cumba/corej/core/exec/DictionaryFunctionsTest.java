@@ -100,8 +100,21 @@ class DictionaryFunctionsTest
             assertNull(rule.getLoadError(), rule.getLoadError());
             RuleExecutionResult result = RuleRunnerCalls.execute(rule, ts());
             assertEquals(RuleExecutionStatus.ERROR, result.getStatus());
-            assertTrue(result.getStatusMessage().contains("__w1_loud__ reached with no provider"),
-                    result.getStatusMessage());
+            String message = result.getStatusMessage();
+            assertTrue(message.contains("__w1_loud__ reached with no provider"), message);
+            // Review round 2 L-11: the rules repository's ViolationNormaliser classifies this
+            // ERROR by its fixed message TAIL (UNGATED_PROVIDER_REACH_MESSAGE_SUFFIX, matched
+            // with endsWith), so any decoration RuleRunner appends would silently re-route it.
+            assertTrue(message.endsWith(" — the provider gate should have skipped this rule"
+                    + " before any row was read"), message);
+            // …and RuleRunner's own catch passes the exception's message through VERBATIM —
+            // status message and the __error__ sentinel alike.
+            String thrown = new UngatedProviderReachException("__w1_loud__",
+                    "with no provider at all").getMessage();
+            assertEquals(thrown, message, "the ERROR status carries the tripwire's own message");
+            assertEquals(1, result.getViolations().size(), "one ERROR sentinel");
+            assertEquals(thrown, result.getViolations().get(0).getValues().get("__error__"),
+                    "the sentinel carries the same message");
         }
     }
 
@@ -163,6 +176,20 @@ class DictionaryFunctionsTest
                     error.contains("in binding $v binds external_dictionary_type to the column"
                             + " reference") && error.contains("not a static string literal")
                             && !error.contains("declares no external_dictionary_type"),
+                    spelling + ": " + error);
+        }
+        // Review round 2 L-4: a BLANK string literal is its own defect — the old wording read
+        // "binds external_dictionary_type to the string literal , not a static string literal".
+        for (String spelling : List.of(
+                "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL,"
+                        + " external_dictionary_type=\\\"\\\")",
+                "valid_external_dictionary_hierarchy(AEHLT, AESOC,"
+                        + " external_dictionary_type=\\\"  \\\")"))
+        {
+            String error = loadError(spelling);
+            assertTrue(
+                    error.contains("in binding $v declares a blank external_dictionary_type")
+                            && !error.contains("not a static string literal"),
                     spelling + ": " + error);
         }
         // The same call inline in the Check names the Check as its surface.

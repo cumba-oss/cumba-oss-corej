@@ -1004,8 +1004,12 @@ public final class RuleRunner
         // Names no surface: the dictionary functions are registry functions since wave 1, and
         // W3 ports the value / code / decode callables the same way.
         // generated/findings-snapshot.tsv
-        // carries the status, not this text (measured 0 rows, review round 1 lane 2).
-        skipReason.append(" (the rule needs this external dictionary)");
+        // carries the status, not this text (measured 0 rows, review round 1 lane 2; re-measured
+        // 0 for either wording, review round 2). The closing clause agrees in number with the
+        // clauses before it (review round 2, L-5).
+        skipReason.append(unavailableDictionaryTypes.size() == 1
+                ? " (the rule needs this external dictionary)"
+                : " (the rule needs these external dictionaries)");
         return RuleExecutionResult.builder().ruleId(ruleId).message(message).violations(List.of())
                 .totalRows(evalTable.getRowCount()).status(RuleExecutionStatus.SKIPPED)
                 .statusMessage(skipReason.toString()).build();

@@ -685,22 +685,25 @@ public final class RuleClassifier
                 value = operandText(args.get(1), ops, usages, operationAware);
                 valueIsLiteral = args.get(1) instanceof Expr.Lit;
             }
-            if (name == null && args.isEmpty())
+            if (name == null && (value == null || valueIsLiteral))
             {
-                // A call whose column operands are all bound by KEYWORD — the function surface's
-                // `is_last_in_group(ordering=SESEQ, group=[USUBJID])` reads two columns and
-                // carries no positional at all. Read through the descriptor (see
-                // declaredColumnOperands) so the leaf names what the call reads; without this
-                // the leaf had no operand, the Check was "signal-free", no Sensitivity was
-                // derived, and the runner collapsed N per-row findings to one (review round 1 of
-                // PLAN-function-surface-wave1, M3). A call with a positional keeps today's
-                // reading — its first two positionals — so no existing classification moves.
-                List<String> declared = declaredColumnOperands(call);
+                // A call whose positionals yield NO column operand — none at all
+                // (`is_last_in_group(ordering=SESEQ, group=[USUBJID])`), or only non-column ones
+                // (a numeric literal, a $-operation reference, a nested call reading nothing) —
+                // while its columns arrive through its declared column parameters. Read through
+                // the descriptor (see declaredColumnOperands) so the leaf names what the call
+                // reads; without this the leaf had no operand, the Check was "signal-free", no
+                // Sensitivity was derived, and the runner collapsed N per-row findings to one
+                // (review round 1 of PLAN-function-surface-wave1, M3; generalised from "no
+                // positional at all" by review round 2, L-1). A call whose positionals DO yield a
+                // column operand keeps today's reading — its first two positionals — so no
+                // existing classification moves.
+                List<String> declared = declaredColumnOperands(call, ops, usages, operationAware);
                 if (!declared.isEmpty())
                 {
                     name = declared.get(0);
                 }
-                if (declared.size() > 1)
+                if (declared.size() > 1 && value == null)
                 {
                     value = declared.get(1);
                     valueIsLiteral = false;
@@ -808,16 +811,24 @@ public final class RuleClassifier
             boolean namesItsOwnOperand = operand != null && classify(operand) != null;
             if (operand != null && operand.equals(call.name()) && !namesItsOwnOperand)
             {
-                if (!call.args().isEmpty())
+                String positional = call.args().isEmpty() ? null
+                        : operandText(call.args().get(0), ops, usages, operationAware);
+                if (positional != null)
                 {
-                    yield operandText(call.args().get(0), ops, usages, operationAware);
+                    yield positional;
                 }
-                // No positional: the operand it reads may be bound by keyword (the same case as
-                // the predicate-position arm in atom — `is_last_in_group(ordering=…) == true`).
-                List<String> declared = declaredColumnOperands(call);
+                // The first positional yields no operand — there is none, or it is a non-column
+                // (a numeric literal, a $-operation reference): the operand it reads may be bound
+                // to a declared column parameter (the same case as the predicate-position arm in
+                // atom — `is_last_in_group(ordering=…) == true`; review round 2, L-1).
+                List<String> declared = declaredColumnOperands(call, ops, usages, operationAware);
                 if (!declared.isEmpty())
                 {
                     yield declared.get(0);
+                }
+                if (!call.args().isEmpty())
+                {
+                    yield null; // unchanged: a non-column positional and no declared column
                 }
             }
             yield operand;
@@ -835,9 +846,28 @@ public final class RuleClassifier
      * whose descriptor declares no column parameter. This is the general form the later waves need
      * (W3+ port callables whose columns arrive as keywords, {@code group=} / {@code keys=} /
      * {@code reference=}); the positional reading of {@link #atom} stays first so that today's
-     * derivations do not move.
+     * derivations do not move — this is consulted only when the positionals yield no column
+     * operand.
+     *
+     * <p>
+     * Each bound reference is read as {@link #operandText} reads one, so the two never disagree:
+     * with {@code operationAware}, a {@code $}-operation reference is an operation <b>usage</b>
+     * (added to {@code usages} unless the positional walk already recorded it), never a column
+     * name.
+     * </p>
+     *
+     * <p>
+     * ⚠ <b>Limit:</b> only parameters <em>declared</em> {@code COLUMN_REFERENCE} or
+     * {@code list<column-reference>} are read. A parameter declared {@code Unknown} that carries a
+     * column in practice — the {@code ordering} of {@code empty_within_except_last_row} and
+     * {@code has_next_corresponding_record}, {@code within}, the {@code req("name")} subjects of
+     * the older compiler-dispatched readers — contributes nothing here, so a call whose ONLY
+     * columns arrive through such a parameter by keyword still classifies without an operand. A
+     * wave that ports such a callable retypes the parameter, which is what makes it visible here.
+     * </p>
      */
-    private static List<String> declaredColumnOperands(Expr.Call call)
+    private static List<String> declaredColumnOperands(Expr.Call call, Map<String, Operation> ops,
+            List<OperationUsage> usages, boolean operationAware)
     {
         FunctionDescriptor descriptor = FunctionRegistry.descriptor(call.name());
         if (descriptor == null)
@@ -863,17 +893,28 @@ public final class RuleClassifier
                             && list.element() == ExprType.Primitive.COLUMN_REFERENCE);
             if (column)
             {
-                collectColumnRefs(bound.get(i), out);
+                collectColumnRefs(bound.get(i), ops, usages, operationAware, out);
             }
         }
         return out;
     }
 
 
-    private static void collectColumnRefs(@Nullable Expr e, List<String> out)
+    private static void collectColumnRefs(@Nullable Expr e, Map<String, Operation> ops,
+            List<OperationUsage> usages, boolean operationAware, List<String> out)
     {
         if (e instanceof Expr.Ref ref)
         {
+            if (operationAware && isOperationRef(ref.name()))
+            {
+                // as operandText: a usage, never a column name
+                OperationUsage usage = declaredUsage(ops, ref.name());
+                if (!usages.contains(usage))
+                {
+                    usages.add(usage);
+                }
+                return;
+            }
             out.add(ref.name());
         }
         else if (e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST
@@ -883,7 +924,7 @@ public final class RuleClassifier
             {
                 if (item instanceof Expr member)
                 {
-                    collectColumnRefs(member, out);
+                    collectColumnRefs(member, ops, usages, operationAware, out);
                 }
             }
         }

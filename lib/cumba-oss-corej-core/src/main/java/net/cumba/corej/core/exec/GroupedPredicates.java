@@ -92,23 +92,28 @@ public final class GroupedPredicates
 
 
     /**
-     * The ranking of D-W1-2, whose equality is exactly the key identity. A missing ranks below
-     * every value ({@code D34 #5}) and identical to the same missing marker; two markers order by
-     * their value byte ({@code D34 #5-1}, the order {@code Primitives.compareWithMissing} ships for
-     * {@code <}), so {@code ._} ({@code MIS__}, byte 60) and {@code .} ({@code MIS}, byte 64) never
-     * tie, and {@code .} is the higher one where their text would say the opposite. Two numeric
-     * cells compare as numbers ({@code -0.0} is {@code 0.0}); two textual cells that both parse as
-     * numbers compare as numbers first and, where that says equal but the texts differ ({@code 5}
-     * against {@code 5.0}), by their text; anything else compares by text.
+     * The ranking of D-W1-2, whose equality is exactly the key identity. The ordering value's
+     * <b>type</b> decides how it compares (owner ruling 2026-09-29, {@code D-W1-2a}: <i>"A string
+     * is a string"</i>): two numeric cells compare as numbers ({@code -0.0} is {@code 0.0},
+     * {@code D84}); two textual cells compare as text — {@code "10" < "9"}, and {@code "5"} and
+     * {@code "5.0"} are two distinct values that never tie, as are {@code "-0.0"} and {@code "0.0"}
+     * — the {@code ±0} fold is numeric only (owner, same day). A textual value is never parsed as a
+     * number; numeric order of a text column is the author's {@code num(X)} — not yet spellable as
+     * an {@code ordering}, which takes a plain column (review round 2, FINDINGS §3). A missing
+     * ranks below every value ({@code D34 #5}) and identical to the same missing marker; two
+     * markers order by their value byte ({@code D34 #5-1}, the order
+     * {@code Primitives.compareWithMissing} ships for {@code <}), so {@code ._} ({@code MIS__},
+     * byte 60) and {@code .} ({@code MIS}, byte 64) never tie, and {@code .} is the higher one
+     * where their text would say the opposite.
      *
      * <p>
-     * ⚠ This is a total order on a numeric column, on a CHAR column whose values all parse as
-     * numbers, and on one where none does. It is <b>not</b> a total order on a CHAR column that
-     * mixes the two: {@code 3 < 10} (numeric), {@code 10 < 2x} (text), {@code 2x < 3} (text) is a
-     * cycle, and on such a group the maximum — hence which rows are "last" — depends on the row
-     * order (pinned as today's behaviour by {@code GroupedPredicatesTest}; no ruling orders a mixed
-     * CHAR column, and both corpus sites order by the numeric {@code SESEQ} — filed in
-     * {@code plans/findings/FINDINGS-function-surface-wave1-review.md}).
+     * This is a total order on every column — one type per column, so a numeric column is ordered
+     * numerically and a textual one lexically (a present blank {@code ""} lowest, {@code D36b}) —
+     * and its equality is exactly {@code GroupKey} identity, so the maximum, and hence which rows
+     * are "last", never depends on the row order. Before the ruling a textual cell that parsed as a
+     * number compared numerically, inherited from the retired {@code orderingCompare}; on a column
+     * mixing parsable and non-parsable text that cycled ({@code 3 < 10} numeric, {@code 10 < 2x}
+     * text, {@code 2x < 3} text).
      * </p>
      *
      * @param a
@@ -145,38 +150,14 @@ public final class GroupedPredicates
             }
             return Double.compare(normalizeZero(an.doubleValue()), normalizeZero(bn.doubleValue()));
         }
-        String as = Objects.requireNonNullElse(a.getValueAsString(), "");
-        String bs = Objects.requireNonNullElse(b.getValueAsString(), "");
-        Double ad = parse(as);
-        Double bd = parse(bs);
-        if (ad != null && bd != null)
-        {
-            int numeric = Double.compare(normalizeZero(ad), normalizeZero(bd));
-            if (numeric != 0)
-            {
-                return numeric;
-            }
-        }
-        return as.compareTo(bs);
+        return Objects.requireNonNullElse(a.getValueAsString(), "")
+                .compareTo(Objects.requireNonNullElse(b.getValueAsString(), ""));
     }
 
 
     private static double normalizeZero(double d)
     {
         return d == 0.0 ? 0.0 : d;
-    }
-
-
-    private static @Nullable Double parse(String text)
-    {
-        try
-        {
-            return Double.valueOf(text);
-        }
-        catch (NumberFormatException _)
-        {
-            return null;
-        }
     }
 
 

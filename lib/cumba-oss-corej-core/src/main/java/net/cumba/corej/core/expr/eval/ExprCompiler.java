@@ -3094,6 +3094,7 @@ public final class ExprCompiler
         Expr e = c.kwargs().get("keep_missings");
         if (e == null)
         {
+            rejectPositionalKeepMissings(c);
             return base;
         }
         if (!(e instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.BOOL)
@@ -3101,6 +3102,47 @@ public final class ExprCompiler
             throw unsupported(c.name() + " keep_missings= must be a boolean literal");
         }
         return base.withKeepMissings((Boolean) lit.value());
+    }
+
+
+    /**
+     * W1 review round 2, L-12: the readers behind {@link #groupKeyPolicy} read
+     * {@code keep_missings} from the keywords only, but the descriptor Stage A binds the call
+     * through ({@code CompilerDispatchedCalls}) declares it as an ordinary optional parameter, so a
+     * positional {@code keep_missings} bound cleanly and was then silently ignored — the rule ran
+     * on its default disposition. Wave 1's own grouped callables read the bound slot
+     * ({@link #groupKeyPolicyRequiringGroup}); these older readers belong to W8's strict-binding
+     * sweep (runbook §7), so until then a positional {@code keep_missings} is a load error naming
+     * the keyword spelling. A call that does not bind is left to the reader's own diagnostics.
+     */
+    private static void rejectPositionalKeepMissings(Expr.Call c)
+    {
+        FunctionDescriptor descriptor = FunctionRegistry.descriptor(c.name());
+        if (descriptor == null)
+        {
+            return;
+        }
+        List<Parameter> params = descriptor.parameters();
+        List<@Nullable Expr> bound;
+        try
+        {
+            bound = ArgumentBinder.bind(descriptor, c);
+        }
+        catch (RuntimeException _)
+        {
+            return; // arity is Stage A's and the reader's to report
+        }
+        for (int i = 0; i < params.size() && i < bound.size(); i++)
+        {
+            Expr slot = bound.get(i);
+            if (slot != null && "keep_missings".equals(params.get(i).name()))
+            {
+                String value = slot instanceof Expr.Lit lit ? String.valueOf(lit.value()) : "…";
+                throw unsupported("`keep_missings` on " + c.name()
+                        + " is read by keyword only — write keep_missings=" + value
+                        + "; a positional keep_missings was bound and then ignored");
+            }
+        }
     }
 
 

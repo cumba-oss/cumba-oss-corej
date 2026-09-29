@@ -5298,9 +5298,9 @@ public class RulePackageLoader
         }
         String message = "[" + ruleId(rule) + "] " + String.join(", ", findings)
                 + ": no installed dictionary can ever satisfy a dictionary call whose type is not"
-                + " a static string literal, so the rule is defective — fix the rule by declaring"
-                + " external_dictionary_type as a string literal; installing dictionaries cannot"
-                + " help";
+                + " a static, non-blank string literal, so the rule is defective — fix the rule by"
+                + " declaring external_dictionary_type as a non-blank string literal; installing"
+                + " dictionaries cannot help";
         rule.setLoadError(
                 rule.getLoadError() == null ? message : rule.getLoadError() + "; " + message);
     }
@@ -5373,9 +5373,26 @@ public class RulePackageLoader
             net.cumba.corej.core.expr.ast.Expr type = operation ? null
                     : boundArgument(call,
                             net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER);
-            String defect = type == null ? TYPELESS_DICTIONARY_MARKER
-                    : "binds " + net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER
-                            + " to " + describeArgument(type) + ", not a static string literal";
+            String defect;
+            if (type == null)
+            {
+                defect = TYPELESS_DICTIONARY_MARKER;
+            }
+            else if (type instanceof net.cumba.corej.core.expr.ast.Expr.Lit lit
+                    && lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.STRING
+                    && String.valueOf(lit.value()).isBlank())
+            {
+                // A static string literal that names nothing is its own defect: "binds … to the
+                // string literal , not a static string literal" contradicted itself (W1 review
+                // round 2, L-4).
+                defect = "declares a blank "
+                        + net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER;
+            }
+            else
+            {
+                defect = "binds " + net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER
+                        + " to " + describeArgument(type) + ", not a static string literal";
+            }
             findings.add(kind + call.name() + "(…) in " + where + " " + defect);
         }
     }

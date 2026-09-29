@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import net.cumba.corej.core.RulePackageLoader;
@@ -113,6 +115,28 @@ class GroupedPredicatesTest
 
 
     @Test
+    void operandPositionCheckDerivesRecordSensitivityAndReportsEveryRow() throws Exception
+    {
+        // Review round 2 L-1: the call in OPERAND position of the Check (`… == true` written
+        // inline, which no binding fold rewrites) reaches RuleClassifier.operandText's arm, not
+        // atom's; it must derive Record from the keyword columns alone and report every tied row.
+        String pkg = "{\"rules\":{\"x\":{\"Core\":{\"Id\":\"W1-GROUPED-OPERAND\"},"
+                + "\"Check\":{\"expression\":"
+                + "\"is_last_in_group(ordering=ORD, group=[G]) == true\"},"
+                + "\"Outcome\":{\"Message\":\"m\"}}}}";
+        Rule rule = RulePackageLoader.loadFromString(pkg).getRules().get("x");
+        assertNotNull(rule, "the rule loads");
+        assertNull(rule.getLoadError(), rule.getLoadError());
+        assertEquals(Sensitivity.RECORD, rule.getSensitivity(),
+                "derived from the keyword columns in operand position, not authored");
+        IDataTable t = RealTables.of("T").str("G", "S", "S", "S").lng("ORD", 1L, 2L, 2L).build();
+        RuleExecutionResult result = RuleRunnerCalls.execute(rule, t);
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        assertEquals(Set.of(1L, 2L), rows(result), "one finding per tied row, never collapsed");
+    }
+
+
+    @Test
     void isLast_aMissingGroupKeyIsDroppedByDefaultAndKeptOnDemand() throws Exception
     {
         IDataTable t = RealTables.of("T").str("G", "S1", null).lng("ORD", 1L, 5L).build();
@@ -162,8 +186,10 @@ class GroupedPredicatesTest
         // A noise pair does NOT tie: only 5.0 is last.
         IDataTable noise = RealTables.of("T").str("G", "S", "S").dbl("ORD", NOISE, 5.0).build();
         assertEquals(Set.of(1L), fired(last("group=[G]"), noise));
-        // A CHAR ordering holding 5 and 5.0: numerically equal, identity-distinct — the byte order
-        // of the text decides, in either row order.
+        // A CHAR ordering holding 5 and 5.0: two distinct text values under text order (owner
+        // ruling D-W1-2a, 2026-09-29), never a tie — "5" < "5.0", in either row order. (The
+        // answer is the one the pre-ruling ranking gave too: it parsed both, found them
+        // numerically equal and fell back to the same text order.)
         IDataTable chars = RealTables.of("T").str("G", "S", "S").str("ORD", "5", "5.0").build();
         assertEquals(Set.of(1L), fired(last("group=[G]"), chars));
         IDataTable charsReversed = RealTables.of("T").str("G", "S", "S").str("ORD", "5.0", "5")
@@ -190,11 +216,48 @@ class GroupedPredicatesTest
 
 
     @Test
-    void isLast_numericOrderingIsNumericNotLexicographic() throws Exception
+    void isLast_aNumericOrderingIsNumeric() throws Exception
     {
+        IDataTable t = RealTables.of("T").str("G", "S", "S", "S").lng("ORD", 9L, 12L, 10L).build();
+        assertEquals(Set.of(1L), fired(last("group=[G]"), t), "12 > 10 > 9 numerically");
+        IDataTable d = RealTables.of("T").str("G", "S", "S", "S").dbl("ORD", 9.0, 12.0, 10.0)
+                .build();
+        assertEquals(Set.of(1L), fired(last("group=[G]"), d), "12.0 > 10.0 > 9.0 numerically");
+    }
+
+
+    @Test
+    void isLast_aCharOrderingIsTextEvenWhenItsValuesParseAsNumbers() throws Exception
+    {
+        // Owner ruling D-W1-2a (2026-09-29): "A string is a string." A CHAR ordering compares as
+        // text; numeric order of a text column is the author's num(X). MOVED ANSWER: before the
+        // ruling this column compared numerically and row 1 (12) was last; as text "9" > "12" >
+        // "10", so row 0 is last.
         IDataTable t = RealTables.of("T").str("G", "S", "S", "S").str("ORD", "9", "12", "10")
                 .build();
-        assertEquals(Set.of(1L), fired(last("group=[G]"), t), "12 > 9 numerically");
+        assertEquals(Set.of(0L), fired(last("group=[G]"), t), "\"9\" > \"12\" > \"10\" as text");
+    }
+
+
+    @Test
+    void isLast_charNegativeZeroAndZeroAreTwoTextsButNumericOnesTie() throws Exception
+    {
+        // Owner precision to D-W1-2a (2026-09-29): "for text -0.0 and 0.0 are different texts, so
+        // they count as different values and are ordered by ther text representation, agree? For
+        // numbers -0.0 and 0.0 stay equal." The ±0 fold is numeric only (D84).
+        IDataTable text = RealTables.of("T").str("G", "S", "S").str("ORD", "0.0", "-0.0").build();
+        assertEquals(Set.of(0L), fired(last("group=[G]"), text),
+                "\"0.0\" > \"-0.0\" as text ('0' 48 > '-' 45): no tie");
+        IDataTable textReversed = RealTables.of("T").str("G", "S", "S").str("ORD", "-0.0", "0.0")
+                .build();
+        assertEquals(Set.of(1L), fired(last("group=[G]"), textReversed), "either row order");
+        // The numeric side stays one value (the raw buffers keep a genuine -0.0).
+        IDataTable numeric = RealTables.of("T").str("G", "S", "S").dbl("ORD", -0.0, 0.0).buildRaw();
+        assertEquals(Set.of(0L, 1L), fired(last("group=[G]"), numeric), "-0.0 ≡ 0.0: a tie");
+        // The EQUALITY side agrees: as a CHAR group key, "-0.0" and "0.0" are two keys, so each
+        // row is its own group's last — one group would have made only the ORD=2 row last.
+        IDataTable groups = RealTables.of("T").str("G", "-0.0", "0.0").lng("ORD", 1L, 2L).build();
+        assertEquals(Set.of(0L, 1L), fired(last("group=[G]"), groups), "two CHAR group keys");
     }
 
 
@@ -207,22 +270,55 @@ class GroupedPredicatesTest
 
 
     @Test
-    void isLast_aMixedCharOrderingIsNotATotalOrderAndTheAnswerFollowsRowOrder() throws Exception
+    void isLast_aMixedCharOrderingIsTextAndIndependentOfRowOrder() throws Exception
     {
-        // Pins TODAY'S behaviour, not a ruling (review round 1, lane 3 L2): on a CHAR column
-        // mixing numeric-looking and textual values the ranking cycles — 3 < 10 (numeric),
-        // 10 < 2x (text), 2x < 3 (text) — so the maximum the linear search finds depends on the
-        // row order. The same multiset {3, 3, 10, 2x} answers two different sets. No register
-        // ruling orders such a column and both corpus sites order by the numeric SESEQ; filed in
-        // plans/findings/FINDINGS-function-surface-wave1-review.md.
-        IDataTable a = RealTables.of("T").str("G", "S", "S", "S", "S")
-                .str("ORD", "3", "10", "2x", "3").build();
-        assertEquals(Set.of(0L, 3L), fired(last("group=[G]"), a),
-                "3 → 10 → 2x → 3: the search ends on 3, both 3 rows are last");
-        IDataTable b = RealTables.of("T").str("G", "S", "S", "S", "S")
-                .str("ORD", "3", "3", "10", "2x").build();
-        assertEquals(Set.of(3L), fired(last("group=[G]"), b),
-                "3 → 3 → 10 → 2x: the search ends on 2x, only that row is last");
+        // Owner ruling D-W1-2a (2026-09-29), review round 2 M-2: a CHAR column mixing
+        // number-looking and textual values is plain text — "10" < "2x" < "3" — a total order,
+        // so every row order of the multiset answers the same rows. Before the ruling the
+        // ranking parsed what it could and cycled (3 < 10 numeric, 10 < 2x text, 2x < 3 text):
+        // {3, 10, 2x, 3} answered {rows 0, 3} and {3, 3, 10, 2x} answered {row 3}.
+        List<String> values = List.of("3", "10", "2x", "3");
+        for (List<String> order : permutations(values))
+        {
+            IDataTable t = RealTables.of("T").str("G", "S", "S", "S", "S")
+                    .str("ORD", order.toArray(String[]::new)).build();
+            Set<Long> expected = new TreeSet<>();
+            for (int r = 0; r < order.size(); r++)
+            {
+                if ("3".equals(order.get(r)))
+                {
+                    expected.add((long) r);
+                }
+            }
+            assertEquals(expected, fired(last("group=[G]"), t), order + ": \"3\" is last as text");
+        }
+        // A present blank "" is the lowest present text (D36b), above a missing.
+        IDataTable blank = RealTables.of("T").str("G", "S", "S", "S").str("ORD", "", null, "")
+                .build();
+        assertEquals(Set.of(0L, 2L), fired(last("group=[G]"), blank), "\"\" > missing");
+    }
+
+
+    private static List<List<String>> permutations(List<String> items)
+    {
+        if (items.isEmpty())
+        {
+            return List.of(List.of());
+        }
+        List<List<String>> out = new ArrayList<>();
+        for (int i = 0; i < items.size(); i++)
+        {
+            List<String> rest = new ArrayList<>(items);
+            String head = rest.remove(i);
+            for (List<String> tail : permutations(rest))
+            {
+                List<String> p = new ArrayList<>();
+                p.add(head);
+                p.addAll(tail);
+                out.add(p);
+            }
+        }
+        return out;
     }
 
 

@@ -576,4 +576,81 @@ class RuleClassifierTest
 
     }
 
+
+    /**
+     * A call whose columns arrive through its <em>declared</em> column parameters rather than its
+     * first two positionals (review round 1 M3 of {@code PLAN-function-surface-wave1}, generalised
+     * by review round 2 L-1). Before round 2 the descriptor was read only when the call had no
+     * positional at all; a non-column positional (a numeric literal here) left the leaf without an
+     * operand, the Check signal-free, and no {@code Sensitivity} derived — the runner then
+     * collapses a per-row BitSet to ONE finding. These drive the classifier directly, so both arms
+     * are reached: the predicate arm ({@code atom}) and the operand-position arm
+     * ({@code operandText}), which a {@code $p == true} binding never reaches because
+     * {@code BindingInliner} folds it.
+     */
+    @Nested
+    class KeywordColumnOperands
+    {
+
+        @Test
+        void aNonColumnPositionalInPredicatePositionReadsTheKeywordColumns()
+        {
+            RuleClassifier.Derived<Sensitivity> s = RuleClassifier.deriveSensitivity(
+                    rule("{\"Check\":{\"expression\":\"is_last_in_group(1, group=[G])\"}}"));
+            assertEquals(Sensitivity.RECORD, s.value(), s.rationale());
+            assertTrue(s.rationale().contains("G is a per-record column"), s.rationale());
+        }
+
+
+        @Test
+        void aNonColumnPositionalInOperandPositionReadsTheKeywordColumns()
+        {
+            RuleClassifier.Derived<Sensitivity> s = RuleClassifier.deriveSensitivity(rule(
+                    "{\"Check\":{\"expression\":\"is_last_in_group(1, group=[G]) == true\"}}"));
+            assertEquals(Sensitivity.RECORD, s.value(), s.rationale());
+            assertTrue(s.rationale().contains("G is a per-record column"), s.rationale());
+        }
+
+
+        @Test
+        void aKeywordOnlyCallInOperandPositionReadsTheKeywordColumns()
+        {
+            // The operand-position arm with no positional at all (round 1's own case, which its
+            // test reached only in predicate position).
+            RuleClassifier.Derived<Sensitivity> s = RuleClassifier
+                    .deriveSensitivity(rule("{\"Check\":{\"expression\":"
+                            + "\"is_last_in_group(ordering=ORD, group=[G]) == true\"}}"));
+            assertEquals(Sensitivity.RECORD, s.value(), s.rationale());
+            assertTrue(s.rationale().contains("ORD is a per-record column"), s.rationale());
+        }
+
+
+        @Test
+        void anOperationReferenceAtAColumnParameterIsAUsageNotAColumnName()
+        {
+            // Aligned with operandText: a $-reference is an operation usage, never an operand
+            // name, whichever slot it is bound to. Before round 2 the descriptor walk named
+            // "$x" as the leaf's first column.
+            RuleClassifier.Derived<Sensitivity> s = RuleClassifier
+                    .deriveSensitivity(rule("{\"Check\":{\"expression\":"
+                            + "\"is_last_in_group(ordering=$x, group=[G])\"}}"));
+            assertEquals(Sensitivity.RECORD, s.value(), s.rationale());
+            assertTrue(s.rationale().contains("G is a per-record column"), s.rationale());
+            assertFalse(s.rationale().contains("$x (unresolved)"), s.rationale());
+        }
+
+
+        @Test
+        void aColumnPositionalKeepsThePositionalReading()
+        {
+            // No existing classification moves: a call whose first positional IS a column keeps
+            // naming it, and its keyword columns are not consulted.
+            RuleClassifier.Derived<Sensitivity> s = RuleClassifier.deriveSensitivity(
+                    rule("{\"Check\":{\"expression\":\"is_last_in_group(ORD, group=[G])\"}}"));
+            assertEquals(Sensitivity.RECORD, s.value(), s.rationale());
+            assertTrue(s.rationale().contains("ORD is a per-record column"), s.rationale());
+        }
+
+    }
+
 }

@@ -32,6 +32,8 @@ class DictionarySkipStateMessageTest
 
     private static final String SUFFIX = "(the rule needs this external dictionary)";
 
+    private static final String PLURAL_SUFFIX = "(the rule needs these external dictionaries)";
+
     private static Rule meddraRule() throws IOException
     {
         return rule("valid_external_dictionary_value(AEDECOD, "
@@ -162,6 +164,9 @@ class DictionarySkipStateMessageTest
         String reason = result.getStatusMessage();
         assertTrue(reason.contains("meddra is installed but carries no usable terms"), reason);
         assertTrue(reason.contains("; external dictionary unii is not installed"), reason);
+        // Review round 2 L-5: the closing clause agrees in number with the clauses before it.
+        assertTrue(reason.endsWith(PLURAL_SUFFIX), reason);
+        assertFalse(reason.contains(SUFFIX), reason);
     }
 
 
