@@ -11,7 +11,8 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * E3 ({@code date_diff_days}) and E4 ({@code is_last_in_group}) operation arms, exercised through
+ * E3 ({@code date_diff_days}) operation arm (E4, {@code is_last_in_group}, is a registry function
+ * since wave 1 — {@code GroupedPredicatesTest}), exercised through
  * {@link OperationExecutor#executeOne} with their raw {@link GroupedResult} inspected. The result
  * map is keyed by the joined key-column values (NUL-separated); single-column keys equal the raw
  * cell value, multi-column keys join the cell values with {@code "\0"}.
@@ -230,81 +231,6 @@ class OperationExecutorDateDiffLastInGroupTest
         assertEquals(38L, GroupedResultTextView.byText(gr).get("2020-03-10" + NUL + "S1"));
     }
 
-    // -- E4 is_last_in_group ----------------------------------------------
-
-
-    @Test
-    void isLastInGroup_flagsMaxOrderingRowPerGroup()
-    {
-        IDataTable se = MockTable.of().col("USUBJID", "S1", "S1", "S1", "S2", "S2")
-                .col("SESEQ", "1", "2", "3", "1", "2").col("SEENDTC", "a", "b", "c", "d", "e")
-                .name("SE").build();
-        Operation op = makeOp("$last", "is_last_in_group");
-        op.setGroup(List.of("USUBJID"));
-        op.setOrdering("SESEQ");
-
-        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, se, NO_RESOLVER,
-                null, new java.util.HashMap<>());
-        assertEquals(List.of("USUBJID", "SESEQ"), gr.groupColumns());
-        assertEquals(false, GroupedResultTextView.byText(gr).get("S1" + NUL + "1"));
-        assertEquals(false, GroupedResultTextView.byText(gr).get("S1" + NUL + "2"));
-        assertEquals(true, GroupedResultTextView.byText(gr).get("S1" + NUL + "3"),
-                "last SESEQ in S1");
-        assertEquals(false, GroupedResultTextView.byText(gr).get("S2" + NUL + "1"));
-        assertEquals(true, GroupedResultTextView.byText(gr).get("S2" + NUL + "2"),
-                "last SESEQ in S2");
-        assertEquals(false, gr.defaultForMissingKey(), "absent group ⇒ default false");
-    }
-
-
-    @Test
-    void isLastInGroup_orderingIndependentOfRowOrder()
-    {
-        // Rows out of SESEQ order — the max-ordering row is still the "last".
-        IDataTable se = MockTable.of().col("USUBJID", "S1", "S1", "S1").col("SESEQ", "3", "1", "2")
-                .name("SE").build();
-        Operation op = makeOp("$last", "is_last_in_group");
-        op.setGroup(List.of("USUBJID"));
-        op.setOrdering("SESEQ");
-
-        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, se, NO_RESOLVER,
-                null, new java.util.HashMap<>());
-        assertEquals(true, GroupedResultTextView.byText(gr).get("S1" + NUL + "3"),
-                "SESEQ 3 is the max");
-        assertEquals(false, GroupedResultTextView.byText(gr).get("S1" + NUL + "1"));
-        assertEquals(false, GroupedResultTextView.byText(gr).get("S1" + NUL + "2"));
-    }
-
-
-    @Test
-    void isLastInGroup_absentOrderingColumn_returnsNull()
-    {
-        IDataTable se = MockTable.of().col("USUBJID", "S1").name("SE").build();
-        Operation op = makeOp("$last", "is_last_in_group");
-        op.setGroup(List.of("USUBJID"));
-        op.setOrdering("SESEQ");
-
-        Object result = OperationExecutorCalls.executeOne(op, se, NO_RESOLVER, null,
-                new java.util.HashMap<>());
-        assertNull(result, "absent ordering column ⇒ unresolvable");
-    }
-
-
-    @Test
-    void isLastInGroup_missingParamsReturnNull()
-    {
-        IDataTable se = MockTable.of().col("USUBJID", "S1").col("SESEQ", "1").name("SE").build();
-        Operation noOrdering = makeOp("$last", "is_last_in_group");
-        noOrdering.setGroup(List.of("USUBJID"));
-        assertNull(OperationExecutorCalls.executeOne(noOrdering, se, NO_RESOLVER, null,
-                new java.util.HashMap<>()), "no ordering ⇒ null");
-
-        Operation noGroup = makeOp("$last", "is_last_in_group");
-        noGroup.setOrdering("SESEQ");
-        assertNull(OperationExecutorCalls.executeOne(noGroup, se, NO_RESOLVER, null,
-                new java.util.HashMap<>()), "no group ⇒ null");
-    }
-
 
     // -- resolvePrefixes must not drop date_diff_days fields (regression) -------
     @Test
@@ -322,9 +248,6 @@ class OperationExecutorDateDiffLastInGroupTest
         op.setOffset("1");
         op.setReferenceExtreme("max");
         op.setNamePattern("^TR\\d+EDT$");
-        // EC-23: the has_mixed_emptiness qualifier list must also survive prefix resolution; a
-        // `--`-prefixed qualifier column is resolved to the evaluation domain.
-        op.setQualifyingAnyPopulated(List.of("BASE", "--BASEC"));
 
         Operation resolved = OperationExecutorCalls.resolvePrefixes(op, "TF");
 
@@ -332,8 +255,6 @@ class OperationExecutorDateDiffLastInGroupTest
         assertEquals("1", resolved.getOffset(), "offset must survive prefix resolution");
         assertEquals("max", resolved.getReferenceExtreme(), "reference_extreme must survive");
         assertEquals("^TR\\d+EDT$", resolved.getNamePattern(), "name_pattern must survive");
-        assertEquals(List.of("BASE", "TFBASEC"), resolved.getQualifyingAnyPopulated(),
-                "qualifying_any_populated must survive prefix resolution (with -- resolved)");
         // EC-18 / P5c: Mode-3 foreign-minuend fields must survive prefix resolution too.
         op.setMinuendDomain("PM");
         op.setMinuendMatch(List.of("USUBJID", "--SPID"));
@@ -580,81 +501,5 @@ class OperationExecutorDateDiffLastInGroupTest
 
     // -- F-corej-L1-04: the tie rule and the non-numeric ordering path ---------
 
-
-    @Test
-    void isLastInGroup_tieOnTheMaxOrderingValue_keepsTheFirstRow()
-    {
-        // Documented contract: "on ties the FIRST row achieving the max is kept (mirrors pandas
-        // idxmax first-occurrence)". Rows 1 and 2 both carry SESEQ 2, the group maximum.
-        // GroupedResult is keyed by (group... + ordering), so the two tied rows share ONE key --
-        // the key-space limitation this evaluator already documents at its group-absence guard.
-        // The surviving value at that shared key is therefore the distinguisher: with
-        // first-occurrence the later-written tied row is NOT the last, so the key reads false;
-        // the `> 0` -> `>= 0` ConditionalsBoundary mutant advances lastRow onto the LAST tied row,
-        // so the same key reads true.
-        IDataTable se = MockTable.of().col("USUBJID", "S1", "S1", "S1", "S2")
-                .col("SESEQ", "1", "2", "2", "7").name("SE").build();
-        Operation op = makeOp("$last", "is_last_in_group");
-        op.setGroup(List.of("USUBJID"));
-        op.setOrdering("SESEQ");
-
-        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, se, NO_RESOLVER,
-                null, new java.util.HashMap<>());
-        assertEquals(false, GroupedResultTextView.byText(gr).get("S1" + NUL + "1"),
-                "below the max");
-        assertEquals(false, GroupedResultTextView.byText(gr).get("S1" + NUL + "2"),
-                "first-occurrence tie: the max is row 1, so row 2 writes false last");
-        assertEquals(true, GroupedResultTextView.byText(gr).get("S2" + NUL + "7"),
-                "untied control group");
-    }
-
-
-    @Test
-    void isLastInGroup_nonNumericOrderingComparesLexicographically()
-    {
-        // The ordering column parses as no number, so orderingCompare falls back to
-        // String.compareTo. The PrimitiveReturnsMutator mutant `return sa.compareTo(sb)` ->
-        // `return 0` makes every non-numeric value compare equal, so lastRow never advances past
-        // g[0] and the FIRST row of each group is flagged as its last.
-        IDataTable se = MockTable.of().col("USUBJID", "S1", "S1", "S1").col("ORD", "B", "A", "C")
-                .name("SE").build();
-        Operation op = makeOp("$last", "is_last_in_group");
-        op.setGroup(List.of("USUBJID"));
-        op.setOrdering("ORD");
-
-        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, se, NO_RESOLVER,
-                null, new java.util.HashMap<>());
-        assertEquals(true, GroupedResultTextView.byText(gr).get("S1" + NUL + "C"),
-                "lexicographic max is the last");
-        assertEquals(false, GroupedResultTextView.byText(gr).get("S1" + NUL + "B"),
-                "the first row is NOT the last under string ordering");
-        assertEquals(false, GroupedResultTextView.byText(gr).get("S1" + NUL + "A"));
-    }
-
     // -- F-corej-L1-03: the SDTM "no Day 0" boundary of the dy operation -------
-
-
-    @Test
-    void dy_dateEqualToTheReferenceDate_isStudyDayOne()
-    {
-        // SDTM study day has NO day 0: the reference date itself is Day 1 and the day before it is
-        // Day -1. The `days >= 0` -> `days > 0` ConditionalsBoundary mutant ships Day 0 for a
-        // record dated exactly on DM.RFSTDTC -- the single input that observes it.
-        IDataTable dm = MockTable.of().col("USUBJID", "S1").col("RFSTDTC", "2020-01-15").name("DM")
-                .build();
-        IDataTable ae = MockTable.of().col("USUBJID", "S1", "S1", "S1")
-                .col("AESTDTC", "2020-01-15", "2020-01-14", "2020-01-16").name("AE").build();
-        Operation op = makeOp("$dy", "dy");
-        op.setName("AESTDTC");
-        DatasetResolver dmResolver = name -> "DM".equals(name) ? dm : null;
-
-        GroupedResult gr = (GroupedResult) OperationExecutorCalls.executeOne(op, ae, dmResolver,
-                null, new java.util.HashMap<>());
-        assertEquals(List.of("USUBJID", "AESTDTC"), gr.groupColumns());
-        assertEquals(1L, GroupedResultTextView.byText(gr).get("S1" + NUL + "2020-01-15"),
-                "a date equal to RFSTDTC is Day 1 -- there is no Day 0");
-        assertEquals(-1L, GroupedResultTextView.byText(gr).get("S1" + NUL + "2020-01-14"),
-                "the day before the reference date is Day -1");
-        assertEquals(2L, GroupedResultTextView.byText(gr).get("S1" + NUL + "2020-01-16"));
-    }
 }

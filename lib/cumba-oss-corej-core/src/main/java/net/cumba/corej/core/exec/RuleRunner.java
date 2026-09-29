@@ -267,8 +267,11 @@ public final class RuleRunner
                     .totalRows(table != null ? table.getRowCount() : 0L)
                     .status(RuleExecutionStatus.ERROR).statusMessage(errorMsg).build());
         }
-        catch (net.cumba.corej.core.expr.eval.ColumnTypeMismatchException e)
+        catch (net.cumba.corej.core.expr.eval.ColumnTypeMismatchException
+                | net.cumba.corej.core.expr.eval.UngatedProviderReachException e)
         {
+            // The second is wave 1's D-W1-3 (vii) tripwire: a provider-backed function reached
+            // past a gate that should have SKIPPED the rule reports ERROR, never its empty default.
             // Phase 3 of PLAN-column-type-conformance (R4/R5/R9): the rule read a resolved column
             // against its declared type without a conversion — a Char column where a number is
             // expected (author num(X)), or a Num column where text is expected. Per-DATASET

@@ -141,7 +141,7 @@ class MissingValuesLoadValidationTest
         // determinability authors max_date, as FDA-SD0080 was moved to do.
         for (String operator : new String[]
         {
-                "record_count", "distinct", "row_max", "row_min", "max", "variable_count", "dy"
+                "record_count", "distinct", "row_max", "max", "variable_count"
         })
         {
             Rule rule = loadRule("""

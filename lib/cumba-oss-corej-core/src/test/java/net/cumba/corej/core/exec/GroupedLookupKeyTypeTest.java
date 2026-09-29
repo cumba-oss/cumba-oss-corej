@@ -208,10 +208,12 @@ class GroupedLookupKeyTypeTest
                 .build();
         Operation op = new Operation();
         op.setId("$v");
-        op.setOperator("supp_qnam_value");
+        // supp_qnam_present since wave 1 deleted supp_qnam_value (zero sites): same join, same
+        // text-keyed IDVARVAL match, a boolean verdict instead of the joined QVAL.
+        op.setOperator("supp_qnam_present");
         op.setDomain("SUPPAE");
         op.setKeyValue("AETRTEM");
-        RuleExecutionResult res = run(rule("$v == \"Y\"", List.of("AESEQ"), op), aeTable, supp);
+        RuleExecutionResult res = run(rule("$v == true", List.of("AESEQ"), op), aeTable, supp);
         assertEquals(RuleExecutionStatus.EXECUTED, res.getStatus(), res.getStatusMessage());
         // IDVARVAL "1" (text) found AESEQ 1 (a number): row 1 fires
         assertEquals(1, res.getViolations().size());

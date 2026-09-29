@@ -134,7 +134,7 @@ class CompiledBindingReadersTest
     void anUnresolvedWildcardInsideACompiledBindingIsALoadError() throws Exception
     {
         Rule rule = load("$last == true", List.of(), "$last",
-                "is_last_in_group(group=[USUBJID], ordering=\"--SEQ\") == true");
+                "date_diff_days(SESTDTC, reference=\"--SEQ\") > 0");
         assertNotNull(rule.getLoadError(),
                 "R7: the nested operation call is on the inline surface");
         assertTrue(rule.getLoadError().contains("is not `--`-resolved"), rule.getLoadError());

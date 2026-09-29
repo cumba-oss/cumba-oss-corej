@@ -315,11 +315,9 @@ public final class OperationExecutor
      * not spuriously skipped merely because no CDISC-Library provider is configured.
      *
      * <p>
-     * &#9888; This predicate answers "is this operation dictionary-backed", not "must the rule skip
-     * when the dictionary is absent". {@link OperationType#DICTIONARY_AVAILABLE} is a member and
-     * must be <b>excluded</b> by any eager-skip caller — it is the gate itself and returns a
-     * well-defined {@code false} with no provider, whereas the validating operations return
-     * {@code null}. {@link RuleRunner} excludes it explicitly.
+     * The {@code dictionary_available(<type>)} gate is a registry builtin, never an operation, so
+     * every member is a genuine dependency: an eager-skip caller needs no exclusion (wave 1 deleted
+     * the {@code DICTIONARY_AVAILABLE} operation).
      * </p>
      */
     public static boolean isDictionaryDependent(@Nullable OperationType type)
@@ -330,7 +328,7 @@ public final class OperationExecutor
         }
         return switch (type)
         {
-        case DICTIONARY_AVAILABLE, VALID_EXTERNAL_DICTIONARY_VALUE, VALID_EXTERNAL_DICTIONARY_CODE, VALID_EXTERNAL_DICTIONARY_CODE_TERM_PAIR, VALID_EXTERNAL_DICTIONARY_HIERARCHY, DICTIONARY_HAS_DECODE -> true;
+        case VALID_EXTERNAL_DICTIONARY_VALUE, VALID_EXTERNAL_DICTIONARY_CODE, DICTIONARY_HAS_DECODE -> true;
         default -> false;
         };
     }
@@ -419,15 +417,11 @@ public final class OperationExecutor
      * reached from these constants is declared to return {@code GroupedResult}, or builds one
      * through {@code declaredGrouped}.
      */
-    private static final Set<OperationType> ALWAYS_PER_ROW = Set.of(OperationType.DY,
-            OperationType.HAS_MIXED_EMPTINESS_WITHIN_GROUP,
+    private static final Set<OperationType> ALWAYS_PER_ROW = Set.of(
             OperationType.VALID_EXTERNAL_DICTIONARY_VALUE,
-            OperationType.VALID_EXTERNAL_DICTIONARY_CODE,
-            OperationType.VALID_EXTERNAL_DICTIONARY_CODE_TERM_PAIR,
-            OperationType.VALID_EXTERNAL_DICTIONARY_HIERARCHY, OperationType.DICTIONARY_HAS_DECODE,
+            OperationType.VALID_EXTERNAL_DICTIONARY_CODE, OperationType.DICTIONARY_HAS_DECODE,
             OperationType.INTERVAL_UNCERTAINTY_PRECISION_MISMATCH, OperationType.DATE_DIFF_DAYS,
-            OperationType.IS_LAST_IN_GROUP, OperationType.ROW_MAX, OperationType.ROW_MIN,
-            OperationType.SUPP_QNAM_PRESENT, OperationType.SUPP_QNAM_VALUE,
+            OperationType.ROW_MAX, OperationType.SUPP_QNAM_PRESENT,
             OperationType.REFERENCED_DOMAIN_CLASS,
             // evalParentModelColumnOrder builds a GroupedResult keyed on RDOMAIN unconditionally
             // (review finding 3 of the leaf-scope plan, 2026-08-22).
@@ -703,7 +697,6 @@ public final class OperationExecutor
         // minuend_match `--` tokens are resolved per-side at evaluation time, not here).
         copy.setMinuendDomain(op.getMinuendDomain());
         copy.setMinuendMatch(op.getMinuendMatch());
-        copy.setOrdering(op.getOrdering());
         copy.setFilter(op.getFilter());
         copy.setCodelists(op.getCodelists());
         copy.setLevel(op.getLevel());
@@ -719,9 +712,6 @@ public final class OperationExecutor
         copy.setExternalDictionaryType(op.getExternalDictionaryType());
         copy.setDictionaryTermType(op.getDictionaryTermType());
         copy.setCaseSensitive(op.getCaseSensitive());
-        copy.setExternalDictionaryTermVariable(op.getExternalDictionaryTermVariable());
-        copy.setDictionaryParent(op.getDictionaryParent());
-        copy.setQualifyingAnyPopulated(op.getQualifyingAnyPopulated());
         copy.setOriginalName(op.getOriginalName());
         return copy;
     }
@@ -1130,16 +1120,11 @@ public final class OperationExecutor
         List<String> group = op.getGroup();
 
         List<String> nameList = op.getNames();
-        String termVar = op.getExternalDictionaryTermVariable();
         boolean needsResolve = (name != null && name.contains("--"))
                 || (domain != null && domain.contains("--"))
                 || (group != null && group.stream().anyMatch(g -> g != null && g.contains("--")))
                 || (nameList != null
                         && nameList.stream().anyMatch(n -> n != null && n.contains("--")))
-                || (termVar != null && termVar.contains("--"))
-                || (op.getQualifyingAnyPopulated() != null && op.getQualifyingAnyPopulated()
-                        .stream().anyMatch(q -> q != null && q.contains("--")))
-                || (op.getDictionaryParent() != null && op.getDictionaryParent().contains("--"))
                 // EC-28(b) / Fix #131: a filter KEY can be the operation's ONLY wildcard, so it
                 // must be part of the gate — otherwise the early return below hands back the
                 // unresolved operation and the resolution below never runs.
@@ -1224,36 +1209,13 @@ public final class OperationExecutor
         resolved.setExternalDictionaryType(op.getExternalDictionaryType());
         resolved.setCaseSensitive(op.getCaseSensitive());
         resolved.setDictionaryTermType(op.getDictionaryTermType());
-        resolved.setExternalDictionaryTermVariable(
-                termVar != null && termVar.contains("--") ? termVar.replace("--", varPrefix)
-                        : termVar);
-        // EC-23: has_mixed_emptiness_within_group qualifier columns must survive prefix resolution
-        // too (mirror of the expandGroup copy) — a `--`-prefixed qualifying column is resolved.
-        List<String> qualifying = op.getQualifyingAnyPopulated();
-        resolved.setQualifyingAnyPopulated(
-                qualifying != null
-                        ? qualifying.stream()
-                                .map(q -> q != null && q.contains("--") ? q.replace("--", varPrefix)
-                                        : q)
-                                .toList()
-                        : null);
         // Remaining fields expandGroupRefs copies — mirrored here verbatim to keep the two copy
         // routines in complete lock-step (the §2.1 silent-drop hazard, class of the EC-21/Fix-#99
         // offset bug). No shipped rule combines any of these with a `--` token today, so this is a
         // defensive completeness fix, not a live change.
         resolved.setExpression(op.getExpression());
         resolved.setSubtract(op.getSubtract());
-        resolved.setOrdering(op.getOrdering());
         resolved.setMinLength(op.getMinLength());
-        // EC-36: dictionary_parent names a COLUMN (the candidate-ancestor term), so it is a
-        // variable-name position and must be `--`-resolved like name/names/group. It never was:
-        // CDISC-CG0460 and CG0461 ship `dictionary_parent: "--SOC"`, which reached
-        // evalValidExternalDictionaryHierarchy as the literal "--SOC", missed the column lookup
-        // and returned null — both rules were dead on every dataset.
-        String dictParent = op.getDictionaryParent();
-        resolved.setDictionaryParent(dictParent != null && dictParent.contains("--")
-                ? dictParent.replace("--", varPrefix)
-                : dictParent);
         if (group != null)
         {
             resolved.setGroup(group.stream()
@@ -1275,7 +1237,6 @@ public final class OperationExecutor
         return switch (type)
         {
         case VARIABLE_COUNT -> evalVariableCount(op, table, resolver, ruleId);
-        case VARIABLE_VALUE_COUNT -> evalVariableValueCount(op, table, resolver);
         case RECORD_COUNT -> grouped ? evalRecordCountGrouped(op, table, groupCols, ruleId)
                 : evalRecordCount(op, table);
         case DISTINCT -> evalDistinctDispatch(op, table, resolver, groupCols, grouped, ruleId,
@@ -1287,31 +1248,6 @@ public final class OperationExecutor
                 : evalMinDate(op, table);
         case EXTRACT_METADATA -> evalExtractMetadata(op, table);
         case GET_COLUMN_ORDER_FROM_DATASET -> evalGetColumnOrder(table);
-        case DY ->
-        {
-            // DY must be per-row: include both USUBJID and the date column in the
-            // grouping key so each (subject, date) combination gets its own result.
-            // Without the date column, all rows for a subject share one DY value
-            // (the last one computed), producing false positives.
-            List<String> dyGroupCols;
-            if (grouped)
-            {
-                dyGroupCols = groupCols;
-            }
-            else
-            {
-                dyGroupCols = new ArrayList<>();
-                dyGroupCols.add(USUBJID);
-                if (op.getName() != null)
-                {
-                    dyGroupCols.add(op.getName());
-                }
-            }
-            yield evalDyGrouped(op, table, resolver, dyGroupCols);
-        }
-        // The Operations carriage of the dataset_domain fact — the SAME derivation the
-        // ds_domain("DATA") accessor reads, so the two surfaces cannot drift.
-        case DATASET_DOMAIN -> unsplitNameFromData(table);
         case DATASET_NAMES -> evalDatasetNames(table, resolver);
         // J7: study_domains is the data-driven DOMAINS (split members collapse to their domain),
         // distinct from dataset_names (the member names).
@@ -1429,7 +1365,6 @@ public final class OperationExecutor
         case GET_MODEL_FILTERED_VARIABLES -> evalGetModelFilteredVariables(libraryProvider, op,
                 table, resolver, ruleId);
         case VALID_CODELIST_DATES -> evalValidCodelistDates(libraryProvider, op, ruleId);
-        case CONSTANT -> op.getName(); // return the name field as a literal string
         case CROSS_DATASET_VARIABLE_METADATA -> VariableMetadataResult.build(resolver,
                 resolveWildcard(op.getDomain(), table), op.getName(),
                 table.getMetaData().getName());
@@ -1463,20 +1398,11 @@ public final class OperationExecutor
             }
             yield r;
         }
-        case HAS_MIXED_EMPTINESS_WITHIN_GROUP -> evalHasMixedEmptinessWithinGroup(op, table,
-                groupCols, ruleId);
         case VARIABLE_IS_NULL -> evalVariableIsNull(op, table);
         case TS_PARAMETER_VALUE -> evalTsParameterValue(op, resolver);
         case SUPP_QNAM_PRESENT -> evalSuppQnamJoin(op, resolver, true);
-        case SUPP_QNAM_VALUE -> evalSuppQnamJoin(op, resolver, false);
-        case DICTIONARY_AVAILABLE -> dictionaryProvider != null
-                && dictionaryProvider.isAvailable(op.getExternalDictionaryType());
         case VALID_EXTERNAL_DICTIONARY_VALUE, VALID_EXTERNAL_DICTIONARY_CODE -> evalValidExternalDictionaryValue(
                 op, table, dictionaryProvider);
-        case VALID_EXTERNAL_DICTIONARY_CODE_TERM_PAIR -> evalValidExternalDictionaryCodeTermPair(op,
-                table, dictionaryProvider);
-        case VALID_EXTERNAL_DICTIONARY_HIERARCHY -> evalValidExternalDictionaryHierarchy(op, table,
-                dictionaryProvider);
         case DEFINE_VARIABLE_NAMES -> evalDefineVariableNames(table, defineProvider);
         case DEFINE_DATASET_NAMES -> evalDefineDatasetNames(defineProvider);
         case DEFINE_KEY_VARIABLES ->
@@ -1497,9 +1423,7 @@ public final class OperationExecutor
         case DUPLICATE_LABEL_VARIABLES -> evalDuplicateLabelVariables(table);
         case COLUMN_SERIES_METADATA -> evalColumnSeriesMetadata(op, table);
         case DATE_DIFF_DAYS -> evalDateDiffDays(op, table, resolver);
-        case IS_LAST_IN_GROUP -> evalIsLastInGroup(op, table);
         case ROW_MAX -> evalRowExtreme(op, table, true);
-        case ROW_MIN -> evalRowExtreme(op, table, false);
         default ->
         {
             LOGGER.log(System.Logger.Level.DEBUG, "[{0}] Unsupported operation type: {1} (id={2})",
@@ -1613,135 +1537,6 @@ public final class OperationExecutor
             }
         }
         return count;
-    }
-
-
-    /**
-     * Returns a map from each distinct non-empty value of the target variable to the number of
-     * <em>study dataset families</em> in which that value occurs. A family is the set of inventory
-     * datasets sharing a data-driven unsplit name ({@link #unsplitNameFromData}), so every member
-     * of a split family is unioned and contributes at most one to each value's count.
-     * <p>
-     * Python reference: {@code operations/variable_value_count.py}, which takes
-     * {@code Counter(series.unique())} per (split-concatenated) dataset and sums the counters — the
-     * same dataset-presence semantics. The remaining deviations are recorded as EC-30 in
-     * {@code plans/done/PLAN-rule-review-engine-changes.md}:
-     * </p>
-     * <ol>
-     * <li><b>Family key (mirrored into the parity fork).</b> Families are keyed by
-     * {@link #unsplitNameFromData} (row-0 {@code DOMAIN}, else {@code SUPP}/{@code SQ} +
-     * {@code RDOMAIN}, else the raw name) — the same key {@code variable_count} uses. Upstream
-     * Python keys by {@code SDTMDatasetMetadata.domain} alone, so every DOMAIN-less dataset
-     * (SUPP--, SQ--, RELREC, …) collapses under a single {@code None} key and only the last one is
-     * counted. That is a defect, not a contract. <em>Caveat:</em> the fork matches only when
-     * {@code RDOMAIN} resolves — for a SUPP/SQ dataset with no usable {@code RDOMAIN} Python still
-     * builds the literal {@code "SUPPNone"}/{@code "SUPP"} and collapses, where this method falls
-     * back to the raw name and keeps such datasets apart.</li>
-     * <li><b>Empty/missing cells (Java-only — deliberately NOT mirrored).</b> Missing/invalid and
-     * empty-string cells contribute no key here; pandas {@code .unique()} retains {@code NaN} and
-     * {@code ""}. The fork must keep them: its {@code value_has_multiple_references} looks the map
-     * up per row through a bare {@code dict.get()} and compares {@code > 1}, so a dropped key
-     * raises {@code TypeError} for every blank-target row (CG0022). No Java operator consumes this
-     * map, so the skip is unobservable on this side.</li>
-     * <li><b>Key type (Java-only).</b> Keys here are {@code String} (via
-     * {@code IDataValue.getValueAsString()}); Python's are the raw cell values.</li>
-     * <li><b>{@code --} resolution (Java-only).</b> {@link #domainPrefix} uses the full
-     * {@code DOMAIN} cell where Python's {@code wildcard_replacement} uses the 2-char AP suffix for
-     * AP datasets and {@code ""} for SUPP — so for a {@code --}-templated target an AP or SUPP
-     * family resolves to a different column name in the two engines. Shared cross-operation
-     * resolver; out of scope for EC-30.</li>
-     * </ol>
-     * <p>
-     * With no dataset inventory (degraded mode) the current table is the only family, so every
-     * distinct value maps to {@code 1}.
-     * </p>
-     */
-    private static Map<String, Long> evalVariableValueCount(Operation op, IDataTable table,
-            DatasetResolver resolver)
-    {
-        String template = op.getOriginalName() != null ? op.getOriginalName() : op.getName();
-        if (template == null)
-        {
-            return Map.of();
-        }
-        Map<String, Long> counts = new LinkedHashMap<>();
-        if (resolver instanceof DatasetResolver.WithInventory inv)
-        {
-            // Resolve-then-key, exactly as countVariableAcrossInventory does: the family key comes
-            // from the data, not the name, so a letter-suffix split like FAAE/DOMAIN=FA groups
-            // with FACM under FA — which a name-only key (SplitDatasetUtil.unsplitName) misses.
-            Map<String, List<IDataTable>> families = new LinkedHashMap<>();
-            for (String dsName : inv.availableDatasets())
-            {
-                IDataTable ds = resolver.resolve(dsName);
-                if (ds == null)
-                {
-                    continue;
-                }
-                families.computeIfAbsent(unsplitNameFromData(ds), _ -> new ArrayList<>()).add(ds);
-            }
-            for (List<IDataTable> family : families.values())
-            {
-                accumulateFamilyValuePresence(counts, family, template);
-            }
-            return counts;
-        }
-        accumulateFamilyValuePresence(counts, List.of(table), template);
-        return counts;
-    }
-
-
-    /**
-     * Unions the distinct non-empty values of the resolved target column across every member of one
-     * split family, then bumps each such value's count by exactly one. The {@code --} template is
-     * resolved per member so a family whose members disagree on the {@code DOMAIN} cell still reads
-     * the right column from each.
-     */
-    private static void accumulateFamilyValuePresence(Map<String, Long> counts,
-            List<IDataTable> family, String template)
-    {
-        Set<String> distinct = new LinkedHashSet<>();
-        for (IDataTable ds : family)
-        {
-            collectDistinctValues(distinct, ds, resolveTemplate(template, ds));
-        }
-        for (String value : distinct)
-        {
-            counts.merge(value, 1L, Long::sum);
-        }
-    }
-
-
-    /** Adds every non-missing, non-empty value of {@code colName} in {@code ds} to {@code out}. */
-    private static void collectDistinctValues(Set<String> out, IDataTable ds,
-            @Nullable String colName)
-    {
-        if (colName == null)
-        {
-            return;
-        }
-        DataTableMeta meta = ds.getMetaData();
-        int colIdx = meta.getColumnIndex(colName);
-        if (colIdx < 0)
-        {
-            return;
-        }
-        IDataTableColumn col = ds.getColumn(colIdx);
-        long rowCount = ds.getRowCount();
-        for (long r = 0; r < rowCount; r++)
-        {
-            IDataValue dv = col.getDataValue(r);
-            if (dv.isMissingOrInvalid())
-            {
-                continue;
-            }
-            String val = dv.getValueAsString();
-            if (val == null || val.isEmpty())
-            {
-                continue;
-            }
-            out.add(val);
-        }
     }
 
 
@@ -2392,123 +2187,6 @@ public final class OperationExecutor
 
 
     /**
-     * T1 — per-record code&harr;decode pairing. Builds a {@link GroupedResult} keyed by the
-     * {@code name} (code) column plus the {@code external_dictionary_term_variable} (decode/term)
-     * column, whose value for each distinct pair is {@code true} when the dictionary maps that code
-     * to that decode. Backs FDA SD2262 (TSVALCD&rarr;TSVAL against FDA-SRS/UNII) and the NEOPLASM
-     * benign/malignant alignment SE2229 ({@code --STRESC}&rarr;{@code --RESCAT} against the
-     * neoplasm attribute map). Returns {@code null} when the type is not loaded or a column is
-     * absent (rule SKIPs). Mirrors the Python {@code valid_external_dictionary_code_term_pair}
-     * operation. D-TA-3 / Fix #266: code and decode compare case-sensitively unless the rule
-     * authors {@code case_sensitive: false}.
-     */
-    private static @Nullable GroupedResult evalValidExternalDictionaryCodeTermPair(Operation op,
-            IDataTable table, @Nullable RuntimeDictionaryProvider dictionaryProvider)
-    {
-        String type = op.getExternalDictionaryType();
-        String termVar = op.getExternalDictionaryTermVariable();
-        if (op.getName() == null || termVar == null || dictionaryProvider == null
-                || !dictionaryProvider.isAvailable(type))
-        {
-            return null;
-        }
-        DataTableMeta meta = table.getMetaData();
-        int codeIdx = meta.getColumnIndex(op.getName());
-        int termIdx = meta.getColumnIndex(termVar);
-        if (codeIdx < 0 || termIdx < 0)
-        {
-            return null;
-        }
-        IDataTableColumn codeCol = table.getColumn(codeIdx);
-        IDataTableColumn termCol = table.getColumn(termIdx);
-        long rowCount = table.getRowCount();
-        // D-TA-3 / Fix #266: flag-aware with a case-SENSITIVE default (pre-#266 the flag was
-        // ignored and the code side compared case-folded while the decode compared verbatim).
-        boolean caseSensitive = !Boolean.FALSE.equals(op.getCaseSensitive());
-        List<String> groupCols = List.of(op.getName(), termVar);
-        Map<Object, Object> results = new LinkedHashMap<>();
-        for (long r = 0; r < rowCount; r++)
-        {
-            IDataValue codeDv = codeCol.getDataValue(r);
-            IDataValue termDv = termCol.getDataValue(r);
-            String codeVal = codeDv.isMissingOrInvalid() ? "" : codeDv.getValueAsString();
-            String termVal = termDv.isMissingOrInvalid() ? "" : termDv.getValueAsString();
-            // A blank code OR blank decode is a valid pair (H1): completeness of the cell is a
-            // different rule's concern, and a failed lookup on "" would otherwise false-fire the
-            // `== false` consequent. Mirrors Python is_valid_code_term_pair
-            // (value_map_validator.py):
-            // `if code is None or code == "" or decode is None or decode == "": return True`.
-            boolean paired = codeVal.isEmpty() || termVal.isEmpty() || dictionaryProvider
-                    .codeDecodePair(type, type, codeVal, termVal, caseSensitive);
-            // ⚑ ONE DERIVATION: GroupedResult.identityKey, the probe's own key — see
-            // evalValidExternalDictionaryValue.
-            results.computeIfAbsent(GroupedResult.identityKey(meta, table, groupCols, r),
-                    _ -> paired);
-        }
-        return declaredGrouped(op, table, groupCols, results);
-    }
-
-
-    /**
-     * T1 — per-record dictionary hierarchy-path membership. Builds a {@link GroupedResult} keyed by
-     * the {@code name} (child term) column plus the {@code dictionary_parent} (candidate ancestor)
-     * column, whose value for each distinct pair is {@code true} when the child lies on the
-     * dictionary hierarchy path of — has as an ancestor — the parent. A blank child OR blank parent
-     * is treated as {@code true} (no fire), so a missing cell never false-fires the
-     * {@code == false} consequent — completeness is a different rule's concern. Returns
-     * {@code null} when the type is not loaded or a column is absent (rule SKIPs). Mirrors the
-     * Python {@code valid_external_dictionary_hierarchy} operation. D-TA-3 / Fix #266: child and
-     * parent compare case-sensitively against the as-authored hierarchy unless the rule authors
-     * {@code case_sensitive: false}.
-     */
-    private static @Nullable GroupedResult evalValidExternalDictionaryHierarchy(Operation op,
-            IDataTable table, @Nullable RuntimeDictionaryProvider dictionaryProvider)
-    {
-        String type = op.getExternalDictionaryType();
-        String parentVar = op.getDictionaryParent();
-        if (op.getName() == null || parentVar == null || dictionaryProvider == null
-                || !dictionaryProvider.isAvailable(type))
-        {
-            return null;
-        }
-        DataTableMeta meta = table.getMetaData();
-        int childIdx = meta.getColumnIndex(op.getName());
-        int parentIdx = meta.getColumnIndex(parentVar);
-        if (childIdx < 0 || parentIdx < 0)
-        {
-            return null;
-        }
-        IDataTableColumn childCol = table.getColumn(childIdx);
-        IDataTableColumn parentCol = table.getColumn(parentIdx);
-        long rowCount = table.getRowCount();
-        // D-TA-3 / Fix #266: flag-aware with a case-SENSITIVE default (pre-#266 the flag was
-        // ignored and both operands were case-folded).
-        boolean caseSensitive = !Boolean.FALSE.equals(op.getCaseSensitive());
-        List<String> groupCols = List.of(op.getName(), parentVar);
-        Map<Object, Object> results = new LinkedHashMap<>();
-        for (long r = 0; r < rowCount; r++)
-        {
-            IDataValue childDv = childCol.getDataValue(r);
-            IDataValue parentDv = parentCol.getDataValue(r);
-            String childVal = childDv.isMissingOrInvalid() ? "" : childDv.getValueAsString();
-            String parentVal = parentDv.isMissingOrInvalid() ? "" : parentDv.getValueAsString();
-            // A blank child OR blank parent is on-path (H1): completeness of the cell is a
-            // different
-            // rule's concern, and a failed lookup on "" would otherwise false-fire the `== false`
-            // consequent. Mirrors Python on_hierarchy_path (value_map_validator.py):
-            // `if child is None or child == "" or parent is None or parent == "": return True`.
-            boolean onPath = childVal.isEmpty() || parentVal.isEmpty()
-                    || dictionaryProvider.onHierarchyPath(type, childVal, parentVal, caseSensitive);
-            // ⚑ ONE DERIVATION: GroupedResult.identityKey, the probe's own key — see
-            // evalValidExternalDictionaryValue.
-            results.computeIfAbsent(GroupedResult.identityKey(meta, table, groupCols, r),
-                    _ -> onPath);
-        }
-        return declaredGrouped(op, table, groupCols, results);
-    }
-
-
-    /**
      * E1 — the CDISC-Library observation class of the domain named in each record's {@code name}
      * column (default {@code RDOMAIN}). Builds a {@link GroupedResult} keyed by that column; each
      * distinct domain value maps to its Library class ({@code MetadataProvider.getDatasetClass}),
@@ -2650,8 +2328,9 @@ public final class OperationExecutor
      * {@code containsKey} over its {@code pairs}/{@code attributes} registries). A blank code ⇒
      * {@code false} (no fire). Returns {@code null} (rule SKIPs) when no dictionary of the type is
      * loaded or the column is absent. Backs CDISC-CG0096; mirrors the blank/absence discipline of
-     * {@link #evalValidExternalDictionaryHierarchy}. D-TA-3 / Fix #266: the code lookup is
-     * case-sensitive unless the rule authors {@code case_sensitive: false}.
+     * the {@code valid_external_dictionary_hierarchy} function ({@code DictionaryFunctions}).
+     * D-TA-3 / Fix #266: the code lookup is case-sensitive unless the rule authors
+     * {@code case_sensitive: false}.
      */
     private static @Nullable GroupedResult evalDictionaryHasDecode(Operation op, IDataTable table,
             @Nullable RuntimeDictionaryProvider dictionaryProvider)
@@ -2680,7 +2359,7 @@ public final class OperationExecutor
             IDataValue dv = col.getDataValue(r);
             String code = dv.isMissingOrInvalid() ? "" : dv.getValueAsString();
             // A blank code holds no decode (no fire). reg defaults to the dictionary type, as in
-            // evalValidExternalDictionaryCodeTermPair.
+            // the valid_external_dictionary_code_term_pair function (DictionaryFunctions).
             // ⚑ ONE DERIVATION: GroupedResult.identityKey, the probe's own key — see
             // evalValidExternalDictionaryValue.
             results.computeIfAbsent(GroupedResult.identityKey(meta, table, groupCols, r),
@@ -3783,11 +3462,11 @@ public final class OperationExecutor
      * <p>
      * ⚠⚠ {@code base} is <b>not</b> uniform across the {@code Operations[].group:} surface, and
      * that is the defect this parameter exists to make visible. The five key-building evaluators
-     * pass {@link GroupKeyPolicy#KEEP_MISSING_KEYS} (fold) while {@code evalIsLastInGroup} passes
-     * {@link GroupKeyPolicy#DROP_MISSING_KEYS} (discard) — one authoring surface, two behaviours,
-     * with nothing in the YAML to distinguish them. An author can now settle it by declaring
-     * {@code keep_missings}; the <em>defaults</em> stay asymmetric so that adding the parameter
-     * moves no findings.
+     * pass {@link GroupKeyPolicy#KEEP_MISSING_KEYS} (fold) while the retired
+     * {@code evalIsLastInGroup} passed {@link GroupKeyPolicy#DROP_MISSING_KEYS} (discard) — one
+     * authoring surface, two behaviours, with nothing in the YAML to distinguish them. An author
+     * can now settle it by declaring {@code keep_missings}; the <em>defaults</em> stay asymmetric
+     * so that adding the parameter moves no findings.
      * </p>
      */
     private static GroupKeyPolicy groupKeyPolicy(Operation op, GroupKeyPolicy base)
@@ -3860,134 +3539,6 @@ public final class OperationExecutor
         }
         // record_count: an absent group key means zero matching rows -> 0, not "no value".
         return declaredGrouped(op, table, groupCols, results.results());
-    }
-
-
-    /**
-     * Fix #26: returns a per-group {@code Boolean} indicating whether the {@code op.getName()}
-     * column has mixed populated / unpopulated values within each group defined by
-     * {@code groupCols} (typically rule-supplied via {@code Operation.group}). For each group:
-     * {@code true} when at least one row has the column populated AND at least one row has it
-     * unpopulated (missing or empty string); {@code false} when all rows are populated or all rows
-     * are unpopulated.
-     * <p>
-     * Returns {@code null} only when {@code name} is missing — a malformed operation with nothing
-     * to read.
-     * </p>
-     *
-     * <p>
-     * <b>EC-45 §1.3(2) — an absent {@code name} column no longer skips.</b> An absent column is
-     * all-missing, all-missing is homogeneous, and homogeneous is <em>not mixed</em>: every group
-     * answers {@code false}. The clinching argument is internal — the same method already returns
-     * {@code false} for the same fact reached another way, because EC-23's
-     * {@code qualifying_any_populated} filter drops non-existent qualifier columns, so no row is
-     * tallied and {@code hasPopulated && hasUnpopulated} is {@code false}. One method, one fact,
-     * two answers was the defect.
-     * </p>
-     *
-     * <p>
-     * <b>EC-45 §1.3(3) — no {@code group:} means one total group.</b> Every other family-1
-     * operation dispatches {@code grouped ? evalXGrouped(...) : evalX(...)} and the ungrouped
-     * branch computes the dataset-wide answer, which <em>is</em> one total group; this operator is
-     * the only dispatch arm with no ternary because it never got an ungrouped sibling, and the
-     * {@code null} was that gap rather than a decision. An empty declared list reaches
-     * {@link IndexHelper#groupByPresent}'s "nothing survives" branch and yields exactly that one
-     * whole-table block. The authoring smell — an author who <em>forgot</em> {@code group:} and
-     * silently gets a dataset-wide check — is a lint's job, not a runtime {@code null}'s.
-     * </p>
-     */
-    private static @Nullable GroupedResult evalHasMixedEmptinessWithinGroup(Operation op,
-            IDataTable table, @Nullable List<String> groupCols, @Nullable String ruleId)
-    {
-        String colName = op.getName();
-        if (colName == null)
-        {
-            return null;
-        }
-        DataTableMeta meta = table.getMetaData();
-        int colIdx = meta.getColumnIndex(colName);
-        // EC-45 §1.3(3): a null / empty declared group list is not a malformed operation — it is
-        // the dataset-wide reading, which groupByPresent already expresses as one whole-table
-        // block. Normalise it here so the key encoding stays the one GroupedResult.getForRow
-        // computes for the same (empty) column list.
-        List<String> keyCols = groupCols != null ? groupCols : List.of();
-        // EC-44: absent group columns are ignored; all absent ⇒ the dataset is one group, i.e.
-        // "mixed emptiness within the dataset" — the only reading left once no partition survives.
-        IndexHelper.Grouping grouping = IndexHelper.groupByPresent(table, keyCols,
-                groupLogContext(ruleId, op), groupKeyPolicy(op, GroupKeyPolicy.KEEP_MISSING_KEYS));
-        if (grouping == null)
-        {
-            return null; // an unexpanded $-ref in the group list — not a dataset-shape fact
-        }
-
-        // EC-23: opt-in row qualifier. When present, a group row is skipped before the tally unless
-        // at least one of the listed columns is populated (non-missing AND non-blank). Absent ⇒ the
-        // qualifier column list is empty and every row is scanned (byte-identical to the original).
-        List<String> qualifiers = op.getQualifyingAnyPopulated();
-        int[] qualifierIdx = qualifiers == null ? new int[0]
-                : qualifiers.stream().filter(Objects::nonNull).mapToInt(meta::getColumnIndex)
-                        .filter(idx -> idx >= 0).toArray();
-        boolean hasQualifier = qualifiers != null && !qualifiers.isEmpty();
-
-        IndexHelper.BlockResults results = new IndexHelper.BlockResults(grouping);
-        for (IndexHelper.GroupBlock block : grouping.blocks())
-        {
-            boolean hasPopulated = false;
-            boolean hasUnpopulated = false;
-            for (int r : block.rows())
-            {
-                if (hasQualifier && !rowQualifies(table, qualifierIdx, r))
-                {
-                    continue; // none of the qualifying columns populated ⇒ row out of scope
-                }
-                // EC-45 §1.3(2): an absent subject column is all-missing, so every row of every
-                // group counts as unpopulated and the group answers "not mixed".
-                boolean populated = false;
-                if (colIdx >= 0)
-                {
-                    IDataValue dv = table.getColumn(colIdx).getDataValue(r);
-                    String s = dv.isMissingOrInvalid() ? null : dv.getValueAsString();
-                    populated = s != null && !s.isEmpty();
-                }
-                if (populated)
-                {
-                    hasPopulated = true;
-                }
-                else
-                {
-                    hasUnpopulated = true;
-                }
-                if (hasPopulated && hasUnpopulated)
-                {
-                    break; // mixed detected — no need to scan further rows in this block
-                }
-            }
-            results.put(block, hasPopulated && hasUnpopulated);
-        }
-        return declaredGrouped(op, table, keyCols, results.results());
-    }
-
-
-    /**
-     * EC-23 — a row qualifies when at least one of the {@code qualifier} columns is populated
-     * (non-missing AND non-blank after {@code strip()}). Non-existent columns were already filtered
-     * out (index {@code < 0}), so an all-absent qualifier list can never qualify any row.
-     */
-    private static boolean rowQualifies(IDataTable table, int[] qualifierIdx, long row)
-    {
-        for (int idx : qualifierIdx)
-        {
-            IDataValue dv = table.getColumn(idx).getDataValue(row);
-            if (dv != null && !dv.isMissingOrInvalid())
-            {
-                String s = dv.getValueAsString();
-                if (s != null && !s.isBlank())
-                {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     // -----------------------------------------------------------------------
@@ -5086,108 +4637,6 @@ public final class OperationExecutor
         return table == null ? List.of() : List.of(table);
     }
 
-    // -----------------------------------------------------------------------
-    // DY (Study Day) calculation
-    // -----------------------------------------------------------------------
-
-
-    private static @Nullable GroupedResult evalDyGrouped(Operation op, IDataTable table,
-            DatasetResolver resolver, @Nullable List<String> groupCols)
-    {
-        // DY is always per-subject; produce GroupedResult
-        if (op.getName() == null || groupCols == null)
-        {
-            return null;
-        }
-        DataTableMeta meta = table.getMetaData();
-        int dateColIdx = meta.getColumnIndex(op.getName());
-        if (dateColIdx < 0)
-        {
-            return null;
-        }
-
-        // Get the per-subject reference date from DM. Defaults to RFSTDTC (SDTM study day); a
-        // rule may parameterise it (T6) to another DM reference column such as RFXSTDTC/RFCSTDTC.
-        IDataTable dm = resolver.resolve("DM");
-        if (dm == null)
-        {
-            return null;
-        }
-        String refCol = op.getReference() != null ? op.getReference() : "RFSTDTC";
-        // Build USUBJID → reference-date map from DM
-        Map<String, String> rfstdtcBySubject = new LinkedHashMap<>();
-        DataTableMeta dmMeta = dm.getMetaData();
-        int dmSubjIdx = dmMeta.getColumnIndex(USUBJID);
-        int dmRfstIdx = dmMeta.getColumnIndex(refCol);
-        if (dmSubjIdx >= 0 && dmRfstIdx >= 0)
-        {
-            for (long r = 0; r < dm.getRowCount(); r++)
-            {
-                IDataValue subj = dm.getColumn(dmSubjIdx).getDataValue(r);
-                IDataValue rfst = dm.getColumn(dmRfstIdx).getDataValue(r);
-                if (!subj.isMissingOrInvalid() && !rfst.isMissingOrInvalid())
-                {
-                    rfstdtcBySubject.put(subj.getValueAsString(), rfst.getValueAsString());
-                }
-            }
-        }
-
-        int subjIdx = meta.getColumnIndex(USUBJID);
-        IDataTableColumn dateCol = table.getColumn(dateColIdx);
-        long rowCount = table.getRowCount();
-        Map<Object, Object> results = new LinkedHashMap<>();
-
-        for (long r = 0; r < rowCount; r++)
-        {
-            IDataValue dateDv = dateCol.getDataValue(r);
-            if (dateDv.isMissingOrInvalid())
-            {
-                continue;
-            }
-            String dateStr = dateDv.getValueAsString();
-            if (dateStr == null || dateStr.length() < 10)
-            {
-                continue;
-            }
-
-            String subjId = subjIdx >= 0
-                    ? table.getColumn(subjIdx).getDataValue(r).getValueAsString()
-                    : "";
-            String rfstdtc = rfstdtcBySubject.get(subjId);
-            if (rfstdtc == null || rfstdtc.length() < 10)
-            {
-                continue;
-            }
-
-            Long dy = calculateStudyDay(dateStr, rfstdtc);
-            if (dy != null)
-            {
-                results.put(GroupedResult.identityKey(meta, table, groupCols, r), dy);
-            }
-        }
-        return declaredGrouped(op, table, groupCols, results);
-    }
-
-
-    /**
-     * SDTM study day calculation: If date &gt;= RFSTDTC: dy = daysBetween(RFSTDTC, date) + 1 If
-     * date &lt; RFSTDTC: dy = daysBetween(RFSTDTC, date) (negative, no day 0)
-     */
-    private static @Nullable Long calculateStudyDay(String dateStr, String rfstdtc)
-    {
-        try
-        {
-            java.time.LocalDate date = java.time.LocalDate.parse(dateStr.substring(0, 10));
-            java.time.LocalDate ref = java.time.LocalDate.parse(rfstdtc.substring(0, 10));
-            long days = java.time.temporal.ChronoUnit.DAYS.between(ref, date);
-            return days >= 0 ? days + 1 : days;
-        }
-        catch (Exception _)
-        {
-            return null;
-        }
-    }
-
 
     /**
      * E3 — {@code date_diff_days}: per-record integer days-between (no {@code +1}) of two dates
@@ -5644,115 +5093,13 @@ public final class OperationExecutor
 
 
     /**
-     * E4 — {@code is_last_in_group}: per-record boolean, {@code true} for the last (maximum
-     * {@code ordering}) row of each {@code group} partition. See
-     * {@link OperationType#IS_LAST_IN_GROUP}.
-     */
-    private static @Nullable GroupedResult evalIsLastInGroup(Operation op, IDataTable table)
-    {
-        List<String> group = op.getGroup();
-        String ordering = op.getOrdering();
-        if (group == null || group.isEmpty() || ordering == null)
-        {
-            return null;
-        }
-        DataTableMeta meta = table.getMetaData();
-        int ordIdx = meta.getColumnIndex(ordering);
-        if (ordIdx < 0)
-        {
-            return null;
-        }
-        // EC-44 (Fix #134): an entry still carrying the `$` sigil is an unresolved operation
-        // reference, not an absent column — the same boundary IndexHelper.groupByPresent draws.
-        // Widening the grouping there would let a broken operation chain produce a dataset-wide
-        // answer.
-        for (String g : group)
-        {
-            if (g != null && g.startsWith("$"))
-            {
-                return null;
-            }
-        }
-        // EC-44 (Fix #134): partition() ignores absent group columns, so a PARTIAL drop just
-        // groups on the survivors. TOTAL absence is the one case this operator cannot express:
-        // its GroupedResult is keyed by (group… + ordering) and GroupedResult.identityKey keys
-        // every absent component as "", so two rows sharing an ordering value would collapse to
-        // the same key — and exactly one of them is the last row, so the second put() would
-        // overwrite the first. Rather than emit a silently wrong verdict, degrade as before.
-        // This is a limitation of the result-key space, not an exception to the EC-44 contract.
-        if (group.stream().noneMatch(g -> g != null && meta.getColumnIndex(g) >= 0))
-        {
-            return null;
-        }
-        // ⚠⚠ DROP_MISSING_KEYS is this operator's shipped default and it DISAGREES with the other
-        // five
-        // evaluators on the same `Operations[].group:` surface, which fold (KEEP_MISSING_KEYS via
-        // IndexHelper.groupByPresent). See groupKeyPolicy: the asymmetry is now declarable per rule
-        // rather than silent, and correcting the default is deliberately a separate step so its
-        // finding delta is attributable.
-        List<int[]> groups = GroupSemantics.group(table, group,
-                groupKeyPolicy(op, GroupKeyPolicy.DROP_MISSING_KEYS));
-        IDataTableColumn ordCol = table.getColumn(ordIdx);
-        List<String> keyCols = new ArrayList<>(group);
-        keyCols.add(ordering);
-
-        Map<Object, Object> results = new LinkedHashMap<>();
-        for (int[] g : groups)
-        {
-            if (g.length == 0)
-            {
-                continue;
-            }
-            // Numeric-aware ordering (Java↔Python parity): match Python is_last_in_group's
-            // `idxmax` — a numeric ordering column (e.g. --SEQ) is compared numerically (so 12 > 9,
-            // not lexicographic "9" > "12"), falling back to string compare when non-numeric; on
-            // ties the FIRST row achieving the max is kept (mirrors pandas idxmax
-            // first-occurrence).
-            int lastRow = g[0];
-            for (int r : g)
-            {
-                if (orderingCompare(ordCol.getDataValue(r), ordCol.getDataValue(lastRow)) > 0)
-                {
-                    lastRow = r;
-                }
-            }
-            for (int r : g)
-            {
-                results.put(GroupedResult.identityKey(meta, table, keyCols, r), r == lastRow);
-            }
-        }
-        return declaredGrouped(op, table, keyCols, results);
-    }
-
-
-    /**
-     * Compares two ordering-column cell values numerically when both parse as numbers (so
-     * {@code --SEQ} 12 &gt; 9), else lexicographically. Mirrors the Python {@code is_last_in_group}
-     * {@code idxmax} on a numeric column, keeping Java↔Python parity for {@code is_last_in_group}.
-     */
-    private static int orderingCompare(IDataValue a, IDataValue b)
-    {
-        String sa = a.isMissingOrInvalid() ? "" : a.getValueAsString();
-        String sb = b.isMissingOrInvalid() ? "" : b.getValueAsString();
-        try
-        {
-            return Double.compare(Double.parseDouble(sa), Double.parseDouble(sb));
-        }
-        catch (NumberFormatException _)
-        {
-            return sa.compareTo(sb);
-        }
-    }
-
-
-    /**
      * EC-8 — per-record horizontal max/min over the columns whose names match {@code name_pattern}.
      * For each row it collects the populated (non-missing, non-blank) cell values of the matched
      * columns and reduces them to the extreme with {@link #rowExtreme}; a row with no populated
      * matching cell is omitted (its absent key resolves to {@code null}, so the dependent
-     * comparison skips it). The result is keyed by the matched columns themselves (the DY
-     * per-row-resolution precedent). Returns {@code null} — so the rule SKIPs — when the pattern is
-     * empty/invalid or no column matches.
+     * comparison skips it). The result is keyed by the matched columns themselves (the
+     * per-row-resolution precedent of the retired {@code DY} operation). Returns {@code null} — so
+     * the rule SKIPs — when the pattern is empty/invalid or no column matches.
      */
     private static @Nullable GroupedResult evalRowExtreme(Operation op, IDataTable table,
             boolean max)

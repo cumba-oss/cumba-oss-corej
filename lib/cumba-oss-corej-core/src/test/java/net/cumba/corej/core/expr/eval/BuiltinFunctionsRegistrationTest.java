@@ -41,7 +41,7 @@ class BuiltinFunctionsRegistrationTest
             "between/3/BOOLEAN", "ceil/1/VALUE", "char/1/VALUE", "coalesce/2-3/VALUE",
             "colref/1/VALUE", "concat/2-3/VALUE", "contains/2/BOOLEAN", "count/1/VALUE",
             "date_contains/2/BOOLEAN", "date_overlaps/2/BOOLEAN", "day/1/VALUE",
-            "dictionary_available/1/BOOLEAN", "does_not_contain/2/BOOLEAN",
+            "dictionary_available/1/BOOLEAN", "does_not_contain/2/BOOLEAN", "dy/2/VALUE",
             "earliest_possible/1/VALUE", "empty/1/BOOLEAN", "ends_with/2/BOOLEAN",
             "equalsIgnoreCase/2/BOOLEAN", "floor/1/VALUE",
             // wave 0 (PLAN-binding-expressions): the list-valued exemplar, ported from the
@@ -60,7 +60,10 @@ class BuiltinFunctionsRegistrationTest
             "round/1/VALUE", "size/1/VALUE", "split_by/2/VALUE", "starts_with/2/BOOLEAN",
             "substring/2-3/VALUE", "suffix/2/VALUE", "suffix_matches/2-3/BOOLEAN",
             "time_contains/2/BOOLEAN", "time_overlaps/2/BOOLEAN", "trim/1/VALUE", "tuple/2+/VALUE",
-            "upcase/1/VALUE", "upper/1/VALUE", "value/0/VALUE", "varname/0/VALUE", "year/1/VALUE");
+            "upcase/1/VALUE", "upper/1/VALUE",
+            "valid_external_dictionary_code_term_pair/3-4/BOOLEAN",
+            "valid_external_dictionary_hierarchy/3-4/BOOLEAN", "value/0/VALUE", "varname/0/VALUE",
+            "year/1/VALUE");
 
     private static Set<String> actual()
     {

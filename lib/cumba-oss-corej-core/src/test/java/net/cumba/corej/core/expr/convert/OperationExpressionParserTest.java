@@ -57,9 +57,9 @@ class OperationExpressionParserTest
     {
         Operation expected = new Operation();
         expected.setId("$RES");
-        expected.setOperator("variable_value_count");
+        expected.setOperator("variable_count");
         expected.setName("--LNKGRP");
-        assertEquals(expected, normalize("variable_value_count(--LNKGRP)"));
+        assertEquals(expected, normalize("variable_count(--LNKGRP)"));
     }
 
 
@@ -113,14 +113,6 @@ class OperationExpressionParserTest
     {
         Operation op = normalize("codelist_terms(codelists=[DOMAIN])");
         assertEquals(List.of("DOMAIN"), op.getCodelists());
-    }
-
-
-    @Test
-    void constantStringLiteralName()
-    {
-        Operation op = normalize("constant(\"Y\")");
-        assertEquals("Y", op.getName());
     }
 
 

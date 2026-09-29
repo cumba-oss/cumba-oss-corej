@@ -291,10 +291,8 @@ public final class RuleClassifier
      * Derived mechanically from {@code OperationExecutor}'s dispatch, not hand-guessed.
      */
     private static final Set<String> RECORD_SCOPED_OPERATIONS = Set.of("date_diff_days",
-            "dictionary_has_decode", "has_mixed_emptiness_within_group",
-            "interval_uncertainty_precision_mismatch", "is_last_in_group", "row_max", "row_min",
-            "valid_external_dictionary_code", "valid_external_dictionary_code_term_pair",
-            "valid_external_dictionary_hierarchy", "valid_external_dictionary_value");
+            "dictionary_has_decode", "interval_uncertainty_precision_mismatch", "row_max",
+            "valid_external_dictionary_code", "valid_external_dictionary_value");
 
     /** Operations whose result is per-variable (returns a {@code VariableMetadataResult}). */
     private static final Set<String> VARIABLE_SCOPED_OPERATIONS = Set
@@ -390,9 +388,9 @@ public final class RuleClassifier
      * ({@code CrossCorpusDerivationTest}): the inliner's two non-{@code OperationType} rewrites —
      * {@code variable_exists} → {@code var_exists(…)} and {@code split_by} → the {@code
      * split_by(col, "sep")} value function — fall outside the usage view (their declared and
-     * inlined forms agree on every shipped rule through sibling leaves, not by construction), and
-     * {@code dictionary_available(…)}, whose builtin gate form shares the operation's name, occurs
-     * in no shipped Check.
+     * inlined forms agree on every shipped rule through sibling leaves, not by construction).
+     * {@code dictionary_available(…)} is the registry gate builtin only since wave 1 deleted its
+     * operation twin, and occurs in no shipped Check.
      * </p>
      */
     private static @Nullable OperationUsage callUsage(Expr.Call call)

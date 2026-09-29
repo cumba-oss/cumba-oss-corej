@@ -147,8 +147,7 @@ public record ProviderNeeds(boolean library, boolean define, boolean dictionary,
     public static ProviderNeeds ofOperation(Operation op)
     {
         OperationType type = op.getOperationType();
-        boolean dictionary = type != OperationType.DICTIONARY_AVAILABLE
-                && OperationExecutor.isDictionaryDependent(type);
+        boolean dictionary = OperationExecutor.isDictionaryDependent(type);
         SequencedSet<String> types = new LinkedHashSet<>();
         String dictionaryType = op.getExternalDictionaryType();
         if (dictionary && dictionaryType != null && !dictionaryType.isBlank())
@@ -265,6 +264,88 @@ public record ProviderNeeds(boolean library, boolean define, boolean dictionary,
         case DEFINE -> new ProviderNeeds(false, true, false, new LinkedHashSet<>());
         case DICTIONARY -> dictionaryNeed(call, descriptor, need);
         };
+    }
+
+
+    /**
+     * ⭐ Wave 1 (D-W1-3 (iv)/(v)) — the <b>typeless dictionary calls</b> of an expression, a view of
+     * this reader and never a sibling: every call, nested calls included, that needs a dictionary
+     * ({@link #ofCall} answers {@link #dictionary()}) but names no static string-literal type — an
+     * inline {@code OperationType} call with a blank {@code external_dictionary_type}, or a
+     * registry function whose type argument is absent, unbindable or not a string literal. The
+     * loader makes each a load error, because the gate is decided before any row is read and a type
+     * known only at lookup time could not be gated at all.
+     *
+     * @param expr
+     *            the expression to walk
+     * @return the typeless dictionary calls, in walk order
+     */
+    public static List<Expr.Call> typelessDictionaryCalls(Expr expr)
+    {
+        List<Expr.Call> out = new ArrayList<>();
+        collectTypeless(expr, out);
+        return out;
+    }
+
+
+    private static void collectTypeless(Expr e, List<Expr.Call> out)
+    {
+        switch (e)
+        {
+        case Expr.And a -> a.parts().forEach(p -> collectTypeless(p, out));
+        case Expr.Or o -> o.parts().forEach(p -> collectTypeless(p, out));
+        case Expr.Not n -> collectTypeless(n.inner(), out);
+        case Expr.Binary b ->
+        {
+            collectTypeless(b.left(), out);
+            collectTypeless(b.right(), out);
+        }
+        case Expr.Call c ->
+        {
+            ProviderNeeds n = ofCall(c);
+            // A registry call that does not BIND is the compiler's own load error (arity, an
+            // unknown keyword) and is left to it, so the diagnosis names the real cause; a call
+            // that binds but names no static type is this guard's finding.
+            if (n.dictionary() && n.dictionaryTypes().isEmpty() && binds(c))
+            {
+                out.add(c);
+            }
+            c.args().forEach(a -> collectTypeless(a, out));
+            c.kwargs().values().forEach(a -> collectTypeless(a, out));
+        }
+        case Expr.Lit lit ->
+        {
+            if (lit.kind() == Expr.LitKind.LIST)
+            {
+                @SuppressWarnings("unchecked")
+                List<Expr> items = (List<Expr>) lit.value();
+                items.forEach(item -> collectTypeless(item, out));
+            }
+        }
+        case Expr.Ref _ ->
+        {
+            // a reference names no call
+        }
+        }
+    }
+
+
+    private static boolean binds(Expr.Call call)
+    {
+        FunctionDescriptor descriptor = FunctionRegistry.descriptor(call.name());
+        if (descriptor == null)
+        {
+            return true; // an inline operation: fromCall already accepted it in ofCall
+        }
+        try
+        {
+            ArgumentBinder.bind(descriptor, call);
+            return true;
+        }
+        catch (ExpressionException _)
+        {
+            return false;
+        }
     }
 
 

@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>
  * <b>Why this matters.</b> A {@code $}-operation result is not a diagnostic — it is one half of
- * every comparison the rule makes. If {@code supp_qnam_value} keys its join on the wrong parent
+ * every comparison the rule makes. If {@code supp_qnam_present} keys its join on the wrong parent
  * column, or {@code max} ignores its {@code filter}, or {@code extract_metadata("filename")}
  * returns the directory instead of the file, then a <em>correct</em> rule silently fires on the
  * wrong records. No rule reviewer can see that. Every assertion below therefore pins the exact
@@ -87,7 +87,7 @@ class OperationExecutorSurvivorPinsTest
     }
 
     // ==================================================================
-    // supp_qnam_present / supp_qnam_value — the SUPP→parent join. The GroupedResult's
+    // supp_qnam_present — the SUPP→parent join. The GroupedResult's
     // KEY is what decides which parent record the qualifier lands on.
     // ==================================================================
 
@@ -171,20 +171,6 @@ class OperationExecutorSurvivorPinsTest
 
 
     @Test
-    void suppQnamValue_readsQvalEvenWhenQvalIsTheFirstColumn()
-    {
-        for (String atZero : ALL_SUPP_COLS)
-        {
-            GroupedResult g = assertInstanceOf(GroupedResult.class,
-                    suppJoin("supp_qnam_value", supp(firstAt0(atZero))),
-                    atZero + " at column index 0");
-            assertEquals(Map.of(GroupedResult.textKey(List.of("S1", "1")), "0.5"), g.results(),
-                    "QVAL is read from its own column, with " + atZero + " at index 0");
-        }
-    }
-
-
-    @Test
     void suppQnamJoin_declinesWhenAnyOfTheThreeJoinColumnsIsAbsent()
     {
         // Negative side of the same guard: drop one required column at a time and the join must
@@ -211,10 +197,10 @@ class OperationExecutorSurvivorPinsTest
                 .col("IDVAR", "PCSEQ", "PCSEQ").col("IDVARVAL", "1", "2")
                 .col("QNAM", "PCCALCN", "PCCALCN").col("QVAL", "0.5", "0.9").build();
         GroupedResult kept = assertInstanceOf(GroupedResult.class,
-                suppJoin("supp_qnam_value", sameIdvar));
+                suppJoin("supp_qnam_present", sameIdvar));
         assertEquals(
-                Map.of(GroupedResult.textKey(List.of("S1", "1")), "0.5",
-                        GroupedResult.textKey(List.of("S1", "2")), "0.9"),
+                Map.of(GroupedResult.textKey(List.of("S1", "1")), true,
+                        GroupedResult.textKey(List.of("S1", "2")), true),
                 kept.results(), "both rows share the anchor IDVAR ⇒ both join");
 
         // Same shape but the second row references a DIFFERENT IDVAR: the first anchors, the
@@ -223,10 +209,10 @@ class OperationExecutorSurvivorPinsTest
                 .col("IDVAR", "PCSEQ", "PCGRPID").col("IDVARVAL", "1", "2")
                 .col("QNAM", "PCCALCN", "PCCALCN").col("QVAL", "0.5", "0.9").build();
         GroupedResult anchored = assertInstanceOf(GroupedResult.class,
-                suppJoin("supp_qnam_value", divergent));
+                suppJoin("supp_qnam_present", divergent));
         assertEquals(List.of("USUBJID", "PCSEQ"), anchored.groupColumns(),
                 "the FIRST-seen IDVAR anchors the join");
-        assertEquals(Map.of(GroupedResult.textKey(List.of("S1", "1")), "0.5"), anchored.results(),
+        assertEquals(Map.of(GroupedResult.textKey(List.of("S1", "1")), true), anchored.results(),
                 "the divergent PCGRPID row is dropped, not silently re-keyed");
     }
 

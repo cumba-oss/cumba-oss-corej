@@ -281,8 +281,7 @@ class DictionaryValidationTest
     {
         Rule r = rule(
                 "TSPARMCD == \\\"TRT\\\" and valid_external_dictionary_code_term_pair(TSVALCD, "
-                        + "external_dictionary_term_variable=\\\"TSVAL\\\", "
-                        + "external_dictionary_type=\\\"unii\\\") == false",
+                        + "TSVAL, " + "external_dictionary_type=\\\"unii\\\") == false",
                 "dictionary_available(\\\"unii\\\")");
         // R16CO5Y76E decodes to ASPIRIN (aligned, no fire); the second row's decode is wrong
         // (fire).
@@ -303,8 +302,7 @@ class DictionaryValidationTest
         // consequent; only the genuinely mismatched pair does.
         Rule r = rule(
                 "TSPARMCD == \\\"TRT\\\" and valid_external_dictionary_code_term_pair(TSVALCD, "
-                        + "external_dictionary_term_variable=\\\"TSVAL\\\", "
-                        + "external_dictionary_type=\\\"unii\\\") == false",
+                        + "TSVAL, " + "external_dictionary_type=\\\"unii\\\") == false",
                 "dictionary_available(\\\"unii\\\")");
         // Row1: blank code (no fire); Row2: blank decode (no fire); Row3: genuine mismatch (fire).
         IDataTable ts = MockTable.of().col("TSPARMCD", "TRT", "TRT", "TRT")
@@ -324,8 +322,7 @@ class DictionaryValidationTest
         // folded, decode verbatim). Default: code AND decode compare against the as-authored
         // dictionary entries.
         String check = "TSPARMCD == \\\"TRT\\\" and "
-                + "valid_external_dictionary_code_term_pair(TSVALCD, "
-                + "external_dictionary_term_variable=\\\"TSVAL\\\", "
+                + "valid_external_dictionary_code_term_pair(TSVALCD, " + "TSVAL, "
                 + "external_dictionary_type=\\\"unii\\\") == false";
         // Row1 exact (no fire); row2 decode case-mismatch (fire); row3 code case-mismatch (fire).
         IDataTable ts = MockTable.of().col("TSPARMCD", "TRT", "TRT", "TRT")
@@ -338,9 +335,8 @@ class DictionaryValidationTest
                 "default sensitive: case-mismatched decode and code both fire");
         // Authored case_sensitive=false: both sides fold and nothing fires.
         Rule insensitive = rule("TSPARMCD == \\\"TRT\\\" and "
-                + "valid_external_dictionary_code_term_pair(TSVALCD, " + "case_sensitive=false, "
-                + "external_dictionary_term_variable=\\\"TSVAL\\\", "
-                + "external_dictionary_type=\\\"unii\\\") == false",
+                + "valid_external_dictionary_code_term_pair(TSVALCD, TSVAL, "
+                + "case_sensitive=false, " + "external_dictionary_type=\\\"unii\\\") == false",
                 "dictionary_available(\\\"unii\\\")");
         RuleExecutionResult folded = run(insensitive, ts, DICTS);
         assertEquals(RuleExecutionStatus.EXECUTED, folded.getStatus());
@@ -356,8 +352,7 @@ class DictionaryValidationTest
     {
         Rule r = rule(
                 "MIRESCAT in [\\\"BENIGN\\\", \\\"MALIGNANT\\\"] and "
-                        + "valid_external_dictionary_code_term_pair(MISTRESC, "
-                        + "external_dictionary_term_variable=\\\"MIRESCAT\\\", "
+                        + "valid_external_dictionary_code_term_pair(MISTRESC, " + "MIRESCAT, "
                         + "external_dictionary_type=\\\"neoplasm\\\") == false",
                 "dictionary_available(\\\"neoplasm\\\")");
         // Adenoma is BENIGN (aligned, no fire); Carcinoma is MALIGNANT but tagged BENIGN (fire);
@@ -417,8 +412,7 @@ class DictionaryValidationTest
     {
         Rule r = rule(
                 "TSPARMCD == \\\"INDIC\\\" and valid_external_dictionary_code_term_pair(TSVALCD, "
-                        + "external_dictionary_term_variable=\\\"TSVAL\\\", "
-                        + "external_dictionary_type=\\\"snomed\\\") == false",
+                        + "TSVAL, " + "external_dictionary_type=\\\"snomed\\\") == false",
                 "dictionary_available(\\\"snomed\\\")");
         // 25064002 decodes to Headache (aligned, no fire); paired with Nausea it is wrong (fire).
         IDataTable ts = MockTable.of().col("TSPARMCD", "INDIC", "INDIC")
@@ -490,7 +484,7 @@ class DictionaryValidationTest
     void hierarchyPathOnPathDoesNotFireOffPathFires() throws Exception
     {
         Rule r = rule(
-                "valid_external_dictionary_hierarchy(AEDECOD, dictionary_parent=\\\"AESOC\\\", "
+                "valid_external_dictionary_hierarchy(AEDECOD, AESOC, "
                         + "external_dictionary_type=\\\"meddra\\\") == false",
                 "dictionary_available(\\\"meddra\\\")");
         // Headache has Nervous system disorders on its hierarchy path (aligned, no fire);
@@ -511,7 +505,7 @@ class DictionaryValidationTest
     {
         // A blank child OR blank parent is on-path — completeness is a different rule's concern.
         Rule r = rule(
-                "valid_external_dictionary_hierarchy(AEDECOD, dictionary_parent=\\\"AESOC\\\", "
+                "valid_external_dictionary_hierarchy(AEDECOD, AESOC, "
                         + "external_dictionary_type=\\\"meddra\\\") == false",
                 "dictionary_available(\\\"meddra\\\")");
         // Row1: blank child (no fire); Row2: blank parent (no fire); Row3: genuine off-path (fire).
@@ -533,8 +527,7 @@ class DictionaryValidationTest
         // both operands folded). Since the C1 data repair the dummy meddra hierarchy is authored
         // in the levels' preferred case, so an upper-case child misses sensitively but folds
         // cleanly under case_sensitive=false.
-        String check = "valid_external_dictionary_hierarchy(AEDECOD, "
-                + "dictionary_parent=\\\"AESOC\\\", "
+        String check = "valid_external_dictionary_hierarchy(AEDECOD, " + "AESOC, "
                 + "external_dictionary_type=\\\"meddra\\\") == false";
         IDataTable ae = MockTable.of().col("USUBJID", "S1", "S2")
                 .col("AEDECOD", "HEADACHE", "Headache")
@@ -546,8 +539,7 @@ class DictionaryValidationTest
         assertEquals(1, sensitive.getViolations().size(),
                 "default sensitive: only the case-mismatched child fires");
         Rule insensitive = rule(
-                "valid_external_dictionary_hierarchy(AEDECOD, case_sensitive=false, "
-                        + "dictionary_parent=\\\"AESOC\\\", "
+                "valid_external_dictionary_hierarchy(AEDECOD, AESOC, case_sensitive=false, "
                         + "external_dictionary_type=\\\"meddra\\\") == false",
                 "dictionary_available(\\\"meddra\\\")");
         RuleExecutionResult folded = run(insensitive, ae, DICTS);
@@ -668,7 +660,7 @@ class DictionaryValidationTest
     void hierarchyPathSkipsWithNoDictionary() throws Exception
     {
         Rule r = rule(
-                "valid_external_dictionary_hierarchy(AEDECOD, dictionary_parent=\\\"AESOC\\\", "
+                "valid_external_dictionary_hierarchy(AEDECOD, AESOC, "
                         + "external_dictionary_type=\\\"meddra\\\") == false",
                 "dictionary_available(\\\"meddra\\\")");
         IDataTable ae = MockTable.of().col("USUBJID", "S1").col("AEDECOD", "HEADACHE")
@@ -763,18 +755,19 @@ class DictionaryValidationTest
 
 
     @Test
-    void aDeclaredDictionaryAvailableOperationIsNeverEagerSkipped() throws Exception
+    void aDeclaredDictionaryAvailableGateIsNeverEagerSkipped() throws Exception
     {
-        // Design point 1 — dictionary_available IS the gate. isDictionaryDependent includes it,
-        // but its executor arm is total (Boolean.FALSE with no provider, never null), so
-        // eager-skipping on it would destroy the reporting it exists for. Excluded from the arm.
-        Rule r = declaredRule("$op0 == false",
-                "dictionary_available(external_dictionary_type=\\\"meddra\\\")");
+        // Design point 1 — dictionary_available IS the gate. Since wave 1 deleted its operation
+        // twin it is the registry builtin only, bound here as a COMPILED binding: it declares no
+        // provider capability (ProviderNeeds.ofCall answers NONE), and its answer is total
+        // (false with no provider, never a silent null), so eager-skipping on it would destroy
+        // the reporting it exists for.
+        Rule r = declaredRule("$op0 == false", "dictionary_available(\\\"meddra\\\")");
         IDataTable ae = MockTable.of().col("USUBJID", "S1").col("AEDECOD", "FOOBAR").name("AE")
                 .build();
         RuleExecutionResult none = run(r, ae, null);
         assertEquals(RuleExecutionStatus.EXECUTED, none.getStatus(),
-                "the gate operation reports absence; it must not itself trigger a skip");
+                "the gate builtin reports absence; it must not itself trigger a skip");
         assertEquals(1, none.getViolations().size(),
                 "dictionary_available folds false with no provider, so `== false` fires");
         RuleExecutionResult loaded = run(r, ae, DICTS);

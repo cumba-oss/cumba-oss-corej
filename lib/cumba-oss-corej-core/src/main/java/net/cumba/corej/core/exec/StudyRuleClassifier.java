@@ -78,9 +78,8 @@ public final class StudyRuleClassifier
      * study-safe exactly when that domain is pinned to a concrete name (no {@code --} wildcard,
      * which would resolve against the dataset under evaluation).
      */
-    private static final Set<String> DOMAIN_PINNED_CALLS = Set.of("record_count",
-            "variable_value_count", "variable_count", "distinct", "max", "min", "max_date",
-            "min_date");
+    private static final Set<String> DOMAIN_PINNED_CALLS = Set.of("record_count", "variable_count",
+            "distinct", "max", "min", "max_date", "min_date");
 
     /**
      * Operators whose result is a study-level fact. {@code minus} composes other operations, so its
@@ -97,8 +96,7 @@ public final class StudyRuleClassifier
      * evaluation, so anything unrecognised must be assumed to read the primary dataset.
      */
     private static final Set<String> DOMAIN_PINNED_OPERATORS = Set.of("record_count",
-            "variable_value_count", "variable_count", "distinct", "max", "min", "max_date",
-            "min_date");
+            "variable_count", "distinct", "max", "min", "max_date", "min_date");
 
     /**
      * Whether {@code operator} names an operation whose result is a study-level fact — it
@@ -431,7 +429,6 @@ public final class StudyRuleClassifier
     private static boolean hasUnresolvedWildcard(Operation op)
     {
         return containsWildcard(op.getName()) || containsWildcard(op.getSubtract())
-                || containsWildcard(op.getExternalDictionaryTermVariable())
                 || anyContainsWildcard(op.getNames()) || anyContainsWildcard(op.getGroup());
     }
 

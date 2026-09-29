@@ -390,13 +390,14 @@ class BroadcastFoldSurvivorPinsTest
                                 Map.of("value_is_reference",
                                         new Expr.Lit(Expr.LitKind.STRING, "true")))),
                 "a STRING \"true\" is not the boolean marker");
-        // Negative — the always-grouped operations.
+        // Negative — a registry function (dy since wave 1) and the always-grouped operations.
         assertFalse(BroadcastFold.isDatasetFactOperand(call("dy", col("AESTDTC"))),
-                "dy is always per row");
+                "dy is a per-row registry function, not an inline operation");
         assertFalse(
                 BroadcastFold.isDatasetFactOperand(
                         call("has_mixed_emptiness_within_group", col("AETERM"))),
-                "has_mixed_emptiness_within_group is always per row");
+                "has_mixed_emptiness_within_group is a registry function since wave 1, not an inline"
+                        + " operation");
         // Negative — a plain data column is never a dataset fact.
         assertFalse(BroadcastFold.isDatasetFactOperand(col("AETERM")));
         // Positive controls for the other operand shapes.

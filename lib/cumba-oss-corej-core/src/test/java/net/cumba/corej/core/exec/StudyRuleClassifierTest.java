@@ -237,7 +237,7 @@ class StudyRuleClassifierTest
     @Test
     void anOperatorOutsideTheAllowlistIsRejected() throws Exception
     {
-        Rule r = ruleWithOperation("dy(domain=\\\"TS\\\")");
+        Rule r = ruleWithOperation("supp_qnam_present(domain=\\\"TS\\\")");
         assertFalse(StudyRuleClassifier.isAnchorEligible(r),
                 "the operation gate is an allowlist, not a denylist");
     }

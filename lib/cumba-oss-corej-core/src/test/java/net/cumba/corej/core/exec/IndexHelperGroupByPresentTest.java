@@ -425,23 +425,6 @@ class IndexHelperGroupByPresentTest
     }
 
 
-    @Test
-    void hasMixedEmptinessWithinGroup_absentGroupColumn_asksTheQuestionOfTheWholeDataset()
-    {
-        IDataTable t = MockTable.of().col("USUBJID", "S1", "S2").col("VAL", "x", "").build();
-
-        Operation op = makeOp("$MIX", "has_mixed_emptiness_within_group");
-        op.setName("VAL");
-        op.setGroup(List.of("EPOCH"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
-        GroupedResult gr = assertInstanceOf(GroupedResult.class, vars.get("$MIX"));
-
-        assertEquals(1, gr.results().size());
-        assertEquals(true, gr.results().values().iterator().next());
-    }
-
-
     /**
      * §5.4 — presence is resolved per table. When an operation carries {@code domain:} the table
      * being grouped is not the evaluation table, so a column present in one and absent from the

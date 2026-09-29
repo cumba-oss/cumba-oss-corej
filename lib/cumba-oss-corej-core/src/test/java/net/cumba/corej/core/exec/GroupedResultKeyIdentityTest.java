@@ -202,55 +202,7 @@ class GroupedResultKeyIdentityTest
                 "2020-03-01"), perRow(run(op("min_date", "VSDTC", GROUP), t), t));
     }
 
-
-    @ParameterizedTest(name = "raw={0}")
-    @ValueSource(booleans =
-    {
-            false, true
-    })
-    void mixedEmptinessIsEachRowsOwnGroups(boolean aRaw)
-    {
-        IDataTable t = vs(aRaw);
-        // the noise group {A, ""} is mixed; {B} is not; the zero group {C, "", D} is
-        assertEquals(List.of(true, true, false, true, true, true),
-                perRow(run(op("has_mixed_emptiness_within_group", "VSORRES", GROUP), t), t));
-    }
-
     // ---------------------------------------------------------------- family B (row-keyed)
-
-
-    @ParameterizedTest(name = "raw={0}")
-    @ValueSource(booleans =
-    {
-            false, true
-    })
-    void isLastInGroupDoesNotLetTwoNoiseGroupsShareAnOrderingKey(boolean aRaw)
-    {
-        IDataTable t = vs(aRaw);
-        Operation o = op("is_last_in_group", null, GROUP);
-        o.setOrdering("VSSEQ");
-        // groups {0,1} (last: row 1), {2} (row 2) and the zeros {3,4,5} (row 5). Rows 0 and 2 share
-        // the ordering value 1 and render one VISITNUM ("5"): keyed by text, row 2's "last"
-        // overwrote row 0's "not last".
-        assertEquals(List.of(false, true, true, false, false, true), perRow(run(o, t), t));
-    }
-
-
-    @ParameterizedTest(name = "raw={0}")
-    @ValueSource(booleans =
-    {
-            false, true
-    })
-    void studyDayIsEachRowsOwn(boolean aRaw)
-    {
-        IDataTable t = vs(aRaw);
-        IDataTable dm = RealTables.of("DM").str("USUBJID", "S1").str("RFSTDTC", "2020-01-01")
-                .build();
-        Operation o = op("dy", "VSDTC", GROUP);
-        GroupedResult gr = run(o, t, d -> "DM".equals(d) ? dm : "VS".equals(d) ? t : null);
-        // keyed per (USUBJID, VISITNUM); rows sharing a key share its last-computed day
-        assertEquals(List.of(2L, 2L, 32L, 63L, 63L, 63L), perRow(gr, t));
-    }
 
 
     /**
@@ -355,13 +307,15 @@ class GroupedResultKeyIdentityTest
         IDataTable supp = RealTables.of("SUPPAE").str("USUBJID", "S1").str("RDOMAIN", "AE")
                 .str("IDVAR", "AESEQ").str("IDVARVAL", "1").str("QNAM", "AETRTEM").str("QVAL", "Y")
                 .build();
-        Operation o = op("supp_qnam_value", null, List.of());
+        // supp_qnam_present since wave 1 deleted supp_qnam_value (zero sites): the same SUPP join
+        // and the same text key, with a boolean per parent row.
+        Operation o = op("supp_qnam_present", null, List.of());
         o.setDomain("SUPPAE");
         o.setKeyValue("AETRTEM");
         o.setGroup(null);
         GroupedResult gr = run(o, ae, d -> "SUPPAE".equals(d) ? supp : null);
         assertEquals(GroupedResult.KeyMode.TEXT, gr.keyMode());
-        assertEquals(java.util.Arrays.asList("Y", null), perRow(gr, ae));
+        assertEquals(java.util.Arrays.asList(true, false), perRow(gr, ae));
     }
 
 

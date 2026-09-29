@@ -634,17 +634,16 @@ public final class BroadcastFold
      * Whether {@code c} is a <b>row-independent</b> inline operation call (Form A) — the
      * dataset-fact operand equivalent of a {@code $}-operation reference, so an inlined
      * {@code op(...) == lit} comparison stays a broadcast-verdict exactly as the pre-inline
-     * {@code $op == lit} form did. Grouped operations (a {@code group} keyword, or the
-     * always-grouped {@code dy} / {@code has_mixed_emptiness_within_group}) resolve per row and are
-     * excluded.
+     * {@code $op == lit} form did. Grouped operations (a {@code group} keyword) resolve per row and
+     * are excluded. ({@code dy} and {@code has_mixed_emptiness_within_group} are registry functions
+     * since wave 1, so they are not inline operations at all.)
      */
     private static boolean isRowIndependentOperation(Expr.Call c)
     {
         return ExprCompiler.isInlineOperation(c) && !c.kwargs().containsKey("group")
-                && !"dy".equals(c.name()) && !"has_mixed_emptiness_within_group".equals(c.name())
-                // The valid_external_dictionary_* operations (T1) validate each record's own value
-                // against the dictionary, so they resolve to a per-row GroupedResult despite
-                // carrying no `group` keyword — they must NOT fold to a single dataset verdict.
+        // The valid_external_dictionary_* operations (T1) validate each record's own value
+        // against the dictionary, so they resolve to a per-row GroupedResult despite
+        // carrying no `group` keyword — they must NOT fold to a single dataset verdict.
                 && !PER_ROW_INLINE_OPERATIONS.contains(c.name())
                 // distinct(VAR, value_is_reference=true) also yields a per-row GroupedResult
                 // (evalDistinctVariableNames) despite carrying no `group` keyword.
@@ -658,7 +657,6 @@ public final class BroadcastFold
      */
     private static final Set<String> PER_ROW_INLINE_OPERATIONS = Set.of(
             "valid_external_dictionary_value", "valid_external_dictionary_code",
-            "valid_external_dictionary_code_term_pair", "valid_external_dictionary_hierarchy",
             // E8: dictionary_has_decode keys its GroupedResult by the code column exactly like its
             // four siblings — omitted here since Fix #92; surfaced by the D-TA-3 / Fix #266 flag
             // tests (the shipped corpus was unaffected: CG0096 keeps its $-operation form).

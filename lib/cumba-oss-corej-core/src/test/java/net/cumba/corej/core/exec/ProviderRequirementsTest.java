@@ -69,17 +69,18 @@ class ProviderRequirementsTest
 
 
     /**
-     * ⚠ {@code DICTIONARY_AVAILABLE} is the availability <b>gate</b>, not a dependency: it returns
-     * a well-defined {@code false} with no dictionary loaded, which is exactly why
-     * {@code RuleRunner}'s eager arm excludes it. Counting it would make every gated rule declare a
-     * dependency it does not have.
+     * ⚠ {@code dictionary_available(<type>)} is the availability <b>gate</b>, not a dependency: it
+     * returns a well-defined {@code false} with no dictionary loaded. Since wave 1 it is the
+     * registry builtin only (its operation twin, {@code DICTIONARY_AVAILABLE}, is deleted), and a
+     * registry function declares a need only through its provider capability, which the gate does
+     * not carry. Counting it would make every gated rule declare a dependency it does not have.
      */
     @Test
     @DisplayName("⚠ dictionary_available is the GATE, never a dependency")
     void dictionaryAvailableIsNotADependency() throws IOException
     {
         Rule rule = load(
-                "\"Bindings\":[{\"name\": \"$a\", \"expression\": \"dictionary_available(external_dictionary_type=\\\"meddra\\\")\"}],"
+                "\"Bindings\":[{\"name\": \"$a\", \"expression\": \"dictionary_available(\\\"meddra\\\")\"}],"
                         + "\"Check\":{\"all\":[{\"expression\": \"$a == true\"}]}");
         assertFalse(ProviderRequirements.of(rule).dictionary());
     }

@@ -18,7 +18,6 @@ class OperationTypeTest
         assertEquals(OperationType.MIN_DATE, OperationType.fromJson("min_date"));
         assertEquals(OperationType.MINUS, OperationType.fromJson("minus"));
         assertEquals(OperationType.ROW_MAX, OperationType.fromJson("row_max"));
-        assertEquals(OperationType.ROW_MIN, OperationType.fromJson("row_min"));
         assertEquals(OperationType.EXTRACT_METADATA, OperationType.fromJson("extract_metadata"));
         // EC-13 / EC-14 layer (i) — Java mirrors of the Python variable_names / standard_domains
         // library-dependent ops.

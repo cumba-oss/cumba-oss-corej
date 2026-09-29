@@ -2086,6 +2086,14 @@ public final class ExprCompiler
         {
             return compileEmptyWithinExceptLastRow(c);
         }
+        if ("is_last_in_group".equals(name))
+        {
+            return compileIsLastInGroup(c);
+        }
+        if ("has_mixed_emptiness_within_group".equals(name))
+        {
+            return compileHasMixedEmptiness(c);
+        }
         if ("is_not_unique_relationship".equals(name))
         {
             return compileNotUniqueRelationship(c);
@@ -2194,6 +2202,7 @@ public final class ExprCompiler
         {
             throw unsupported(messageOf(ex));
         }
+        rejectLiteralColumnArguments(descriptor, bound);
         EvalFunction fn = descriptor.fn();
         if (fn == null)
         {
@@ -2489,6 +2498,145 @@ public final class ExprCompiler
             GroupSemantics.flagGroupsBySize(groups, flagMultiple, result);
             return result;
         };
+    }
+
+
+    /**
+     * Wave 1 (D-W1-4) — {@code is_last_in_group(ordering=, group=[…], keep_missings=)}: a
+     * compiler-dispatched plan over column NAMES (EC-44 is defined over names) that groups through
+     * {@code GroupSemantics.group} and marks every row whose ordering value is identical to its
+     * group's maximum ({@link net.cumba.corej.core.exec.GroupedPredicates#isLastInGroup}). Bound
+     * through the descriptor so the positional and keyword forms are one binding (D9); the column
+     * operands are read by the STRICT reader ({@link #strictColumnName}), which refuses a quoted
+     * name (R1). No target: R6's RETIRE-both verdict.
+     */
+    private static ExprProgram.BoolPlan compileIsLastInGroup(Expr.Call c)
+    {
+        List<@Nullable Expr> bound = bindStrict(c);
+        String rawOrder = strictColumnName(bound.get(0), c.name(), "ordering");
+        List<String> rawGroup = strictColumnNames(bound.get(1), c.name(), "group");
+        GroupKeyPolicy policy = groupKeyPolicyRequiringGroup(c, rawGroup,
+                GroupKeyPolicy.DROP_MISSING_KEYS);
+        return run ->
+        {
+            EvaluationContext ctx = run.ctx();
+            return net.cumba.corej.core.exec.GroupedPredicates.isLastInGroup(ctx.getTable(),
+                    resolveDomainPrefixes(rawGroup, ctx), resolveDomainPrefix(rawOrder, ctx),
+                    policy);
+        };
+    }
+
+
+    /**
+     * Wave 1 (D-W1-4) — {@code has_mixed_emptiness_within_group(name, group=[…],
+     * qualifying_any_populated=[…], keep_missings=)}: a compiler-dispatched plan over column NAMES
+     * that groups through {@code IndexHelper.groupByPresent} (KEEP_MISSING_KEYS by default) and
+     * marks every row of a group whose subject column is populated on some rows and not on others
+     * ({@link net.cumba.corej.core.exec.GroupedPredicates#hasMixedEmptiness}). Column operands go
+     * through the STRICT reader (R1).
+     */
+    private static ExprProgram.BoolPlan compileHasMixedEmptiness(Expr.Call c)
+    {
+        List<@Nullable Expr> bound = bindStrict(c);
+        String rawName = strictColumnName(bound.get(0), c.name(), "name");
+        List<String> rawGroup = bound.get(1) == null ? List.of()
+                : strictColumnNames(bound.get(1), c.name(), "group");
+        List<String> rawQualifiers = bound.get(2) == null ? List.of()
+                : strictColumnNames(bound.get(2), c.name(), "qualifying_any_populated");
+        GroupKeyPolicy policy = groupKeyPolicyRequiringGroup(c, rawGroup,
+                GroupKeyPolicy.KEEP_MISSING_KEYS);
+        return run ->
+        {
+            EvaluationContext ctx = run.ctx();
+            return net.cumba.corej.core.exec.GroupedPredicates.hasMixedEmptiness(ctx.getTable(),
+                    resolveDomainPrefix(rawName, ctx), resolveDomainPrefixes(rawGroup, ctx),
+                    resolveDomainPrefixes(rawQualifiers, ctx), policy, c.name());
+        };
+    }
+
+
+    /** Binds the call to its descriptor (D9: one binding for positionals and keywords). */
+    private static List<@Nullable Expr> bindStrict(Expr.Call c)
+    {
+        FunctionDescriptor descriptor = FunctionRegistry.descriptor(c.name());
+        if (descriptor == null)
+        {
+            throw unsupported("no native function '" + c.name() + "'");
+        }
+        try
+        {
+            return ArgumentBinder.bind(descriptor, c);
+        }
+        catch (ExpressionException ex)
+        {
+            throw unsupported(messageOf(ex));
+        }
+    }
+
+
+    /**
+     * The STRICT column reader of the wave-1 grouped plans (D-W1-4, pre-go review M4): a plain
+     * column reference or a {@code --}-prefix wildcard, and nothing else — unlike the shared
+     * {@link #groupOperandName}, a {@code STRING} literal is refused, because on the function
+     * surface a quoted {@code "SESEQ"} is a string, never a column (R1). The shared reader keeps
+     * its leniency for the pre-existing compiler-dispatched callables (runbook §7).
+     */
+    private static String strictColumnName(@Nullable Expr e, String function, String parameter)
+    {
+        if (e instanceof Expr.Ref r && (r.kind() == OperandKind.COLUMN
+                || (r.kind() == OperandKind.WILDCARD_COLUMN && isDomainPrefixWildcard(r.name()))))
+        {
+            return r.name();
+        }
+        if (e instanceof Expr.Lit lit)
+        {
+            throw unsupported("argument '" + parameter + "' of '" + function
+                    + "' takes a column reference, not the literal " + lit.value()
+                    + " — a quoted name is a string, never a column");
+        }
+        throw unsupported("argument '" + parameter + "' of '" + function
+                + "' must be a plain column or --prefix reference");
+    }
+
+
+    /** The strict reader over a list literal of column references. */
+    private static List<String> strictColumnNames(@Nullable Expr e, String function,
+            String parameter)
+    {
+        if (e instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+        {
+            @SuppressWarnings("unchecked")
+            List<Expr> items = (List<Expr>) lit.value();
+            List<String> out = new ArrayList<>(items.size());
+            for (Expr item : items)
+            {
+                out.add(strictColumnName(item, function, parameter));
+            }
+            return out;
+        }
+        if (e instanceof Expr.Ref)
+        {
+            return List.of(strictColumnName(e, function, parameter));
+        }
+        throw unsupported("argument '" + parameter + "' of '" + function
+                + "' takes a list of column references");
+    }
+
+
+    /**
+     * {@code keep_missings=} without a non-empty {@code group} is a load error (pre-go review L5),
+     * as {@code OperationExpressionParser.validateKeepMissings} made it for exactly these two
+     * operators: with no grouping key the disposition would have no effect.
+     */
+    private static GroupKeyPolicy groupKeyPolicyRequiringGroup(Expr.Call c, List<String> group,
+            GroupKeyPolicy base)
+    {
+        if (c.kwargs().containsKey("keep_missings") && group.isEmpty())
+        {
+            throw unsupported("`keep_missings` on " + c.name()
+                    + " requires a non-empty `group`; with no grouping key it would have no effect");
+        }
+        return groupKeyPolicy(c, base);
     }
 
 
@@ -4932,9 +5080,9 @@ public final class ExprCompiler
      * read {@code table.getRowCount()}). The routing below therefore chooses a <em>plan</em>, never
      * a <em>meaning</em>: a call that binds any parameter compiles through the executor; the bare
      * call takes the registry's constant plan. The registry/operation name overlap is exactly
-     * {@code record_count} + {@code dictionary_available} (the §9.C gate builtin, same fast-path
-     * relationship at its arity-1 form). ⚠ No test pins this overlap any more; the test that did
-     * ({@code CallableNamespaceTest}) no longer exists.
+     * {@code record_count} (since wave 1 deleted the {@code DICTIONARY_AVAILABLE} operation the
+     * §9.C gate builtin {@code dictionary_available} has no operation twin), pinned by
+     * {@code RecordCountSingleDescriptorTest}.
      * </p>
      */
     // Public so BroadcastFold can recognise an inline-operation call as the dataset-fact operand
@@ -5200,6 +5348,7 @@ public final class ExprCompiler
         {
             throw unsupported(messageOf(ex));
         }
+        rejectLiteralColumnArguments(descriptor, bound);
         EvalFunction fn = descriptor.fn();
         if (fn == null)
         {
@@ -6829,6 +6978,33 @@ public final class ExprCompiler
             bs.set(0, rowCount);
         }
         return bs;
+    }
+
+
+    /**
+     * Wave 1's R1 on the function surface: a parameter declared {@link Primitive#COLUMN_REFERENCE}
+     * takes a column reference and nothing else, so a bound <b>literal</b> — the quoted
+     * {@code "RFSTDTC"} the retired {@code stringOf} used to read as a column name — is refused at
+     * compile time, which the loader records as the rule's load error. Stage A's
+     * {@code PARAMETER_TYPE} check sees the same mismatch but is not armed, so this is the
+     * load-time seam that makes the retired quoted spellings fail loudly instead of silently
+     * computing against a constant string.
+     */
+    private static void rejectLiteralColumnArguments(FunctionDescriptor descriptor,
+            List<@Nullable Expr> bound)
+    {
+        List<Parameter> params = descriptor.parameters();
+        for (int i = 0; i < params.size() && i < bound.size(); i++)
+        {
+            Parameter param = params.get(i);
+            if (param.type() == net.cumba.corej.core.expr.typed.ExprType.Primitive.COLUMN_REFERENCE
+                    && bound.get(i) instanceof Expr.Lit lit)
+            {
+                throw unsupported("argument '" + param.name() + "' of '" + descriptor.name()
+                        + "' takes a column reference, not the literal " + lit.value()
+                        + " — a quoted name is a string, never a column");
+            }
+        }
     }
 
 

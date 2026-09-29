@@ -89,19 +89,21 @@ class UnresolvedOperationWildcardLoadTest
     @Test
     void declaredOrderingWildcard_tagsLoadError() throws IOException
     {
-        // is_last_in_group reads `ordering` off the evaluation table: an unresolved "--SEQ" makes
-        // evalIsLastInGroup return null on ordIdx < 0, so every row's verdict is simply absent.
+        // date_diff_days reads `reference` off the evaluation table (Mode 1): an unresolved
+        // "--SEQ" would miss the column lookup, so every row's verdict would simply be absent.
+        // (is_last_in_group, the former fixture here, is a registry function since wave 1 whose
+        // ordering is a column reference resolved at bind time.)
         Rule rule = load(
                 """
                         {
                           "Core": {"Id": "TEST-UOW-2"},
-                          "Bindings": [{"name": "$last", "expression": "is_last_in_group(ordering=\\"--SEQ\\", group=[USUBJID])"}],
+                          "Bindings": [{"name": "$last", "expression": "date_diff_days(SESTDTC, reference=\\"--SEQ\\")"}],
                           "Check": {"all": [{"expression": "$last == true"}]}
                         }
                         """);
         assertNotNull(rule.getLoadError());
         assertTrue(rule.getLoadError().contains(MARKER), rule.getLoadError());
-        assertTrue(rule.getLoadError().contains("ordering=\"--SEQ\""), rule.getLoadError());
+        assertTrue(rule.getLoadError().contains("reference=\"--SEQ\""), rule.getLoadError());
     }
 
 
@@ -138,7 +140,7 @@ class UnresolvedOperationWildcardLoadTest
                 {
                   "Core": {"Id": "TEST-UOW-4"},
                   "Check": {"expression":
-                    "is_last_in_group(group=[USUBJID], ordering=\\"--SEQ\\") == true"}
+                    "date_diff_days(SESTDTC, reference=\\"--SEQ\\") == true"}
                 }
                 """.replaceAll("\\s*\\R\\s*", " "));
         assertTrue(rule.getCheck() instanceof CheckConditionExpression,
@@ -147,8 +149,8 @@ class UnresolvedOperationWildcardLoadTest
         assertNotNull(rule.getLoadError(),
                 "the inline surface must reach the same channel as the declared one");
         assertTrue(rule.getLoadError().contains(MARKER), rule.getLoadError());
-        assertTrue(rule.getLoadError().contains("ordering=\"--SEQ\""), rule.getLoadError());
-        assertTrue(rule.getLoadError().contains("inline operation is_last_in_group"),
+        assertTrue(rule.getLoadError().contains("reference=\"--SEQ\""), rule.getLoadError());
+        assertTrue(rule.getLoadError().contains("inline operation date_diff_days"),
                 "the message must say which surface it found, got " + rule.getLoadError());
     }
 
@@ -160,7 +162,7 @@ class UnresolvedOperationWildcardLoadTest
                 {
                   "Core": {"Id": "TEST-UOW-5"},
                   "Precondition": {"expression":
-                    "is_last_in_group(group=[USUBJID], ordering=\\"--SEQ\\") == true"},
+                    "date_diff_days(SESTDTC, reference=\\"--SEQ\\") == true"},
                   "Check": {"all": [{"expression": "not empty(SESTDTC)"}]}
                 }
                 """.replaceAll("\\s*\\R\\s*", " "));
@@ -183,7 +185,7 @@ class UnresolvedOperationWildcardLoadTest
                         {"rules": {"rule-1": {
                           "Core": {"Id": "TEST-UOW-6"},
                           "Executability": "Not Executable",
-                          "Bindings": [{"name": "$last", "expression": "is_last_in_group(ordering=\\"--SEQ\\", group=[USUBJID])"}],
+                          "Bindings": [{"name": "$last", "expression": "date_diff_days(SESTDTC, reference=\\"--SEQ\\")"}],
                           "Check": {"all": [{"expression": "$last == true"}]}
                         }}}
                         """);

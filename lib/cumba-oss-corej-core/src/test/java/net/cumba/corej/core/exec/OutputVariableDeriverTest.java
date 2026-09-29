@@ -324,7 +324,7 @@ class OutputVariableDeriverTest
     void everyOperationIdIsDerived()
     {
         Rule r = rule(eq(col("AESTDY"), opRef("$dy")));
-        Operation referenced = operation("$dy", "dy");
+        Operation referenced = operation("$dy", "max");
         Operation unreferenced = operation("$count", "record_count");
         r.setOperations(List.of(referenced, unreferenced));
         List<String> effective = OutputVariableDeriver.derive(r);

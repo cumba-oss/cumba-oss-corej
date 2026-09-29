@@ -82,18 +82,6 @@ class SuppQnamJoinOperationTest
 
 
     @Test
-    void valueExposesTheJoinedQval()
-    {
-        BitSet matches = eval(
-                "supp_qnam_value(domain=\"SUPPPC\", key_value=\"PCCALCN\") == \"0.5\"",
-                ctx(suppPc("PCCALCN", "1")));
-        assertTrue(matches.get(0), "(S1, PCSEQ=1) reads QVAL 0.5");
-        assertFalse(matches.get(1), "(S1, PCSEQ=2) has no QVAL");
-        assertFalse(matches.get(2), "(S2, PCSEQ=1) has no QVAL");
-    }
-
-
-    @Test
     void idvarvalMustResolveToTheParentSeq()
     {
         // SUPP row references PCSEQ=99, which no PC record carries ⇒ nothing joins ⇒ all absent.

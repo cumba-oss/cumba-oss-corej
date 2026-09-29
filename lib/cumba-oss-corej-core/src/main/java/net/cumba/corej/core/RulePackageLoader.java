@@ -226,8 +226,7 @@ public class RulePackageLoader
         // dangling $ above. Deliberately BEFORE injectInlineOperationGates: the injector only
         // gates a TYPED inline dictionary call, so a typeless one would otherwise evaluate with
         // no gate and no provider and silently false-pass (the closed hole this guard exists
-        // for); running first also means the walk judges the authored Check only, though the
-        // guard's dictionary_available exclusion would make it injection-safe either way.
+        // for); running first also means the walk judges the authored Check only.
         validateDictionaryOperationTypes(pkg);
         normalizeJoinTypes(pkg);
         injectInlineOperationGates(pkg);
@@ -1029,7 +1028,10 @@ public class RulePackageLoader
             "is_unique_set", "present_on_multiple_rows_within",
             "not_present_on_multiple_rows_within", "does_not_have_next_corresponding_record",
             "has_next_corresponding_record", "empty_within_except_last_row",
-            "target_is_not_sorted_by", "is_sorted_by");
+            "target_is_not_sorted_by", "is_sorted_by",
+            // wave 1 (PLAN-function-surface-wave1 D-W1-4): the two grouped callables ported from
+            // the Operation surface consume keep_missings= as registry functions now.
+            "is_last_in_group", "has_mixed_emptiness_within_group");
 
     /**
      * Rejects an unusable inline {@code keep_missings=} on a Check-operator call, on the
@@ -4981,12 +4983,13 @@ public class RulePackageLoader
      * <p>
      * <b>Why a guard and not resolution.</b> The three fields have no single well-defined prefix to
      * substitute. {@code reference} names a column of the <em>evaluation</em> record in
-     * {@code date_diff_days} Mode 1, of the <em>foreign {@code domain}</em> dataset in Mode 2, and
-     * of <em>{@code DM}</em> in {@code dy} — three different datasets, one field. Substituting the
-     * evaluation domain's variable prefix would therefore be wrong in two of the three modes, and
-     * wrong silently. {@code ordering} and {@code offset} are unambiguous (both are read off the
-     * evaluation table), but they are guarded alongside {@code reference} so the rule an author
-     * learns is one rule and not a per-field table.
+     * {@code date_diff_days} Mode 1 and of the <em>foreign {@code domain}</em> dataset in Mode 2 —
+     * two different datasets, one field (until wave 1 ported {@code dy}, whose reference was a
+     * column of {@code DM}, it was three). Substituting the evaluation domain's variable prefix
+     * would therefore be wrong in one of the two modes, and wrong silently. {@code ordering} and
+     * {@code offset} are unambiguous (both are read off the evaluation table), but they are guarded
+     * alongside {@code reference} so the rule an author learns is one rule and not a per-field
+     * table.
      * </p>
      *
      * <p>
@@ -5113,7 +5116,6 @@ public class RulePackageLoader
             return;
         }
         addUnresolvedWildcardField(op.getReference(), "reference", where, findings);
-        addUnresolvedWildcardField(op.getOrdering(), "ordering", where, findings);
         addUnresolvedWildcardField(op.getOffset(), "offset", where, findings);
     }
 
@@ -5309,16 +5311,13 @@ public class RulePackageLoader
         {
             return;
         }
-        net.cumba.corej.core.model.OperationType type = op.getOperationType();
-        if (type == net.cumba.corej.core.model.OperationType.DICTIONARY_AVAILABLE
-                || !net.cumba.corej.core.exec.OperationExecutor.isDictionaryDependent(type))
+        // Wave 1 (D-W1-3): read through ProviderNeeds, the one reader of provider needs — a
+        // dictionary need with no statically named type is the finding, whichever key declares it.
+        net.cumba.corej.core.exec.ProviderNeeds needs = net.cumba.corej.core.exec.ProviderNeeds
+                .ofOperation(op);
+        if (needs.dictionary() && needs.dictionaryTypes().isEmpty())
         {
-            return;
-        }
-        String dictionaryType = op.getExternalDictionaryType();
-        if (dictionaryType == null || dictionaryType.isBlank())
-        {
-            findings.add(where + " (" + type + ") " + TYPELESS_DICTIONARY_MARKER);
+            findings.add(where + " (" + op.getOperationType() + ") " + TYPELESS_DICTIONARY_MARKER);
         }
     }
 
@@ -5348,13 +5347,19 @@ public class RulePackageLoader
     private static void collectInlineTypelessDictionaryOps(net.cumba.corej.core.expr.ast.Expr expr,
             List<String> findings)
     {
-        if (expr instanceof net.cumba.corej.core.expr.ast.Expr.Call call
-                && net.cumba.corej.core.expr.eval.ExprCompiler.isInlineOperation(call))
+        // Wave 1 (D-W1-3 (iv)/(v)): ProviderNeeds' typeless view sees BOTH keys — an inline
+        // OperationType call with a blank type and a registry function (the ported
+        // valid_external_dictionary_code_term_pair / _hierarchy) whose external_dictionary_type is
+        // absent, unbindable or not a static string literal. The gate is decided before any row is
+        // read, so a type that is not a literal cannot be gated and is a load error.
+        for (net.cumba.corej.core.expr.ast.Expr.Call call : net.cumba.corej.core.exec.ProviderNeeds
+                .typelessDictionaryCalls(expr))
         {
-            collectTypelessDictionaryOperation(inlineOperationOrNull(call),
-                    "inline operation " + call.name() + "(…)", findings);
+            String kind = net.cumba.corej.core.expr.eval.ExprCompiler.isInlineOperation(call)
+                    ? "inline operation "
+                    : "inline function ";
+            findings.add(kind + call.name() + "(…) " + TYPELESS_DICTIONARY_MARKER);
         }
-        childrenOf(expr).forEach(child -> collectInlineTypelessDictionaryOps(child, findings));
     }
 
 

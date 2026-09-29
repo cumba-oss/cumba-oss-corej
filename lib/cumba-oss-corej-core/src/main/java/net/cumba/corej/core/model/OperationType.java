@@ -16,25 +16,9 @@ public enum OperationType
 {
 
     CODELIST_TERMS("codelist_terms", EmptyResult.SET),
-    /**
-     * The evaluated dataset's CDISC domain as {@code Scope.Domains} resolves it — the row-0
-     * {@code DOMAIN} cell verbatim, else {@code SUPP}/{@code SQ} + row-0 {@code RDOMAIN}, else the
-     * raw dataset name ({@code OperationExecutor.unsplitNameFromData}). The Operations carriage of
-     * the {@code dataset_domain} bareword; both are registered, exactly as {@code record_count} is
-     * registered in this enum <em>and</em> in {@code BuiltinRegistry}. A scalar broadcast, so a
-     * Check consuming it decides once per dataset.
-     *
-     * <p>
-     * {@link EmptyResult#MISSING} because the derivation has no "nothing matched" arm to give a
-     * zero/empty answer for: it always yields the domain, and the only null it can produce is the
-     * degenerate no-table case.
-     * </p>
-     */
-    DATASET_DOMAIN("dataset_domain", EmptyResult.MISSING),
     DATASET_NAMES("dataset_names", EmptyResult.SET),
     DISTINCT("distinct", EmptyResult.SET),
     DOMAIN_IS_CUSTOM("domain_is_custom", EmptyResult.PREDICATE),
-    DY("dy", EmptyResult.MISSING),
     EXPECTED_VARIABLES("expected_variables", EmptyResult.SET),
     EXTRACT_METADATA("extract_metadata", EmptyResult.MISSING),
     GET_COLUMN_ORDER_FROM_DATASET("get_column_order_from_dataset", EmptyResult.SET),
@@ -100,10 +84,6 @@ public enum OperationType
      * </p>
      */
     VARIABLE_EXISTS("variable_exists", EmptyResult.PREDICATE),
-    VARIABLE_VALUE_COUNT("variable_value_count", EmptyResult.COUNT),
-
-    /** Returns the {@code name} field of the operation as a literal string value. */
-    CONSTANT("constant", EmptyResult.MISSING),
 
     /**
      * Resolves a metadata field (label, data_type, length, format) for each variable from another
@@ -116,16 +96,6 @@ public enum OperationType
 
     /** Returns the dataset class name from the CDISC Library (e.g., "BASIC DATA STRUCTURE"). */
     DATASET_CLASS_FROM_LIBRARY("dataset_class_from_library", EmptyResult.MISSING),
-
-    /**
-     * Fix #26: per-group "mixed emptiness" boolean. For each block defined by {@code group},
-     * returns {@code true} when at least one row has the {@code name} column populated AND at least
-     * one row has it unpopulated. Used by CDISC-AD0735 / CDISC-AD0131 to detect inconsistent
-     * BASETYPE populations within PARAMCD groups. Result shape:
-     * {@link net.cumba.corej.core.exec.GroupedResult} keyed by the group columns, value
-     * {@code Boolean}.
-     */
-    HAS_MIXED_EMPTINESS_WITHIN_GROUP("has_mixed_emptiness_within_group", EmptyResult.PREDICATE),
 
     /**
      * T5a — per-variable all-null. Returns {@code true} when the {@code name} variable is absent
@@ -172,33 +142,6 @@ public enum OperationType
     SUPP_QNAM_PRESENT("supp_qnam_present", EmptyResult.PREDICATE),
 
     /**
-     * T8 — SUPP-- QNAM-scoped value join to the parent record. Like {@link #SUPP_QNAM_PRESENT} but
-     * exposes the matching {@code QVAL} joined back to each parent record (a per-parent-row
-     * {@link net.cumba.corej.core.exec.GroupedResult} keyed by {@code USUBJID} + the resolved
-     * {@code IDVAR} column, default {@code null}). Resolves to {@code null} for a parent record
-     * with no matching supplemental row, and broadcasts {@code null} when the supplemental dataset
-     * / {@code QNAM} is absent — so a dependent comparison operand is null and no row fires.
-     */
-    SUPP_QNAM_VALUE("supp_qnam_value", EmptyResult.MISSING),
-
-    /**
-     * T1 — dictionary-availability skip-gate. Returns {@code true} when a dictionary of the {@code
-     * external_dictionary_type} is loaded into the runtime
-     * {@link net.cumba.corej.core.metadata.RuntimeDictionaryProvider}, {@code false} otherwise.
-     * Mirrors the CDISC-Library skip-gate, and is <b>one of the two halves</b> that realise it: the
-     * native converter injects a {@code dictionary_available(<type>)} Precondition for every
-     * <b>inlined</b> dictionary operation, while a <b>declared</b> ({@code $}-ref) one — the form
-     * the entire shipped corpus uses — is caught by {@code RuleRunner}'s eager dictionary arm
-     * (KDICT-F1 / {@code Fix #268}). Either way the rule SKIPs (never false-PASSes) when no
-     * dictionary of that type is supplied. &#9888; That eager arm deliberately <b>excludes</b> this
-     * operation: it <em>is</em> the gate, and unlike the validating operations its own result is
-     * well defined with no provider ({@code false}), so skipping on it would destroy the very
-     * reporting it exists for. Also exposed as the {@code dictionary_available} builtin gate
-     * function consumed by the native fold.
-     */
-    DICTIONARY_AVAILABLE("dictionary_available", EmptyResult.PREDICATE),
-
-    /**
      * T1 — per-record dictionary term membership. For each record, returns {@code true} when the
      * {@code name} column value is a valid term of the {@code external_dictionary_type} dictionary
      * at the {@code dictionary_term_type} level (e.g. MedDRA {@code PT}), {@code false} otherwise.
@@ -215,29 +158,6 @@ public enum OperationType
      * dictionary's codes. Mirrors the Python {@code valid_external_dictionary_code} operation.
      */
     VALID_EXTERNAL_DICTIONARY_CODE("valid_external_dictionary_code", EmptyResult.PREDICATE),
-
-    /**
-     * T1 — per-record dictionary code&harr;decode pairing. For each record, returns {@code true}
-     * when the code in the {@code name} column decodes (in the {@code external_dictionary_type}
-     * dictionary) to the term in the {@code external_dictionary_term_variable} column. Mirrors the
-     * Python {@code valid_external_dictionary_code_term_pair} operation. Backs FDA SD2262
-     * (TSVAL/TSVALCD from the same FDA-SRS/UNII record) and the NEOPLASM benign/malignant attribute
-     * alignment SE2229 ({@code --STRESC} neoplasm term vs {@code --RESCAT} malignancy class).
-     */
-    VALID_EXTERNAL_DICTIONARY_CODE_TERM_PAIR("valid_external_dictionary_code_term_pair", EmptyResult.PREDICATE),
-
-    /**
-     * T1 — per-record dictionary hierarchy-path membership. For each record, returns {@code true}
-     * when the value of the {@code name} (child) column lies on the dictionary hierarchy path of —
-     * i.e. has as an ancestor — the value of the {@code dictionary_parent} column (in the
-     * {@code external_dictionary_type} dictionary). A blank child OR blank parent value is treated
-     * as {@code true} (no fire), mirroring the blank-handling of
-     * {@link #VALID_EXTERNAL_DICTIONARY_CODE_TERM_PAIR}. Backs the MedDRA hierarchy-consistency
-     * rules (e.g. {@code --HLT} vs {@code --SOC}). Mirrors the Python reference engine's
-     * {@code valid_external_dictionary_hierarchy} operation. Dictionary-dependent: the rule SKIPs
-     * when the type is not loaded.
-     */
-    VALID_EXTERNAL_DICTIONARY_HIERARCHY("valid_external_dictionary_hierarchy", EmptyResult.PREDICATE),
 
     /**
      * The current dataset's library variables whose SDTM {@code role} is one of the
@@ -364,10 +284,11 @@ public enum OperationType
      * E8 — WHODrug decode-presence precondition. For each record, returns {@code true} when the
      * {@code external_dictionary_type} dictionary holds <em>any</em> decode for the code in the
      * {@code name} column (a {@code containsKey} over the dictionary's {@code pairs} / {@code
-     * attributes} registries — the code&harr;decode-<em>equality</em> of
-     * {@link #VALID_EXTERNAL_DICTIONARY_CODE_TERM_PAIR} minus the decode match). A blank value ⇒
-     * {@code false} (no fire). Result shape: {@link net.cumba.corej.core.exec.GroupedResult} keyed
-     * by the {@code name} column. Dictionary-dependent (see
+     * attributes} registries — the code&harr;decode-<em>equality</em> of the
+     * {@code valid_external_dictionary_code_term_pair} function minus the decode match). A blank
+     * value ⇒ {@code false} (no fire). Result shape:
+     * {@link net.cumba.corej.core.exec.GroupedResult} keyed by the {@code name} column.
+     * Dictionary-dependent (see
      * {@link net.cumba.corej.core.exec.OperationExecutor#isDictionaryDependent}): an <b>inlined</b>
      * use gets a {@code dictionary_available(<type>)} precondition from the native converter, a
      * <b>declared</b> ({@code $}-ref) use is caught by {@code RuleRunner}'s eager dictionary arm
@@ -431,8 +352,8 @@ public enum OperationType
      * E3 — cross-domain / two-column per-record date arithmetic (days-between). For each record,
      * computes the integer number of calendar days between two ISO-8601 dates via
      * {@link java.time.temporal.ChronoUnit#DAYS}{@code .between(subtrahend, minuend)} —
-     * <em>without</em> the {@code +1} SDTM study-day convention of {@link #DY} — plus an
-     * {@code offset}. Two modes, selected by whether {@code domain} + {@code group} are set:
+     * <em>without</em> the {@code +1} SDTM study-day convention of the {@code dy} function — plus
+     * an {@code offset}. Two modes, selected by whether {@code domain} + {@code group} are set:
      * <ul>
      * <li><b>Mode 1 (record-linked diff):</b> {@code name} is the minuend date column and
      * {@code reference} is the subtrahend date column, both read from the <em>same</em> record. The
@@ -470,26 +391,6 @@ public enum OperationType
     DATE_DIFF_DAYS("date_diff_days", EmptyResult.MISSING),
 
     /**
-     * E4 — per-record last-record-in-group flag. Partitions the current table's rows by the
-     * {@code group} key, orders each partition by the {@code ordering} column (the shared
-     * {@link net.cumba.corej.core.exec.GroupSemantics#sortByOrderColumn} string ordering used by
-     * the other record-ordering operators), and returns {@code true} for the last
-     * (maximum-ordering) row of each group, {@code false} for every other row. Result shape:
-     * {@link net.cumba.corej.core.exec.GroupedResult} keyed by the {@code group} columns plus the
-     * {@code ordering} column (so each {@code (group, ordering)} tuple resolves to its own
-     * boolean), default {@code false} for a row whose group key has a missing component.
-     * Library-INDEPENDENT — reads only the current table. Consumed as {@code $is_last == true}
-     * combined (via {@code Match_Datasets}, which joins on the match keys such as {@code USUBJID})
-     * with a cross-domain disposition-record scalar, e.g.
-     * {@code SEENDTC date_less_than_or_equal_to DS.DSSTDTC}. {@code Match_Datasets} has no
-     * {@code filter} field today, so narrowing the join to a specific disposition record (e.g. a
-     * particular {@code DSDECOD}) is a documented residual, not something the join can express.
-     * Backs CDISC-SEND-0127 / -0283. Mirrors the Python reference engine's
-     * {@code operations/is_last_in_group.py}.
-     */
-    IS_LAST_IN_GROUP("is_last_in_group", EmptyResult.PREDICATE),
-
-    /**
      * EC-8 — per-record horizontal maximum over a wildcard column set. For each record, collects
      * the populated cell values of every column whose name fully matches the {@code name_pattern}
      * regex (e.g. {@code ^TR(0[1-9]|[1-9][0-9])EDT$} for {@code TR01EDT..TR99EDT}), skipping
@@ -499,23 +400,13 @@ public enum OperationType
      * winning <em>original cell string</em> is returned so a downstream {@code not_equal_to} /
      * numeric-aware comparison behaves naturally. Result shape:
      * {@link net.cumba.corej.core.exec.GroupedResult} keyed by the matched columns themselves (the
-     * DY per-row-resolution precedent); a row with no populated matching cell is omitted (absent
-     * key ⇒ {@code null} ⇒ the dependent comparison skips it), and an empty pattern or no matching
-     * column yields {@code null} (the rule SKIPs). Library-INDEPENDENT. Mirrors the Python
-     * reference engine's {@code operations/row_extreme.py} {@code RowMax}. Backs CDISC-AD0084 (the
-     * latest {@code TRxxEDT} vs {@code TRTEDT}).
+     * per-row-resolution precedent of the retired {@code DY} operation); a row with no populated
+     * matching cell is omitted (absent key ⇒ {@code null} ⇒ the dependent comparison skips it), and
+     * an empty pattern or no matching column yields {@code null} (the rule SKIPs).
+     * Library-INDEPENDENT. Mirrors the Python reference engine's {@code operations/row_extreme.py}
+     * {@code RowMax}. Backs CDISC-AD0084 (the latest {@code TRxxEDT} vs {@code TRTEDT}).
      */
-    ROW_MAX("row_max", EmptyResult.MISSING),
-
-    /**
-     * EC-8 — per-record horizontal minimum over a wildcard column set. The {@code min} counterpart
-     * of {@link #ROW_MAX}: identical column matching ({@code name_pattern}), blank-skipping and
-     * two-mode ordering (numeric when all populated values parse as finite numbers, else plain
-     * lexicographic), returning the extreme <em>original cell string</em>. Result shape:
-     * {@link net.cumba.corej.core.exec.GroupedResult} keyed by the matched columns. Mirrors the
-     * Python reference engine's {@code operations/row_extreme.py} {@code RowMin}.
-     */
-    ROW_MIN("row_min", EmptyResult.MISSING);
+    ROW_MAX("row_max", EmptyResult.MISSING);
 
     @JsonValue
     private final String jsonValue;

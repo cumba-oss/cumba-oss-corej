@@ -158,9 +158,10 @@ class TypelessDictionaryOperationLoadTest
 
 
     /**
-     * {@code dictionary_available} is excluded, mirroring the eager SKIP arm: it IS the gate, its
-     * executor arm is total ({@code isAvailable(null)} is plain {@code false}, never a silent
-     * null), and the loader's own injected gates are calls of it.
+     * {@code dictionary_available} is never this guard's business: since wave 1 deleted its
+     * operation twin it is the registry gate builtin only (the loader's own injected gates are
+     * calls of it), so a typeless call is the binder's arity error, not a typeless dictionary
+     * OPERATION.
      */
     @Test
     void aTypelessDictionaryAvailableGateIsNotThisGuardsFinding() throws IOException
@@ -173,8 +174,9 @@ class TypelessDictionaryOperationLoadTest
                   "Check": {"all": [{"expression": "not empty($gate)"}]}
                 }
                 """);
-        assertTrue(rule.getLoadError() == null || !rule.getLoadError().contains(DEFECTIVE),
-                "dictionary_available answers totally (false), so it is not unanswerable: "
-                        + rule.getLoadError());
+        assertNotNull(rule.getLoadError(), "the builtin requires its type argument");
+        assertFalse(rule.getLoadError().contains(DEFECTIVE),
+                "a typeless dictionary_available() is the binder's arity error, never this guard's"
+                        + " typeless-dictionary-operation finding: " + rule.getLoadError());
     }
 }

@@ -521,6 +521,43 @@ public final class BuiltinFunctions implements FunctionProvider
                         .withProvider(net.cumba.corej.core.expr.eval.ProviderNeed.LIBRARY)
                         .aggregating());
 
+        // -- VALUE study day (wave 1) -----------------------------------------
+        // dy(--DTC, DM.RFSTDTC) — the SDTM study day, ported from the retired DY operation. Both
+        // parameters are COLUMN references (a quoted "RFSTDTC" is a STRING literal and fails to
+        // compile — R1): the record's date, and the reference date read through the rule's
+        // declared join. The reference is REQUIRED: the operation's RFSTDTC default hid a
+        // hard-coded DM read that disagreed with the Check on a duplicated DM.USUBJID.
+        fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.StudyDay.NAME,
+                List.of(p("name", Primitive.COLUMN_REFERENCE),
+                        p("reference", Primitive.COLUMN_REFERENCE)),
+                FunctionKind.VALUE, net.cumba.corej.core.exec.StudyDay::evaluate));
+
+        // -- BOOLEAN external-dictionary functions (wave 1) -------------------
+        // valid_external_dictionary_code_term_pair(TSVALCD, TSVAL, external_dictionary_type="unii")
+        // and valid_external_dictionary_hierarchy(--HLT, --SOC, external_dictionary_type="meddra"):
+        // two COLUMN references (a quoted name fails to compile — R1), the dictionary type a
+        // required STRING literal, case_sensitive optional. Both declare the DICTIONARY provider
+        // capability keyed on the type parameter (D-W1-3), which is what makes the no-dictionary
+        // SKIP gate, the injected inline gate and the forecast see them.
+        List<Parameter> pairParams = List.of(p("name", Primitive.COLUMN_REFERENCE),
+                p("external_dictionary_term_variable", Primitive.COLUMN_REFERENCE),
+                p(net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER, Primitive.STRING),
+                opt("case_sensitive", Primitive.BOOLEAN));
+        fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.DictionaryFunctions.CODE_TERM_PAIR,
+                pairParams, FunctionKind.BOOLEAN,
+                net.cumba.corej.core.exec.DictionaryFunctions::codeTermPair)
+                        .withProvider(net.cumba.corej.core.expr.eval.ProviderNeed.dictionary(
+                                net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER)));
+        List<Parameter> hierarchyParams = List.of(p("name", Primitive.COLUMN_REFERENCE),
+                p("dictionary_parent", Primitive.COLUMN_REFERENCE),
+                p(net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER, Primitive.STRING),
+                opt("case_sensitive", Primitive.BOOLEAN));
+        fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.DictionaryFunctions.HIERARCHY,
+                hierarchyParams, FunctionKind.BOOLEAN,
+                net.cumba.corej.core.exec.DictionaryFunctions::hierarchy)
+                        .withProvider(net.cumba.corej.core.expr.eval.ProviderNeed.dictionary(
+                                net.cumba.corej.core.exec.DictionaryFunctions.TYPE_PARAMETER)));
+
         // -- BOOLEAN substring -----------------------------------------------
         bool(fns, "contains", List.of(p("x"), p("value")), (run, args) -> Primitives
                 .contains(args.get(0), args.get(1), run.rowCount(), false));

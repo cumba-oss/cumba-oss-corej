@@ -1349,13 +1349,8 @@ public final class WildcardExpander
         copy.setNames(renameEach(op.getNames(), rename));
         copy.setGroup(renameEach(op.getGroup(), rename));
         copy.setReference(renameOne(op.getReference(), rename));
-        copy.setOrdering(renameOne(op.getOrdering(), rename));
         copy.setOffset(renameOne(op.getOffset(), rename));
         copy.setMinuendMatch(renameEach(op.getMinuendMatch(), rename));
-        copy.setExternalDictionaryTermVariable(
-                renameOne(op.getExternalDictionaryTermVariable(), rename));
-        copy.setDictionaryParent(renameOne(op.getDictionaryParent(), rename));
-        copy.setQualifyingAnyPopulated(renameEach(op.getQualifyingAnyPopulated(), rename));
         copy.setFilter(renameFilterKeys(op.getFilter(), rename));
         // --- everything else: copied verbatim ---
         copy.setId(op.getId());

@@ -33,8 +33,8 @@ import org.jspecify.annotations.Nullable;
  * (D77d) — both derive a column name from a <em>cell value</em>, so they are per-row column
  * selection, not templates. Any operand containing a {@code ${...}} placeholder is left verbatim;
  * the {@code **} column half of a dotted reference is preserved by the shared text policy.</li>
- * <li><b>The name operand of {@code variable_count} / {@code variable_value_count}</b> (D92a) —
- * both deliberately fold across the dataset inventory using the pre-resolution template ({@code
+ * <li><b>The name operand of {@code variable_count}</b> (D92a) — both deliberately fold across the
+ * dataset inventory using the pre-resolution template ({@code
  * --LNKGRP} re-resolves per iterated dataset: AE&rarr;AELNKGRP, CM&rarr;CMLNKGRP, …). Expanding it
  * here would leave CDISC-CG0022 / CG0024 counting only the current domain's column — inert, with
  * every gate green. The inline evaluation path ({@code
@@ -55,7 +55,7 @@ public final class ExprPrefixResolver
 
     /** D92a: operations that fold their name operand across the dataset inventory. */
     private static final java.util.Set<String> INVENTORY_FOLD_OPERATIONS = java.util.Set
-            .of("variable_count", "variable_value_count");
+            .of("variable_count");
 
     private ExprPrefixResolver()
     {

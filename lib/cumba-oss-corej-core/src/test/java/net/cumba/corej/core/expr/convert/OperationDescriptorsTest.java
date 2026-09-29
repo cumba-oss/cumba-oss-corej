@@ -54,10 +54,9 @@ class OperationDescriptorsTest
     @Test
     void descriptorDeclarationsMatchTheValidatorAllowlists()
     {
-        assertEquals(
-                names("min_date", "max_date", "max", "distinct", "record_count",
-                        "has_mixed_emptiness_within_group", "is_last_in_group"),
-                declaring("keep_missings"), "validateKeepMissings' seven grouped operations");
+        assertEquals(names("min_date", "max_date", "max", "distinct", "record_count"),
+                declaring("keep_missings"), "validateKeepMissings' five grouped operations (wave 1"
+                        + " ported is_last_in_group and has_mixed_emptiness_within_group)");
         assertEquals(names("min_date", "max_date", "date_diff_days"), declaring("missing_values"),
                 "validateMissingValues' three consumers");
         assertEquals(

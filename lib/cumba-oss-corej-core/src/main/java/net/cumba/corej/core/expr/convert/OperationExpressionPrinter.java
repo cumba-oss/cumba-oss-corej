@@ -63,9 +63,7 @@ public final class OperationExpressionPrinter
         }
         else if (op.getName() != null)
         {
-            // The `constant` operator's name is a literal value, never a column ⇒ always quote it.
-            parts.add("constant".equals(op.getOperator()) ? quote(op.getName())
-                    : printName(op.getName()));
+            parts.add(printName(op.getName()));
         }
         if (op.getSubtract() != null)
         {
@@ -87,7 +85,6 @@ public final class OperationExpressionPrinter
         addString(parts, "minuend_domain", op.getMinuendDomain());
         addList(parts, "minuend_match", op.getMinuendMatch());
         addString(parts, "delimiter", op.getDelimiter());
-        addString(parts, "ordering", op.getOrdering());
         addList(parts, "group", op.getGroup());
         // The grouping-key disposition, printed next to the `group` it applies to. Omitted when
         // null — which is the engine default on every operator — so the shipped corpus stays
@@ -126,10 +123,6 @@ public final class OperationExpressionPrinter
         {
             parts.add("case_sensitive=" + op.getCaseSensitive());
         }
-        addString(parts, "external_dictionary_term_variable",
-                op.getExternalDictionaryTermVariable());
-        addString(parts, "dictionary_parent", op.getDictionaryParent());
-        addList(parts, "qualifying_any_populated", op.getQualifyingAnyPopulated());
         if (op.getValueIsReference() != null)
         {
             parts.add("value_is_reference=" + op.getValueIsReference());

@@ -276,41 +276,6 @@ class WildcardPrefixResolutionTest
         assertEquals("DM.MHSEQ", resolveValue("DM.--SEQ", "MH", "APMH"));
     }
 
-
-    @Test
-    void dictionaryParentIsResolvedLikeAnyOtherVariableName()
-    {
-        // CDISC-CG0460/CG0461 ship `dictionary_parent: "--SOC"`. It was copied verbatim, so the
-        // hierarchy operation looked up a column literally named "--SOC" and both rules were dead.
-        net.cumba.corej.core.model.Operation op = new net.cumba.corej.core.model.Operation();
-        op.setId("$x");
-        op.setOperator("valid_external_dictionary_hierarchy");
-        op.setName("--HLT");
-        op.setDictionaryParent("--SOC");
-
-        net.cumba.corej.core.model.Operation resolved = OperationExecutorCalls.resolvePrefixes(op,
-                "AE", "AE");
-
-        assertEquals("AEHLT", resolved.getName());
-        assertEquals("AESOC", resolved.getDictionaryParent());
-    }
-
-
-    @Test
-    void dictionaryParentAloneTriggersResolution()
-    {
-        // needsResolve must see it, or an op whose ONLY wildcard is dictionary_parent is returned
-        // untouched.
-        net.cumba.corej.core.model.Operation op = new net.cumba.corej.core.model.Operation();
-        op.setId("$x");
-        op.setOperator("valid_external_dictionary_hierarchy");
-        op.setName("AEHLT");
-        op.setDictionaryParent("--SOC");
-
-        assertEquals("AESOC",
-                OperationExecutorCalls.resolvePrefixes(op, "AE", "AE").getDictionaryParent());
-    }
-
     // -----------------------------------------------------------------------
     // Dot-qualified references: each half resolves on its own prefix
     // -----------------------------------------------------------------------
@@ -379,21 +344,6 @@ class WildcardPrefixResolutionTest
 
         assertEquals("AEQNAM", resolved.getName(), "Fix #33 parent-stripping must still apply");
         assertEquals("SUPPAE", resolved.getDomain());
-    }
-
-
-    @Test
-    void qualifyingAnyPopulatedAloneTriggersResolution()
-    {
-        // Twin of dictionaryParentAloneTriggersResolution: needsResolve must see this field too.
-        net.cumba.corej.core.model.Operation op = new net.cumba.corej.core.model.Operation();
-        op.setId("$x");
-        op.setOperator("distinct");
-        op.setName("AESTRESC");
-        op.setQualifyingAnyPopulated(java.util.List.of("--ORRES"));
-
-        assertEquals(java.util.List.of("AEORRES"),
-                OperationExecutorCalls.resolvePrefixes(op, "AE", "AE").getQualifyingAnyPopulated());
     }
 
     // -----------------------------------------------------------------------

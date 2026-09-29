@@ -177,6 +177,21 @@ public final class CompilerDispatchedCalls implements FunctionProvider
         bool(fns, "present_on_multiple_rows_within", req("name"), reqWithin(), keepMissings());
         bool(fns, "empty_within_except_last_row", req("name"), req("group"),
                 Parameter.required("ordering", Unknown.UNKNOWN), keepMissings());
+        // Wave 1 (PLAN-function-surface-wave1 D-W1-4): the two grouped callables ported from the
+        // Operation surface. Column parameters are declared COLUMN references (a quoted name is a
+        // literal and fails to load — R1) and read by a STRICT reader in ExprCompiler; the
+        // groupers are the retired evaluators' own, so plan 16's key identity and both missing-key
+        // defaults survive. is_last_in_group has NO target (R6, RETIRE-both): it reads only
+        // ordering and group. has_mixed_emptiness_within_group keeps its subject column as `name`.
+        bool(fns, "is_last_in_group", Parameter.required("ordering", Primitive.COLUMN_REFERENCE),
+                Parameter.required("group", new ListOf(Primitive.COLUMN_REFERENCE)),
+                keepMissings());
+        bool(fns, "has_mixed_emptiness_within_group",
+                Parameter.required("name", Primitive.COLUMN_REFERENCE),
+                Parameter.optional("group", new ListOf(Primitive.COLUMN_REFERENCE)),
+                Parameter.optional("qualifying_any_populated",
+                        new ListOf(Primitive.COLUMN_REFERENCE)),
+                keepMissings());
         // Relationship uniqueness: the comparator side is ONE extra positional or the keys= list
         // (GroupSemantics treats the key list as a value tuple) — at least one, which a
         // requiredness flag cannot express; compileNotUniqueRelationship enforces it.

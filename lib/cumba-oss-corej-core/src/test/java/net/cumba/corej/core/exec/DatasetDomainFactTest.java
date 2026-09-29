@@ -22,13 +22,13 @@ import org.junit.jupiter.api.Test;
  * {@code dataset_domain} — {@code plans/done/PLAN-domain-expression-function.md}.
  *
  * <p>
- * The fact is registered on three surfaces that must all resolve to the SAME value, the
- * {@code Scope.Domains} base leg {@link OperationExecutor#unsplitNameFromData}:
+ * The fact is registered on two surfaces that must both resolve to the SAME value, the
+ * {@code Scope.Domains} base leg {@link OperationExecutor#unsplitNameFromData} (the
+ * {@code DATASET_DOMAIN} operation, a third carriage, was deleted by wave 1 of
+ * {@code RUNBOOK-operations-to-functions}: zero corpus sites):
  * </p>
  * <ul>
  * <li>{@code BuiltinRegistry} bareword — authored as a leaf {@code name: dataset_domain};</li>
- * <li>{@code OperationType} — authored as {@code Operations: [{id: $x, operator:
- * dataset_domain}]};</li>
  * <li>{@code MetadataAttribute.DS_DOMAIN} — never authored, the lowering target
  * {@code ds_domain("DATA")} that {@code MetadataOperandMapping}'s {@code dataset_} prefix produces
  * from the bareword.</li>
@@ -39,8 +39,7 @@ import org.junit.jupiter.api.Test;
  * the fact is that a Check written against it decides <em>once per dataset</em>
  * ({@code BroadcastFold.isDatasetFactCall}); a {@code dataset_domain} that returns the right value
  * but is not dataset-constant passes every value assertion and silently keeps per-record reporting.
- * {@link #barewordFoldsToOneFindingPerDataset()} and
- * {@link #operationFormFoldsToOneFindingPerDataset()} are the ones that would go red.
+ * {@link #barewordFoldsToOneFindingPerDataset()} is the one that would go red.
  * </p>
  */
 class DatasetDomainFactTest
@@ -57,14 +56,6 @@ class DatasetDomainFactTest
             + "{\"expression\": \"len(dataset_domain) > 2\"},"
             + "{\"expression\": \"len(dataset_domain) < 2\"}]},"
             + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"dataset_domain\"]}}";
-
-    /** The same shape carried by the OPERATION, referenced through its {@code $}-id. */
-    private static final String OPERATION_LENGTH_RULE = "{\"Core\":{\"Id\":\"R1\"},"
-            + "\"Sensitivity\":\"Record\","
-            + "\"Bindings\":[{\"name\": \"$dd\", \"expression\": \"dataset_domain()\"}],"
-            + "\"Check\":{\"any\":[" + "{\"expression\": \"len($dd) > 2\"},"
-            + "{\"expression\": \"len($dd) < 2\"}]},"
-            + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"$dd\"]}}";
 
     private static Rule loadRule(String ruleBody) throws Exception
     {
@@ -112,12 +103,13 @@ class DatasetDomainFactTest
 
 
     @Test
-    void theFactIsRegisteredOnAllThreeSurfaces()
+    void theFactIsRegisteredOnBothSurfaces()
     {
+        // Wave 1 deleted the DATASET_DOMAIN operation (zero corpus sites): the fact is the bareword
+        // and the ds_domain accessor only.
         assertTrue(net.cumba.corej.core.expr.BuiltinRegistry.isBuiltin("dataset_domain"),
                 "bareword surface");
-        assertEquals(OperationType.DATASET_DOMAIN, OperationType.fromJson("dataset_domain"),
-                "Operations surface");
+        assertNull(OperationType.fromJson("dataset_domain"), "no Operations surface any more");
         MetadataAttribute attr = MetadataAttribute.fromFunction("ds_domain");
         assertNotNull(attr, "accessor surface");
         assertEquals(MetadataAttribute.Scope.DATASET, attr.scope());
@@ -205,26 +197,13 @@ class DatasetDomainFactTest
     }
 
 
-    /** The Operations carriage folds too — {@code $dd} is a broadcast scalar, not a per-row set. */
+    /** A conformant dataset does not fire. */
     @Test
-    void operationFormFoldsToOneFindingPerDataset() throws Exception
-    {
-        Rule rule = loadRule(OPERATION_LENGTH_RULE);
-        IDataTable malformed = MockTable.of().name("AEX").col("DOMAIN", "AEX", "AEX", "AEX")
-                .col("AETERM", "a", "b", "c").build();
-        assertEquals(1, findings(rule, malformed, "AE").size(),
-                "the Operation carriage must fold identically to the bareword");
-    }
-
-
-    /** A conformant dataset fires on neither carriage. */
-    @Test
-    void neitherCarriageFiresOnAConformantDataset() throws Exception
+    void theBarewordDoesNotFireOnAConformantDataset() throws Exception
     {
         IDataTable ok = MockTable.of().name("AE").col("DOMAIN", "AE", "AE", "AE")
                 .col("AETERM", "a", "b", "c").build();
         assertEquals(Map.of(), findings(loadRule(BAREWORD_LENGTH_RULE), ok, "AE"));
-        assertEquals(Map.of(), findings(loadRule(OPERATION_LENGTH_RULE), ok, "AE"));
     }
 
     // ------------------------------------------------------------------
@@ -287,22 +266,6 @@ class DatasetDomainFactTest
     {
         IDataTable bad = MockTable.of().name("AE").col("DOMAIN", "XXX", "XXX").build();
         assertTrue(factEquals(bad, "AE", "XXX"), "the cell is returned unchanged");
-    }
-
-
-    /**
-     * The Operations carriage reads the same derivation — asserted against the SUPP row, the one
-     * place the three candidate derivations disagree.
-     */
-    @Test
-    void theOperationCarriageReadsTheSameDerivation()
-    {
-        IDataTable supp = MockTable.of().name("SUPPLBHM").col("RDOMAIN", "LB").build();
-        net.cumba.corej.core.model.Operation op = new net.cumba.corej.core.model.Operation();
-        op.setId("$dd");
-        op.setOperator("dataset_domain");
-        assertEquals("SUPPLB",
-                OperationExecutorCalls.executeOne(op, supp, NO_RESOLVER, null, new HashMap<>()));
     }
 
     // ------------------------------------------------------------------

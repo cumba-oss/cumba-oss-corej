@@ -350,9 +350,6 @@ public final class StageBChecker
                 addWildcard(hits, op.getDomain());
                 addWildcards(hits, op.getGroup());
                 addWildcards(hits, op.getNames());
-                addWildcard(hits, op.getExternalDictionaryTermVariable());
-                addWildcards(hits, op.getQualifyingAnyPopulated());
-                addWildcard(hits, op.getDictionaryParent());
                 Map<String, Object> filter = op.getFilter();
                 if (filter != null)
                 {
@@ -417,8 +414,7 @@ public final class StageBChecker
         {
             // D92a: the variable_count family's first argument is the pre-resolution template on
             // purpose; D92b: name_pattern= contents are a regex, not a wildcard.
-            boolean countFamily = "variable_count".equals(c.name())
-                    || "variable_value_count".equals(c.name());
+            boolean countFamily = "variable_count".equals(c.name());
             List<Expr> args = c.args();
             for (int i = countFamily ? 1 : 0; i < args.size(); i++)
             {

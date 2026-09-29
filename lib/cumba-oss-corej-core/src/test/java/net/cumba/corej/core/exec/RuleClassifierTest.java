@@ -315,9 +315,9 @@ class RuleClassifierTest
         @Test
         void aRecordScopedOperationMakesItRecord()
         {
-            // `is_last_in_group` returns a GroupedResult — grounded from OperationExecutor.
+            // `row_max` returns a GroupedResult — grounded from OperationExecutor.
             assertEquals(Sensitivity.RECORD, sensitivity(
-                    "{\"Bindings\":[{\"name\": \"$last\", \"expression\": \"is_last_in_group()\"}],\"Check\":{\"all\":[{\"expression\": \"$last == true\"}]}}"));
+                    "{\"Bindings\":[{\"name\": \"$last\", \"expression\": \"row_max(name_pattern=\\\"^SE.*DTC$\\\")\"}],\"Check\":{\"all\":[{\"expression\": \"$last == true\"}]}}"));
         }
 
 

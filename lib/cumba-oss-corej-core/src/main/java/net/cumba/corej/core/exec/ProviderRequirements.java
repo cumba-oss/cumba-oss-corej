@@ -11,7 +11,6 @@ import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.MetadataExprScan;
 import net.cumba.corej.core.expr.eval.MetadataLevel;
 import net.cumba.corej.core.model.CheckCondition;
-import net.cumba.corej.core.model.OperationType;
 import net.cumba.corej.core.model.Rule;
 import org.jspecify.annotations.Nullable;
 
@@ -66,9 +65,8 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * ⚠ {@link OperationType#DICTIONARY_AVAILABLE} is excluded: it is the availability <em>gate</em>,
- * not a dependency — it returns a well-defined {@code false} with no dictionary loaded, which is
- * exactly why {@code RuleRunner}'s eager arm excludes it too.
+ * The {@code dictionary_available(<type>)} gate is a registry builtin, never a dependency: it
+ * returns a well-defined {@code false} with no dictionary loaded.
  * </p>
  *
  * <p>

@@ -93,16 +93,11 @@ public class Operation
     private @Nullable String domain;
 
     /**
-     * Reference-date column for the {@code dy} (study-day) operation (T6): the DM column, keyed by
-     * {@code USUBJID}, against which each {@code --DTC} date is recomputed into a study day. When
-     * {@code null} the study day is computed against the SDTM-default {@code RFSTDTC} — so all
-     * pre-existing {@code dy} rules stay byte-identical. Set to a non-default column such as
-     * {@code "RFXSTDTC"} (first EX date) or {@code "RFCSTDTC"} to recompute {@code --XDY}/{@code
-     * --CHDY} style values, or to any per-subject DM reference date. Mirrors Python's
-     * {@code operations/day_data_validator.py} {@code params.reference}. Consumed only by
-     * {@link net.cumba.corej.core.model.OperationType#DY}; printed as the {@code reference="…"}
-     * kwarg of the inline {@code dy(--DTC, reference="RFXSTDTC")} form (omitted when default). JSON
-     * key {@code "reference"}.
+     * The reference-date column of {@code date_diff_days} (E3): the subtrahend date — a column of
+     * the evaluation record in Mode 1, of the foreign {@code domain} dataset in Mode 2. Printed as
+     * the {@code reference="…"} kwarg of the inline form. JSON key {@code "reference"}. (Wave 1
+     * ported {@code dy}, its other reader, to the registry function {@code dy(name, reference)},
+     * whose reference is a column reference read through the declared join, never this field.)
      */
     private @Nullable String reference;
 
@@ -252,16 +247,6 @@ public class Operation
     private @Nullable List<String> minuendMatch;
 
     /**
-     * E4 — the ordering column for the {@code is_last_in_group} operation: within each
-     * {@code group} partition the rows are sorted by this column (the shared
-     * {@link net.cumba.corej.core.exec.GroupSemantics#sortByOrderColumn} string ordering) and the
-     * maximum-ordering row is flagged as the last record (e.g. {@code SESEQ}). Consumed only by
-     * {@link OperationType#IS_LAST_IN_GROUP}. Mirrors the Python reference engine's
-     * {@code OperationParams.ordering}. JSON key {@code "ordering"}.
-     */
-    private @Nullable String ordering;
-
-    /**
      * Row-filter predicate for the aggregating operations ({@code record_count}, {@code distinct},
      * {@code min}/{@code max}, {@code min_date}/{@code max_date}, …): a column ⇒ expected-value map
      * where a row qualifies only if <em>every</em> entry matches. Each value is either
@@ -368,41 +353,6 @@ public class Operation
      */
     @JsonProperty("case_sensitive")
     private @Nullable Boolean caseSensitive;
-
-    /**
-     * T1 — the companion term column for a code&harr;decode pairing operation
-     * ({@code valid_external_dictionary_code_term_pair}): the {@code name} column carries the code,
-     * this column carries the decode/term. Mirrors the Python {@code
-     * OperationParams.external_dictionary_term_variable}. JSON key
-     * {@code "external_dictionary_term_variable"}.
-     */
-    @JsonProperty("external_dictionary_term_variable")
-    private @Nullable String externalDictionaryTermVariable;
-
-    /**
-     * T1 — the parent (ancestor) column for a hierarchy-path operation
-     * ({@code valid_external_dictionary_hierarchy}): the {@code name} column carries the child
-     * term, this column carries the candidate ancestor whose hierarchy path the child must lie on.
-     * Mirrors the Python {@code OperationParams.dictionary_parent}. JSON key
-     * {@code "dictionary_parent"}.
-     */
-    @JsonProperty("dictionary_parent")
-    private @Nullable String dictionaryParent;
-
-    /**
-     * EC-23 — opt-in row qualifier for the {@code has_mixed_emptiness_within_group} operation
-     * (Java-only). When set, the per-group emptiness tally in
-     * {@link net.cumba.corej.core.exec.OperationExecutor#evalHasMixedEmptinessWithinGroup} skips
-     * any group row where <em>none</em> of the listed columns is populated (populated = non-missing
-     * AND non-blank after {@code strip()}); only the surviving rows contribute to the populated /
-     * unpopulated determination. When {@code null} the scan considers every group row (the original
-     * behaviour, byte-identical). This scopes the mixedness determination to the source-relevant
-     * rows (e.g. AD0735's "rows where BASE or BASEC are populated") without a first-row-gated
-     * Check. Consumed only by {@link OperationType#HAS_MIXED_EMPTINESS_WITHIN_GROUP}. JSON key
-     * {@code "qualifying_any_populated"}.
-     */
-    @JsonProperty("qualifying_any_populated")
-    private @Nullable List<String> qualifyingAnyPopulated;
 
     /**
      * Pre-resolution value of {@link #name}, stashed by {@code OperationExecutor.resolvePrefixes}

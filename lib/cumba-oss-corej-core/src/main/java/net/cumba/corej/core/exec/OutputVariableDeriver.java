@@ -473,11 +473,7 @@ public final class OutputVariableDeriver
             addNames(walk, op.getNames());
             addNames(walk, op.getGroup());
             addName(walk, op.getReference());
-            addName(walk, op.getOrdering());
             addName(walk, op.getKeyName());
-            addName(walk, op.getExternalDictionaryTermVariable());
-            addName(walk, op.getDictionaryParent());
-            addNames(walk, op.getQualifyingAnyPopulated());
             addNames(walk, op.getMinuendMatch());
             String offset = op.getOffset();
             if (offset != null && !offset.isBlank() && !offset.matches("-?\\d+"))

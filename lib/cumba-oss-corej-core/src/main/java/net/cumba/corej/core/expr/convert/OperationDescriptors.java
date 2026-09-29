@@ -102,7 +102,6 @@ public final class OperationDescriptors
         case DATE_DIFF_DAYS -> add(params, domain(), group(), missingValues(), str("reference"),
                 str("offset"), str("reference_extreme"), str("minuend_domain"),
                 Parameter.optional("minuend_match", new ListOf(Primitive.STRING)));
-        case DY -> add(params, group(), str("reference"));
         case MINUS -> add(params, str("subtract"),
                 Parameter.optional("value", new ListOf(Primitive.STRING)));
         case CODELIST_TERMS -> add(params,
@@ -114,26 +113,17 @@ public final class OperationDescriptors
         case GET_MODEL_FILTERED_VARIABLES -> add(params, str("key_name"), str("key_value"),
                 str("model_class"));
         case TS_PARAMETER_VALUE -> add(params, domain(), str("key_name"), str("key_value"));
-        case SUPP_QNAM_PRESENT, SUPP_QNAM_VALUE -> add(params, domain(), str("key_value"));
-        case VARIABLE_COUNT, ROW_MAX, ROW_MIN -> add(params,
+        case SUPP_QNAM_PRESENT -> add(params, domain(), str("key_value"));
+        case VARIABLE_COUNT, ROW_MAX -> add(params,
                 Parameter.optional("name_pattern", Primitive.REGEX));
         case COLUMN_SERIES_METADATA -> add(params,
                 Parameter.optional("name_pattern", Primitive.REGEX),
                 Parameter.optional("min_length", Primitive.NUMBER));
         case VARIABLE_EXISTS, CROSS_DATASET_VARIABLE_METADATA -> add(params, domain());
-        case HAS_MIXED_EMPTINESS_WITHIN_GROUP -> add(params, group(), keepMissings(),
-                Parameter.optional("qualifying_any_populated", new ListOf(Primitive.STRING)));
-        case IS_LAST_IN_GROUP -> add(params, group(), keepMissings(), str("ordering"));
         case INTERVAL_UNCERTAINTY_PRECISION_MISMATCH -> add(params, str("delimiter"));
-        case DICTIONARY_AVAILABLE -> add(params, str("external_dictionary_type"));
         case DICTIONARY_HAS_DECODE -> add(params, str("external_dictionary_type"), caseSensitive());
         case VALID_EXTERNAL_DICTIONARY_VALUE, VALID_EXTERNAL_DICTIONARY_CODE -> add(params,
                 str("external_dictionary_type"), str("dictionary_term_type"), caseSensitive());
-        case VALID_EXTERNAL_DICTIONARY_CODE_TERM_PAIR -> add(params,
-                str("external_dictionary_type"), str("external_dictionary_term_variable"),
-                caseSensitive());
-        case VALID_EXTERNAL_DICTIONARY_HIERARCHY -> add(params, str("external_dictionary_type"),
-                str("dictionary_parent"), caseSensitive());
         default ->
         {
             // Target-only operations (constant, extract_metadata, the library/define walks, …):

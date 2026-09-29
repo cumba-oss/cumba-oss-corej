@@ -40,8 +40,8 @@ import org.junit.jupiter.api.Test;
  *
  * <p>
  * ⚠ <b>Non-vacuity is asserted explicitly</b> (the phase-7 lesson, D122b — five silent vacuities,
- * none caught by an assertion): the descriptor counts are pinned (26 + 2 + 13, total parameter
- * count 84), the probe map's key set must equal the declared name sets (a new descriptor without a
+ * none caught by an assertion): the descriptor counts are pinned (28 + 2 + 13, total parameter
+ * count 91), the probe map's key set must equal the declared name sets (a new descriptor without a
  * dispatch-proving probe fails the gate), and the registry-derived sets must be non-empty and
  * exactly equal to the declarations — so losing the SPI registration line, or emptying either side,
  * reds instead of passing over nothing.
@@ -76,6 +76,10 @@ class CompilerDispatchDriftGateTest
                 "present_on_multiple_rows_within(AESEQ, within=USUBJID)");
         probes.put("empty_within_except_last_row",
                 "empty_within_except_last_row(TSVAL, TSPARMCD, ordering=TSSEQ)");
+        // Wave 1 (D-W1-4): the two grouped callables ported from the Operation surface.
+        probes.put("is_last_in_group", "is_last_in_group(ordering=TSSEQ, group=[TSPARMCD])");
+        probes.put("has_mixed_emptiness_within_group",
+                "has_mixed_emptiness_within_group(TSVAL, group=[TSPARMCD])");
         probes.put("is_not_unique_relationship", "is_not_unique_relationship(AEDECOD, USUBJID)");
         probes.put("is_unique_relationship", "is_unique_relationship(AEDECOD, keys=[USUBJID])");
         probes.put("is_not_unique_set", "is_not_unique_set([USUBJID, DOMAIN])");
@@ -105,7 +109,7 @@ class CompilerDispatchDriftGateTest
     @Test
     void declaredCountsArePinned()
     {
-        assertEquals(26, CompilerDispatchedCalls.booleanCallNames().size(),
+        assertEquals(28, CompilerDispatchedCalls.booleanCallNames().size(),
                 "compileBoolCall-dispatched boolean calls");
         assertEquals(2, CompilerDispatchedCalls.negationDispatchedBooleanCallNames().size(),
                 "negation-dispatched boolean calls (compileNot's Q1 arms)");
@@ -114,7 +118,7 @@ class CompilerDispatchDriftGateTest
                         + " accessors)");
         int parameters = new CompilerDispatchedCalls().functions().stream()
                 .mapToInt(d -> d.parameters().size()).sum();
-        assertEquals(84, parameters, "declared parameter surfaces across the 41 descriptors —"
+        assertEquals(91, parameters, "declared parameter surfaces across the 41 descriptors —"
                 + " update deliberately when a signature legitimately changes");
     }
 

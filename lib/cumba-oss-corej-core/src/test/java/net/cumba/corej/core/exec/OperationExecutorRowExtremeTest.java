@@ -12,10 +12,10 @@ import net.cumba.datatable.testkit.MockTable;
 import org.junit.jupiter.api.Test;
 
 /**
- * EC-8 — {@code row_max} / {@code row_min} horizontal reducer over a {@code name_pattern} column
- * set, exercised through {@link OperationExecutor#executeOne} with the raw {@link GroupedResult}
- * inspected. The result map is keyed by the matched columns themselves (NUL-separated cell values,
- * in the table's column order).
+ * EC-8 — {@code row_max} horizontal reducer ({@code row_min} was deleted by wave 1, zero sites)
+ * over a {@code name_pattern} column set, exercised through {@link OperationExecutor#executeOne}
+ * with the raw {@link GroupedResult} inspected. The result map is keyed by the matched columns
+ * themselves (NUL-separated cell values, in the table's column order).
  */
 class OperationExecutorRowExtremeTest
 {
@@ -71,17 +71,6 @@ class OperationExecutorRowExtremeTest
 
 
     @Test
-    void numericMode_min_picksNumericMinimum()
-    {
-        IDataTable ds = MockTable.of().col("TR01N", "9", "3").col("TR02N", "12", "20").name("TR")
-                .build();
-        GroupedResult gr = run(rowOp("row_min", "^TR\\d+N$"), ds);
-        assertEquals("9", GroupedResultTextView.byText(gr).get("9" + NUL + "12"));
-        assertEquals("3", GroupedResultTextView.byText(gr).get("3" + NUL + "20"));
-    }
-
-
-    @Test
     void stringMode_max_lexicographicOnSamePrecisionIso()
     {
         // ISO-8601 same-precision dates: plain lexicographic max = latest date (raw string
@@ -92,19 +81,6 @@ class OperationExecutorRowExtremeTest
         assertEquals("2020-03-01",
                 GroupedResultTextView.byText(gr).get("2020-01-10" + NUL + "2020-03-01"));
         assertEquals("2020-01-01",
-                GroupedResultTextView.byText(gr).get("2019-12-31" + NUL + "2020-01-01"));
-    }
-
-
-    @Test
-    void stringMode_min_lexicographicOnIso()
-    {
-        IDataTable ds = MockTable.of().col("TR01EDT", "2020-01-10", "2019-12-31")
-                .col("TR02EDT", "2020-03-01", "2020-01-01").name("TR").build();
-        GroupedResult gr = run(rowOp("row_min", "^TR\\d+EDT$"), ds);
-        assertEquals("2020-01-10",
-                GroupedResultTextView.byText(gr).get("2020-01-10" + NUL + "2020-03-01"));
-        assertEquals("2019-12-31",
                 GroupedResultTextView.byText(gr).get("2019-12-31" + NUL + "2020-01-01"));
     }
 
@@ -127,11 +103,11 @@ class OperationExecutorRowExtremeTest
 
 
     /**
-     * EC-51 — the whitespace change reaches {@code row_max}/{@code row_min} in a wider way than "a
-     * blank stops winning the min": {@code rowExtreme}'s mode gate needs <b>every</b> value to
-     * match {@code ROW_EXTREME_NUMERIC}, so a whitespace cell's mere presence used to force the
-     * whole row lexicographic. Dropping it can flip the row into numeric mode and move the
-     * <b>max</b>, which is the case this pins.
+     * EC-51 — the whitespace change reaches {@code row_max} in a wider way than "a blank stops
+     * winning the min": {@code rowExtreme}'s mode gate needs <b>every</b> value to match
+     * {@code ROW_EXTREME_NUMERIC}, so a whitespace cell's mere presence used to force the whole row
+     * lexicographic. Dropping it can flip the row into numeric mode and move the <b>max</b>, which
+     * is the case this pins.
      */
     @Test
     void whitespaceCell_noLongerForcesLexicographicMode()
@@ -144,10 +120,6 @@ class OperationExecutorRowExtremeTest
         GroupedResult max = run(rowOp("row_max", "^TR\\d+EDT$"), ds);
         assertEquals("12", max.results().values().iterator().next(),
                 "dropping the whitespace cell re-enables numeric mode, so 12 beats 9");
-
-        GroupedResult min = run(rowOp("row_min", "^TR\\d+EDT$"), ds);
-        assertEquals("9", min.results().values().iterator().next(),
-                "the whitespace cell used to win the min outright");
     }
 
 
@@ -187,7 +159,7 @@ class OperationExecutorRowExtremeTest
     {
         IDataTable ds = MockTable.of().col("TR01EDT", "2020-01-10", "2019-01-01").name("TR")
                 .build();
-        GroupedResult gr = run(rowOp("row_min", "^TR\\d+EDT$"), ds);
+        GroupedResult gr = run(rowOp("row_max", "^TR\\d+EDT$"), ds);
         assertEquals(List.of("TR01EDT"), gr.groupColumns());
         assertEquals("2020-01-10", GroupedResultTextView.byText(gr).get("2020-01-10"));
         assertEquals("2019-01-01", GroupedResultTextView.byText(gr).get("2019-01-01"));

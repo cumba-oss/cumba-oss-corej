@@ -169,35 +169,6 @@ class OperationEmptyResultClassificationTest
 
 
     /**
-     * EC-45 §1.3(2) — {@code has_mixed_emptiness_within_group} is a boolean predicate, so an
-     * unmatched group is {@code false} ("evaluated, did not hold"), never "unknown".
-     */
-    @Test
-    void hasMixedEmptinessDeclaresFalse()
-    {
-        IDataTable t = MockTable.of().name("ADLB").col("PARAMCD", "A", "A").col("BASETYPE", "X", "")
-                .build();
-        Operation o = op("$m", "has_mixed_emptiness_within_group");
-        o.setName("BASETYPE");
-        o.setGroup(List.of("PARAMCD"));
-        assertEquals(false, run(o, t).defaultForMissingKey());
-    }
-
-
-    /** {@code is_last_in_group} is likewise a predicate. */
-    @Test
-    void isLastInGroupDeclaresFalse()
-    {
-        IDataTable t = MockTable.of().name("SE").col("USUBJID", "S1", "S1")
-                .col("SESTDTC", "2020-01-01", "2020-02-01").build();
-        Operation o = op("$last", "is_last_in_group");
-        o.setGroup(List.of("USUBJID"));
-        o.setOrdering("SESTDTC");
-        assertEquals(false, run(o, t).defaultForMissingKey());
-    }
-
-
-    /**
      * EC-45 §1.2 / OQ1 — {@code referenced_domain_class} is a closed-world <em>scalar</em> lookup,
      * so its empty value is the empty string, not "no value": an unknown {@code RDOMAIN} means the
      * library holds no class for it, and {@code $class not_equal_to "EVENTS"} fires vacuously.
@@ -322,14 +293,6 @@ class OperationEmptyResultClassificationTest
                 assertInstanceOf(GroupedResult.class, presentResult).defaultForMissingKey(),
                 "SUPP present ⇒ 'this record has no qualifier' is a real answer");
 
-        Operation value = op("$v", "supp_qnam_value");
-        value.setDomain("SUPPPC");
-        value.setKeyValue("PCCALCN");
-        Object valueResult = OperationExecutorCalls.executeOne(value, parent, resolver, null,
-                new HashMap<>());
-        assertNull(assertInstanceOf(GroupedResult.class, valueResult).defaultForMissingKey(),
-                "there is no qualifier VALUE to report");
-
         // Q17-a: an entirely absent SUPP dataset never reaches dispatch, so there is no
         // GroupedResult to refine — the operator publishes its static declaration instead, and
         // supp_qnam_present declares PREDICATE. `false` is the same answer the SUPP-present-but-
@@ -382,8 +345,6 @@ class OperationEmptyResultClassificationTest
         assertEquals(List.of(), OperationType.emptyValueOf(OperationType.DISTINCT));
         assertEquals(List.of(),
                 OperationType.emptyValueOf(OperationType.GET_PARENT_MODEL_COLUMN_ORDER));
-        assertEquals(false,
-                OperationType.emptyValueOf(OperationType.HAS_MIXED_EMPTINESS_WITHIN_GROUP));
         assertEquals("", OperationType.emptyValueOf(OperationType.REFERENCED_DOMAIN_CLASS));
         assertNotNull(OperationType.DATE_DIFF_DAYS.getEmptyResult());
     }

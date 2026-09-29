@@ -83,7 +83,7 @@ class RecordCountSingleDescriptorTest
      * extend this list only with the equivalence argument that justifies it.
      */
     @Test
-    void registryOperationNameOverlapIsExactlyTheTwoKnownFastPaths()
+    void registryOperationNameOverlapIsExactlyTheRecordCountFastPath()
     {
         Set<String> overlap = new TreeSet<>();
         for (OperationType type : OperationType.values())
@@ -93,7 +93,8 @@ class RecordCountSingleDescriptorTest
                 overlap.add(type.getJsonValue());
             }
         }
-        assertEquals(new TreeSet<>(Set.of("record_count", "dictionary_available")), overlap);
+        // Wave 1 deleted the DICTIONARY_AVAILABLE operation: the gate is the registry builtin only.
+        assertEquals(new TreeSet<>(Set.of("record_count")), overlap);
     }
 
 }

@@ -287,7 +287,6 @@ public final class OperationExpressionParser
         m.put("minuend_domain", Operation::getMinuendDomain);
         m.put("minuend_match", Operation::getMinuendMatch);
         m.put("delimiter", Operation::getDelimiter);
-        m.put("ordering", Operation::getOrdering);
         m.put("group", Operation::getGroup);
         m.put("filter", Operation::getFilter);
         m.put("codelists", Operation::getCodelists);
@@ -304,9 +303,6 @@ public final class OperationExpressionParser
         m.put("external_dictionary_type", Operation::getExternalDictionaryType);
         m.put("dictionary_term_type", Operation::getDictionaryTermType);
         m.put("case_sensitive", Operation::getCaseSensitive);
-        m.put("external_dictionary_term_variable", Operation::getExternalDictionaryTermVariable);
-        m.put("dictionary_parent", Operation::getDictionaryParent);
-        m.put("qualifying_any_populated", Operation::getQualifyingAnyPopulated);
         m.put("missing_values", Operation::getMissingValues);
         m.put("keep_missings", Operation::getKeepMissings);
         return m;
@@ -531,9 +527,7 @@ public final class OperationExpressionParser
         OperationType type = OperationType.fromJson(op.getOperator());
         if (type != OperationType.MIN_DATE && type != OperationType.MAX_DATE
                 && type != OperationType.MAX && type != OperationType.DISTINCT
-                && type != OperationType.RECORD_COUNT
-                && type != OperationType.HAS_MIXED_EMPTINESS_WITHIN_GROUP
-                && type != OperationType.IS_LAST_IN_GROUP)
+                && type != OperationType.RECORD_COUNT)
         {
             throw new RuleDefinitionException("`keep_missings` is not supported by operation `"
                     + op.getOperator() + "`; only the grouped operations consume it");
@@ -651,7 +645,6 @@ public final class OperationExpressionParser
         case "minuend_domain" -> op.setMinuendDomain(stringOf(value));
         case "minuend_match" -> op.setMinuendMatch(listOf(value));
         case "delimiter" -> op.setDelimiter(stringOf(value));
-        case "ordering" -> op.setOrdering(stringOf(value));
         case "group" -> op.setGroup(listOf(value));
         case "filter" -> op.setFilter(filterOf(value));
         case "codelists" -> op.setCodelists(listOf(value));
@@ -668,10 +661,6 @@ public final class OperationExpressionParser
         case "external_dictionary_type" -> op.setExternalDictionaryType(stringOf(value));
         case "dictionary_term_type" -> op.setDictionaryTermType(stringOf(value));
         case "case_sensitive" -> op.setCaseSensitive(boolOf(value));
-        case "external_dictionary_term_variable" -> op
-                .setExternalDictionaryTermVariable(stringOf(value));
-        case "dictionary_parent" -> op.setDictionaryParent(stringOf(value));
-        case "qualifying_any_populated" -> op.setQualifyingAnyPopulated(listOf(value));
         // EC-51 Half B. `stringOf` already rejects a list literal, which is the shape a PLURAL key
         // invites (`missing_values: ["", " "]`); validateMissingValues then rejects every value
         // that is not one of the two dispositions, so a number/boolean cannot slip through as its

@@ -27,8 +27,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * Additional coverage for {@link OperationExecutor} targeting under-tested operation types
- * (variable_value_count, has_mixed_emptiness_within_group, dataset_names, constant,
- * cross_dataset_variable_metadata, get_column_order_from_dataset variants) plus the
+ * (dataset_names, cross_dataset_variable_metadata, get_column_order_from_dataset variants) plus the
  * {@link OperationExecutor#isLibraryDependent} helper, the {@code LIBRARY_NOT_AVAILABLE} sentinel
  * rendering, and the {@code expandGroupRefs} variants for non-list collection and
  * unrecognised-shape branches.
@@ -74,7 +73,7 @@ class OperationExecutorMoreCoverageTest
         assertFalse(OperationExecutor.isLibraryDependent(OperationType.DISTINCT));
         assertFalse(OperationExecutor.isLibraryDependent(OperationType.MAX));
         assertFalse(OperationExecutor.isLibraryDependent(OperationType.EXTRACT_METADATA));
-        assertFalse(OperationExecutor.isLibraryDependent(OperationType.CONSTANT));
+        assertFalse(OperationExecutor.isLibraryDependent(OperationType.RECORD_COUNT));
     }
 
 
@@ -133,23 +132,6 @@ class OperationExecutorMoreCoverageTest
         Object result = OperationExecutorCalls.executeOne(op, table, NO_RESOLVER, null,
                 new HashMap<>());
         assertNull(result);
-    }
-
-    // -----------------------------------------------------------------------
-    // CONSTANT operator — returns the name field as a literal string
-    // -----------------------------------------------------------------------
-
-
-    @Test
-    void constant_returnsName()
-    {
-        IDataTable table = MockTable.of().col("X", "1").build();
-
-        Operation op = makeOp("$lit", "constant");
-        op.setName("SOME-LITERAL");
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
-        assertEquals("SOME-LITERAL", vars.get("$lit"));
     }
 
     // -----------------------------------------------------------------------
@@ -228,338 +210,6 @@ class OperationExecutorMoreCoverageTest
     }
 
     // -----------------------------------------------------------------------
-    // variable_value_count — fan-in across study datasets
-    // -----------------------------------------------------------------------
-
-
-    @Test
-    void variableValueCount_withInventory_accumulatesAcrossDatasets()
-    {
-        IDataTable ae = MockTable.of().col("USUBJID", "S01", "S02", "S01").name("AE").build();
-        IDataTable dm = MockTable.of().col("USUBJID", "S01", "S02", "S03").name("DM").build();
-
-        Set<String> available = new LinkedHashSet<>();
-        available.add("AE");
-        available.add("DM");
-
-        DatasetResolver.WithInventory inv = new DatasetResolver.WithInventory()
-        {
-
-            @Override
-            public IDataTable resolve(String n)
-            {
-                return "AE".equals(n) ? ae : "DM".equals(n) ? dm : null;
-            }
-
-
-            @Override
-            public Set<String> availableDatasets()
-            {
-                return available;
-            }
-        };
-
-        Operation op = makeOp("$counts", "variable_value_count");
-        op.setName("USUBJID");
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, inv);
-
-        @SuppressWarnings("unchecked")
-        Map<String, Long> counts = (Map<String, Long>) vars.get("$counts");
-        assertNotNull(counts);
-        // Dataset-presence counting (EC-30): a value counts ONCE per dataset family, however many
-        // rows carry it. S01 is in AE and DM = 2 ; S02 in AE and DM = 2 ; S03 in DM only = 1.
-        assertEquals(2L, counts.get("S01"));
-        assertEquals(2L, counts.get("S02"));
-        assertEquals(1L, counts.get("S03"));
-    }
-
-
-    @Test
-    void variableValueCount_noInventory_usesCurrentTable()
-    {
-        IDataTable table = MockTable.of().col("X", "a", "b", "a", "c", "").build();
-
-        Operation op = makeOp("$counts", "variable_value_count");
-        op.setName("X");
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
-
-        @SuppressWarnings("unchecked")
-        Map<String, Long> counts = (Map<String, Long>) vars.get("$counts");
-        assertNotNull(counts);
-        // Degraded mode: the current table is the only family, so every distinct value maps to 1
-        // even though "a" occurs twice. Empty string is skipped per collectDistinctValues.
-        assertEquals(1L, counts.get("a"));
-        assertEquals(1L, counts.get("b"));
-        assertEquals(1L, counts.get("c"));
-        assertFalse(counts.containsKey(""));
-    }
-
-
-    @Test
-    void variableValueCount_nullName_returnsEmpty()
-    {
-        IDataTable table = MockTable.of().col("X", "1").build();
-
-        Operation op = new Operation();
-        op.setId("$counts");
-        op.setOperator("variable_value_count");
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
-        @SuppressWarnings("unchecked")
-        Map<String, Long> counts = (Map<String, Long>) vars.get("$counts");
-        assertNotNull(counts);
-        assertTrue(counts.isEmpty());
-    }
-
-
-    @Test
-    void variableValueCount_missingColumn_returnsEmpty()
-    {
-        IDataTable table = MockTable.of().col("X", "1").build();
-
-        Operation op = makeOp("$counts", "variable_value_count");
-        op.setName("NOPE");
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
-        @SuppressWarnings("unchecked")
-        Map<String, Long> counts = (Map<String, Long>) vars.get("$counts");
-        assertNotNull(counts);
-        assertTrue(counts.isEmpty());
-    }
-
-
-    @Test
-    void variableValueCount_splitFamily_unionsMembers()
-    {
-        // LB1 + LB2 are one split family (both DOMAIN=LB). Python concatenates the members before
-        // taking .unique(); the pre-EC-30 Java scanned only the first member, so C was invisible.
-        IDataTable lb1 = MockTable.of().col("DOMAIN", "LB", "LB").col("LBTESTCD", "A", "B")
-                .name("LB1").build();
-        IDataTable lb2 = MockTable.of().col("DOMAIN", "LB").col("LBTESTCD", "C").name("LB2")
-                .build();
-
-        Map<String, Long> counts = runValueCount("LBTESTCD", inventoryOf("LB1", lb1, "LB2", lb2));
-
-        assertEquals(3, counts.size());
-        assertEquals(1L, counts.get("A"));
-        assertEquals(1L, counts.get("B"));
-        assertEquals(1L, counts.get("C"));
-    }
-
-
-    @Test
-    void variableValueCount_splitFamily_sharedValueCountsOnce()
-    {
-        // The family is unioned, not summed: A is present in both members but the family is ONE
-        // dataset for counting purposes. LB1 repeats A so the pre-EC-30 row-occurrence code would
-        // yield 2 (it dropped LB2 and counted LB1's two rows) — this now fails against the old
-        // impl.
-        IDataTable lb1 = MockTable.of().col("DOMAIN", "LB", "LB").col("LBTESTCD", "A", "A")
-                .name("LB1").build();
-        IDataTable lb2 = MockTable.of().col("DOMAIN", "LB").col("LBTESTCD", "A").name("LB2")
-                .build();
-
-        Map<String, Long> counts = runValueCount("LBTESTCD", inventoryOf("LB1", lb1, "LB2", lb2));
-
-        assertEquals(1, counts.size());
-        assertEquals(1L, counts.get("A"));
-    }
-
-
-    @Test
-    void variableValueCount_letterSuffixSplit_groupsByDataDrivenKey()
-    {
-        // FAAE/FACM are Findings About splits of FA (both DOMAIN=FA). The family key is the
-        // data-driven unsplit name, so they collapse to one family — a name-only key
-        // (SplitDatasetUtil.unsplitName) would see two and yield 2. Mirrors the rulespec
-        // EC-variable-count-split-family-dedup (renamed off the CORE-000358a stem by the
-        // 2026-09-19 CORE-family retirement), which pins the same key for variable_count.
-        IDataTable faae = MockTable.of().col("DOMAIN", "FA").col("FATESTCD", "OCCUR").name("FAAE")
-                .build();
-        IDataTable facm = MockTable.of().col("DOMAIN", "FA").col("FATESTCD", "OCCUR").name("FACM")
-                .build();
-
-        Map<String, Long> counts = runValueCount("FATESTCD",
-                inventoryOf("FAAE", faae, "FACM", facm));
-
-        assertEquals(1, counts.size());
-        assertEquals(1L, counts.get("OCCUR"));
-    }
-
-
-    @Test
-    void variableValueCount_domainlessDatasets_stayDistinctFamilies()
-    {
-        // DELIBERATE DEVIATION FROM UPSTREAM PYTHON (EC-30). SUPPAE and SUPPDM carry no DOMAIN, so
-        // upstream's `{dataset.domain: dataset}` dedup collapses both under the None key and counts
-        // only the last => X:1. Keying by unsplitNameFromData (SUPP + RDOMAIN) keeps them apart
-        // => X:2. Do NOT "fix" this toward upstream; the parity fork is aligned to Java whenever
-        // RDOMAIN resolves. SUPPAE repeats X so the pre-EC-30 row-occurrence code would yield 3.
-        IDataTable suppae = MockTable.of().col("RDOMAIN", "AE", "AE").col("QNAM", "X", "X")
-                .name("SUPPAE").build();
-        IDataTable suppdm = MockTable.of().col("RDOMAIN", "DM").col("QNAM", "X").name("SUPPDM")
-                .build();
-
-        Map<String, Long> counts = runValueCount("QNAM",
-                inventoryOf("SUPPAE", suppae, "SUPPDM", suppdm));
-
-        assertEquals(1, counts.size());
-        assertEquals(2L, counts.get("X"));
-    }
-
-
-    @Test
-    void variableValueCount_repeatedValueWithinOneDataset_countsOnce()
-    {
-        // Dataset presence, not row occurrences: three rows of "a" in one family is still 1.
-        IDataTable ae = MockTable.of().col("DOMAIN", "AE", "AE", "AE").col("X", "a", "a", "a")
-                .name("AE").build();
-
-        Map<String, Long> counts = runValueCount("X", inventoryOf("AE", ae, null, null));
-
-        assertEquals(1, counts.size());
-        assertEquals(1L, counts.get("a"));
-    }
-
-
-    @Test
-    void variableValueCount_missingAndEmptyValues_skipped()
-    {
-        // Both arms of the empty/missing skip: "" is a present-but-empty cell, null is
-        // missing-or-invalid. pandas .unique() would retain "" and NaN as keys; Java does not.
-        // "a" is repeated so the pre-EC-30 row-occurrence code would yield 2 for it.
-        IDataTable ae = MockTable.of().col("DOMAIN", "AE", "AE", "AE", "AE")
-                .col("X", "a", "a", "", null).name("AE").build();
-
-        Map<String, Long> counts = runValueCount("X", inventoryOf("AE", ae, null, null));
-
-        assertEquals(1, counts.size());
-        assertEquals(1L, counts.get("a"));
-        assertFalse(counts.containsKey(""));
-    }
-
-
-    @Test
-    void variableValueCount_wildcardTemplate_resolvedPerFamily()
-    {
-        // The -- template resolves against each family member's own DOMAIN cell, so AETESTCD and
-        // LBTESTCD are both read for the same authored name "--TESTCD". AE repeats P so the
-        // pre-EC-30 row-occurrence code would yield 3.
-        IDataTable ae = MockTable.of().col("DOMAIN", "AE", "AE").col("AETESTCD", "P", "P")
-                .name("AE").build();
-        IDataTable lb = MockTable.of().col("DOMAIN", "LB").col("LBTESTCD", "P").name("LB").build();
-
-        Operation op = makeOp("$counts", "variable_value_count");
-        op.setOriginalName("--TESTCD");
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae,
-                inventoryOf("AE", ae, "LB", lb));
-        @SuppressWarnings("unchecked")
-        Map<String, Long> counts = (Map<String, Long>) vars.get("$counts");
-
-        assertNotNull(counts);
-        assertEquals(1, counts.size());
-        assertEquals(2L, counts.get("P"));
-    }
-
-
-    @Test
-    void variableValueCount_columnAbsentInOneFamily_ignoresIt()
-    {
-        // The inventory variant of variableValueCount_missingColumn_returnsEmpty: a family without
-        // the target column contributes nothing rather than failing the whole operation. "a" is
-        // repeated so the pre-EC-30 row-occurrence code would yield 2.
-        IDataTable ae = MockTable.of().col("DOMAIN", "AE", "AE").col("X", "a", "a").name("AE")
-                .build();
-        IDataTable dm = MockTable.of().col("DOMAIN", "DM").col("OTHER", "z").name("DM").build();
-
-        Map<String, Long> counts = runValueCount("X", inventoryOf("AE", ae, "DM", dm));
-
-        assertEquals(1, counts.size());
-        assertEquals(1L, counts.get("a"));
-    }
-
-
-    @Test
-    void variableValueCount_unresolvableDataset_skipped()
-    {
-        // An inventory entry the resolver cannot resolve is skipped, not fatal. "a" is repeated so
-        // the pre-EC-30 row-occurrence code would yield 2.
-        IDataTable ae = MockTable.of().col("DOMAIN", "AE", "AE").col("X", "a", "a").name("AE")
-                .build();
-
-        Map<String, Long> counts = runValueCount("X", inventoryOf("AE", ae, "GONE", null));
-
-        assertEquals(1, counts.size());
-        assertEquals(1L, counts.get("a"));
-    }
-
-
-    /**
-     * Runs {@code variable_value_count} over {@code inv} for the given (already {@code --}-free)
-     * target column, returning the resulting map. The primary table is irrelevant on the inventory
-     * path, so the first resolvable dataset is used.
-     */
-    private static Map<String, Long> runValueCount(String targetColumn,
-            DatasetResolver.WithInventory inv)
-    {
-        Operation op = makeOp("$counts", "variable_value_count");
-        op.setName(targetColumn);
-
-        IDataTable primary = null;
-        for (String name : inv.availableDatasets())
-        {
-            primary = inv.resolve(name);
-            if (primary != null)
-            {
-                break;
-            }
-        }
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), primary, inv);
-        @SuppressWarnings("unchecked")
-        Map<String, Long> counts = (Map<String, Long>) vars.get("$counts");
-        assertNotNull(counts);
-        return counts;
-    }
-
-
-    /**
-     * A two-entry inventory preserving declaration order. Either slot may carry a {@code null}
-     * table (an unresolvable dataset); a {@code null} name drops the slot entirely.
-     */
-    private static DatasetResolver.WithInventory inventoryOf(String firstName, IDataTable first,
-            String secondName, IDataTable second)
-    {
-        Map<String, IDataTable> tables = new LinkedHashMap<>();
-        if (firstName != null)
-        {
-            tables.put(firstName, first);
-        }
-        if (secondName != null)
-        {
-            tables.put(secondName, second);
-        }
-        return new DatasetResolver.WithInventory()
-        {
-
-            @Override
-            public IDataTable resolve(String name)
-            {
-                return tables.get(name);
-            }
-
-
-            @Override
-            public Set<String> availableDatasets()
-            {
-                return tables.keySet();
-            }
-        };
-    }
-
-    // -----------------------------------------------------------------------
     // variable_count with name_pattern regex
     // -----------------------------------------------------------------------
 
@@ -615,14 +265,13 @@ class OperationExecutorMoreCoverageTest
     {
         // Set is a Collection but not a List → exercises the Collection branch.
         IDataTable table = MockTable.of().col("USUBJID", "S01", "S02", "S03")
-                .col("EXTRA", "a", "b", "c").build();
+                .col("EXTRA", "USUBJID", "USUBJID", "USUBJID").build();
 
-        Operation op1 = makeOp("$grouping", "constant");
-        op1.setName("USUBJID"); // first op returns "USUBJID" via constant
-
-        // We can't easily wire a Set via constant; use a Collection-producing distinct.
-        // Instead, simulate by setting a list group that includes a String reference.
-        // Test the String-scalar branch in expandGroupRefs.
+        // distinct over EXTRA yields the one-element collection ["USUBJID"] (wave 1 deleted the
+        // `constant` operation this used to read a scalar from), which expandGroupRefs expands
+        // element-wise.
+        Operation op1 = makeOp("$grouping", "distinct");
+        op1.setName("EXTRA");
         Operation op2 = makeOp("$count", "record_count");
         op2.setGroup(List.of("$grouping"));
 
@@ -705,7 +354,6 @@ class OperationExecutorMoreCoverageTest
         op.setGroup(List.of("$grp"));
         op.setOffset("RPRFDY");
         op.setReferenceExtreme("max");
-        op.setOrdering("SESEQ");
         op.setFilter(Map.of("DSDECOD", "RANDOMIZED"));
         op.setCodelists(List.of("CL1"));
         op.setLevel("PT");
@@ -720,9 +368,6 @@ class OperationExecutorMoreCoverageTest
         op.setExternalDictionaryType("meddra");
         op.setDictionaryTermType("PT");
         op.setCaseSensitive(Boolean.TRUE);
-        op.setExternalDictionaryTermVariable("AEDECOD");
-        op.setDictionaryParent("AESOC");
-        op.setQualifyingAnyPopulated(List.of("BASE", "BASEC"));
         op.setOriginalName("--STDTC");
 
         Map<String, Object> vars = new HashMap<>();
@@ -749,7 +394,6 @@ class OperationExecutorMoreCoverageTest
         assertEquals(",", copy.getDelimiter());
         assertEquals("RPRFDY", copy.getOffset());
         assertEquals("max", copy.getReferenceExtreme());
-        assertEquals("SESEQ", copy.getOrdering());
         assertEquals(Map.of("DSDECOD", "RANDOMIZED"), copy.getFilter());
         assertEquals(List.of("CL1"), copy.getCodelists());
         assertEquals("PT", copy.getLevel());
@@ -764,207 +408,7 @@ class OperationExecutorMoreCoverageTest
         assertEquals("meddra", copy.getExternalDictionaryType());
         assertEquals("PT", copy.getDictionaryTermType());
         assertTrue(copy.getCaseSensitive());
-        assertEquals("AEDECOD", copy.getExternalDictionaryTermVariable());
-        assertEquals("AESOC", copy.getDictionaryParent());
-        assertEquals(List.of("BASE", "BASEC"), copy.getQualifyingAnyPopulated());
         assertEquals("--STDTC", copy.getOriginalName());
-    }
-
-    // -----------------------------------------------------------------------
-    // has_mixed_emptiness_within_group
-    // -----------------------------------------------------------------------
-
-
-    @Test
-    void hasMixedEmptiness_mixedAndPureGroups()
-    {
-        IDataTable table = MockTable.of().col("USUBJID", "S01", "S01", "S02", "S02", "S03", "S03")
-                // S01 mixed: has value + empty ; S02 all populated ; S03 all empty
-                .col("VAL", "a", "", "b", "c", "", "").build();
-
-        Operation op = makeOp("$mixed", "has_mixed_emptiness_within_group");
-        op.setName("VAL");
-        op.setGroup(List.of("USUBJID"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
-        GroupedResult gr = (GroupedResult) vars.get("$mixed");
-        assertNotNull(gr);
-        assertEquals(true, gr.results().get("S01"));
-        assertEquals(false, gr.results().get("S02"));
-        assertEquals(false, gr.results().get("S03"));
-    }
-
-
-    @Test
-    void hasMixedEmptiness_nullName_returnsNull()
-    {
-        IDataTable table = MockTable.of().col("USUBJID", "S01").build();
-
-        Operation op = new Operation();
-        op.setId("$mixed");
-        op.setOperator("has_mixed_emptiness_within_group");
-        op.setGroup(List.of("USUBJID"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
-        assertFalse(vars.containsKey("$mixed"));
-    }
-
-
-    /**
-     * EC-45 §1.3(3) — no {@code group:} at all is the dataset-wide reading, not a malformed
-     * operation. It used to yield {@code null} (the operator was the only family-1 dispatch arm
-     * with no ungrouped sibling, and the {@code null} was that gap); it now partitions the table
-     * into one total group and answers that group's verdict. Here the single row is populated, so
-     * the group is homogeneous and the verdict is {@code false}.
-     */
-    @Test
-    void hasMixedEmptiness_nullGroup_isOneTotalGroup()
-    {
-        IDataTable table = MockTable.of().col("USUBJID", "S01").col("VAL", "a").build();
-
-        Operation op = makeOp("$mixed", "has_mixed_emptiness_within_group");
-        op.setName("VAL"); // no group set
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
-        GroupedResult gr = (GroupedResult) vars.get("$mixed");
-        assertNotNull(gr);
-        assertEquals(List.of(), gr.groupColumns());
-        assertEquals(List.of(false), List.copyOf(gr.results().values()));
-        assertEquals(false, gr.defaultForMissingKey());
-    }
-
-
-    /**
-     * EC-45 §1.3(3) — a dataset-wide group whose rows really are mixed still answers {@code true},
-     * so the widening reports rather than merely no-firing.
-     */
-    @Test
-    void hasMixedEmptiness_nullGroup_datasetWideMixedFires()
-    {
-        IDataTable table = MockTable.of().col("USUBJID", "S01", "S02").col("VAL", "a", "").build();
-
-        Operation op = makeOp("$mixed", "has_mixed_emptiness_within_group");
-        op.setName("VAL"); // no group set
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
-        GroupedResult gr = (GroupedResult) vars.get("$mixed");
-        assertNotNull(gr);
-        assertEquals(List.of(true), List.copyOf(gr.results().values()));
-    }
-
-
-    /**
-     * EC-45 §1.3(2) — an absent subject column is all-missing, all-missing is homogeneous, and
-     * homogeneous is NOT mixed: every group answers {@code false} instead of the operation
-     * collapsing to {@code null}. The same method already returned {@code false} for the identical
-     * fact reached through EC-23's qualifier filter; one method now gives one answer.
-     */
-    @Test
-    void hasMixedEmptiness_missingColumn_isNotMixed()
-    {
-        IDataTable table = MockTable.of().col("USUBJID", "S01", "S02").build();
-
-        Operation op = makeOp("$mixed", "has_mixed_emptiness_within_group");
-        op.setName("NOPE");
-        op.setGroup(List.of("USUBJID"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
-        GroupedResult gr = (GroupedResult) vars.get("$mixed");
-        assertNotNull(gr);
-        assertEquals(List.of(false, false), List.copyOf(gr.results().values()));
-        assertEquals(false, gr.defaultForMissingKey());
-    }
-
-
-    /**
-     * EC-45 §1.3(2) — {@code name} itself is still mandatory. A malformed operation with nothing to
-     * read is not a dataset-shape fact and keeps yielding {@code null}.
-     */
-    @Test
-    void hasMixedEmptiness_noNameStillNull()
-    {
-        IDataTable table = MockTable.of().col("USUBJID", "S01").build();
-
-        Operation op = makeOp("$mixed", "has_mixed_emptiness_within_group");
-        op.setGroup(List.of("USUBJID"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
-        assertFalse(vars.containsKey("$mixed"));
-    }
-
-
-    /**
-     * EC-23 — a scenario where the qualifier flips the verdict. S01: only one row qualifies (BASE
-     * populated) and its VAL is populated ⇒ NOT mixed; S02: two rows qualify (BASE then BASEC) with
-     * populated + empty VAL ⇒ mixed; S03: no row qualifies (BASE/BASEC blank) ⇒ empty scan ⇒ not
-     * mixed even though VAL is populated-then-empty across the group.
-     */
-    private static IDataTable ec23Table()
-    {
-        return MockTable.of().col("USUBJID", "S01", "S01", "S02", "S02", "S03", "S03")
-                .col("BASE", "x", "", "p", "", "", "").col("BASEC", "", "", "", "q", "", "")
-                .col("VAL", "a", "", "b", "", "z", "").build();
-    }
-
-
-    @Test
-    void hasMixedEmptiness_qualifierAbsent_scansAllRows()
-    {
-        IDataTable table = ec23Table();
-
-        Operation op = makeOp("$mixed", "has_mixed_emptiness_within_group");
-        op.setName("VAL");
-        op.setGroup(List.of("USUBJID"));
-        // No qualifier ⇒ every row scanned (today's behavior): each group is populated-then-empty.
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
-        GroupedResult gr = (GroupedResult) vars.get("$mixed");
-        assertNotNull(gr);
-        assertEquals(true, gr.results().get("S01"));
-        assertEquals(true, gr.results().get("S02"));
-        assertEquals(true, gr.results().get("S03"));
-    }
-
-
-    @Test
-    void hasMixedEmptiness_qualifierSet_skipsNonQualifyingRows()
-    {
-        IDataTable table = ec23Table();
-
-        Operation op = makeOp("$mixed", "has_mixed_emptiness_within_group");
-        op.setName("VAL");
-        op.setGroup(List.of("USUBJID"));
-        op.setQualifyingAnyPopulated(List.of("BASE", "BASEC"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
-        GroupedResult gr = (GroupedResult) vars.get("$mixed");
-        assertNotNull(gr);
-        // S01: only the BASE="x" row qualifies (VAL="a") ⇒ no unpopulated survivor ⇒ not mixed.
-        assertEquals(false, gr.results().get("S01"));
-        // S02: BASE="p" row (VAL="b") AND BASEC="q" row (VAL="") both qualify ⇒ mixed.
-        assertEquals(true, gr.results().get("S02"));
-        // S03: neither BASE nor BASEC populated on any row ⇒ all rows skipped ⇒ not mixed.
-        assertEquals(false, gr.results().get("S03"));
-    }
-
-
-    @Test
-    void hasMixedEmptiness_qualifierBlankOnly_countsAsUnpopulated()
-    {
-        // A whitespace-only qualifier cell does not qualify (strip().isEmpty()); the single VAL row
-        // is skipped, so the group is not mixed.
-        IDataTable table = MockTable.of().col("USUBJID", "S01", "S01").col("BASE", "  ", "")
-                .col("VAL", "a", "").build();
-
-        Operation op = makeOp("$mixed", "has_mixed_emptiness_within_group");
-        op.setName("VAL");
-        op.setGroup(List.of("USUBJID"));
-        op.setQualifyingAnyPopulated(List.of("BASE"));
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), table, NO_RESOLVER);
-        GroupedResult gr = (GroupedResult) vars.get("$mixed");
-        assertNotNull(gr);
-        assertEquals(false, gr.results().get("S01"));
     }
 
     // -----------------------------------------------------------------------
@@ -1278,79 +722,10 @@ class OperationExecutorMoreCoverageTest
     // -----------------------------------------------------------------------
 
 
-    @Test
-    void dy_calculationFromDmRfstdtc()
-    {
-        IDataTable ae = MockTable.of().col("USUBJID", "S01", "S01", "S02")
-                .col("AESTDTC", "2024-01-10", "2024-01-15", "2024-02-01").build();
-        IDataTable dm = MockTable.of().col("USUBJID", "S01", "S02")
-                .col("RFSTDTC", "2024-01-05", "2024-01-25").name("DM").build();
-
-        DatasetResolver resolver = name -> "DM".equals(name) ? dm : null;
-
-        Operation op = makeOp("$dy", "dy");
-        op.setName("AESTDTC");
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, resolver);
-        GroupedResult gr = (GroupedResult) vars.get("$dy");
-        assertNotNull(gr);
-        // Group cols default to [USUBJID, AESTDTC] because name was provided.
-        assertEquals(List.of("USUBJID", "AESTDTC"), gr.groupColumns());
-        // Three rows yield three (USUBJID, date) key entries each with a DY value.
-        assertEquals(3, gr.results().size());
-    }
-
-
-    @Test
-    void dy_withReferenceColumn_usesReferenceInsteadOfRfstdtc()
-    {
-        // T6: a `reference` on the dy operation recomputes the study day against a non-default DM
-        // column (RFXSTDTC) rather than RFSTDTC. DM carries both columns; only the referenced one
-        // must drive the result.
-        IDataTable ae = MockTable.of().col("USUBJID", "S01").col("AESTDTC", "2024-01-10").build();
-        // RFSTDTC=2024-01-05 would give dy=6; RFXSTDTC=2024-01-08 gives dy=3.
-        IDataTable dm = MockTable.of().col("USUBJID", "S01").col("RFSTDTC", "2024-01-05")
-                .col("RFXSTDTC", "2024-01-08").name("DM").build();
-        DatasetResolver resolver = name -> "DM".equals(name) ? dm : null;
-
-        Operation op = makeOp("$dy", "dy");
-        op.setName("AESTDTC");
-        op.setReference("RFXSTDTC");
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, resolver);
-        GroupedResult gr = (GroupedResult) vars.get("$dy");
-        assertNotNull(gr);
-        assertEquals(1, gr.results().size());
-        // 2024-01-10 − 2024-01-08 = 2 days, +1 (on/after the reference) = 3.
-        assertEquals(3L, gr.results().values().iterator().next());
-    }
-
-
-    @Test
-    void dy_bareOperation_stillUsesRfstdtc()
-    {
-        // Regression guard: a dy operation with no `reference` must keep computing against RFSTDTC,
-        // ignoring any other reference column present in DM (byte-identical legacy behaviour).
-        IDataTable ae = MockTable.of().col("USUBJID", "S01").col("AESTDTC", "2024-01-10").build();
-        IDataTable dm = MockTable.of().col("USUBJID", "S01").col("RFSTDTC", "2024-01-05")
-                .col("RFXSTDTC", "2024-01-08").name("DM").build();
-        DatasetResolver resolver = name -> "DM".equals(name) ? dm : null;
-
-        Operation op = makeOp("$dy", "dy");
-        op.setName("AESTDTC");
-        // No reference set → RFSTDTC (2024-01-05): 2024-01-10 − 2024-01-05 = 5, +1 = 6.
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, resolver);
-        GroupedResult gr = (GroupedResult) vars.get("$dy");
-        assertNotNull(gr);
-        assertEquals(6L, gr.results().values().iterator().next());
-    }
-
-
     @ParameterizedTest(name = "{0} with null name → result absent")
     @ValueSource(strings =
     {
-            "dy", "max_date", "min_date"
+            "max_date", "min_date"
     })
     void ungroupedDateOp_nullName_returnsNull(String operator)
     {
@@ -1362,81 +737,11 @@ class OperationExecutorMoreCoverageTest
         assertFalse(vars.containsKey("$d"));
     }
 
-
-    @Test
-    void dy_missingDateColumn_returnsNull()
-    {
-        IDataTable ae = MockTable.of().col("USUBJID", "S01").build();
-        Operation op = makeOp("$dy", "dy");
-        op.setName("AESTDTC"); // not in dataset
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, _ -> null);
-        assertFalse(vars.containsKey("$dy"));
-    }
-
-
-    @Test
-    void dy_noDmDataset_returnsNull()
-    {
-        IDataTable ae = MockTable.of().col("USUBJID", "S01").col("AESTDTC", "2024-01-10").build();
-        Operation op = makeOp("$dy", "dy");
-        op.setName("AESTDTC");
-
-        // DM resolver returns null → eval skips
-        DatasetResolver resolver = _ -> null;
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, resolver);
-        assertFalse(vars.containsKey("$dy"));
-    }
-
-
-    @Test
-    void dy_invalidDate_skipsRow()
-    {
-        IDataTable ae = MockTable.of().col("USUBJID", "S01", "S01")
-                // First date is parseable, second is too short to even parse the first 10 chars.
-                .col("AESTDTC", "2024-01-10", "abc").build();
-        IDataTable dm = MockTable.of().col("USUBJID", "S01").col("RFSTDTC", "2024-01-05").name("DM")
-                .build();
-        DatasetResolver resolver = name -> "DM".equals(name) ? dm : null;
-
-        Operation op = makeOp("$dy", "dy");
-        op.setName("AESTDTC");
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, resolver);
-        GroupedResult gr = (GroupedResult) vars.get("$dy");
-        assertNotNull(gr);
-        // One result (for the valid date row); the short string is skipped.
-        assertEquals(1, gr.results().size());
-    }
-
-
-    @Test
-    void dy_explicitGroup_usesProvidedGroupCols()
-    {
-        // When op.group is set, the dy dispatch uses it verbatim instead of defaulting to
-        // [USUBJID, name].
-        IDataTable ae = MockTable.of().col("USUBJID", "S01", "S01")
-                .col("STUDYID", "STUDY-A", "STUDY-A").col("AESTDTC", "2024-01-10", "2024-01-15")
-                .build();
-        IDataTable dm = MockTable.of().col("USUBJID", "S01").col("RFSTDTC", "2024-01-05").name("DM")
-                .build();
-        DatasetResolver resolver = name -> "DM".equals(name) ? dm : null;
-
-        Operation op = makeOp("$dy", "dy");
-        op.setName("AESTDTC");
-        op.setGroup(List.of("STUDYID", "USUBJID")); // explicit group
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, resolver);
-        GroupedResult gr = (GroupedResult) vars.get("$dy");
-        assertNotNull(gr);
-        assertEquals(List.of("STUDYID", "USUBJID"), gr.groupColumns());
-    }
-
     // -----------------------------------------------------------------------
     // max_date / min_date with grouping
     // -----------------------------------------------------------------------
 
-    // Note: ungrouped null-name behaviour for max_date / min_date / dy is covered by the
+    // Note: ungrouped null-name behaviour for max_date / min_date is covered by the
     // parameterised ungroupedDateOp_nullName_returnsNull test above.
 
 
@@ -1517,10 +822,6 @@ class OperationExecutorMoreCoverageTest
         Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
         assertFalse(vars.containsKey("$d"));
     }
-
-    // -----------------------------------------------------------------------
-    // has_mixed_emptiness_within_group: explicit empty-list group
-    // -----------------------------------------------------------------------
 
     // -----------------------------------------------------------------------
     // variable_count: WithInventory (named) and originalName paths
@@ -1712,26 +1013,6 @@ class OperationExecutorMoreCoverageTest
         Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), ae, inv);
         // Only AE counted; MISSING resolves to null and is skipped.
         assertEquals(1L, vars.get("$cnt"));
-    }
-
-
-    /**
-     * EC-45 §1.3(3) — an explicitly empty {@code group:} list means the same as no list: one total
-     * group over the whole table, not {@code null}.
-     */
-    @Test
-    void hasMixedEmptiness_emptyGroup_isOneTotalGroup()
-    {
-        IDataTable t = MockTable.of().col("USUBJID", "S01").col("X", "a").build();
-        Operation op = makeOp("$mixed", "has_mixed_emptiness_within_group");
-        op.setName("X");
-        op.setGroup(List.of());
-
-        Map<String, Object> vars = OperationExecutorCalls.execute(List.of(op), t, NO_RESOLVER);
-        GroupedResult gr = (GroupedResult) vars.get("$mixed");
-        assertNotNull(gr);
-        assertEquals(List.of(), gr.groupColumns());
-        assertEquals(List.of(false), List.copyOf(gr.results().values()));
     }
 
     // -----------------------------------------------------------------------

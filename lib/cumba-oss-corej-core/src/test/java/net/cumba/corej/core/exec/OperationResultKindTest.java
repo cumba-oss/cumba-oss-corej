@@ -96,31 +96,16 @@ class OperationResultKindTest
 
 
     @Test
-    void alwaysGroupedOperationsArePerRowWithoutAGroupKeyword()
+    void alwaysGroupedOperationsArePerRowWithoutAGroupKeyword() // row_max since wave 1 ported the
+                                                                // other two
     {
-        IDataTable t = MockTable.of().name("SE").col("USUBJID", "S1", "S1").col("PARAMCD", "A", "A")
-                .col("BASETYPE", "X", "").col("SESTDTC", "2020-01-01", "2020-02-01")
-                .col("RFSTDTC", "2020-01-01", "2020-01-01").build();
-        Operation mixed = op("has_mixed_emptiness_within_group");
-        mixed.setName("BASETYPE");
-        mixed.setGroup(List.of("PARAMCD"));
-        assertKindMatchesRuntime(mixed, t);
-        Operation last = op("is_last_in_group");
-        last.setGroup(List.of("USUBJID"));
-        last.setOrdering("SESTDTC");
-        assertKindMatchesRuntime(last, t);
         Operation rowMax = op("row_max");
         rowMax.setNamePattern("SESTDTC");
         assertEquals(ResultKind.PER_ROW, OperationExecutor.resultKind(rowMax));
-        for (OperationType type : List.of(OperationType.DY,
-                OperationType.VALID_EXTERNAL_DICTIONARY_VALUE,
-                OperationType.VALID_EXTERNAL_DICTIONARY_CODE,
-                OperationType.VALID_EXTERNAL_DICTIONARY_CODE_TERM_PAIR,
-                OperationType.VALID_EXTERNAL_DICTIONARY_HIERARCHY,
-                OperationType.DICTIONARY_HAS_DECODE,
+        for (OperationType type : List.of(OperationType.VALID_EXTERNAL_DICTIONARY_VALUE,
+                OperationType.VALID_EXTERNAL_DICTIONARY_CODE, OperationType.DICTIONARY_HAS_DECODE,
                 OperationType.INTERVAL_UNCERTAINTY_PRECISION_MISMATCH, OperationType.DATE_DIFF_DAYS,
-                OperationType.ROW_MIN, OperationType.SUPP_QNAM_PRESENT,
-                OperationType.SUPP_QNAM_VALUE))
+                OperationType.SUPP_QNAM_PRESENT))
         {
             assertEquals(ResultKind.PER_ROW, OperationExecutor.resultKind(op(type.getJsonValue())),
                     type.name());
@@ -184,8 +169,7 @@ class OperationResultKindTest
                 OperationExecutor.resultKind(op("cross_dataset_variable_metadata")));
         IDataTable t = MockTable.of().name("DM").col("USUBJID", "S1").col("AGE", "1").build();
         for (String operator : List.of("variable_count", "dataset_names",
-                "get_column_order_from_dataset", "variable_is_null", "dataset_domain",
-                "study_domains"))
+                "get_column_order_from_dataset", "variable_is_null", "study_domains"))
         {
             Operation o = op(operator);
             o.setName("AGE");

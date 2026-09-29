@@ -73,7 +73,10 @@ class OperationFieldRegistrationTest
                 fields.add(f);
             }
         }
-        assertTrue(fields.size() >= 35,
+        // The floor moved 35 -> 34 in wave 1 (PLAN-function-surface-wave1 D-W1-6): ordering,
+        // qualifying_any_populated, external_dictionary_term_variable and dictionary_parent were
+        // deleted with the callables that read them. Re-derive when a later wave deletes more.
+        assertTrue(fields.size() >= 34,
                 "expected Operation to carry its full field set, saw " + fields.size());
         return fields;
     }

@@ -135,7 +135,7 @@ class DomainScanTest
     {
         assertEquals(Domain.DATASET, infer("record_count(domain=\"DM\") > 0"));
         assertEquals(Domain.ROW, infer("record_count(group=[USUBJID]) > 1"));
-        assertEquals(Domain.ROW, infer("dy(AESTDTC) < 0"));
+        assertEquals(Domain.ROW, infer("dy(AESTDTC, DM.RFSTDTC) < 0"));
         assertEquals(Domain.ROW, infer(
                 "valid_external_dictionary_value(AEDECOD, external_dictionary_type=\"MEDDRA\") == false"));
     }
