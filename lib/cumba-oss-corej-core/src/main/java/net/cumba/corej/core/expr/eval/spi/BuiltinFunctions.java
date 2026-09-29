@@ -145,8 +145,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // rule that needed it was the only list-valued `len()` in the whole corpus, so there was
         // no precedent to inherit correctness from either.
         //
-        // ⚑ An empty / missing cell counts 0, following ScalarSemantics.isMissing — the same
-        // convention that makes len("") and len(missing) both 0. A present scalar counts 1.
+        // ⚑ An empty / missing cell counts 0, following ScalarSemantics.isMissing (the F3 fold):
+        // cardinality, so a missing has no identity to keep here — unlike len, where len("") is 0
+        // but len(«missing») is that missing (D85c). A present scalar counts 1.
         EvalFunction count = (run, args) ->
         {
             Vector x = args.get(0);
