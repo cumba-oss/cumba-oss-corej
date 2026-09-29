@@ -112,7 +112,8 @@ class AbsentColumnDatasetFoldTest
 
         RuleExecutionResult result = RuleRunnerCalls.execute(positive, absent());
         assertEquals(0, result.getViolationCount(),
-                "len(missing) is 0, the CDISC-CG0149 shape: dataset-decided FALSE");
+                "len(ABSENT) is 0 — an absent char column reads \"\" — the CDISC-CG0149 shape:"
+                        + " dataset-decided FALSE");
     }
 
 

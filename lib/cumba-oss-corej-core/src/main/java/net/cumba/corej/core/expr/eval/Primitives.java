@@ -1008,13 +1008,13 @@ public final class Primitives
      * a number, per cell, publishing {@link net.cumba.datatable.values.DataValueType#DOUBLE} — the
      * type the column-type gate interrogates, which is how an explicit {@code num()} satisfies the
      * numeric direction. Per-cell semantics are exactly
-     * {@link ScalarSemantics#comparisonLhsAsDouble}: a cell whose content does not parse (or a
-     * present {@code ""}) yields the computed <b>missing</b>, {@code MIS} — never an error (§4b F1:
-     * a mixed-content column such as {@code --STRESC} legitimately holds free text on some rows,
-     * and {@code num()} must tolerate exactly those rows) and never {@code null}. A <b>missing</b>
-     * cell yields that missing — its own cell, identity kept (D85c,
-     * {@code PLAN-missing-identity-nonstring-functions}): {@code num(.A)} is {@code .A}, so
-     * {@code abs(num(X))} keeps {@code X}'s {@code .A} too.
+     * {@link ScalarSemantics#comparisonLhsAsDouble} for a present cell (a missing one is handed
+     * through first): a cell whose content does not parse (or a present {@code ""}) yields the
+     * computed <b>missing</b>, {@code MIS} — never an error (§4b F1: a mixed-content column such as
+     * {@code --STRESC} legitimately holds free text on some rows, and {@code num()} must tolerate
+     * exactly those rows) and never {@code null}. A <b>missing</b> cell yields that missing — its
+     * own cell, identity kept (D85c, {@code PLAN-missing-identity-nonstring-functions}):
+     * {@code num(.A)} is {@code .A}, so {@code abs(num(X))} keeps {@code X}'s {@code .A} too.
      */
     public static Vector numConversion(Vector v, int rowCount)
     {

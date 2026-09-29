@@ -479,14 +479,15 @@ class NativeExprEvaluatorTest
 
 
     @Test
-    void lenIsZeroForEmptyAndMissing()
+    void lenGtZeroFalseForEmptyAndMissing()
     {
-        // function-examples.md "Length": len("")=0, len(«missing»)=0. The length operators
-        // longer_than/shorter_than lower to len(x) comparisons, so they evaluate "" literally.
+        // function-examples.md "Length": len("")=0; len(«missing») is that missing (D13/D85c), so
+        // `> 0` is false on it too. The length operators longer_than/shorter_than lower to len(x)
+        // comparisons, so they evaluate "" literally.
         IDataTable t = MockTable.of().col("X", "AB", "", (String) null).build();
 
-        // len(X) > 0: a blank/missing cell is length 0, NOT > 0, so it no longer fires (and is no
-        // longer "skipped"). Only the populated row fires.
+        // len(X) > 0: a blank cell is length 0 and a missing one's length is that missing — NOT
+        // > 0 either way, so neither fires (nor is "skipped"). Only the populated row fires.
         assertEquals(bits(0),
                 NativeExprEvaluator.evaluate(bin(BinOp.GT, call("len", ref("X")), num(0)), ctx(t)));
 
@@ -498,7 +499,8 @@ class NativeExprEvaluatorTest
         // longer_than 0 (len(X) > 0): empty/missing do not fire.
         assertEquals(bits(0), NativeExprEvaluator.evaluate(px("len(X) > 0"), ctx(t)));
 
-        // shorter_than 1 (len(X) < 1): empty/missing fire (length 0 < 1).
+        // shorter_than 1 (len(X) < 1): empty fires (length 0 < 1), and so does missing (a
+        // missing sorts below every value, D34 #5).
         assertEquals(bits(1, 2), NativeExprEvaluator.evaluate(px("len(X) < 1"), ctx(t)));
     }
 

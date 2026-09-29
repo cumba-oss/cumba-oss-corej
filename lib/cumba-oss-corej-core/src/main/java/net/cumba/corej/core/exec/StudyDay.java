@@ -35,10 +35,11 @@ import org.jspecify.annotations.Nullable;
  * either side answers that missing — the input's own cell, identity kept, two distinct identities
  * collapsing to {@code MIS} (D85c / D86a, {@link ArithmeticSemantics#combinedMissing} /
  * {@link ArithmeticSemantics#carrierCell}, {@code PLAN-missing-identity-nonstring-functions}) —
- * decided <b>before</b> the parse, so {@code dy(.A, "2020")} is {@code .A}. Only an all-present but
- * short or unparsable input answers the computed missing
- * ({@link ScalarSemantics#computedMissing()}, the {@code IDataValue} hand-through of
- * {@code PLAN-case-fold-missing-d36}); never a raw {@code MissingValue} payload and never
+ * decided <b>before</b> the parse: with {@code X = .A}, {@code dy(X, R)} is {@code .A} whatever
+ * present value {@code R} holds (even an incomplete date); with {@code X = .A, R = .B} it is the
+ * plain missing, {@code MIS}. Only an all-present but short or unparsable input answers the
+ * computed missing ({@link ScalarSemantics#computedMissing()}, the {@code IDataValue} hand-through
+ * of {@code PLAN-case-fold-missing-d36}); never a raw {@code MissingValue} payload and never
  * {@code null}. The result renders as the retired operation's {@code Long} did
  * ({@code $value_dy_algorithm=1}, not {@code 1.0}).
  * </p>
@@ -118,7 +119,8 @@ public final class StudyDay
 
     private static String text(IDataValue cell)
     {
-        return cell.isMissingOrInvalid() ? "" : cell.getValueAsString();
+        // The caller has already handed any missing cell through (D85c), so this one is present.
+        return cell.getValueAsString();
     }
 
 }

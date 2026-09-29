@@ -188,7 +188,7 @@ class CoalesceEmptySemanticsTest
         // ⚠ TypedValue.isMissing, NOT Vector.isMissing: the vector fold is also true for "", so
         // it could not tell a genuine missing result from an "" one (D34: missing != "").
         assertSame(MissingValue.MIS, co.value(1).missing(),
-                "all empty -> a genuine missing, not \"\": B's MIS, the one missing operand (D86a)");
+                "all three \"\" -> the computed MIS: a genuine missing, not \"\"");
     }
 
 

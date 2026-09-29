@@ -85,8 +85,8 @@ class StudyDayTest
      * D85c / D86a ({@code PLAN-missing-identity-nonstring-functions}): a missing input's own cell
      * is the answer — identity kept, two distinct identities collapse to {@code MIS} — and the
      * identity is decided <b>before</b> the parse, as {@code arithmeticCell} and {@code substring}
-     * do: {@code dy(.A, "2020")} is {@code .A} although the reference is short. Only an all-present
-     * but short or unparsable input gives the computed {@code MIS}.
+     * do: with {@code X = .A}, {@code dy(X, R)} is {@code .A} although {@code R} holds a short
+     * date. Only an all-present but short or unparsable input gives the computed {@code MIS}.
      */
     @Test
     void aMissingInputKeepsItsIdentityDecidedBeforeTheParse()

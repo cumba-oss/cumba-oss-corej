@@ -5,6 +5,7 @@ import java.util.BitSet;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.regex.Pattern;
 import net.cumba.corej.core.exec.ArithmeticSemantics;
 import net.cumba.corej.core.exec.EvaluationContext;
@@ -30,6 +31,7 @@ import net.cumba.corej.core.expr.typed.ExprType.Primitive;
 import net.cumba.corej.core.expr.typed.ExprType.Unknown;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.values.DataValueType;
+import net.cumba.datatable.values.IDataValue;
 import net.cumba.datatable.values.MissingValue;
 import org.jspecify.annotations.Nullable;
 
@@ -192,16 +194,19 @@ public final class BuiltinFunctions implements FunctionProvider
             Vector x = args.get(0);
             return new ComputedVector(run.rowCount(), DataValueType.LONG, row ->
             {
+                // One carrier per row: every test below reads this tv's cell, never x again (a
+                // ColumnVector builds a fresh carrier on each value(row) call).
                 TypedValue tv = x.value(row);
+                IDataValue cell = tv.cell();
                 if (tv.missing() != null)
                 {
-                    return tv.cell();
+                    return cell;
                 }
-                if (x.isMissing(row))
+                if (ScalarSemantics.isMissing(cell))
                 {
                     return ScalarSemantics.computedMissing();
                 }
-                String s = x.asString(row);
+                String s = cell.getValueAsString();
                 return s.isEmpty() ? ScalarSemantics.computedMissing() : (long) s.codePointAt(0);
             });
         });
@@ -797,7 +802,7 @@ public final class BuiltinFunctions implements FunctionProvider
             {
                 return tv.cell();
             }
-            Double d = numeric(x, row);
+            Double d = numeric(tv);
             if (d == null)
             {
                 return ScalarSemantics.computedMissing();
@@ -832,6 +837,23 @@ public final class BuiltinFunctions implements FunctionProvider
 
 
     /**
+     * {@link #numeric(Vector, int)} over a carrier the caller already holds: the same F3 fold and
+     * {@code NaN} test on {@code tv}'s cell, so a per-row caller that has read {@code value(row)}
+     * once does not build the carrier again (a {@code ColumnVector} allocates one per call).
+     */
+    private static @Nullable Double numeric(TypedValue tv)
+    {
+        IDataValue cell = tv.cell();
+        if (ScalarSemantics.isMissing(cell))
+        {
+            return null;
+        }
+        double d = cell.getValueAsDouble();
+        return Double.isNaN(d) ? null : d;
+    }
+
+
+    /**
      * Per-row {@code split_by(x, delimiter)}: the token list from splitting {@code x} on the
      * <em>literal</em> {@code delimiter} (quoted so it is never a regex), keeping trailing empty
      * tokens — bit-for-bit pandas {@code Series.str.split(delimiter)} (Python reference engine). A
@@ -844,15 +866,16 @@ public final class BuiltinFunctions implements FunctionProvider
     private static Object splitBy(Vector x, String delimiter, int row)
     {
         TypedValue tv = x.value(row);
+        IDataValue cell = tv.cell();
         if (tv.missing() != null)
         {
-            return tv.cell();
+            return cell;
         }
-        if (x.isMissing(row))
+        if (ScalarSemantics.isMissing(cell))
         {
             return ScalarSemantics.computedMissing();
         }
-        String s = x.asString(row);
+        String s = cell.getValueAsString();
         if (delimiter.isEmpty())
         {
             return List.of(s);
@@ -909,11 +932,13 @@ public final class BuiltinFunctions implements FunctionProvider
         return new ComputedVector(rowCount, DataValueType.STRING, row ->
         {
             TypedValue tv = x.value(row);
+            IDataValue cell = tv.cell();
             if (tv.missing() != null)
             {
-                return tv.cell();
+                return cell;
             }
-            String bound = x.isMissing(row) ? null : IsoDateComparison.bound(x.asString(row), high);
+            String bound = ScalarSemantics.isMissing(cell) ? null
+                    : IsoDateComparison.bound(cell.getValueAsString(), high);
             return bound != null ? bound : ScalarSemantics.computedMissing();
         });
     }
@@ -1033,15 +1058,16 @@ public final class BuiltinFunctions implements FunctionProvider
         return new ComputedVector(rowCount, DataValueType.LONG, row ->
         {
             TypedValue tv = x.value(row);
+            IDataValue cell = tv.cell();
             if (tv.missing() != null)
             {
-                return tv.cell();
+                return cell;
             }
-            if (x.isMissing(row))
+            if (ScalarSemantics.isMissing(cell))
             {
                 return ScalarSemantics.computedMissing();
             }
-            Integer v = isoComponent(x.asString(row), component);
+            Integer v = isoComponent(cell.getValueAsString(), component);
             return v == null ? ScalarSemantics.computedMissing() : (long) (int) v;
         });
     }
@@ -1163,25 +1189,28 @@ public final class BuiltinFunctions implements FunctionProvider
      * ({@link TypedValue#missing()} non-null; a present {@code ""} contributes no identity): one
      * distinct identity ⇒ that operand's own cell, two or more ⇒ {@code MIS}, none (every operand
      * {@code ""}) ⇒ the computed {@code MIS} ({@code PLAN-missing-identity-nonstring-functions}).
-     * So {@code coalesce(.A, "")} is {@code .A}, {@code coalesce(.A, .B)} is {@code MIS}.
+     * So {@code coalesce(.A, "")} is {@code .A}, {@code coalesce(.A, .B)} is {@code MIS}. Never
+     * {@code null}: a kept operand is present, so its resolved payload is non-null.
      */
-    private static @Nullable Object coalesce(Vector a, Vector b, @Nullable Vector c, int row)
+    private static Object coalesce(Vector a, Vector b, @Nullable Vector c, int row)
     {
-        if (!a.isMissing(row))
-        {
-            return a.value(row).resolved();
-        }
-        if (!b.isMissing(row))
-        {
-            return b.value(row).resolved();
-        }
-        if (c != null && !c.isMissing(row))
-        {
-            return c.value(row).resolved();
-        }
+        // Each operand's carrier is read once; ScalarSemantics.isMissing over its cell is exactly
+        // Vector.isMissing (the CO1 skip predicate), without building the carrier a second time.
         TypedValue ta = a.value(row);
+        if (!ScalarSemantics.isMissing(ta.cell()))
+        {
+            return Objects.requireNonNull(ta.resolved());
+        }
         TypedValue tb = b.value(row);
+        if (!ScalarSemantics.isMissing(tb.cell()))
+        {
+            return Objects.requireNonNull(tb.resolved());
+        }
         TypedValue tc = c == null ? null : c.value(row);
+        if (tc != null && !ScalarSemantics.isMissing(tc.cell()))
+        {
+            return Objects.requireNonNull(tc.resolved());
+        }
         MissingValue missing = ArithmeticSemantics.combinedMissing(ta, tb, tc);
         return missing != null ? ArithmeticSemantics.carrierCell(missing, ta, tb, tc)
                 : ScalarSemantics.computedMissing();

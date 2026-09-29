@@ -28,8 +28,8 @@ import org.opentest4j.AssertionFailedError;
  * <b>verdict</b> level ({@code PLAN-missing-identity-nonstring-functions} §3 evidence (ii) and
  * (iii)): {@code len}, {@code char}, {@code abs} / {@code round} / {@code floor} / {@code ceil},
  * {@code num}, {@code year} / {@code month} / {@code day}, {@code earliest_possible} /
- * {@code latest_possible}, {@code coalesce} and {@code dy} answer a missing input's <b>own</b>
- * missing — {@code .A} stays {@code .A} — never a fresh {@code MIS}.
+ * {@code latest_possible}, {@code coalesce}, {@code dy} and {@code colref} answer a missing input's
+ * <b>own</b> missing — {@code .A} stays {@code .A} — never a fresh {@code MIS}.
  *
  * <p>
  * Over {@code X, Y ∈ {p1, p2, MIS, .A, .B}} (a 5 × 5 grid), with {@code p1 < p2} two present inputs
@@ -118,15 +118,19 @@ class NonStringFunctionMissingIdentityTest
                 new Case("earliest_possible(%s)", DataValueType.STRING, "2021-01-01", "2021-01-02"),
                 new Case("latest_possible(%s)", DataValueType.STRING, "2021-01-01", "2021-01-02"),
                 new Case("coalesce(%s, Z)", DataValueType.STRING, "a", "b"),
-                new Case("dy(%s, R)", DataValueType.STRING, "2021-01-02", "2021-01-03"))
-                .map(Arguments::of);
+                new Case("dy(%s, R)", DataValueType.STRING, "2021-01-02", "2021-01-03"),
+                // The first hop names a DOUBLE column (IDVAR-style): colref(X) reads VX, whose
+                // cells are the grid values; the identity is the second hop's (TR §E).
+                new Case("colref(%s)", DataValueType.DOUBLE, 1.5, 2.5)).map(Arguments::of);
     }
 
 
     /**
      * {@code X} at row {@code r} is {@code domain[r / 5]}, {@code Y} is {@code domain[r % 5]};
      * {@code Z} is all {@code ""} (the skipped second operand of {@code coalesce}) and {@code R}
-     * the constant reference date of {@code dy}.
+     * the constant reference date of {@code dy}. For {@code colref}, {@code X} / {@code Y} are
+     * first-hop columns naming {@code VX} / {@code VY} on every row, and those DOUBLE columns carry
+     * the grid values.
      */
     static IDataTable grid(Case c)
     {
@@ -143,6 +147,14 @@ class NonStringFunctionMissingIdentityTest
             ref[r] = "2021-01-01";
         }
         MissingCellTables t = MissingCellTables.of("G");
+        if (isColref(c))
+        {
+            Object[] nameX = new Object[N * N];
+            Object[] nameY = new Object[N * N];
+            java.util.Arrays.fill(nameX, "VX");
+            java.util.Arrays.fill(nameY, "VY");
+            return t.str("X", nameX).str("Y", nameY).dbl("VX", x).dbl("VY", y).build();
+        }
         switch (c.type())
         {
         case DOUBLE -> t.dbl("X", x).dbl("Y", y);
@@ -208,8 +220,26 @@ class NonStringFunctionMissingIdentityTest
     /** Whether {@code f}'s result is text (a STRING vector), not a number. */
     private static boolean isTextualResult(Case c)
     {
+        // colref is not one: its present second hop is the named DOUBLE cell's text
+        // (ScalarSemantics.resolvedString), which the plain `<` reads as the number it spells.
         return c.call().startsWith("earliest_possible") || c.call().startsWith("latest_possible")
                 || c.call().startsWith("coalesce");
+    }
+
+
+    private static boolean isColref(Case c)
+    {
+        return c.call().startsWith("colref");
+    }
+
+
+    /**
+     * The column holding the grid values behind operand {@code operand} — the operand itself, or
+     * for {@code colref} the column its first hop names — which the raw controls compare.
+     */
+    private static String raw(Case c, String operand)
+    {
+        return isColref(c) ? "V" + operand : operand;
     }
 
 
@@ -231,7 +261,8 @@ class NonStringFunctionMissingIdentityTest
         Object[] domain = c.domain();
         BitSet expected = rowsWhere(domain, (x, y) -> rank(domain, x) == rank(domain, y));
         assertBaselineFires(expected);
-        assertEquals(expected, eval("X == Y", t), "control: the raw column equality");
+        assertEquals(expected, eval(raw(c, "X") + " == " + raw(c, "Y"), t),
+                "control: the raw column equality");
         BitSet actual = eval(c.on("X") + " == " + c.on("Y"), t);
         assertEquals(expected, actual,
                 c + ": f(X) == f(Y) iff X and Y are the same value — a missing input's result is"
@@ -253,6 +284,7 @@ class NonStringFunctionMissingIdentityTest
         // present-value behaviour this plan does not touch, so the one present-present pair is
         // expected false for them; every pair involving a missing is the D34 #5 order under test.
         boolean textual = isTextualResult(c);
+        BitSet order = rowsWhere(domain, (x, y) -> rank(domain, x) < rank(domain, y));
         BitSet expected = rowsWhere(domain, (x, y) -> rank(domain, x) < rank(domain, y)
                 && !(textual && !(x instanceof MissingValue) && !(y instanceof MissingValue)));
         assertBaselineFires(expected);
@@ -260,8 +292,10 @@ class NonStringFunctionMissingIdentityTest
         {
             // A raw order comparison over a Char column is a column-type mismatch (the gate), so
             // the engine-side control exists for the numeric columns only; the reference itself is
-            // the engine-independent rank either way.
-            assertEquals(expected, eval("X < Y", t), "control: the raw column order");
+            // the engine-independent rank either way (the full order: the raw columns are
+            // numeric, so their present pair orders even where f's textual result would not).
+            assertEquals(order, eval(raw(c, "X") + " < " + raw(c, "Y"), t),
+                    "control: the raw column order");
         }
         BitSet actual = eval(c.on("X") + " < " + c.on("Y"), t);
         assertEquals(expected, actual,
@@ -347,12 +381,53 @@ class NonStringFunctionMissingIdentityTest
     }
 
 
+    /**
+     * The production shape of a SAS special missing: a DOUBLE cell whose quiet-{@code NaN} payload
+     * carries the marker byte (a {@code DataValueDouble}, not a {@code DataValueMissing}, which is
+     * what the grid's {@link MissingCellTables} cells are). {@code abs}, {@code num} and
+     * {@code coalesce} hand that cell's identity through as well; a payload-less {@code NaN} is the
+     * plain {@code MIS}.
+     */
+    @Test
+    void aNanEncodedDoubleSourceKeepsItsIdentity()
+    {
+        IDataTable t = MissingCellTables.of("T").dbl("X", 1.5, MissingValue.MIS_A.asDouble(),
+                MissingValue.MIS_B.asDouble(), Double.NaN).str("Z", "", "", "", "").build();
+        Vector source = VectorLayerTest.col(t, "X");
+        // Row r + 1 carries identities[r]; row 0 is present.
+        MissingValue[] identities =
+        {
+                MissingValue.MIS_A, MissingValue.MIS_B, MissingValue.MIS
+        };
+        for (int r = 0; r < identities.length; r++)
+        {
+            assertFalse(source.value(r + 1).cell().getValue() instanceof MissingValue,
+                    "row " + (r + 1) + ": the fixture cell is a NaN-encoded double");
+            assertSame(identities[r], source.value(r + 1).missing(), "control: the source decodes");
+        }
+        for (String call : List.of("abs(X)", "num(X)", "coalesce(X, Z)"))
+        {
+            Vector result = ExprCompiler.evaluateValueExpression(CheckExpressionParser.parse(call),
+                    EvaluationContext.builder().table(t).build());
+            assertNotNull(result, call);
+            assertNull(result.value(0).missing(),
+                    call + ": a present input gives a present result");
+            for (int r = 0; r < identities.length; r++)
+            {
+                assertSame(identities[r], result.value(r + 1).missing(), call + " row " + (r + 1)
+                        + ": the NaN-encoded " + identities[r] + " is carried");
+            }
+        }
+    }
+
+
     /** The present inputs the grid relies on really are present (a non-vacuity control). */
     @Test
     void theGridsPresentInputsArePresent()
     {
         List<Arguments> all = cases().toList();
-        assertEquals(21, all.size(), "every function of §2 with a scalar result is in the grid");
+        assertEquals(22, all.size(),
+                "every function of §2 with a scalar result is in the grid, colref included");
         for (Arguments a : all)
         {
             Case c = (Case) a.get()[0];

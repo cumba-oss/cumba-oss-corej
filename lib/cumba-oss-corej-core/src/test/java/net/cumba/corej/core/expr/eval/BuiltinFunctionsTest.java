@@ -294,21 +294,30 @@ class BuiltinFunctionsTest
 
 
     @Test
-    void colrefKeepsTheMissingIdentityOfEitherHop()
+    void colrefKeepsTheMissingIdentityOfTheFirstHop()
     {
-        // Rows 0-2: the FIRST hop is missing -> that missing. Rows 4-6: the first hop names N and
-        // N's cell on that row is missing -> the named column's own missing (a column read keeps
-        // its cell's identity, TR §E). Row 3 is the present happy path.
+        // Rows 0-2: the FIRST hop is missing -> that missing, its own cell (D85c). Row 3 is the
+        // present happy path. One test per hop, so each hop's hand-through has its own red.
         IDataTable t = MissingCellTables.of("T")
-                .str("IDVAR", MissingValue.MIS, MissingValue.MIS_A, MissingValue.MIS_B, "N", "N",
-                        "N", "N")
-                .dbl("N", 1.0, 1.0, 1.0, 2.0, MissingValue.MIS, MissingValue.MIS_A,
-                        MissingValue.MIS_B)
-                .build();
-        Vector r = valueOn("colref", t, 7, col(t, "IDVAR"));
+                .str("IDVAR", MissingValue.MIS, MissingValue.MIS_A, MissingValue.MIS_B, "N")
+                .dbl("N", 1.0, 1.0, 1.0, 2.0).build();
+        Vector r = valueOn("colref", t, 4, col(t, "IDVAR"));
         assertIdentityRows(r, 0);
         assertFalse(r.value(3).isMissing(), "a present second hop is present");
-        assertIdentityRows(r, 4);
+    }
+
+
+    @Test
+    void colrefKeepsTheMissingIdentityOfTheSecondHop()
+    {
+        // Rows 1-3: the first hop names N and N's cell on that row is missing -> the named
+        // column's own missing (a column read keeps its cell's identity, TR §E). Row 0 is the
+        // present happy path.
+        IDataTable t = MissingCellTables.of("T").str("IDVAR", "N", "N", "N", "N")
+                .dbl("N", 2.0, MissingValue.MIS, MissingValue.MIS_A, MissingValue.MIS_B).build();
+        Vector r = valueOn("colref", t, 4, col(t, "IDVAR"));
+        assertFalse(r.value(0).isMissing(), "a present second hop is present");
+        assertIdentityRows(r, 1);
     }
 
 
@@ -555,7 +564,8 @@ class BuiltinFunctionsTest
     @Test
     void charFirstCodePoint()
     {
-        // char(x): the Unicode code point of the first character; "" / missing ⇒ missing.
+        // char(x): the Unicode code point of the first character; "" ⇒ the computed MIS; a
+        // missing input ⇒ that missing (D85c).
         // Row 0 "A" → 65; row 1 " abc" → 32 (leading space, the <= 32 boundary); row 2 "\tX" → 9
         // (a leading control char, also <= 32); row 3 "éxy" → 233 (multi-byte first char, U+00E9).
         IDataTable t = MockTable.of().col("X", "A", " abc", "\tX", "éxy", "", (String) null)
@@ -817,7 +827,7 @@ class BuiltinFunctionsTest
         // A missing/empty first hop yields a missing result (mirrors ValueResolver).
         IDataTable t = MockTable.of().col("IDVAR", (String) null).col("AESEQ", "1").build();
         Vector r = valueOn("colref", t, 1, col(t, "IDVAR"));
-        assertMissing(r, 0, MissingValue.MIS); // that missing (D85c; .A: colrefKeeps…Identity)
+        assertMissing(r, 0, MissingValue.MIS); // that missing (D85c; .A: colrefKeeps…OfTheFirstHop)
     }
 
 
