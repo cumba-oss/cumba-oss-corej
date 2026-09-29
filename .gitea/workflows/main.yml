@@ -64,6 +64,26 @@ jobs:
       #   pmd.failOnViolation          - fail on any PMD finding
       #   spotbugs.failOnError         - fail on any SpotBugs finding
       MAVEN_CI_GATES: -Dmaven.compiler.failOnWarning=true -Dspotless.check=true -Dpmd.failOnViolation=true -Dspotbugs.failOnError=true
+
+      # The REAL CDISC pickle corpus, the seed input of the unified metadata
+      # store (PLAN-ci-pickle-corpus-engine). Four test classes of
+      # cumba-oss-corej-core read it through RealCorpusLocator:
+      # StoreFieldManifestTest walks every real IG / model / newest-CT document
+      # and reds on a source key that is neither a stored field nor a recorded
+      # exclusion - a check that is only meaningful against the real documents,
+      # synthetic fixtures confirm themselves; StoreSeederRealDataConformanceTest,
+      # StoreMetadataProviderFactoryAdamTest and PickleIgModelLinkGuardTest skip
+      # without it. Same steps and ref as cumba-oss-corej-rules.
+      # RealCorpusLocator throws when this names a non-directory, so a broken
+      # fetch can never fall back silently to the synthetic walk.
+      #
+      # JOB level, not per-step: Pitest forks its own test runs and must see it
+      # too. A literal path outside the checkout - `~` would not expand here,
+      # and Java reads the value verbatim.
+      CDISC_PICKLE_CACHE_DIR: /tmp/cdisc-pickle-cache
+      # The pinned PUBLIC upstream ref the pickles are fetched from; also keys
+      # the cache restore/save pair, so bumping the ref refetches cold.
+      CDISC_PICKLE_REF: v0.16.0
     steps:
 
       - name: Checkout
@@ -85,6 +105,45 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+
+      # The pickle cache must exist BEFORE the test pass reads it (job env
+      # above). Keyed on the pinned upstream ref with NO restore-keys - a ref
+      # bump must refetch cold, never mix two refs' pickles in one directory.
+      # Saved right after a successful fetch (below).
+      - name: Restore CDISC pickle cache
+        id: pickle-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CDISC_PICKLE_CACHE_DIR }}
+          key: ${{ runner.os }}-cdisc-pickles-${{ env.CDISC_PICKLE_REF }}
+
+      # Cache miss -> fetch from the PUBLIC upstream, with the same archive URL
+      # shape and file filter as HttpArchivePickleSource. An EXPLICIT step,
+      # never a lazy fetch inside a test - a miss must be visible here, not as
+      # an unexplained slow gate. tar exits non-zero if any pattern matches
+      # nothing, so a ref that lacks the pickles fails THIS step, by name.
+      - name: Fetch CDISC pickle cache
+        id: pickle-fetch
+        if: ${{ steps.pickle-cache.outputs.cache-hit != 'true' }}
+        run: |
+          mkdir -p "${CDISC_PICKLE_CACHE_DIR}"
+          curl -fsSL --retry 3 \
+              "https://github.com/cdisc-org/cdisc-rules-engine/archive/${CDISC_PICKLE_REF}.tar.gz" \
+              | tar -xz -C "${CDISC_PICKLE_CACHE_DIR}" --strip-components=3 --wildcards \
+                  '*/resources/cache/standards_details.pkl' \
+                  '*/resources/cache/standards_models.pkl' \
+                  '*/resources/cache/*ct-*.pkl'
+          echo "pickles: $(ls "${CDISC_PICKLE_CACHE_DIR}" | wc -l) files, $(du -sh "${CDISC_PICKLE_CACHE_DIR}" | cut -f1)"
+
+      # Saved right after a SUCCESSFUL fetch only: a cache hit skips the fetch
+      # (and a save under the same key would no-op), and a failed fetch must
+      # never persist a partial directory under the key every later run trusts.
+      - name: Save CDISC pickle cache
+        if: ${{ steps.pickle-fetch.outcome == 'success' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CDISC_PICKLE_CACHE_DIR }}
+          key: ${{ runner.os }}-cdisc-pickles-${{ env.CDISC_PICKLE_REF }}
 
       - name: Show toolchain
         run: |
