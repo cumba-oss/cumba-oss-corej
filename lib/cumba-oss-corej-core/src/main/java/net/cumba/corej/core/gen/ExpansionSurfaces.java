@@ -4,34 +4,41 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.SequencedMap;
 import net.cumba.corej.core.model.Binding;
 import net.cumba.corej.core.model.CheckCondition;
 import net.cumba.corej.core.model.CheckConditionAll;
 import net.cumba.corej.core.model.CheckConditionAny;
 import net.cumba.corej.core.model.CheckConditionExpression;
 import net.cumba.corej.core.model.CheckConditionNot;
+import net.cumba.corej.core.model.LevelCheck;
 import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.corej.core.model.Requirements;
 import net.cumba.corej.core.model.Rule;
+import net.cumba.corej.core.model.Scope;
 import net.cumba.corej.core.model.VariableRequirement;
+import net.cumba.datatable.report.Severity;
 import org.jspecify.annotations.Nullable;
 
 /**
  * The rule surfaces a declared expansion token is read from — in one place, so the loader gates G2
- * / G3 ({@code RulePackageLoader}) and a reviewer can see exactly what is gated
+ * / G3 / R6 ({@code RulePackageLoader}) and a reviewer can see exactly what is gated
  * ({@code PLAN-expansion-token-delimiters} S5).
  *
  * <p>
  * The list is exactly what {@link TokenExpander#buildExpansion} substitutes: the authored source of
- * every Check level and of the Precondition, the authored {@code Bindings} expressions,
- * Description, {@code Outcome.Message}, {@code Output_Variables}, every text node of each
- * {@code Match_Datasets} entry's JSON tree (walked as {@code substituteTree} walks it: Name, Keys
- * on both sides, Filter, Join_As_String, Join_Type), {@code Grouping.Variables} and
- * {@code Grouping_Variables} — plus {@code Requirements.Variables}, which is not substituted but is
- * where gate R6 looks. Prose that is never substituted (ExecutabilityHint, Source, Standards,
- * Authorities, Scope, Core) is not a surface, so prose like {@code R&D} there is never gated.
- * {@code ExpansionSurfacesTest} keeps this in lockstep with the expander: a rule with a distinct
- * token in every substituted field must yield every one.
+ * every Check level and of the Precondition, each level's own {@code Message}, the authored
+ * {@code Bindings} expressions, Description, {@code Outcome.Message}, {@code Output_Variables},
+ * every text node of each {@code Match_Datasets} entry's JSON tree (walked as
+ * {@code substituteTree} walks it: Name, Keys on both sides, Filter, Join_As_String, Join_Type),
+ * {@code Grouping.Variables} and {@code Grouping_Variables} — plus the surfaces that are gated but
+ * copied verbatim ({@link #gatedOnly}): {@code Requirements.Variables} and the {@code Scope} name
+ * lists, which are matched BEFORE expansion and where gate R6 looks. Prose that is never
+ * substituted (ExecutabilityHint, Source, Standards, Authorities, Core) is not a surface, so prose
+ * like {@code R&D} there is never gated. {@code ExpansionSurfacesTest} keeps this in lockstep with
+ * the expander in both directions: a rule with a distinct token in every substituted field must
+ * yield every one, and expanding that rule must make exactly the collected tokens vanish.
  * </p>
  *
  * <p>
@@ -52,12 +59,27 @@ public final class ExpansionSurfaces
      * One gated text and where it came from, for the message.
      *
      * @param where
-     *            the surface, e.g. {@code Check}, {@code Outcome.Output_Variables},
-     *            {@code Match_Datasets[0]}
+     *            the surface, e.g. {@code Check}, {@code Check[ERROR].Message},
+     *            {@code Outcome.Output_Variables}, {@code Match_Datasets[0]},
+     *            {@code Scope.Domains.Include}
      * @param text
      *            the authored text
      */
     public record Surface(String where, String text)
+    {
+    }
+
+
+    /**
+     * One Check-tree condition and the surface name it is reported under — a level ({@code Check},
+     * or {@code Check[ERROR]} on a multi-level rule) or the {@code Precondition}.
+     *
+     * @param where
+     *            the surface name
+     * @param condition
+     *            the parsed condition
+     */
+    public record NamedCondition(String where, CheckCondition condition)
     {
     }
 
@@ -87,12 +109,19 @@ public final class ExpansionSurfaces
     public static List<Surface> surfaces(Rule rule)
     {
         List<Surface> out = new ArrayList<>();
-        List<CheckCondition> levels = rule.checkConditions();
-        for (int i = 0; i < levels.size(); i++)
+        for (NamedCondition named : namedConditions(rule))
         {
-            collectCheck(levels.get(i), levels.size() == 1 ? "Check" : "Check[" + i + "]", out);
+            collectCheck(named.condition(), named.where(), out);
         }
-        collectCheck(rule.getPrecondition(), "Precondition", out);
+        SequencedMap<Severity, LevelCheck> levels = rule.getCheckLevels();
+        if (levels != null)
+        {
+            for (Map.Entry<Severity, LevelCheck> e : levels.entrySet())
+            {
+                // Substituted by the expander (LevelCheck.map), so gated like Outcome.Message.
+                add(out, "Check[" + e.getKey() + "].Message", e.getValue().message());
+            }
+        }
         List<Binding> bindings = rule.getBindings();
         if (bindings != null)
         {
@@ -128,6 +157,62 @@ public final class ExpansionSurfaces
             addAll(out, "Grouping.Variables", rule.getGrouping().getVariables());
         }
         addAll(out, "Grouping_Variables", rule.getGroupingVariables());
+        out.addAll(gatedOnly(rule));
+        return List.copyOf(out);
+    }
+
+
+    /**
+     * The Check levels and the Precondition of {@code rule}, each with the surface name the gates
+     * report it under: {@code Check} for a single-level rule, {@code Check[<level>]} per level of a
+     * multi-level one, {@code Precondition}.
+     *
+     * @param rule
+     *            the rule
+     * @return the named conditions, levels first
+     */
+    public static List<NamedCondition> namedConditions(Rule rule)
+    {
+        List<NamedCondition> out = new ArrayList<>();
+        SequencedMap<Severity, LevelCheck> levels = rule.getCheckLevels();
+        if (levels == null)
+        {
+            if (rule.getCheck() != null)
+            {
+                out.add(new NamedCondition("Check", rule.getCheck()));
+            }
+        }
+        else
+        {
+            boolean single = levels.size() == 1;
+            for (Map.Entry<Severity, LevelCheck> e : levels.entrySet())
+            {
+                out.add(new NamedCondition(single ? "Check" : "Check[" + e.getKey() + "]",
+                        e.getValue().condition()));
+            }
+        }
+        if (rule.getPrecondition() != null)
+        {
+            out.add(new NamedCondition("Precondition", rule.getPrecondition()));
+        }
+        return List.copyOf(out);
+    }
+
+
+    /**
+     * The surfaces that are gated but never substituted, because they are matched <em>before</em>
+     * the rule expands: the four {@code Requirements.Variables} facets and the {@code Scope} name
+     * lists ({@code Domains} / {@code Datasets} / {@code Classes} / {@code Data_Structures} /
+     * {@code Subclasses}, {@code Include} and {@code Exclude}). A declared token in any of them is
+     * gate R6's error; an undeclared one is G2's.
+     *
+     * @param rule
+     *            the rule
+     * @return the surfaces, requirements first
+     */
+    public static List<Surface> gatedOnly(Rule rule)
+    {
+        List<Surface> out = new ArrayList<>();
         Requirements req = rule.getRequirements();
         VariableRequirement vars = req == null ? null : req.getVariables();
         if (vars != null)
@@ -136,6 +221,37 @@ public final class ExpansionSurfaces
             addAll(out, "Requirements.Variables.Any", vars.anyUnion());
             addAll(out, "Requirements.Variables.None", vars.getNone());
             addAll(out, "Requirements.Variables.All_Or_None", vars.allOrNoneUnion());
+        }
+        Scope scope = rule.getScope();
+        if (scope != null)
+        {
+            if (scope.getDomains() != null)
+            {
+                addAll(out, "Scope.Domains.Include", scope.getDomains().getInclude());
+                addAll(out, "Scope.Domains.Exclude", scope.getDomains().getExclude());
+            }
+            if (scope.getDatasets() != null)
+            {
+                addAll(out, "Scope.Datasets.Include", scope.getDatasets().getInclude());
+                addAll(out, "Scope.Datasets.Exclude", scope.getDatasets().getExclude());
+            }
+            if (scope.getClasses() != null)
+            {
+                addAll(out, "Scope.Classes.Include", scope.getClasses().getInclude());
+                addAll(out, "Scope.Classes.Exclude", scope.getClasses().getExclude());
+            }
+            if (scope.getDataStructures() != null)
+            {
+                addAll(out, "Scope.Data_Structures.Include",
+                        scope.getDataStructures().getInclude());
+                addAll(out, "Scope.Data_Structures.Exclude",
+                        scope.getDataStructures().getExclude());
+            }
+            if (scope.getSubclasses() != null)
+            {
+                addAll(out, "Scope.Subclasses.Include", scope.getSubclasses().getInclude());
+                addAll(out, "Scope.Subclasses.Exclude", scope.getSubclasses().getExclude());
+            }
         }
         return List.copyOf(out);
     }

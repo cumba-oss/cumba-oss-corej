@@ -1980,7 +1980,7 @@ public final class StageAChecker
             String qualifier = name.substring(0, dot);
             if (!judgeableQualifier(qualifier))
             {
-                continue; // a ${…} / &TOKEN qualifier: judged nowhere, silent at run time (L6)
+                continue; // a ${…} / &TOKEN& qualifier: judged nowhere, silent at run time (L6)
             }
             MatchDataset entry = entryFor(qualifier, entries);
             if (entry != null && Boolean.TRUE.equals(entry.getChild()))

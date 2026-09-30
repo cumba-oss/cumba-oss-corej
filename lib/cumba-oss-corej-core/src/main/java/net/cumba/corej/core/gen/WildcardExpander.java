@@ -86,9 +86,33 @@ public final class WildcardExpander
          * Rule was a template and produced one or more concrete expanded rules (the dataset has
          * columns matching every wildcard pattern). The caller adds {@code rules} directly to the
          * executed set; the source rule itself is not separately executed.
+         *
+         * @param rules
+         *            the concrete rules, never empty
+         * @param dropped
+         *            the reason for every expansion that was minted and then dropped — a token
+         *            surviving substitution, a join key the dataset does not carry
+         *            ({@code TokenExpander}); empty for the wildcard mechanism. A partial drop is a
+         *            "cannot check this one" case exactly like a total one, so the caller records
+         *            it as an audit row rather than letting it vanish into a log line
+         *            ({@code PLAN-expansion-token-delimiters} S7)
          */
-        record Expanded(List<Rule> rules) implements ExpansionResult
+        record Expanded(List<Rule> rules, List<String> dropped) implements ExpansionResult
         {
+
+            /** Copies both lists. */
+            public Expanded
+            {
+                rules = List.copyOf(rules);
+                dropped = List.copyOf(dropped);
+            }
+
+
+            /** An expansion that dropped nothing. */
+            public Expanded(List<Rule> rules)
+            {
+                this(rules, List.of());
+            }
         }
 
 
@@ -1442,8 +1466,9 @@ public final class WildcardExpander
      * Rewrites every name-position string of a Check tree through {@code rename}, leaving
      * value-position scalar literals alone. Both expansion mechanisms share this walk: the
      * engine-owned wildcard markers pass a whole-name map lookup, a declared {@code Expansion:}
-     * token passes a substring substitution. The walk itself is deliberately ignorant of which —
-     * "name in, name out" is the whole contract.
+     * token passes the scan-based {@code TokenExpander.substitute} (every {@code &NAME&} occurrence
+     * whose text is a bound token). The walk itself is deliberately ignorant of which — "name in,
+     * name out" is the whole contract.
      *
      * @param condition
      *            the Check tree to rewrite
@@ -1633,7 +1658,7 @@ public final class WildcardExpander
      *
      * <p>
      * The predicate is deliberately <em>"{@code rename} changed it"</em> rather than a token-set
-     * membership test: {@code TokenExpander}'s rewriter is a substring substitution that returns
+     * membership test: {@code TokenExpander}'s rewriter is a scan-based substitution that returns
      * its argument unchanged when no token matched (and {@code substituteNames} documents that as
      * the contract every rewriter owes), so the two are equivalent and this one needs no token set
      * threaded through the walk. {@code REGEX} is a distinct {@link Expr.LitKind} and never reaches

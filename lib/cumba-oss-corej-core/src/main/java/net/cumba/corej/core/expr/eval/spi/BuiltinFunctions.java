@@ -834,8 +834,9 @@ public final class BuiltinFunctions implements FunctionProvider
         // Container-first, matching contains(haystack, needle). date_overlaps is by construction
         // the negation of the date operator's `!=`, so `not date_overlaps(A, B)` IS today's `!=`
         // — the identity Review 0's 21 KEEP decisions rest on; see TemporalPredicates for the
-        // three stated consequences (junk overlaps everything, missing overlaps nothing, and
-        // contains is deliberately conservative-false rather than the mirror). A null second
+        // three stated consequences (an unpositionable operand overlaps NOTHING since H1b —
+        // `A != junk` is true, so `not date_overlaps(A, junk)` fires; a missing operand overlaps
+        // nothing; and contains reaches the same false by its own guard). A null second
         // operand (an unresolvable reference) yields the empty verdict, exactly as the compiled
         // comparison's null-plan short-circuit does.
         bool(fns, "date_contains", List.of(p("outer", Primitive.DATE), p("inner", Primitive.DATE)),

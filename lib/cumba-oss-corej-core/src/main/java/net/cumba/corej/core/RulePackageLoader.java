@@ -6685,10 +6685,14 @@ public class RulePackageLoader
      * {@code pattern:} is caught here, where the lexer cannot see it. Scoped to rules that declare
      * {@code Expansion:}, so HTML-entity prose (an ampersand followed by {@code lt;}) elsewhere
      * never trips it.</li>
-     * <li><b>no token in {@code Scope.Variables}.</b> Scope is evaluated BEFORE expansion
-     * ({@code DatasetRuleResolver} calls {@code describeScopeSkip} then {@code tryExpand}), so the
-     * matcher sees the template and would test the token text literally — no such column, rule
-     * skipped for every dataset, never expanded. R-4.9 is deliberately left untouched.</li>
+     * <li><b>R6 — no token in {@code Requirements.Variables} or a {@code Scope} name list.</b> Both
+     * are evaluated BEFORE expansion ({@code DatasetRuleResolver} calls {@code describeScopeSkip}
+     * then {@code tryExpand}), so the matcher sees the template and would test the token text
+     * literally — no such column or dataset, rule skipped for every dataset, never expanded. R-4.9
+     * is deliberately left untouched.</li>
+     * <li><b>no declared token inside a {@code /regex/} literal</b> of a Check level, the
+     * Precondition or a binding: a regex literal is never substituted, so the token would survive
+     * into every expansion and drop it at run time.</li>
      * <li><b>no engine-owned wildcard markers in the same Check.</b> The two expansion mechanisms
      * are independent walks; combining them on one rule is unimplemented, so reject it at load
      * instead of expanding over one and silently ignoring the other.</li>
@@ -6722,6 +6726,7 @@ public class RulePackageLoader
             }
         }
         validateNoExpansionTokenInScope(rule, tokens, errors);
+        validateNoExpansionTokenInRegex(rule, tokens, errors);
         validateTokenSpelling(rule, errors);
         // ⚑ Plan C §3.3: an engine-owned marker in ANY level collides with the Expansion walk.
         if (rule.checkConditions().stream()
@@ -6912,15 +6917,10 @@ public class RulePackageLoader
                     .scan(surface.text());
             for (net.cumba.corej.core.expr.ExpansionTokens.Stray stray : scan.strays())
             {
-                String message = net.cumba.corej.core.expr.ExpansionTokens
-                        .strayMessage(stray.text());
-                // The surface goes after the token name so a reader sees "… '&VAR' in
+                // The surface is named by the message itself: "… '&VAR' in
                 // Outcome.Output_Variables (a token is …)".
-                int paren = message.indexOf(" (");
-                errors.add("[" + ruleId(rule) + "] "
-                        + (paren < 0 ? message + " in " + surface.where()
-                                : message.substring(0, paren) + " in " + surface.where()
-                                        + message.substring(paren)));
+                errors.add("[" + ruleId(rule) + "] " + net.cumba.corej.core.expr.ExpansionTokens
+                        .strayMessage(stray.text(), surface.where()));
             }
             for (net.cumba.corej.core.expr.ExpansionTokens.Adjacency adjacency : scan.adjacencies())
             {
@@ -6988,17 +6988,21 @@ public class RulePackageLoader
 
 
     /**
-     * Rejects a declared expansion token appearing anywhere in a variable requirement — gate
-     * <b>R6</b>, which is {@code Scope.Variables}' original bar <em>re-pointed</em> onto
-     * {@code Requirements.Variables}. See {@link #validateExpansionDirectives} for why this bar
-     * exists rather than an R-4.9 relaxation.
+     * Rejects a declared expansion token appearing anywhere in a variable requirement or in a
+     * {@code Scope} name list — gate <b>R6</b>, which is {@code Scope.Variables}' original bar
+     * <em>re-pointed</em> onto {@code Requirements.Variables} and, since the review of
+     * {@code PLAN-expansion-token-delimiters} ((a) L1), onto the {@code Scope} name lists
+     * ({@code Domains} / {@code Datasets} / {@code Classes} / {@code Data_Structures} /
+     * {@code Subclasses}, {@code Include} and {@code Exclude}) as well. See
+     * {@link #validateExpansionDirectives} for why this bar exists rather than an R-4.9 relaxation.
      *
      * <p>
-     * The facets are scanned by name rather than through
-     * {@link Rule#effectiveVariableRequirement()}, so the message can name the facet the author
-     * actually wrote. The reason the bar transfers unchanged is that nothing about it was ever
-     * specific to {@code Scope}: the requirement gate runs <em>before</em> expansion, so a token
-     * there is matched literally and the rule silently never runs.
+     * The surfaces are {@link net.cumba.corej.core.gen.ExpansionSurfaces#gatedOnly} — the one list
+     * of gated-but-never-substituted fields, so the message can name the facet or list the author
+     * actually wrote and G2 (undeclared token) and R6 (declared token) cannot disagree about what
+     * they cover. The reason the bar transfers unchanged is that nothing about it was ever specific
+     * to {@code Scope.Variables}: every one of these lists is matched <em>before</em> expansion, so
+     * a token there is matched literally and the rule silently never runs.
      * </p>
      */
     private static void validateNoExpansionTokenInScope(Rule rule, List<String> tokens,
@@ -7008,24 +7012,16 @@ public class RulePackageLoader
         {
             return;
         }
-        Requirements req = rule.getRequirements();
-        VariableRequirement vars = req == null ? null : req.getVariables();
-        if (vars != null)
+        for (net.cumba.corej.core.gen.ExpansionSurfaces.Surface surface : net.cumba.corej.core.gen.ExpansionSurfaces
+                .gatedOnly(rule))
         {
-            checkNoExpansionToken(rule, vars.getAll(), "Requirements.Variables.All", tokens,
-                    errors);
-            checkNoExpansionToken(rule, vars.anyUnion(), "Requirements.Variables.Any", tokens,
-                    errors);
-            checkNoExpansionToken(rule, vars.getNone(), "Requirements.Variables.None", tokens,
-                    errors);
-            checkNoExpansionToken(rule, vars.allOrNoneUnion(), "Requirements.Variables.All_Or_None",
-                    tokens, errors);
+            checkNoExpansionToken(rule, surface.text(), surface.where(), tokens, errors);
         }
     }
 
 
     /**
-     * One list's half of {@link #validateNoExpansionTokenInScope}.
+     * One entry's half of {@link #validateNoExpansionTokenInScope}.
      *
      * <p>
      * ⚠ The {@code [ruleId]} prefix matters here specifically: {@code loadError} is a single joined
@@ -7036,26 +7032,110 @@ public class RulePackageLoader
      * gate's scope.)
      * </p>
      */
-    private static void checkNoExpansionToken(Rule rule, @Nullable List<String> entries,
-            String where, List<String> tokens, List<String> errors)
+    private static void checkNoExpansionToken(Rule rule, String entry, String where,
+            List<String> tokens, List<String> errors)
     {
-        if (entries == null)
+        for (String token : tokens)
+        {
+            if (entry.contains(token))
+            {
+                errors.add(
+                        "[" + ruleId(rule) + "] Expansion token '" + token + "' must not appear in "
+                                + where + " entry '" + entry + "' — the scope gate runs"
+                                + " before expansion and would match the token literally,"
+                                + " silently skipping the rule for every dataset");
+            }
+        }
+    }
+
+
+    /**
+     * Rejects a declared expansion token inside a {@code /regex/} literal of a Check level, the
+     * Precondition or a compiled binding ({@code PLAN-expansion-token-delimiters}, review (a) L2).
+     * A regex literal is never substituted ({@code WildcardExpander.substituteLit} skips
+     * {@code REGEX}, deliberately — a token's characters are regex metacharacters' neighbours), so
+     * such a token passes G2 (it is declared), is left in place by the expander and drops every
+     * expansion at run time with a survivor reason. Refused at load, where the author reads it.
+     */
+    private static void validateNoExpansionTokenInRegex(Rule rule, List<String> tokens,
+            List<String> errors)
+    {
+        if (tokens.isEmpty())
         {
             return;
         }
-        for (String entry : entries)
+        for (net.cumba.corej.core.gen.ExpansionSurfaces.NamedCondition named : net.cumba.corej.core.gen.ExpansionSurfaces
+                .namedConditions(rule))
         {
-            for (String token : tokens)
+            walkCheckExpressions(named.condition(),
+                    expr -> rejectTokenInRegex(rule, expr, tokens, named.where(), errors));
+        }
+        List<net.cumba.corej.core.model.CompiledBinding> bindings = rule.getCompiledBindings();
+        if (bindings != null)
+        {
+            for (int i = 0; i < bindings.size(); i++)
             {
-                if (entry != null && entry.contains(token))
+                rejectTokenInRegex(rule, bindings.get(i).expression(), tokens,
+                        "Bindings[" + i + "]", errors);
+            }
+        }
+    }
+
+
+    /** The tree walk of {@link #validateNoExpansionTokenInRegex}: every literal, at any depth. */
+    private static void rejectTokenInRegex(Rule rule, net.cumba.corej.core.expr.ast.Expr expr,
+            List<String> tokens, String where, List<String> errors)
+    {
+        switch (expr)
+        {
+        case net.cumba.corej.core.expr.ast.Expr.Lit lit ->
+        {
+            if (lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.REGEX)
+            {
+                String regex = String.valueOf(lit.value());
+                for (net.cumba.corej.core.expr.ExpansionTokens.Occurrence occurrence : net.cumba.corej.core.expr.ExpansionTokens
+                        .scan(regex).occurrences())
                 {
-                    errors.add("[" + ruleId(rule) + "] Expansion token '" + token
-                            + "' must not appear in " + where + " entry '" + entry
-                            + "' — the scope gate runs"
-                            + " before expansion and would match the token literally,"
-                            + " silently skipping the rule for every dataset");
+                    if (tokens.contains(occurrence.text()))
+                    {
+                        errors.add("[" + ruleId(rule) + "] expansion token '" + occurrence.text()
+                                + "' inside the regex literal /" + regex + "/ in " + where
+                                + " (a regex literal is never substituted)");
+                    }
                 }
             }
+            else if (lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST
+                    && lit.value() instanceof List<?> elements)
+            {
+                for (Object element : elements)
+                {
+                    if (element instanceof net.cumba.corej.core.expr.ast.Expr e)
+                    {
+                        rejectTokenInRegex(rule, e, tokens, where, errors);
+                    }
+                }
+            }
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Ref _ ->
+        {
+            // a reference carries no literal
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Call call ->
+        {
+            call.args().forEach(a -> rejectTokenInRegex(rule, a, tokens, where, errors));
+            call.kwargs().values().forEach(a -> rejectTokenInRegex(rule, a, tokens, where, errors));
+        }
+        case net.cumba.corej.core.expr.ast.Expr.Binary binary ->
+        {
+            rejectTokenInRegex(rule, binary.left(), tokens, where, errors);
+            rejectTokenInRegex(rule, binary.right(), tokens, where, errors);
+        }
+        case net.cumba.corej.core.expr.ast.Expr.And and -> and.parts()
+                .forEach(p -> rejectTokenInRegex(rule, p, tokens, where, errors));
+        case net.cumba.corej.core.expr.ast.Expr.Or or -> or.parts()
+                .forEach(p -> rejectTokenInRegex(rule, p, tokens, where, errors));
+        case net.cumba.corej.core.expr.ast.Expr.Not not -> rejectTokenInRegex(rule, not.inner(),
+                tokens, where, errors);
         }
     }
 

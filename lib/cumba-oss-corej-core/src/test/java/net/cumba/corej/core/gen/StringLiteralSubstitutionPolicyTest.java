@@ -45,18 +45,14 @@ import org.junit.jupiter.api.Test;
 class StringLiteralSubstitutionPolicyTest
 {
 
-    /** The declared-token rewriter {@code TokenExpander} builds: a plain substring substitution. */
+    /**
+     * The declared-token rewriter {@code TokenExpander.buildExpansion} builds — the real,
+     * scan-based {@link TokenExpander#substitute}, not a replace-loop stand-in, so this test
+     * exercises the substitution the product runs.
+     */
     private static UnaryOperator<String> tokenRename(Map<String, String> substitutions)
     {
-        return n ->
-        {
-            String result = n;
-            for (Map.Entry<String, String> e : substitutions.entrySet())
-            {
-                result = result.replace(e.getKey(), e.getValue());
-            }
-            return result;
-        };
+        return n -> TokenExpander.substitute(n, substitutions);
     }
 
 

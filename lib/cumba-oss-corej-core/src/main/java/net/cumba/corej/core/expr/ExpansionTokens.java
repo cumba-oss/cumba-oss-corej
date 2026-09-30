@@ -3,6 +3,7 @@ package net.cumba.corej.core.expr;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The single definition of the declared expansion-token grammar: a token is {@code &NAME&} with
@@ -259,6 +260,7 @@ public final class ExpansionTokens
     /**
      * The message for a stray whose text is {@code stray} (as {@link #strayTextAt} returns it): a
      * name character outside {@code [A-Z][A-Z0-9]*} is named; otherwise the token is unterminated.
+     * The lexer's form, which names no surface — the lexer only ever reads a Check.
      *
      * @param stray
      *            the stray text, starting with {@code &}
@@ -266,6 +268,25 @@ public final class ExpansionTokens
      */
     public static String strayMessage(String stray)
     {
+        return strayMessage(stray, null);
+    }
+
+
+    /**
+     * {@link #strayMessage(String)} naming the surface the stray was found on, for the loader gate
+     * G3: {@code unterminated expansion token '&DOM' in Outcome.Output_Variables (a token is …)},
+     * {@code invalid expansion token '&dom' in Check: expansion token names are upper case (…),
+     * found 'd'}.
+     *
+     * @param stray
+     *            the stray text, starting with {@code &}
+     * @param where
+     *            the surface ({@code ExpansionSurfaces.Surface#where}), or {@code null} for none
+     * @return the message
+     */
+    public static String strayMessage(String stray, @Nullable String where)
+    {
+        String at = where == null ? "" : " in " + where;
         String name = stray.length() > 1 ? stray.substring(1) : "";
         for (int i = 0; i < name.length(); i++)
         {
@@ -273,13 +294,13 @@ public final class ExpansionTokens
             boolean ok = i == 0 ? isNameStart(c) : isNamePart(c);
             if (!ok)
             {
-                return "invalid expansion token '" + stray + "': expansion token names are"
-                        + " upper case (a token is &NAME& with NAME = [A-Z][A-Z0-9]*), found '" + c
-                        + "'";
+                return "invalid expansion token '" + stray + "'" + at + ": expansion token names"
+                        + " are upper case (a token is &NAME& with NAME = [A-Z][A-Z0-9]*), found '"
+                        + c + "'";
             }
         }
-        return "unterminated expansion token '" + stray + "' (a token is &NAME& with NAME ="
-                + " [A-Z][A-Z0-9]*; or did you mean the operator '&&'?)";
+        return "unterminated expansion token '" + stray + "'" + at + " (a token is &NAME& with"
+                + " NAME = [A-Z][A-Z0-9]*; or did you mean the operator '&&'?)";
     }
 
 

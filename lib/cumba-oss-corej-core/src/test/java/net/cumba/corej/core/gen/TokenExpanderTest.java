@@ -745,6 +745,84 @@ class TokenExpanderTest
 
 
     /**
+     * Review (b) M1 of {@code PLAN-expansion-token-delimiters} — a PARTIAL drop keeps its reason:
+     * one tuple survives, one carries a token after substitution (a column literally named
+     * {@code X&A&}), and the result is {@code Expanded} with the survivor in {@code rules} and the
+     * drop's reason in {@code dropped}, for {@code DatasetRuleResolver} to audit. Before this the
+     * reason was a log line and the audit showed a clean expansion.
+     */
+    @Test
+    void aPartialDropCarriesTheDroppedExpansionsReason()
+    {
+        IDataTable ds = MockTable.of().name("ADX").col("AGE", "1").col("X&A&", "2").build();
+        ExpansionDirective all = new ExpansionDirective();
+        all.setToken("&V&");
+        all.setOverJson(ExpansionSource.ALL_VARIABLES.getJsonValue());
+        Rule rule = template("P", new CheckConditionAll(List.of(leaf("&V&", "non_empty", null))),
+                null, all);
+
+        WildcardExpander.ExpansionResult result = TokenExpander.tryExpand(rule, ds.getMetaData(),
+                ctx(ds, map(), null));
+
+        WildcardExpander.ExpansionResult.Expanded expanded = assertInstanceOf(
+                WildcardExpander.ExpansionResult.Expanded.class, result, result.toString());
+        assertEquals(List.of("P-AGE"), expanded.rules().stream().map(Rule::effectiveId).toList());
+        assertEquals(List.of("Expansion P-X&A& still carries the token '&A&' after substitution"
+                + " — dropped, not evaluated"), expanded.dropped());
+    }
+
+
+    /**
+     * The other post-build drop, a {@code Match_Datasets} key the dataset under validation does not
+     * carry, travels on the same channel: {@code &D&ID} resolves to {@code AEID} (present) and
+     * {@code CMID} (absent), so the CM expansion is dropped with its reason and the AE one runs.
+     */
+    @Test
+    void aPartiallyUnjoinableExpansionCarriesTheDroppedExpansionsReason()
+    {
+        IDataTable ds = MockTable.of().name("ADX").col("USUBJID", "U").col("AESEQ", "1")
+                .col("CMSEQ", "1").col("AEID", "1").build();
+        IDataTable ae = MockTable.of().name("AE").col("USUBJID", "U").col("AEID", "1").build();
+        IDataTable cm = MockTable.of().name("CM").col("USUBJID", "U").col("CMID", "1").build();
+        Rule rule = template("J",
+                new CheckConditionAll(List.of(leaf("&D&.&D&ID", "var_exists", null))),
+                List.of(match("&D&", "USUBJID", "&D&ID")), domainFrom("&D&", "&D&SEQ", false));
+
+        WildcardExpander.ExpansionResult result = TokenExpander.tryExpand(rule, ds.getMetaData(),
+                ctx(ds, map("AE", ae, "CM", cm), null));
+
+        WildcardExpander.ExpansionResult.Expanded expanded = assertInstanceOf(
+                WildcardExpander.ExpansionResult.Expanded.class, result, result.toString());
+        assertEquals(List.of("J-AESEQ"), expanded.rules().stream().map(Rule::effectiveId).toList());
+        assertEquals(
+                List.of("Expansion J-CMSEQ joins on 'CMID', which the dataset under"
+                        + " validation does not carry — dropped rather than fired on every record"),
+                expanded.dropped());
+    }
+
+
+    /** A total drop still joins every reason into the NoMatch audit reason. */
+    @Test
+    void aTotalDropJoinsEveryReasonIntoTheNoMatchReason()
+    {
+        IDataTable ds = MockTable.of().name("ADX").col("X&A&", "2").col("Y&B&", "3").build();
+        ExpansionDirective all = new ExpansionDirective();
+        all.setToken("&V&");
+        all.setOverJson(ExpansionSource.ALL_VARIABLES.getJsonValue());
+        Rule rule = template("T", new CheckConditionAll(List.of(leaf("&V&", "non_empty", null))),
+                null, all);
+
+        String reason = reason(
+                TokenExpander.tryExpand(rule, ds.getMetaData(), ctx(ds, map(), null)));
+
+        assertTrue(reason.startsWith("Expansion produced no usable rule ("), reason);
+        assertTrue(reason.contains("Expansion T-X&A& still carries the token '&A&'"), reason);
+        assertTrue(reason.contains("Expansion T-Y&B& still carries the token '&B&'"), reason);
+        assertTrue(reason.endsWith("); not expanded for"), reason);
+    }
+
+
+    /**
      * {@code PLAN-expansion-token-delimiters} D1/S8 — the bare template form and the backtick form
      * are the same template: both expand to the identical concrete rule.
      */
@@ -756,7 +834,7 @@ class TokenExpanderTest
         IDataTable ae = MockTable.of().name("AE").col("STUDYID", "S").col("USUBJID", "U")
                 .col("AESEQ", "1").build();
         String bare = "var_exists(&DOM&.&DOM&SEQ) and empty(&DOM&.&DOM&SEQ)";
-        String quoted = "var_exists(&DOM&.&DOM&SEQ) and empty(&DOM&.&DOM&SEQ)";
+        String quoted = "var_exists(`&DOM&.&DOM&SEQ`) and empty(`&DOM&.&DOM&SEQ`)";
 
         List<String> printed = new java.util.ArrayList<>();
         for (String source : List.of(bare, quoted))

@@ -438,16 +438,106 @@ class RuleLoadValidationExpansionTest
     @Test
     void operatorTextIsNotAnUndeclaredToken() throws IOException
     {
-        // `)&&not` — the operator between two calls. The scan reads `&&` as the operator and never
-        // finds a token `&not …&` inside it.
+        // `A&&B&&C` — the one shape where a scan without the operator step would find a "token":
+        // the text `&B&` sits between the two operators. The scan reads `&&` as the operator
+        // (ExpansionTokens S1 step 2), so G2 sees no token and the rule loads clean.
         Rule rule = load("""
                 {
                   "Core": {"Id": "TEST-G2-ANDAND"},
-                  "Check": {"all": [{"expression": "not empty(A)&&not empty(B)&&not empty(C)"}]}
+                  "Check": {"all": [{"expression": "A&&B&&C"}]}
                 }
                 """);
-        String error = rule.getLoadError();
-        assertTrue(error == null || !error.contains("expansion token"), error);
+        assertNull(rule.getLoadError(), rule.getLoadError());
+    }
+
+
+    @Test
+    void anUndeclaredTokenInALevelMessageIsRejected() throws IOException
+    {
+        // A level's own Message is substituted by the expander (LevelCheck.map), so it is a G2
+        // surface like Outcome.Message — an undeclared token there would survive into the run.
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-G2-LEVELMSG"},
+                  "Check": {"ERROR": {"expression": "not empty(AGE)", "Message": "&X& is blank"}}
+                }
+                """);
+        assertTrue(error.contains("undeclared expansion token '&X&' in Check[ERROR].Message"),
+                error);
+    }
+
+
+    @Test
+    void anUndeclaredTokenInAScopeListIsRejected() throws IOException
+    {
+        // Scope name lists are matched BEFORE expansion; a token there is matched literally. They
+        // are surfaces so G2 catches an undeclared one and R6 a declared one (below).
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-G2-SCOPE"},
+                  "Scope": {"Domains": {"Include": ["AE"], "Exclude": ["&X&"]}},
+                  "Check": {"all": [{"expression": "not empty(AGE)"}]}
+                }
+                """);
+        assertTrue(error.contains("undeclared expansion token '&X&' in Scope.Domains.Exclude"),
+                error);
+    }
+
+
+    @Test
+    void aDeclaredTokenInAScopeListIsRejected() throws IOException
+    {
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-R6-SCOPE"},
+                  "Scope": {"Datasets": {"Include": ["&DOM&"]}},
+                  "Expansion": [
+                    {"token": "&DOM&", "over": "domain_from_variable", "pattern": "&DOM&SEQ"}
+                  ],
+                  "Check": {"all": [{"expression": "not empty(&DOM&SEQ)"}]}
+                }
+                """);
+        assertTrue(error.contains("Expansion token '&DOM&' must not appear in"
+                + " Scope.Datasets.Include entry '&DOM&'"), error);
+        assertTrue(error.contains("scope gate runs before expansion"), error);
+    }
+
+
+    @Test
+    void aDeclaredTokenInARegexLiteralIsRejected() throws IOException
+    {
+        // A regex literal is never substituted (WildcardExpander.substituteLit skips REGEX), so a
+        // declared token inside one passes G2, is left in place by the expander and drops every
+        // expansion at run time with a survivor reason. Refuse it at load instead.
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-REGEX"},
+                  "Expansion": [{"token": "&VAR&", "over": "shared_variables", "with": "ADSL"}],
+                  "Check": {"all": [{"expression": "&VAR& =~ /^&VAR&$/"}]}
+                }
+                """);
+        assertTrue(error.contains("expansion token '&VAR&' inside the regex literal /^&VAR&$/"
+                + " in Check (a regex literal is never substituted)"), error);
+        // The same token outside the regex is fine: no G2 error is reported for it.
+        assertFalse(error.contains("undeclared"), error);
+    }
+
+
+    @Test
+    void aDeclaredTokenInABindingRegexLiteralIsRejected() throws IOException
+    {
+        String error = errorOf(
+                """
+                        {
+                          "Core": {"Id": "TEST-REGEX-BINDING"},
+                          "Expansion": [{"token": "&VAR&", "over": "shared_variables", "with": "ADSL"}],
+                          "Bindings": [{"name": "$n", "expression": "record_count(filter=(&VAR& =~ /&VAR&/))"}],
+                          "Check": {"all": [{"expression": "$n > 0"}]}
+                        }
+                        """);
+        assertTrue(error.contains(
+                "expansion token '&VAR&' inside the regex literal /&VAR&/" + " in Bindings[0]"),
+                error);
     }
 
 

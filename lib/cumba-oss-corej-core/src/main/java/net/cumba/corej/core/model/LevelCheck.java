@@ -107,6 +107,35 @@ public record LevelCheck(CheckCondition condition, @Nullable String message)
     public static @Nullable SequencedMap<Severity, LevelCheck> mapConditions(
             @Nullable SequencedMap<Severity, LevelCheck> levels, UnaryOperator<CheckCondition> fn)
     {
+        return map(levels, fn, UnaryOperator.identity());
+    }
+
+
+    /**
+     * Applies {@code fn} to every level's condition and {@code messageFn} to every level's non-null
+     * {@code Message}, preserving the ladder order.
+     *
+     * <p>
+     * The declared-token expander ({@code gen/TokenExpander}) needs both halves: a level's own
+     * {@code Message} is authored text like {@code Outcome.Message} and carries the same tokens, so
+     * a clone that rewrote only the condition would ship the template's unsubstituted message on
+     * every expanded child ({@code PLAN-expansion-token-delimiters}, review (a) M1 / (b) L6).
+     * {@code ExpansionSurfaces} lists {@code Check[<level>].Message} as a gated surface for the
+     * same reason.
+     * </p>
+     *
+     * @param levels
+     *            the source level map, may be {@code null}
+     * @param fn
+     *            the condition rewrite
+     * @param messageFn
+     *            the message rewrite; never handed {@code null}
+     * @return the rewritten map, or {@code null} when {@code levels} was {@code null}
+     */
+    public static @Nullable SequencedMap<Severity, LevelCheck> map(
+            @Nullable SequencedMap<Severity, LevelCheck> levels, UnaryOperator<CheckCondition> fn,
+            UnaryOperator<String> messageFn)
+    {
         if (levels == null)
         {
             return null;
@@ -114,8 +143,9 @@ public record LevelCheck(CheckCondition condition, @Nullable String message)
         SequencedMap<Severity, LevelCheck> out = new LinkedHashMap<>();
         for (Map.Entry<Severity, LevelCheck> e : levels.entrySet())
         {
-            out.put(e.getKey(),
-                    new LevelCheck(fn.apply(e.getValue().condition()), e.getValue().message()));
+            String message = e.getValue().message();
+            out.put(e.getKey(), new LevelCheck(fn.apply(e.getValue().condition()),
+                    message == null ? null : messageFn.apply(message)));
         }
         return out;
     }

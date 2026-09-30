@@ -424,6 +424,45 @@ class DatasetRuleResolverTest
                 skipped.getFirst().reason());
     }
 
+
+    /**
+     * {@code PLAN-expansion-token-delimiters} S7, review (b) M1 — a declared-token template whose
+     * expansion is only PARTIALLY dropped (one tuple survives, one carries a token after
+     * substitution) leaves an audit row naming the dropped expansion, exactly as a total drop does;
+     * the surviving expansion still runs. Before this the partial drop was a log line only.
+     */
+    @Test
+    void partiallyDroppedTokenExpansionIsAuditedWithItsReason()
+    {
+        Rule template = new Rule();
+        RuleCore core = new RuleCore();
+        core.setId("TEST-PARTIAL");
+        template.setCore(core);
+        template.setCheck(expr("not empty(&V&)"));
+        net.cumba.corej.core.model.ExpansionDirective directive = new net.cumba.corej.core.model.ExpansionDirective();
+        directive.setToken("&V&");
+        directive.setOverJson(
+                net.cumba.corej.core.model.ExpansionSource.ALL_VARIABLES.getJsonValue());
+        template.setExpansion(List.of(directive));
+        DatasetRuleResolver gen = new DatasetRuleResolver(new AdamMockLibraryProvider());
+        gen.setStaticRules(List.of(template));
+
+        // A column literally named `X&A&` (an xlsx / csv header) binds &V& to a value that carries
+        // a complete token, so that expansion still holds `&A&` after substitution.
+        GeneratedRulePackage pkg = gen(gen, MockTable.withColumns("AGE", "X&A&"), "ADSL",
+                "SUBJECT LEVEL ANALYSIS DATASET");
+
+        assertEquals(List.of("TEST-PARTIAL-AGE"),
+                pkg.getRules().stream().map(Rule::effectiveId).toList());
+        List<SkippedSourceRule> skipped = pkg.getSkippedSourceRules().stream()
+                .filter(s -> "TEST-PARTIAL".equals(s.rule().getCore().getId())).toList();
+        assertEquals(1, skipped.size(), skipped.toString());
+        String reason = skipped.getFirst().reason();
+        assertTrue(reason.contains("Expansion TEST-PARTIAL-X&A& still carries the token '&A&'"
+                + " after substitution — dropped, not evaluated"), reason);
+        assertTrue(reason.contains("ADSL"), reason);
+    }
+
     // ---- Phase G7: Deduplication ----
 
     // ---- Category 4: Expected Variable ----

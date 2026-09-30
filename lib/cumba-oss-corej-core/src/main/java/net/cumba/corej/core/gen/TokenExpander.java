@@ -134,6 +134,8 @@ public final class TokenExpander
         List<ExpansionDirective> directives = Objects.requireNonNull(rule.getExpansion(),
                 "TokenExpander reached for a rule with no Expansion block");
         List<String> columns = columnsOf(meta);
+        // Binding-stage candidate drops (a column filtered by type, a parent domain not loaded):
+        // logged, and joined into the audit reason when nothing survives.
         List<String> reasons = new ArrayList<>();
 
         // Bind each directive independently, then take the cross product. Both shipped templates
@@ -200,6 +202,9 @@ public final class TokenExpander
 
         List<List<Binding>> tuples = crossProduct(perDirective);
         List<Rule> expanded = new ArrayList<>();
+        // Post-build drops: a MINTED expansion that must not run. Carried on the result, so a
+        // partial drop leaves the same audit row a total drop does (review (b) M1).
+        List<String> dropped = new ArrayList<>();
         for (List<Binding> tuple : tuples)
         {
             Rule concrete = buildExpansion(rule, tuple);
@@ -208,14 +213,15 @@ public final class TokenExpander
             {
                 // A token that reached a RESOLVED rule means substitution missed a position — or
                 // the position was never bound (an undeclared token, a column literally named
-                // `X&A&`). Evaluating it would test a column that cannot exist; drop it loudly,
-                // and record the reason so a partial drop leaves an audit row and a total drop
-                // names its cause (PLAN-expansion-token-delimiters S7).
+                // `X&A&`). Evaluating it would test a column that cannot exist; drop it loudly.
+                // The reason travels on `dropped`: DatasetRuleResolver turns it into a
+                // SkippedSourceRule audit row whether the drop is partial or total, so it never
+                // survives only as this log line (PLAN-expansion-token-delimiters S7).
                 String message = "Expansion " + concrete.effectiveId()
                         + " still carries the token '" + survivor
                         + "' after substitution — dropped, not evaluated";
                 LOGGER.log(System.Logger.Level.WARNING, message);
-                reasons.add(message);
+                dropped.add(message);
                 continue;
             }
             String unjoinable = firstAbsentMergeKey(concrete, meta);
@@ -226,24 +232,29 @@ public final class TokenExpander
                 // to match and an absence-shaped Check — `var_exists(AE.AESEQ) and
                 // empty(AE.AESEQ)`,
                 // the PMDA-AD0258 shape — would fire on EVERY RECORD. A flood of false positives
-                // is the one outcome worse than silence.
+                // is the one outcome worse than silence. Same audit channel as the survivor drop.
                 String message = "Expansion " + concrete.effectiveId() + " joins on '" + unjoinable
                         + "', which the dataset under validation does not carry — dropped rather"
                         + " than fired on every record";
                 LOGGER.log(System.Logger.Level.WARNING, message);
-                reasons.add(message);
+                dropped.add(message);
                 continue;
             }
             expanded.add(concrete);
         }
         if (expanded.isEmpty())
         {
-            return new WildcardExpander.ExpansionResult.NoMatch(reasons.isEmpty()
-                    ? "Expansion produced no rule whose tokens were all substituted"
-                    : "Expansion produced no usable rule (" + String.join("; ", reasons)
+            // Every tuple was dropped, and every drop recorded its reason — `tuples` is never
+            // empty here (each directive bound at least one value, or returned NoMatch above), so
+            // there is always at least one reason to name.
+            List<String> all = new ArrayList<>(reasons);
+            all.addAll(dropped);
+            assert !all.isEmpty() : "every dropped expansion records a reason";
+            return new WildcardExpander.ExpansionResult.NoMatch(
+                    "Expansion produced no usable rule (" + String.join("; ", all)
                             + "); not expanded for");
         }
-        return new WildcardExpander.ExpansionResult.Expanded(List.copyOf(expanded));
+        return new WildcardExpander.ExpansionResult.Expanded(expanded, dropped);
     }
 
     // ------------------------------------------------------------------
@@ -679,10 +690,11 @@ public final class TokenExpander
         // value-position "*" literals ship today (CDISC-AD0018 / AD0708 / AD0709 / PMDA-AD0018).
         rule.setCheck(WildcardExpander.substituteNames(check, rename, TOKEN_POLICY));
         // ⚠⚠ Plan C: every level gets the same substitution — see the Severity note below for why
-        // an unnamed top-level field is silently and invisibly dropped here.
-        rule.setCheckLevels(
-                net.cumba.corej.core.model.LevelCheck.mapConditions(template.getCheckLevels(),
-                        c -> WildcardExpander.substituteNames(c, rename, TOKEN_POLICY)));
+        // an unnamed top-level field is silently and invisibly dropped here. A level's own Message
+        // is authored text like Outcome.Message and is rewritten with it (review (a) M1).
+        rule.setCheckLevels(net.cumba.corej.core.model.LevelCheck.map(template.getCheckLevels(),
+                c -> WildcardExpander.substituteNames(c, rename, TOKEN_POLICY),
+                m -> substitute(m, substitutions)));
         if (template.getPrecondition() != null)
         {
             rule.setPrecondition(WildcardExpander.substituteNames(template.getPrecondition(),

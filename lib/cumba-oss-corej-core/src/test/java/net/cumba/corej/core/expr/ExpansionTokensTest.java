@@ -135,6 +135,26 @@ class ExpansionTokensTest
     }
 
 
+    /**
+     * The loader gate G3 names the surface INSIDE the message (review (a) L4 — no splicing at the
+     * first parenthesis), and the two-argument form with no surface is the lexer's form.
+     */
+    @Test
+    void strayMessagesNameTheSurfaceWhenGivenOne()
+    {
+        assertEquals(
+                "unterminated expansion token '&DOM' in Outcome.Output_Variables (a token is"
+                        + " &NAME& with NAME = [A-Z][A-Z0-9]*; or did you mean the operator '&&'?)",
+                ExpansionTokens.strayMessage("&DOM", "Outcome.Output_Variables"));
+        assertEquals(
+                "invalid expansion token '&dom' in Check: expansion token names are upper"
+                        + " case (a token is &NAME& with NAME = [A-Z][A-Z0-9]*), found 'd'",
+                ExpansionTokens.strayMessage("&dom", "Check"));
+        assertEquals(ExpansionTokens.strayMessage("&DOM"),
+                ExpansionTokens.strayMessage("&DOM", null));
+    }
+
+
     @Test
     void tokenEndAtReadsExactlyOneToken()
     {

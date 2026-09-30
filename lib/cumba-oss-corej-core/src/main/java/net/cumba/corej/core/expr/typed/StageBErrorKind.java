@@ -38,11 +38,11 @@ public enum StageBErrorKind
      * {@link StageBReport#skips() skip}, not a finding).
      *
      * <p>
-     * ⚑ <b>Future-armed on purpose:</b> {@code MatchDataset} carries no {@code Filter} field yet —
-     * it lands in phase 5b-J — so the production population is structurally <b>zero</b> and arming
-     * changes nothing today. The detection logic is live and tested through
-     * {@code StageBChecker.checkFilterBinding}, which 5b-J wires to the parsed filter and the
-     * right-side dataset's column inventory.
+     * Live since phase 5b-J shipped the {@code MatchDataset} {@code Filter} field:
+     * {@code StageBChecker.checkFilterBindings} parses each entry's filter, collects its plain
+     * column references and routes them through {@code checkFilterBinding} against the right-side
+     * dataset's column inventory. (This javadoc used to say the field did not exist yet and the
+     * population was structurally zero — corrected 2026-09-30.)
      * </p>
      */
     FILTER_UNRESOLVABLE(true),

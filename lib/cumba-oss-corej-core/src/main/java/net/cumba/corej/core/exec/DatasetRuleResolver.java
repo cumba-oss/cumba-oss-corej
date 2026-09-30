@@ -393,8 +393,23 @@ public class DatasetRuleResolver
                     expansionContext);
             switch (expansion)
             {
-            case WildcardExpander.ExpansionResult.Expanded(List<Rule> expanded) ->
+            case WildcardExpander.ExpansionResult.Expanded(List<Rule> expanded, List<String> dropped) ->
             {
+                if (!dropped.isEmpty() && staticRuleSourceIds.contains(r.effectiveId()))
+                {
+                    // A PARTIAL drop (PLAN-expansion-token-delimiters S7): some minted expansions
+                    // were dropped after binding — a token that survived substitution, a join key
+                    // the dataset does not carry — while the rest run. One audit row per (source
+                    // rule × dataset), the shape a total drop (NoMatch) produces, with every
+                    // dropped expansion named in the reason; the per-pair `Skipped_Rules` row
+                    // shape is unchanged.
+                    skippedSourceRules.add(new SkippedSourceRule(r,
+                            "Expansion of " + r.effectiveId() + " dropped " + dropped.size()
+                                    + " of " + (dropped.size() + expanded.size())
+                                    + " candidate rule(s) for " + domName + " ("
+                                    + String.join("; ", dropped) + "); the surviving "
+                                    + expanded.size() + " ran"));
+                }
                 List<Rule> filtered = applyTemplatePostFilters(r, expanded, domName,
                         libraryDefinedVars, report);
                 if (filtered.isEmpty())
