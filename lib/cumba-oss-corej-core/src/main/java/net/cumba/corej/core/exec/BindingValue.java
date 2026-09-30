@@ -22,7 +22,14 @@ import org.jspecify.annotations.Nullable;
  * reads it. {@link #vector(EvalRun)} evaluates the binding's {@link BindingProgram} over that run,
  * memoised in one slot keyed by the run's variables map, table and range — the Check's contexts
  * share one variables map (a hit), while a per-variable context carries its own (a recomputation,
- * which is the point).
+ * which is the point for a binding that reads the VAR cursor).
+ * </p>
+ *
+ * <p>
+ * ⭐ <b>A binding without the VAR cursor ignores the variables map</b> (combined review of runbook
+ * W2–W8, confirmation look L-c): a ROW-only binding answers the same Vector for every column, and
+ * keyed on the per-column map the {VAR,ROW} loop evaluated it once per column. It is memoised on
+ * (table, range) alone.
  * </p>
  *
  * <p>
@@ -120,7 +127,7 @@ public final class BindingValue
         Vector cached = memo;
         if (cached != null && memoTable == ctx.getTable() && memoFrom == evaluated.from()
                 && memoTo == evaluated.to()
-                && (datasetLevel || memoVariables == ctx.getVariables()))
+                && (datasetLevel || !readsVariableCursor() || memoVariables == ctx.getVariables()))
         {
             return cached;
         }
@@ -149,6 +156,19 @@ public final class BindingValue
         {
             depth--;
         }
+    }
+
+
+    /**
+     * Whether the binding's value may differ between two variables maps over the same table and
+     * range: its derived domain carries the VAR cursor, or no domain is installed (conservatively).
+     * Only RuleRunner swaps the variables map, and only per column (the per-variable loops); a
+     * binding without the VAR cursor reads no {@code variable_name} and — the domain being derived
+     * transitively over its {@code $}-references — no per-column binding either.
+     */
+    private boolean readsVariableCursor()
+    {
+        return binding.domain() == null || binding.domain().varCursor();
     }
 
 

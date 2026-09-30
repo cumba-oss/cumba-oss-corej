@@ -2191,8 +2191,8 @@ public final class RuleRunner
      * The per-column variable view for the native per-variable paths (P4): a copy of the context
      * variables with every {@link VariableMetadataResult} entry projected to its value FOR the
      * current column ({@code vmr.getForVariable(colName)}) and the {@code variable_name} cursor set
-     * — a compiled binding hands over its dataset-level value first so the projection sees the
-     * materialised type.
+     * — a VAR-only compiled binding hands over its value first so the projection sees the
+     * materialised map; every other compiled binding stays the {@link BindingValue}.
      *
      * <p>
      * ⭐ <b>A binding that reads the variable cursor is handed over AGAINST THE COLUMN</b> (combined
@@ -2204,17 +2204,19 @@ public final class RuleRunner
      * {@code variable_name} — except the per-variable MAP builder
      * ({@code cross_dataset_variable_metadata}), whose one value is projected below and is built
      * once for the loop against the outer context (its memo is keyed by the variables map, so a
-     * per-column hand-over would rebuild the map per column). A binding without the cursor keeps
-     * the outer hand-over and its memo across the loop.
+     * per-column hand-over would rebuild the map per column).
      * </p>
      *
      * <p>
-     * ⛔ <b>Only dataset-level and VAR-only bindings are handed over</b> (round 2 H1). A binding
-     * whose derived domain carries the ROW cursor is copied into the view as the
-     * {@link BindingValue} itself: its hand-over is a per-row Vector, which the compiler reads only
-     * through the binding ({@code ExprCompiler.boundVector}) — stored as a plain value it read as
-     * one constant, the Vector's text, and {@code $flag == "Y"} beside {@code var_type("DATA")}
-     * never fired.
+     * ⛔ <b>Only VAR-only bindings are handed over</b> — the per-variable map builder and the
+     * bindings that read the VAR cursor (round 2 H1; confirmation look L-a). A binding whose
+     * derived domain carries the ROW cursor is copied into the view as the {@link BindingValue}
+     * itself: its hand-over is a per-row Vector, which the compiler reads only through the binding
+     * ({@code ExprCompiler.boundVector}) — stored as a plain value it read as one constant, the
+     * Vector's text, and {@code $flag == "Y"} beside {@code var_type("DATA")} never fired. A
+     * dataset-level binding is kept as the binding for the same reason: the compiler's membership
+     * plan reads it through the binding ({@code ConstVector.memberValue}), and its raw payload
+     * folded a numeric cell as {@code "42.0"} where the row path matched {@code "42"}.
      * </p>
      */
     private static Map<String, Object> projectVariablesForColumn(EvaluationContext ctx,
@@ -2228,7 +2230,21 @@ public final class RuleRunner
             Object entryVal = ve.getValue();
             if (entryVal instanceof BindingValue compiled)
             {
-                if (compiled.binding().domain() != null && compiled.binding().domain().rowCursor())
+                Domain bindingDomain = compiled.binding().domain();
+                if (bindingDomain != null && bindingDomain.isBroadcast())
+                {
+                    // A DATASET-LEVEL binding stays the binding too (combined review of runbook
+                    // W2–W8, confirmation look L-a): handed over, it was its raw payload — a
+                    // numeric read_value as Double 42.0 — and the membership reader folded that
+                    // as "42.0" where the row path reads the binding itself
+                    // (ConstVector.memberValue, the cell's text "42"). Its value is a property of
+                    // the table (BindingValue's memo), so keeping it costs nothing per column; the
+                    // report paths unwrap it (buildVariableViolation,
+                    // buildDefineVariableViolation).
+                    perColVars.put(ve.getKey(), compiled);
+                    continue;
+                }
+                if (bindingDomain != null && bindingDomain.rowCursor())
                 {
                     // ⛔ A binding that reads the ROW cursor stays the binding (combined review of
                     // runbook W2–W8, round 2 H1): its hand-over is a Vector, and a Vector stored
@@ -2240,10 +2256,8 @@ public final class RuleRunner
                     perColVars.put(ve.getKey(), compiled);
                     continue;
                 }
-                // Runbook W2a: a COMPILED binding (var_exists("X") where a variable_exists
-                // operation used to stand) hands over its dataset-level value here exactly as
-                // resolveVariable does for the row path — otherwise the per-variable projection
-                // reported the BindingValue object's toString.
+                // A VAR-only binding hands over its value for this column (the per-variable map
+                // builder: the whole map, projected below) exactly as resolveVariable does.
                 if (readsVariableCursor(compiled))
                 {
                     if (cursorCtx == null)

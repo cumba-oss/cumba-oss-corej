@@ -404,4 +404,24 @@ class ReadValueTest
         assertEquals(1, result.getViolations().size(),
                 "S1's AGETXT \"42\" is the read value's text — " + result.getViolations());
     }
+
+
+    @Test
+    void aDatasetLevelBindingIsAMembershipSetOnTheVariableRowPathToo()
+    {
+        // Combined review of runbook W2–W8, confirmation look L-a: the {VAR,ROW} per-column view
+        // handed a dataset-level binding over as its raw payload — Double 42.0 — and the
+        // membership reader folded that as "42.0", where the row path reads the binding itself
+        // (ConstVector.memberValue, the cell's text "42"). RED before the fix: no finding.
+        IDataTable dm = RealTableFixture.of("DM").str("DOMAIN", "DM", "DM")
+                .str("USUBJID", "S1", "S2").dbl("AGE", 42.0, 7.0).str("AGETXT", "42", "7").build();
+        RuleExecutionResult result = RuleRunnerCalls
+                .execute(loaded("read_value(AGE, domain=\\\"DM\\\", mode=\\\"FIRST\\\")",
+                        "varname() == \\\"AGETXT\\\" and AGETXT in $v"), dm, resolver(dm));
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        assertEquals(1, result.getViolations().size(),
+                "S1's AGETXT \"42\" is the read value's text — " + result.getViolations());
+        assertEquals(0L, result.getViolations().get(0).getRow());
+        assertEquals("42", result.getViolations().get(0).getValues().get("$v"));
+    }
 }

@@ -446,6 +446,39 @@ class CompiledBindingTest
     }
 
 
+    /**
+     * Combined review of runbook W2–W8, confirmation look L-c: a binding that reads the ROW cursor
+     * but not the VAR cursor answers the same Vector for every column, yet its memo was keyed on
+     * the per-column variables map, so the {VAR,ROW} loop evaluated it once per column.
+     */
+    @Test
+    void aRowOnlyBindingIsComputedOnceAcrossTheVariableRowLoop() throws Exception
+    {
+        AtomicInteger calls = new AtomicInteger();
+        FunctionDescriptor counter = new FunctionDescriptor("__cfu_row_counter__",
+                List.of(Parameter.required("x", ExprType.Unknown.UNKNOWN)), FunctionKind.VALUE,
+                (run, args) ->
+                {
+                    calls.incrementAndGet();
+                    return args.get(0);
+                });
+        try (var _ = RegistryTestSeam.register(counter))
+        {
+            Rule rule = loadClean("varname() != \"AETERM\" and $c == \"Nausea\"",
+                    List.of("variable_name", "$c"), "$c", "__cfu_row_counter__(AETERM)");
+            assertEquals(Domain.ROW, rule.compiledBinding("$c").domain(), "a ROW-only binding");
+            IDataTable ae = RealTables.of("AE").str("USUBJID", "S1", "S1", "S2")
+                    .str("AETERM", "headache", "Nausea", "HEADACHE").str("X", "A", "B", "C")
+                    .str("Y", "A", "Z", "Q").build();
+            RuleExecutionResult result = run(rule, ae);
+            assertEquals(3, result.getViolations().size(),
+                    "USUBJID, X and Y on the Nausea row — " + result.getViolations());
+            assertEquals("Nausea", result.getViolations().get(0).getValues().get("$c"));
+            assertEquals(1, calls.get(), "computed once for the four columns, not once per column");
+        }
+    }
+
+
     @Test
     void aDatasetLevelBindingIsHandedOverAsItsRawValue() throws Exception
     {

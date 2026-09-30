@@ -2698,12 +2698,14 @@ public final class ExprCompiler
             }
             rawSortVars.add(groupOperandName(key));
         }
-        List<String> within = withinColumns(c.kwargs().get("within"));
-        if (within.size() > 1)
+        Expr withinArg = c.kwargs().get("within");
+        List<String> within = withinColumns(withinArg);
+        if (withinArg != null && within.size() != 1)
         {
             // Combined review of runbook W2–W8, round 2 (corpus M4): the ordering plan partitions
             // by ONE column, and a longer list used to compile to "no within" — the call loaded
-            // and ran UNGROUPED, silently.
+            // and ran UNGROUPED, silently. An empty `within=[]` did the same (confirmation look
+            // L-b); as in the two other single-column readers, present means exactly one.
             throw unsupported("is_sorted_by's within= takes one column (or a one-element list),"
                     + " not " + within);
         }

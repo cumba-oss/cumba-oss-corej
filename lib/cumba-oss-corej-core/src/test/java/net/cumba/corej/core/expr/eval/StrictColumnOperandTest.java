@@ -83,6 +83,19 @@ class StrictColumnOperandTest
 
 
     @Test
+    void anEmptyWithinOnIsSortedByIsALoadError() throws Exception
+    {
+        // Combined review of runbook W2–W8, confirmation look L-b: `within=[]` compiled to no
+        // within — the call loaded and ran UNGROUPED — where the two other single-column readers
+        // (present_on_multiple_rows_within, has_next_corresponding_record) refuse size() != 1.
+        Rule rule = load("not is_sorted_by(SEQ, by=[asc(STDTC)], within=[])");
+        assertNotNull(rule.getLoadError(), "an empty within= must not load");
+        assertTrue(rule.getLoadError().contains("is_sorted_by's within= takes one column"),
+                rule.getLoadError());
+    }
+
+
+    @Test
     void theBareSpellingsLoad() throws Exception
     {
         for (String check : List.of("not is_sorted_by(SEQ, by=[asc(STDTC)], within=USUBJID)",
