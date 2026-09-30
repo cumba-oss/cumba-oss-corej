@@ -233,4 +233,29 @@ class MatchFilterExecutionTest
         assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
         assertEquals(List.of("P1"), firedSubjects(result, primary));
     }
+
+
+    @Test
+    @DisplayName("a colref in the Filter takes the absent default of its numeric position")
+    void aColrefInTheFilterTakesTheAuthoredAbsentDefault() throws IOException
+    {
+        // PLAN-dynamic-column-functions §2.3 step 2, review round 1 (lane B M2): the Filter's
+        // sub-context carries the colref call sites' numeric expectations. AE has no ZZ, so
+        // `colref("ZZ") < 3` is MIS < 3 — every AE row kept, every subject with an AE matched;
+        // without the carry it is "" < 3, keeping none. (The AUTHORED `ZZ < 3` is not a
+        // comparator here: stage B refuses a Filter naming a column its dataset does not carry,
+        // FILTER_UNRESOLVABLE, D89 — a dynamic name is only known per row.)
+        Rule r = rule(aeJoin("colref(\"ZZ\") < 3"), "AE._matched_");
+        assertNull(r.getLoadError(), r.getLoadError());
+        IDataTable primary = dm();
+        RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                inventory(study(primary, ae())), "DM", null, null, null);
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        assertEquals(List.of("P1", "P2", "P3"), firedSubjects(result, primary));
+        Rule authored = rule(aeJoin("ZZ < 3"), "AE._matched_");
+        assertEquals(RuleExecutionStatus.ERROR,
+                RuleRunnerCalls.execute(authored, primary, inventory(study(primary, ae())), "DM",
+                        null, null, null).getStatus(),
+                "the authored spelling is FILTER_UNRESOLVABLE (D89)");
+    }
 }

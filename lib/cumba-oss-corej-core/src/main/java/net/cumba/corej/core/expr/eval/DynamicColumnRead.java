@@ -2,10 +2,15 @@ package net.cumba.corej.core.expr.eval;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import net.cumba.corej.core.exec.EvaluationContext;
 import net.cumba.corej.core.exec.JoinLookup;
 import net.cumba.corej.core.exec.ScalarSemantics;
+import net.cumba.corej.core.expr.RuleDefinitionException;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.DataValueType;
@@ -46,6 +51,15 @@ import net.cumba.datatable.values.MissingValue;
  * return pivoted names either (owner Q12). The authored bare name does read the pivot — an
  * asymmetry handed to {@code PLAN-qualified-name-uniformity-review}.
  * </p>
+ *
+ * <p>
+ * ⭐ <b>A name is resolved ONCE per evaluation</b> (review round 1, lane A M3): the column index,
+ * the join lookup or the absent default a name stands for is decided on its first row and memoised
+ * for the evaluation ({@link Target}), so a literal name, a literal list and a {@code find_vars}
+ * list cost one {@code getColumnIndex} per name — not one linear, case-insensitive column scan per
+ * row per member — and an absent fold is noted once. A per-row computed name is memoised the same
+ * way, keyed by its text.
+ * </p>
  */
 public final class DynamicColumnRead
 {
@@ -68,98 +82,174 @@ public final class DynamicColumnRead
      * @param numericDefault
      *            whether the call site stands in a numeric-expected position — decided ONCE per
      *            evaluation by the caller, never per row
+     * @param literal
+     *            whether the first hop is a LITERAL (a string or a list of strings written in the
+     *            rule): only then is a {@code --} name a specialiser defect (D77b); a DATA-derived
+     *            {@code --} name names no column (review round 1, lane A M1)
      * @return the dereferenced vector (declared STRING — rows may resolve to different columns)
      */
-    public static Vector vector(EvalRun run, Vector names, boolean numericDefault)
+    public static Vector vector(EvalRun run, Vector names, boolean numericDefault, boolean literal)
     {
-        EvaluationContext ctx = run.ctx();
+        Resolver resolver = new Resolver(run.ctx(), numericDefault, literal);
         return new ComputedVector(run.rowCount(), DataValueType.STRING,
-                row -> resolve(ctx, names.value(row), row, numericDefault));
+                row -> resolver.resolve(names.value(row), row));
     }
-
-
-    /** One row: a scalar name ⇒ its cell; a list of names ⇒ the list of their cells. */
-    private static Object resolve(EvaluationContext ctx, TypedValue first, long row,
-            boolean numericDefault)
-    {
-        if (first.missing() != null)
-        {
-            // A missing first hop names no column: the answer is that missing, its own cell
-            // (D85c — colref(.A) is .A).
-            return first.cell();
-        }
-        Object payload = first.resolved();
-        if (payload instanceof Collection<?> items)
-        {
-            List<IDataValue> cells = new ArrayList<>(items.size());
-            // NNL §1: a list value holds no null element (the ListValueGuard at its birth site).
-            for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(items))
-            {
-                cells.add(member(ctx, item, row, numericDefault));
-            }
-            return cells;
-        }
-        return nameOf(ctx, first, row, numericDefault);
-    }
-
-
-    /** A scalar first hop: a present string names a column; anything else names none (Q7). */
-    private static IDataValue nameOf(EvaluationContext ctx, TypedValue first, long row,
-            boolean numericDefault)
-    {
-        IDataValue source = first.sourceCell();
-        boolean text = source != null ? source.getType() == DataValueType.STRING
-                : first.resolved() instanceof String;
-        if (!text)
-        {
-            // Q7: a present non-string VALUE (a numeric cell, a number) names no column — a data
-            // problem, not a rule defect (D35), so a computed missing, never an error.
-            return ScalarSemantics.computedMissing();
-        }
-        return cell(ctx, String.valueOf(first.resolved()), row, numericDefault);
-    }
-
-
-    /** One element of a list first hop: a string is a name; a missing element is kept (Q4). */
-    private static IDataValue member(EvaluationContext ctx, Object item, long row,
-            boolean numericDefault)
-    {
-        MissingValue marker = Primitives.MemberSet.missingIdentityOfMember(item);
-        if (marker != null)
-        {
-            // Q4: a missing NAME in the list stays in the list as that missing (D85c).
-            return item instanceof IDataValue dv ? dv
-                    : DataValueSupport.getAsDataValue(marker, DataValueType.MISSING);
-        }
-        if (item instanceof IDataValue dv)
-        {
-            return dv.getType() == DataValueType.STRING
-                    ? memberCell(cell(ctx, dv.getValueAsString(), row, numericDefault))
-                    : ScalarSemantics.computedMissing();
-        }
-        return item instanceof String s ? memberCell(cell(ctx, s, row, numericDefault))
-                : ScalarSemantics.computedMissing();
-    }
-
 
     /**
-     * A list member's cell, as a member set reads it (§2.7 point 2): a member set keys a present
-     * member by its {@code toString()}, which for a numeric cell and for {@link DataValues#of} is
-     * the value's text, but for a joined {@code DataValueString} is the QUOTED text — so a present
-     * character cell is re-carried as its text ({@code DataValues.of}), exactly the member the
-     * {@code ${*}} collector's {@code getValueAsString()} builds. A numeric cell keeps its type; a
-     * missing cell keeps its identity (Q4).
+     * What a name stands for in this evaluation — decided once ({@link Resolver#target}), read per
+     * row ({@link #read}): a constant (absent, not supplied), a column of the evaluation table, or
+     * a joined column. Never a {@code null} value (NNL: every value a rule reads is a real value or
+     * a {@code MissingValue}).
      */
-    private static IDataValue memberCell(IDataValue cell)
+    private sealed interface Target permits Constant, Primary, Joined
     {
-        return cell.getType() == DataValueType.STRING && TypedValue.missingIdentityOf(cell) == null
-                ? DataValues.of(cell.getValueAsString())
-                : cell;
+
+        /**
+         * The cell on {@code row}; {@code member} re-carries a joined character cell as its text
+         * (§2.7 point 2: a member set keys a present member by {@code toString()}, which for a
+         * joined {@code DataValueString} is the QUOTED text).
+         */
+        IDataValue read(EvaluationContext ctx, long row, boolean member);
+    }
+
+
+    /** A name that reads no cell: its absent / not-supplied default, or the computed missing. */
+    private record Constant(IDataValue value) implements Target
+    {
+
+        @Override
+        public IDataValue read(EvaluationContext ctx, long row, boolean member)
+        {
+            return value;
+        }
     }
 
 
     /**
-     * The cell {@code name} names on {@code row} — the arms of §2.3, the default of step 4.
+     * A column of the evaluation table — the primary arm of {@code substitutedScalarCell}, verbatim
+     * in effect: {@code resolvedString}'s blank contract (any missing cell ⇒ that cell, identity
+     * kept), a numeric cell handed through typed, a present character value as its text (already a
+     * member-safe {@code DataValues.of} — no second wrap).
+     */
+    private record Primary(int colIdx, boolean numericColumn) implements Target
+    {
+
+        @Override
+        public IDataValue read(EvaluationContext ctx, long row, boolean member)
+        {
+            String text = ScalarSemantics.resolvedString(ctx.getTable(), colIdx, row);
+            if (text == null || numericColumn)
+            {
+                return ctx.getTable().getColumn(colIdx).getDataValue(row);
+            }
+            return DataValues.of(text);
+        }
+    }
+
+
+    /** A joined dataset's column, read through {@link JoinLookup#lookupValue}. */
+    private record Joined(JoinLookup lookup, String column, boolean numeric) implements Target
+    {
+
+        @Override
+        public IDataValue read(EvaluationContext ctx, long row, boolean member)
+        {
+            IDataValue cell = lookup.lookupValue(ctx.getTable(), row, column, numeric);
+            return member && cell.getType() == DataValueType.STRING
+                    && TypedValue.missingIdentityOf(cell) == null
+                            ? DataValues.of(cell.getValueAsString())
+                            : cell;
+        }
+    }
+
+
+    /** One evaluation's name resolution, memoised by name. */
+    private static final class Resolver
+    {
+
+        private final EvaluationContext ctx;
+
+        private final boolean numericDefault;
+
+        private final boolean literal;
+
+        private final Map<String, Target> targets = new HashMap<>();
+
+        Resolver(EvaluationContext ctx, boolean numericDefault, boolean literal)
+        {
+            this.ctx = ctx;
+            this.numericDefault = numericDefault;
+            this.literal = literal;
+        }
+
+
+        /** One row: a scalar name ⇒ its cell; a list of names ⇒ the list of their cells. */
+        Object resolve(TypedValue first, long row)
+        {
+            if (first.missing() != null)
+            {
+                // A missing first hop names no column: the answer is that missing, its own cell
+                // (D85c — colref(.A) is .A).
+                return first.cell();
+            }
+            Object payload = first.resolved();
+            if (payload instanceof Collection<?> items)
+            {
+                List<IDataValue> cells = new ArrayList<>(items.size());
+                // NNL §1: a list value holds no null element (the ListValueGuard at its birth
+                // site).
+                for (Object item : net.cumba.corej.core.exec.ListValueGuard.elements(items))
+                {
+                    cells.add(member(item, row));
+                }
+                return cells;
+            }
+            IDataValue source = first.sourceCell();
+            boolean text = source != null ? source.getType() == DataValueType.STRING
+                    : payload instanceof String;
+            if (!text)
+            {
+                // Q7: a present non-string VALUE (a numeric cell, a number) names no column — a
+                // data problem, not a rule defect (D35), so a computed missing, never an error.
+                return ScalarSemantics.computedMissing();
+            }
+            return target(String.valueOf(payload)).read(ctx, row, false);
+        }
+
+
+        /** One element of a list first hop: a string is a name; a missing element is kept (Q4). */
+        private IDataValue member(Object item, long row)
+        {
+            MissingValue marker = Primitives.MemberSet.missingIdentityOfMember(item);
+            if (marker != null)
+            {
+                // Q4: a missing NAME in the list stays in the list as that missing (D85c).
+                return item instanceof IDataValue dv ? dv
+                        : DataValueSupport.getAsDataValue(marker, DataValueType.MISSING);
+            }
+            String name = item instanceof IDataValue dv
+                    ? dv.getType() == DataValueType.STRING ? dv.getValueAsString() : null
+                    : item instanceof String s ? s : null;
+            return name == null ? ScalarSemantics.computedMissing()
+                    : target(name).read(ctx, row, true);
+        }
+
+
+        private Target target(String name)
+        {
+            Target known = targets.get(name);
+            if (known == null)
+            {
+                known = DynamicColumnRead.target(ctx, name, numericDefault, literal);
+                targets.put(name, known);
+            }
+            return known;
+        }
+    }
+
+    /**
+     * The cell {@code name} names on {@code row} — the arms of §2.3, the default of step 4 (for a
+     * single read; {@link #vector} memoises the resolution per evaluation).
      *
      * @param ctx
      *            the evaluation context
@@ -174,48 +264,79 @@ public final class DynamicColumnRead
      */
     static IDataValue cell(EvaluationContext ctx, String name, long row, boolean numericDefault)
     {
+        return target(ctx, name, numericDefault, true).read(ctx, row, false);
+    }
+
+
+    /** What {@code name} stands for in this evaluation (§2.3 step 4). */
+    private static Target target(EvaluationContext ctx, String name, boolean numericDefault,
+            boolean literal)
+    {
+        IDataValue absent = numericDefault ? ScalarSemantics.computedMissing()
+                : DataValueSupport.defaultForType(DataValueType.STRING);
         if (name.isEmpty())
         {
-            return numericDefault ? ScalarSemantics.computedMissing()
-                    : DataValueSupport.defaultForType(DataValueType.STRING);
+            return new Constant(absent);
         }
-        // D77b: a `--` name reaching evaluation is a specialiser defect — assert, as for every
-        // other name (a literal colref("--SEQ") is specialised at bind time, D93c).
-        String resolved = ExprCompiler.resolveDomainPrefix(name, ctx);
-        // Step 4: the site's own kind OR the resolved name's rule-wide kind (today's term).
-        boolean numeric = numericDefault || ctx.getNumericExpectedColumns().contains(resolved);
+        String resolved;
+        if (literal)
+        {
+            // D77b: a `--` name in a LITERAL argument reaching evaluation is a specialiser defect
+            // — assert, as for every other authored name (colref("--SEQ") is specialised at bind
+            // time, D93c).
+            resolved = ExprCompiler.resolveDomainPrefix(name, ctx);
+        }
+        else if (name.startsWith("--"))
+        {
+            // Review round 1, lane A M1: a DATA-derived `--` name (IDVAR = "--SEQ") is no
+            // specialiser defect — no column is spelled that way, so it names no column and takes
+            // the site's absent default, as `${IDVAR}` never errored on it either.
+            return new Constant(absent);
+        }
+        else
+        {
+            resolved = name;
+        }
+        String upper = resolved.toUpperCase(Locale.ROOT);
+        // Step 4: the site's own kind OR the resolved name's rule-wide kind (today's term), the
+        // name matched case-insensitively (owner 2026-09-28, CIT §1).
+        Set<String> numericColumns = ctx.getNumericExpectedColumns();
+        boolean numeric = numericDefault || numericColumns.contains(resolved)
+                || numericColumns.contains(upper);
         int dot = resolved.indexOf('.');
         if (dot > 0)
         {
+            String column = resolved.substring(dot + 1);
+            if ("_matched_".equalsIgnoreCase(column))
+            {
+                // Review round 1, lane A L6 — dottedVector's guard, mirrored: the join-match flag
+                // is
+                // a boolean CONDITION (spec §3.3, D88b), never a value; read as a column it would
+                // silently be an absent one.
+                throw new RuleDefinitionException(resolved + " is a boolean condition, not a value"
+                        + " — write it bare (e.g. `not " + resolved + "`), never through colref");
+            }
             JoinLookup lookup = ctx.getJoinedDatasets().get(resolved.substring(0, dot));
-            return lookup == null ? ExprCompiler.dottedNotSuppliedDefault(numeric)
-                    : lookup.lookupValue(ctx.getTable(), row, resolved.substring(dot + 1), numeric);
+            return lookup == null ? new Constant(ExprCompiler.dottedNotSuppliedDefault(numeric))
+                    : new Joined(lookup, column, numeric);
         }
         DataTableMeta meta = ctx.getTable().getMetaData();
         int colIdx = meta.getColumnIndex(resolved);
         if (colIdx >= 0)
         {
-            // The primary arm of substitutedScalarCell, verbatim in effect: resolvedString's
-            // blank contract (any missing cell ⇒ that cell, identity kept), the numeric cell
-            // handed through typed, a present character value as its text.
-            String text = ScalarSemantics.resolvedString(ctx.getTable(), colIdx, row);
-            if (text == null)
-            {
-                return ctx.getTable().getColumn(colIdx).getDataValue(row);
-            }
             DataValueType t = meta.getColumn(colIdx).getType();
-            return t == DataValueType.LONG || t == DataValueType.DOUBLE
-                    ? ctx.getTable().getColumn(colIdx).getDataValue(row)
-                    : DataValues.of(text);
+            return new Primary(colIdx, t == DataValueType.LONG || t == DataValueType.DOUBLE);
         }
         // Absent from the evaluation table: the authored name's D76 default, under the same
-        // eligibility nameRefPlan / valueRefPlan / substitutedScalarCell apply.
-        if (ExprCompiler.absentFoldEnabled && BroadcastFold.isFoldableColumnReference(resolved))
+        // eligibility nameRefPlan / valueRefPlan / substitutedScalarCell apply — judged on the
+        // upper-cased name, since a column name matches case-insensitively (lane A L5: `zz` was
+        // refused as an engine name and read MIS where `ZZ` reads "").
+        if (ExprCompiler.absentFoldEnabled && BroadcastFold.isFoldableColumnReference(upper))
         {
             ctx.noteAbsentColumnFold(resolved);
-            return numeric ? ScalarSemantics.computedMissing()
-                    : DataValueSupport.defaultForType(DataValueType.STRING);
+            return new Constant(numeric ? ScalarSemantics.computedMissing()
+                    : DataValueSupport.defaultForType(DataValueType.STRING));
         }
-        return ScalarSemantics.computedMissing();
+        return new Constant(ScalarSemantics.computedMissing());
     }
 }

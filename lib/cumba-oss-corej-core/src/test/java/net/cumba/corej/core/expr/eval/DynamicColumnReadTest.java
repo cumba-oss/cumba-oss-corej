@@ -93,7 +93,7 @@ class DynamicColumnReadTest
     {
         EvaluationContext c = ctx(Set.of());
         Vector names = ConstVector.of(List.of("USUBJID", "ZZ"));
-        Vector out = DynamicColumnRead.vector(EvalRun.fullRange(c), names, false);
+        Vector out = DynamicColumnRead.vector(EvalRun.fullRange(c), names, false, true);
         Object row0 = out.value(0).resolved();
         assertEquals(2, ((List<?>) row0).size(), "one element per name, in the list's order");
         assertEquals("", ((IDataValue) ((List<?>) row0).get(1)).getValueAsString(),

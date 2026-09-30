@@ -262,4 +262,31 @@ class RuleRunnerSuppMergeTest
         assertFalse(load(pcRule("empty(PCCALCN)", "\"Supp_Merge\": false,")).isSuppMergeEnabled());
         assertTrue(load(pcRule("empty(PCCALCN)", "\"Supp_Merge\": true,")).isSuppMergeEnabled());
     }
+
+
+    /**
+     * ⚑ {@code PLAN-dynamic-column-functions} deviation 10, PINNED as it stands (review round 1,
+     * lane B L6; the direction is owner-pending as lane C F1): the authored bare name reads the
+     * merged SUPP qualifier, {@code colref} over the same name does NOT — the pivot is not a column
+     * of the evaluation table ({@code DynamicColumnRead}), and {@code find_vars} does not return
+     * pivoted names either (owner Q12). If the owner rules that {@code colref} reads the pivot,
+     * this pin flips with the fix.
+     */
+    @Test
+    void colrefDoesNotReadTheMergedQualifierTheAuthoredNameReads()
+    {
+        IDataTable pc = pc();
+        RuleExecutionResult authored = RuleRunnerCalls.execute(
+                load(pcRule("PCSTRESC == \\\"BLQ\\\" and not empty(PCCALCN)", "")), pc,
+                inventory(pc, suppPc()));
+        assertEquals(List.of(1L),
+                authored.getViolations().stream().map(Violation::getRowNumber).toList());
+        RuleExecutionResult dynamic = RuleRunnerCalls.execute(
+                load(pcRule("PCSTRESC == \\\"BLQ\\\" and not empty(colref(\\\"PCCALCN\\\"))", "")),
+                pc, inventory(pc, suppPc()));
+        assertEquals(RuleExecutionStatus.EXECUTED, dynamic.getStatus(), dynamic.getStatusMessage());
+        assertEquals(List.of(),
+                dynamic.getViolations().stream().map(Violation::getRowNumber).toList(),
+                "colref reads the evaluation table only: PCCALCN is no column there");
+    }
 }

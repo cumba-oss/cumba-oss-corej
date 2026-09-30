@@ -160,7 +160,14 @@ public final class FindVars
         {
             table = ctx.getTable();
             prefix = "";
-            // D77b: an unresolved `--` reaching evaluation is a specialiser defect.
+            if (!literal && entry.variable().startsWith("--"))
+            {
+                // Review round 1, lane A M1: a COMPUTED entry spelling `--` is data, not a
+                // specialiser defect — no column is spelled that way, so it selects nothing.
+                return List.of();
+            }
+            // D77b: an unresolved `--` in a LITERAL entry reaching evaluation is a specialiser
+            // defect.
             variable = net.cumba.corej.core.expr.eval.ExprCompiler
                     .resolveDomainPrefixForName(entry.variable(), ctx);
         }
@@ -238,7 +245,22 @@ public final class FindVars
      * The {@code Output_Variables} pattern step: every {@linkplain #isOutputVariablePattern pattern
      * entry} replaced, in place, by the EXISTING columns it matches ({@code JVA 2c}: an absent one
      * is never reported), through {@link #names} — the very matcher {@code find_vars} uses, so the
-     * report names exactly the columns {@code find_vars} would. Every other entry is kept verbatim.
+     * report names exactly the columns {@code find_vars} would. Every other entry is kept verbatim:
+     * a {@code $}-binding, a {@code !}-exclusion, an engine name (lower-case first letter), a
+     * {@code ${…}} entry (its own unchanged expansion, Q8), a leading-{@code *} ADaM capture and a
+     * RELREC {@code **} reference ({@link #isOutputVariablePattern}'s carve-outs), a literal name —
+     * and a pattern-shaped entry that is ALSO the literal name of an existing column
+     * ({@link #namesAColumn}).
+     *
+     * <p>
+     * ⚑ Measured at review round 1 (lane C F5): the corpus carries 691 template-shaped entries —
+     * 594 pattern entries by this step's own test plus 97 carved-out leading-{@code *} / {@code **}
+     * ones — and every one of the 594 sits in a rule whose Check or Bindings carry the same name,
+     * so {@code WildcardExpander} renames it before {@code RuleRunner} sees it. Over the whole
+     * corpus suite (scenarios, rulespec, findings snapshot) the step expanded NO entry; the only
+     * entries that reached it — ten, in nine rulespec fixtures — were kept by
+     * {@link #namesAColumn}.
+     * </p>
      *
      * @param outputVars
      *            the entries, after the {@code --} and {@code ${*}} steps
@@ -272,10 +294,18 @@ public final class FindVars
 
     /**
      * Whether a pattern-shaped entry is ALSO the literal name of an existing column — then it is
-     * that column, and the step keeps it verbatim, exactly as the values loop reads it. Measured
-     * necessary: the rulespec corpus carries 11 fixtures whose table has a column literally named
-     * {@code TRTxxP} / {@code BCHGCATy} (self-confirming fixture shapes), and their pinned reports
-     * key on it.
+     * that column, and the step keeps it verbatim, exactly as the values loop reads it.
+     *
+     * <p>
+     * ⚑ Kept on purpose (review round 1, lane C F5, tried and reverted): its only carriers are nine
+     * rulespec fixtures (ten entries: {@code TRTxxP}, {@code TRTxxA}, {@code TRTPGyN},
+     * {@code CRITy}, {@code TRTAGyN}, {@code TRxxPGy}, {@code BCHGCATy}, {@code PBCHGCAy}) whose
+     * table names a column after the template. That is deliberate there: the rulespec harness runs
+     * a rule WITHOUT the {@code WildcardExpander} ({@code SpecRunner} → {@code RuleRunner}), so the
+     * template-named column stands in for the expanded member and the spec pins the POST-expansion
+     * Check. Reshaped to real members ({@code TRT02P}), all nine specs lost their violation — their
+     * claim — so the fixtures and this carve-out stay.
+     * </p>
      */
     private static boolean namesAColumn(EvaluationContext ctx, String entry)
     {

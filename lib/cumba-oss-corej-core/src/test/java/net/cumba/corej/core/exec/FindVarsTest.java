@@ -365,4 +365,203 @@ class FindVarsTest
                 RuleClassifier.deriveSensitivity(rule).value(),
                 RuleClassifier.deriveSensitivity(rule).toString());
     }
+
+    // ------------------------------------------------------------------ review round 1
+
+
+    /**
+     * Lane A M2: a {@code $}-binding holding a {@code find_vars} list, dereferenced by
+     * {@code colref($vars)} on the right of {@code in}, answers as the inline spelling (before the
+     * fix: a run-time ERROR — the colref arm admitted only a literal or a list-valued call).
+     */
+    @Test
+    void colrefOverAListBindingIsAMembershipSet()
+    {
+        List<Long> inline = fired("TRTA in colref(find_vars(\"ADSL.TRT0wA\"))");
+        assertEquals(List.of(1L, 3L), inline);
+        assertEquals(inline, fired("TRTA in colref($vars)", "$vars", "find_vars(\"ADSL.TRT0wA\")"));
+        assertEquals(fired("TRTA not in colref(find_vars(\"ADSL.TRT0wA\"))"),
+                fired("TRTA not in colref($vars)", "$vars", "find_vars(\"ADSL.TRT0wA\")"));
+    }
+
+
+    /**
+     * Lane A L1: {@code colref(<list>)} on the LEFT of {@code in} compares element-wise — any
+     * member in the set — like a list-valued accessor on the left (D81d), never the list as one
+     * value.
+     */
+    @Test
+    void aColrefListOnTheLeftComparesElementWise()
+    {
+        assertEquals(List.of(3L), fired("colref(find_vars(\"ADSL.TRT0wA\")) in [\"Z\"]"),
+                "S2's TRT02A is Z");
+        assertEquals(List.of(1L, 2L), fired("colref(find_vars(\"ADSL.TRT0wA\")) not in [\"Z\"]"));
+        assertEquals(List.of(3L),
+                fired("colref($vars) in [\"Z\"]", "$vars", "find_vars(\"ADSL.TRT0wA\")"),
+                "through a binding too");
+        assertEquals(List.of(1L, 2L), fired("colref(\"TRTA\") in [\"A\", \"B\"]"),
+                "a scalar colref on the left stays a scalar probe");
+    }
+
+
+    /**
+     * Lane A M1: a DATA-derived entry or name starting with {@code --} names no column — computed
+     * {@code find_vars} answers {@code []} and computed {@code var_exists} answers as for an absent
+     * name, never the D77b specialiser assertion (a rule ERROR on shipped data).
+     */
+    @Test
+    void aDataDerivedDashNameSelectsNothing()
+    {
+        IDataTable primary = RealTables.of("ADAE").str("USUBJID", "S1").str("NAMECOL", "--SEQ")
+                .str("AESEQ", "1").build();
+        String rule = json("not empty(USUBJID) and count(find_vars(NAMECOL)) == 0"
+                + " and not var_exists(concat(\"\", NAMECOL))", List.of("USUBJID"));
+        RuleExecutionResult result = run(primary, rule, adsl());
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        assertEquals(1, result.getViolations().size());
+    }
+
+
+    /**
+     * Lane C F9: a {@code var_exists} over a COMPUTED name varies per row — a record-level fact for
+     * the classifier (the mirror of the literal {@code find_vars} arm, which is dataset level).
+     */
+    @Test
+    void aComputedVarExistsIsARecordLevelFact()
+    {
+        Rule computed = load("{\"Core\":{\"Id\":\"T-VE-SENS\"},\"Match_Datasets\":[{\"Name\":"
+                + "\"ADSL\",\"Keys\":[\"USUBJID\"],\"Join_Type\":\"left\"}],\"Check\":{"
+                + "\"expression\":\"not var_exists(concat(\\\"ADSL.TRT\\\", printf(\\\"%02d\\\","
+                + " APERIOD), \\\"P\\\"))\"},\"Outcome\":{\"Message\":\"m\"}}");
+        assertEquals(net.cumba.corej.core.model.Sensitivity.RECORD,
+                RuleClassifier.deriveSensitivity(computed).value(),
+                RuleClassifier.deriveSensitivity(computed).toString());
+        Rule literal = load("{\"Core\":{\"Id\":\"T-VE-SENS2\"},\"Check\":{\"expression\":"
+                + "\"not var_exists(\\\"TRTP\\\")\"},\"Outcome\":{\"Message\":\"m\"}}");
+        assertEquals(net.cumba.corej.core.model.Sensitivity.DATASET,
+                RuleClassifier.deriveSensitivity(literal).value(),
+                RuleClassifier.deriveSensitivity(literal).toString());
+    }
+
+
+    /**
+     * Lane A L7: {@code colref(find_vars(<literal>))} reads per-row CELLS — record level, even
+     * though its entry is a dataset-level list of names.
+     */
+    @Test
+    void aColrefOverALiteralFindVarsIsARecordLevelRead()
+    {
+        for (String check : List.of("\\\"Z\\\" in colref(find_vars(\\\"ADSL.TRT0wA\\\"))",
+                "colref(find_vars(\\\"TRTxxP\\\")) in [\\\"X\\\"]"))
+        {
+            Rule rule = load("{\"Core\":{\"Id\":\"T-CR-SENS\"},\"Match_Datasets\":[{\"Name\":"
+                    + "\"ADSL\",\"Keys\":[\"USUBJID\"],\"Join_Type\":\"left\"}],\"Check\":{"
+                    + "\"expression\":\"" + check + "\"},\"Outcome\":{\"Message\":\"m\"}}");
+            assertEquals(net.cumba.corej.core.model.Sensitivity.RECORD,
+                    RuleClassifier.deriveSensitivity(rule).value(),
+                    check + " → " + RuleClassifier.deriveSensitivity(rule));
+        }
+    }
+
+
+    /**
+     * ⭐ The cross-surface assertion for QUALIFIED entries (review round 1, lane B M3), end to end
+     * on a joined ADSL: {@code find_vars(e)} is empty exactly when a rule requiring {@code e}
+     * ({@code Requirements.Variables.All: [e]} — a one-entry {@code Any} is refused at load) is
+     * SKIPPED. One parser, one matcher, so the two surfaces answer alike for every form.
+     */
+    @Test
+    void aQualifiedEntrySelectsWhatTheRequirementsEntryRequires()
+    {
+        for (String entry : List.of("ADSL.TRTxxA", "ADSL.TRT*A", "ADSL./TRT[0-9]+A/", "ADSL.TRT01A",
+                "ADSL.TRT09A", "ADSL.TRTxxZ"))
+        {
+            boolean none = "[]".equals(namesOf(entry));
+            assertEquals(none, requirementSkips(adae(), entry, adsl()), entry);
+        }
+        assertEquals("[]", namesOf("ADSL.TRT09A"));
+        assertEquals("[ADSL.TRT01A, ADSL.TRT02A]", namesOf("ADSL.TRTxxA"));
+    }
+
+
+    /**
+     * The SPLIT-domain case of the cross-surface assertion: both surfaces see the union of the
+     * members' columns.
+     */
+    @Test
+    void aQualifiedEntryOverASplitDomainAgreesWithRequirements()
+    {
+        IDataTable dm = RealTables.of("DM").str("USUBJID", "U1").build();
+        IDataTable lbch = RealTables.of("lbch").str("DOMAIN", "LB").str("USUBJID", "U1")
+                .str("LBXA", "a").build();
+        IDataTable lbhe = RealTables.of("lbhe").str("DOMAIN", "LB").str("USUBJID", "U1")
+                .str("LBXB", "b").build();
+        for (String entry : List.of("LB.LBX*", "LB.LBXB", "LB.LBXC"))
+        {
+            boolean none = "[]".equals(namesOn(dm, "LB", entry, lbch, lbhe));
+            assertEquals(none, requirementSkipsOn(dm, "LB", entry, lbch, lbhe), entry);
+        }
+    }
+
+
+    /**
+     * ⭐ Q12, asserted as a DIVERGENCE: {@code Requirements.Variables} counts a SUPP-QNAM-pivoted
+     * name as present, {@code find_vars} returns only REAL columns (owner Q12: a pivoted name is
+     * not a column {@code colref} can read).
+     */
+    @Test
+    void theSuppPivotIsTheOneDivergenceFromRequirements()
+    {
+        IDataTable ae = RealTables.of("AE").str("STUDYID", "S").str("USUBJID", "U1")
+                .str("AESEQ", "1").build();
+        IDataTable suppae = RealTables.of("SUPPAE").str("STUDYID", "S").str("RDOMAIN", "AE")
+                .str("USUBJID", "U1").str("IDVAR", "").str("IDVARVAL", "").str("QNAM", "AESOSP")
+                .str("QVAL", "v").build();
+        assertEquals("[]", namesOn(ae, null, "AESOSP", suppae), "find_vars: real columns only");
+        assertEquals(false, requirementSkipsOn(ae, null, "AESOSP", suppae),
+                "Requirements.Variables: the pivoted QNAM counts as present");
+    }
+
+
+    private static boolean requirementSkips(IDataTable primary, String entry, IDataTable... others)
+    {
+        return requirementSkipsOn(primary, "ADSL", entry, others);
+    }
+
+
+    private static String match(@org.jspecify.annotations.Nullable String joined)
+    {
+        return joined == null ? ""
+                : ",\"Match_Datasets\":[{\"Name\":\"" + joined + "\",\"Keys\":[\"USUBJID\"],"
+                        + "\"Join_Type\":\"left\"}]";
+    }
+
+
+    /** Whether a rule requiring {@code entry} is SKIPPED on {@code primary}. */
+    private static boolean requirementSkipsOn(IDataTable primary,
+            @org.jspecify.annotations.Nullable String joined, String entry, IDataTable... others)
+    {
+        String rule = "{\"Core\":{\"Id\":\"T-FV-REQ\"},\"Sensitivity\":\"Record\"" + match(joined)
+                + ",\"Requirements\":{\"Variables\":{\"All\":[\"" + esc(entry) + "\"]}},"
+                + "\"Check\":{\"expression\":\"not empty(USUBJID)\"},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}";
+        RuleExecutionStatus status = run(primary, rule, others).getStatus();
+        assertTrue(status == RuleExecutionStatus.SKIPPED || status == RuleExecutionStatus.EXECUTED,
+                entry + " → " + status);
+        return status == RuleExecutionStatus.SKIPPED;
+    }
+
+
+    /** What {@code find_vars(entry)} answers on {@code primary}'s first row. */
+    private static String namesOn(IDataTable primary,
+            @org.jspecify.annotations.Nullable String joined, String entry, IDataTable... others)
+    {
+        String rule = "{\"Core\":{\"Id\":\"T-FV-ON\"},\"Sensitivity\":\"Record\"" + match(joined)
+                + ",\"Bindings\":[{\"name\":\"$fv\",\"expression\":\"find_vars(\\\"" + esc(entry)
+                + "\\\")\"}],\"Check\":{\"expression\":\"not empty(USUBJID)\"},"
+                + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"$fv\"]}}";
+        RuleExecutionResult result = run(primary, rule, others);
+        assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(), result.getStatusMessage());
+        return result.getViolations().get(0).getValues().get("$fv");
+    }
 }

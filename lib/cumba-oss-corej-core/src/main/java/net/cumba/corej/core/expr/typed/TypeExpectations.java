@@ -422,12 +422,14 @@ public final class TypeExpectations
 
     private void membership(Expr left, Expr right)
     {
-        if ((expectationKey(left) == null && dynamicSite(left) == null)
+        if ((expectationKey(left) == null && (dynamicSite(left) == null || listFormColref(left)))
                 || !(right instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.LIST)
         {
             // Only a STATIC list literal states an expectation the gate holds a probe to
             // (mirroring numericMemberSet / isAllStringList's literal-only classification); a
-            // list-LHS membership (D81d) and every dynamic set stay out.
+            // list-LHS membership (D81d) — a colref over a list or a $-binding included, which
+            // the compiler runs element-wise (review round 1, lane A L1) — and every dynamic set
+            // stay out.
             return;
         }
         Expr.LitKind element = null;
@@ -618,6 +620,21 @@ public final class TypeExpectations
 
 
     /**
+     * Whether a {@code colref(…)} site is a LIST read — over a list literal, a list-valued call
+     * ({@code find_vars}) or a {@code $}-binding (which may hold a list) — the shapes
+     * {@code ExprCompiler} runs as a list-LHS membership (D81d), never a scalar probe.
+     */
+    private static boolean listFormColref(Expr colref)
+    {
+        Expr arg = ((Expr.Call) colref).args().get(0);
+        return (arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+                || (arg instanceof Expr.Call call
+                        && ElementTable.resultType(call.name()) instanceof ExprType.ListOf)
+                || (arg instanceof Expr.Ref ref && ref.kind() == OperandKind.OPERATION_REF);
+    }
+
+
+    /**
      * A dotted cross-dataset reference's full name ({@code DM.AGE}), or {@code null} when the
      * operand is not one.
      *
@@ -685,7 +702,15 @@ public final class TypeExpectations
     }
 
 
-    /** Strips the one remaining erased mode tag, {@code str(...)} (D91f/D97c). */
+    /**
+     * Reads THROUGH a {@code str(…)} wrapper: the expectation of {@code str(X)}'s position is
+     * recorded for {@code X}. {@code str} is a registered conversion since
+     * {@code PLAN-dynamic-column-functions} §2.1 (owner Q10), no longer an erased mode tag, and
+     * this read-through is KEPT on purpose (review round 1, lane C F6, coordinator decision):
+     * {@code str(X)} compares {@code X}'s TEXT, so the column that is read — and whose absent
+     * default the position decides — is {@code X}; the expectation belongs to that column read,
+     * exactly as it did while {@code str} was a marker (D91f/D97c), and no verdict moves.
+     */
     private static Expr stripStr(Expr e)
     {
         return e instanceof Expr.Call c && "str".equals(c.name()) && c.args().size() == 1

@@ -722,7 +722,19 @@ class ScalarSemanticsComputedMissingTest
     // 34 -> 35 (PLAN-dynamic-column-functions phase 3): DynamicColumnRead.memberCell — read: it
     // answers its input cell, or DataValues.of(the input's text) for a present character cell;
     // never null.
-    private static final int EXPECTED_VALUE_PRODUCERS = 35;
+    // 35 -> 38 (PLAN-dynamic-column-functions review round 1, lane A M3 — a name resolved ONCE per
+    // evaluation): nameOf / member / memberCell went; the resolution became a sealed Target with
+    // three per-row readers — Constant.read (+ its component accessor Constant.value),
+    // Primary.read,
+    // Joined.read — the interface's Target.read, and Resolver.member. Read: Constant answers the
+    // non-null default it was built with (computedMissing, the present "", or
+    // dottedNotSuppliedDefault's answer); Primary answers the column's own cell (a missing one
+    // handed through, a numeric one typed) or DataValues.of(its text); Joined answers the lookup's
+    // typed value, a present character one re-carried as DataValues.of(text) for a member;
+    // Resolver.member answers the element's own missing cell, a Target's read, or computedMissing.
+    // Never null — and no component is @Nullable (a first record draft with a @Nullable constant
+    // was refused by the nullability half of this test).
+    private static final int EXPECTED_VALUE_PRODUCERS = 38;
 
     private static Method declared(Class<?> owner, String name)
     {

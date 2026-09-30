@@ -424,4 +424,26 @@ class ReadValueTest
         assertEquals(0L, result.getViolations().get(0).getRow());
         assertEquals("42", result.getViolations().get(0).getValues().get("$v"));
     }
+
+
+    /**
+     * {@code PLAN-dynamic-column-functions} §2.3 step 2, review round 1 (lane B M2): the
+     * {@code filter=} sub-context carries the {@code colref} call sites' numeric expectations
+     * ({@code numericExpectedDynamicSites}) exactly as it carries the named columns'. An absent
+     * {@code ZZ} in {@code colref("ZZ") < 3} is MIS (every TS row kept, FIRST = "Study X") exactly
+     * as the authored {@code ZZ < 3}; without the carry it would be {@code ""} and keep no row.
+     */
+    @Test
+    void aColrefInTheFilterTakesTheAuthoredAbsentDefault()
+    {
+        for (String filter : List.of("ZZ < 3", "colref(\\\"ZZ\\\") < 3"))
+        {
+            RuleExecutionResult result = run(
+                    "read_value(TSVAL, domain=TS, filter=(" + filter + "), mode=\\\"FIRST\\\")",
+                    "$v == \\\"Study X\\\"", ts());
+            assertEquals(RuleExecutionStatus.EXECUTED, result.getStatus(),
+                    result.getStatusMessage());
+            assertEquals(2, result.getViolations().size(), filter);
+        }
+    }
 }

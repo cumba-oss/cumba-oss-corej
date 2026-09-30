@@ -501,7 +501,7 @@ public final class RuleClassifier
 
     private static OperationScope operationScope(CallUsage usage)
     {
-        if (usage.operator() == null)
+        if (usage.operator() == null || PER_ROW_NAME.equals(usage))
         {
             return OperationScope.RECORD;
         }
@@ -775,8 +775,73 @@ public final class RuleClassifier
             // no operand surface
         }
         }
+        if (namesAColumnPerRow(expr))
+        {
+            usages.add(PER_ROW_NAME);
+        }
         return new Positioned(new Atom(operator, name, value, valueIsLiteral), negated, entailed,
                 usages);
+    }
+
+    /**
+     * ⭐ {@code PLAN-dynamic-column-functions}, review round 1 (lane C F9, lane A L7): the usage of
+     * a leaf that reads a column NAMED PER ROW — a {@code var_exists} / {@code var_not_exists} over
+     * a computed name (its verdict varies with the row's name), or a {@code colref} over a list, a
+     * list-valued call ({@code find_vars}) or a {@code $}-binding (it reads each row's cells). Its
+     * scope is RECORD ({@link #operationScope}), and it outranks the dataset-level reading a
+     * presence operator or a literal {@code find_vars} would otherwise give the leaf
+     * ({@link #nonDatasetReason}). A literal or reference {@code var_exists} argument and a scalar
+     * {@code colref} over a column or a literal keep today's classification.
+     */
+    private static final CallUsage PER_ROW_NAME = new CallUsage("colref", List.of(), false, null,
+            List.of());
+
+    /** Whether {@code expr} holds a column named per row ({@link #PER_ROW_NAME}). */
+    private static boolean namesAColumnPerRow(Expr expr)
+    {
+        return switch (expr)
+        {
+        case Expr.Call call ->
+        {
+            if (call.args().size() == 1 && VARIABLE_PRESENCE.contains(call.name())
+                    && !(call.args().get(0) instanceof Expr.Ref)
+                    && !(call.args().get(0) instanceof Expr.Lit))
+            {
+                yield true;
+            }
+            if (call.args().size() == 1 && "colref".equals(call.name())
+                    && isListFormArgument(call.args().get(0)))
+            {
+                yield true;
+            }
+            boolean nested = false;
+            for (Expr arg : call.args())
+            {
+                nested |= namesAColumnPerRow(arg);
+            }
+            for (Expr arg : call.kwargs().values())
+            {
+                nested |= namesAColumnPerRow(arg);
+            }
+            yield nested;
+        }
+        case Expr.Binary binary -> namesAColumnPerRow(binary.left())
+                || namesAColumnPerRow(binary.right());
+        case Expr.Not not -> namesAColumnPerRow(not.inner());
+        case Expr.And and -> and.parts().stream().anyMatch(RuleClassifier::namesAColumnPerRow);
+        case Expr.Or or -> or.parts().stream().anyMatch(RuleClassifier::namesAColumnPerRow);
+        default -> false;
+        };
+    }
+
+
+    /** A list literal, a list-valued call or a {@code $}-binding — a list-form colref argument. */
+    private static boolean isListFormArgument(Expr arg)
+    {
+        return (arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+                || (arg instanceof Expr.Call call && net.cumba.corej.core.expr.typed.ElementTable
+                        .resultType(call.name()) instanceof ExprType.ListOf)
+                || (arg instanceof Expr.Ref ref && isOperationRef(ref.name()));
     }
 
 
@@ -1327,6 +1392,13 @@ public final class RuleClassifier
     {
         Atom atom = p.atom();
         String operator = atom.operator();
+        if (p.usages().contains(PER_ROW_NAME))
+        {
+            // Before the presence-operator exemption below: a var_exists over a COMPUTED name is
+            // no dataset fact — its verdict varies with each row's name (lane C F9).
+            return describe(p) + " — a column named per row (a computed var_exists name, or a"
+                    + " colref over a list)";
+        }
         if (operator != null && (DATASET_PRESENCE.contains(operator)
                 || VARIABLE_PRESENCE.contains(operator) || BROADCAST_OPERATORS.contains(operator)
                 || BROADCAST_COLUMN_PREDICATES.contains(operator)))

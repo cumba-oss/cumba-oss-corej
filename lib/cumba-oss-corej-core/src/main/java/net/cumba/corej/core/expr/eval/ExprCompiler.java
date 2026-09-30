@@ -888,6 +888,54 @@ public final class ExprCompiler
     }
 
 
+    /** Whether {@code e} is a one-argument {@code colref(…)} call. */
+    private static boolean isColrefCall(Expr e)
+    {
+        return e instanceof Expr.Call call && COLREF.equals(call.name()) && call.args().size() == 1;
+    }
+
+
+    /**
+     * Whether {@code e} is {@code colref($x)} — a dynamic read whose first hop is a
+     * {@code $}-binding, which may hold a list ({@code $vars: find_vars(…)}) or a name, per row.
+     */
+    private static boolean isColrefOverBinding(Expr e)
+    {
+        return isColrefCall(e) && ((Expr.Call) e).args().get(0) instanceof Expr.Ref ref
+                && ref.kind() == OperandKind.OPERATION_REF;
+    }
+
+
+    /**
+     * {@code plan}'s values carried as lists: a row's list as it is, any other value as a
+     * one-element list of it — a present value re-carried as its text ({@code DataValues.of}, the
+     * member a set keys it by), a missing one as its own cell (its identity kept, Q4). Review round
+     * 1, lane A L1: the probe of {@code colref($x) in …}.
+     */
+    private static ValuePlan asMemberLists(ValuePlan plan)
+    {
+        return run ->
+        {
+            Vector v = plan.eval(run);
+            if (v == null)
+            {
+                return null;
+            }
+            return new ComputedVector(run.rowCount(), DataValueType.STRING, row ->
+            {
+                TypedValue tv = v.value(row);
+                Object payload = tv.resolved();
+                if (payload instanceof Collection<?>)
+                {
+                    return payload;
+                }
+                return List.of(
+                        tv.missing() != null ? tv.cell() : DataValues.of(String.valueOf(payload)));
+            });
+        };
+    }
+
+
     /**
      * The list literal a {@code $}-name is bound to in {@code run}'s context — directly, or through
      * a chain of bindings that each merely rename another — or {@code null}.
@@ -943,12 +991,22 @@ public final class ExprCompiler
         // correctly. (The retired legacy `is_not_contained_by_case_insensitive` operator was an
         // unimplemented no-op until PLAN-regex-rule-optimization Phase 1 made it mirror this.)
         Expr nameExpr = caseInsensitive ? ((Expr.Call) b.left()).args().get(0) : b.left();
+        // PLAN-dynamic-column-functions, review round 1 (lane A L1): a colref whose argument is a
+        // $-binding may yield a list on one row and a name's cell on another, which no static
+        // test can tell apart — so its probe is carried as a list on EVERY row (a scalar cell a
+        // one-element list of its text), and membership runs element-wise below.
+        boolean dynamicLhs = isColrefOverBinding(nameExpr);
         // EC-43: fold the probe column. The list/accessor sources below keep their own guards.
-        ValuePlan nameP = operandPlan(nameExpr, true);
+        ValuePlan nameP = dynamicLhs ? asMemberLists(operandPlan(nameExpr, true))
+                : operandPlan(nameExpr, true);
         // List-LHS membership (D4 of PLAN-define-item-metadata-parity-929-1081): a list-valued
         // metadata accessor (var_codelist_coded_codes) compares element-wise, mirroring Python's
         // is_column_of_iterables(target) branch. Detected statically from the accessor function.
-        boolean listLhs = isListAccessor(nameExpr);
+        // ⭐ So does colref over a list (review round 1, lane A L1): `colref(find_vars(…)) in
+        // [...]` asks whether ANY of the named cells is a member — the list-valued-accessor
+        // semantics (D81d), never the list compared as one value.
+        boolean listLhs = isListAccessor(nameExpr)
+                || (isColrefCall(nameExpr) && isListValuedFunctionCall(nameExpr)) || dynamicLhs;
         Expr right = b.right();
         // RHS is a list-valued metadata accessor (e.g. var_codelist_coded_values("LIBRARY")): under
         // the per-(variable, row) iteration it is a per-column constant list, so resolve it to the
@@ -1116,7 +1174,12 @@ public final class ExprCompiler
         // holding the same call does (boundMembership). A binding is only a name for its
         // expression, so writing the call inline must not change the verdict — and static
         // readers (BindingInliner) already treat the two spellings as one.
-        ValuePlan listCallP = isListValuedFunctionCall(right) ? valuePlan(right) : null;
+        // ⭐ Review round 1 (lane A M2): so does colref over a $-binding — `TRTA in colref($vars)`
+        // with `$vars: find_vars(…)` — whose list is known only per row; boundMembership reads a
+        // row's list as its members and a scalar cell as a one-member set.
+        ValuePlan listCallP = isListValuedFunctionCall(right) || isColrefOverBinding(right)
+                ? valuePlan(right)
+                : null;
         // Phase 3 (R9): only a STATIC all-string list literal states a character expectation the
         // gate can hold a probe to; a $-list, wildcard, accessor or grouped set is dynamic and
         // never gates (mirroring numericMemberSet's literal-only classification). The explicit
@@ -3680,8 +3743,11 @@ public final class ExprCompiler
                     continue; // names no column: neither polarity fires
                 }
                 String name = String.valueOf(tv.resolved());
-                boolean exists = memo.computeIfAbsent(name,
-                        n -> OperatorRegistry.existsAsVariable(ctx, resolveDomainPrefix(n, ctx)));
+                // Review round 1, lane A M1: the argument is COMPUTED, so a `--` name is data, not
+                // a specialiser defect (D77b asserts only what the rule spelled) — no column is
+                // spelled that way, so it answers as any absent name.
+                boolean exists = memo.computeIfAbsent(name, n -> !isDomainPrefixWildcard(n)
+                        && OperatorRegistry.existsAsVariable(ctx, n));
                 if (exists != negate)
                 {
                     result.set(r);
@@ -4716,6 +4782,9 @@ public final class ExprCompiler
                     + " column names");
         }
         ValuePlan names = argumentPlan(c.args().get(0));
+        // Only a name WRITTEN in the rule (a string or a list literal) can be a D77b specialiser
+        // defect when it spells `--`; a data-derived one names no column (review round 1, M1).
+        boolean literal = c.args().get(0) instanceof Expr.Lit;
         return run ->
         {
             Vector first = names.eval(run);
@@ -4724,7 +4793,7 @@ public final class ExprCompiler
                 return null; // an unresolvable first hop propagates, as for every value call
             }
             boolean numericDefault = run.ctx().getNumericExpectedDynamicSites().contains(c);
-            return DynamicColumnRead.vector(run, first, numericDefault);
+            return DynamicColumnRead.vector(run, first, numericDefault, literal);
         };
     }
 
@@ -7169,8 +7238,11 @@ public final class ExprCompiler
      * <b>compiler load errors</b> through this static-string seam (armed today, independent of
      * Stage A's observe-only {@code PARAMETER_TYPE}): the format is a string literal, its
      * conversions are the supported subset ({@code %s %d %f %e %x %%}, flags {@code 0 - + space},
-     * width, precision), the argument count equals the conversion count, and a string literal never
-     * stands at a numeric conversion. A format error must fail the rule at load, never per row.
+     * width, precision), the argument count equals the conversion count, a string literal never
+     * stands at a numeric conversion and a non-integral number literal never at {@code %d} /
+     * {@code %x}. A format error must fail the rule at load, never per row. {@code lpad}'s literal
+     * width and fill ({@code TextFunctions.validateLpadCall}) and {@code find_vars}' malformed
+     * literal entries ({@code FindVars.literalEntryError}) are checked here the same way.
      */
     private static void rejectInvalidFormats(FunctionDescriptor descriptor,
             List<@Nullable Expr> bound)
@@ -7193,13 +7265,25 @@ public final class ExprCompiler
             }
             return;
         }
-        if (!TextFunctions.PRINTF.equals(descriptor.name()))
+        boolean printf = TextFunctions.PRINTF.equals(descriptor.name());
+        if (!printf && !TextFunctions.LPAD.equals(descriptor.name()))
         {
             return;
         }
         try
         {
-            TextFunctions.validateCall(bound);
+            if (printf)
+            {
+                TextFunctions.validateCall(bound);
+            }
+            else
+            {
+                // Review round 1 (lane C F7, D35 "written wrong"): lpad's literal-argument
+                // defects — a width that is not an integral 0..MAX_WIDTH, a fill that is not one
+                // character — are load errors, as printf's are; per-row data stays a computed
+                // missing.
+                TextFunctions.validateLpadCall(bound);
+            }
         }
         catch (IllegalArgumentException bad)
         {

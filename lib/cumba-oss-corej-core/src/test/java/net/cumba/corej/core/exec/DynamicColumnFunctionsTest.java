@@ -460,4 +460,163 @@ class DynamicColumnFunctionsTest
         result.getViolations().forEach(v -> rows.add(v.getRowNumber()));
         assertEquals(List.of(2L, 3L), rows, "200 and 300 exceed 150; 100 does not");
     }
+
+    // ------------------------------------------------------------------ review round 1
+
+
+    /**
+     * Review round 1 (lane C F4, D84 precedent): {@code printf} judges integrality on the RAW value
+     * with the engine's own tolerance ({@code ScalarSemantics.numericEquals(d, rint(d))}) and
+     * formats {@code %f} / {@code %e} from the raw double — never the NCL-cleaned one. Lane A L3: a
+     * negative value at {@code %x} is a computed missing, never a two's complement.
+     */
+    @Test
+    void printfJudgesTheRawValueWithTheEngineTolerance()
+    {
+        IDataTable t = RealTables.of("DM").str("USUBJID", "a", "b", "c", "d", "e")
+                .dbl("X", 2.00000000001, 0.1 + 0.2, 255.0, -1.0, 2.5).build();
+        assertEquals(List.of(1L), firedOn(t, "printf(\"%d\", X) == \"2\"", false),
+                "2.00000000001 is integral within the 12-digit tolerance (the cleaned value kept"
+                        + " 12 significant digits and read it as non-integral)");
+        assertEquals(List.of(2L),
+                firedOn(t, "printf(\"%.17f\", X) == \"0.30000000000000004\"", false),
+                "%f formats the raw double, not the cleaned 0.3");
+        assertEquals(List.of(3L), firedOn(t, "printf(\"%x\", X) == \"ff\"", false));
+        assertEquals(List.of(3L), firedOn(t, "printf(\"%e\", X) == \"2.550000e+02\"", false));
+        assertEquals(List.of(2L, 4L, 5L), firedOn(t, "is_missing(printf(\"%x\", X))", false),
+                "a non-integral value (0.3, 2.5) and a negative one at %x are computed missings");
+        assertEquals(List.of(4L), firedOn(t, "printf(\"%d\", X) == \"-1\"", false),
+                "%d takes a negative integral value");
+    }
+
+
+    /** Lane A L4: a non-integral numeric LITERAL at an integral conversion is a load error. */
+    @Test
+    void aNonIntegralLiteralAtAnIntegralConversionIsALoadError()
+    {
+        assertTrue(loadError("printf(\"%d\", 1.5) == \"x\"", false).contains("integral"));
+        assertTrue(loadError("printf(\"%02x\", 2.5) == \"x\"", false).contains("integral"));
+        assertNull(load(rule("printf(\"%d\", 2) == \"x\"", false)).getLoadError());
+        assertNull(load(rule("printf(\"%.1f\", 1.5) == \"x\"", false)).getLoadError());
+    }
+
+
+    /** Lane C F7 (D35 "written wrong"): lpad's literal-argument defects are load errors. */
+    @Test
+    void lpadLiteralDefectsAreLoadErrors()
+    {
+        assertTrue(loadError("lpad(USUBJID, -1, \"0\") == \"x\"", false).contains("width"));
+        assertTrue(loadError("lpad(USUBJID, 1.5) == \"x\"", false).contains("width"));
+        assertTrue(loadError("lpad(USUBJID, 3, \"ab\") == \"x\"", false).contains("fill"));
+        assertTrue(loadError("lpad(USUBJID, 3, \"\") == \"x\"", false).contains("fill"));
+        assertNull(load(rule("lpad(USUBJID, 3, \"0\") == \"x\"", false)).getLoadError());
+    }
+
+
+    /**
+     * Lane B L6 + lane A L2: data-derived lpad defects are computed missings — a multi-character
+     * fill, a negative width, and a width beyond the cap (a data-derived huge width must not
+     * allocate).
+     */
+    @Test
+    void lpadDataDefectsAreComputedMissings()
+    {
+        IDataTable t = RealTables.of("DM").str("USUBJID", "a", "b", "c", "d")
+                .str("V", "7", "7", "7", "7").lng("W", 3L, -1L, 100000L, 3L)
+                .str("F", "ab", "0", "0", "0").build();
+        assertEquals(List.of(1L, 2L, 3L), firedOn(t, "is_missing(lpad(V, W, F))", false),
+                "a two-character fill, a negative width, a width above 32767");
+        assertEquals(List.of(4L), firedOn(t, "lpad(V, W, F) == \"007\"", false));
+    }
+
+
+    /** Lane B L6: a computed negative zero renders as the one zero. */
+    @Test
+    void strOfANegativeZeroIsZero()
+    {
+        IDataTable t = RealTables.of("DM").str("USUBJID", "a").dbl("X", 0.0).build();
+        assertEquals(List.of(1L), firedOn(t, "str(X * -1) == \"0\"", false));
+    }
+
+
+    /**
+     * Lane B L6: an absent JOINED column in a string position answers as the authored
+     * {@code ADSL.ZZ} does (""), and a declared-but-not-supplied dataset as the authored dotted
+     * name does.
+     */
+    @Test
+    void anAbsentJoinedColumnAndAnUnsuppliedDatasetAnswerAsAuthored()
+    {
+        assertSameAsAuthored("colref(\"ADSL.ZZ\") == \"Y\" or colref(\"ADSL.ZZ\") != \"\"",
+                "ADSL.ZZ == \"Y\" or ADSL.ZZ != \"\"", true, List.of());
+        IDataTable primary = adae();
+        for (String[] pair : List.of(new String[]
+        {
+                "colref(\"ADSL.AP01SDT\") < 3", "ADSL.AP01SDT < 3"
+        }, new String[]
+        {
+                "colref(\"ADSL.AP01SDT\") != \"\"", "ADSL.AP01SDT != \"\""
+        }))
+        {
+            List<String> outcomes = new ArrayList<>();
+            for (String check : pair)
+            {
+                Rule r = load(rule("not empty(USUBJID) and (" + check + ")", true));
+                assertNull(r.getLoadError(), r.getLoadError());
+                RuleExecutionResult result = RuleRunnerCalls.execute(r, primary,
+                        RealTables.inventoryOf(primary), "ADAE", null);
+                List<Long> rows = new ArrayList<>();
+                result.getViolations().forEach(v -> rows.add(v.getRowNumber()));
+                outcomes.add(result.getStatus() + " " + rows);
+            }
+            assertEquals(outcomes.get(1), outcomes.get(0),
+                    "ADSL declared, not supplied: " + pair[0] + " vs " + pair[1]);
+        }
+    }
+
+
+    /**
+     * Lane A M1: a DATA-derived name starting with {@code --} names no column — the site's absent
+     * default, never the D77b specialiser assertion (which stays for a LITERAL argument, bound at
+     * load). Before the fix the rule ERRORed on the row.
+     */
+    @Test
+    void aDataDerivedDashNameNamesNoColumn()
+    {
+        IDataTable suppae = RealTables.of("SUPPAE").str("STUDYID", "S", "S")
+                .str("RDOMAIN", "AE", "AE").str("USUBJID", "U1", "U1")
+                .str("IDVAR", "--SEQ", "AESEQ").str("IDVARVAL", "1", "1").str("QNAM", "Q", "Q")
+                .str("QVAL", "v", "v").build();
+        IDataTable ae = RealTables.of("AE").str("STUDYID", "S").str("USUBJID", "U1")
+                .lng("AESEQ", 1L).build();
+        assertEquals(List.of(1L), cg0371On(suppae, ae),
+                "--SEQ names no column: \"\" != \"1\" fires; AESEQ matches");
+    }
+
+
+    /** Lane A L5: an absent name folds case-insensitively (owner 2026-09-28, CIT §1). */
+    @Test
+    void aLowerCaseAbsentNameTakesTheAuthoredDefault()
+    {
+        assertSameAsAuthored("colref(\"zz\") == \"Y\" or colref(\"zz\") != \"\"",
+                "ZZ == \"Y\" or ZZ != \"\"", false, List.of());
+        assertSameAsAuthored("colref(\"zz\") < 3", "ZZ < 3", false, List.of(1L, 2L, 3L));
+    }
+
+
+    /**
+     * Lane A L6: the join-match flag is a boolean CONDITION, never a value — {@code colref} fails
+     * loud on it exactly as the authored dotted value read does ({@code dottedVector}'s guard).
+     */
+    @Test
+    void theMatchFlagIsNotAColumnForColref()
+    {
+        Rule r = load(rule("not empty(USUBJID) and colref(\"ADSL._matched_\") != \"\"", true));
+        assertNull(r.getLoadError(), r.getLoadError());
+        net.cumba.corej.core.expr.RuleDefinitionException error = org.junit.jupiter.api.Assertions
+                .assertThrows(net.cumba.corej.core.expr.RuleDefinitionException.class,
+                        () -> RuleRunnerCalls.execute(r, adae(),
+                                RealTables.inventoryOf(adae(), adsl()), "ADAE", null));
+        assertTrue(error.getMessage().contains("boolean condition"), error.getMessage());
+    }
 }

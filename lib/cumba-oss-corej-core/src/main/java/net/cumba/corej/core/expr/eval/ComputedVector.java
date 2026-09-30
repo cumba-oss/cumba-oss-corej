@@ -108,7 +108,10 @@ public final class ComputedVector implements Vector
      * comparison primitives take from it since phase 3d) exposes the type
      * ({@link TypedValue#typedCell}). That containment is deliberate: roughly thirty call sites
      * consume the resolved channel and the textual ones fold via {@code toString()}, which quotes
-     * on {@code DataValueString} and is unoverridden on {@code DataValues.of}.
+     * on {@code DataValueString}. ({@code DataValues.of}'s {@code toString()} is its text since
+     * {@code PLAN-dynamic-column-functions} §2.7 — a {@code colref(<list>)} member must key a
+     * member set by its text; census of review round 1, lane C F8: no other consumer met a
+     * {@code DataValues.of} instance through {@code toString()}.)
      * </p>
      *
      * @param rowCount

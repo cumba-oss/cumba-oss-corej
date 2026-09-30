@@ -9,8 +9,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.Locale;
 import net.cumba.corej.core.expr.CheckExpressionParser;
+import net.cumba.corej.core.expr.eval.ComputedVector;
+import net.cumba.corej.core.expr.eval.ConstVector;
+import net.cumba.corej.core.expr.eval.EvalRun;
 import net.cumba.corej.core.expr.eval.NativeExprEvaluator;
+import net.cumba.corej.core.expr.eval.Vector;
 import net.cumba.datatable.IDataTable;
+import net.cumba.datatable.values.DataValueType;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -65,6 +70,19 @@ class FindVarsUnitTest
                 .cardinality());
         assertEquals(1, ctx.getWildcardColumns().computeCount(),
                 "one column match for three rows: the literal entry is broadcast, not per row");
+        // ⚠ The count alone cannot tell a broadcast from a per-row call served by the cache
+        // (review round 1, lane B L1): assert the SHAPE too — a literal entry yields ONE
+        // broadcast list (a ConstVector), a per-row entry a per-row vector.
+        EvalRun run = EvalRun.fullRange(ctx);
+        Vector literal = FindVars.evaluate(run, ConstVector.of("TRTxxP"), true);
+        assertTrue(literal instanceof ConstVector, "a literal entry is one dataset-level list");
+        assertEquals(List.of("TRT01P", "TRT02P"), literal.value(0).resolved());
+        Vector perRow = FindVars.evaluate(run,
+                new ComputedVector(3, DataValueType.STRING, row -> row == 2 ? "TRT1P" : "TRTxxP"),
+                false);
+        assertFalse(perRow instanceof ConstVector, "a computed entry is read per row");
+        assertEquals(List.of("TRT01P", "TRT02P"), perRow.value(0).resolved());
+        assertEquals(List.of("TRT1P"), perRow.value(2).resolved());
     }
 
 
@@ -104,7 +122,9 @@ class FindVarsUnitTest
 
 
     /**
-     * A pattern-shaped entry that is itself the name of a column IS that column — kept verbatim.
+     * A pattern-shaped entry that is itself the name of a column IS that column — kept verbatim
+     * ({@code FindVars.namesAColumn}: the rulespec harness's template-named fixture columns stand
+     * for the expanded member, review round 1 F5).
      */
     @Test
     void anOutputVariableThatNamesAColumnIsKept()

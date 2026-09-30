@@ -26,13 +26,16 @@ import org.junit.jupiter.api.Test;
 class DynamicColumnDifferentialTest
 {
 
-    /** APERIOD 3 names ADSL.AP03SDT, which ADSL does not carry. */
+    /**
+     * APERIOD 3 names ADSL.AP03SDT, which ADSL does not carry; row 5's driver is MISSING (review
+     * round 1, lane B L2), so neither spelling names a column there.
+     */
     private static IDataTable adae()
     {
-        return RealTables.of("ADAE").str("USUBJID", "S1", "S1", "S2", "S1")
-                .lng("APERIOD", 1L, 2L, 1L, 3L).dbl("APERSDT", 100.0, 200.0, 300.0, 400.0)
-                .lng("N", 1L, 2L, 1L, 3L).dbl("P1V", 7.0, 7.0, 7.0, 7.0)
-                .dbl("P2V", 8.0, 8.0, 8.0, 8.0).build();
+        return RealTables.of("ADAE").str("USUBJID", "S1", "S1", "S2", "S1", "S2")
+                .lng("APERIOD", 1L, 2L, 1L, 3L, null)
+                .dbl("APERSDT", 100.0, 200.0, 300.0, 400.0, 500.0).lng("N", 1L, 2L, 1L, 3L, null)
+                .dbl("P1V", 7.0, 7.0, 7.0, 7.0, 7.0).dbl("P2V", 8.0, 8.0, 8.0, 8.0, 8.0).build();
     }
 
 
@@ -94,14 +97,20 @@ class DynamicColumnDifferentialTest
     @Test
     void theTwoSpellingsAnswerIdenticallyInEveryOtherPosition()
     {
-        assertEquals(List.of(2L, 4L), assertIdentical("APERSDT != %s", DYNAMIC, TEMPLATE),
+        // Every expected row list is PINNED (review round 1, lane B L2): two spellings that agreed
+        // on the wrong rows would pass an equality-only assertion.
+        assertEquals(List.of(2L, 4L, 5L), assertIdentical("APERSDT != %s", DYNAMIC, TEMPLATE),
                 "a present joined column is read typed by both; AP03SDT is absent (a string"
-                        + " context: \"\" != 400)");
-        assertIdentical("%s > 150", DYNAMIC, TEMPLATE);
-        assertIdentical("%s == 5", DYNAMIC, TEMPLATE);
-        assertIdentical("%s != \"\"", DYNAMIC, TEMPLATE);
-        assertIdentical("%s > 7.5", DYNAMIC_BARE, TEMPLATE_BARE);
-        assertIdentical("%s != \"\"", DYNAMIC_BARE, TEMPLATE_BARE);
+                        + " context: \"\" != 400); a missing driver names no column (MIS != 500)");
+        assertEquals(List.of(2L, 3L), assertIdentical("%s > 150", DYNAMIC, TEMPLATE),
+                "999 and 300; the absent and the missing-driver rows are never > 150");
+        assertEquals(List.of(), assertIdentical("%s == 5", DYNAMIC, TEMPLATE));
+        assertEquals(List.of(1L, 2L, 3L, 5L), assertIdentical("%s != \"\"", DYNAMIC, TEMPLATE),
+                "a string position: the absent AP03SDT is \"\" for both; the missing driver's MIS"
+                        + " is not \"\" (D12)");
+        assertEquals(List.of(2L), assertIdentical("%s > 7.5", DYNAMIC_BARE, TEMPLATE_BARE));
+        assertEquals(List.of(1L, 2L, 3L, 5L),
+                assertIdentical("%s != \"\"", DYNAMIC_BARE, TEMPLATE_BARE));
     }
 
 
@@ -115,13 +124,14 @@ class DynamicColumnDifferentialTest
     {
         List<Long> template = fired(TEMPLATE + " < 3");
         List<Long> dynamic = fired(DYNAMIC + " < 3");
-        assertEquals(List.of(), template, "${…}: \"\" < 3 is no violation (Q8, unchanged)");
-        assertEquals(List.of(4L), dynamic, "colref: MIS < 3 holds (Q14 (b))");
+        assertEquals(List.of(5L), template,
+                "${…}: \"\" < 3 is no violation (Q8, unchanged); the missing driver is MIS < 3");
+        assertEquals(List.of(4L, 5L), dynamic, "colref: MIS < 3 holds (Q14 (b))");
         assertNotEquals(template, dynamic);
         List<Long> bareTemplate = fired(TEMPLATE_BARE + " < 3");
         List<Long> bareDynamic = fired(DYNAMIC_BARE + " < 3");
-        assertEquals(List.of(), bareTemplate);
-        assertEquals(List.of(4L), bareDynamic, "row 4 names P3V, absent from the primary");
+        assertEquals(List.of(5L), bareTemplate);
+        assertEquals(List.of(4L, 5L), bareDynamic, "row 4 names P3V, absent from the primary");
     }
 
 
@@ -129,9 +139,9 @@ class DynamicColumnDifferentialTest
     @Test
     void theSameSiteIsIdenticalWhenTheResolvedNameIsNumericExpectedElsewhere()
     {
-        assertEquals(List.of(4L),
+        assertEquals(List.of(4L, 5L),
                 assertIdentical("%s < 3 or ADSL.AP03SDT > 1000000000", DYNAMIC, TEMPLATE));
-        assertEquals(List.of(4L),
+        assertEquals(List.of(4L, 5L),
                 assertIdentical("%s < 3 or P3V > 1000000000", DYNAMIC_BARE, TEMPLATE_BARE));
     }
 }

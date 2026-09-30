@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Locale;
 import net.cumba.corej.core.exec.ScalarSemantics;
 import net.cumba.corej.core.expr.ast.Expr;
-import net.cumba.datatable.values.DataValueSupport;
 import net.cumba.datatable.values.DataValueType;
 import net.cumba.datatable.values.IDataValue;
 import net.cumba.datatable.values.MissingValue;
@@ -35,9 +34,12 @@ import org.jspecify.annotations.Nullable;
  * {@code 0 - + space}, width and precision, and its format is a string literal checked at load
  * ({@link #validateCall}). {@code %d} / {@code %x} take an <b>integral</b> number — a non-integral
  * value or a present non-number yields a computed missing, never the {@code (long) d} truncation
- * {@code ${VAR:%02d}} keeps (Q1 applies when the respelling plan moves those tokens). A DOUBLE is
- * read through the numeric cleaning, as its text is (NCL D2), so SAS noise on an integral period
- * does not read as non-integral.
+ * {@code ${VAR:%02d}} keeps (Q1 applies when the respelling plan moves those tokens); {@code %x}
+ * takes a non-negative one (a negative value is a computed missing, never a two's complement). ⭐
+ * Integrality is judged on the <b>raw</b> value with the engine's own tolerance
+ * ({@link ScalarSemantics#numericEquals}{@code (d, rint(d))}, the D84 precedent: a comparison reads
+ * the raw value, never the cleaned one), so SAS noise on an integral period does not read as
+ * non-integral, and {@code %f} / {@code %e} format the raw double (review round 1, lane C F4).
  * </p>
  */
 public final class TextFunctions
@@ -121,8 +123,10 @@ public final class TextFunctions
      * {@code lpad(x, width, fill)}: {@code x} left-padded with {@code fill} to {@code width}
      * characters; a longer {@code x} is returned unchanged, never truncated; a missing {@code x} is
      * that missing. {@code width} and {@code fill} are read per row; a missing, negative or
-     * non-integral {@code width}, or a {@code fill} that is not exactly one character, answers the
-     * computed missing (a data problem, never an error — D35).
+     * non-integral {@code width}, a {@code width} above {@link #MAX_WIDTH} (a data-derived huge
+     * width must not allocate), or a {@code fill} that is not exactly one character, answers the
+     * computed missing (a data problem, never an error — D35). The same defects in a LITERAL
+     * argument are load errors ({@link #validateLpadCall}).
      *
      * @param rowCount
      *            the run's row count
@@ -146,13 +150,57 @@ public final class TextFunctions
             String s = text(tx);
             Long w = integral(width.value(row));
             String f = fill == null ? " " : oneChar(fill.value(row));
-            if (s == null || w == null || w < 0 || f == null)
+            if (s == null || w == null || w < 0 || w > MAX_WIDTH || f == null)
             {
                 return ScalarSemantics.computedMissing();
             }
-            int pad = (int) Math.min(Integer.MAX_VALUE, w) - s.codePointCount(0, s.length());
+            int pad = w.intValue() - s.codePointCount(0, s.length());
             return pad <= 0 ? s : f.repeat(pad) + s;
         });
+    }
+
+    /**
+     * The widest {@code lpad} result: a width above it answers the computed missing (per row) or is
+     * a load error (a literal) — review round 1, lane A L2: a data-derived width of 10^9 would
+     * otherwise allocate a gigabyte per row.
+     */
+    public static final int MAX_WIDTH = 32767;
+
+    /**
+     * The load-time check of an {@code lpad} call's LITERAL arguments (review round 1, lane C F7;
+     * D35 "written wrong"): a literal {@code width} must be an integral number in
+     * {@code [0, MAX_WIDTH]}, and a literal {@code fill} exactly one character. A column or
+     * computed argument is judged per row instead (a computed missing).
+     *
+     * @param bound
+     *            the bound arguments {@code x, width[, fill]}
+     * @throws IllegalArgumentException
+     *             naming the defect
+     */
+    static void validateLpadCall(List<? extends @Nullable Expr> bound)
+    {
+        if (bound.size() > 1 && bound.get(1) instanceof Expr.Lit width)
+        {
+            boolean integralInRange = width.kind() == Expr.LitKind.NUMBER
+                    && width.value() instanceof Number n
+                    && Double.compare(n.doubleValue(), Math.rint(n.doubleValue())) == 0
+                    && n.doubleValue() >= 0 && n.doubleValue() <= MAX_WIDTH;
+            if (!integralInRange)
+            {
+                throw new IllegalArgumentException("argument 'width' of 'lpad' takes an integral"
+                        + " number from 0 to " + MAX_WIDTH + ", not " + width.value());
+            }
+        }
+        if (bound.size() > 2 && bound.get(2) instanceof Expr.Lit fill
+                && fill.kind() == Expr.LitKind.STRING)
+        {
+            String f = String.valueOf(fill.value());
+            if (f.codePointCount(0, f.length()) != 1)
+            {
+                throw new IllegalArgumentException("argument 'fill' of 'lpad' takes exactly one"
+                        + " character, not \"" + f + "\"");
+            }
+        }
     }
 
 
@@ -303,8 +351,9 @@ public final class TextFunctions
     /**
      * The load-time check of a {@code printf} call's bound arguments (§3.1: a compiler load error
      * through the static-string seam, armed today): the format is a string literal, its conversions
-     * are the supported subset, the argument count equals the conversion count, and a string
-     * literal never stands at a numeric conversion.
+     * are the supported subset, the argument count equals the conversion count, a string literal
+     * never stands at a numeric conversion ({@code %d %f %e %x}), and a non-integral number literal
+     * never stands at an integral one ({@code %d %x} — review round 1, lane A L4).
      *
      * @param bound
      *            the bound arguments — the format first, then the values (collector form)
@@ -336,6 +385,14 @@ public final class TextFunctions
             {
                 throw new IllegalArgumentException("printf conversion " + c.spec()
                         + " takes a number, not the string literal \"" + arg.value() + "\"");
+            }
+            if (c.integral() && bound.get(k + 1) instanceof Expr.Lit arg
+                    && arg.kind() == Expr.LitKind.NUMBER && arg.value() instanceof Number n
+                    && Double.compare(n.doubleValue(), Math.rint(n.doubleValue())) != 0)
+            {
+                throw new IllegalArgumentException(
+                        "printf conversion " + c.spec() + " takes an integral number, not "
+                                + arg.value() + " — printf never truncates");
             }
         }
     }
@@ -431,13 +488,19 @@ public final class TextFunctions
         // computed missing (§2.2), never the (long) d truncation.
         if (c.integral())
         {
-            return integral(tv);
+            Long value = integral(tv);
+            // %x of a negative value would print the two's complement (ffff…ff for -1): a
+            // computed missing instead (review round 1, lane A L3).
+            return value != null && c.letter() == 'x' && value < 0 ? null : value;
         }
         return number(tv);
     }
 
 
-    /** A present number's value, cleaned as its text is (NCL D2), or {@code null}. */
+    /**
+     * A present number's RAW value (review round 1, lane C F4, D84: a value is read raw, never
+     * through the NCL cleaning that only its TEXT goes through), or {@code null}.
+     */
     private static @Nullable Double number(TypedValue tv)
     {
         IDataValue cell = tv.sourceCell();
@@ -449,17 +512,17 @@ public final class TextFunctions
                 return null;
             }
             double d = cell.getValueAsDouble();
-            return Double.isNaN(d) ? null : DataValueSupport.getAsDoubleCleaned(d);
+            return Double.isNaN(d) ? null : d;
         }
-        return tv.resolved() instanceof Number n
-                ? DataValueSupport.getAsDoubleCleaned(n.doubleValue())
-                : null;
+        return tv.resolved() instanceof Number n ? n.doubleValue() : null;
     }
 
 
     /**
-     * A present integral number as a {@code long} (a LONG exactly, beyond 2^53 included; a DOUBLE
-     * through the cleaning), else {@code null}.
+     * A present integral number as a {@code long}: a LONG exactly (beyond 2^53 included); a DOUBLE
+     * when it is integral within the engine's tolerance
+     * ({@link ScalarSemantics#numericEquals}{@code (d, rint(d))} on the raw value — the D84
+     * precedent), as {@code rint(d)}; else {@code null}.
      */
     static @Nullable Long integral(TypedValue tv)
     {
@@ -478,10 +541,15 @@ public final class TextFunctions
             return ((Number) raw).longValue();
         }
         Double d = number(tv);
-        if (d == null || Double.compare(d, Math.rint(d)) != 0 || d < -0x1p63 || d >= 0x1p63)
+        if (d == null || !Double.isFinite(d))
         {
             return null;
         }
-        return d.longValue();
+        double whole = Math.rint(d);
+        if (!ScalarSemantics.numericEquals(d, whole) || whole < -0x1p63 || whole >= 0x1p63)
+        {
+            return null;
+        }
+        return (long) whole;
     }
 }

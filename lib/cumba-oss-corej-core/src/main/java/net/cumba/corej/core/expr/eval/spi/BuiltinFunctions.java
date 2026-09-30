@@ -236,7 +236,8 @@ public final class BuiltinFunctions implements FunctionProvider
         // row 0's cell to every row — the row_max shape of XCUT H1. Stage A types colref RECORD
         // in its own arm; DomainScan and the hand-over contract read this flag.
         fns.add(new FunctionDescriptor("colref", List.of(p("x")), FunctionKind.VALUE,
-                (run, args) -> DynamicColumnRead.vector(run, args.get(0), false)).readingRows());
+                (run, args) -> DynamicColumnRead.vector(run, args.get(0), false, false))
+                        .readingRows());
 
         // -- VALUE column-set selector (PLAN-dynamic-column-functions §2.4, owner Q5/Q11/Q12) --
         // find_vars("<entry>"): the column NAMES one Requirements.Variables entry selects —
