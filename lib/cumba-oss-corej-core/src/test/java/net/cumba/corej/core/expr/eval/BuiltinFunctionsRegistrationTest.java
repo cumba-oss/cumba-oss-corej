@@ -46,7 +46,9 @@ class BuiltinFunctionsRegistrationTest
             "date_diff_days/2/VALUE",
             // wave 3 (PLAN-per-row-functions): the per-row functions ported from their operations
             "dictionary_has_decode/2-3/BOOLEAN", "earliest_possible/1/VALUE", "empty/1/BOOLEAN",
-            "ends_with/2/BOOLEAN", "equalsIgnoreCase/2/BOOLEAN", "floor/1/VALUE",
+            // PLAN-scalar-date-extremes: the two-value date extremes (SDE D1)
+            "earliest_date/2/VALUE", "latest_date/2/VALUE", "ends_with/2/BOOLEAN",
+            "equalsIgnoreCase/2/BOOLEAN", "floor/1/VALUE",
             // wave 0 (PLAN-binding-expressions): the list-valued exemplar, ported from the
             // retired GET_CODELIST_ATTRIBUTES operation
             "get_codelist_attributes/3/VALUE", "has_alpha/1/BOOLEAN", "has_digit/1/BOOLEAN",

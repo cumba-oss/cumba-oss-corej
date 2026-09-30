@@ -737,4 +737,213 @@ class GroupedAggregateFunctionsTest
                         .getViolations().size(),
                 "S1's latest SUPPAE date, read through the resolved SUPP--");
     }
+
+    // -----------------------------------------------------------------------
+    // the nested grouped target — a pool's first dose per POOLDEF row (PLAN-scalar-date-extremes)
+    // -----------------------------------------------------------------------
+
+    /** The pool part of the four SEND rules: the earliest EXSTDTC of every pool POOLDEF assigns. */
+    private static final String POOL_FIRST = "min_date(min_date(EXSTDTC, domain=\\\"EX\\\", group=[POOLID], filter=(not empty(POOLID))), domain=\\\"POOLDEF\\\", group=[USUBJID])";
+
+    /** The same without the load-bearing filter — what the corpus filter guards against. */
+    private static final String POOL_FIRST_NO_FILTER = "min_date(min_date(EXSTDTC, domain=\\\"EX\\\", group=[POOLID]), domain=\\\"POOLDEF\\\", group=[USUBJID])";
+
+    /** The S12 guard: the number of EX rows of the subject's pools. */
+    private static final String POOL_ROWS = "max(record_count(domain=\\\"EX\\\", group=[POOLID], filter=(not empty(POOLID))), domain=\\\"POOLDEF\\\", group=[USUBJID])";
+
+    /** The per-pool latest EXENDTC, undeterminable when a pool has a blank one (0306's shape). */
+    private static final String POOL_END_INDETERMINATE = "max_date(max_date(EXENDTC, domain=\\\"EX\\\", missing_values=\\\"indeterminate\\\", group=[POOLID], filter=(not empty(POOLID))), domain=\\\"POOLDEF\\\", group=[USUBJID])";
+
+    /**
+     * DM: S1 own + pool P1; S2 pool-only in P1 and P2; S3 in F1 (a pool with no EX row); S4 in no
+     * pool.
+     */
+    private static IDataTable sendDm()
+    {
+        return RealTableFixture.of("DM").str("USUBJID", "S1", "S2", "S3", "S4").build();
+    }
+
+
+    /** EX: own rows for S1 / S3 / S4; two P1 rows (one with a blank EXENDTC) and one P2 row. */
+    private static IDataTable sendEx()
+    {
+        return RealTableFixture.of("EX").str("USUBJID", "S1", "", "", "S3", "S4", "")
+                .str("POOLID", "", "P1", "P2", "", "", "P1")
+                .str("EXSTDTC", "2020-01-05", "2020-01-03", "2020-01-01", "2020-01-15",
+                        "2020-01-02", "2020-01-04")
+                .str("EXENDTC", "2020-01-06", "2020-01-10", "2020-01-02", "2020-01-16",
+                        "2020-01-03", "")
+                .build();
+    }
+
+
+    private static IDataTable sendPooldef()
+    {
+        return RealTableFixture.of("POOLDEF").str("POOLID", "P1", "P1", "P2", "F1")
+                .str("USUBJID", "S1", "S2", "S2", "S3").build();
+    }
+
+
+    /** One rule with several bindings (a JSON array body) — the shape of the four SEND rules. */
+    private static Rule loadBindings(String bindingsJson, String check)
+    {
+        try
+        {
+            RulePackage pkg = RulePackageLoader.loadFromString("{\"rules\":{\"X-2\":{"
+                    + "\"Core\":{\"Id\":\"X-2\"},\"Bindings\":[" + bindingsJson + "],"
+                    + "\"Check\":{\"expression\":\"" + check + "\"},"
+                    + "\"Outcome\":{\"Message\":\"m\",\"Output_Variables\":[\"USUBJID\"]}}}}");
+            return pkg.getRules().get("X-2");
+        }
+        catch (Exception e)
+        {
+            throw new IllegalArgumentException("bad test fixture: " + bindingsJson, e);
+        }
+    }
+
+
+    @Test
+    void aSubjectInTwoPoolsReadsTheEarlierPoolAndANeverDosedPoolIsSkipped()
+    {
+        // S1's only pool is P1 (2020-01-03); S2 is in P1 and P2, the earlier P2 (2020-01-01)
+        // decides (SENDIG 3.1.1 §4.2.3: a subject can be in multiple pools); S3's pool F1 has no
+        // EX row (an FW pool) and answers nothing; S4 is in no pool.
+        assertEquals(1, fires(POOL_FIRST, "$v == date(\\\"2020-01-03\\\")", sendDm(), sendEx(),
+                sendPooldef()));
+        assertEquals(1, fires(POOL_FIRST, "$v == date(\\\"2020-01-01\\\")", sendDm(), sendEx(),
+                sendPooldef()));
+        assertEquals(2, fires(POOL_FIRST, "empty($v)", sendDm(), sendEx(), sendPooldef()),
+                "S3 (a never-dosed pool) and S4 (no pool) read the missing answer");
+    }
+
+
+    @Test
+    void anAbsentPooldefAnswersMissingOnEveryRow()
+    {
+        assertEquals(4, fires(POOL_FIRST, "empty($v)", sendDm(), sendEx()),
+                "no POOLDEF in the study: the pool part is missing for everyone");
+    }
+
+
+    @Test
+    void exWithoutAPoolidColumnAnswersMissingAndOnlyTheFilterKeepsItSo()
+    {
+        // With POOLID absent from EX, group=[POOLID] partitions nothing: every EX row is ONE block
+        // keyed "" (IndexHelper.groupByPresent). The filter empties the inner call (an absent
+        // column is a constant missing, `not empty` is false on every row), so the pool part is
+        // missing for everyone — a POOLDEF row with a non-blank POOLID matches nothing either way,
+        // and a POOLDEF row with a BLANK POOLID matches nothing only because of the filter.
+        IDataTable ex = RealTableFixture.of("EX").str("USUBJID", "S1", "S2")
+                .str("EXSTDTC", "2020-01-05", "2020-01-01").build();
+        IDataTable pooldef = RealTableFixture.of("POOLDEF").str("POOLID", "P1", "")
+                .str("USUBJID", "S1", "S1").build();
+        assertEquals(4, fires(POOL_FIRST, "empty($v)", sendDm(), ex, pooldef));
+        // Without the filter the blank-POOLID POOLDEF row takes the whole study's first dose.
+        assertEquals(1, fires(POOL_FIRST_NO_FILTER, "$v == date(\\\"2020-01-01\\\")", sendDm(), ex,
+                pooldef), "S1, through its blank-POOLID POOLDEF row");
+        IDataTable pooldefNamedOnly = RealTableFixture.of("POOLDEF").str("POOLID", "P1")
+                .str("USUBJID", "S1").build();
+        assertEquals(4, fires(POOL_FIRST_NO_FILTER, "empty($v)", sendDm(), ex, pooldefNamedOnly),
+                "a non-blank POOLID matches nothing in the all-absent block");
+    }
+
+
+    @Test
+    void aBlankPoolidExRowIsFilteredOutAndABlankPoolidPooldefRowMatchesNothing()
+    {
+        // Own EX rows carry a blank POOLID; under the default KEEP_MISSING_KEYS policy they would
+        // form their own "" group, which a blank-POOLID POOLDEF row joins — the filter drops them.
+        IDataTable ex = RealTableFixture.of("EX").str("USUBJID", "S1", "S2").str("POOLID", "", "")
+                .str("EXSTDTC", "2020-01-05", "2020-01-01").build();
+        IDataTable pooldef = RealTableFixture.of("POOLDEF").str("POOLID", "").str("USUBJID", "S1")
+                .build();
+        assertEquals(4, fires(POOL_FIRST, "empty($v)", sendDm(), ex, pooldef));
+        assertEquals(1, fires(POOL_FIRST_NO_FILTER, "$v == date(\\\"2020-01-01\\\")", sendDm(), ex,
+                pooldef), "without the filter S1 reads the blank-key group's minimum");
+    }
+
+
+    @Test
+    void aCharExPoolidBesideANumPooldefPoolidErrorsTheRule()
+    {
+        // S14 / GKI Q2: in CSV / XLSX an all-blank EX.POOLID types STRING while a numeric-looking
+        // POOLDEF.POOLID types Num — the key pair differs in kind, so the rule ERRORs.
+        IDataTable ex = RealTableFixture.of("EX").str("USUBJID", "S1").str("POOLID", "")
+                .str("EXSTDTC", "2020-01-05").build();
+        IDataTable pooldef = RealTableFixture.of("POOLDEF").lng("POOLID", 1L).str("USUBJID", "S1")
+                .build();
+        RuleExecutionResult result = run(POOL_FIRST, "empty($v)", sendDm(), ex, pooldef);
+        assertEquals(RuleExecutionStatus.ERROR, result.getStatus(), result.getStatusMessage());
+        assertTrue(String.valueOf(result.getStatusMessage()).contains("POOLID"),
+                result.getStatusMessage());
+    }
+
+
+    @Test
+    void theDosedGuardCountsAPoolsRowsNeverItsDates()
+    {
+        // S12: a subject in no pool reads MIS (and MIS > 0 is false, D34 #5); a never-dosed pool
+        // reads record_count's 0; a dosed pool its row count — even when the row's date is blank.
+        assertEquals(2, fires(POOL_ROWS, "$v > 0", sendDm(), sendEx(), sendPooldef()),
+                "S1 (P1: 2 rows) and S2 (P1: 2, P2: 1) are dosed per pool");
+        assertEquals(1, fires(POOL_ROWS, "$v == 0", sendDm(), sendEx(), sendPooldef()),
+                "S3's pool F1 has no EX row");
+        assertEquals(1, fires(POOL_ROWS, "empty($v)", sendDm(), sendEx(), sendPooldef()),
+                "S4 is in no pool");
+        IDataTable blankDate = RealTableFixture.of("EX").str("USUBJID", "").str("POOLID", "P1")
+                .str("EXSTDTC", "").build();
+        IDataTable pooldef = RealTableFixture.of("POOLDEF").str("POOLID", "P1").str("USUBJID", "S1")
+                .build();
+        assertEquals(1, fires(POOL_ROWS, "$v == 1", sendDm(), blankDate, pooldef),
+                "a pool dosed with a blank EXSTDTC still counts as dosed (EC-45)");
+        assertEquals(1, fires(POOL_FIRST, "empty($v) and " + POOL_ROWS + " > 0", sendDm(),
+                blankDate, pooldef), "…while its first dose has no answer");
+    }
+
+
+    @Test
+    void twoNestedCallsDifferingOnlyInTheInnerTargetShareNoMemoEntry()
+    {
+        // Each table-scoped context gets its own aggregate memo, so the inner EXSTDTC and EXENDTC
+        // extremes of one execution never read each other's entry.
+        EvaluationContext ctx = EvaluationContext.builder().table(sendDm())
+                .datasetResolver(resolver(sendDm(), sendEx(), sendPooldef())).build();
+        Vector starts = vector(POOL_FIRST.replace("\\\"", "\""), ctx);
+        Vector ends = vector(
+                "min_date(min_date(EXENDTC, domain=\"EX\", group=[POOLID], filter=(not empty(POOLID))), domain=\"POOLDEF\", group=[USUBJID])",
+                ctx);
+        assertEquals("2020-01-03", starts.value(0).cell().getValueAsString(), "S1's pool start");
+        assertEquals("2020-01-10", ends.value(0).cell().getValueAsString(),
+                "S1's pool end (the blank EXENDTC is skipped)");
+    }
+
+
+    @Test
+    void anInnerIndeterminateMakesThatPoolUndeterminableAndThePolarityGateSeesItThroughEveryOuterCall()
+    {
+        // P1 has a blank EXENDTC: with missing_values="indeterminate" on the inner call P1's
+        // latest end has no answer. S1 (P1 only) reads MIS; S2's outer group holds P1's MIS beside
+        // P2's 2020-01-02, and the outer `skip` extreme drops the missing candidate, so S2 reads
+        // 2020-01-02 (a never-dosed pool must not make every member undeterminable, §4).
+        assertEquals(3,
+                fires(POOL_END_INDETERMINATE, "empty($v)", sendDm(), sendEx(), sendPooldef()),
+                "S1 (P1 undeterminable), S3 (never dosed), S4 (no pool)");
+        RuleExecutionResult answered = run(POOL_END_INDETERMINATE, "not empty($v)", sendDm(),
+                sendEx(), sendPooldef());
+        assertEquals(1, answered.getViolations().size(), "only S2 answers");
+        assertEquals("2020-01-02", answered.getViolations().get(0).getValues().get("$v"),
+                "S2: the outer skip extreme drops P1's missing candidate");
+        // The polarity gate finds the nested declaration through the outer max_date …
+        assertNotNull(load(POOL_END_INDETERMINATE, "$v == date(\\\"2020-01-10\\\")").getLoadError(),
+                "== consumes the undeterminable extreme as \"no violation\"");
+        assertNull(load(POOL_END_INDETERMINATE, "$v != date(\\\"2020-01-10\\\")").getLoadError());
+        // … and through latest_date over a binding that reads it (the 0306 shape).
+        String bindings = "{\"name\":\"$pool_end\",\"expression\":\"" + POOL_END_INDETERMINATE
+                + "\"},{\"name\":\"$own_end\",\"expression\":\"max_date(EXENDTC, domain=\\\"EX\\\", group=[USUBJID])\"},"
+                + "{\"name\":\"$last\",\"expression\":\"latest_date($own_end, $pool_end)\"}";
+        Rule positive = loadBindings(bindings, "date(RFXENDTC) == $last");
+        assertNotNull(positive.getLoadError(), "seen through latest_date and the binding chain");
+        assertTrue(positive.getLoadError().contains("positive-polarity"), positive.getLoadError());
+        assertNull(loadBindings(bindings, "date(RFXENDTC) != $last").getLoadError());
+    }
 }

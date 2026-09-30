@@ -42,12 +42,13 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * A call is read at load by {@link #spec} — its column arguments are <b>names</b> (EC-44 is defined
  * over names), never vectors of the primary, because under {@code domain=} every one of them names
- * a column of the OTHER dataset (owner D13 Q4 / D14 / D10) — and evaluated per execution by
- * {@link #broadcast}: the target table is resolved ({@code domain=} through
- * {@link SplitDomainResolution}, as {@code read_value}), the target cells and the {@code filter=}
- * mask are evaluated on a table-scoped context, the groups are formed by the engine's one grouper
- * ({@link IndexHelper#groupByPresent}: absent group columns partition nothing, plan 16's
- * {@code GroupKey} identity, the {@link IndexHelper.BlockResults} tripwire, the
+ * a column of the OTHER dataset (owner D13 Q4 / D14 / D10; a reference inside a <em>nested</em>
+ * grouped call in the target belongs to that call's own {@code domain=}, see {@link #readTarget}) —
+ * and evaluated per execution by {@link #broadcast}: the target table is resolved ({@code domain=}
+ * through {@link SplitDomainResolution}, as {@code read_value}), the target cells and the
+ * {@code filter=} mask are evaluated on a table-scoped context, the groups are formed by the
+ * engine's one grouper ({@link IndexHelper#groupByPresent}: absent group columns partition nothing,
+ * plan 16's {@code GroupKey} identity, the {@link IndexHelper.BlockResults} tripwire, the
  * {@code keep_missings} policies), each block's value is computed by the function's
  * {@link Aggregator}, and the values are returned <b>already broadcast per row of the primary</b>
  * (runbook R2): one identity key per primary row through the ONE derivation both sides use
@@ -180,7 +181,8 @@ public final class GroupedAggregate
      *            the function name
      * @param target
      *            the target — a bare column reference (the fast path) or any VALUE expression over
-     *            the target table (D14 / D119c)
+     *            the target table (D14 / D119c); a nested grouped call inside it is evaluated on
+     *            its own {@code domain=} and broadcast to the target table's rows
      * @param dataset
      *            the {@code domain=} dataset, or {@code null} for the primary
      * @param filter
@@ -322,7 +324,11 @@ public final class GroupedAggregate
      * The target: a bare column of the target table, a {@code --}-prefix column (primary only — the
      * prefix resolves against the primary's domain), or any VALUE expression over the target
      * table's own columns. A quoted name is a string, never a column (R1); a dotted or {@code $}
-     * reference names another table or binding and is refused.
+     * reference names another table or binding and is refused. ⚠ Every reference <em>outside</em> a
+     * nested grouped call is a column of the target table; a nested call's references
+     * ({@code min_date(min_date(EXSTDTC, domain="EX", group=[POOLID], …), domain="POOLDEF",
+     * group=[USUBJID])} — the pool's first dose per POOLDEF row, {@code PLAN-scalar-date-extremes})
+     * belong to its own {@code domain=}, and {@link #checkRefs} checks only their shape.
      */
     static Expr readTarget(String fn, @Nullable Expr target, boolean foreign)
     {
@@ -341,8 +347,9 @@ public final class GroupedAggregate
             columnName(fn, NAME_PARAMETER, ref, foreign);
             return target;
         }
-        // D14 / D119c: an expression target — every reference inside it is a column of the target
-        // table (the same rule as the filter).
+        // D14 / D119c: an expression target — every reference outside a nested grouped call is a
+        // column of the target table (the same rule as the filter); a nested call's references are
+        // its own domain='s, so only their shape is checked here.
         checkRefs(fn, NAME_PARAMETER, target, foreign);
         return target;
     }
@@ -442,7 +449,11 @@ public final class GroupedAggregate
     }
 
 
-    /** Every reference inside {@code e} is a bare column of the target table. */
+    /**
+     * Every reference inside {@code e} is a bare column — of the target table, or, inside a nested
+     * grouped call, of that call's own {@code domain=} (the shape is what is checked; the column's
+     * home is resolved when the nested call is evaluated).
+     */
     private static void checkRefs(String fn, String parameter, Expr e, boolean foreign)
     {
         switch (e)

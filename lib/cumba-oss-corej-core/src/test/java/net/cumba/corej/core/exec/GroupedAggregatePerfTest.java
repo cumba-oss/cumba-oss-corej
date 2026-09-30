@@ -35,6 +35,7 @@ class GroupedAggregatePerfTest
         String[] paramcd = new String[ROWS];
         Double[] aval = new Double[ROWS];
         String[] dtc = new String[ROWS];
+        String[] dtc2 = new String[ROWS];
         for (int r = 0; r < ROWS; r++)
         {
             usubjid[r] = "S" + (r % SUBJECTS);
@@ -42,9 +43,11 @@ class GroupedAggregatePerfTest
             aval[r] = Math.floor(random.nextDouble() * 1000.0) / 10.0;
             dtc[r] = "2024-" + String.format(java.util.Locale.ROOT, "%02d-%02d",
                     1 + random.nextInt(12), 1 + random.nextInt(28));
+            dtc2[r] = "2024-" + String.format(java.util.Locale.ROOT, "%02d-%02d",
+                    1 + random.nextInt(12), 1 + random.nextInt(28));
         }
         return RealTableFixture.of("LB").str("USUBJID", usubjid).str("PARAMCD", paramcd)
-                .dbl("AVAL", aval).str("LBDTC", dtc).build();
+                .dbl("AVAL", aval).str("LBDTC", dtc).str("LBDTC2", dtc2).build();
     }
 
 
@@ -105,5 +108,13 @@ class GroupedAggregatePerfTest
         // read_value grouped (the Aggregator seam)
         assertEquals(SUBJECTS, timed("read_value grouped",
                 "read_value(AVAL, domain=LB, mode=\"MAX\", group=[USUBJID])", dm, study));
+        // PLAN-scalar-date-extremes P1 (i): the per-row pair extreme over two bound columns,
+        // beside a bare column read and the grouped min_date over the same rows.
+        assertEquals(ROWS, timed("column read", "LBDTC", lb, study));
+        assertEquals(ROWS,
+                timed("earliest_date primary", "earliest_date(LBDTC, LBDTC2)", lb, study));
+        assertEquals(ROWS, timed("latest_date primary", "latest_date(LBDTC, LBDTC2)", lb, study));
+        assertEquals(ROWS,
+                timed("min_date primary", "min_date(LBDTC, group=[USUBJID, PARAMCD])", lb, study));
     }
 }

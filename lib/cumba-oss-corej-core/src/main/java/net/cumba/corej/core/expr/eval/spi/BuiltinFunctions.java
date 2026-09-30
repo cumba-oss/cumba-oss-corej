@@ -92,7 +92,10 @@ import org.jspecify.annotations.Nullable;
  * {@link TypedValue#missing()}, never the F3 {@code Vector.isMissing} fold. The untyped
  * {@link ComputedVector} carries an {@code IDataValue} row as a typed cell whatever its declared
  * type (the identity is read from the cell), which is what lets a LONG or DOUBLE producer return
- * the cell.
+ * the cell. ⚠ The two date extremes {@code earliest_date} / {@code latest_date}
+ * ({@link net.cumba.corej.core.exec.ScalarDateExtremes}) follow the <b>extremes'</b> candidate rule
+ * (SPEC §4(10)), not propagation: a missing argument is skipped and the other decides alone; only
+ * when both are missing do they carry their identity (D85c / D86a).
  * </p>
  */
 public final class BuiltinFunctions implements FunctionProvider
@@ -829,6 +832,21 @@ public final class BuiltinFunctions implements FunctionProvider
                 (run, args) -> hullBound(run.rowCount(), args.get(0), false)));
         fns.add(new FunctionDescriptor("latest_possible", List.of(p("x")), FunctionKind.VALUE,
                 (run, args) -> hullBound(run.rowCount(), args.get(0), true)));
+
+        // -- VALUE two-value date extremes (earliest_date / latest_date) -----
+        // PLAN-scalar-date-extremes (SDE D1 the names, S1–S7 the contract): the earlier / later of
+        // two dates with exactly min_date / max_date's semantics over a two-cell block — EC-51's
+        // candidate rule (a missing or blank argument is skipped; both missing carry their
+        // identity) and EC-46's determinability, one accumulator (ScalarDateExtremes). DATE in,
+        // DATE out (S3): a string literal argument is a PARAMETER_TYPE finding — write date("…").
+        // The winning CELL is handed back, so a Num beside a Char is refused as row_max refuses a
+        // mixed set. Two arguments exactly, positional or by name; no missing_values= (S8).
+        fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.ScalarDateExtremes.EARLIEST,
+                List.of(p("a", Primitive.DATE), p("b", Primitive.DATE)), FunctionKind.VALUE,
+                net.cumba.corej.core.exec.ScalarDateExtremes::earliest));
+        fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.ScalarDateExtremes.LATEST,
+                List.of(p("a", Primitive.DATE), p("b", Primitive.DATE)), FunctionKind.VALUE,
+                net.cumba.corej.core.exec.ScalarDateExtremes::latest));
 
         // -- BOOLEAN interval predicates (SPEC §5.3, D27 — phase 3b) ---------
         // Container-first, matching contains(haystack, needle). date_overlaps is by construction

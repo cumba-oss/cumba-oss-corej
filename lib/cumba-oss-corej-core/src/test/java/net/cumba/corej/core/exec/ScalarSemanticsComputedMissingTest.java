@@ -710,7 +710,10 @@ class ScalarSemanticsComputedMissingTest
     // qualified member's cell of the row's bound source record through JoinLookup.lookupValue.
     // Read: both channels answer a real value or a MissingValue (the lookup's typed contract),
     // never null.
-    private static final int EXPECTED_VALUE_PRODUCERS = 29;
+    // 29 -> 30 (PLAN-scalar-date-extremes): ScalarDateExtremes.pairExtreme, the per-row producer of
+    // earliest_date / latest_date — read: it answers the winning INPUT cell, the carried identity
+    // when both inputs are missing, or ScalarSemantics.computedMissing(); never null.
+    private static final int EXPECTED_VALUE_PRODUCERS = 30;
 
     private static Method declared(Class<?> owner, String name)
     {

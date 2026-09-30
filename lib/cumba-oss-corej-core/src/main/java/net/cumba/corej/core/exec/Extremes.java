@@ -13,8 +13,11 @@ import org.jspecify.annotations.Nullable;
  * Moved here verbatim from the retired operation executor by runbook W5
  * ({@code PLAN-grouped-aggregate-functions} D-W5-8) because its readers outlive the executor: the
  * registry functions {@code max} / {@code max_date} / {@code min_date} ({@link GroupedAggregate})
- * and {@code row_max} ({@link RowMax}). ({@code date_diff_days}' grouped subtrahend was a third
- * until runbook W2b: its reference is a named {@code min_date} / {@code max_date} call now.)
+ * and {@code row_max} ({@link RowMax}), and since {@code PLAN-scalar-date-extremes} the per-row
+ * pair extremes {@code earliest_date} / {@code latest_date} ({@link ScalarDateExtremes}), which run
+ * a two-cell {@link DateExtreme} block so that they can never drift from the grouped ones.
+ * ({@code date_diff_days}' grouped subtrahend was a third until runbook W2b: its reference is a
+ * named {@code min_date} / {@code max_date} call now.)
  */
 public final class Extremes
 {

@@ -499,7 +499,45 @@ class RuleLoadValidationExpansionTest
                 """);
         assertTrue(error.contains("Expansion token '&DOM&' must not appear in"
                 + " Scope.Datasets.Include entry '&DOM&'"), error);
-        assertTrue(error.contains("scope gate runs before expansion"), error);
+        assertTrue(error.contains("matched before expansion"), error);
+    }
+
+
+    @Test
+    void anUndeclaredTokenInRequirementsDatasetsIsRejected() throws IOException
+    {
+        // K11 (PLAN-scalar-date-extremes): the dataset presence requirement is evaluated before
+        // expansion like the variable facets, so it is a surface — G2 catches an undeclared token
+        // and R6 a declared one (below). Before K11 a token here loaded clean and dropped every
+        // expansion at run time.
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-G2-REQDS"},
+                  "Requirements": {"Datasets": ["&X&"]},
+                  "Check": {"all": [{"expression": "not empty(AGE)"}]}
+                }
+                """);
+        assertTrue(error.contains("undeclared expansion token '&X&' in Requirements.Datasets"),
+                error);
+    }
+
+
+    @Test
+    void aDeclaredTokenInRequirementsDatasetsIsRejected() throws IOException
+    {
+        String error = errorOf("""
+                {
+                  "Core": {"Id": "TEST-R6-REQDS"},
+                  "Requirements": {"Datasets": ["&DOM&"]},
+                  "Expansion": [
+                    {"token": "&DOM&", "over": "domain_from_variable", "pattern": "&DOM&SEQ"}
+                  ],
+                  "Check": {"all": [{"expression": "not empty(&DOM&SEQ)"}]}
+                }
+                """);
+        assertTrue(error.contains("Expansion token '&DOM&' must not appear in"
+                + " Requirements.Datasets entry '&DOM&'"), error);
+        assertTrue(error.contains("matched before expansion"), error);
     }
 
 

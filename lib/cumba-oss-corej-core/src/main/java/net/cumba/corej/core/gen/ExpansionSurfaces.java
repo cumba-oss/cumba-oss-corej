@@ -33,7 +33,8 @@ import org.jspecify.annotations.Nullable;
  * every text node of each {@code Match_Datasets} entry's JSON tree (walked as
  * {@code substituteTree} walks it: Name, Keys on both sides, Filter, Join_As_String, Join_Type),
  * {@code Grouping.Variables} and {@code Grouping_Variables} — plus the surfaces that are gated but
- * copied verbatim ({@link #gatedOnly}): {@code Requirements.Variables} and the {@code Scope} name
+ * copied verbatim ({@link #gatedOnly}): {@code Requirements.Variables},
+ * {@code Requirements.Datasets} (K11, {@code PLAN-scalar-date-extremes}) and the {@code Scope} name
  * lists, which are matched BEFORE expansion and where gate R6 looks. Prose that is never
  * substituted (ExecutabilityHint, Source, Standards, Authorities, Core) is not a surface, so prose
  * like {@code R&D} there is never gated. {@code ExpansionSurfacesTest} keeps this in lockstep with
@@ -214,10 +215,13 @@ public final class ExpansionSurfaces
 
     /**
      * The surfaces that are gated but never substituted, because they are matched <em>before</em>
-     * the rule expands: the four {@code Requirements.Variables} facets and the {@code Scope} name
-     * lists ({@code Domains} / {@code Datasets} / {@code Classes} / {@code Data_Structures} /
-     * {@code Subclasses}, {@code Include} and {@code Exclude}). A declared token in any of them is
-     * gate R6's error; an undeclared one is G2's.
+     * the rule expands: the four {@code Requirements.Variables} facets, the
+     * {@code Requirements.Datasets} list (K11, {@code PLAN-scalar-date-extremes} — the dataset
+     * presence requirement is evaluated before expansion too, so a token there was carried verbatim
+     * and dropped every expansion at run time) and the {@code Scope} name lists ({@code Domains} /
+     * {@code Datasets} / {@code Classes} / {@code Data_Structures} / {@code Subclasses},
+     * {@code Include} and {@code Exclude}). A declared token in any of them is gate R6's error; an
+     * undeclared one is G2's.
      *
      * @param rule
      *            the rule
@@ -234,6 +238,10 @@ public final class ExpansionSurfaces
             addAll(out, "Requirements.Variables.Any", vars.anyUnion());
             addAll(out, "Requirements.Variables.None", vars.getNone());
             addAll(out, "Requirements.Variables.All_Or_None", vars.allOrNoneUnion());
+        }
+        if (req != null)
+        {
+            addAll(out, "Requirements.Datasets", req.getDatasets());
         }
         Scope scope = rule.getScope();
         if (scope != null)

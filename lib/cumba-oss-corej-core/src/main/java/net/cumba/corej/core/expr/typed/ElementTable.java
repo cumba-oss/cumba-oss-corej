@@ -60,7 +60,11 @@ public final class ElementTable
             // since W3 answering the winning cell, typed by the columns it reads; row_min went in
             // W1,
             // ts_parameter_value became read_value in W2a, typed by the column it reads).
+            // ⭐ earliest_date / latest_date (PLAN-scalar-date-extremes, S3) type DATE for the same
+            // reason: they answer what min_date / max_date answer over a two-cell block, and an
+            // untagged `RFXSTDTC != earliest_date(…)` must meet the §5.2 mixed check as a date.
             Map.entry("min_date", Primitive.DATE), Map.entry("max_date", Primitive.DATE),
+            Map.entry("earliest_date", Primitive.DATE), Map.entry("latest_date", Primitive.DATE),
             Map.entry("date_diff_days", Primitive.NUMBER),
             // collection results
             Map.entry("split_by", new ListOf(Primitive.STRING)),

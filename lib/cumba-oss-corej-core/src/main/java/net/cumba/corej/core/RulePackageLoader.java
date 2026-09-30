@@ -6685,11 +6685,13 @@ public class RulePackageLoader
      * {@code pattern:} is caught here, where the lexer cannot see it. Scoped to rules that declare
      * {@code Expansion:}, so HTML-entity prose (an ampersand followed by {@code lt;}) elsewhere
      * never trips it.</li>
-     * <li><b>R6 — no token in {@code Requirements.Variables} or a {@code Scope} name list.</b> Both
-     * are evaluated BEFORE expansion ({@code DatasetRuleResolver} calls {@code describeScopeSkip}
-     * then {@code tryExpand}), so the matcher sees the template and would test the token text
-     * literally — no such column or dataset, rule skipped for every dataset, never expanded. R-4.9
-     * is deliberately left untouched.</li>
+     * <li><b>R6 — no token in {@code Requirements.Variables}, {@code Requirements.Datasets} or a
+     * {@code Scope} name list.</b> All three are evaluated BEFORE expansion
+     * ({@code DatasetRuleResolver} calls {@code describeScopeSkip} then {@code tryExpand}), so the
+     * matcher sees the template and would test the token text literally — no such column or
+     * dataset, rule skipped for every dataset, never expanded ({@code Requirements.Datasets} joined
+     * the gate with K11 of {@code PLAN-scalar-date-extremes}; before it a token there loaded clean
+     * and dropped every expansion at run time). R-4.9 is deliberately left untouched.</li>
      * <li><b>no declared token inside a {@code /regex/} literal</b> of a Check level, the
      * Precondition or a binding: a regex literal is never substituted, so the token would survive
      * into every expansion and drop it at run time.</li>
@@ -6988,12 +6990,13 @@ public class RulePackageLoader
 
 
     /**
-     * Rejects a declared expansion token appearing anywhere in a variable requirement or in a
-     * {@code Scope} name list — gate <b>R6</b>, which is {@code Scope.Variables}' original bar
-     * <em>re-pointed</em> onto {@code Requirements.Variables} and, since the review of
-     * {@code PLAN-expansion-token-delimiters} ((a) L1), onto the {@code Scope} name lists
-     * ({@code Domains} / {@code Datasets} / {@code Classes} / {@code Data_Structures} /
-     * {@code Subclasses}, {@code Include} and {@code Exclude}) as well. See
+     * Rejects a declared expansion token appearing anywhere in a variable requirement, in the
+     * dataset requirement or in a {@code Scope} name list — gate <b>R6</b>, which is
+     * {@code Scope.Variables}' original bar <em>re-pointed</em> onto {@code Requirements.Variables}
+     * and, since the review of {@code PLAN-expansion-token-delimiters} ((a) L1), onto the
+     * {@code Scope} name lists ({@code Domains} / {@code Datasets} / {@code Classes} /
+     * {@code Data_Structures} / {@code Subclasses}, {@code Include} and {@code Exclude}) and, since
+     * K11 of {@code PLAN-scalar-date-extremes}, onto {@code Requirements.Datasets} as well. See
      * {@link #validateExpansionDirectives} for why this bar exists rather than an R-4.9 relaxation.
      *
      * <p>
@@ -7041,7 +7044,7 @@ public class RulePackageLoader
             {
                 errors.add(
                         "[" + ruleId(rule) + "] Expansion token '" + token + "' must not appear in "
-                                + where + " entry '" + entry + "' — the scope gate runs"
+                                + where + " entry '" + entry + "' — that surface is matched"
                                 + " before expansion and would match the token literally,"
                                 + " silently skipping the rule for every dataset");
             }

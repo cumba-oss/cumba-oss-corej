@@ -1010,6 +1010,30 @@ class StageACheckerTest
 
 
     @Test
+    void earliestDateAndLatestDateTypeAsDateWithDateParameters()
+    {
+        // PLAN-scalar-date-extremes S3: the pair extremes are DATE-valued like min_date /
+        // max_date (ElementTable), and their two parameters are DATE — a column meets them, a
+        // DATE-typed binding meets them, a string literal is the PARAMETER_TYPE finding.
+        Rule rule = new Rule();
+        rule.setCompiledBindings(List.of(new CompiledBinding("$own",
+                CheckExpressionParser.parse("min_date(EXSTDTC, group=[USUBJID])"), List.of(),
+                null)));
+        StageAReport report = check(rule, "date(RFXSTDTC) != earliest_date($own, EXSTDTC)");
+        assertEquals(List.of(), report.findings());
+        assertEquals(Primitive.DATE, root(report).children().get(1).type());
+        assertEquals(Primitive.DATE,
+                root(check("date(X) == latest_date(A, B)")).children().get(1).type());
+        assertEquals(List.of(StageAErrorKind.PARAMETER_TYPE),
+                kinds(check("empty(earliest_date(A, \"2012-06-15\"))")));
+        assertEquals(List.of(), check("empty(earliest_date(A, date(\"2012-06-15\")))").findings());
+        // and the DATE result meets a string literal as the armed §5.2 mixed pair
+        assertEquals(List.of(StageAErrorKind.MIXED_DATE_STRING_COMPARISON),
+                kinds(check("latest_date(A, B) == \"2012-06-15\"")));
+    }
+
+
+    @Test
     void theFourPredicatesAreBooleanWithTypedOperands()
     {
         StageAReport report = check("date_contains(RFSTDTC, AESTDTC) and date_overlaps(A, B)"

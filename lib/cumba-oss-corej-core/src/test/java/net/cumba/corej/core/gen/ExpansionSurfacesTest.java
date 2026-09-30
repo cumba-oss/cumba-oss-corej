@@ -171,11 +171,6 @@ class ExpansionSurfacesTest
             new Exempt("/Scope/Use_Case", Fate.CARRIED_VERBATIM,
                     "upper-case use-case codes, validated at load (R-4.10): a token is a load"
                             + " error before any expansion"),
-            new Exempt("/Requirements/Datasets/*", Fate.CARRIED_VERBATIM,
-                    "matched before expansion and NOT gated by R6 / G2 (only Requirements.Variables"
-                            + " is): a declared token survives into every expansion, which the"
-                            + " survivor check drops with a stated reason — filed by"
-                            + " PLAN-expansion-token-delimiters lane ETD-Z"),
             new Exempt("/Bindings/*/name", Fate.CARRIED_VERBATIM,
                     "a binding's own $-name, the identifier a $-reference reads — never a token"
                             + " position; kept verbatim in the compiled binding, which is not"
@@ -534,17 +529,16 @@ class ExpansionSurfacesTest
     {
         Set<String> multi = new LinkedHashSet<>();
         ExpansionSurfaces.surfaces(read(MAXIMAL)).forEach(s -> multi.add(s.where()));
-        assertEquals(
-                List.of("Check[ERROR]", "Check[WARNING]", "Precondition", "Check[ERROR].Message",
-                        "Bindings[0]", "Description", "Outcome.Message", "Outcome.Output_Variables",
-                        "Match_Datasets[0]", "Grouping.Variables", "Grouping_Variables",
-                        "Requirements.Variables.All", "Requirements.Variables.Any",
-                        "Requirements.Variables.None", "Requirements.Variables.All_Or_None",
-                        "Scope.Domains.Include", "Scope.Domains.Exclude", "Scope.Datasets.Include",
-                        "Scope.Datasets.Exclude", "Scope.Classes.Include", "Scope.Classes.Exclude",
-                        "Scope.Data_Structures.Include", "Scope.Data_Structures.Exclude",
-                        "Scope.Subclasses.Include", "Scope.Subclasses.Exclude"),
-                List.copyOf(multi));
+        assertEquals(List.of("Check[ERROR]", "Check[WARNING]", "Precondition",
+                "Check[ERROR].Message", "Bindings[0]", "Description", "Outcome.Message",
+                "Outcome.Output_Variables", "Match_Datasets[0]", "Grouping.Variables",
+                "Grouping_Variables", "Requirements.Variables.All", "Requirements.Variables.Any",
+                "Requirements.Variables.None", "Requirements.Variables.All_Or_None",
+                "Requirements.Datasets", "Scope.Domains.Include", "Scope.Domains.Exclude",
+                "Scope.Datasets.Include", "Scope.Datasets.Exclude", "Scope.Classes.Include",
+                "Scope.Classes.Exclude", "Scope.Data_Structures.Include",
+                "Scope.Data_Structures.Exclude", "Scope.Subclasses.Include",
+                "Scope.Subclasses.Exclude"), List.copyOf(multi));
 
         Rule single = read("""
                 {"Core": {"Id": "SURF-2"},
