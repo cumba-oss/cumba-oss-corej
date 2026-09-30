@@ -41,14 +41,40 @@ final class JoinKeyTypeMismatchException extends RuntimeException
     JoinKeyTypeMismatchException(String aDataset, String aKeyColumn, String aJoinedColumn,
             String aPrimaryKind, String aJoinedKind)
     {
-        this("Match_Datasets " + aDataset + ": join key " + aKeyColumn + " is " + aPrimaryKind
-                + " in the primary dataset and "
+        this(aDataset, aKeyColumn, "the primary dataset", aJoinedColumn, aPrimaryKind, aJoinedKind);
+    }
+
+
+    /**
+     * The chained-key arm ({@code PLAN-rprfdy-offset-tp-join} C1): the record side of a qualified
+     * key {@code DM.RPATHCD} is read from the source entry {@code DM}, so the kind compared with
+     * the joined column's is the SOURCE column's, and the message names that dataset rather than
+     * "the primary dataset".
+     *
+     * @param aDataset
+     *            the joined entry
+     * @param aKeyColumn
+     *            the key as authored ({@code DM.RPATHCD})
+     * @param aRecordSide
+     *            where the record-side column lives, for the message ({@code DM})
+     * @param aJoinedColumn
+     *            the joined column ({@code RPATHCD})
+     * @param aRecordKind
+     *            the record-side column's kind
+     * @param aJoinedKind
+     *            the joined column's kind
+     */
+    JoinKeyTypeMismatchException(String aDataset, String aKeyColumn, String aRecordSide,
+            String aJoinedColumn, String aRecordKind, String aJoinedKind)
+    {
+        this("Match_Datasets " + aDataset + ": join key " + aKeyColumn + " is " + aRecordKind
+                + " in " + aRecordSide + " and "
                 + (aKeyColumn.equals(aJoinedColumn) ? ""
                         : "its joined column " + aJoinedColumn + " is ")
                 + aJoinedKind + " in " + aDataset
                 + ". Declare the type this rule REQUIRES on BOTH sides in"
-                + " Requirements.Variables.All — e.g. \"" + aKeyColumn + ":N\" (or \":C\") for the"
-                + " primary and \"" + aDataset + "." + aJoinedColumn + ":N\" for the joined"
+                + " Requirements.Variables.All — e.g. \"" + aKeyColumn + ":N\" (or \":C\") for "
+                + aRecordSide + " and \"" + aDataset + "." + aJoinedColumn + ":N\" for the joined"
                 + " dataset — so a"
                 + " study that does not meet it SKIPS instead. Declare the type the rule needs, not"
                 + " the one this study has: a tag that matches the divergent column is satisfied"

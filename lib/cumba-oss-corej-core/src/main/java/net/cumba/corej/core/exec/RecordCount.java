@@ -20,6 +20,7 @@ import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionRegistry;
 import net.cumba.corej.core.expr.eval.Parameter;
 import net.cumba.corej.core.expr.eval.Vector;
+import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.values.DataValueLong;
@@ -206,6 +207,18 @@ public final class RecordCount
         GroupKeyPolicy policy = GroupedAggregate.readPolicy(NAME,
                 GroupedAggregate.slot(bound, params, GroupedAggregate.KEEP_MISSINGS_PARAMETER));
         Pattern regex = readRegex(GroupedAggregate.slot(bound, params, REGEX_PARAMETER));
+        if (regex != null && GroupedAggregate.hasQualifiedMember(group))
+        {
+            // D-REGEX (PLAN-rprfdy-offset-tp-join): regex= normalises the group-column VALUES read
+            // from the grouped dataset, and with a qualified member the two sides would normalise
+            // different columns — a named gap, refused rather than half-applied.
+            throw new ExpressionException("`" + REGEX_PARAMETER + "` on `" + NAME
+                    + "` cannot be combined with a qualified group= member ("
+                    + group.stream().filter(g -> MatchDataset.qualifierOf(g) != null).findFirst()
+                            .orElse("")
+                    + "): the regex normalises the grouped dataset's key values, and the qualified"
+                    + " member's record side is read from another dataset");
+        }
         boolean spliced = group.stream().anyMatch(g -> g.startsWith("$"));
         return new Spec(dataset, filter, group, spliced, policy, regex, ExpressionPrinter.print(c));
     }
@@ -354,7 +367,11 @@ public final class RecordCount
             return new GroupedAggregate.Grouped(Map.of(), DataValueType.LONG, null);
         }
         BitSet keep = GroupedAggregate.filterMask(ctx, table, spec.filter());
-        IndexHelper.Grouping grouping = IndexHelper.groupByPresent(table, names,
+        // C2: a qualified member groups the counted table by its UNQUALIFIED name (absent ⇒
+        // ERROR); the record side is keyed through the join by GroupedAggregate.broadcast.
+        boolean qualified = GroupedAggregate.hasQualifiedMember(names);
+        IndexHelper.Grouping grouping = IndexHelper.groupByPresent(table,
+                GroupedAggregate.groupedSideNames(NAME, table, names),
                 GroupedAggregate.logContext(ctx, NAME), spec.policy());
         if (grouping == null)
         {
@@ -364,6 +381,12 @@ public final class RecordCount
         }
         Pattern regex = spec.regex();
         boolean normalise = regex != null;
+        if (normalise && qualified)
+        {
+            // D-REGEX at load; a spliced $-list can only reach it here — the same refusal.
+            throw new IllegalStateException("[" + ctx.getRuleId() + "] " + NAME + ": regex= cannot"
+                    + " be combined with a qualified group= member " + names);
+        }
         @Nullable
         Pattern[] patterns = regex != null ? columnPatterns(table, names, regex) : new Pattern[0];
         List<IndexHelper.GroupBlock> blocks = grouping.blocks();
@@ -401,19 +424,21 @@ public final class RecordCount
             int[] primaryColumns = GroupKeyIdentity.columnIndices(primary.getMetaData(), names);
             keyer = (_, t, row) -> normalisedKey(t, primaryColumns, patterns, policy, row);
         }
-        else if (table == primary)
+        else if (table == primary && !qualified)
         {
             // The groups are the evaluated dataset's own: every row's count is written straight
-            // from its block, with no key derived per row (XCUT PERF 3).
+            // from its block, with no key derived per row (XCUT PERF 3). Never for a qualified
+            // member: its record side is the bound source record, not the row.
             return new GroupedAggregate.Grouped(byKey, DataValueType.LONG, null,
                     GroupedAggregate.Grouped.perRow(Math.toIntExact(primary.getRowCount()), ZERO,
                             blocks, b -> blockCounts[b]));
         }
-        if (table != primary)
+        if (table != primary || qualified)
         {
             // GKI Q2: a Char/Num key pair between the counted table and the evaluated one ERRORs
             // the rule instead of silently matching no row. Once per evaluation, never per row.
-            GroupKeyIdentity.requireCompatibleKeyColumns(table, names, primary, names);
+            // A qualified member is judged against its SOURCE column (C2).
+            GroupedAggregate.requireCompatibleKeys(ctx, table, names);
         }
         return new GroupedAggregate.Grouped(byKey, DataValueType.LONG, keyer);
     }

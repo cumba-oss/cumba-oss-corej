@@ -242,8 +242,14 @@ public final class RuleRunner
                     .status(RuleExecutionStatus.SKIPPED).statusMessage(reason).build());
         }
         catch (InvalidJoinedDomainException | DegenerateJoinKeyException
-                | JoinKeyTypeMismatchException | MalformedSidedKeyException e)
+                | JoinKeyTypeMismatchException | MalformedSidedKeyException
+                | UnresolvedQualifiedKeyException e)
         {
+            // ⭐ UnresolvedQualifiedKeyException joins this catch for D-ABSENT of
+            // PLAN-rprfdy-offset-tp-join: a qualified key component (DM.RPATHCD in a join key, a
+            // grouped function's group= or the rule-level Grouping) whose source dataset, source
+            // column or unqualified other side is absent. Same channel, same shape — never a ""
+            // key, never JKM R7's absent-side default, never EC-44's silent partition-nothing.
             // ⭐ JoinKeyTypeMismatchException joins this catch for D4-R2 (owner, 2026-09-22: "a
             // rule errors out if the types do not match … I do not want a silent mismatch"). Same
             // channel, same shape; thrown from KeyMatchRowExpander.keySpec, which is the one site
@@ -3118,12 +3124,15 @@ public final class RuleRunner
         ViolationSink violations = new ViolationSink(ctx.getMaxErrorsPerRule());
         List<String> outputVars = outputVariablesOf(rule, check, ctx);
 
-        // Python parity (mirrors the operator-level validGroupCols filter in
-        // GroupSemantics.inconsistentAcrossDatasetViolations): silently drop grouping columns
-        // absent from this dataset rather than letting createIndex return null on the full list —
-        // which would zero out the rule whenever a single permissible grouping variable (e.g.
-        // --SCAT) is absent. When no grouping column survives, the whole dataset is one group
-        // (pandas groupby of an empty key list).
+        // EC-44 at rule level (register value-semantics §9; rule-guide functions.md "an absent
+        // group column is dropped from the key"): a grouping column absent from this dataset
+        // cannot differentiate any row from any other, so it partitions nothing and is dropped
+        // rather than letting createIndex return null on the full list — which would zero out
+        // the rule whenever a single permissible grouping variable (e.g. --SCAT) is absent. When
+        // no grouping column survives, the whole dataset is one group. (Until 2026-09-30 this
+        // comment justified the drop by Python parity, retired 2026-09-17; the behaviour is
+        // EC-44's — PLAN-rprfdy-offset-tp-join F1.) ⚠ A QUALIFIED member is never dropped: an
+        // unresolvable source is an ERROR (D-ABSENT), see executeGroupedQualified.
         List<String> presentGroupVars = new ArrayList<>(groupVars.size());
         for (String g : groupVars)
         {
@@ -3146,6 +3155,15 @@ public final class RuleRunner
                     .statusMessage("Rule error — the Check has no native expression form; the "
                             + "legacy evaluator has been retired")
                     .build();
+        }
+        if (GroupedAggregate.hasQualifiedMember(groupVars))
+        {
+            // C3 (PLAN-rprfdy-offset-tp-join): a qualified member (DM.RPATHCD) groups by the
+            // row's bound source record. Its own path from here — the plain path below is
+            // byte-identical for every rule without one; the no-native-form ERROR above is the
+            // one site both share.
+            return executeGroupedQualified(rule, ruleId, message, ctx, groupVars, groupingPolicy,
+                    violations, outputVars);
         }
         BitSet result = evaluateRowLevel(rule, ctx);
         // EC-40: resolved once for the dataset, reused by every group's anchored violation (D8),
@@ -3239,6 +3257,227 @@ public final class RuleRunner
                 .totalRows(rowCount).keySource(keySpec.source()).build();
     }
 
+
+    /**
+     * {@link #executeGrouped} for a {@code Grouping} with a <b>qualified</b> member (C3 of
+     * {@code PLAN-rprfdy-offset-tp-join}; owner 2026-09-29: <i>"This requires support for qualified
+     * variables at the global rule group keys"</i>). The evaluated (expanded) rows are partitioned
+     * by the {@code GroupKey} of the present plain members in declared order (EC-44 for those, as
+     * on the plain path) plus each qualified member read through its join lookup — the row's bound
+     * source record — then each block fires and anchors exactly as the plain path does (any flagged
+     * row, anchored at the first), under the same {@code keep_missings} disposition (D-C3-POLICY: a
+     * block whose key carries a blank or missing component is dropped by default). The report's key
+     * slab and the level plan's unit carry the qualified value, else two path groups would report
+     * one key and one unit. D-ABSENT: no lookup for the qualifier, or its column absent, is
+     * {@link UnresolvedQualifiedKeyException} — a rule ERROR, never a silent drop.
+     */
+    private static RuleExecutionResult executeGroupedQualified(Rule rule, @Nullable String ruleId,
+            @Nullable String message, EvaluationContext ctx, List<String> groupVars,
+            GroupKeyPolicy groupingPolicy, ViolationSink violations, List<String> outputVars)
+    {
+        IDataTable table = ctx.getTable();
+        DataTableMeta meta = table.getMetaData();
+        long rowCount = table.getRowCount();
+        // The key's components, resolved once: a present plain member by column, a qualified
+        // member through its lookup (ERROR here when unresolvable), an absent plain member
+        // dropped (EC-44).
+        QualifiedGroupKey key = QualifiedGroupKey.of(ctx, meta, groupVars);
+        BitSet result = evaluateRowLevel(rule, ctx);
+        RecordKeyResolver.RowKeySpec keySpec = result.isEmpty() ? RecordKeyResolver.RowKeySpec.NONE
+                : keySpecFor(ctx);
+        Set<String> nonConstantOutputs = new LinkedHashSet<>();
+
+        // The blocks, in first-appearance order: one growable int[] of rows per key, no boxing.
+        Map<Object, RowList> blocks = new LinkedHashMap<>();
+        int rows = Math.toIntExact(rowCount);
+        for (int row = 0; row < rows; row++)
+        {
+            blocks.computeIfAbsent(key.keyOf(table, row), _ -> new RowList()).add(row);
+        }
+        for (RowList block : blocks.values())
+        {
+            int first = block.rows[0];
+            if (!groupingPolicy.keepMissings() && key.anyBlank(table, first, groupingPolicy))
+            {
+                continue;
+            }
+            for (int i = 0; i < block.size; i++)
+            {
+                int row = block.rows[i];
+                if (result.get(row))
+                {
+                    storeGroupedViolation(table, ctx, outputVars, row, violations, keySpec,
+                            key.unitOf(ctx, table, row), key.reportedKeyOf(table, row),
+                            () -> block.flagged(result), nonConstantOutputs);
+                    break;
+                }
+            }
+        }
+        if (!nonConstantOutputs.isEmpty())
+        {
+            LevelInstrument.onGroupOutputs(ctx, nonConstantOutputs);
+        }
+        return RuleExecutionResult.builder().ruleId(ruleId).message(message)
+                .violations(violations.stored()).totalViolationCount(violations.total())
+                .totalRows(rowCount).keySource(keySpec.source()).build();
+    }
+
+    /** A growable list of row indices — one per qualified-grouping block, no boxing. */
+    private static final class RowList
+    {
+
+        private int[] rows = new int[4];
+
+        private int size;
+
+        private void add(int row)
+        {
+            if (size == rows.length)
+            {
+                rows = java.util.Arrays.copyOf(rows, size * 2);
+            }
+            rows[size++] = row;
+        }
+
+
+        /** The flagged rows of this block, in block order. */
+        private java.util.PrimitiveIterator.OfLong flagged(BitSet result)
+        {
+            return java.util.Arrays.stream(rows, 0, size).filter(result::get).asLongStream()
+                    .iterator();
+        }
+    }
+
+
+    /**
+     * The components of a qualified rule-level grouping key (C3): each is read as a cell — a plain
+     * member from its column of the evaluated table, a qualified member from the row's bound source
+     * record through the join lookup — and every derivation (the partition key, the blank test, the
+     * report key, the level unit) reads the same cells, so the four cannot disagree.
+     */
+    private static final class QualifiedGroupKey
+    {
+
+        private final String[] names;
+
+        private final int[] columns;
+
+        private final @Nullable JoinLookup[] lookups;
+
+        private final String[] unqualified;
+
+        private QualifiedGroupKey(List<String> aNames, List<Integer> aColumns,
+                List<@Nullable JoinLookup> aLookups, List<String> aUnqualified)
+        {
+            names = aNames.toArray(String[]::new);
+            columns = aColumns.stream().mapToInt(Integer::intValue).toArray();
+            lookups = aLookups.toArray(JoinLookup[]::new);
+            unqualified = aUnqualified.toArray(String[]::new);
+        }
+
+
+        private static QualifiedGroupKey of(EvaluationContext ctx, DataTableMeta meta,
+                List<String> groupVars)
+        {
+            List<String> names = new ArrayList<>();
+            List<Integer> columns = new ArrayList<>();
+            List<@Nullable JoinLookup> lookups = new ArrayList<>();
+            List<String> unqualified = new ArrayList<>();
+            for (String g : groupVars)
+            {
+                if (g == null)
+                {
+                    continue;
+                }
+                String qualifier = MatchDataset.qualifierOf(g);
+                if (qualifier == null)
+                {
+                    int idx = meta.getColumnIndex(g);
+                    if (idx < 0)
+                    {
+                        continue; // EC-44: an absent plain member partitions nothing
+                    }
+                    names.add(g);
+                    columns.add(idx);
+                    lookups.add(null);
+                    unqualified.add(g);
+                    continue;
+                }
+                names.add(g);
+                columns.add(-1);
+                lookups.add(GroupedAggregate.requireSourceLookup(ctx, "Grouping", g));
+                unqualified.add(g.substring(qualifier.length() + 1));
+            }
+            return new QualifiedGroupKey(names, columns, lookups, unqualified);
+        }
+
+
+        private IDataValue cell(IDataTable table, long row, int c)
+        {
+            JoinLookup lookup = lookups[c];
+            return lookup == null ? table.getColumn(columns[c]).getDataValue(row)
+                    : lookup.lookupValue(table, row, unqualified[c], false);
+        }
+
+
+        /** The partition key: the one identity derivation ({@code GroupKeyIdentity}). */
+        private Object keyOf(IDataTable table, long row)
+        {
+            Object[] parts = new Object[names.length];
+            for (int c = 0; c < parts.length; c++)
+            {
+                parts[c] = GroupKeyIdentity.identityOf(cell(table, row, c));
+            }
+            return parts.length == 0 ? "" : GroupKeyIdentity.keyOf(parts);
+        }
+
+
+        /** D-C3-POLICY: any component blank under the grouping policy. */
+        private boolean anyBlank(IDataTable table, long row, GroupKeyPolicy policy)
+        {
+            for (int c = 0; c < names.length; c++)
+            {
+                if (policy.isBlankKeyComponent(cell(table, row, c)))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+
+        /** The report's key slab, as {@link #groupKeyOf} renders it. */
+        private Map<String, String> reportedKeyOf(IDataTable table, long row)
+        {
+            Map<String, String> key = LinkedHashMap.newLinkedHashMap(names.length);
+            for (int c = 0; c < names.length; c++)
+            {
+                key.put(names[c], reportedValue(cell(table, row, c)));
+            }
+            return key;
+        }
+
+
+        /** The level plan's unit, as {@link #groupUnitOf} stamps it. */
+        private Violation.@Nullable Unit unitOf(EvaluationContext ctx, IDataTable table, long row)
+        {
+            if (ctx.getLevelPlan() == null)
+            {
+                return null;
+            }
+            List<Object> key = new ArrayList<>(names.length);
+            for (int c = 0; c < names.length; c++)
+            {
+                IDataValue dv = cell(table, row, c);
+                MissingValue missing = net.cumba.corej.core.expr.eval.TypedValue
+                        .missingIdentityOf(dv);
+                key.add(missing != null
+                        ? new net.cumba.corej.core.expr.eval.Primitives.MissingMember(missing)
+                        : GroupKeyPolicy.KEEP_MISSING_KEYS.keyIdentity(dv));
+            }
+            return new Violation.Unit.Group(key);
+        }
+    }
 
     /**
      * Records one Group-sensitivity violation anchored at {@code row} (the first flagged row of a
@@ -3609,7 +3848,11 @@ public final class RuleRunner
                             ruleId != null ? ruleId : "?", dsName);
                     continue;
                 }
-                List<String> rightKeys = md.hasSidedKeys() ? md.getRightKeys() : md.getKeys();
+                // getRightKeys() unconditionally: equal to getKeys() for a bare unqualified key,
+                // the `right` side of a sided one, the unqualified name of a qualified one (C1 —
+                // unreachable here for a qualified key, which the loader admits on an expandable
+                // entry only, and every expandable entry is consumed by KeyMatchRowExpander).
+                List<String> rightKeys = md.getRightKeys();
                 DatasetLookup lookup = rightKeys == null ? null
                         : DatasetLookup.build(dsName, joined, md.getKeys(), rightKeys);
                 if (lookup != null)
@@ -3624,8 +3867,11 @@ public final class RuleRunner
             // the same-named JoinCache (whose SharedJoinedIndex is keyed on one column-name list)
             // and builds a fresh sided lookup — leaving the byte-identical same-named path below
             // untouched.
-            if (md.hasSidedKeys())
+            if (md.hasSidedKeys() || md.hasQualifiedKeys())
             {
+                // A qualified key (C1) takes the sided path likewise — unreachable for a loaded
+                // rule (see the filtered arm above), stated rather than left to the same-named
+                // cache below, which would look the qualified name up on the primary.
                 IDataTable joined = SplitDomainResolution.resolveTableOrThrow(resolver, dsName,
                         ruleId);
                 List<String> leftKeys = md.getKeys();

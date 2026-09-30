@@ -192,6 +192,27 @@ class GroupedAggregateFunctionsTest
     }
 
 
+    /**
+     * Owner K3, 2026-09-30: <i>"no, special handling for special texts. Text is text."</i> — a
+     * character target whose values look like dates ranks as text; the EC-46 date rule (under which
+     * {@code max{2024-01, 2024-01-15}} was indeterminate, a computed missing) is {@code max_date}'s
+     * alone.
+     */
+    @Test
+    void maxOverDateLookingTextRanksAsText()
+    {
+        IDataTable dates = RealTableFixture.of("ADLB").str("USUBJID", "S1", "S1", "S2", "S2")
+                .str("PARAMCD", "ALT", "ALT", "ALT", "ALT")
+                .str("ADT", "2024-01", "2024-01-15", "2024-02-01", "2024-01-31").build();
+        assertEquals(2,
+                fires("max(ADT, group=[USUBJID, PARAMCD])", "$v == \\\"2024-01-15\\\"", dates),
+                "K3: text is text — the longer text wins, never indeterminate");
+        assertEquals(2,
+                fires("max(ADT, group=[USUBJID, PARAMCD])", "$v == \\\"2024-02-01\\\"", dates));
+        assertEquals(0, fires("max(ADT, group=[USUBJID, PARAMCD])", "empty($v)", dates));
+    }
+
+
     @Test
     void aMixedCharacterGroupKeepsRankingAsText()
     {

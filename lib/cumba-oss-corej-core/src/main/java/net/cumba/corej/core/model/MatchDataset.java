@@ -282,14 +282,130 @@ public class MatchDataset
 
 
     /**
-     * Joined/right-side join key names. A bare-string entry contributes its own name; a sided
-     * {@code {left, right}} entry contributes its {@code right} name. Returns {@code null} when no
-     * keys are declared. Equal to {@link #getKeys()} whenever every entry is a bare string.
+     * Joined/right-side join key names. A bare-string entry contributes its own name — or, for a
+     * <b>qualified</b> bare string {@code Q.V} ({@link #qualifierOf}), the unqualified {@code V}; a
+     * sided {@code {left, right}} entry contributes its {@code right} name. Returns {@code null}
+     * when no keys are declared. Equal to {@link #getKeys()} whenever every entry is a bare,
+     * unqualified string.
+     *
+     * <p>
+     * ⭐ <b>The qualified key</b> ({@code PLAN-rprfdy-offset-tp-join} C1; owner 2026-09-29: <i>"I
+     * would like to be able to give a qualified variable like DM.RPATHCD in the join key … The
+     * joined data set needs the same variable without the domain qualification, so DM.RPATHCD joins
+     * on RPATHCD."</i>): {@code Keys: ["DM.RPATHCD", "RPHASE"]} on entry {@code TP} reads the
+     * record side of its first component from the row's bound {@code DM} record (an
+     * <em>earlier</em> ordinary {@code inner} entry of the same rule — the loader's gate) and the
+     * joined side from {@code TP.RPATHCD}. {@link #getKeys()} keeps {@code DM.RPATHCD} as authored
+     * — it is the record-side spelling, and the join-key declaration gate declares it under that
+     * name.
+     * </p>
      */
     @JsonIgnore
     public @Nullable List<String> getRightKeys()
     {
         return sidedKeys("right");
+    }
+
+
+    /**
+     * The qualifier of a bare qualified key element — {@code "DM"} for {@code "DM.RPATHCD"} — or
+     * {@code null} for an unqualified name. A key is qualified when it carries exactly one
+     * {@code .} with text on both sides; nothing else is read into it (a {@code --} or {@code &}
+     * inside either part is the loader's business, {@code checkQualifiedKeys}).
+     *
+     * @param aBareKey
+     *            a bare-string key element
+     * @return its qualifier, or {@code null}
+     */
+    public static @Nullable String qualifierOf(String aBareKey)
+    {
+        int dot = aBareKey.indexOf('.');
+        if (dot <= 0 || dot == aBareKey.length() - 1 || aBareKey.indexOf('.', dot + 1) >= 0)
+        {
+            return null;
+        }
+        return aBareKey.substring(0, dot);
+    }
+
+
+    /**
+     * Per key element, its qualifier ({@link #qualifierOf}) — {@code null} for an unqualified bare
+     * string and for every sided element (a dotted side inside a sided element is a load error,
+     * {@code D-SIDED}, never a qualifier). Index-aligned with {@link #getKeys()} for a well-formed
+     * list; empty when no keys are declared.
+     *
+     * @return the qualifiers, position-wise
+     */
+    @JsonIgnore
+    public List<@Nullable String> keyQualifiers()
+    {
+        List<@Nullable String> out = new ArrayList<>();
+        if (keysNode == null || keysNode.isNull() || !keysNode.isArray())
+        {
+            return out;
+        }
+        for (JsonNode n : keysNode)
+        {
+            if (n.isTextual())
+            {
+                out.add(qualifierOf(n.asText()));
+            }
+            else if (n.isObject())
+            {
+                out.add(null);
+            }
+        }
+        return out;
+    }
+
+
+    /** {@code true} when at least one key element is a bare qualified string ({@code Q.V}). */
+    @JsonIgnore
+    public boolean hasQualifiedKeys()
+    {
+        for (String q : keyQualifiers())
+        {
+            if (q != null)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    /**
+     * The first sided {@code {left, right}} element whose {@code left} or {@code right} is a dotted
+     * name, as its text — or {@code null} when there is none. The qualified form is a <b>bare
+     * string only</b> ({@code D-SIDED}; owner: <i>"I don't want this group=[{left: DM.RPATHCD,
+     * right: RPATHCD}, RPHASE] but only a single group=[DM.RPATHCD, RPHASE]"</i>), so the loader
+     * turns this into a load error naming the bare spelling.
+     *
+     * @return the dotted side's text, or {@code null}
+     */
+    @JsonIgnore
+    public @Nullable String dottedSidedElement()
+    {
+        if (keysNode == null || !keysNode.isArray())
+        {
+            return null;
+        }
+        for (JsonNode n : keysNode)
+        {
+            if (!n.isObject())
+            {
+                continue;
+            }
+            for (String side : List.of("left", "right"))
+            {
+                JsonNode s = n.get(side);
+                if (s != null && s.isTextual() && qualifierOf(s.asText()) != null)
+                {
+                    return s.asText();
+                }
+            }
+        }
+        return null;
     }
 
 
@@ -441,7 +557,10 @@ public class MatchDataset
         {
             if (n.isTextual())
             {
-                out.add(n.asText());
+                String key = n.asText();
+                String qualifier = "right".equals(side) ? qualifierOf(key) : null;
+                // The joined side of a qualified key is the unqualified name (C1).
+                out.add(qualifier == null ? key : key.substring(qualifier.length() + 1));
             }
             else if (n.isObject())
             {

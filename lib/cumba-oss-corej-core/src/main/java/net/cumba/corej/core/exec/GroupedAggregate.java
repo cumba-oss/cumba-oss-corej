@@ -23,6 +23,7 @@ import net.cumba.corej.core.expr.eval.Parameter;
 import net.cumba.corej.core.expr.eval.TypedValue;
 import net.cumba.corej.core.expr.eval.Vector;
 import net.cumba.corej.core.expr.typed.TypeExpectations;
+import net.cumba.corej.core.model.MatchDataset;
 import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.IDataTableColumn;
@@ -544,7 +545,229 @@ public final class GroupedAggregate
         {
             return ref.name();
         }
+        if (item instanceof Expr.Ref ref && ref.kind() == OperandKind.DOTTED_REF)
+        {
+            // ⭐ C2 of PLAN-rprfdy-offset-tp-join (owner 2026-09-29: "use qualified variables in
+            // a group key … group=[DM.RPATHCD, RPHASE] as it is clear that DM.RPATHCD joins to
+            // RPATHCD"): a qualified member names where the RECORD-side value comes from — the
+            // rule's own Match_Datasets entry DM, read at the row's bound DM record — and the
+            // unqualified RPATHCD is the same column of the grouped dataset. It needs an "other
+            // side", so it is admitted under domain= only (D-DOMAIN): grouping the evaluated
+            // dataset by a joined value is the rule-level Grouping's job (C3).
+            if (!foreign)
+            {
+                throw new ExpressionException("argument '" + GROUP_PARAMETER + "' of '" + fn
+                        + "' names the qualified " + ref.name() + ", which requires domain=: a"
+                        + " qualified group member keys the record side through the join and the"
+                        + " grouped dataset by the unqualified name, so there must be a grouped"
+                        + " dataset — group the evaluated dataset by a joined value with the"
+                        + " rule-level Grouping instead");
+            }
+            return ref.name();
+        }
+        if (item instanceof Expr.Ref ref && ref.kind() == OperandKind.WILDCARD_COLUMN
+                && ref.name().indexOf('.') > 0)
+        {
+            // DM.--SEQ: a `--` inside a qualified member would resolve against different
+            // datasets on the two sides — refused, as the join key refuses it.
+            throw new ExpressionException("argument '" + GROUP_PARAMETER + "' of '" + fn
+                    + "' names the qualified " + ref.name() + " with a `--` wildcard — the two"
+                    + " sides of a qualified group member resolve against different datasets,"
+                    + " so name the column explicitly");
+        }
         return columnName(fn, GROUP_PARAMETER, item, foreign);
+    }
+
+
+    /** Whether any {@code group=} member is qualified ({@code DM.RPATHCD}, C2). */
+    static boolean hasQualifiedMember(List<String> groupNames)
+    {
+        for (String name : groupNames)
+        {
+            if (MatchDataset.qualifierOf(name) != null)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    /**
+     * The {@code group=} names as the GROUPED side reads them (C2): a qualified member's
+     * unqualified name, every plain member as authored. A qualified member whose unqualified column
+     * the grouped dataset lacks is a rule ERROR (D-ABSENT) — never EC-44's "an absent group column
+     * partitions nothing", which stays the plain members' rule.
+     *
+     * @param fn
+     *            the function name, for the message
+     * @param table
+     *            the grouped dataset
+     * @param groupNames
+     *            the members as authored, prefixes resolved
+     * @return the names to group {@code table} by, position-wise
+     */
+    static List<String> groupedSideNames(String fn, IDataTable table, List<String> groupNames)
+    {
+        if (!hasQualifiedMember(groupNames))
+        {
+            return groupNames;
+        }
+        List<String> out = new ArrayList<>(groupNames.size());
+        for (String name : groupNames)
+        {
+            String qualifier = MatchDataset.qualifierOf(name);
+            if (qualifier == null)
+            {
+                out.add(name);
+                continue;
+            }
+            String unqualified = name.substring(qualifier.length() + 1);
+            if (table.getMetaData().getColumnIndex(unqualified) < 0)
+            {
+                throw new UnresolvedQualifiedKeyException(fn + " group=", name,
+                        table.getMetaData().getName() + " has no column " + unqualified
+                                + " (the grouped dataset needs the same variable, unqualified)");
+            }
+            out.add(unqualified);
+        }
+        return List.copyOf(out);
+    }
+
+
+    /**
+     * The RECORD-side keyer of a {@code group=} with a qualified member (C2): a plain member is the
+     * evaluated row's own cell, a qualified member {@code DM.RPATHCD} is the cell of the row's
+     * bound DM record, read through the join lookup the context carries — the same identity
+     * derivation as {@link GroupKeyIdentity#identityKey}, component for component, so the key meets
+     * the block key the grouped side built over the unqualified names.
+     *
+     * <p>
+     * ⛔ Built per call from the CONTEXT, never stored in the memoised {@link Grouped}: the memo is
+     * keyed on the primary and the call text and must not carry a join-dependent reader. D-ABSENT:
+     * no lookup for the qualifier (the source entry's dataset is absent from the study), or the
+     * source column absent from it, is a rule ERROR before any row is read.
+     * </p>
+     *
+     * @param ctx
+     *            the evaluation context (its joined datasets)
+     * @param fn
+     *            the function name, for the message
+     * @param groupNames
+     *            the members as authored, prefixes resolved
+     * @return the keyer
+     */
+    static RowKey recordKeyer(EvaluationContext ctx, String fn, List<String> groupNames)
+    {
+        int n = groupNames.size();
+        IDataTable primary = ctx.getTable();
+        int[] columns = new int[n];
+        @Nullable
+        JoinLookup[] lookups = new JoinLookup[n];
+        String[] unqualified = new String[n];
+        for (int i = 0; i < n; i++)
+        {
+            String name = groupNames.get(i);
+            String qualifier = MatchDataset.qualifierOf(name);
+            if (qualifier == null)
+            {
+                columns[i] = primary.getMetaData().getColumnIndex(name);
+                continue;
+            }
+            columns[i] = -1;
+            unqualified[i] = name.substring(qualifier.length() + 1);
+            lookups[i] = requireSourceLookup(ctx, fn + " group=", name);
+        }
+        return (_, t, row) ->
+        {
+            Object[] parts = new Object[n];
+            for (int i = 0; i < n; i++)
+            {
+                JoinLookup lookup = lookups[i];
+                parts[i] = lookup == null ? GroupKeyIdentity.identityAt(t, columns[i], row)
+                        : GroupKeyIdentity
+                                .identityOf(lookup.lookupValue(t, row, unqualified[i], false));
+            }
+            return GroupKeyIdentity.keyOf(parts);
+        };
+    }
+
+
+    /**
+     * The join lookup a qualified member reads its record side through (C2 / C3): the context's
+     * lookup for the qualifier, which must exist and carry the unqualified column — else D-ABSENT's
+     * ERROR ({@link UnresolvedQualifiedKeyException}), never a {@code ""} key.
+     *
+     * @param ctx
+     *            the evaluation context (its joined datasets)
+     * @param where
+     *            the surface, for the message ({@code read_value group=}, {@code Grouping})
+     * @param qualifiedName
+     *            the member as authored, e.g. {@code DM.RPATHCD}
+     * @return the lookup
+     */
+    static JoinLookup requireSourceLookup(EvaluationContext ctx, String where, String qualifiedName)
+    {
+        String qualifier = java.util.Objects
+                .requireNonNull(MatchDataset.qualifierOf(qualifiedName));
+        String unqualified = qualifiedName.substring(qualifier.length() + 1);
+        JoinLookup lookup = ctx.getJoinedDatasets().get(qualifier);
+        if (lookup == null)
+        {
+            throw new UnresolvedQualifiedKeyException(where, qualifiedName,
+                    "no " + qualifier + " record is bound to the evaluated rows (the study has no "
+                            + qualifier + " dataset, or the entry built no join)");
+        }
+        if (!lookup.hasColumn(ctx.getTable(), 0, unqualified))
+        {
+            throw new UnresolvedQualifiedKeyException(where, qualifiedName,
+                    qualifier + " has no column " + unqualified);
+        }
+        return lookup;
+    }
+
+
+    /**
+     * GKI Q2 for a {@code group=} that may carry a qualified member (C2): a plain member compares
+     * the grouped column's kind with the evaluated table's, a qualified member with the SOURCE
+     * column's ({@code DM.RPATHCD}'s kind in DM, through the lookup's declared type) — the
+     * evaluated table does not carry it, and judging that side would skip the check silently.
+     *
+     * @param ctx
+     *            the evaluation context
+     * @param table
+     *            the grouped dataset
+     * @param groupNames
+     *            the members as authored, prefixes resolved
+     */
+    static void requireCompatibleKeys(EvaluationContext ctx, IDataTable table,
+            List<String> groupNames)
+    {
+        if (!hasQualifiedMember(groupNames))
+        {
+            GroupKeyIdentity.requireCompatibleKeyColumns(table, groupNames, ctx.getTable(),
+                    groupNames);
+            return;
+        }
+        IDataTable primary = ctx.getTable();
+        for (String name : groupNames)
+        {
+            String qualifier = MatchDataset.qualifierOf(name);
+            if (qualifier == null)
+            {
+                GroupKeyIdentity.requireCompatibleKeyColumns(table, List.of(name), primary,
+                        List.of(name));
+                continue;
+            }
+            String unqualified = name.substring(qualifier.length() + 1);
+            JoinLookup lookup = ctx.getJoinedDatasets().get(qualifier);
+            if (lookup == null)
+            {
+                continue; // recordKeyer reports it
+            }
+            GroupKeyIdentity.requireCompatibleKeyColumn(table, unqualified, qualifier,
+                    lookup.declaredTypeOf(unqualified));
+        }
     }
 
 
@@ -799,8 +1022,24 @@ public final class GroupedAggregate
         DataTableMeta meta = primary.getMetaData();
         // The primary's key columns are resolved once per broadcast, never per row (XCUT PERF 3).
         int[] keyColumns = GroupKeyIdentity.columnIndices(meta, groupNames);
-        RowKey keyer = grouped.keyer() != null ? grouped.keyer()
-                : (_, t, row) -> GroupKeyIdentity.identityKey(t, keyColumns, row);
+        RowKey keyer;
+        if (hasQualifiedMember(groupNames))
+        {
+            // C2: the record side reads a qualified member through the join, from THIS context —
+            // never a keyer the memoised grouping carries (a regex= keyer is refused with a
+            // qualified member at load, D-REGEX; stated here rather than trusted).
+            if (grouped.keyer() != null)
+            {
+                throw new IllegalStateException("a grouping with a qualified group= member must"
+                        + " not carry its own keyer (D-REGEX): " + groupNames);
+            }
+            keyer = recordKeyer(ctx, memoKey, groupNames);
+        }
+        else
+        {
+            keyer = grouped.keyer() != null ? grouped.keyer()
+                    : (_, t, row) -> GroupKeyIdentity.identityKey(t, keyColumns, row);
+        }
         return ComputedVector.typed(run.rowCount(), grouped.type(), row ->
         {
             IDataValue v = byKey.get(keyer.of(meta, primary, row));
@@ -853,8 +1092,10 @@ public final class GroupedAggregate
             type = v.declaredType();
         }
         BitSet keep = filterMask(ctx, table, filter);
-        IndexHelper.Grouping grouping = IndexHelper.groupByPresent(table, groupNames,
-                logContext(ctx, fn), policy);
+        // C2: a qualified member groups the target by its UNQUALIFIED name (absent ⇒ ERROR).
+        boolean qualified = hasQualifiedMember(groupNames);
+        IndexHelper.Grouping grouping = IndexHelper.groupByPresent(table,
+                groupedSideNames(fn, table, groupNames), logContext(ctx, fn), policy);
         if (grouping == null)
         {
             // an unexpanded $-ref in the group list — the reader refuses those, so unreachable
@@ -871,10 +1112,11 @@ public final class GroupedAggregate
             blockValues[b] = aggregator.aggregate(cellAt, block.rows(), keep, type);
             results.put(block, blockValues[b]);
         }
-        if (table == primary)
+        if (table == primary && !qualified)
         {
             // The groups are the evaluated dataset's own: every row's answer is written straight
-            // from its block (XCUT PERF 3); the key map stays for the empty-grouping test.
+            // from its block (XCUT PERF 3); the key map stays for the empty-grouping test. Never
+            // for a qualified member: its record side is the bound source record, not the row.
             Map<Object, IDataValue> byKey = new java.util.LinkedHashMap<>(
                     Math.max(16, blockValues.length * 2));
             results.results().forEach((key, value) -> byKey.put(key, (IDataValue) value));
@@ -884,8 +1126,8 @@ public final class GroupedAggregate
         }
         // GKI Q2 (owner 2026-09-27): a Char/Num key pair between the grouped table and the
         // evaluated one ERRORs the rule instead of silently matching no row. Once per evaluation,
-        // never per row.
-        GroupKeyIdentity.requireCompatibleKeyColumns(table, groupNames, primary, groupNames);
+        // never per row. A qualified member is judged against its SOURCE column (C2).
+        requireCompatibleKeys(ctx, table, groupNames);
         // Built for this grouping and handed over — Grouped wraps it, never copies (W5/W6 L2).
         Map<Object, IDataValue> byKey = new java.util.LinkedHashMap<>(
                 Math.max(16, blockValues.length * 2));

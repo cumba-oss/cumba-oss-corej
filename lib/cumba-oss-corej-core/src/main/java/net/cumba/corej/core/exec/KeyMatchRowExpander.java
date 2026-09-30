@@ -207,7 +207,7 @@ final class KeyMatchRowExpander
             // contributes, and whether blanks participate (R4's KEEP default). A per-row test could
             // not express the drop, because "absent on both sides" is a property of the two tables,
             // not of a row.
-            KeySpec spec = keySpec(primaryTable, child, keys, md);
+            KeySpec spec = keySpec(primaryTable, child, keys, md, entries, ei, resolvedChildren);
             // P5, as for the primary. After keySpec, so a rule whose key check throws keeps
             // reporting that error first, as it did when the row count was first read in the build.
             int childRows = Math.toIntExact(child.getRowCount());
@@ -215,23 +215,64 @@ final class KeyMatchRowExpander
                     : aShared.getOrBuildKeyMatchIndex(child, spec.cacheKey(),
                             () -> buildChildIndex(child, childRows, spec));
             KeyPart[] probe = spec.nActive() > 1 ? new KeyPart[spec.nActive()] : null;
-            // D6: the primary side's readers, once per entry.
+            // D6: the record side's readers, once per entry — the primary's column for a plain
+            // component, the SOURCE entry's child column for a qualified one (C1).
             @Nullable
-            KeyCellReader[] primaryReaders = KeyCellReader.of(primaryTable, spec.primaryColIds());
+            KeyCellReader[] recordReaders = spec.recordReaders(primaryTable, resolvedChildren);
+            // C1: the record-side table and row of each component — the primary at the primary
+            // row for a plain component, the source entry's child at its bound row for a
+            // qualified one; the rows are filled per expanded row.
+            ChainedProbe chainedProbe = spec.chained()
+                    ? new ChainedProbe(keys.size(),
+                            spec.recordTables(primaryTable, resolvedChildren))
+                    : null;
 
             Bindings next = new Bindings(size, primaryCol, childCols, ei);
             // #5(a), PLAN-identity-safe-join-caches Phase 2: a one-slot probe memo, declared HERE
-            // so it is reset for every entry. The probe is a pure function of the PRIMARY row
-            // (nothing an earlier entry bound reaches it), and the rows expanded from one primary
-            // row are contiguous (Bindings appends in ascending i, starting from the identity), so
-            // a primary row fanned out k times by an earlier entry is probed once, not k times.
+            // so it is reset for every entry. For a plain entry the probe is a pure function of
+            // the PRIMARY row (nothing an earlier entry bound reaches it), and the rows expanded
+            // from one primary row are contiguous (Bindings appends in ascending i, starting from
+            // the identity), so a primary row fanned out k times by an earlier entry is probed
+            // once, not k times. ⭐ A CHAINED entry (C1) is NOT a function of the primary row
+            // alone: a qualified component reads the row's bound SOURCE record, which differs
+            // between two copies of one primary row (DM duplicating a USUBJID on two paths), so
+            // its memo keys on the primary row AND every source row it reads — a copy with the
+            // same source rows still short-cuts, a copy with another source row is probed afresh.
             int memoPrimary = -1;
             int memoId = KeyMatchIndex.NOT_FOUND;
             for (int i = 0; i < size; i++)
             {
                 int p = primaryCol[i];
-                int id = p == memoPrimary ? memoId
-                        : probeKeyId(primaryTable, primaryReaders, spec, p, index, probe);
+                int id;
+                if (chainedProbe == null)
+                {
+                    id = p == memoPrimary ? memoId
+                            : probeKeyId(primaryTable, recordReaders, spec, p, index, probe);
+                }
+                else
+                {
+                    int[] rows = chainedProbe.rows;
+                    boolean memoHit = p == memoPrimary;
+                    for (int c = 0; c < rows.length; c++)
+                    {
+                        int s = spec.sourceEntry()[c];
+                        int r = s < 0 ? p
+                                : requireBoundSourceRow(childCols[s], i, md, keys.get(c),
+                                        Objects.requireNonNull(entries.get(s).getName()));
+                        memoHit &= r == chainedProbe.memoRows[c];
+                        rows[c] = r;
+                    }
+                    if (memoHit)
+                    {
+                        id = memoId;
+                    }
+                    else
+                    {
+                        id = probeChainedKeyId(chainedProbe.tables, recordReaders, spec, rows,
+                                index, probe);
+                        System.arraycopy(rows, 0, chainedProbe.memoRows, 0, rows.length);
+                    }
+                }
                 memoPrimary = p;
                 memoId = id;
                 boolean bound = false;
@@ -285,6 +326,29 @@ final class KeyMatchRowExpander
         }
         return new KeyMatchExpansion(expandedTable, lookups, expandedEntries);
     }
+
+    /**
+     * The per-entry scratch of a CHAINED probe (C1): the record-side table of every component, the
+     * rows read for the current expanded row, and the rows the memoised key id was probed with.
+     */
+    private static final class ChainedProbe
+    {
+
+        private final IDataTable[] tables;
+
+        private final int[] rows;
+
+        private final int[] memoRows;
+
+        private ChainedProbe(int aComponents, IDataTable[] aTables)
+        {
+            tables = aTables;
+            rows = new int[aComponents];
+            memoRows = new int[aComponents];
+            Arrays.fill(memoRows, -1);
+        }
+    }
+
 
     /**
      * One fold step's output bindings, column-wise (P4): appending expanded row {@code i} of the
@@ -466,7 +530,7 @@ final class KeyMatchRowExpander
     private static int probeKeyId(IDataTable primary, @Nullable KeyCellReader[] readers,
             KeySpec spec, int row, KeyMatchIndex index, KeyPart @Nullable [] scratch)
     {
-        int[] colIds = spec.primaryColIds();
+        int[] colIds = spec.recordColIds();
         if (!spec.keepMissings() && anyActiveKeyBlank(primary, colIds, spec, row))
         {
             return KeyMatchIndex.NOT_FOUND;
@@ -476,6 +540,42 @@ final class KeyMatchRowExpander
             return index.find(keyPart(readers, spec, spec.singleActive(), row));
         }
         fillKeyParts(readers, spec, row, scratch);
+        return index.find(scratch);
+    }
+
+
+    /**
+     * {@link #probeKeyId} for a CHAINED entry (C1): each component is read from its own record-side
+     * table and row — the primary at the primary row for a plain component, the source entry's
+     * child at the bound source row for a qualified one.
+     */
+    private static int probeChainedKeyId(IDataTable[] tables, @Nullable KeyCellReader[] readers,
+            KeySpec spec, int[] rows, KeyMatchIndex index, KeyPart @Nullable [] scratch)
+    {
+        int[] colIds = spec.recordColIds();
+        if (!spec.keepMissings())
+        {
+            for (int c = 0; c < colIds.length; c++)
+            {
+                if (spec.active()[c] && keyBlankAt(tables[c], colIds[c], rows[c]))
+                {
+                    return KeyMatchIndex.NOT_FOUND;
+                }
+            }
+        }
+        if (scratch == null)
+        {
+            int c = spec.singleActive();
+            return index.find(keyPart(readers, spec, c, rows[c]));
+        }
+        int j = 0;
+        for (int c = 0; c < readers.length; c++)
+        {
+            if (spec.active()[c])
+            {
+                scratch[j++] = keyPart(readers, spec, c, rows[c]);
+            }
+        }
         return index.find(scratch);
     }
 
@@ -490,10 +590,23 @@ final class KeyMatchRowExpander
      * would be both wasteful and unable to express the drop at all.
      * </p>
      *
+     * <p>
+     * ⭐ <b>A qualified component ({@code PLAN-rprfdy-offset-tp-join} C1) has a SOURCE.</b>
+     * {@code Keys: ["DM.RPATHCD", "RPHASE"]} reads the record side of its first component from the
+     * row's bound {@code DM} record — an earlier ordinary {@code inner} entry of the same rule —
+     * and the joined side from {@code TP.RPATHCD}. Such a component is always active, its record
+     * column lives in {@code resolvedChildren[sourceEntry]}, and neither JKM R7 arm applies to it:
+     * an unresolvable source (dataset absent, source column absent, joined column absent) is
+     * {@link UnresolvedQualifiedKeyException} (D-ABSENT) — never a type default on one side, never
+     * a drop. D4's kind check compares the SOURCE column with the joined one.
+     * </p>
+     *
      * <b>Fields.</b>
      * <ul>
-     * <li>{@code primaryColIds} — the key columns in the validated dataset; {@code -1} where
-     * absent</li>
+     * <li>{@code sourceEntry} — per component, {@code -1} for the primary or the index of the
+     * EARLIER entry a qualified component reads</li>
+     * <li>{@code recordColIds} — the record-side key columns: in the validated dataset for a plain
+     * component ({@code -1} where absent), in the source entry's child for a qualified one</li>
      * <li>{@code childColIds} — the key columns in the joined dataset; {@code -1} where absent</li>
      * <li>{@code absentPart} — * per component, the {@link KeyPart} an <b>absent</b> side
      * contributes — derived from the type of the side that <em>does</em> carry the column, because
@@ -511,7 +624,9 @@ final class KeyMatchRowExpander
         // ⚠ A record was the obvious spelling and Error Prone rejects it: ArrayRecordComponent —
         // a record's generated equals/hashCode would compare arrays by IDENTITY. This carrier is
         // never compared, but a class states that rather than relying on nobody trying.
-        private final int[] primaryColIds;
+        private final int[] sourceEntry;
+
+        private final int[] recordColIds;
 
         private final int[] childColIds;
 
@@ -530,10 +645,14 @@ final class KeyMatchRowExpander
         /** The first active component; the only one when {@link #nActive} is 1. */
         private final int singleActive;
 
-        private KeySpec(int[] aPrimaryColIds, int[] aChildColIds, KeyPart[] aAbsentPart,
-                boolean[] aActive, boolean aKeepMissings, boolean aAsString)
+        /** C1: whether any component reads an earlier entry's bound record. */
+        private final boolean chained;
+
+        private KeySpec(int[] aSourceEntry, int[] aRecordColIds, int[] aChildColIds,
+                KeyPart[] aAbsentPart, boolean[] aActive, boolean aKeepMissings, boolean aAsString)
         {
-            primaryColIds = aPrimaryColIds;
+            sourceEntry = aSourceEntry;
+            recordColIds = aRecordColIds;
             childColIds = aChildColIds;
             absentPart = aAbsentPart;
             active = aActive;
@@ -541,6 +660,7 @@ final class KeyMatchRowExpander
             asString = aAsString;
             int count = 0;
             int first = -1;
+            boolean anySource = false;
             for (int i = 0; i < aActive.length; i++)
             {
                 if (aActive[i])
@@ -548,9 +668,59 @@ final class KeyMatchRowExpander
                     count++;
                     first = first < 0 ? i : first;
                 }
+                anySource |= aSourceEntry[i] >= 0;
             }
             nActive = count;
             singleActive = first;
+            chained = anySource;
+        }
+
+
+        private boolean chained()
+        {
+            return chained;
+        }
+
+
+        private int[] sourceEntry()
+        {
+            return sourceEntry;
+        }
+
+
+        /** The record-side table of each component, for the chained probe. */
+        private IDataTable[] recordTables(IDataTable aPrimary, IDataTable[] aResolvedChildren)
+        {
+            IDataTable[] out = new IDataTable[sourceEntry.length];
+            for (int i = 0; i < out.length; i++)
+            {
+                out[i] = sourceEntry[i] < 0 ? aPrimary
+                        : Objects.requireNonNull(aResolvedChildren[sourceEntry[i]]);
+            }
+            return out;
+        }
+
+
+        /**
+         * D6: one reader per record-side key column, built once per entry — over the primary for a
+         * plain component (the old path, {@code null} where the column is absent), over the source
+         * entry's child for a qualified one.
+         */
+        private @Nullable KeyCellReader[] recordReaders(IDataTable aPrimary,
+                IDataTable[] aResolvedChildren)
+        {
+            if (!chained)
+            {
+                return KeyCellReader.of(aPrimary, recordColIds);
+            }
+            @Nullable
+            KeyCellReader[] out = new KeyCellReader[recordColIds.length];
+            IDataTable[] tables = recordTables(aPrimary, aResolvedChildren);
+            for (int i = 0; i < out.length; i++)
+            {
+                out[i] = recordColIds[i] < 0 ? null : KeyCellReader.of(tables[i], recordColIds[i]);
+            }
+            return out;
         }
 
 
@@ -596,9 +766,9 @@ final class KeyMatchRowExpander
         }
 
 
-        private int[] primaryColIds()
+        private int[] recordColIds()
         {
-            return primaryColIds;
+            return recordColIds;
         }
 
 
@@ -626,8 +796,18 @@ final class KeyMatchRowExpander
         }
     }
 
+    /**
+     * @param entries
+     *            the rule's expandable entries, in order — a qualified component's source is an
+     *            EARLIER one
+     * @param ei
+     *            the index of {@code md} in {@code entries}
+     * @param resolvedChildren
+     *            the resolved child per entry ({@code null} where the study lacks it), filled for
+     *            every index below {@code ei}
+     */
     private static KeySpec keySpec(IDataTable primary, IDataTable child, List<String> keys,
-            MatchDataset md)
+            MatchDataset md, List<MatchDataset> entries, int ei, IDataTable[] resolvedChildren)
     {
         String childName = Objects.requireNonNull(md.getName());
         boolean asString = md.joinKeysAsString();
@@ -650,16 +830,76 @@ final class KeyMatchRowExpander
         {
             throw new MalformedSidedKeyException(childName, malformedKey);
         }
-        List<String> childKeys = md.hasSidedKeys() ? Objects.requireNonNull(md.getRightKeys())
-                : keys;
-        int[] primaryColIds = resolveColIds(primary.getMetaData(), keys);
+        // ⭐ Unconditionally getRightKeys() (PLAN-rprfdy-offset-tp-join round-2 M3): it equals
+        // `keys` for every unqualified bare key, answers the `right` side of a sided element, and
+        // the UNQUALIFIED name of a qualified one — the ternary on hasSidedKeys() that stood here
+        // would have kept `DM.RPATHCD` on the child side for a bare qualified string.
+        List<String> childKeys = Objects.requireNonNull(md.getRightKeys());
+        List<@Nullable String> qualifiers = md.keyQualifiers();
+        int[] sourceEntry = new int[keys.size()];
+        int[] recordColIds = resolveColIds(primary.getMetaData(), keys);
         int[] childColIds = resolveColIds(child.getMetaData(), childKeys);
         KeyPart[] absentPart = new KeyPart[keys.size()];
         boolean[] active = new boolean[keys.size()];
         int nActive = 0;
         for (int i = 0; i < keys.size(); i++)
         {
-            boolean inPrimary = primaryColIds[i] >= 0;
+            String qualifier = i < qualifiers.size() ? qualifiers.get(i) : null;
+            if (qualifier != null)
+            {
+                // C1: the record side is the SOURCE entry's column, the joined side the
+                // unqualified name; the component is always active and D-ABSENT's three cases
+                // ERROR here, before any row is read.
+                int s = earlierEntryNamed(entries, ei, qualifier);
+                if (s < 0)
+                {
+                    throw new IllegalStateException("[" + childName + "] Match_Datasets key "
+                            + keys.get(i) + " names no EARLIER ordinary entry of this rule — every"
+                            + " rule comes through RulePackageLoader.checkQualifiedKeys, which"
+                            + " refuses it; a hand-built rule orders its entries");
+                }
+                String where = "Match_Datasets " + childName;
+                IDataTable source = resolvedChildren[s];
+                if (source == null)
+                {
+                    throw new UnresolvedQualifiedKeyException(where, keys.get(i),
+                            "the study has no " + qualifier + " dataset to read " + childKeys.get(i)
+                                    + " from");
+                }
+                int sourceCol = source.getMetaData().getColumnIndex(childKeys.get(i));
+                if (sourceCol < 0)
+                {
+                    throw new UnresolvedQualifiedKeyException(where, keys.get(i),
+                            qualifier + " has no column " + childKeys.get(i));
+                }
+                if (childColIds[i] < 0)
+                {
+                    throw new UnresolvedQualifiedKeyException(where, keys.get(i),
+                            childName + " has no column " + childKeys.get(i)
+                                    + " (the joined dataset needs the same variable, unqualified)");
+                }
+                sourceEntry[i] = s;
+                recordColIds[i] = sourceCol;
+                active[i] = true;
+                nActive++;
+                absentPart[i] = KeyPart.EMPTY; // never read: neither side can be absent
+                if (typeChecked && !asString)
+                {
+                    ColumnTypeGate.Kind sourceKind = ColumnTypeGate
+                            .kindOf(source.getMetaData().getColumn(sourceCol).getType());
+                    ColumnTypeGate.Kind childKind = ColumnTypeGate
+                            .kindOf(child.getMetaData().getColumn(childColIds[i]).getType());
+                    if (sourceKind != null && childKind != null && sourceKind != childKind)
+                    {
+                        throw new JoinKeyTypeMismatchException(childName, keys.get(i), qualifier,
+                                childKeys.get(i), describeKind(sourceKind),
+                                describeKind(childKind));
+                    }
+                }
+                continue;
+            }
+            sourceEntry[i] = -1;
+            boolean inPrimary = recordColIds[i] >= 0;
             boolean inChild = childColIds[i] >= 0;
             active[i] = inPrimary || inChild;
             if (!active[i])
@@ -668,7 +908,7 @@ final class KeyMatchRowExpander
             }
             nActive++;
             DataValueType primaryType = inPrimary
-                    ? primary.getMetaData().getColumn(primaryColIds[i]).getType()
+                    ? primary.getMetaData().getColumn(recordColIds[i]).getType()
                     : null;
             DataValueType childType = inChild
                     ? child.getMetaData().getColumn(childColIds[i]).getType()
@@ -712,8 +952,42 @@ final class KeyMatchRowExpander
         {
             throw new DegenerateJoinKeyException(childName, keys);
         }
-        return new KeySpec(primaryColIds, childColIds, absentPart, active, md.keepMissingKeys(),
-                asString);
+        return new KeySpec(sourceEntry, recordColIds, childColIds, absentPart, active,
+                md.keepMissingKeys(), asString);
+    }
+
+
+    /** The index of the entry named {@code qualifier} before {@code ei}, or {@code -1}. */
+    private static int earlierEntryNamed(List<MatchDataset> entries, int ei, String qualifier)
+    {
+        for (int s = 0; s < ei; s++)
+        {
+            if (qualifier.equals(entries.get(s).getName()))
+            {
+                return s;
+            }
+        }
+        return -1;
+    }
+
+
+    /**
+     * The source entry's bound row for expanded row {@code i} (C1). A row without one — the source
+     * entry did not resolve, or it is a {@code left} entry that found no partner — has no
+     * record-side value for the component; the owner excluded a {@code ""} key, so it ERRORs (the
+     * loader admits only an {@code inner} source, which makes this unreachable for a loaded rule).
+     */
+    private static int requireBoundSourceRow(int @Nullable [] sourceCol, int i, MatchDataset md,
+            String key, String sourceName)
+    {
+        int r = sourceCol == null ? -1 : sourceCol[i];
+        if (r < 0)
+        {
+            throw new UnresolvedQualifiedKeyException("Match_Datasets " + md.getName(), key,
+                    "the row has no bound " + sourceName + " record (the source entry must be an"
+                            + " inner join)");
+        }
+        return r;
     }
 
 
@@ -838,24 +1112,27 @@ final class KeyMatchRowExpander
     {
         for (int i = 0; i < colIds.length; i++)
         {
-            if (!spec.active()[i])
+            if (spec.active()[i] && keyBlankAt(t, colIds[i], row))
             {
-                continue;
-            }
-            // #5(b) step 1: the one-column blank test, without allocating a one-element int[] per
-            // component and row.
-            if (colIds[i] < 0 || t.isMissingOrNull(row, colIds[i]))
-            {
-                return true;
-            }
-            IDataValue dv = t.getColumn(colIds[i]).getDataValue(row);
-            if (!GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(dv).present())
-            {
-                // An empty string is not "missing" to isMissingOrNull but IS blank for a
-                // keep/drop-missing policy (D34 #6 rules "" and every MissingValue together).
                 return true;
             }
         }
         return false;
+    }
+
+
+    /** The one-column blank test of {@link #anyActiveKeyBlank}, for one component. */
+    private static boolean keyBlankAt(IDataTable t, int colId, long row)
+    {
+        // #5(b) step 1: the one-column blank test, without allocating a one-element int[] per
+        // component and row.
+        if (colId < 0 || t.isMissingOrNull(row, colId))
+        {
+            return true;
+        }
+        IDataValue dv = t.getColumn(colId).getDataValue(row);
+        // An empty string is not "missing" to isMissingOrNull but IS blank for a
+        // keep/drop-missing policy (D34 #6 rules "" and every MissingValue together).
+        return !GroupKeyPolicy.KEEP_MISSING_KEYS.keyPart(dv).present();
     }
 }

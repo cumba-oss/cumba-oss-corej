@@ -294,7 +294,15 @@ public final class Distinct
         }
         // The one key derivation both sides use (GroupKeyIdentity.identityKey): the block side
         // keyed the target table's groups by it, the evaluated dataset's rows read theirs by it —
-        // over the key columns resolved once, never per row (XCUT PERF 3).
+        // over the key columns resolved once, never per row (XCUT PERF 3). C2: a qualified
+        // member's record side is read through the join, from THIS context, never memoised.
+        if (GroupedAggregate.hasQualifiedMember(names))
+        {
+            GroupedAggregate.RowKey keyer = GroupedAggregate.recordKeyer(ctx, NAME, names);
+            DataTableMeta meta = primary.getMetaData();
+            return new ComputedVector(run.rowCount(), DataValueType.STRING,
+                    row -> byKey.getOrDefault(keyer.of(meta, primary, row), EMPTY));
+        }
         int[] keyColumns = GroupKeyIdentity.columnIndices(primary.getMetaData(), names);
         return new ComputedVector(run.rowCount(), DataValueType.STRING, row -> byKey
                 .getOrDefault(GroupKeyIdentity.identityKey(primary, keyColumns, row), EMPTY));
@@ -462,8 +470,10 @@ public final class Distinct
         IntFunction<IDataValue> cellAt = targetCells(ctx, table,
                 java.util.Objects.requireNonNull(spec.target()));
         BitSet keep = GroupedAggregate.filterMask(ctx, table, spec.filter());
-        // EC-44: absent group columns are ignored; all absent ⇒ the dataset is one group.
-        IndexHelper.Grouping grouping = IndexHelper.groupByPresent(table, names,
+        // EC-44: absent PLAIN group columns are ignored; all absent ⇒ the dataset is one group.
+        // C2: a qualified member groups the target by its UNQUALIFIED name (absent ⇒ ERROR).
+        IndexHelper.Grouping grouping = IndexHelper.groupByPresent(table,
+                GroupedAggregate.groupedSideNames(NAME, table, names),
                 GroupedAggregate.logContext(ctx, NAME), spec.policy());
         if (grouping == null)
         {
@@ -479,11 +489,12 @@ public final class Distinct
             ListValueGuard.requireNoNullElement(values, () -> NAME + " group " + block.key());
             results.put(block, values);
         }
-        if (table != primary)
+        if (table != primary || GroupedAggregate.hasQualifiedMember(names))
         {
             // GKI Q2: a Char/Num key pair between the grouped table and the evaluated one ERRORs
             // the rule instead of silently matching no row. Once per evaluation, never per row.
-            GroupKeyIdentity.requireCompatibleKeyColumns(table, names, primary, names);
+            // A qualified member is judged against its SOURCE column (C2).
+            GroupedAggregate.requireCompatibleKeys(ctx, table, names);
         }
         Map<Object, List<Object>> byKey = new LinkedHashMap<>();
         results.results().forEach((key, value) ->

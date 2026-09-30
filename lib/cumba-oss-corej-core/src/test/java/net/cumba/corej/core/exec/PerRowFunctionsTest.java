@@ -304,18 +304,26 @@ class PerRowFunctionsTest
     }
 
 
+    /**
+     * Owner K3, 2026-09-30: <i>"no, special handling for special texts. Text is text."</i> — a
+     * date-looking CHAR value ranks as text like any other; the EC-46 date rule (whose
+     * {@code max{2012-06, 2012-06-15}} was <em>indeterminate</em>, a computed missing) belongs to
+     * {@code max_date} / {@code min_date} only. ⚑ MOVED ANSWER (the former
+     * {@code rowMaxOverIsoDateTextKeepsTheEc46DateRule}): row 2 answers {@code 2012-06-15}.
+     */
     @Test
-    void rowMaxOverIsoDateTextKeepsTheEc46DateRule()
+    void rowMaxOverIsoDateTextRanksAsText()
     {
         IDataTable tr = RealTables.of("TR")
-                .str("TR01EDT", "2020-01-10", "2019-12-31", "2012-06", "2020-01-10")
-                .str("TR02EDT", "2020-03-01", "2020-01-01", "2012-06-15", "").build();
+                .str("TR01EDT", "2020-01-10", "2019-12-31", "2012-06", "2020-01-10", "2024-01")
+                .str("TR02EDT", "2020-03-01", "2020-01-01", "2012-06-15", "", "2024-01-15").build();
         Vector max = rowMax(tr, "^TR\\d+EDT$");
         assertAll(() -> assertEquals("2020-03-01", text(max, 0)),
                 () -> assertEquals("2020-01-01", text(max, 1)),
-                () -> assertEquals(MissingValue.MIS, max.value(2).missing(),
-                        "EC-46: max{2012-06, 2012-06-15} is indeterminate ⇒ the computed missing"),
-                () -> assertEquals("2020-01-10", text(max, 3), "a blank cell is no candidate"));
+                () -> assertEquals("2012-06-15", text(max, 2),
+                        "K3: text is text — no date rule, so the longer text wins"),
+                () -> assertEquals("2020-01-10", text(max, 3), "a blank cell is no candidate"),
+                () -> assertEquals("2024-01-15", text(max, 4), "K3: the owner's pinned pair"));
     }
 
 

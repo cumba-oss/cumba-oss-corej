@@ -4509,6 +4509,8 @@ public class RulePackageLoader
         checkKeepMissingsOnUngovernedEntry(rule, errors);
         checkChildEntryNames(rule, errors);
         checkSidedKeys(rule, errors);
+        checkQualifiedKeys(rule, errors);
+        checkQualifiedGroupMembers(rule, errors);
         checkMatchDatasetKeys(rule, errors);
         checkStudySensitivityScope(rule, errors);
         // Gate 3a (the Python one-frame-per-rule compatibility warning) is gone — phase 2 of
@@ -5942,6 +5944,309 @@ public class RulePackageLoader
                     + ". The two sides are indexed in lockstep, so an element either side cannot"
                     + " read is unusable — not merely odd");
         }
+    }
+
+
+    /**
+     * The gate of a <b>qualified</b> {@code Match_Datasets} key ({@code PLAN-rprfdy-offset-tp-join}
+     * C1; owner 2026-09-29: <i>"I would like to be able to give a qualified variable like
+     * DM.RPATHCD in the join key … The joined data set needs the same variable without the domain
+     * qualification, so DM.RPATHCD joins on RPATHCD."</i>). {@code Keys: ["DM.RPATHCD", "RPHASE"]}
+     * on entry {@code TP} reads the record side of its first component from the row's bound
+     * {@code DM} record and the joined side from {@code TP.RPATHCD}.
+     *
+     * <ul>
+     * <li><b>D-SIDED</b> — the qualified form is a bare string only; a dotted {@code left} or
+     * {@code right} inside a sided element is refused naming the bare spelling.</li>
+     * <li><b>D-SRC</b> — the qualifier names an <b>earlier</b> entry of the same rule (never
+     * itself, never a later one: the source is bound before this join runs) that is an <b>ordinary,
+     * expandable</b> keyed join
+     * ({@link net.cumba.corej.core.exec.JoinKeyTypes#governedByKeyTypeCheck}: not
+     * {@code Child: true}, not RELREC, not {@code SUPP--}/{@code SQ}, no {@code --} template name,
+     * with keys) and an <b>{@code inner}</b> join — an unmatched {@code left} row would have no
+     * record-side value, and a {@code ""} key is excluded by the owner.</li>
+     * <li>The entry carrying the qualified key is itself expandable (the ordinary keyed join is the
+     * only reader of the shape), and neither part of the key carries a {@code --} / {@code &}
+     * wildcard (the two sides resolve against different datasets).</li>
+     * </ul>
+     * Column inventories are data, so an unresolvable source at run time is a rule ERROR there
+     * ({@code UnresolvedQualifiedKeyException}, D-ABSENT), not a load error here.
+     * {@link #validateJoinKeyDeclarations} judges the declaration of the key like any other:
+     * {@code DM.RPATHCD} bare in {@code All} when it is the first key, and one {@code All_Or_None}
+     * group holding {@code DM.RPATHCD} and {@code TP.RPATHCD}.
+     *
+     * @param rule
+     *            the rule to check.
+     * @param errors
+     *            the collector to append to.
+     */
+    private static void checkQualifiedKeys(Rule rule, List<String> errors)
+    {
+        List<net.cumba.corej.core.model.MatchDataset> matches = rule.getMatchDatasets();
+        if (matches == null)
+        {
+            return;
+        }
+        for (int ei = 0; ei < matches.size(); ei++)
+        {
+            net.cumba.corej.core.model.MatchDataset md = matches.get(ei);
+            if (md == null)
+            {
+                continue;
+            }
+            String where = "[" + ruleId(rule) + "] Match_Datasets entry '" + md.getName() + "'";
+            String dottedSide = md.dottedSidedElement();
+            if (dottedSide != null)
+            {
+                errors.add(where + ": a sided Keys element carries the dotted name " + dottedSide
+                        + " — the qualified form is a bare string only: write \"" + dottedSide
+                        + "\" as the key element; its joined side is the unqualified name");
+            }
+            List<String> keys = md.getKeys();
+            List<@Nullable String> qualifiers = md.keyQualifiers();
+            if (keys == null)
+            {
+                continue;
+            }
+            for (int i = 0; i < keys.size() && i < qualifiers.size(); i++)
+            {
+                String qualifier = qualifiers.get(i);
+                if (qualifier == null)
+                {
+                    continue;
+                }
+                String key = keys.get(i);
+                if (!net.cumba.corej.core.exec.JoinKeyTypes.governedByKeyTypeCheck(md))
+                {
+                    errors.add(where + ": qualified key " + key + " on an entry the ordinary keyed"
+                            + " join does not read (Child: true, RELREC, SUPP--/SQ or a --"
+                            + " template name) — a qualified key is read by the ordinary keyed"
+                            + " join only");
+                    continue;
+                }
+                if (key.contains("--") || key.contains("&"))
+                {
+                    errors.add(where + ": qualified key " + key + " carries a -- / & wildcard —"
+                            + " the two sides of a qualified key resolve against different"
+                            + " datasets, so name the column explicitly");
+                    continue;
+                }
+                String sourceError = qualifiedSourceError(matches, qualifier, key, ei);
+                if (sourceError != null)
+                {
+                    errors.add(where + ": qualified key " + key + " " + sourceError);
+                }
+            }
+        }
+    }
+
+
+    /**
+     * D-SRC for a qualified member of a grouped function's {@code group=} (C2) and of the
+     * rule-level {@code Grouping} (C3) — {@code PLAN-rprfdy-offset-tp-join}: the qualifier names an
+     * ordinary, expandable, {@code inner} entry of the rule ({@link #qualifiedSourceError}), and a
+     * qualifier naming NO entry is this gate's load error on both surfaces — Stage A's
+     * {@code DOTTED_REF_UNDECLARED} does reach a {@code group=} list member, but it is an UNARMED
+     * kind (reported, never parking), and Stage A does not read the grouping at all. The readers'
+     * own refusals — a qualified {@code group=} member without {@code domain=} (D-DOMAIN), with
+     * {@code regex=} (D-REGEX), with a {@code --} inside — are load errors of the binding / Check
+     * compile, before this gate runs.
+     *
+     * @param rule
+     *            the rule to check.
+     * @param errors
+     *            the collector to append to.
+     */
+    private static void checkQualifiedGroupMembers(Rule rule, List<String> errors)
+    {
+        List<net.cumba.corej.core.model.MatchDataset> matches = rule.getMatchDatasets() == null
+                ? List.of()
+                : rule.getMatchDatasets();
+        java.util.Set<String> judged = new java.util.LinkedHashSet<>();
+        java.util.function.Consumer<net.cumba.corej.core.expr.ast.Expr> walk = new java.util.function.Consumer<>()
+        {
+
+            @Override
+            public void accept(net.cumba.corej.core.expr.ast.Expr e)
+            {
+                switch (e)
+                {
+                case net.cumba.corej.core.expr.ast.Expr.And a -> a.parts().forEach(this);
+                case net.cumba.corej.core.expr.ast.Expr.Or o -> o.parts().forEach(this);
+                case net.cumba.corej.core.expr.ast.Expr.Not n -> accept(n.inner());
+                case net.cumba.corej.core.expr.ast.Expr.Binary b ->
+                {
+                    accept(b.left());
+                    accept(b.right());
+                }
+                case net.cumba.corej.core.expr.ast.Expr.Call c ->
+                {
+                    c.args().forEach(this);
+                    c.kwargs().forEach((k, v) ->
+                    {
+                        if ("group".equals(k)
+                                && v instanceof net.cumba.corej.core.expr.ast.Expr.Lit lit
+                                && lit.kind() == net.cumba.corej.core.expr.ast.Expr.LitKind.LIST
+                                && lit.value() instanceof List<?> items)
+                        {
+                            for (Object item : items)
+                            {
+                                if (item instanceof net.cumba.corej.core.expr.ast.Expr.Ref ref
+                                        && ref.kind() == net.cumba.corej.core.expr.OperandKind.DOTTED_REF)
+                                {
+                                    judged.add(ref.name());
+                                }
+                            }
+                        }
+                        accept(v);
+                    });
+                }
+                default ->
+                {
+                    // a leaf: nothing below it
+                }
+                }
+            }
+        };
+        if (rule.getCheck() != null)
+        {
+            walkCheckExpressions(rule.getCheck(), walk);
+        }
+        if (rule.getCompiledBindings() != null)
+        {
+            rule.getCompiledBindings().forEach(b -> walk.accept(b.expression()));
+        }
+        for (String member : judged)
+        {
+            judgeQualifiedMember(rule, matches, member, "group= member", errors);
+        }
+        List<String> grouping = rule.effectiveGroupingVariables();
+        if (grouping != null)
+        {
+            for (String member : grouping)
+            {
+                if (member != null
+                        && net.cumba.corej.core.model.MatchDataset.qualifierOf(member) != null)
+                {
+                    if (member.contains("--") || member.contains("&"))
+                    {
+                        errors.add("[" + ruleId(rule) + "] Grouping member " + member + " carries"
+                                + " a -- / & wildcard — the record side of a qualified member is"
+                                + " read from another dataset, so name the column explicitly");
+                        continue;
+                    }
+                    judgeQualifiedMember(rule, matches, member, "Grouping member", errors);
+                }
+            }
+        }
+    }
+
+
+    /**
+     * One qualified member against D-SRC.
+     */
+    private static void judgeQualifiedMember(Rule rule,
+            List<net.cumba.corej.core.model.MatchDataset> matches, String member, String where,
+            List<String> errors)
+    {
+        String qualifier = java.util.Objects
+                .requireNonNull(net.cumba.corej.core.model.MatchDataset.qualifierOf(member));
+        String error = qualifiedSourceError(matches, qualifier, member, -1);
+        if (error != null)
+        {
+            errors.add("[" + ruleId(rule) + "] " + where + " " + member + " " + error);
+        }
+    }
+
+
+    /** Every parsed expression of a Check tree, in order. */
+    private static void walkCheckExpressions(CheckCondition condition,
+            java.util.function.Consumer<net.cumba.corej.core.expr.ast.Expr> visitor)
+    {
+        switch (condition)
+        {
+        case CheckConditionAll all -> all.getConditions()
+                .forEach(c -> walkCheckExpressions(c, visitor));
+        case CheckConditionAny any -> any.getConditions()
+                .forEach(c -> walkCheckExpressions(c, visitor));
+        case CheckConditionNot not -> walkCheckExpressions(not.getCondition(), visitor);
+        case net.cumba.corej.core.model.CheckConditionExpression ce ->
+        {
+            net.cumba.corej.core.expr.ast.Expr expr = ce.expr();
+            if (expr != null)
+            {
+                visitor.accept(expr);
+            }
+        }
+        }
+    }
+
+
+    /**
+     * D-SRC for every qualified-variable surface ({@code PLAN-rprfdy-offset-tp-join}): the reason
+     * {@code qualifier} is not a usable source, or {@code null} when it is — an ordinary,
+     * expandable, {@code inner} {@code Match_Datasets} entry of the rule, and (when
+     * {@code beforeEntry} is non-negative, the C1 case) one declared BEFORE that entry.
+     *
+     * @param matches
+     *            the rule's entries
+     * @param qualifier
+     *            the qualifier, e.g. {@code DM}
+     * @param key
+     *            the qualified name as authored, for the message
+     * @param beforeEntry
+     *            the index of the entry whose key names the source (C1), or {@code -1} for a
+     *            {@code group=} / {@code Grouping} member (C2 / C3), which any entry may serve
+     * @return the error text after the key, or {@code null}
+     */
+    static @Nullable String qualifiedSourceError(
+            List<net.cumba.corej.core.model.MatchDataset> matches, String qualifier, String key,
+            int beforeEntry)
+    {
+        int s = -1;
+        for (int j = 0; j < matches.size(); j++)
+        {
+            net.cumba.corej.core.model.MatchDataset m = matches.get(j);
+            if (m != null && qualifier.equals(m.getName()))
+            {
+                s = j;
+                break;
+            }
+        }
+        String unqualified = key.substring(qualifier.length() + 1);
+        if (s < 0)
+        {
+            return "names no Match_Datasets entry " + qualifier + " of this rule — a qualified"
+                    + " variable names where the record-side value comes from: the rule's own"
+                    + " entry " + qualifier + ", read at the row's bound " + qualifier + " record";
+        }
+        if (beforeEntry >= 0 && s == beforeEntry)
+        {
+            return "names its own entry — the qualifier is where the RECORD-side value comes from"
+                    + " (an earlier entry); the joined side is the unqualified " + unqualified;
+        }
+        if (beforeEntry >= 0 && s > beforeEntry)
+        {
+            return "names entry " + qualifier + ", which is declared LATER — the source of a"
+                    + " qualified key is an earlier entry, bound before this join runs";
+        }
+        net.cumba.corej.core.model.MatchDataset source = java.util.Objects
+                .requireNonNull(matches.get(s));
+        if (!net.cumba.corej.core.exec.JoinKeyTypes.governedByKeyTypeCheck(source))
+        {
+            return "names entry " + qualifier + ", which is not an ordinary keyed join (Child:"
+                    + " true, RELREC, SUPP--/SQ, a -- template name, or no Keys) — a qualified"
+                    + " variable reads a record bound by the ordinary keyed join";
+        }
+        String joinType = source.getJoinType();
+        if (joinType != null && !net.cumba.corej.core.model.JoinType.INNER.getJsonValue()
+                .equalsIgnoreCase(joinType))
+        {
+            return "names entry " + qualifier + " with Join_Type " + joinType + " — the source of"
+                    + " a qualified variable must be an inner join: an unmatched left row has no"
+                    + " record-side value, and a \"\" key is excluded";
+        }
+        return null;
     }
 
 

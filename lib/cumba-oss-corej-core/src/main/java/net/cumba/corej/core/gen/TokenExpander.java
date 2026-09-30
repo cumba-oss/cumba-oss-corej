@@ -841,7 +841,11 @@ public final class TokenExpander
             }
             for (String key : keys)
             {
-                if (key != null && meta.getColumnIndex(key) < 0)
+                // A qualified key (DM.RPATHCD, PLAN-rprfdy-offset-tp-join C1) reads the row's
+                // bound source record, not the primary, so its absence from the primary means
+                // nothing here.
+                if (key != null && MatchDataset.qualifierOf(key) == null
+                        && meta.getColumnIndex(key) < 0)
                 {
                     return key;
                 }

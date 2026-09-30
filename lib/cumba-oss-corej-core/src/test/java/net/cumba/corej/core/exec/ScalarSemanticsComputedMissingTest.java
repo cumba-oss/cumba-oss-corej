@@ -705,7 +705,12 @@ class ScalarSemanticsComputedMissingTest
     // 27 → 28 in the combined review of runbook W2–W8 (XCUT PERF 3):
     // GroupedAggregate.RowAnswers.at,
     // the per-row answer slots of a grouping over the PRIMARY table (no key derived per row).
-    private static final int EXPECTED_VALUE_PRODUCERS = 28;
+    // 28 → 29 in PLAN-rprfdy-offset-tp-join phase 3 (C3): RuleRunner.QualifiedGroupKey.cell, the
+    // one read of a qualified rule-level grouping key's component — a plain member's own cell, a
+    // qualified member's cell of the row's bound source record through JoinLookup.lookupValue.
+    // Read: both channels answer a real value or a MissingValue (the lookup's typed contract),
+    // never null.
+    private static final int EXPECTED_VALUE_PRODUCERS = 29;
 
     private static Method declared(Class<?> owner, String name)
     {

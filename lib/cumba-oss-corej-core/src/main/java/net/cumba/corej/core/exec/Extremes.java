@@ -8,8 +8,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The extreme-selection machinery shared by every extreme in the engine — the EC-51 candidate
- * filter ({@link #extremeCandidate}), the generic string extreme with EC-46's date rule
- * ({@link #genericStringExtreme}) and the EC-46 / EC-51 date accumulator ({@link DateExtreme}).
+ * filter ({@link #extremeCandidate}), the generic string extreme — plain text order, owner K3
+ * ({@link #genericStringExtreme}) — and the EC-46 / EC-51 date accumulator ({@link DateExtreme}).
  * Moved here verbatim from the retired operation executor by runbook W5
  * ({@code PLAN-grouped-aggregate-functions} D-W5-8) because its readers outlive the executor: the
  * registry functions {@code max} / {@code max_date} / {@code min_date} ({@link GroupedAggregate})
@@ -25,45 +25,32 @@ public final class Extremes
 
 
     /**
-     * EC-46 OQ4 — the extreme for the <b>generic</b> {@code max}/{@code min} string fallback, which
-     * is <i>not</i> date-only.
+     * The extreme of the <b>generic</b> {@code max} / {@code row_max} text fallback: plain text
+     * order, nothing else.
      *
      * <p>
-     * Measured over the shipped corpus, the generic {@code max()} reaches this path for
-     * {@code ANRIND} (5 rules) and {@code ATOXGR} (4) — Char <i>category</i> columns;
-     * {@code AVAL}/{@code DSSTDY} take the numeric branch. Applying date semantics unconditionally
-     * would make those 9 rules yield no value at all, because a category code cannot be positioned
-     * on a calendar. So EC-46's rule is applied only when the group is unambiguously dates — every
-     * candidate positionable, which no category column satisfies — and plain lexicographic order is
-     * kept otherwise, exactly as before.
+     * ⭐ <b>Owner K3, 2026-09-30: <i>"no, special handling for special texts. Text is text."</i></b>
+     * Until then this arm applied EC-46's date rule whenever every candidate was a positionable ISO
+     * date ({@code max{2012-06, 2012-06-15}} was <em>indeterminate</em>, a computed missing) — a
+     * special case for date-looking text inside the text branch. A character value ranks as text
+     * like any other now; the date rule belongs to {@code max_date} / {@code min_date}
+     * ({@link DateExtreme}, {@code GroupedAggregate.dateExtremeOf}), which are the date functions
+     * and keep it in full. Measured over the shipped corpus at the ruling: no {@code max} or
+     * {@code row_max} rule reads a date column (every date extreme authors {@code max_date}), so no
+     * verdict moved.
      * </p>
      *
-     * <p>
-     * ⚠ <b>Known limit:</b> a genuine date column carrying a junk token ({@code UNK}) fails the
-     * all-dates test and so keeps lexicographic treatment — Defect E is not caught on <i>this</i>
-     * path. That is acceptable because the generic operator has no date consumer left: measured
-     * over the shipped corpus, <b>no</b> rule authors the generic {@code max()} over a date column
-     * — every date extreme authors {@code max_date} (EC-46 OQ4) and runs through the date extremes
-     * ({@code GroupedAggregate.dateExtremeOf}), where the rule applies in full. The routing here is
-     * forward-looking.
-     * </p>
+     * @param candidates
+     *            the populated candidate texts (blank and missing cells already dropped)
+     * @param findMax
+     *            {@code true} for the maximum, {@code false} for the minimum
+     * @return the winning text, or {@code null} for no candidate
      */
     public static @Nullable String genericStringExtreme(List<String> candidates, boolean findMax)
     {
         if (candidates.isEmpty())
         {
             return null;
-        }
-        if (candidates.stream().allMatch(IsoDateBounds::canPosition))
-        {
-            // EC-51 Half B: `false` is permanent here, not a default. This is the GENERIC
-            // max fallback, whose operator cannot declare `missing_values` at all
-            // (the retired operation parser's validateMissingValues) — and the list it is handed
-            // has
-            // already had its missing cells dropped, so the disposition has nothing left to see.
-            DateExtreme extreme = new DateExtreme(findMax, false);
-            candidates.forEach(extreme::add);
-            return extreme.result();
         }
         Comparator<String> order = Comparator.naturalOrder();
         return candidates.stream().max(findMax ? order : order.reversed()).orElse(null);

@@ -292,6 +292,15 @@ final class KeyMatchIndex
      * <p>
      * Lists, not arrays, so the record's generated {@code equals} compares contents.
      * </p>
+     *
+     * <p>
+     * ⭐ Deliberately the CHILD side only, and that is what lets a chained join share an index
+     * ({@code PLAN-rprfdy-offset-tp-join} C1): a rule joining TP on {@code [DM.RPATHCD, RPHASE]}
+     * and a rule joining TP on a primary {@code [RPATHCD, RPHASE]} probe the same TP columns, so
+     * they build the identical index once — the record side (where the probe reads from) is no part
+     * of the key. A qualified component can never reach {@code childAbsentParts}: an absent
+     * unqualified column on the joined side is an ERROR before the index is built.
+     * </p>
      */
     record SpecKey(List<Integer> childColIds, List<Boolean> active, List<KeyPart> childAbsentParts,
             boolean keepMissings, boolean asString)

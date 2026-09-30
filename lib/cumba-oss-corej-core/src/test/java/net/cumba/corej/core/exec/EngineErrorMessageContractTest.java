@@ -268,6 +268,10 @@ class EngineErrorMessageContractTest
         // Site 9 is runbook W2a's read_value ONLY-ambiguity (PLAN-operation-replacements §2.2,
         // owner D13): ReadValueAmbiguityException, its own catch so ViolationNormaliser classifies
         // it by the exception's fixed message tail (READ_VALUE_AMBIGUOUS, pinned below).
+        // ⚑ PLAN-rprfdy-offset-tp-join (2026-09-30): UnresolvedQualifiedKeyException (D-ABSENT)
+        // joined the EXISTING join-defect multi-catch (site 5's), not a tenth site — its message
+        // starts with the same "Match_Datasets …" / grouped-function prefix family the classifier
+        // already folds, so no ErrorReason branch is owed and this count is unchanged.
         long sites = source("RuleRunner.java").lines()
                 .filter(l -> l.contains("RuleExecutionStatus.ERROR")).count();
         Assertions.assertEquals(9, sites,

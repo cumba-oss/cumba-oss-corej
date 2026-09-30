@@ -6,6 +6,7 @@ import net.cumba.datatable.DataTableMeta;
 import net.cumba.datatable.IDataTable;
 import net.cumba.datatable.values.GroupKey;
 import net.cumba.datatable.values.GroupKeyPolicy;
+import net.cumba.datatable.values.IDataValue;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -123,13 +124,44 @@ public final class GroupKeyIdentity
     }
 
 
+    /**
+     * The key identity of one cell ({@link GroupKeyPolicy#keyIdentity} under the one policy) — for
+     * a reader that fetches the cell itself, such as the qualified record-side keyer of
+     * {@code GroupedAggregate} (C2 of {@code PLAN-rprfdy-offset-tp-join}), which reads a component
+     * through a join lookup rather than from a column of the table.
+     *
+     * @param cell
+     *            the cell
+     * @return its identity
+     */
+    static Object identityOf(IDataValue cell)
+    {
+        return KEY_POLICY.keyIdentity(cell);
+    }
+
+
+    /**
+     * The key of already-derived component identities: the single identity for one component, a
+     * {@link GroupKey} over several — exactly the shape {@link #identityKey} builds, so a key
+     * composed here meets a block key derived there.
+     *
+     * @param parts
+     *            the component identities, in declaration order
+     * @return the key
+     */
+    static Object keyOf(Object[] parts)
+    {
+        return parts.length == 1 ? parts[0] : GroupKey.of(parts);
+    }
+
+
     private static Object identityOf(DataTableMeta meta, IDataTable table, String col, long row)
     {
         return identityAt(table, meta.getColumnIndex(col), row);
     }
 
 
-    private static Object identityAt(IDataTable table, int idx, long row)
+    static Object identityAt(IDataTable table, int idx, long row)
     {
         return idx < 0 ? "" : KEY_POLICY.keyIdentity(table.getColumn(idx).getDataValue(row));
     }
@@ -166,6 +198,34 @@ public final class GroupKeyIdentity
                         String.valueOf(groupedMeta.getName()), grouped, aEvaluatedCols.get(i),
                         String.valueOf(evaluatedMeta.getName()), evaluated);
             }
+        }
+    }
+
+
+    /**
+     * GKI Q2 for ONE qualified member (C2 of {@code PLAN-rprfdy-offset-tp-join}): the grouped
+     * column's kind against the SOURCE column's declared type — the record side of
+     * {@code DM.RPATHCD} lives in DM, read through the join, not in the evaluated table.
+     *
+     * @param aGrouped
+     *            the grouped table
+     * @param aGroupedCol
+     *            its key column (the unqualified name)
+     * @param aSource
+     *            the source entry's name, for the message
+     * @param aSourceType
+     *            the source column's declared type ({@code MISSING} when unknown — not judged)
+     */
+    static void requireCompatibleKeyColumn(IDataTable aGrouped, String aGroupedCol, String aSource,
+            net.cumba.datatable.values.DataValueType aSourceType)
+    {
+        DataTableMeta groupedMeta = aGrouped.getMetaData();
+        ColumnTypeGate.Kind grouped = kindOf(groupedMeta, aGroupedCol);
+        ColumnTypeGate.Kind source = ColumnTypeGate.kindOf(aSourceType);
+        if (grouped != null && source != null && grouped != source)
+        {
+            throw JoinKeyTypeMismatchException.forGroupedLookup(aGroupedCol,
+                    String.valueOf(groupedMeta.getName()), grouped, aGroupedCol, aSource, source);
         }
     }
 

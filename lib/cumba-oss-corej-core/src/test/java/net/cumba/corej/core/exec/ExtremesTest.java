@@ -174,13 +174,22 @@ class ExtremesTest
     }
 
 
-    /** …but an unambiguously-date group on the generic branch does get EC-46's rule. */
+    /**
+     * …and a date-looking group on the generic branch ranks as TEXT too (owner K3, 2026-09-30:
+     * <i>"no, special handling for special texts. Text is text."</i>). ⚑ MOVED ANSWER: until then
+     * this test pinned EC-46's date rule here ({@code max{2012-06, 2012-06-15}} indeterminate,
+     * {@code null}); the date rule is {@code max_date} / {@code min_date}'s alone.
+     */
     @Test
-    void ec46_oq4GenericMaxAppliesTheDateRuleToADateGroup()
+    void k3_genericMaxRanksADateLookingGroupAsText()
     {
-        assertNull(Extremes.genericStringExtreme(List.of("2012-06", "2012-06-15"), true));
+        assertEquals("2012-06-15",
+                Extremes.genericStringExtreme(List.of("2012-06", "2012-06-15"), true));
         assertEquals("2012-06-30",
                 Extremes.genericStringExtreme(List.of("2012-06", "2012-06-30"), true));
+        assertEquals("2012-06",
+                Extremes.genericStringExtreme(List.of("2012-06", "2012-06-15"), false),
+                "the shorter text is the minimum — plain text order, no calendar");
         assertNull(Extremes.genericStringExtreme(List.of(), true), "no candidate, no answer");
     }
 
