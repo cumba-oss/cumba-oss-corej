@@ -2,7 +2,7 @@ package net.cumba.corej.core.expr.typed;
 
 /**
  * The stage-A check kinds of the typed-expression specification's error model
- * ({@code plans/SPEC-typed-expression-engine.md} §2 / §9, stage-A rows).
+ * ({@code .claude/docs/specs/SPEC-typed-expression-engine.md} §2 / §9, stage-A rows).
  *
  * <p>
  * ⛔ <b>Arming discipline (phase 2, plan §7):</b> an {@link #armed()} kind files a <b>load error</b>

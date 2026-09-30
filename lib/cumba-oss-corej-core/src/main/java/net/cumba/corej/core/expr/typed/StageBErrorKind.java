@@ -2,8 +2,8 @@ package net.cumba.corej.core.expr.typed;
 
 /**
  * The stage-B check kinds of the typed-expression specification's error model
- * ({@code plans/SPEC-typed-expression-engine.md} §2 / §9, stage-B rows) — decided once per (rule ×
- * dataset), knowing the dataset's columns and their types (D10).
+ * ({@code .claude/docs/specs/SPEC-typed-expression-engine.md} §2 / §9, stage-B rows) — decided once
+ * per (rule × dataset), knowing the dataset's columns and their types (D10).
  *
  * <p>
  * ⛔ <b>Arming discipline (plan §7, phase 4):</b> an {@link #armed()} kind files a <b>bind error</b>

@@ -2,7 +2,7 @@ package net.cumba.corej.core.expr.typed;
 
 /**
  * The static type of an expression node — the base-type table of the typed-expression specification
- * ({@code plans/SPEC-typed-expression-engine.md} §1.1, D91a).
+ * ({@code .claude/docs/specs/SPEC-typed-expression-engine.md} §1.1, D91a).
  *
  * <p>
  * {@code missing} is deliberately <b>not</b> a type: it is a bottom element inhabiting every type

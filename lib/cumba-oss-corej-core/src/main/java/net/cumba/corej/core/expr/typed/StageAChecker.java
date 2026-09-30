@@ -36,8 +36,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The stage-A checker of the typed-expression specification
- * ({@code plans/SPEC-typed-expression-engine.md} §2): runs <b>once, at load, knowing the expression
- * only</b>, builds the {@link TypedExpr typed AST} — every node carrying
+ * ({@code .claude/docs/specs/SPEC-typed-expression-engine.md} §2): runs <b>once, at load, knowing
+ * the expression only</b>, builds the {@link TypedExpr typed AST} — every node carrying
  * {@code (type, granularity, cursor)} — and checks what is decidable without a dataset: arity,
  * statically-known parameter types, the level algebra (§1.3 join / §1.4 raising, with the excluded
  * {@code group × cursor} cell, D67), list-literal homogeneity, name-position rules, binding order,

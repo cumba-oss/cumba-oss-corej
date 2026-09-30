@@ -21,12 +21,12 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The stage-B checker of the typed-expression specification
- * ({@code plans/SPEC-typed-expression-engine.md} §2): runs <b>once per (rule × dataset), at bind
- * time, knowing the dataset's columns and their types</b> (D10), on the <b>specialised</b> rule
- * (D77 — the engine receives a concrete rule). It is {@link StageAChecker}'s per-dataset sibling:
- * armed findings file a bind error for this (rule, dataset) — never per row (D35) — detected and
- * named <b>per binding</b> (D41: the message says which variable), observe-only findings are logged
- * and offered to the measurement observer.
+ * ({@code .claude/docs/specs/SPEC-typed-expression-engine.md} §2): runs <b>once per (rule ×
+ * dataset), at bind time, knowing the dataset's columns and their types</b> (D10), on the
+ * <b>specialised</b> rule (D77 — the engine receives a concrete rule). It is
+ * {@link StageAChecker}'s per-dataset sibling: armed findings file a bind error for this (rule,
+ * dataset) — never per row (D35) — detected and named <b>per binding</b> (D41: the message says
+ * which variable), observe-only findings are logged and offered to the measurement observer.
  *
  * <p>
  * ⭐⭐ <b>D15 — this checker ABSORBS the shipped {@code ColumnTypeGate}, it does not grow a second

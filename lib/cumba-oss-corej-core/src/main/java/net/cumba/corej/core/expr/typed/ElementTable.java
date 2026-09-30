@@ -6,8 +6,9 @@ import net.cumba.corej.core.expr.typed.ExprType.Primitive;
 import net.cumba.corej.core.expr.typed.ExprType.Unknown;
 
 /**
- * The phase-2 seed of the per-element type table ({@code plans/SPEC-typed-expression-engine.md}
- * §1.6 — normative source {@code plans/findings/SCAN6-element-map.tsv}, 318 elements).
+ * The phase-2 seed of the per-element type table
+ * ({@code .claude/docs/specs/SPEC-typed-expression-engine.md} §1.6 — normative source
+ * {@code plans/findings/SCAN6-element-map.tsv}, 318 elements).
  *
  * <p>
  * ⚠ Deliberately partial: phase 2 declares <b>result types</b> for the value functions whose

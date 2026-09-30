@@ -4,7 +4,8 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 /**
- * The granularity half of the level product ({@code plans/SPEC-typed-expression-engine.md} §1.3):
+ * The granularity half of the level product
+ * ({@code .claude/docs/specs/SPEC-typed-expression-engine.md} §1.3):
  * {@code study < dataset < group(K) < record}. {@link Group} carries its key columns with
  * <b>set</b> semantics (D28d — a different key <em>order</em> does not split a grouping).
  *

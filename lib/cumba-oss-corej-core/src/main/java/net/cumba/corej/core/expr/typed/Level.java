@@ -2,10 +2,10 @@ package net.cumba.corej.core.expr.typed;
 
 /**
  * The expression level as the <b>product</b> {@code granularity × cursor}
- * ({@code plans/SPEC-typed-expression-engine.md} §1.3, D30/D30a) — a partial order, not a chain.
- * D30's six author-facing names are spellings of cells in this product: study, dataset, group, row,
- * <em>variable metadata</em> = {@code dataset × present}, <em>record × cursor</em> =
- * {@code record × present}.
+ * ({@code .claude/docs/specs/SPEC-typed-expression-engine.md} §1.3, D30/D30a) — a partial order,
+ * not a chain. D30's six author-facing names are spellings of cells in this product: study,
+ * dataset, group, row, <em>variable metadata</em> = {@code dataset × present}, <em>record ×
+ * cursor</em> = {@code record × present}.
  *
  * <p>
  * ⛔ {@code group(K) × present} is <b>not a cell</b> (D67): constructing it throws
