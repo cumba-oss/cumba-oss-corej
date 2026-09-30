@@ -217,7 +217,7 @@ class PerRowFunctionsTest
 
 
     /**
-     * Fix #369 condition 3 (combined review W3W4b M3), both arms, on a real degraded Library whose
+     * Fix #369 condition 3 (combined review W3/W4b M3), both arms, on a real degraded Library whose
      * study metadata is Define-XML backed (it publishes {@code DefineVersion}) under the opt-in
      * fallback: condition 1 lets it answer, and the define's classes are the answer — unless it
      * classifies NO referenced domain, which is an unusable answer (the rule SKIPs), never a column
@@ -320,7 +320,7 @@ class PerRowFunctionsTest
 
 
     /**
-     * Combined review W3W4b L2: the branch is decided once from the matched set's DECLARED types,
+     * Combined review W3/W4b L2: the branch is decided once from the matched set's DECLARED types,
      * and a set matching a Num AND a Char column is a column-type mismatch — the rule ERRORs
      * (column-type doctrine). Pre-fix the branch was chosen per row: this row ranked in the string
      * branch and answered the DOUBLE cell 9.0 under a vector declared STRING.
@@ -409,7 +409,7 @@ class PerRowFunctionsTest
         double a = MissingValue.MIS_A.asDouble();
         double b = MissingValue.MIS_B.asDouble();
         // ⚑ The Char column TR03X this fixture used to carry is gone: a Num + Char matched set is
-        // a column-type mismatch since combined review W3W4b L2 (see the mixed-set test). The
+        // a column-type mismatch since combined review W3/W4b L2 (see the mixed-set test). The
         // missing-text arm is pinned on a Char-only set below.
         double unknown = MissingValue.MIS_UNKNOWN.asDouble();
         IDataTable tr = RealTables.of("TR").dbl("TR01X", a, a, 1.0).dbl("TR02X", b, b, unknown)

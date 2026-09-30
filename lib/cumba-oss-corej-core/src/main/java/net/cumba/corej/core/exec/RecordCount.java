@@ -274,7 +274,7 @@ public final class RecordCount
      * @param foreign
      *            whether the call names {@code domain=} — a spliced {@code --} name would then
      *            resolve against the evaluated dataset's prefix and be looked up in the OTHER
-     *            table, silently partitioning nothing (combined review of runbook W2–W8, W5W6 L6),
+     *            table, silently partitioning nothing (combined review of runbook W2–W8, W5/W6 L6),
      *            so it ERRORs the rule as the reader refuses an authored one at load
      * @throws IllegalStateException
      *             for a {@code $} member that does not hold a list of names, or that splices a
@@ -381,7 +381,7 @@ public final class RecordCount
             IndexHelper.GroupBlock block = blocks.get(b);
             int[] rows = block.rows();
             long count = keep == null ? rows.length : kept(rows, keep);
-            // One cell per block, claimed and stored alike — no boxed Long beside it (W5W6 L2).
+            // One cell per block, claimed and stored alike — no boxed Long beside it (W5/W6 L2).
             blockCounts[b] = new DataValueLong(count);
             claims.put(block, blockCounts[b]);
             if (!normalise)
@@ -478,7 +478,7 @@ public final class RecordCount
      * policy ({@code keep_missings=false}), where a blank component makes the whole key
      * {@link #NO_GROUP}: the grouping dropped every block with a blank component, and the empty key
      * a blank cell would take is the bucket a NON-matching present value occupies, so the blank row
-     * read that bucket's count (combined review of runbook W2–W8, W5W6 L1).
+     * read that bucket's count (combined review of runbook W2–W8, W5/W6 L1).
      */
     private static Object normalisedKey(IDataTable table, int[] columns,
             @Nullable Pattern[] patterns, GroupKeyPolicy policy, long row)

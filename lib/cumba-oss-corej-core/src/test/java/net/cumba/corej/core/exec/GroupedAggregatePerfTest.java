@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 /**
- * ⚑ A timing harness, not a gate (combined review of runbook W2–W8, W5W6 L2 / L3 and XCUT PERF 2 /
+ * ⚑ A timing harness, not a gate (combined review of runbook W2–W8, W5/W6 L2 / L3 and XCUT PERF 2 /
  * 3): the grouped readers over a 10⁶-row synthetic table (fixed seed), each evaluated and read on
  * every row, the elapsed milliseconds printed. It runs only with {@code -Dcorej.perf=true}, so CI
  * never times anything; run it on the pre-fix and the post-fix tree and compare the lines it

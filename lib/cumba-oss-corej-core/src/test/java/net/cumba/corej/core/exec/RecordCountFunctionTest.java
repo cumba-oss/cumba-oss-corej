@@ -534,7 +534,7 @@ class RecordCountFunctionTest
     @Test
     void aBlankKeyUnderKeepMissingsFalseFindsNoGroupUnderRegex()
     {
-        // W5W6 L1: under regex= a non-matching present value takes the empty key — the key a
+        // W5/W6 L1: under regex= a non-matching present value takes the empty key — the key a
         // blank cell would take — so with keep_missings=false (the blank block dropped) S2's blank
         // row read the UNK bucket's count. It finds no group now and counts 0. RED before the fix:
         // [3, 3, 3, 1, 1, 1].
@@ -550,7 +550,7 @@ class RecordCountFunctionTest
     @Test
     void aSplicedDoubleDashNameUnderDomainErrorsTheRule()
     {
-        // W5W6 L6: a `--` spliced into group= under domain= resolves against the EVALUATED
+        // W5/W6 L6: a `--` spliced into group= under domain= resolves against the EVALUATED
         // dataset's prefix and is looked up in the other table, so it silently partitioned nothing.
         // It ERRORs the rule, as an authored `--` member is a load error. RED before the fix: the
         // call answered S1's whole-subject count.
@@ -577,7 +577,7 @@ class RecordCountFunctionTest
     @Test
     void theGroupingIsFormedOncePerExecution()
     {
-        // W5W6 M4: two reads of one grouped call in one execution resolve the counted table once
+        // W5/W6 M4: two reads of one grouped call in one execution resolve the counted table once
         // (the memo of GroupedAggregate.broadcast); a computeIfAbsent -> get() mutant resolves
         // twice.
         AtomicInteger resolves = new AtomicInteger();
@@ -615,7 +615,7 @@ class RecordCountFunctionTest
     @Test
     void anEmptyGroupIsALoadErrorAndAnAbsentGroupedDatasetIsOneConstant()
     {
-        // W5W6 L5: isGrouped's empty-list arm was dead because the reader refuses group=[] —
+        // W5/W6 L5: isGrouped's empty-list arm was dead because the reader refuses group=[] —
         // this is the pin that keeps the arm's deletion honest.
         expectError("record_count(group=[])", "at least one column");
         // XCUT PERF 2: a grouped count over an absent dataset is 0 on every row, as one constant.

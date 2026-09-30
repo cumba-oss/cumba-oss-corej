@@ -5674,7 +5674,7 @@ public final class ExprCompiler
                 // format, including the STRING->"Char" / else->"Num" data_type mapping). The
                 // excluded "self" is the DATASET under evaluation, exactly as the function passes
                 // it — not its domain: a split QSCG (domain QS) excluded a dataset named "QS" and
-                // so read its own label under dataset="*" (combined review, W3W4b M4 / F-W4b-2).
+                // so read its own label under dataset="*" (combined review, W3/W4b M4 / F-W4b-2).
                 String field = crossDatasetField(attr);
                 Object value = name == null ? null
                         : VariableMetadataResult
@@ -6963,7 +6963,8 @@ public final class ExprCompiler
      * Keyed by <b>(function, parameter)</b> ({@link #STATIC_STRING_PARAMETERS}), as wave 4's
      * vocabularies are: a parameter that merely shares one of these names on another function — an
      * ordinary per-row operand called {@code name_pattern} — is not held to a literal by accident
-     * (combined review of runbook W2–W8, W3W4b L3: the seam was keyed by the parameter name alone).
+     * (combined review of runbook W2–W8, W3/W4b L3: the seam was keyed by the parameter name
+     * alone).
      * </p>
      */
     private static void rejectNonLiteralStaticStrings(FunctionDescriptor descriptor,

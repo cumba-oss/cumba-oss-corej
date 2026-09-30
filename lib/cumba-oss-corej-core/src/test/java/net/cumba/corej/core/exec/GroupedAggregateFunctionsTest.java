@@ -406,7 +406,7 @@ class GroupedAggregateFunctionsTest
     @Test
     void theTargetIsTheOnePositionalArgument()
     {
-        // Combined review of runbook W2–W8, W5W6 M1: the binder would bind a second positional to
+        // Combined review of runbook W2–W8, W5/W6 M1: the binder would bind a second positional to
         // domain= (D9), but every load-time reader (the absent-dataset skip, the classifiers, the
         // stage-A typer) reads the keywords only — so the positional spelling is refused and the
         // message names the keyword one. RED before the fix: `max(AVAL, ADLB, …)` loaded clean.
@@ -426,7 +426,7 @@ class GroupedAggregateFunctionsTest
     @Test
     void aPositionalDomainNoLongerRunsOverAnAbsentDatasetSilently()
     {
-        // W5W6 M1's failing input: on DM with no DS the positional spelling bound DS as domain=
+        // W5/W6 M1's failing input: on DM with no DS the positional spelling bound DS as domain=
         // while the absent-dataset skip read only the keyword, so the rule EXECUTED and passed.
         // It is a load error now — the rule reports, it never silently passes.
         Rule rule = load("max_date(DSSTDTC, DS, group=[USUBJID])", "empty($v)");
@@ -487,7 +487,7 @@ class GroupedAggregateFunctionsTest
     @Test
     void readValueGroupedAGroupTheFilterEmptiesAnswersTheTypeDefault()
     {
-        // Combined review of runbook W2–W8, W2 M1 = W5W6 M2: D13 — "no qualifying row ⇒ X's type
+        // Combined review of runbook W2–W8, W2 M1 = W5/W6 M2: D13 — "no qualifying row ⇒ X's type
         // default in D" (PLAN-operation-replacements §2.2, D-W5-9 per group). DS: S1 RANDOMIZED
         // (+ COMPLETED), S2 COMPLETED only, S3 no row. Filtered to RANDOMIZED, S2's group keeps no
         // row: it must answer the char default "" exactly as S3 (no group) does. RED before the
@@ -636,7 +636,7 @@ class GroupedAggregateFunctionsTest
     @Test
     void theGroupingIsFormedOncePerExecution()
     {
-        // W5W6 M4 (W5 §4.2's "one grouping per execution"): two reads of one call in one
+        // W5/W6 M4 (W5 §4.2's "one grouping per execution"): two reads of one call in one
         // execution resolve the target table once. The guard a computeIfAbsent -> get() mutant of
         // GroupedAggregate.broadcast's memo must red (it would resolve twice).
         AtomicInteger resolves = new AtomicInteger();

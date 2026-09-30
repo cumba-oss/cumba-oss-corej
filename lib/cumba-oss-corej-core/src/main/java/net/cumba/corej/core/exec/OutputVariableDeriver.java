@@ -111,7 +111,7 @@ public final class OutputVariableDeriver
      * columns: {@code domain=} names a dataset, {@code filter=} / {@code group=} read columns of
      * that dataset (or the partition keys of the primary). An inline Check call of one of them
      * derives exactly what the binding form ({@link #contributeTarget}) derives — its target alone,
-     * and nothing at all when {@code domain=} is present (combined review W5W6 M3: the inline walk
+     * and nothing at all when {@code domain=} is present (combined review W5/W6 M3: the inline walk
      * used to derive the {@code filter=} / {@code group=} columns and the bare {@code domain=DS}
      * reference as output variables; round 2 M1 added {@code read_value}, whose {@code domain=} is
      * required, so an inline call derives nothing).

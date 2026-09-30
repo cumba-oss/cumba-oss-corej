@@ -187,7 +187,7 @@ public final class Distinct
         {
             throw new ExpressionException("no registry function '" + NAME + "'");
         }
-        // W5W6 M1's shape on distinct: a positional domain= would bind (D9) while every load-time
+        // W5/W6 M1's shape on distinct: a positional domain= would bind (D9) while every load-time
         // reader reads the keyword only.
         GroupedAggregate.rejectPositionalAfterTarget(NAME, c,
                 "domain=, filter=, group= and keep_missings=");

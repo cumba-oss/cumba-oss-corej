@@ -426,7 +426,7 @@ class ScalarMetadataFunctionsTest
 
 
     /**
-     * Combined review of runbook W2–W8, W3W4b M4 (F-W4b-2): the inline {@code var_*(…,
+     * Combined review of runbook W2–W8, W3/W4b M4 (F-W4b-2): the inline {@code var_*(…,
      * dataset="*")} read excludes the dataset under evaluation by its NAME, as
      * {@code cross_dataset_variable_metadata} does. It passed the context's DOMAIN, so a split
      * {@code QSCG} (domain {@code QS}) excluded a dataset called {@code QS} instead of itself and

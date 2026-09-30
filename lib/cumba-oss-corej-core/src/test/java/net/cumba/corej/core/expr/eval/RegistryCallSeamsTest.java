@@ -17,12 +17,12 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The load-time argument seams of a registry call written <b>inline</b> in a Check (combined review
- * of runbook W2–W8, W4 M4 = W3W4b L1): the seam used to be an allowlist of the wave-4 / wave-4b
+ * of runbook W2–W8, W4 M4 = W3/W4b L1): the seam used to be an allowlist of the wave-4 / wave-4b
  * names, so every other registry function inline — row_max, the dictionary functions,
  * referenced_dataset_variables — loaded clean and met the compiler's seams only at its first
  * evaluation, a run-time ERROR instead of a load error. Inverted: every registry name meets the
  * generic seam except the compiler-dispatched calls, whose exemption set is self-checked. Also the
- * (function, parameter) keying of the static-string seam (W3W4b L3). Real registry, no Mockito.
+ * (function, parameter) keying of the static-string seam (W3/W4b L3). Real registry, no Mockito.
  */
 class RegistryCallSeamsTest
 {

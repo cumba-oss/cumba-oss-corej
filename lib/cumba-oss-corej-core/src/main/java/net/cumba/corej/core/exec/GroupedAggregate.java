@@ -277,7 +277,7 @@ public final class GroupedAggregate
 
 
     /**
-     * The target is the only positional argument (combined review of runbook W2–W8, W5W6 M1): the
+     * The target is the only positional argument (combined review of runbook W2–W8, W5/W6 M1): the
      * binder would bind a second positional to {@code domain}, a third to {@code filter} and so on
      * (D9), but every load-time reader of the call — the absent-dataset skip, the classifiers, the
      * stage-A typer, the output-variable deriver — reads the keywords only, so
@@ -655,7 +655,7 @@ public final class GroupedAggregate
         /**
          * The grouping takes <b>ownership</b> of {@code byKey} (every builder hands over a map it
          * built for this grouping and never touches again), so it is wrapped, not copied — a copy
-         * per execution of every block map was the second of two (W5W6 L2).
+         * per execution of every block map was the second of two (W5/W6 L2).
          */
         Grouped
         {
@@ -886,7 +886,7 @@ public final class GroupedAggregate
         // evaluated one ERRORs the rule instead of silently matching no row. Once per evaluation,
         // never per row.
         GroupKeyIdentity.requireCompatibleKeyColumns(table, groupNames, primary, groupNames);
-        // Built for this grouping and handed over — Grouped wraps it, never copies (W5W6 L2).
+        // Built for this grouping and handed over — Grouped wraps it, never copies (W5/W6 L2).
         Map<Object, IDataValue> byKey = new java.util.LinkedHashMap<>(
                 Math.max(16, blockValues.length * 2));
         results.results().forEach((key, value) -> byKey.put(key, (IDataValue) value));
@@ -1005,7 +1005,7 @@ public final class GroupedAggregate
     {
         MissingScan scan = new MissingScan();
         IDataValue bestNumeric = null;
-        // The winning cell's number, read once (W5W6 L3: re-reading getValue() per comparison
+        // The winning cell's number, read once (W5/W6 L3: re-reading getValue() per comparison
         // re-boxed it).
         Number bestNumber = null;
         boolean numeric = true;
@@ -1024,7 +1024,7 @@ public final class GroupedAggregate
             {
                 continue;
             }
-            // The numeric payload first (W5W6 L3): a present, valid number is always a candidate
+            // The numeric payload first (W5/W6 L3): a present, valid number is always a candidate
             // (its text is never blank), so it needs neither the text nor the code-point blank
             // scan that Extremes.extremeCandidate runs.
             if (numeric && cell.getValue() instanceof Number n && !cell.isMissingOrInvalid())

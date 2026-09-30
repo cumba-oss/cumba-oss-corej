@@ -687,12 +687,12 @@ class OutputVariableDeriverTest
         assertTrue(OutputVariableDeriver.isLocationVariable(null, "--SEQ"));
     }
 
-    // ------------------------------------------------------------- inline aggregates (W5W6 M3)
+    // ------------------------------------------------------------- inline aggregates (W5/W6 M3)
 
 
     /**
-     * Combined review W5W6 M3: an INLINE Check call of a dataset-reading aggregate derives what the
-     * binding form derives ({@code contributeTarget}) — its target alone, nothing under
+     * Combined review W5/W6 M3: an INLINE Check call of a dataset-reading aggregate derives what
+     * the binding form derives ({@code contributeTarget}) — its target alone, nothing under
      * {@code domain=}. The walk used to visit every keyword, deriving the {@code filter=} and
      * {@code group=} columns and the bare {@code domain=DS} reference as output variables.
      */

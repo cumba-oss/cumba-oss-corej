@@ -143,7 +143,7 @@ public final class RowMax
                 // Column-type doctrine (PLAN-column-type-conformance: a type mismatch ERRORs): a
                 // Num and a Char column have no common order — ranking per row would compare a
                 // number with a text on one row and not on the next, and could hand a numeric
-                // cell back under a declared STRING vector (combined review W3W4b L2).
+                // cell back under a declared STRING vector (combined review W3/W4b L2).
                 throw new ColumnTypeMismatchException("column-type mismatch: " + NAME + "("
                         + PATTERN_PARAMETER + "=\"" + pattern.pattern()
                         + "\") matches Num column(s) " + liveNumeric + " and Char column(s) "

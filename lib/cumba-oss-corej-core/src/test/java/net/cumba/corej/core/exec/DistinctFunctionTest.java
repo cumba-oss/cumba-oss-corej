@@ -615,7 +615,7 @@ class DistinctFunctionTest
     @Test
     void aPositionalDomainIsALoadErrorNamingTheKeyword()
     {
-        // W5W6 M1's shape on distinct: `distinct(USUBJID, DS)` bound DS as domain= (D9) while the
+        // W5/W6 M1's shape on distinct: `distinct(USUBJID, DS)` bound DS as domain= (D9) while the
         // load-time readers read the keyword only. RED before the fix: it loaded.
         expectError("distinct(USUBJID, DS)", "write the others as keywords");
         assertNull(load("distinct(USUBJID, domain=DS)", "USUBJID not in $v").getLoadError());
