@@ -136,13 +136,14 @@ class StageACheckerTest
 
 
     @Test
-    void modeTagsAreErasedIdentities()
+    void strIsAStringConversion()
     {
-        // D91f (i), narrowed by phase 3b: only str() is still an erased passthrough (live until
-        // phase 7, D97c); date() is a real conversion now — see the temporal-surface tests.
+        // D91f (i) retired by PLAN-dynamic-column-functions §2.1 (owner Q10, 2026-09-30): str()
+        // is no longer an erased passthrough but a registered conversion typed string — the last
+        // mode tag of this checker is gone (date() became a real conversion in phase 3b).
         StageAReport report = check("str(AESTDTC) == str(AEENDTC)");
         assertEquals(List.of(), report.findings());
-        assertEquals(Primitive.COLUMN_REFERENCE, root(report).children().get(0).type());
+        assertEquals(Primitive.STRING, root(report).children().get(0).type());
     }
 
 

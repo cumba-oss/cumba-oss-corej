@@ -819,12 +819,18 @@ public final class ScopeMatcher
      *            the undecidable reason — a qualified entry with no foreign source, or a {@code --}
      *            entry with no domain prefix to resolve it against — else {@code null}
      */
-    private record EntryNames(String label, SortedSet<String> names, boolean pattern,
+    record EntryNames(String label, SortedSet<String> names, boolean pattern,
             @Nullable String undecidable)
     {
     }
 
-    private static EntryNames resolveEntryNames(String varName, DataTableMeta meta,
+    /**
+     * The concrete columns one {@code Requirements.Variables} entry matches. ⚑ Package-private
+     * since {@code PLAN-dynamic-column-functions} phase 3: {@code FindVarsTest}'s cross-surface
+     * assertion compares {@code find_vars(e)} with this for the same entry and table, so the two
+     * surfaces cannot drift unseen.
+     */
+    static EntryNames resolveEntryNames(String varName, DataTableMeta meta,
             @Nullable String domainPrefix, @Nullable ScopeVariableSource foreign)
     {
         ScopeVariableEntry entry = ScopeVariableEntry.parse(varName);
@@ -1731,8 +1737,17 @@ public final class ScopeMatcher
      * (at-least-one semantics, mirroring the Check-side wildcard expansion). Without the marker
      * branch, a template's variable scope would be tested literally and the rule skipped even when
      * a matching concrete column (e.g. {@code TRT01P} for {@code TRTxxP}) exists.
+     *
+     * <p>
+     * ⭐ Package-private, not private, since {@code PLAN-dynamic-column-functions} §2.4: it is the
+     * ONE matcher {@code Requirements.Variables}, {@code find_vars} ({@link FindVars}) and the
+     * {@code Output_Variables} pattern step share, so the three surfaces cannot drift. Behaviour
+     * unchanged. It takes the entry's VARIABLE half —
+     * {@link WildcardExpander#scopeVariableWildcardPattern} answers {@code null} for a qualified
+     * entry.
+     * </p>
      */
-    private static @Nullable Pattern scopeEntryPattern(String resolved)
+    static @Nullable Pattern scopeEntryPattern(String resolved)
     {
         Pattern pattern = scopePattern(resolved);
         return pattern != null ? pattern : WildcardExpander.scopeVariableWildcardPattern(resolved);

@@ -301,6 +301,24 @@ public class EvaluationContext
     @Builder.Default
     Set<String> numericExpectedColumns = Set.of();
 
+    /**
+     * ⭐ {@code PLAN-dynamic-column-functions} §2.3 step 2 (owner Q14 (b)) — the {@code colref(…)}
+     * call sites this rule's expression places in a <b>numeric-expected</b> position
+     * ({@code TypeExpectations.numericDynamicSites()}), carried beside
+     * {@link #numericExpectedColumns} and computed by the same builders from the same
+     * {@code TypeExpectations} walk. A {@code colref} plan reads it <b>once per evaluation</b> —
+     * never at compile time (compiled plans are shared across rules) and never per row — and gives
+     * an absent column named by such a site {@code MissingValue.MIS}, the default the name would
+     * get if it were authored at that position.
+     *
+     * <p>
+     * Defaults to the empty set: no expectation ⇒ char (D76a), as for
+     * {@link #numericExpectedColumns}. Derived contexts inherit it through {@code toBuilder}.
+     * </p>
+     */
+    @Builder.Default
+    Set<net.cumba.corej.core.expr.ast.Expr.Call> numericExpectedDynamicSites = Set.of();
+
     /** Records that {@code column} was absent and evaluated as all-missing (EC-43). */
     public void noteAbsentColumnFold(String column)
     {

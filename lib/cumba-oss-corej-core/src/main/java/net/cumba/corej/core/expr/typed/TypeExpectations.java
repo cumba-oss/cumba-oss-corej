@@ -47,8 +47,11 @@ import net.cumba.corej.core.expr.eval.BroadcastFold;
  * name: a {@code $}-reference, a computed value, a {@code ${...}} template and a
  * {@code num(...)}-wrapped operand never carry one, and a comparison in the {@code date} /
  * {@code time} / {@code date_part} / {@code time_part} families routes past the plain gate entirely
- * and therefore sets no expectation here either. Presence probes ({@code var_exists} family) are
- * <b>not value reads</b>: their argument names a column whose absence is the question, so it is
+ * and therefore sets no expectation here either. ⭐ A {@code colref(…)} call in one of these
+ * positions records its kind under the <b>call expression</b> ({@link #numericDynamicSites()},
+ * {@code PLAN-dynamic-column-functions} §2.3, owner Q14 (b)): its column is named per row, so the
+ * position — not a name — is what the engine looks up. Presence probes ({@code var_exists} family)
+ * are <b>not value reads</b>: their argument names a column whose absence is the question, so it is
  * excluded from {@link #valueReadColumns()}.
  * </p>
  *
@@ -173,6 +176,15 @@ public final class TypeExpectations
 
     private final Map<String, EnumSet<Expectation>> expectations = new LinkedHashMap<>();
 
+    /**
+     * ⭐ {@code PLAN-dynamic-column-functions} §2.3 (owner Q14 (b)): the expectations of the
+     * {@code colref(…)} <b>call sites</b>, keyed by the call expression itself — a dynamic name
+     * cannot be keyed by name at load, so its position's kind is recorded under the call.
+     * {@link Expr} records compare structurally, so two textually identical calls union their kinds
+     * exactly as two occurrences of one authored name do.
+     */
+    private final Map<Expr.Call, EnumSet<Expectation>> dynamicExpectations = new LinkedHashMap<>();
+
     private final List<EqualityPair> equalityPairs = new ArrayList<>();
 
     private final Set<String> valueReadColumns = new LinkedHashSet<>();
@@ -287,6 +299,39 @@ public final class TypeExpectations
         return Set.copyOf(out);
     }
 
+
+    /**
+     * ⭐ {@code PLAN-dynamic-column-functions} §2.3 step 1 (owner Q14 (b)): the {@code colref(…)}
+     * call sites standing in a <b>numeric-expected position</b> — the same positions that record
+     * {@link Expectation#NUMERIC} for an authored name ({@link #numericDefaultColumns()}), keyed by
+     * the call expression. The engine reads the set once per evaluation
+     * ({@code EvaluationContext.getNumericExpectedDynamicSites()}) and gives an absent column named
+     * by such a call {@code MissingValue.MIS}, exactly the default the name would get if it were
+     * authored at that position.
+     *
+     * <p>
+     * ⚠ A {@code $}-reference carries no kind (an expectation does not flow through a binding
+     * reference), so a {@code colref} bound in {@code Bindings} records nothing — exactly like an
+     * authored name bound the same way (the plan's known limit). The sites join neither
+     * {@link #valueReadColumns()} nor {@link #equalityPairs()}: {@code StageBChecker} cannot probe
+     * a name that is only known per row.
+     * </p>
+     *
+     * @return the numeric-expected {@code colref} call sites (immutable)
+     */
+    public Set<Expr.Call> numericDynamicSites()
+    {
+        Set<Expr.Call> out = new LinkedHashSet<>();
+        for (Map.Entry<Expr.Call, EnumSet<Expectation>> e : dynamicExpectations.entrySet())
+        {
+            if (e.getValue().contains(Expectation.NUMERIC))
+            {
+                out.add(e.getKey());
+            }
+        }
+        return Set.copyOf(out);
+    }
+
     // ------------------------------------------------------------------
     // The walk
     // ------------------------------------------------------------------
@@ -377,8 +422,8 @@ public final class TypeExpectations
 
     private void membership(Expr left, Expr right)
     {
-        if (expectationKey(left) == null || !(right instanceof Expr.Lit lit)
-                || lit.kind() != Expr.LitKind.LIST)
+        if ((expectationKey(left) == null && dynamicSite(left) == null)
+                || !(right instanceof Expr.Lit lit) || lit.kind() != Expr.LitKind.LIST)
         {
             // Only a STATIC list literal states an expectation the gate holds a probe to
             // (mirroring numericMemberSet / isAllStringList's literal-only classification); a
@@ -526,6 +571,14 @@ public final class TypeExpectations
     private void expect(Expr e, Expectation expectation)
     {
         Expr operand = stripStr(e);
+        Expr.Call site = dynamicSite(operand);
+        if (site != null)
+        {
+            // Q14 (b): the call site carries its position's kind, as an authored name would.
+            dynamicExpectations.computeIfAbsent(site, _ -> EnumSet.noneOf(Expectation.class))
+                    .add(expectation);
+            return;
+        }
         String name = expectationKey(operand);
         if (name == null)
         {
@@ -549,6 +602,18 @@ public final class TypeExpectations
     {
         String bare = bareColumn(e);
         return bare != null ? bare : dottedColumn(e);
+    }
+
+
+    /**
+     * The operand as a dynamic column read — a one-argument {@code colref(…)} call — or
+     * {@code null}. Keyed by the call itself (§2.3 step 1 of
+     * {@code PLAN-dynamic-column-functions}).
+     */
+    private static Expr.@org.jspecify.annotations.Nullable Call dynamicSite(Expr e)
+    {
+        return e instanceof Expr.Call c && "colref".equals(c.name()) && c.args().size() == 1
+                && c.kwargs().isEmpty() ? c : null;
     }
 
 

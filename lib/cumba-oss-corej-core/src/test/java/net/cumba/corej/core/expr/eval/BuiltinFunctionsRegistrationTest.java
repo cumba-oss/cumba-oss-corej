@@ -77,7 +77,10 @@ class BuiltinFunctionsRegistrationTest
             "starts_with/2/BOOLEAN", "substring/2-3/VALUE", "suffix/2/VALUE",
             "suffix_matches/2-3/BOOLEAN", "time_contains/2/BOOLEAN", "time_overlaps/2/BOOLEAN",
             "trim/1/VALUE", "tuple/2+/VALUE", "upcase/1/VALUE", "upper/1/VALUE",
-            "valid_external_dictionary_code/3-4/BOOLEAN",
+            // PLAN-dynamic-column-functions §2.1/§2.2 (owner Q2, Q10): the four conversions,
+            // registered, and the two formatting functions
+            "date/1/VALUE", "find_vars/1/VALUE", "lpad/2-3/VALUE", "num/1/VALUE", "printf/1+/VALUE",
+            "str/1/VALUE", "time/1/VALUE", "valid_external_dictionary_code/3-4/BOOLEAN",
             "valid_external_dictionary_code_term_pair/3-4/BOOLEAN",
             "valid_external_dictionary_hierarchy/3-4/BOOLEAN",
             "valid_external_dictionary_value/3-4/BOOLEAN", "value/0/VALUE", "varname/0/VALUE",

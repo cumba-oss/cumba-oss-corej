@@ -115,18 +115,22 @@ public final class ExprCompiler
     private static final Set<String> CONVERSIONS = Set.of("num", "date", "time");
 
     /**
-     * The {@code str(X)} type-insensitive equality wrapper's name. A marker like the two sets
-     * above, but structurally a different thing — it selects
-     * {@link #compileTypeInsensitiveEquality} rather than a comparison family — so it is named here
-     * instead of being a bare literal at its one use site.
-     */
-    private static final String STR_MARKER = "str";
-
-    /**
      * The complete compiler-structural comparison-marker vocabulary: {@link #TAGS} (erased mode
-     * tags) ∪ {@link #CONVERSIONS} (value conversions) ∪ {@link #STR_MARKER}. Recognised here in
-     * the binary-comparison handling — no {@code EvalFunction}, no {@code FunctionRegistry} entry —
-     * which is precisely why nothing else could enumerate them.
+     * tags) ∪ {@link #CONVERSIONS} (value conversions) — the names the binary-comparison handling
+     * reads to select an operator FAMILY ({@link #family}, the {@code numTag} flag). The two tags
+     * have no {@code FunctionRegistry} entry, which is why this roster exists.
+     *
+     * <p>
+     * ⭐ {@code PLAN-dynamic-column-functions} §2.1 (owner Q10, 2026-09-30): {@code num},
+     * {@code date} and {@code time} are now ALSO registered functions (descriptors in
+     * {@code BuiltinFunctions}), and they stay listed here because they still select a comparison
+     * family. {@code str} LEFT this roster: it was the type-insensitive equality marker
+     * ({@code STR_MARKER} → {@code compileTypeInsensitiveEquality}); it is now an ordinary
+     * registered conversion, {@code str(A) == str(B)} is plain string equality of two converted
+     * values, proven identical to the retired marker on its rendering matrix
+     * ({@code DynamicColumnFunctionsTest.strEqualityAnswersAsTheRetiredMarkerOnTheMatrix}), and it
+     * selects no family.
+     * </p>
      *
      * <p>
      * ⛔ <b>Why this is public.</b> {@code ExpressionCheckSpecCensus} in the rules repository
@@ -145,7 +149,6 @@ public final class ExprCompiler
     {
         SortedSet<String> all = new TreeSet<>(TAGS);
         all.addAll(CONVERSIONS);
-        all.add(STR_MARKER);
         return Collections.unmodifiableSortedSet(all);
     }
 
@@ -869,6 +872,16 @@ public final class ExprCompiler
      */
     private static boolean isListValuedFunctionCall(Expr e)
     {
+        if (e instanceof Expr.Call call && COLREF.equals(call.name()) && call.args().size() == 1)
+        {
+            // PLAN-dynamic-column-functions §2.7 point 3 (phase 0 D1): colref is scalar BY NAME,
+            // so ElementTable cannot say this; its LIST form is recognised by a list-valued
+            // argument — a list literal or a list-valued call (find_vars) — and then reads as
+            // any other list-valued call on the membership and tuple paths (boundMembership).
+            Expr arg = call.args().get(0);
+            return (arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.LIST)
+                    || isListValuedFunctionCall(arg);
+        }
         return e instanceof Expr.Call call && FunctionRegistry.descriptor(call.name()) != null
                 && net.cumba.corej.core.expr.typed.ElementTable.resultType(
                         call.name()) instanceof net.cumba.corej.core.expr.typed.ExprType.ListOf;
@@ -1496,16 +1509,11 @@ public final class ExprCompiler
 
     private static ExprProgram.BoolPlan compileComparison(Expr.Binary b)
     {
-        // str(A) ==/!= str(B): a type-insensitive equality (the type_insensitive operator-leaf
-        // surface). Both operands are coerced to strings before comparison — matching the legacy
-        // CheckEvaluator path. Only the symmetric ==/!= form is supported (as it was in the
-        // retired ExprLowering).
-        if ((b.op() == Expr.BinOp.EQ || b.op() == Expr.BinOp.NEQ) && isStr(b.left())
-                && isStr(b.right()))
-        {
-            return compileTypeInsensitiveEquality(b);
-        }
-
+        // ⭐ PLAN-dynamic-column-functions §2.1 (Q10): str(A) ==/!= str(B) is no longer
+        // intercepted here. str is a registered conversion (TextFunctions.str) publishing the very
+        // text the retired STR_MARKER's type-insensitive fold compared, so the comparison below —
+        // two STRING vectors, no family, no numeric mode — answers as the marker did
+        // (DynamicColumnFunctionsTest pins it against the marker's own computation).
         String lt = markerOf(b.left());
         String rt = markerOf(b.right());
         Expr li = untag(b.left());
@@ -1721,32 +1729,6 @@ public final class ExprCompiler
     {
         return e instanceof Expr.Call c && c.kwargs().isEmpty() && c.args().size() == 2
                 && ("prefix".equals(c.name()) || "suffix".equals(c.name()));
-    }
-
-
-    /** A {@code str(X)} type-tag wrapper (one argument, no kwargs). */
-    private static boolean isStr(Expr e)
-    {
-        return e instanceof Expr.Call c && c.kwargs().isEmpty() && c.args().size() == 1
-                && STR_MARKER.equals(c.name());
-    }
-
-
-    private static ExprProgram.BoolPlan compileTypeInsensitiveEquality(Expr.Binary b)
-    {
-        boolean negate = b.op() == Expr.BinOp.NEQ;
-        ValuePlan leftP = operandPlan(((Expr.Call) b.left()).args().get(0), true);
-        ValuePlan rightP = valuePlan(((Expr.Call) b.right()).args().get(0));
-        return run ->
-        {
-            Vector lv = leftP.eval(run);
-            Vector rv = rightP.eval(run);
-            if (lv == null || rv == null)
-            {
-                return new BitSet();
-            }
-            return Primitives.equality(lv, rv, run.rowCount(), negate, false, true, false);
-        };
     }
 
 
@@ -3595,6 +3577,16 @@ public final class ExprCompiler
                 return result;
             };
         }
+        // PLAN-dynamic-column-functions §2.5 (S2): var_exists / var_not_exists over a COMPUTED
+        // string — a per-row name, resolved exactly as the literal form resolves it.
+        Expr nameArg = c.args().get(0);
+        // A literal is never computed: a number / regex / list literal stays the compile error it
+        // always was (ExprCompilerExistsModesTest, a ${…} test kept unmodified — Q8).
+        if (mode == ExistsMode.VARIABLE && !(nameArg instanceof Expr.Ref)
+                && !(nameArg instanceof Expr.Lit))
+        {
+            return compileComputedExists(nameArg, negate);
+        }
         // The whole exists family accepts a bareword/backtick reference or — equivalent by
         // definition — a string literal carrying the same name.
         String rawName = switch (c.args().get(0))
@@ -3645,6 +3637,55 @@ public final class ExprCompiler
             if (fire && rc > 0)
             {
                 result.set(0, rc);
+            }
+            return result;
+        };
+    }
+
+
+    /**
+     * ⭐ {@code var_exists(<string>)} / {@code var_not_exists(<string>)} over a <b>computed</b> name
+     * ({@code PLAN-dynamic-column-functions} §2.5, S2): per row, the name the argument yields is
+     * tested by {@link OperatorRegistry#existsAsVariable} — the very entry point the literal form
+     * uses, so a dotted {@code DS.X} resolves through the {@code DatasetResolver} (split union
+     * included) with the SUPP-QNAM pivot, and a bare name sees the primary's SUPP pivot, exactly as
+     * {@code var_exists("DS.X")} does. A missing argument — or a present non-string value, which
+     * names no column — leaves the row unset for BOTH polarities, as a missing {@code ${…}} driver
+     * does ({@code existsPerRowBits}). The verdict is memoised by name for the evaluation, so a
+     * name shared by many rows is resolved once.
+     */
+    private static ExprProgram.BoolPlan compileComputedExists(Expr nameArg, boolean negate)
+    {
+        ValuePlan names = valuePlan(nameArg);
+        return run ->
+        {
+            int rc = run.rowCount();
+            BitSet result = new BitSet(rc);
+            Vector v = names.eval(run);
+            if (v == null)
+            {
+                return result;
+            }
+            EvaluationContext ctx = run.ctx();
+            Map<String, Boolean> memo = new java.util.HashMap<>();
+            for (int r = 0; r < rc; r++)
+            {
+                TypedValue tv = v.value(r);
+                IDataValue source = tv.sourceCell();
+                boolean text = tv.missing() == null
+                        && (source != null ? source.getType() == DataValueType.STRING
+                                : tv.resolved() instanceof String);
+                if (!text)
+                {
+                    continue; // names no column: neither polarity fires
+                }
+                String name = String.valueOf(tv.resolved());
+                boolean exists = memo.computeIfAbsent(name,
+                        n -> OperatorRegistry.existsAsVariable(ctx, resolveDomainPrefix(n, ctx)));
+                if (exists != negate)
+                {
+                    result.set(r);
+                }
             }
             return result;
         };
@@ -4546,13 +4587,35 @@ public final class ExprCompiler
                 yield run ->
                 {
                     Vector v = inner.eval(run);
-                    ColumnTypeGate.observeIsoConversionRead(v, context);
-                    return v;
+                    return v == null ? null : isoConversion(v, context);
                 };
             }
             if (tagOf(c) != null)
             {
                 yield operandPlan(untag(c), namePosition);
+            }
+            if (COLREF.equals(c.name()))
+            {
+                // PLAN-dynamic-column-functions §2.3 step 3: a compiler arm, because the plan must
+                // close over its CALL SITE to read the site's absent-column kind (Q14 (b)).
+                yield colrefPlan(c);
+            }
+            if (net.cumba.corej.core.exec.FindVars.NAME.equals(c.name()) && c.args().size() == 1
+                    && c.kwargs().isEmpty())
+            {
+                // §2.4: whether the entry is a string LITERAL is a fact of the expression — a
+                // /regex/ entry must be one — so it is decided here, not from the vector (a
+                // constant-folded concat is a broadcast vector as well).
+                Expr entry = c.args().get(0);
+                boolean literal = entry instanceof Expr.Lit lit
+                        && lit.kind() == Expr.LitKind.STRING;
+                ValuePlan entryP = argumentPlan(entry);
+                yield cachedValue(c, run ->
+                {
+                    Vector v = entryP.eval(run);
+                    return v == null ? null
+                            : net.cumba.corej.core.exec.FindVars.evaluate(run, v, literal);
+                });
             }
             if (net.cumba.corej.core.exec.ReadValue.NAME.equals(c.name()))
             {
@@ -4603,6 +4666,65 @@ public final class ExprCompiler
             yield valueCallPlan(c);
         }
         default -> throw unsupported("unsupported operand " + e.getClass().getSimpleName());
+        };
+    }
+
+
+    /**
+     * The {@code date(x)} / {@code time(x)} conversion's one evaluation (SPEC §1.2/§5.1): the
+     * INTERPRETIVE identity — the temporal value's carrier is its ISO-8601 text, verbatim — plus
+     * the observe-only D55 read classification. Shared by the compiler's conversion arm and the
+     * registered descriptors ({@code PLAN-dynamic-column-functions} §2.1, owner Q10), so the two
+     * cannot drift.
+     *
+     * @param v
+     *            the operand
+     * @param context
+     *            {@code "date()"} or {@code "time()"}, for the observation
+     * @return {@code v} itself
+     */
+    public static Vector isoConversion(Vector v, String context)
+    {
+        ColumnTypeGate.observeIsoConversionRead(v, context);
+        return v;
+    }
+
+    /** The dynamic column read's name ({@link #colrefPlan}). */
+    private static final String COLREF = "colref";
+
+    /**
+     * ⭐ {@code colref(x)} — the dynamic column read ({@code PLAN-dynamic-column-functions} §2.3):
+     * per row, the column {@code x} names, resolved by {@link DynamicColumnRead} exactly as the
+     * authored name resolves (a bare name on the evaluation table after the {@code Child}
+     * pre-merge, {@code DS.X} through the join), its cell typed, a list of names dereferenced
+     * element-wise (§2.7, Q4).
+     *
+     * <p>
+     * ⛔⛔ <b>The site's absent-column kind is read per EVALUATION, never at compile time and never
+     * per row.</b> A compiled plan is memoised by structural {@code Expr} across rules
+     * ({@code NativeExprEvaluator.CACHE}), so a boolean bound here would carry one rule's
+     * expectation into another; a per-row lookup would hash the call expression once per row. The
+     * plan therefore closes over the call and asks the run's context once:
+     * {@code ctx.getNumericExpectedDynamicSites().contains(call)} (Q14 (b), step 3).
+     * </p>
+     */
+    private static ValuePlan colrefPlan(Expr.Call c)
+    {
+        if (c.args().size() != 1 || !c.kwargs().isEmpty())
+        {
+            throw unsupported("colref takes exactly one argument: a column name or a list of"
+                    + " column names");
+        }
+        ValuePlan names = argumentPlan(c.args().get(0));
+        return run ->
+        {
+            Vector first = names.eval(run);
+            if (first == null)
+            {
+                return null; // an unresolvable first hop propagates, as for every value call
+            }
+            boolean numericDefault = run.ctx().getNumericExpectedDynamicSites().contains(c);
+            return DynamicColumnRead.vector(run, first, numericDefault);
         };
     }
 
@@ -4684,8 +4806,8 @@ public final class ExprCompiler
             EvaluationContext ctx = run.ctx();
             int rc = run.rowCount();
             // Shape 4 (PLAN-joined-column-typing): the CELLS carry the joined column's real type,
-            // so a substituted dotted operand (ADSL.AP${APERIOD:%02d}SDT and friends -- 44 Check
-            // occurrences across 33 rules, ADaM numeric dates among them) stops having its
+            // so a substituted dotted operand (ADSL.AP${APERIOD:%02d}SDT and friends -- 58 Check
+            // tokens, re-measured 2026-09-30, ADaM numeric dates among them) stops having its
             // noise folded on its way through getValueAsString().
             //
             // ⚠ The DECLARED type stays STRING on purpose. This operand resolves its column name
@@ -4921,8 +5043,24 @@ public final class ExprCompiler
      */
     private static IDataValue dottedNotSuppliedDefault(EvaluationContext ctx, String dottedName)
     {
-        return ctx.getNumericExpectedColumns().contains(dottedName)
-                ? ScalarSemantics.computedMissing()
+        return dottedNotSuppliedDefault(ctx.getNumericExpectedColumns().contains(dottedName));
+    }
+
+
+    /**
+     * {@link #dottedNotSuppliedDefault(EvaluationContext, String)} with the expectation already
+     * decided — the overload {@link DynamicColumnRead} uses ({@code PLAN-dynamic-column-functions}
+     * §2.3 step 4), whose default is {@code numericDefault || contains(resolvedName)}: a dynamic
+     * name's call site carries a kind the resolved name alone cannot. One boolean, never the
+     * context, for the reason in the javadoc above.
+     *
+     * @param numericExpected
+     *            whether the operand is numeric-expected
+     * @return {@link MissingValue#MIS} when numeric-expected, else the present {@code ""}
+     */
+    static IDataValue dottedNotSuppliedDefault(boolean numericExpected)
+    {
+        return numericExpected ? ScalarSemantics.computedMissing()
                 : DataValueSupport.defaultForType(DataValueType.STRING);
     }
 
@@ -4942,6 +5080,23 @@ public final class ExprCompiler
      * </p>
      */
     static String resolveDomainPrefix(String name, EvaluationContext ctx)
+    {
+        return resolveDomainPrefixForName(name, ctx);
+    }
+
+
+    /**
+     * {@link #resolveDomainPrefix} for a name read outside this package — {@code find_vars}'
+     * unqualified entry ({@code exec.FindVars}), so every surface that meets a name at evaluation
+     * asserts D77b with one message.
+     *
+     * @param name
+     *            the name
+     * @param ctx
+     *            the evaluation context (its rule id names the rule in the error)
+     * @return {@code name}, unchanged — a {@code --} name throws
+     */
+    public static String resolveDomainPrefixForName(String name, EvaluationContext ctx)
     {
         if (!isDomainPrefixWildcard(name))
         {
@@ -6910,6 +7065,7 @@ public final class ExprCompiler
         }
         rejectNonLiteralDictionaryFlags(descriptor, bound);
         rejectNonLiteralStaticStrings(descriptor, bound);
+        rejectInvalidFormats(descriptor, bound);
         rejectNonLiteralListArguments(descriptor, bound);
         rejectScalarFunctionArguments(descriptor, bound);
     }
@@ -7004,6 +7160,52 @@ public final class ExprCompiler
                     throw error;
                 }
             }
+        }
+    }
+
+
+    /**
+     * ⭐ {@code PLAN-dynamic-column-functions} §2.2 / §3.1 — {@code printf}'s static checks, as
+     * <b>compiler load errors</b> through this static-string seam (armed today, independent of
+     * Stage A's observe-only {@code PARAMETER_TYPE}): the format is a string literal, its
+     * conversions are the supported subset ({@code %s %d %f %e %x %%}, flags {@code 0 - + space},
+     * width, precision), the argument count equals the conversion count, and a string literal never
+     * stands at a numeric conversion. A format error must fail the rule at load, never per row.
+     */
+    private static void rejectInvalidFormats(FunctionDescriptor descriptor,
+            List<@Nullable Expr> bound)
+    {
+        if (net.cumba.corej.core.exec.FindVars.NAME.equals(descriptor.name()))
+        {
+            // §2.4 / §3.1 (H2): a MALFORMED literal entry — a type suffix, a qualifier spelled
+            // inside a whole-entry regex, a -- in a qualified variable half, an invalid regex —
+            // is an armed load error here; an unknown qualifier is Stage A's observe-only
+            // DOTTED_REF_UNDECLARED instead, as for the authored DS.X.
+            if (!bound.isEmpty() && bound.get(0) instanceof Expr.Lit lit
+                    && lit.kind() == Expr.LitKind.STRING)
+            {
+                String error = net.cumba.corej.core.exec.FindVars
+                        .literalEntryError(String.valueOf(lit.value()));
+                if (error != null)
+                {
+                    throw unsupported(error);
+                }
+            }
+            return;
+        }
+        if (!TextFunctions.PRINTF.equals(descriptor.name()))
+        {
+            return;
+        }
+        try
+        {
+            TextFunctions.validateCall(bound);
+        }
+        catch (IllegalArgumentException bad)
+        {
+            ExpressionException error = unsupported(String.valueOf(bad.getMessage()));
+            error.initCause(bad);
+            throw error;
         }
     }
 

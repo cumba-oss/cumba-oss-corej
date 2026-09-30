@@ -177,13 +177,13 @@ public final class ReadValue
                 // declared SUPP merge serves the PRIMARY table only (PLAN-operation-replacements
                 // §2.3 / §7) — a bare name in filter= is a column of D, never a qualifier of D's
                 // own SUPP-- (combined review of runbook W2–W8, W2 M3).
+                TypeExpectations expectations = TypeExpectations.of(List.of(filter));
                 EvaluationContext filterCtx = EvaluationContext.builder().table(table)
                         .ruleId(ctx.getRuleId()).suppMerge(false)
                         .domainName(table.getMetaData().getName())
                         .datasetResolver(ctx.getDatasetResolver())
-                        .numericExpectedColumns(
-                                TypeExpectations.of(List.of(filter)).numericDefaultColumns())
-                        .build();
+                        .numericExpectedColumns(expectations.numericDefaultColumns())
+                        .numericExpectedDynamicSites(expectations.numericDynamicSites()).build();
                 keep = NativeExprEvaluator.evaluate(filter, filterCtx);
             }
             int selected = select(table, colIdx, keep);

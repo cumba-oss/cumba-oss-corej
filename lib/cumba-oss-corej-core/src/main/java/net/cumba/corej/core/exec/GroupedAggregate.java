@@ -1226,13 +1226,15 @@ public final class GroupedAggregate
      */
     static EvaluationContext tableContext(EvaluationContext ctx, IDataTable table, List<Expr> roots)
     {
+        TypeExpectations expectations = TypeExpectations.of(roots);
         // suppMerge(false): the declared SUPP merge serves the PRIMARY table only
         // (PLAN-operation-replacements §2.3 / §7) — a bare name in filter= or a computed target
         // is a column of the target table, never a qualifier of that table's own SUPP-- (combined
         // review of runbook W2–W8, W2 M3).
         return EvaluationContext.builder().table(table).ruleId(ctx.getRuleId()).suppMerge(false)
                 .domainName(table.getMetaData().getName()).datasetResolver(ctx.getDatasetResolver())
-                .numericExpectedColumns(TypeExpectations.of(roots).numericDefaultColumns()).build();
+                .numericExpectedColumns(expectations.numericDefaultColumns())
+                .numericExpectedDynamicSites(expectations.numericDynamicSites()).build();
     }
 
 

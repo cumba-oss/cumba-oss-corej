@@ -16,7 +16,9 @@ import net.cumba.corej.core.expr.eval.CalendarDates;
 import net.cumba.corej.core.expr.eval.ColumnVector;
 import net.cumba.corej.core.expr.eval.ComputedVector;
 import net.cumba.corej.core.expr.eval.ConstVector;
+import net.cumba.corej.core.expr.eval.DynamicColumnRead;
 import net.cumba.corej.core.expr.eval.EvalFunction;
+import net.cumba.corej.core.expr.eval.ExprCompiler;
 import net.cumba.corej.core.expr.eval.FunctionDescriptor;
 import net.cumba.corej.core.expr.eval.FunctionKind;
 import net.cumba.corej.core.expr.eval.FunctionProvider;
@@ -24,6 +26,7 @@ import net.cumba.corej.core.expr.eval.IsoDateComparison;
 import net.cumba.corej.core.expr.eval.Parameter;
 import net.cumba.corej.core.expr.eval.Primitives;
 import net.cumba.corej.core.expr.eval.TemporalPredicates;
+import net.cumba.corej.core.expr.eval.TextFunctions;
 import net.cumba.corej.core.expr.eval.TypedValue;
 import net.cumba.corej.core.expr.eval.Vector;
 import net.cumba.corej.core.expr.typed.ExprType;
@@ -45,9 +48,13 @@ import org.jspecify.annotations.Nullable;
  * as accepted aliases, at their fixed arities:
  * </p>
  * <ul>
+ * <li><b>Conversions and formatting</b> ({@code PLAN-dynamic-column-functions}, owner Q2/Q10):
+ * {@code num}/{@code str}/{@code date}/{@code time} (registered; {@code num}/{@code date}/
+ * {@code time} keep their compiler routing, which selects a comparison family), {@code printf} and
+ * {@code lpad} ({@link TextFunctions}).</li>
  * <li><b>VALUE transforms</b>: {@code lower}/{@code lowcase}, {@code upper}/{@code upcase},
- * {@code len}/{@code length} (integer length), {@code colref} (the two-hop dereference that ports
- * the legacy {@code value_is_reference:true} comparison operand), and the native-only helpers
+ * {@code len}/{@code length} (integer length), {@code colref} (the dynamic column read,
+ * {@link DynamicColumnRead}), and the native-only helpers
  * {@code abs}/{@code round}/{@code floor}/{@code ceil} (numeric), {@code trim}, {@code concat}
  * (arity 2/3), {@code coalesce} (arity 2/3), {@code substring} (arity 2/3, 1-based start),
  * {@code prefix}/{@code suffix} (arity 2 — the first/last n characters, the legacy
@@ -68,8 +75,8 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * Not registered here (handled by the compiler as core, since they are not pure row-value
  * predicates): the comparison/membership/regex-match operators ({@code == != < > <= >= in =~ !~}),
- * the boolean combinators, the type-tag markers {@code date}/{@code date_part}/{@code time_part}/
- * {@code num} (they change comparison <i>dispatch</i> rather than transform a value), and
+ * the boolean combinators, the erased type-tag markers {@code date_part}/{@code time_part} (they
+ * change comparison <i>dispatch</i> rather than transform a value), and
  * {@code exists}/{@code not_exists} (dataset/column existence facts that need the
  * {@link net.cumba.corej.core.exec.EvaluationContext} and the operand name, not its row values).
  * </p>
@@ -215,67 +222,58 @@ public final class BuiltinFunctions implements FunctionProvider
             });
         });
 
-        // -- VALUE two-hop dereference (colref) ------------------------------
-        // colref(X): the first-hop vector X yields, per row, a string that names a column; colref
-        // reads that named column's value on the same row. Faithful port of the legacy
-        // value_is_reference:true two-hop ("Fix #6" — CDISC-CG0371 et al.).
-        // The named column (e.g. a parent-domain key) is pre-merged into the evaluation table by
-        // ChildMatchPreMerger before the EvaluationContext is built, so it is reachable here.
-        value(fns, "colref", (run, args) ->
-        {
-            Vector firstHop = args.get(0);
-            var ctx = run.ctx();
-            return new ComputedVector(run.rowCount(), DataValueType.STRING, row ->
-            {
-                TypedValue first = firstHop.value(row);
-                if (first.missing() != null)
-                {
-                    // A missing first hop names no column: the answer is that missing, its own
-                    // cell (D85c — colref(.A) is .A, PLAN-missing-identity-nonstring-functions).
-                    return first.cell();
-                }
-                Object name = first.resolved();
-                // Mirror ValueResolver: a non-string / empty first hop is returned as-is.
-                if (!(name instanceof String colName) || colName.isEmpty())
-                {
-                    return name;
-                }
-                int colIdx = ctx.getTable().getMetaData().getColumnIndex(colName);
-                if (colIdx < 0)
-                {
-                    // ⭐ D76 / D34 #3-#4 (PLAN-null-free-value-channel, Class A site 2): the
-                    // second-hop column is ABSENT from the evaluation table (e.g. a parent column
-                    // ChildMatchPreMerger did not merge), and an absent column is a
-                    // CONSTANT-VALUE column — character ⇒ "" (a present empty string), numeric ⇒
-                    // MissingValue.MIS. An absent column has no declared type of its own, so D76
-                    // reads the expectation off the RULE; a second hop resolved from DATA almost
-                    // never carries one, so "otherwise char" normally applies, exactly as it does
-                    // for DatasetLookup.lookupValue's absent-column arm.
-                    //
-                    // ⚠ The numeric arm answers `null`: this is the UNTYPED
-                    // ComputedVector(int, DataValueType, IntFunction<Object>) producer, which
-                    // spells a missing row in exactly two ways — a `null` payload (the legacy
-                    // spelling, which TypedValue.resolved folds to MissingValue.MIS, the constant
-                    // owed here) or an IDataValue row (carried as TypedValue.typedCell, identity
-                    // intact: how the D36 string producers hand an input's own missing cell
-                    // through, and ScalarSemantics.computedMissing() for a computed MIS). ⛔ What
-                    // it must never answer is the bare MissingValue.MIS: that is neither spelling,
-                    // and TypedValue.resolved(type, MissingValue.MIS) publishes the marker as a
-                    // PRESENT value. The null is tolerated, not endorsed (see the null-free
-                    // value-channel invariant on ComputedVector's untyped constructor): swapping it
-                    // for computedMissing() moves no value, and closing the channel to null is a
-                    // non-null @FunctionalInterface, since NullAway cannot see a lambda's return
-                    // against a generic type argument at all.
-                    return ctx.getNumericExpectedColumns().contains(colName) ? null : "";
-                }
-                // A blank resolves per ScalarSemantics.resolvedString — type-INDEPENDENT: a
-                // missing cell reads null whatever the column type (owner ruling 2026-09-18), a
-                // stored "" reads "". The null is the missing cell's: that cell is the answer, so
-                // the column read keeps its identity (D85c, TR §E — a second-hop .A is .A).
-                String second = ScalarSemantics.resolvedString(ctx.getTable(), colIdx, row);
-                return second != null ? second : ctx.getTable().getColumn(colIdx).getDataValue(row);
-            });
-        });
+        // -- VALUE dynamic column read (colref) ------------------------------
+        // colref(X): per row, the column X names (PLAN-dynamic-column-functions §2.3) — a bare
+        // name on the evaluation table after the Child pre-merge (D62b: CDISC-CG0371's IDVAR
+        // reaches the pre-merged parent key), DS.X through the join, the cell typed, a list of
+        // names dereferenced element-wise (Q4), a present non-string first hop a computed missing
+        // (Q7). ⚠ ExprCompiler dispatches colref through its own arm (colrefPlan), which knows the
+        // CALL SITE and so the site's absent-column kind (Q14 (b)); this implementation is the
+        // site-less entry a direct registry caller reaches, and resolves through the SAME
+        // DynamicColumnRead with no site kind — only the resolved name's rule-wide expectation.
+        // ⚠ Declared a ROW READER (FunctionDescriptor.readingRows): a literal colref("X") has no
+        // column operand, so the level calculus would otherwise read it DATASET and broadcast
+        // row 0's cell to every row — the row_max shape of XCUT H1. Stage A types colref RECORD
+        // in its own arm; DomainScan and the hand-over contract read this flag.
+        fns.add(new FunctionDescriptor("colref", List.of(p("x")), FunctionKind.VALUE,
+                (run, args) -> DynamicColumnRead.vector(run, args.get(0), false)).readingRows());
+
+        // -- VALUE column-set selector (PLAN-dynamic-column-functions §2.4, owner Q5/Q11/Q12) --
+        // find_vars("<entry>"): the column NAMES one Requirements.Variables entry selects —
+        // template / glob / DS./regex/ / literal, one parser and one matcher with that surface.
+        fns.add(new FunctionDescriptor(net.cumba.corej.core.exec.FindVars.NAME,
+                List.of(p("entry", Primitive.STRING)), FunctionKind.VALUE,
+                // ExprCompiler dispatches find_vars through its own arm, which knows whether the
+                // argument is a string LITERAL; a direct registry caller passes a vector only,
+                // so a broadcast one is taken as the literal it almost always is.
+                (run, args) -> net.cumba.corej.core.exec.FindVars.evaluate(run, args.get(0),
+                        args.get(0) instanceof ConstVector)));
+
+        // -- VALUE conversions (PLAN-dynamic-column-functions §2.1, owner Q10) ----------------
+        // num / str / date / time are REGISTERED functions: each has a descriptor, so each is in
+        // the roster and the generated function reference. num / date / time keep their compiler
+        // routing (ExprCompiler.family / numTag select the comparison family) and their one
+        // evaluation each (Primitives.numConversion; the interpretive ISO identity of
+        // ExprCompiler.isoConversion), which the compiler arm and this implementation share.
+        value(fns, "num", (run, args) -> Primitives.numConversion(args.get(0), run.rowCount()));
+        value(fns, "date", (run, args) -> ExprCompiler.isoConversion(args.get(0), "date()"));
+        value(fns, "time", (run, args) -> ExprCompiler.isoConversion(args.get(0), "time()"));
+        value(fns, TextFunctions.STR,
+                (run, args) -> TextFunctions.str(run.rowCount(), args.get(0)));
+
+        // -- VALUE formatting (PLAN-dynamic-column-functions §2.2, owner Q2) -------------------
+        // printf(format, args…): Locale.ROOT, %s %d %f %e %x %% only; the format is a string
+        // literal and every static check is a compiler load error (ExprCompiler's static-string
+        // seam). lpad(x, width, fill=" "): left-pad, never truncate.
+        fns.add(new FunctionDescriptor(TextFunctions.PRINTF,
+                List.of(p("format", Primitive.STRING),
+                        Parameter.collector("args", new ListOf(Unknown.UNKNOWN))),
+                FunctionKind.VALUE, (run, args) -> TextFunctions.printf(run.rowCount(), args.get(0),
+                        args.subList(1, args.size()))));
+        fns.add(new FunctionDescriptor(TextFunctions.LPAD,
+                List.of(p("x"), p("width", Primitive.NUMBER), opt("fill", Primitive.STRING)),
+                FunctionKind.VALUE, (run, args) -> TextFunctions.lpad(run.rowCount(), args.get(0),
+                        args.get(1), args.get(2))));
 
         // -- VALUE current-variable accessors (varname / value) -------------
         // varname(): the NAME of the "current variable" — the per-column cursor the metadata /

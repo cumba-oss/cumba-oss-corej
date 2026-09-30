@@ -51,6 +51,14 @@ public final class ElementTable
             Map.entry("trim", Primitive.STRING), Map.entry("normalize_space", Primitive.STRING),
             Map.entry("concat", Primitive.STRING), Map.entry("substring", Primitive.STRING),
             Map.entry("prefix", Primitive.STRING), Map.entry("suffix", Primitive.STRING),
+            // PLAN-dynamic-column-functions §2.1/§2.2/§2.3: the registered text conversion and
+            // the two formatting functions. ⚠ colref has NO row here — its scalar
+            // (column-reference) and list (list<unknown>) results are decided by its argument, in
+            // StageAChecker's colref arm, which a name-keyed row cannot do.
+            Map.entry("str", Primitive.STRING), Map.entry("printf", Primitive.STRING),
+            Map.entry("lpad", Primitive.STRING),
+            // find_vars (§2.4): a list of column NAMES — only colref dereferences them.
+            Map.entry("find_vars", new ListOf(Primitive.STRING)),
             // temporal results (phase 3b). ⭐ min_date/max_date are the corpus' only two
             // date-valued operations (an operation type declared an empty result but never a result
             // type — Review 0b's finding); typing them date is what makes an untagged

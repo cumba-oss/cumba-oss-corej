@@ -713,7 +713,16 @@ class ScalarSemanticsComputedMissingTest
     // 29 -> 30 (PLAN-scalar-date-extremes): ScalarDateExtremes.pairExtreme, the per-row producer of
     // earliest_date / latest_date — read: it answers the winning INPUT cell, the carried identity
     // when both inputs are missing, or ScalarSemantics.computedMissing(); never null.
-    private static final int EXPECTED_VALUE_PRODUCERS = 30;
+    // 30 -> 34 (PLAN-dynamic-column-functions phase 2): DynamicColumnRead.cell / .nameOf / .member
+    // (colref's one resolver) and the boolean ExprCompiler.dottedNotSuppliedDefault overload. Read:
+    // cell answers the column's own cell (a missing one handed through), the joined lookup's typed
+    // value, or the D76 default (computedMissing / the present ""); nameOf answers computedMissing
+    // for a non-string first hop and cell() otherwise; member answers the element's own missing
+    // cell, cell(), or computedMissing; the overload answers computedMissing or "". Never null.
+    // 34 -> 35 (PLAN-dynamic-column-functions phase 3): DynamicColumnRead.memberCell — read: it
+    // answers its input cell, or DataValues.of(the input's text) for a present character cell;
+    // never null.
+    private static final int EXPECTED_VALUE_PRODUCERS = 35;
 
     private static Method declared(Class<?> owner, String name)
     {

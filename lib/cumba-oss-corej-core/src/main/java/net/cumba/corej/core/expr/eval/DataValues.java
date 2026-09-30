@@ -86,6 +86,17 @@ public final class DataValues
                 }
                 return DataValueType.STRING;
             }
+
+
+            // The value's own text — what Primitives.MemberSet keys a present member by
+            // (PLAN-dynamic-column-functions §2.7: a colref(list) member must build the same text
+            // member the ${*} collector's getValueAsString() does). The identity default
+            // (DataValues$1@…) matched nothing.
+            @Override
+            public String toString()
+            {
+                return getValueAsString();
+            }
         };
     }
 

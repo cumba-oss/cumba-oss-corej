@@ -174,7 +174,10 @@ public final class ExprPrefixResolver
         {
             Expr arg = c.args().get(i);
             // D92a: the name operand (first positional argument) keeps its template.
-            Expr resolved = inventoryFold && i == 0 ? arg
+            // PLAN-dynamic-column-functions §2.4 / SPEC §7.2 item 6: a find_vars /regex/ entry is
+            // a regex, not a name, exactly like name_pattern= (D92b); its template, glob and
+            // literal entries ARE specialised (D93c), as the same Requirements.Variables entry is.
+            Expr resolved = (inventoryFold && i == 0) || (i == 0 && isFindVarsRegex(c, arg)) ? arg
                     : resolve(arg, variablePrefix, datasetPrefix);
             if (args == null && resolved != arg)
             {
@@ -223,6 +226,17 @@ public final class ExprPrefixResolver
         }
         return new Expr.Call(c.name(), args != null ? args : c.args(),
                 kwargs != null ? kwargs : c.kwargs());
+    }
+
+
+    /**
+     * Whether {@code arg} is a {@code find_vars} string-literal regex entry (never specialised).
+     */
+    private static boolean isFindVarsRegex(Expr.Call c, Expr arg)
+    {
+        return FindVars.NAME.equals(c.name()) && arg instanceof Expr.Lit lit
+                && lit.kind() == Expr.LitKind.STRING
+                && FindVars.isRegexEntry(String.valueOf(lit.value()));
     }
 
 

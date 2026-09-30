@@ -160,12 +160,13 @@ final class MatchFilter
         // suppMerge(false): the declared SUPP merge serves the PRIMARY table only
         // (PLAN-operation-replacements §2.3 / §7); with the study's resolver in hand the pivot
         // would otherwise read the JOINED dataset's own SUPP-- for a bare filter name.
+        net.cumba.corej.core.expr.typed.TypeExpectations expectations = net.cumba.corej.core.expr.typed.TypeExpectations
+                .of(java.util.List.of(filter));
         EvaluationContext ctx = EvaluationContext.builder().table(right).ruleId(ruleId)
                 .suppMerge(false).datasetResolver(study).libraryProvider(library)
                 .domainName(right.getMetaData().getName())
-                .numericExpectedColumns(net.cumba.corej.core.expr.typed.TypeExpectations
-                        .of(java.util.List.of(filter)).numericDefaultColumns())
-                .build();
+                .numericExpectedColumns(expectations.numericDefaultColumns())
+                .numericExpectedDynamicSites(expectations.numericDynamicSites()).build();
         BitSet keep = NativeExprEvaluator.evaluate(filter, ctx);
         int rowCount = Math.toIntExact(right.getRowCount());
         return keep.cardinality() == rowCount ? null : keep;

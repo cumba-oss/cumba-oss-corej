@@ -46,8 +46,10 @@ public enum StageAErrorKind
     HETEROGENEOUS_LIST(true),
 
     /**
-     * A name position that is not statically known and not one of §1.2's three dynamic forms
-     * ({@code ${VAR[:fmt]}}, {@code RELREC.**}, {@code colref(IDVAR)}) — the typed mirror of
+     * A name position that is not statically known and not one of §1.2's dynamic forms
+     * ({@code ${VAR[:fmt]}}, {@code RELREC.**}, {@code colref(<string>)},
+     * {@code colref(<list<string>>)}, {@code var_exists(<string>)} — amended by
+     * {@code PLAN-dynamic-column-functions}, 2026-09-30) — the typed mirror of
      * {@code ExprCompiler:4583}. Armed: measured 0 newly parked (the engine already parks these
      * today via {@code RuleDefinitionException}). Phase 2 enforces it for the metadata-accessor
      * name argument only — §1.2's full name-position rule lands with the complete element table.

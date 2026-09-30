@@ -95,15 +95,6 @@ public final class StageAChecker
     private static final Set<String> VARNAME_ANCHORED_CALLS = Set.of("max_value_length",
             "library_variable_code_pair_matches", "define_variable_decode_matches");
 
-    /**
-     * The one REMAINING erased mode tag (D91f (i)): {@code str}, which the compiler still
-     * special-cases and which is only free as a name after phase 7 (D97c). Phase 3b retired the
-     * other three from this set: {@code date} is a real conversion typed {@code date}, and
-     * {@code date_part}/{@code time_part} — still erased tags in the compiler until the 3c corpus
-     * rewrite (D98b(ii)) — are typed here as the ordinary date-consuming functions D20 makes them.
-     */
-    private static final Set<String> MODE_TAGS = Set.of("str");
-
     /** The date-family predicates of SPEC §5.3 (D27), each taking two same-base operands. */
     private static final Set<String> DATE_PREDICATES = Set.of("date_contains", "date_overlaps");
 
@@ -680,20 +671,7 @@ public final class StageAChecker
         }
         if ("colref".equals(name))
         {
-            // §1.2 / §7.3: per-row column selection — a string → column-reference at record
-            // level, one of the three dynamic name forms (D62b).
-            if (c.args().size() != 1 || !c.kwargs().isEmpty())
-            {
-                find(StageAErrorKind.ARITY, "colref takes exactly one argument");
-            }
-            return new TypedExpr(c, Primitive.COLUMN_REFERENCE, Level.RECORD, children);
-        }
-        if (MODE_TAGS.contains(name) && c.args().size() == 1 && c.kwargs().isEmpty())
-        {
-            // D91f (i): str is the one remaining erased identity (live until phase 7, D97c) —
-            // typed as passthrough.
-            TypedExpr inner = children.get(0);
-            return new TypedExpr(c, inner.type(), inner.level(), children);
+            return colref(c, children);
         }
         TypedExpr temporal = temporalCall(c, children);
         if (temporal != null)
@@ -742,6 +720,13 @@ public final class StageAChecker
         if (descriptor != null)
         {
             TypedExpr typed = registered(c, descriptor, children);
+            if (net.cumba.corej.core.exec.FindVars.NAME.equals(name))
+            {
+                // PLAN-dynamic-column-functions §2.4: find_vars reads the dataset's column
+                // inventory, so even a literal entry is at least DATASET level (a literal's own
+                // level is STUDY); a computed entry keeps its operands' RECORD level.
+                return new TypedExpr(c, typed.type(), join(typed.level(), Level.DATASET), children);
+            }
             if (net.cumba.corej.core.exec.RecordCount.NAME.equals(name))
             {
                 // Runbook W6 (PLAN-record-count-function D-W6-9): the retired inline
@@ -789,6 +774,52 @@ public final class StageAChecker
             return typed;
         }
         return unregistered(c, children);
+    }
+
+
+    /**
+     * {@code colref(x)} — §1.2's dynamic dereference ({@code PLAN-dynamic-column-functions} §2.3):
+     * a string names one column ({@code column-reference} at record level, as before); a list of
+     * strings names one column per element ({@code list<unknown>} — its elements are the named
+     * columns' cells, never names, so never {@code list<string>}). ⚠ Both result types live ONLY
+     * here: a name-keyed {@code ElementTable} row cannot tell the scalar form from the list form. A
+     * statically known argument of any other type is {@link StageAErrorKind#PARAMETER_TYPE} (owner
+     * Q7) — observe-only until {@code PLAN-stage-a-parameter-type-arming} arms that kind; at run
+     * time such a value names no column and is a computed missing.
+     */
+    private TypedExpr colref(Expr.Call c, List<TypedExpr> children)
+    {
+        if (c.args().size() != 1 || !c.kwargs().isEmpty())
+        {
+            find(StageAErrorKind.ARITY, "colref takes exactly one argument");
+            return new TypedExpr(c, Primitive.COLUMN_REFERENCE, Level.RECORD, children);
+        }
+        ExprType arg = children.get(0).type();
+        if (arg instanceof ListOf list)
+        {
+            if (!isNameType(list.element()))
+            {
+                find(StageAErrorKind.PARAMETER_TYPE, "colref takes a column name (a string) or a"
+                        + " list of column names, not " + arg.describe());
+            }
+            return new TypedExpr(c, new ListOf(Unknown.UNKNOWN), Level.RECORD, children);
+        }
+        if (!isNameType(arg))
+        {
+            find(StageAErrorKind.PARAMETER_TYPE, "colref takes a column name (a string) or a list"
+                    + " of column names, not " + arg.describe());
+        }
+        return new TypedExpr(c, Primitive.COLUMN_REFERENCE, Level.RECORD, children);
+    }
+
+
+    /**
+     * Whether a statically known type can carry a column name: a string, or a column reference /
+     * unknown whose value (read per row) is one.
+     */
+    private static boolean isNameType(ExprType t)
+    {
+        return t == Primitive.STRING || t == Primitive.COLUMN_REFERENCE || t == Unknown.UNKNOWN;
     }
 
 
@@ -1849,6 +1880,19 @@ public final class StageAChecker
             collectDottedRefs(root, dotted, qualifiedWildcards);
         }
         collectBindingDottedRefs(dotted, qualifiedWildcards);
+        // PLAN-dynamic-column-functions §2.3 / §3.1 (H2): a colref / find_vars name whose
+        // qualifier is statically known (a literal, or a literal prefix) — judged by the
+        // undeclared arm only, observe-only exactly like the authored DS.X (UNIFORMITY).
+        Set<String> dynamic = new LinkedHashSet<>();
+        for (Expr root : roots)
+        {
+            collectDynamicNames(root, dynamic);
+        }
+        List<CompiledBinding> compiledBindings = rule.getCompiledBindings();
+        if (compiledBindings != null)
+        {
+            compiledBindings.forEach(b -> collectDynamicNames(b.expression(), dynamic));
+        }
         List<MatchDataset> entries = matches == null ? List.of() : matches;
         // ⭐ A WILDCARD_COLUMN operand with a JUDGEABLE qualifier (non-empty, no `${`, no `&`:
         // `AE.**SMIE`, `AE.${X}`, `SUPP--.QVAL`, even `*.X`) is judged
@@ -1871,11 +1915,25 @@ public final class StageAChecker
                         + " columns are merged into the primary and are read bare");
             }
         }
-        if (dotted.isEmpty())
+        if (dotted.isEmpty() && dynamic.isEmpty())
         {
             return;
         }
         boolean templates = anyTemplateEntryName(matches);
+        for (String name : dynamic)
+        {
+            String qualifier = name.substring(0, name.indexOf('.'));
+            if (templates || entryFor(qualifier, entries) != null)
+            {
+                continue;
+            }
+            find(StageAErrorKind.DOTTED_REF_UNDECLARED,
+                    "the column name " + name + " (a colref / find_vars argument) references no"
+                            + " Match_Datasets entry named " + qualifier + " — undeclared, no join"
+                            + " is ever built for " + qualifier + ", so the name reads the"
+                            + " not-supplied default on every row, exactly as an authored "
+                            + qualifier + ".<column> would");
+        }
         for (String ref : dotted)
         {
             String qualifier = ref.substring(0, ref.indexOf('.'));
@@ -2088,6 +2146,81 @@ public final class StageAChecker
             c.kwargs().values().forEach(a -> collectDottedRefs(a, dotted, wildcards));
         }
         }
+    }
+
+
+    /**
+     * The statically-qualified names a {@code colref} / {@code find_vars} call is handed — a string
+     * literal argument, or the leading string literal of a {@code concat(…)} argument (a literal
+     * prefix, {@code concat("ADSL.AP", …)}) — whose text carries a judgeable qualifier before its
+     * first {@code .}. A {@code find_vars} entry that is a whole-entry {@code /regex/} is never
+     * split ({@code ScopeVariableEntry.parse}: a regex contains dots by construction), so it names
+     * no qualifier here. A computed qualifier cannot be judged and is not collected.
+     */
+    private static void collectDynamicNames(Expr e, Set<String> out)
+    {
+        switch (e)
+        {
+        case Expr.And a -> a.parts().forEach(p -> collectDynamicNames(p, out));
+        case Expr.Or o -> o.parts().forEach(p -> collectDynamicNames(p, out));
+        case Expr.Not n -> collectDynamicNames(n.inner(), out);
+        case Expr.Binary b ->
+        {
+            collectDynamicNames(b.left(), out);
+            collectDynamicNames(b.right(), out);
+        }
+        case Expr.Lit lit ->
+        {
+            if (lit.kind() == Expr.LitKind.LIST && lit.value() instanceof List<?> items)
+            {
+                for (Object item : items)
+                {
+                    if (item instanceof Expr inner)
+                    {
+                        collectDynamicNames(inner, out);
+                    }
+                }
+            }
+        }
+        case Expr.Ref _ ->
+        {
+            // a reference names no dynamic column
+        }
+        case Expr.Call c ->
+        {
+            boolean findVars = "find_vars".equals(c.name());
+            if (("colref".equals(c.name()) || findVars) && c.args().size() == 1)
+            {
+                String text = staticNameText(c.args().get(0));
+                if (text != null && !(findVars && text.startsWith("/")))
+                {
+                    int dot = text.indexOf('.');
+                    if (dot > 0 && text.substring(0, dot).matches("[A-Za-z][A-Za-z0-9_]*"))
+                    {
+                        out.add(text);
+                    }
+                }
+            }
+            c.args().forEach(a -> collectDynamicNames(a, out));
+            c.kwargs().values().forEach(a -> collectDynamicNames(a, out));
+        }
+        }
+    }
+
+
+    /** A string literal's text, or the leading string literal of a {@code concat(…)}. */
+    private static @Nullable String staticNameText(Expr arg)
+    {
+        if (arg instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING)
+        {
+            return String.valueOf(lit.value());
+        }
+        if (arg instanceof Expr.Call c && "concat".equals(c.name()) && !c.args().isEmpty()
+                && c.args().get(0) instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING)
+        {
+            return String.valueOf(lit.value());
+        }
+        return null;
     }
 
 

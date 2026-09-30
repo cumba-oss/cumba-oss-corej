@@ -830,11 +830,13 @@ public final class RuleRunner
         // used to apply per execution. The tree read here is already concrete.
         CheckCondition check = rule.getCheck();
 
+        net.cumba.corej.core.expr.typed.TypeExpectations expectations = typeExpectations(rule);
         EvaluationContext ctx = EvaluationContext.builder().table(evalTable).variables(variables)
-                .numericExpectedColumns(numericExpectedColumns(rule)).defineProvider(defineProvider)
-                .vlmResolver(vlmResolver).ruleId(ruleId).datasetResolver(resolver)
-                .domainPrefix(domainPrefix).variableWildcardPrefix(varWildcardPrefix)
-                .suppMerge(rule.isSuppMergeEnabled())
+                .numericExpectedColumns(expectations.numericDefaultColumns())
+                .numericExpectedDynamicSites(expectations.numericDynamicSites())
+                .defineProvider(defineProvider).vlmResolver(vlmResolver).ruleId(ruleId)
+                .datasetResolver(resolver).domainPrefix(domainPrefix)
+                .variableWildcardPrefix(varWildcardPrefix).suppMerge(rule.isSuppMergeEnabled())
                 .sharedIndexCache(joinCache != null ? joinCache.getSharedIndexCache() : null)
                 .domainName(evalTable.getMetaData().getName()).joinedDatasets(joinedDatasets)
                 .evaluationDomain(rule.getEvaluationDomain()).maxErrorsPerRule(maxErrorsPerRule)
@@ -1843,18 +1845,19 @@ public final class RuleRunner
 
 
     /**
-     * D76 — the columns whose absent-column default is <b>numeric</b> under this rule's own
-     * expectations, computed over the same specialised expression roots stage B walks
-     * ({@code StageBChecker.expressionRoots}), so the checker's report of the default and the
-     * engine's application of it cannot disagree. A rule with no native form yields the empty set,
-     * which is the "no expectation ⇒ char" disposition (D76a).
+     * D76 — this rule's own type expectations (the columns, and the {@code colref} call sites,
+     * whose absent-column default is <b>numeric</b>), computed over the same specialised expression
+     * roots stage B walks ({@code StageBChecker.expressionRoots}), so the checker's report of the
+     * default and the engine's application of it cannot disagree. A rule with no native form yields
+     * the empty set, which is the "no expectation ⇒ char" disposition (D76a).
      */
-    private static Set<String> numericExpectedColumns(Rule rule)
+    private static net.cumba.corej.core.expr.typed.TypeExpectations typeExpectations(Rule rule)
     {
-        var roots = net.cumba.corej.core.expr.typed.StageBChecker.expressionRoots(rule);
-        return roots.isEmpty() ? Set.of()
-                : net.cumba.corej.core.expr.typed.TypeExpectations.of(roots)
-                        .numericDefaultColumns();
+        // ⭐ Computed ONCE per execution and read for both sets (the named columns and, since
+        // PLAN-dynamic-column-functions §2.3, the numeric-expected colref call sites). An empty
+        // root list walks nothing, so both sets are empty — the "no expectation ⇒ char" default.
+        return net.cumba.corej.core.expr.typed.TypeExpectations
+                .of(net.cumba.corej.core.expr.typed.StageBChecker.expressionRoots(rule));
     }
 
 
@@ -4391,6 +4394,10 @@ public final class RuleRunner
                         : ctx.getDomainPrefix(),
                 ctx.getDomainPrefix());
         outputVars = expandOutputVarWildcards(outputVars, ctx);
+        // PLAN-dynamic-column-functions §2.6 (owner Q6 (a)): a Requirements.Variables PATTERN
+        // entry (template, glob, DS./regex/) expands to every existing matching column through
+        // find_vars' matcher. The ${*} step above is unchanged (Q8).
+        outputVars = FindVars.expandOutputVariables(outputVars, ctx);
         DataTableMeta meta = table.getMetaData();
         Map<String, String> values = new LinkedHashMap<>();
         for (String varName : outputVars)

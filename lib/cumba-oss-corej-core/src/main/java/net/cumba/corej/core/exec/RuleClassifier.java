@@ -377,6 +377,16 @@ public final class RuleClassifier
         {
             return new CallUsage(call.name(), List.of(), false, null, List.of());
         }
+        // PLAN-dynamic-column-functions §2.4 / §2.8: find_vars over a string LITERAL entry reads
+        // the dataset's column inventory once — a dataset-level list usage, like the wave-4 list
+        // functions above. Without this arm the walk read the entry's TEXT (`TRTxxP`) as a
+        // per-record column and derived CDISC-AD0581 Record-sensitive (routing census). A computed
+        // entry keeps the default walk, whose columns make it per record.
+        if (FindVars.NAME.equals(call.name()) && call.args().size() == 1
+                && call.args().get(0) instanceof Expr.Lit lit && lit.kind() == Expr.LitKind.STRING)
+        {
+            return new CallUsage(call.name(), List.of(), false, null, List.of());
+        }
         // Wave 5 (PLAN-grouped-aggregate-functions D-W5-7): a grouped aggregate call — and
         // read_value with a group= — denotes the usage its declared operation denoted: the
         // operator, its group columns, whether it filters, its domain and its target, so
