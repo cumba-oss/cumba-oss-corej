@@ -37,8 +37,9 @@ import org.jspecify.annotations.Nullable;
  * lists, which are matched BEFORE expansion and where gate R6 looks. Prose that is never
  * substituted (ExecutabilityHint, Source, Standards, Authorities, Core) is not a surface, so prose
  * like {@code R&D} there is never gated. {@code ExpansionSurfacesTest} keeps this in lockstep with
- * the expander in both directions: a rule with a distinct token in every substituted field must
- * yield every one, and expanding that rule must make exactly the collected tokens vanish.
+ * the expander: a distinct declared token in every String leaf of a maximal rule's Jackson tree
+ * must be substituted exactly where this class looks, and every leaf it does not look at is listed
+ * there with the reason it is not a surface.
  * </p>
  *
  * <p>
@@ -59,9 +60,9 @@ public final class ExpansionSurfaces
      * One gated text and where it came from, for the message.
      *
      * @param where
-     *            the surface, e.g. {@code Check}, {@code Check[ERROR].Message},
-     *            {@code Outcome.Output_Variables}, {@code Match_Datasets[0]},
-     *            {@code Scope.Domains.Include}
+     *            the surface, e.g. {@code Check}, {@code Check.Message} (single level),
+     *            {@code Check[ERROR].Message} (multi-level), {@code Outcome.Output_Variables},
+     *            {@code Match_Datasets[0]}, {@code Scope.Domains.Include}
      * @param text
      *            the authored text
      */
@@ -118,8 +119,10 @@ public final class ExpansionSurfaces
         {
             for (Map.Entry<Severity, LevelCheck> e : levels.entrySet())
             {
-                // Substituted by the expander (LevelCheck.map), so gated like Outcome.Message.
-                add(out, "Check[" + e.getKey() + "].Message", e.getValue().message());
+                // Substituted by the expander (LevelCheck.map), so gated like Outcome.Message, and
+                // named after its level's condition surface: Check.Message beside Check,
+                // Check[ERROR].Message beside Check[ERROR].
+                add(out, levelSurface(levels, e.getKey()) + ".Message", e.getValue().message());
             }
         }
         List<Binding> bindings = rule.getBindings();
@@ -184,10 +187,9 @@ public final class ExpansionSurfaces
         }
         else
         {
-            boolean single = levels.size() == 1;
             for (Map.Entry<Severity, LevelCheck> e : levels.entrySet())
             {
-                out.add(new NamedCondition(single ? "Check" : "Check[" + e.getKey() + "]",
+                out.add(new NamedCondition(levelSurface(levels, e.getKey()),
                         e.getValue().condition()));
             }
         }
@@ -196,6 +198,17 @@ public final class ExpansionSurfaces
             out.add(new NamedCondition("Precondition", rule.getPrecondition()));
         }
         return List.copyOf(out);
+    }
+
+
+    /**
+     * The surface name of one level's condition: {@code Check} when the level map has one level
+     * (the rule reads as a plain Check), {@code Check[<level>]} otherwise. A level's
+     * {@code Message} is reported as this name plus {@code .Message}, so the two always agree.
+     */
+    private static String levelSurface(Map<Severity, LevelCheck> levels, Severity level)
+    {
+        return levels.size() == 1 ? "Check" : "Check[" + level + "]";
     }
 
 

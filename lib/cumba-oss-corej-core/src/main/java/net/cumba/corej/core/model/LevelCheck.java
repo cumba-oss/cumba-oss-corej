@@ -120,8 +120,9 @@ public record LevelCheck(CheckCondition condition, @Nullable String message)
      * {@code Message} is authored text like {@code Outcome.Message} and carries the same tokens, so
      * a clone that rewrote only the condition would ship the template's unsubstituted message on
      * every expanded child ({@code PLAN-expansion-token-delimiters}, review (a) M1 / (b) L6).
-     * {@code ExpansionSurfaces} lists {@code Check[<level>].Message} as a gated surface for the
-     * same reason.
+     * {@code ExpansionSurfaces} lists each level's {@code Message} as a gated surface for the same
+     * reason ({@code Check.Message} on a single-level map, {@code Check[<level>].Message} on a
+     * multi-level one).
      * </p>
      *
      * @param levels

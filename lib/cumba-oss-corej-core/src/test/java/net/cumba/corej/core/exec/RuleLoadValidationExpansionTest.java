@@ -462,8 +462,8 @@ class RuleLoadValidationExpansionTest
                   "Check": {"ERROR": {"expression": "not empty(AGE)", "Message": "&X& is blank"}}
                 }
                 """);
-        assertTrue(error.contains("undeclared expansion token '&X&' in Check[ERROR].Message"),
-                error);
+        // A single-level map reads as a plain Check, so its Message is Check.Message.
+        assertTrue(error.contains("undeclared expansion token '&X&' in Check.Message"), error);
     }
 
 

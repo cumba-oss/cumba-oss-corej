@@ -158,8 +158,10 @@ public final class TokenExpander
         }
         if (!reasons.isEmpty())
         {
-            // Some candidates survived, some did not. The survivors still expand, but the drops
-            // must not vanish — they are the "cannot check this one" cases.
+            // Some candidates survived, some did not. The survivors expand, and — the ruling — a
+            // binding-stage candidate drop is LOG-ONLY: it reaches the SKIPPED audit row only when
+            // no candidate survives (the NoMatch above). Only a post-build drop, which removes an
+            // expansion that was minted, travels on Expanded.dropped to a partial-drop audit row.
             LOGGER.log(System.Logger.Level.WARNING, "Expansion of " + rule.effectiveId()
                     + " dropped some candidates: " + String.join("; ", reasons));
         }
